@@ -6,7 +6,7 @@ use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ClassHash};
 use pathfinder_storage::BlockId;
 use primitive_types::H160;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::{
     state_update::{DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff},
     Status,
@@ -73,6 +73,8 @@ async fn serve() -> anyhow::Result<()> {
         block_number: Option<String>,
         #[serde(default, rename = "blockHash")]
         block_hash: Option<BlockHash>,
+        #[serde(default, rename = "includeBlock")]
+        include_block: Option<bool>,
     }
 
     impl TryInto<BlockId> for BlockIdParam {
@@ -134,20 +136,40 @@ async fn serve() -> anyhow::Result<()> {
             move |block_id: BlockIdParam| {
                 let storage = storage.clone();
                 async move {
+                    let include_block = block_id.include_block.unwrap_or(false);
+
                     match block_id.try_into() {
                         Ok(block_id) => {
-                            let state_update = tokio::task::spawn_blocking(move || {
+                            let (state_update, block) = tokio::task::spawn_blocking(move || {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
-                                resolve_state_update(&tx, block_id)
+                                let state_update = resolve_state_update(&tx, block_id);
+                                let block = resolve_block(&tx, block_id);
+
+                                (state_update, block)
                             }).await.unwrap();
 
-                            match state_update {
-                                Ok(state_update) => {
-                                    Ok(warp::reply::json(&state_update))
+                            match (state_update, block) {
+                                (Ok(state_update), Ok(block)) => {
+                                    if include_block {
+                                        #[derive(Serialize)]
+                                        struct StateUpdateWithBlock {
+                                            state_update: starknet_gateway_types::reply::StateUpdate,
+                                            block: starknet_gateway_types::reply::Block,
+                                        }
+
+                                        let reply = StateUpdateWithBlock {
+                                            state_update,
+                                            block,
+                                        };
+
+                                        Ok(warp::reply::json(&reply))
+                                    } else {
+                                        Ok(warp::reply::json(&state_update))
+                                    }
                                 },
-                                Err(_) => {
+                                _ => {
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
                                     Ok(warp::reply::json(&error))
                                 }
@@ -263,6 +285,7 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
     })
 }
 
+#[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_block(
     tx: &pathfinder_storage::Transaction<'_>,
     block_id: BlockId,
@@ -305,6 +328,7 @@ fn resolve_block(
     })
 }
 
+#[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_state_update(
     tx: &pathfinder_storage::Transaction<'_>,
     block: BlockId,
@@ -315,12 +339,11 @@ fn resolve_state_update(
         .map(storage_to_gateway)
 }
 
+#[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_class(
     tx: &pathfinder_storage::Transaction<'_>,
     class_hash: ClassHash,
 ) -> anyhow::Result<Vec<u8>> {
-    tracing::info!(%class_hash, "Resolving class hash");
-
     let definition = tx
         .class_definition(class_hash)
         .context("Reading class definition from database")?
