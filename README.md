@@ -148,8 +148,11 @@ We recommend using RClone. Add the following to your RClone configuration file (
 [pathfinder-snapshots]
 type = s3
 provider = Cloudflare
-region = auto
+env_auth = false
+access_key_id = 7635ce5752c94f802d97a28186e0c96d
+secret_access_key = 529f8db483aae4df4e2a781b9db0c8a3a7c75c82ff70787ba2620310791c7821
 endpoint = https://cbf011119e7864a873158d83f3304e27.r2.cloudflarestorage.com
+acl = private
 ```
 
 You can then download a compressed database using the command:
