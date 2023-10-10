@@ -25,6 +25,12 @@ This includes any documentation issues, feature requests and bugs that you may e
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the Starknet [discord channel](https://discord.com/invite/QypNMzkHbc).
 
+## Database compatibility
+
+**pathfinder 0.9.0 contains a change in our Merkle tree storage implementation that makes it impossible to use database files produced by earlier versions.**
+
+This means that upgrading to 0.9.0 will require either a full re-sync _or_ downloading a [database snapshot](#database-snapshots).
+
 ## Running with Docker
 
 The `pathfinder` node can be run in the provided Docker image.
@@ -124,6 +130,52 @@ docker-compose up -d
 ```
 
 To check if it's running well use `docker-compose logs -f`.
+
+## Database Snapshots
+
+Re-syncing the whole history for either the mainnet or testnet networks might take a long time. To speed up the process you can use database snapshot files that contain the full state and history of the network up to a specific block.
+
+The database files are hosted on Cloudflare R2. There are two ways to download the files:
+
+* Using the [Rclone](https://rclone.org/) tool
+* Via the HTTPS URL: we've found this to be less reliable in general
+
+### Rclone setup
+
+We recommend using RClone. Add the following to your RClone configuration file (`$HOME/.config/rclone/rclone.conf`):
+
+```ini
+[pathfinder-snapshots]
+type = s3
+provider = Cloudflare
+region = auto
+endpoint = https://cbf011119e7864a873158d83f3304e27.r2.cloudflarestorage.com
+```
+
+You can then download a compressed database using the command:
+
+```shell
+rclone copy -P pathfinder-snapshots:pathfinder-snapshots/testnet_0.9.0_880310.sqlite.zst .
+```
+
+### Uncompressing database snapshots
+
+**To avoid issues please check that the SHA2-256 checksum of the compressed file you've downloaded matches the value we've published.**
+
+We're storing database snapshots as SQLite database files compressed with [zstd](https://github.com/facebook/zstd). You can uncompress the files you've downloaded using the following command:
+
+```shell
+zstd -T0 -d testnet_0.9.0_880310.sqlite.zst -o goerli.sqlite
+```
+
+This produces uncompressed database file `goerli.sqlite` that can then be used by pathfinder.
+
+### Available database snapshots
+
+| Network | Block  | Pathfinder version required | Filename                          | Download URL                                                                                    | Compressed size | SHA2-256 checksum of compressed file                               |
+| ------- | ------ | --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
+| testnet | 880310 | >= 0.9.0                    | `testnet_0.9.0_880310.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/testnet_0.9.0_880310.sqlite.zst) | 102.36 GB       | `55f7e30e4cc3ba3fb0cd610487e5eb4a69428af1aacc340ba60cf1018b58b51c` |
+| mainnet | 309113 | >= 0.9.0                    | `mainnet_0.9.0_309113.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.9.0_309113.sqlite.zst) | 279.85 GB       | `0430900a18cd6ae26465280bbe922ed5d37cfcc305babfc164e21d927b4644ce` |
 
 ## Configuration
 
