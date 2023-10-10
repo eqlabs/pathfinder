@@ -1,6 +1,6 @@
 [package]
 name = "pathfinder"
-version = "0.8.2"
+version = "0.9.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.72"
@@ -13,7 +13,13 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 rpc-full-serde = []
-p2p = ["dep:base64", "dep:p2p", "dep:p2p_proto_v0", "dep:p2p_proto_v1", "dep:zeroize"]
+p2p = [
+    "dep:base64",
+    "dep:p2p",
+    "dep:p2p_proto_v0",
+    "dep:p2p_proto_v1",
+    "dep:zeroize",
+]
 
 [dependencies]
 anyhow = { workspace = true }
