@@ -69,7 +69,7 @@ pub enum RpcError {
     UnsupportedTxVersion,
     #[error("The contract class version is not supported")]
     UnsupportedContractClassVersion,
-    #[error("An unexpected error occured")]
+    #[error("An unexpected error occurred")]
     UnexpectedError { data: String },
     #[error("Too many storage keys requested")]
     ProofLimitExceeded { limit: u32, requested: u32 },

@@ -150,14 +150,14 @@ class MemoryPagesFetcher:
         return memory_pages
 
 
-DEFUALT_GET_LOGS_MAX_CHUNK_SIZE = 10 ** 6
+DEFAULT_GET_LOGS_MAX_CHUNK_SIZE = 10 ** 6
 
 
 def get_contract_events(
     contract_event,
     from_block: int,
     to_block: int,
-    get_logs_max_chunk_size: int = DEFUALT_GET_LOGS_MAX_CHUNK_SIZE,
+    get_logs_max_chunk_size: int = DEFAULT_GET_LOGS_MAX_CHUNK_SIZE,
 ) -> list:
     """
     Given a contract event and block numbers, retrieves a list of events in blocks

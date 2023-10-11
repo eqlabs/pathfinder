@@ -648,7 +648,7 @@ pub mod test_utils {
     use super::Client;
     use starknet_gateway_types::error::KnownStarknetErrorCode;
 
-    /// Helper funtion which allows for easy creation of a response tuple
+    /// Helper function which allows for easy creation of a response tuple
     /// that contains a [StarknetError](starknet_gateway_types::error::StarknetError) for a given [KnownStarknetErrorCode].
     ///
     /// The response tuple can then be used by the [setup] function.

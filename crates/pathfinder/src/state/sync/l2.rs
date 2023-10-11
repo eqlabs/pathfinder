@@ -1119,7 +1119,7 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // L2 sync task is then looking if reorg occured
+                // L2 sync task is then looking if reorg occurred
                 // We indicate that reorg started at genesis
                 expect_block_header(
                     &mut mock,
@@ -1280,7 +1280,7 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // L2 sync task is then looking if reorg occured
+                // L2 sync task is then looking if reorg occurred
                 // We indicate that reorg started at genesis by setting the latest on the new genesis block
                 expect_block_header(
                     &mut mock,
@@ -1303,7 +1303,7 @@ mod tests {
                     Ok(BLOCK0_V2.clone().into()),
                 );
 
-                // Once the L2 sync task has found where reorg occured,
+                // Once the L2 sync task has found where reorg occurred,
                 // it can get back to downloading the new blocks
                 // Fetch the new genesis block from the fork with respective state update and contracts
                 expect_block(
@@ -1527,7 +1527,7 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // L2 sync task is then looking if reorg occured
+                // L2 sync task is then looking if reorg occurred
                 // We indicate that reorg started at block #1
                 expect_block_header(
                     &mut mock,
@@ -1729,7 +1729,7 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // L2 sync task is then looking if reorg occured
+                // L2 sync task is then looking if reorg occurred
                 // We indicate that reorg started at block #2
                 expect_block_header(
                     &mut mock,

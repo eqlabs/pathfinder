@@ -405,7 +405,7 @@ mod prop {
             }
 
             prop_oneof![
-                // Occurance 4:1
+                // Occurrence 4:1
                 4 => inside(range.clone()),
                 1 => outside_le(range, max),
             ]
