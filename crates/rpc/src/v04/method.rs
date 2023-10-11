@@ -22,6 +22,6 @@ pub(super) use get_transaction_by_hash::get_transaction_by_hash;
 pub(super) use get_transaction_receipt::get_transaction_receipt;
 pub(super) use pending_transactions::pending_transactions;
 pub(super) use simulate_transactions::simulate_transactions;
-pub(super) use syncing::syncing;
+pub(crate) use syncing::syncing;
 pub(super) use trace_block_transactions::trace_block_transactions;
 pub(super) use trace_transaction::trace_transaction;
