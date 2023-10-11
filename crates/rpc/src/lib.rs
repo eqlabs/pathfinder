@@ -923,6 +923,8 @@ mod tests {
     #[case::v05_starknet_getNonce("/rpc/v0.5", "starknet_getNonce")]
     #[case::v05_starknet_getStateUpdate("/rpc/v0.5", "starknet_getStateUpdate")]
     #[case::v05_starknet_getStorageAt("/rpc/v0.5", "starknet_getStorageAt")]
+    #[case::v05_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.5", "starknet_getTransactionByBlockIdAndIndex")]
+    #[case::v05_starknet_getTransactionByHash("/rpc/v0.5", "starknet_getTransactionByHash")]
     #[case::v05_starknet_chainId("/rpc/v0.5", "starknet_chainId")]
     #[case::v05_starknet_specVersion("/rpc/v0.5", "starknet_specVersion")]
     #[case::v05_starknet_syncing("/rpc/v0.5", "starknet_syncing")]
