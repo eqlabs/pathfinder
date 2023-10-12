@@ -175,10 +175,11 @@ This produces uncompressed database file `goerli.sqlite` that can then be used b
 
 ### Available database snapshots
 
-| Network | Block  | Pathfinder version required | Filename                          | Download URL                                                                                    | Compressed size | SHA2-256 checksum of compressed file                               |
-| ------- | ------ | --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| testnet | 880310 | >= 0.9.0                    | `testnet_0.9.0_880310.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/testnet_0.9.0_880310.sqlite.zst) | 102.36 GB       | `55f7e30e4cc3ba3fb0cd610487e5eb4a69428af1aacc340ba60cf1018b58b51c` |
-| mainnet | 309113 | >= 0.9.0                    | `mainnet_0.9.0_309113.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.9.0_309113.sqlite.zst) | 279.85 GB       | `0430900a18cd6ae26465280bbe922ed5d37cfcc305babfc164e21d927b4644ce` |
+| Network     | Block  | Pathfinder version required | Filename                              | Download URL                                                                                        | Compressed size | SHA2-256 checksum of compressed file                               |
+| ----------- | ------ | --------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
+| testnet     | 880310 | >= 0.9.0                    | `testnet_0.9.0_880310.sqlite.zst`     | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/testnet_0.9.0_880310.sqlite.zst)     | 102.36 GB       | `55f7e30e4cc3ba3fb0cd610487e5eb4a69428af1aacc340ba60cf1018b58b51c` |
+| mainnet     | 309113 | >= 0.9.0                    | `mainnet_0.9.0_309113.sqlite.zst`     | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.9.0_309113.sqlite.zst)     | 279.85 GB       | `0430900a18cd6ae26465280bbe922ed5d37cfcc305babfc164e21d927b4644ce` |
+| integration | 315152 | >= 0.9.1                    | `integration_0.9.1_315152.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/integration_0.9.1_315152.sqlite.zst) | 8.45 GB         | `2ad5ab46163624bd6d9aaa0dff3cdd5c7406e69ace78f1585f9d8f011b8b9526` |
 
 ## Configuration
 
