@@ -1,10 +1,10 @@
 use crate::common::{Address, BlockId, ConsensusSignature, Fin, Hash, Iteration, Merkle, Patricia};
 use crate::state::{Classes, StateDiff};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
-use fake::Dummy;
+use fake::{Dummy, Fake, Faker};
 use std::time::{Duration, SystemTime};
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::Signatures")]
 pub struct Signatures {
     pub block: BlockId,
@@ -30,15 +30,15 @@ pub struct BlockHeader {
     pub starknet_version: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::BlockProof")]
 pub struct BlockProof {
     pub proof: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum NewBlock {
-    BlockNumber(u64),
+    Id(BlockId),
     Header(BlockHeadersResponse),
     Body(BlockBodiesResponse),
 }
@@ -49,14 +49,14 @@ pub struct BlockHeadersRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::BlockHeadersResponse")]
 pub struct BlockHeadersResponse {
     #[rename(part)]
     pub parts: Vec<BlockHeadersResponsePart>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum BlockHeadersResponsePart {
     Header(Box<BlockHeader>),
     Signatures(Signatures),
@@ -70,7 +70,7 @@ pub struct BlockBodiesRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::BlockBodiesResponse")]
 pub struct BlockBodiesResponse {
     #[optional]
@@ -78,7 +78,7 @@ pub struct BlockBodiesResponse {
     pub body_message: BlockBodyMessage,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum BlockBodyMessage {
     Diff(StateDiff),
     Classes(Classes),
@@ -116,6 +116,49 @@ impl TryFromProtobuf<::prost_types::Timestamp> for SystemTime {
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid Timestamp {field_name}"),
             ))
+    }
+}
+
+impl<T> Dummy<T> for BlockHeader {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            time: SystemTime::now(),
+            ..Faker.fake_with_rng(rng)
+        }
+    }
+}
+
+impl ToProtobuf<crate::proto::block::NewBlock> for NewBlock {
+    fn to_protobuf(self) -> crate::proto::block::NewBlock {
+        use crate::proto::block::new_block::MaybeFull::{Body, Header, Id};
+        crate::proto::block::NewBlock {
+            maybe_full: Some(match self {
+                Self::Id(block_number) => Id(block_number.to_protobuf()),
+                Self::Header(header) => Header(header.to_protobuf()),
+                Self::Body(body) => Body(body.to_protobuf()),
+            }),
+        }
+    }
+}
+
+impl TryFromProtobuf<crate::proto::block::NewBlock> for NewBlock {
+    fn try_from_protobuf(
+        input: crate::proto::block::NewBlock,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        use crate::proto::block::new_block::MaybeFull::{Body, Header, Id};
+        let x = input.maybe_full.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to parse {field_name}: missing maybe_full field"),
+            )
+        })?;
+
+        Ok(match x {
+            Id(i) => Self::Id(TryFromProtobuf::try_from_protobuf(i, field_name)?),
+            Header(h) => Self::Header(TryFromProtobuf::try_from_protobuf(h, field_name)?),
+            Body(b) => Self::Body(TryFromProtobuf::try_from_protobuf(b, field_name)?),
+        })
     }
 }
 

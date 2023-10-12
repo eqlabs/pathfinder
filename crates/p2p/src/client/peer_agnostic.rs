@@ -38,21 +38,19 @@ impl Client {
         }
     }
 
-    // Propagate new L2 head header
-    pub async fn propagate_new_header(
+    // Propagate new L2 head head
+    pub async fn propagate_new_head(
         &self,
-        header: p2p_proto_v0::common::BlockHeader,
+        block_id: p2p_proto_v1::common::BlockId,
     ) -> anyhow::Result<()> {
-        tracing::debug!(block_number=%header.number, topic=%self.block_propagation_topic,
-            "Propagating header"
+        tracing::debug!(number=%block_id.number, hash=%block_id.hash.0, topic=%self.block_propagation_topic,
+            "Propagating head"
         );
 
         self.inner
-            .publish_propagation_message(
+            .publish(
                 &self.block_propagation_topic,
-                p2p_proto_v0::propagation::Message::NewBlockHeader(
-                    p2p_proto_v0::propagation::NewBlockHeader { header },
-                ),
+                p2p_proto_v1::block::NewBlock::Id(block_id),
             )
             .await
     }

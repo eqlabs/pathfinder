@@ -8,6 +8,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::request_response::{self, RequestId};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{identify, PeerId};
+use p2p_proto_v1::{ToProtobuf, TryFromProtobuf};
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::time::Duration;
 
@@ -249,31 +250,36 @@ impl MainLoop {
                 message_id: id,
                 message,
             })) => {
-                match p2p_proto_v0::propagation::Message::from_protobuf_encoding(
-                    message.data.as_ref(),
-                ) {
-                    Ok(decoded_message) => {
-                        tracing::debug!(
-                            "Gossipsub Event Message: [id={}][peer={}] {:?} ({} bytes)",
-                            id,
-                            peer_id,
-                            decoded_message,
-                            message.data.len()
-                        );
-                        self.event_sender
-                            .send(Event::BlockPropagation {
-                                from: peer_id,
-                                message: decoded_message.into(),
-                            })
-                            .await?;
+                use prost::Message;
+
+                match p2p_proto_v1::proto::block::NewBlock::decode(message.data.as_ref()) {
+                    Ok(new_block) => {
+                        match p2p_proto_v1::block::NewBlock::try_from_protobuf(new_block, "message")
+                        {
+                            Ok(new_block) => {
+                                tracing::trace!(
+                                    "Gossipsub Message: [id={}][peer={}] {:?} ({} bytes)",
+                                    id,
+                                    peer_id,
+                                    new_block,
+                                    message.data.len()
+                                );
+                                self.event_sender
+                                    .send(Event::BlockPropagation {
+                                        from: peer_id,
+                                        new_block,
+                                    })
+                                    .await?;
+                            }
+                            Err(error) => {
+                                tracing::error!(from=%peer_id, %error, "Gossipsub Message")
+                            }
+                        }
                     }
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to parse Gossipsub Message as Block Propagation: {}",
-                            e
-                        );
+                    Err(error) => {
+                        tracing::error!(from=%peer_id, %error, "Gossipsub Message");
                     }
-                }
+                };
                 Ok(())
             }
             // ===========================
@@ -543,10 +549,11 @@ impl MainLoop {
             }
             Command::PublishPropagationMessage {
                 topic,
-                message,
+                new_block,
                 sender,
             } => {
-                let data: Vec<u8> = message.into_protobuf_encoding();
+                use prost::Message;
+                let data: Vec<u8> = new_block.to_protobuf().encode_to_vec();
                 let result = self.publish_data(topic, &data);
                 let _ = sender.send(result);
             }

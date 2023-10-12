@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::{path::Path, time::Duration};
 
 use clap::Parser;
+use fake::{Fake, Faker};
 use libp2p::Multiaddr;
 use libp2p::{identity::Keypair, PeerId};
 use p2p::Peers;
@@ -104,16 +105,7 @@ async fn main() -> anyhow::Result<()> {
             let mut ticker = tokio::time::interval(Duration::from_secs(10));
             loop {
                 ticker.tick().await;
-
-                let message = proto_v0::propagation::Message::NewBlockHeader(
-                    proto_v0::propagation::NewBlockHeader {
-                        header: Default::default(),
-                    },
-                );
-                match client
-                    .publish_propagation_message(&block_propagation_topic, message)
-                    .await
-                {
+                match client.publish(&block_propagation_topic, Faker.fake()).await {
                     Ok(_) => tracing::info!("event published"),
                     Err(e) => tracing::error!("event publising failed: {}", e),
                 }
@@ -145,8 +137,8 @@ async fn main() -> anyhow::Result<()> {
                 };
                 p2p_client.send_sync_response(channel, response).await;
             }
-            p2p::Event::BlockPropagation { from, message } => {
-                tracing::info!(?from, ?message, "Block Propagation");
+            p2p::Event::BlockPropagation { from, new_block } => {
+                tracing::info!(?from, ?new_block, "Block Propagation");
             }
             p2p::Event::Test(_) => {}
         }

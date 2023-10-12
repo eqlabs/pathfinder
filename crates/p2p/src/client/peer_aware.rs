@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use anyhow::Context;
 use libp2p::{gossipsub::IdentTopic, request_response::ResponseChannel, Multiaddr, PeerId};
+use p2p_proto_v1::block::NewBlock;
 use tokio::sync::{mpsc, oneshot};
 
 #[cfg(test)]
@@ -121,17 +122,13 @@ impl Client {
             .expect("Command receiver not to be dropped");
     }
 
-    pub async fn publish_propagation_message(
-        &self,
-        topic: &str,
-        message: p2p_proto_v0::propagation::Message,
-    ) -> anyhow::Result<()> {
+    pub async fn publish(&self, topic: &str, new_block: NewBlock) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);
         self.sender
             .send(Command::PublishPropagationMessage {
                 topic,
-                message: message.into(),
+                new_block,
                 sender,
             })
             .await

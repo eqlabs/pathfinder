@@ -439,18 +439,18 @@ impl GatewayApi for HybridClient {
 #[async_trait::async_trait]
 impl GossipApi for HybridClient {
     async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
+        use p2p_proto_v1::common::{BlockId, Hash};
         match self {
             HybridClient::GatewayProxy { p2p_client, .. } => {
                 match p2p_client
-                    .propagate_new_header(p2p_proto_v0::common::BlockHeader {
-                        hash: block_hash.0,
+                    .propagate_new_head(BlockId {
                         number: block_number.get(),
-                        ..Default::default()
+                        hash: Hash(block_hash.0),
                     })
                     .await
                 {
                     Ok(_) => {}
-                    Err(error) => tracing::warn!(%error, "Propagating block header failed"),
+                    Err(error) => tracing::warn!(%error, "Propagating head failed"),
                 }
             }
             HybridClient::NonPropagatingP2P { .. } => {

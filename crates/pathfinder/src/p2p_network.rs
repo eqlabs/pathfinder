@@ -149,22 +149,26 @@ async fn handle_p2p_event(
             };
             p2p_client.send_sync_response(channel, response).await;
         }
-        p2p::Event::BlockPropagation { from, message } => {
-            tracing::info!(%from, ?message, "Block Propagation");
-            if let p2p_proto_v0::propagation::Message::NewBlockHeader(h) = *message {
-                tx.send_if_modified(|head| {
-                    let current_height = head.unwrap_or_default().0.get();
+        p2p::Event::BlockPropagation { from, new_block } => {
+            tracing::info!(%from, ?new_block, "Block Propagation");
+            use p2p_proto_v1::block::{BlockHeadersResponse, BlockHeadersResponsePart, NewBlock};
 
-                    if h.header.number > current_height {
-                        *head = Some((
-                            BlockNumber::new_or_panic(h.header.number),
-                            BlockHash(h.header.hash),
-                        ));
-                        true
-                    } else {
-                        false
-                    }
-                });
+            if let NewBlock::Header(BlockHeadersResponse { mut parts }) = new_block {
+                if let Some(BlockHeadersResponsePart::Header(header)) = parts.pop() {
+                    tx.send_if_modified(|head| {
+                        let current_height = head.unwrap_or_default().0.get();
+
+                        if header.number > current_height {
+                            *head = Some((
+                                BlockNumber::new_or_panic(header.number),
+                                BlockHash(header.block_hash.0),
+                            ));
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                }
             }
         }
         p2p::Event::SyncPeerConnected { .. } | p2p::Event::Test(_) => { /* Ignore me */ }

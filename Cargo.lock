@@ -6162,6 +6162,7 @@ dependencies = [
  "hex",
  "libp2p",
  "p2p_proto_v0",
+ "p2p_proto_v1",
  "pathfinder-common",
  "prost 0.12.1",
  "rand 0.8.5",

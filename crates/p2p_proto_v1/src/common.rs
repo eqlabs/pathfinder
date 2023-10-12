@@ -5,7 +5,7 @@ use rand::Rng;
 use stark_hash::Felt;
 use std::{fmt::Display, num::NonZeroU64};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash, Default)]
 pub struct Hash(pub Felt);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -14,7 +14,7 @@ pub struct Hashes {
     pub items: Vec<Hash>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, Default)]
 pub struct Address(pub Felt);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -24,14 +24,14 @@ pub struct ConsensusSignature {
     pub s: Felt,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
 #[protobuf(name = "crate::proto::common::Merkle")]
 pub struct Merkle {
     pub n_leaves: u32,
     pub root: Hash,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
 #[protobuf(name = "crate::proto::common::Patricia")]
 pub struct Patricia {
     pub height: u32,

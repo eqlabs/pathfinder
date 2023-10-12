@@ -11,6 +11,7 @@ use libp2p::request_response::ResponseChannel;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
+use p2p_proto_v1::block::NewBlock;
 use pathfinder_common::{BlockHash, BlockNumber};
 use tokio::sync::{mpsc, oneshot, RwLock};
 
@@ -120,7 +121,7 @@ enum Command {
     },
     PublishPropagationMessage {
         topic: IdentTopic,
-        message: Box<p2p_proto_v0::propagation::Message>,
+        new_block: NewBlock,
         sender: EmptyResultSender,
     },
     /// For testing purposes only
@@ -144,7 +145,7 @@ pub enum Event {
     },
     BlockPropagation {
         from: PeerId,
-        message: Box<p2p_proto_v0::propagation::Message>,
+        new_block: NewBlock,
     },
     /// For testing purposes only
     Test(TestEvent),

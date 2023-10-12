@@ -28,6 +28,7 @@ libp2p = { version = "0.51.3", default-features = false, features = [
     "yamux",
 ] }
 p2p_proto_v0 = { path = "../p2p_proto_v0" }
+p2p_proto_v1 = { path = "../p2p_proto_v1" }
 pathfinder-common = { path = "../common" }
 prost = "0.12.1"
 rand = { workspace = true }

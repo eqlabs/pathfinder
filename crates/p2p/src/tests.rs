@@ -244,7 +244,7 @@ async fn provide_capability() {
 #[test_log::test(tokio::test)]
 async fn subscription_and_propagation() {
     use fake::{Fake, Faker};
-    use p2p_proto_v0::propagation::{Message, NewBlockBody, NewBlockHeader, NewBlockState};
+    use p2p_proto_v1::block::NewBlock;
 
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -263,7 +263,7 @@ async fn subscription_and_propagation() {
     });
 
     let mut propagated_to_peer2 = filter_events(peer2.event_receiver, |event| match event {
-        Event::BlockPropagation { message, .. } => Some(message),
+        Event::BlockPropagation { new_block, .. } => Some(new_block),
         _ => None,
     });
 
@@ -273,21 +273,13 @@ async fn subscription_and_propagation() {
     peer2.client.subscribe_topic(TOPIC).await.unwrap();
     peer2_subscribed_to_peer1.recv().await;
 
-    let new_block_header = Message::NewBlockHeader(Faker.fake::<NewBlockHeader>());
-    let new_block_body = Message::NewBlockBody(Faker.fake::<NewBlockBody>());
-    let new_block_state = Message::NewBlockState(Faker.fake::<NewBlockState>());
+    let expected = Faker.fake::<NewBlock>();
 
-    for expected in [new_block_header, new_block_body, new_block_state] {
-        peer1
-            .client
-            .publish_propagation_message(TOPIC, expected.clone())
-            .await
-            .unwrap();
+    peer1.client.publish(TOPIC, expected.clone()).await.unwrap();
 
-        let msg = *propagated_to_peer2.recv().await.unwrap();
+    let msg = propagated_to_peer2.recv().await.unwrap();
 
-        assert_eq!(msg, expected);
-    }
+    assert_eq!(msg, expected);
 }
 
 #[test_log::test(tokio::test)]
