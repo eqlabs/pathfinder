@@ -1,16 +1,18 @@
 use anyhow::Context;
 use p2p_proto_v1::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeaderMessage,
-    BlockHeadersRequest, BlockHeadersResponse,
+    BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
+    BlockHeadersResponse, BlockHeadersResponsePart,
 };
-use p2p_proto_v1::common::{Direction, Hash, Iteration, Step};
-use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, Responses, TxnEvents};
+use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Fin, Hash, Iteration, Step};
+use p2p_proto_v1::consts::{
+    CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
+};
+use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, EventsResponseKind, TxnEvents};
 use p2p_proto_v1::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
 use p2p_proto_v1::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
 };
-use p2p_proto_v1::{MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD};
-use pathfinder_common::{BlockNumber, ClassHash};
+use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
 use tokio::sync::mpsc;
@@ -29,326 +31,344 @@ const MAX_COUNT_IN_TESTS: u64 = 10;
 #[cfg(test)]
 const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
-// TODO check which is more performant:
-// 1. retrieve all data from storage, then send it to channel one by one
-// 2. retrieve in batches,
-// 3. retrieve in batches, don't wait for the previous batch to finish, send with index to rebuild the correct order in the receiver
+const _: () = assert!(
+    MAX_BLOCKS_COUNT <= MAX_HEADERS_PER_MESSAGE as u64,
+    "All requested block headers, limited up to MAX_BLOCKS_COUNT should fit into one reply"
+);
+
 pub async fn get_headers(
-    storage: &Storage,
+    storage: Storage,
     request: BlockHeadersRequest,
     tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, headers).await?;
-    send(tx, responses).await
+    let response = spawn_blocking_get(request, storage, blocking::get_headers).await?;
+    tx.send(response).await.context("Sending response")
 }
 
+// TODO consider batching db ops instead doing all in bulk if it's more performant
 pub async fn get_bodies(
-    storage: &Storage,
+    storage: Storage,
     request: BlockBodiesRequest,
     tx: mpsc::Sender<BlockBodiesResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, bodies).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_bodies).await?;
     send(tx, responses).await
 }
 
 pub async fn get_transactions(
-    storage: &Storage,
+    storage: Storage,
     request: TransactionsRequest,
     tx: mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, transactions).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_transactions).await?;
     send(tx, responses).await
 }
 
 pub async fn get_receipts(
-    storage: &Storage,
+    storage: Storage,
     request: ReceiptsRequest,
     tx: mpsc::Sender<ReceiptsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, receipts).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_receipts).await?;
     send(tx, responses).await
 }
 
 pub async fn get_events(
-    storage: &Storage,
+    storage: Storage,
     request: EventsRequest,
     tx: mpsc::Sender<EventsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, events).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_events).await?;
     send(tx, responses).await
 }
 
-pub(crate) fn headers(
-    tx: Transaction<'_>,
-    request: BlockHeadersRequest,
-) -> anyhow::Result<Vec<BlockHeadersResponse>> {
-    let BlockHeadersRequest {
-        iteration:
-            Iteration {
-                start_block,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
+pub(crate) mod blocking {
+    use super::*;
 
-    let mut next_block_number = BlockNumber::new(start_block);
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        // 1. Get the block header
-        let Some(header) = tx.block_header(block_number.into())? else {
-            // No such block
-            break;
-        };
-
-        responses.push(BlockHeadersResponse {
-            block_number: block_number.get(),
-            header_message: BlockHeaderMessage::Header(Box::new(header.to_proto())),
-        });
-
-        // 2. Get the signatures for this block
-        // TODO we don't have signatures yet
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
+    pub(crate) fn get_headers(
+        tx: Transaction<'_>,
+        request: BlockHeadersRequest,
+    ) -> anyhow::Result<BlockHeadersResponse> {
+        let parts = iterate(tx, request.iteration, get_header)?;
+        Ok(BlockHeadersResponse { parts })
     }
 
-    Ok(responses)
+    pub(crate) fn get_bodies(
+        tx: Transaction<'_>,
+        request: BlockBodiesRequest,
+    ) -> anyhow::Result<Vec<BlockBodiesResponse>> {
+        iterate(tx, request.iteration, get_body)
+    }
+
+    pub(crate) fn get_transactions(
+        tx: Transaction<'_>,
+        request: TransactionsRequest,
+    ) -> anyhow::Result<Vec<TransactionsResponse>> {
+        iterate(tx, request.iteration, get_transactions_for_block)
+    }
+
+    pub(crate) fn get_receipts(
+        tx: Transaction<'_>,
+        request: ReceiptsRequest,
+    ) -> anyhow::Result<Vec<ReceiptsResponse>> {
+        iterate(tx, request.iteration, get_receipts_for_block)
+    }
+
+    pub(crate) fn get_events(
+        tx: Transaction<'_>,
+        request: EventsRequest,
+    ) -> anyhow::Result<Vec<EventsResponse>> {
+        iterate(tx, request.iteration, get_events_for_block)
+    }
 }
 
-fn bodies(
-    tx: Transaction<'_>,
-    request: BlockBodiesRequest,
-) -> anyhow::Result<Vec<BlockBodiesResponse>> {
-    let BlockBodiesRequest {
-        iteration:
-            Iteration {
-                start_block,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
+fn get_header(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    parts: &mut Vec<BlockHeadersResponsePart>,
+) -> anyhow::Result<bool> {
+    if let Some(header) = tx.block_header(block_number.into())? {
+        parts.push(BlockHeadersResponsePart::Header(Box::new(
+            header.to_proto(),
+        )));
+        parts.push(BlockHeadersResponsePart::Fin(Fin::ok()));
 
-    let mut next_block_number = BlockNumber::new(start_block);
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn get_body(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<BlockBodiesResponse>,
+) -> anyhow::Result<bool> {
+    let Some(state_diff) = tx.state_update(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let new_classes = state_diff
+        .declared_cairo_classes
+        .iter()
+        .copied()
+        .chain(
+            state_diff
+                .declared_sierra_classes
+                .keys()
+                .map(|x| ClassHash(x.0)),
+        )
+        .collect::<Vec<_>>();
+    let block_hash = state_diff.block_hash;
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(BlockBodiesResponse {
+        id,
+        body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
+    });
+
+    let get_compressed_definition =
+        |block_number: BlockNumber, class_hash| -> anyhow::Result<Vec<u8>> {
+            let definition = tx
+                .compressed_class_definition_at(block_number.into(), class_hash)?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
+                })?;
+            Ok(definition)
+        };
+
+    classes(
+        block_number,
+        block_hash,
+        new_classes,
+        responses,
+        get_compressed_definition,
+    )?;
+
+    responses.push(BlockBodiesResponse {
+        id,
+        body_message: BlockBodyMessage::Fin(Fin::ok()),
+    });
+    Ok(true)
+}
+
+fn get_transactions_for_block(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<TransactionsResponse>,
+) -> anyhow::Result<bool> {
+    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(TransactionsResponse {
+        id,
+        kind: TransactionsResponseKind::Transactions(Transactions {
+            items: txn_data
+                .into_iter()
+                .map(|(txn, _)| pathfinder_common::transaction::Transaction::from(txn).to_proto())
+                .collect(),
+        }),
+    });
+    responses.push(TransactionsResponse {
+        id,
+        kind: TransactionsResponseKind::Fin(Fin::ok()),
+    });
+
+    Ok(true)
+}
+
+fn get_receipts_for_block(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<ReceiptsResponse>,
+) -> anyhow::Result<bool> {
+    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(ReceiptsResponse {
+        id,
+        kind: ReceiptsResponseKind::Receipts(Receipts {
+            items: txn_data.into_iter().map(ToProto::to_proto).collect(),
+        }),
+    });
+    responses.push(ReceiptsResponse {
+        id,
+        kind: ReceiptsResponseKind::Fin(Fin::ok()),
+    });
+
+    Ok(true)
+}
+
+fn get_events_for_block(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<EventsResponse>,
+) -> anyhow::Result<bool> {
+    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let items = txn_data
+        .into_iter()
+        .map(|(_, r)| TxnEvents {
+            events: r.events.into_iter().map(ToProto::to_proto).collect(),
+            transaction_hash: Hash(r.transaction_hash.0),
+        })
+        .collect::<Vec<_>>();
+
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(EventsResponse {
+        id,
+        kind: EventsResponseKind::Events(Events { items }),
+    });
+    responses.push(EventsResponse {
+        id,
+        kind: EventsResponseKind::Fin(Fin::ok()),
+    });
+
+    Ok(true)
+}
+
+/// `block_handler` returns Ok(true) if the iteration should continue and is
+/// responsible for delimiting block data with `Fin::ok()` marker.
+fn iterate<T: From<Fin>>(
+    tx: Transaction<'_>,
+    iteration: Iteration,
+    block_handler: impl Fn(&Transaction<'_>, BlockNumber, &mut Vec<T>) -> anyhow::Result<bool>,
+) -> anyhow::Result<Vec<T>> {
+    let Iteration {
+        start,
+        direction,
+        limit,
+        step,
+    } = iteration;
+
+    if limit == 0 {
+        return Ok(vec![T::from(Fin::ok())]);
+    }
+
+    let mut block_number = match get_start_block_number(start, &tx)? {
+        Some(x) => x,
+        None => {
+            return Ok(vec![T::from(Fin::unknown())]);
+        }
+    };
+
+    let (limit, mut ending_marker) = if limit > MAX_BLOCKS_COUNT {
+        (MAX_BLOCKS_COUNT, Some(Fin::too_much()))
+    } else {
+        (limit, None)
+    };
 
     let mut responses = Vec::new();
 
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
+    for i in 0..limit {
+        if block_handler(&tx, block_number, &mut responses)? {
+            // Block data retrieved successfully, `block_handler` should add `Fin::ok()` marker on its own
+        } else {
+            // No such block
+            ending_marker = Some(Fin::unknown());
             break;
         }
 
-        // 1. Get the state diff for the block
-        let Some(state_diff) = tx.state_update(block_number.into())? else {
-            // No such block
-            break;
-        };
-
-        let new_classes = state_diff
-            .declared_cairo_classes
-            .iter()
-            .copied()
-            .chain(
-                state_diff
-                    .declared_sierra_classes
-                    .keys()
-                    .map(|x| ClassHash(x.0)),
-            )
-            .collect::<Vec<_>>();
-
-        responses.push(BlockBodiesResponse {
-            block_number: block_number.get(),
-            body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
-        });
-
-        // 2. Get the newly declared classes in this block
-        let get_compressed_definition =
-            |block_number: BlockNumber, class_hash| -> anyhow::Result<Vec<u8>> {
-                let definition = tx
-                    .compressed_class_definition_at(block_number.into(), class_hash)?
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
-                    })?;
-                Ok(definition)
+        if i < limit - 1 {
+            block_number = match get_next_block_number(block_number, step, direction) {
+                Some(x) => x,
+                None => {
+                    // Out of range block number value
+                    ending_marker = Some(Fin::unknown());
+                    break;
+                }
             };
+        }
+    }
 
-        classes(
-            block_number,
-            new_classes,
-            &mut responses,
-            get_compressed_definition,
-        )?;
-
-        // 3. Get the proof for block
-        // FIXME
-        // We're not sending the proof for the block, as we're not storing it right now
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
+    if let Some(end) = ending_marker {
+        responses.push(T::from(end));
     }
 
     Ok(responses)
 }
 
-pub(crate) fn transactions(
-    tx: Transaction<'_>,
-    request: TransactionsRequest,
-) -> anyhow::Result<Vec<TransactionsResponse>> {
-    let TransactionsRequest {
-        iteration:
-            Iteration {
-                start_block,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
-
-    let mut next_block_number = BlockNumber::new(start_block);
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
-            break;
-        };
-
-        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
-            break;
-        };
-
-        responses.push(TransactionsResponse {
-            block_number: block_number.get(),
-            block_hash: Hash(block_hash.0),
-            kind: TransactionsResponseKind::Transactions(Transactions {
-                items: txn_data
-                    .into_iter()
-                    .map(|(txn, _)| {
-                        pathfinder_common::transaction::Transaction::from(txn).to_proto()
-                    })
-                    .collect(),
-            }),
-        });
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
-    }
-
-    Ok(responses)
-}
-
-pub(crate) fn receipts(
-    tx: Transaction<'_>,
-    request: ReceiptsRequest,
-) -> anyhow::Result<Vec<ReceiptsResponse>> {
-    let ReceiptsRequest {
-        iteration:
-            Iteration {
-                start_block,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
-
-    let mut next_block_number = BlockNumber::new(start_block);
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
-            break;
-        };
-
-        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
-            break;
-        };
-
-        responses.push(ReceiptsResponse {
-            block_number: block_number.get(),
-            block_hash: Hash(block_hash.0),
-            kind: ReceiptsResponseKind::Receipts(Receipts {
-                items: txn_data.into_iter().map(ToProto::to_proto).collect(),
-            }),
-        });
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
-    }
-
-    Ok(responses)
-}
-
-pub(crate) fn events(
-    tx: Transaction<'_>,
-    request: EventsRequest,
-) -> anyhow::Result<Vec<EventsResponse>> {
-    let EventsRequest {
-        iteration:
-            Iteration {
-                start_block,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
-
-    let mut next_block_number = BlockNumber::new(start_block);
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
-            break;
-        };
-
-        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
-            break;
-        };
-
-        let items = txn_data
-            .into_iter()
-            .map(|(_, r)| TxnEvents {
-                events: r.events.into_iter().map(ToProto::to_proto).collect(),
-                transaction_hash: Hash(r.transaction_hash.0),
-            })
-            .collect::<Vec<_>>();
-
-        responses.push(EventsResponse {
-            block_number: block_number.get(),
-            block_hash: Hash(block_hash.0),
-            responses: Responses::Events(Events { items }),
-        });
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
-    }
-
-    Ok(responses)
+fn get_start_block_number(
+    start: BlockNumberOrHash,
+    tx: &Transaction<'_>,
+) -> Result<Option<BlockNumber>, anyhow::Error> {
+    Ok(match start {
+        BlockNumberOrHash::Number(n) => BlockNumber::new(n),
+        BlockNumberOrHash::Hash(h) => tx.block_id(BlockHash(h.0).into())?.map(|(n, _)| n),
+    })
 }
 
 /// Helper function to get a range of classes from storage and put them into messages taking into account the 1MiB encoded message size limit.
@@ -360,11 +380,12 @@ pub(crate) fn events(
 ///   the database itself (e.g. it's inconsistent/corrupted, inaccessible, etc.) which is a fatal error
 fn classes(
     block_number: BlockNumber,
+    block_hash: BlockHash,
     new_classes: Vec<ClassHash>,
     responses: &mut Vec<BlockBodiesResponse>,
     mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
 ) -> anyhow::Result<()> {
-    let mut estimated_message_size = PER_MESSAGE_OVERHEAD;
+    let mut estimated_message_size = CLASSES_MESSAGE_OVERHEAD;
     let mut classes_for_this_msg: Vec<(ClassHash, Vec<u8>)> = Vec::new();
     let new_classes = new_classes.into_iter();
 
@@ -373,7 +394,7 @@ fn classes(
         let compressed_definition = class_definition_getter(block_number, class_hash)?;
 
         // 2. Let's check if this definition needs to be chunked
-        if (PER_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
+        if (CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
             <= MESSAGE_SIZE_LIMIT
         {
             // 2.A Ok this definition is small enough but we can still exceed the limit for the entire
@@ -391,7 +412,7 @@ fn classes(
                     estimated_message_size,
                     // What we have accumulated so far
                     classes_for_this_msg.iter().fold(
-                                PER_MESSAGE_OVERHEAD,
+                                CLASSES_MESSAGE_OVERHEAD,
                                 |acc, (_, x)| acc
                                     + PER_CLASS_OVERHEAD
                                     + x.len()
@@ -401,6 +422,7 @@ fn classes(
                 );
                 responses.push(block_bodies_response::take_from_class_definitions(
                     block_number,
+                    block_hash,
                     &mut classes_for_this_msg,
                 ));
                 // Buffer for accumulating class definitions for a new message is guaranteed to be empty now
@@ -408,7 +430,7 @@ fn classes(
 
                 // Now we reset the counter and start over with the current definition that didn't fit
                 estimated_message_size =
-                    PER_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len();
+                    CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len();
                 classes_for_this_msg.push((class_hash, compressed_definition));
                 // --> 1.
             }
@@ -419,6 +441,7 @@ fn classes(
             if !classes_for_this_msg.is_empty() {
                 responses.push(block_bodies_response::take_from_class_definitions(
                     block_number,
+                    block_hash,
                     &mut classes_for_this_msg,
                 ));
             }
@@ -428,7 +451,7 @@ fn classes(
             // Now we can take care of the current class definition
             // This class definition is too big, we need to chunk it and send each chunk in a separate message
             const CHUNK_SIZE_LIMIT: usize =
-                MESSAGE_SIZE_LIMIT - PER_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
+                MESSAGE_SIZE_LIMIT - CLASSES_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
 
             let chunk_iter = compressed_definition.chunks(CHUNK_SIZE_LIMIT).enumerate();
             let chunk_count = chunk_iter.len().try_into()?;
@@ -441,6 +464,7 @@ fn classes(
                 // as we don't want to artificially break the next class definition into pieces
                 responses.push(block_bodies_response::from_class_definition_part(
                     block_number,
+                    block_hash,
                     class_hash,
                     chunk,
                     chunk_count,
@@ -448,7 +472,7 @@ fn classes(
                 ));
             }
             // Now we reset the counter and start over with a clean slate
-            estimated_message_size = PER_MESSAGE_OVERHEAD;
+            estimated_message_size = CLASSES_MESSAGE_OVERHEAD;
             // --> 1.
         }
     }
@@ -457,6 +481,7 @@ fn classes(
     if !classes_for_this_msg.is_empty() {
         responses.push(block_bodies_response::take_from_class_definitions(
             block_number,
+            block_hash,
             &mut classes_for_this_msg,
         ));
     }
@@ -473,6 +498,7 @@ mod block_bodies_response {
     /// It is assumed that the chunk is not empty
     pub fn from_class_definition_part(
         block_number: BlockNumber,
+        block_hash: BlockHash,
         class_hash: ClassHash,
         part: &[u8],
         parts_count: u32,
@@ -480,7 +506,10 @@ mod block_bodies_response {
     ) -> BlockBodiesResponse {
         use p2p_proto_v1::state::{Class, Classes};
         BlockBodiesResponse {
-            block_number: block_number.get(),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             body_message: BlockBodyMessage::Classes(Classes {
                 domain: 0, // FIXME
                 classes: vec![Class {
@@ -497,6 +526,7 @@ mod block_bodies_response {
     /// so that later on it can be reused.
     pub fn take_from_class_definitions(
         block_number: BlockNumber,
+        block_hash: BlockHash,
         class_definitions: &mut Vec<(ClassHash, Vec<u8>)>,
     ) -> BlockBodiesResponse {
         use p2p_proto_v1::state::{Class, Classes};
@@ -510,7 +540,10 @@ mod block_bodies_response {
             })
             .collect();
         BlockBodiesResponse {
-            block_number: block_number.get(),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             body_message: BlockBodyMessage::Classes(Classes {
                 domain: 0, // FIXME
                 classes,
@@ -521,7 +554,7 @@ mod block_bodies_response {
 
 async fn spawn_blocking_get<Request, Response, Getter>(
     request: Request,
-    storage: &Storage,
+    storage: Storage,
     getter: Getter,
 ) -> anyhow::Result<Response>
 where
@@ -529,7 +562,6 @@ where
     Response: Send + 'static,
     Getter: FnOnce(Transaction<'_>, Request) -> anyhow::Result<Response> + Send + 'static,
 {
-    let storage = storage.clone();
     let span = tracing::Span::current();
 
     tokio::task::spawn_blocking(move || {
@@ -569,11 +601,11 @@ fn get_next_block_number(
     match direction {
         Direction::Forward => current
             .get()
-            .checked_add(step.take_inner())
+            .checked_add(step.into_inner())
             .and_then(BlockNumber::new),
         Direction::Backward => current
             .get()
-            .checked_sub(step.take_inner())
+            .checked_sub(step.into_inner())
             .and_then(BlockNumber::new),
     }
 }

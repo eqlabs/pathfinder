@@ -162,57 +162,10 @@ use p2p_proto_derive::*;
 pub mod block;
 pub mod common;
 pub mod consensus;
+pub mod consts;
 pub mod event;
 pub mod mempool;
 pub mod receipt;
 pub mod snapshot;
 pub mod state;
 pub mod transaction;
-
-/// Constants that allow us to estimate the maximum payload of a class definition message
-/// see the test below for more details
-pub const PER_MESSAGE_OVERHEAD: usize = 20;
-pub const PER_CLASS_OVERHEAD: usize = 60;
-pub const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
-
-/// Trying to estimate the overhead of the classes message so that we know what is the limit
-/// on compressed class definition size, varint delimiting of the message is taken into account
-///
-/// 0 classes == 20 bytes
-/// 1 x 1MiB class == 80 bytes; 60 bytes/class
-/// 3 x 1MiB class == 194 bytes; 58 bytes/class
-/// 10 x 1MiB class == 586 bytes; 57 bytes/class
-///
-/// It's generally safe to assume:
-/// N classes == 20 + 60 * N bytes
-#[cfg(test)]
-#[rstest::rstest]
-#[test]
-fn check_classes_message_overhead(
-    #[values((0, 20), (1, 80), (3, 194), (10, 586))] num_classes_expected_overhead: (usize, usize),
-) {
-    let (num_classes, expected_overhead) = num_classes_expected_overhead;
-    use crate::proto::block::{block_bodies_response::BodyMessage, BlockBodiesResponse};
-    use crate::proto::common::Hash;
-    use crate::proto::state::{Class, Classes};
-    use prost::Message;
-    let response = |classes| BlockBodiesResponse {
-        block_number: u64::MAX,
-        body_message: Some(BodyMessage::Classes(Classes {
-            domain: u32::MAX,
-            classes,
-        })),
-    };
-    let class = Class {
-        compiled_hash: Some(Hash {
-            elements: vec![0xFF; 32],
-        }),
-        definition: vec![0xFF; MESSAGE_SIZE_LIMIT],
-        total_parts: Some(u32::MAX),
-        part_num: Some(u32::MAX),
-    };
-    let len = response(vec![class; num_classes])
-        .encode_length_delimited_to_vec()
-        .len();
-    assert_eq!(len - (num_classes * MESSAGE_SIZE_LIMIT), expected_overhead);
-}

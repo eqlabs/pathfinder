@@ -1,4 +1,4 @@
-use crate::common::{Address, Fin, Hash, Iteration};
+use crate::common::{Address, BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use stark_hash::Felt;
@@ -192,8 +192,8 @@ pub struct Transactions {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::TransactionsResponse")]
 pub struct TransactionsResponse {
-    pub block_number: u64,
-    pub block_hash: Hash,
+    #[optional]
+    pub id: Option<BlockId>,
     #[rename(responses)]
     pub kind: TransactionsResponseKind,
 }
@@ -202,6 +202,21 @@ pub struct TransactionsResponse {
 pub enum TransactionsResponseKind {
     Transactions(Transactions),
     Fin(Fin),
+}
+
+impl From<Fin> for TransactionsResponse {
+    fn from(fin: Fin) -> Self {
+        Self {
+            id: None,
+            kind: TransactionsResponseKind::Fin(fin),
+        }
+    }
+}
+
+impl TransactionsResponse {
+    pub fn into_fin(self) -> Option<Fin> {
+        self.kind.into_fin()
+    }
 }
 
 impl TransactionsResponseKind {

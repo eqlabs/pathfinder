@@ -1,4 +1,4 @@
-use crate::common::{Fin, Hash};
+use crate::common::{Address, Fin, Hash};
 use crate::state::Classes;
 use crate::state::ContractStoredValue;
 use crate::{proto, ToProtobuf, TryFromProtobuf};
@@ -27,7 +27,7 @@ pub struct PatriciaRangeProof {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::snapshot::ContractState")]
 pub struct ContractState {
-    pub address: Hash,
+    pub address: Address,
     pub class: Hash,
     pub storage: Hash,
     pub nonce: u64,
@@ -38,8 +38,8 @@ pub struct ContractState {
 pub struct ContractRangeRequest {
     pub domain: u32,
     pub state_root: Hash,
-    pub start: Hash,
-    pub end: Hash,
+    pub start: Address,
+    pub end: Address,
     pub chunks_per_proof: u32,
 }
 
@@ -49,22 +49,15 @@ pub struct ContractRange {
     pub state: Vec<ContractState>,
 }
 
-// message ContractRangeResponse {
-//     starknet.common.Hash state_root     = 1;
-//     starknet.common.Hash contracts_root = 2;
-//     starknet.common.Hash classes_root   = 3;
-//     oneof responses {
-//         ContractRange       range = 4;
-//         starknet.common.Fin fin   = 5;
-//     }
-// }
-
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::snapshot::ContractRangeResponse")]
 pub struct ContractRangeResponse {
-    pub state_root: Hash,
-    pub contracts_root: Hash,
-    pub classes_root: Hash,
+    #[optional]
+    pub root: Option<Hash>,
+    #[optional]
+    pub contracts_root: Option<Hash>,
+    #[optional]
+    pub classes_root: Option<Hash>,
     #[rename(responses)]
     pub kind: ContractRangeResponseKind,
 }
@@ -87,9 +80,12 @@ pub struct ClassRangeRequest {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::snapshot::ClassRangeResponse")]
 struct ClassRangeResponse {
-    pub root: Hash,
-    pub contracts_root: Hash,
-    pub classes_root: Hash,
+    #[optional]
+    pub root: Option<Hash>,
+    #[optional]
+    pub contracts_root: Option<Hash>,
+    #[optional]
+    pub classes_root: Option<Hash>,
     #[rename(responses)]
     pub kind: ClassRangeResponseKind,
 }

@@ -10,6 +10,7 @@ message Event {
     repeated starknet.common.Felt252 data = 3;
 }
 
+// FIXME added to know which transaction the events are for
 message TxnEvents {
     repeated Event       events           = 1;
     starknet.common.Hash transaction_hash = 2;
@@ -19,18 +20,16 @@ message EventsRequest {
     starknet.common.Iteration iteration = 1;
 }
 
+message Events {
+    repeated TxnEvents items = 1;
+}
+
 // can be several in a single reply
 message EventsResponse {
-    message Events {
-        // FIXME we need to know which transaction the events are for
-        repeated TxnEvents items = 1;
-    }
-
-    uint64               block_number = 1;
-    starknet.common.Hash block_hash   = 2;
+    optional starknet.common.BlockID id = 1; // may not appear if Fin is sent to end the whole response
 
     oneof responses {
-        Events              events = 3;
-        starknet.common.Fin fin    = 4;
+        Events              events = 2;
+        starknet.common.Fin fin    = 3;
     }
 }

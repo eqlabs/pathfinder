@@ -1,5 +1,5 @@
 use crate::{
-    common::{Fin, Hash, Iteration},
+    common::{BlockId, Fin, Hash, Iteration},
     proto, ToProtobuf, TryFromProtobuf,
 };
 use fake::Dummy;
@@ -124,8 +124,8 @@ pub struct Receipts {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::ReceiptsResponse")]
 pub struct ReceiptsResponse {
-    pub block_number: u64,
-    pub block_hash: Hash,
+    #[optional]
+    pub id: Option<BlockId>,
     #[rename(responses)]
     pub kind: ReceiptsResponseKind,
 }
@@ -139,6 +139,21 @@ pub enum ReceiptsResponseKind {
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self(H160::random_using(rng))
+    }
+}
+
+impl From<Fin> for ReceiptsResponse {
+    fn from(fin: Fin) -> Self {
+        Self {
+            id: None,
+            kind: ReceiptsResponseKind::Fin(fin),
+        }
+    }
+}
+
+impl ReceiptsResponse {
+    pub fn into_fin(self) -> Option<Fin> {
+        self.kind.into_fin()
     }
 }
 

@@ -5,7 +5,7 @@ use rand::Rng;
 use stark_hash::Felt;
 use std::{fmt::Display, num::NonZeroU64};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash)]
 pub struct Hash(pub Felt);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -38,13 +38,29 @@ pub struct Patricia {
     pub root: Hash,
 }
 
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, std::hash::Hash,
+)]
+#[protobuf(name = "crate::proto::common::BlockId")]
+pub struct BlockId {
+    pub number: u64,
+    #[rename(header)]
+    pub hash: Hash,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::common::Iteration")]
 pub struct Iteration {
-    pub start_block: u64,
+    pub start: BlockNumberOrHash,
     pub direction: Direction,
     pub limit: u64,
     pub step: Step,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+pub enum BlockNumberOrHash {
+    Number(u64),
+    Hash(Hash),
 }
 
 /// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None` or `Some(0)`
@@ -170,8 +186,31 @@ impl TryFromProtobuf<proto::common::PeerId> for PeerId {
     }
 }
 
+impl ToProtobuf<proto::common::iteration::Start> for BlockNumberOrHash {
+    fn to_protobuf(self) -> proto::common::iteration::Start {
+        use proto::common::iteration::Start::{BlockNumber, Header};
+        match self {
+            BlockNumberOrHash::Number(number) => BlockNumber(number),
+            BlockNumberOrHash::Hash(hash) => Header(hash.to_protobuf()),
+        }
+    }
+}
+
+impl TryFromProtobuf<proto::common::iteration::Start> for BlockNumberOrHash {
+    fn try_from_protobuf(
+        input: proto::common::iteration::Start,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        use proto::common::iteration::Start::{BlockNumber, Header};
+        Ok(match input {
+            BlockNumber(number) => BlockNumberOrHash::Number(number),
+            Header(hash) => BlockNumberOrHash::Hash(Hash::try_from_protobuf(hash, field_name)?),
+        })
+    }
+}
+
 impl Step {
-    pub fn take_inner(self) -> u64 {
+    pub fn into_inner(self) -> u64 {
         self.0.get()
     }
 }
@@ -202,7 +241,7 @@ impl<T> Dummy<T> for Step {
 
 impl ToProtobuf<u64> for Step {
     fn to_protobuf(self) -> u64 {
-        self.take_inner()
+        self.into_inner()
     }
 }
 
@@ -229,6 +268,24 @@ impl TryFromProtobuf<i32> for Direction {
             Backward => Direction::Backward,
             Forward => Direction::Forward,
         })
+    }
+}
+
+impl Fin {
+    pub fn ok() -> Self {
+        Self { error: None }
+    }
+
+    pub fn too_much() -> Self {
+        Self {
+            error: Some(Error::TooMuch),
+        }
+    }
+
+    pub fn unknown() -> Self {
+        Self {
+            error: Some(Error::Unknown),
+        }
     }
 }
 
