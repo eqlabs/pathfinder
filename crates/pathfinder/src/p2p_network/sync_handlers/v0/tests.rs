@@ -165,7 +165,7 @@ mod prop {
         pub fn count() -> BoxedStrategy<u64> {
             #[allow(clippy::arc_with_non_send_sync)]
             prop_oneof![
-                // Occurance 4:1
+                // Occurrence 4:1
                 4 => reasonable_count(),
                 1 => crazy_count(),
             ]
@@ -187,7 +187,7 @@ mod prop {
         fn any_forward() -> BoxedStrategy<(u64, u64)> {
             #[allow(clippy::arc_with_non_send_sync)]
             prop_oneof![
-                // Occurance 4:1
+                // Occurrence 4:1
                 4 => overlapping_forward(),
                 1 => disjoint_forward(),
             ]
@@ -221,7 +221,7 @@ mod prop {
         pub fn any_backward() -> BoxedStrategy<(u64, u64)> {
             #[allow(clippy::arc_with_non_send_sync)]
             prop_oneof![
-                // Occurance 4:1
+                // Occurrence 4:1
                 4 => overlapping_backward(),
                 1 => disjoint_backward(),
             ]
