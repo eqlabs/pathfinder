@@ -7,7 +7,7 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::HeadRx;
+use p2p::{client::peer_agnostic, HeadRx};
 use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
     ContractAddressSalt, EntryPoint, Fee, StateUpdate, TransactionHash, TransactionNonce,
@@ -29,12 +29,12 @@ pub enum HybridClient {
     /// Syncs from the feeder gateway, propagates new headers via p2p/gossipsub
     /// Proxies blockchain data to non propagating nodes via p2p
     GatewayProxy {
-        p2p_client: p2p::SyncClient,
+        p2p_client: peer_agnostic::Client,
         sequencer: starknet_gateway_client::Client,
     },
     /// Syncs from p2p network, does not propagate
     NonPropagatingP2P {
-        p2p_client: p2p::SyncClient,
+        p2p_client: peer_agnostic::Client,
         sequencer: starknet_gateway_client::Client,
         head_rx: HeadRx,
         /// We need to cache the last two fetched blocks via p2p otherwise sync logic will
@@ -89,7 +89,7 @@ impl BlockLru {
 impl HybridClient {
     pub fn new(
         i_am_proxy: bool,
-        p2p_client: p2p::SyncClient,
+        p2p_client: peer_agnostic::Client,
         sequencer: starknet_gateway_client::Client,
         head_rx: HeadRx,
     ) -> Self {

@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use p2p::client::{peer_agnostic, peer_aware};
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr, PeerId};
-use p2p::{HeadRx, HeadTx, Peers, SyncClient};
+use p2p::{HeadRx, HeadTx, Peers};
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
@@ -16,7 +17,7 @@ mod sync_handlers;
 // Silence clippy
 pub type P2PNetworkHandle = (
     Arc<RwLock<Peers>>,
-    SyncClient,
+    peer_agnostic::Client,
     HeadRx,
     tokio::task::JoinHandle<()>,
 );
@@ -118,7 +119,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
     Ok((
         peers.clone(),
-        SyncClient::new(p2p_client, block_propagation_topic, peers),
+        peer_agnostic::Client::new(p2p_client, block_propagation_topic, peers),
         rx,
         join_handle,
     ))
@@ -129,17 +130,10 @@ async fn handle_p2p_event(
     chain_id: ChainId,
     storage: &mut Storage,
     sync_state: &SyncState,
-    p2p_client: &mut p2p::Client,
+    p2p_client: &mut peer_aware::Client,
     tx: &mut HeadTx,
 ) -> anyhow::Result<()> {
     match event {
-        p2p::Event::SyncPeerConnected { peer_id }
-        | p2p::Event::SyncPeerRequestStatus { peer_id } => {
-            // get initial status by sending a status request
-            p2p_client
-                .send_sync_status_request(peer_id, current_status(chain_id, sync_state).await)
-                .await;
-        }
         p2p::Event::InboundSyncRequest {
             request, channel, ..
         } => {
@@ -198,7 +192,7 @@ async fn handle_p2p_event(
                 });
             }
         }
-        p2p::Event::Test(_) => { /* Ignore me */ }
+        p2p::Event::SyncPeerConnected { .. } | p2p::Event::Test(_) => { /* Ignore me */ }
     }
 
     Ok(())
