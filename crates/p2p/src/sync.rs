@@ -1,93 +1,180 @@
-use async_trait::async_trait;
-use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
-use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed, ProtocolName};
-use libp2p::request_response::Codec;
+pub mod protocol {
+    use libp2p::core::upgrade::ProtocolName;
 
-#[derive(Debug, Clone)]
-pub struct BlockSyncProtocol();
+    macro_rules! define_protocol {
+        ($type_name:ident, $name:literal) => {
+            #[derive(Debug, Clone, Default)]
+            pub struct $type_name;
 
-pub const PROTOCOL_NAME: &[u8] = "/core/blocks-sync/1".as_bytes();
+            impl $type_name {
+                const NAME: &[u8] = $name;
+            }
 
-impl ProtocolName for BlockSyncProtocol {
-    fn protocol_name(&self) -> &[u8] {
-        PROTOCOL_NAME
+            impl ProtocolName for $type_name {
+                fn protocol_name(&self) -> &[u8] {
+                    Self::NAME
+                }
+            }
+        };
     }
+
+    define_protocol!(Headers, b"/core/headers-sync/1");
+    define_protocol!(Bodies, b"/core/bodies-sync/1");
+    define_protocol!(Transactions, b"/core/transactions-sync/1");
+    define_protocol!(Receipts, b"/core/receipts-sync/1");
+    define_protocol!(Events, b"/core/events-sync/1");
 }
 
-#[derive(Clone)]
-pub struct BlockSyncCodec();
+pub mod codec {
+    use super::protocol;
+    use async_trait::async_trait;
+    use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
+    use libp2p::core::upgrade::ProtocolName;
+    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
+    use libp2p::request_response::Codec;
+    use p2p_proto_v1::consts::MESSAGE_SIZE_LIMIT;
+    use p2p_proto_v1::{block, event, proto, receipt, transaction};
+    use p2p_proto_v1::{ToProtobuf, TryFromProtobuf};
+    use std::marker::PhantomData;
 
-#[async_trait]
-impl Codec for BlockSyncCodec {
-    type Protocol = BlockSyncProtocol;
-    type Request = p2p_proto_v0::sync::Request;
-    type Response = p2p_proto_v0::sync::Response;
+    pub type Headers = SyncCodec<
+        protocol::Headers,
+        block::BlockHeadersRequest,
+        block::BlockHeadersResponse,
+        proto::block::BlockHeadersRequest,
+        proto::block::BlockHeadersResponse,
+    >;
 
-    async fn read_request<T>(
-        &mut self,
-        _: &Self::Protocol,
-        io: &mut T,
-    ) -> std::io::Result<Self::Request>
+    pub type Bodies = SyncCodec<
+        protocol::Bodies,
+        block::BlockBodiesRequest,
+        block::BlockBodiesResponse,
+        proto::block::BlockBodiesRequest,
+        proto::block::BlockBodiesResponse,
+    >;
+
+    pub type Transactions = SyncCodec<
+        protocol::Transactions,
+        transaction::TransactionsRequest,
+        transaction::TransactionsResponse,
+        proto::transaction::TransactionsRequest,
+        proto::transaction::TransactionsResponse,
+    >;
+
+    pub type Receipts = SyncCodec<
+        protocol::Receipts,
+        receipt::ReceiptsRequest,
+        receipt::ReceiptsResponse,
+        proto::receipt::ReceiptsRequest,
+        proto::receipt::ReceiptsResponse,
+    >;
+
+    pub type Events = SyncCodec<
+        protocol::Events,
+        event::EventsRequest,
+        event::EventsResponse,
+        proto::event::EventsRequest,
+        proto::event::EventsResponse,
+    >;
+
+    #[derive(Clone, Debug)]
+    pub struct SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp>(
+        PhantomData<(Protocol, Req, Resp, ProstReq, ProstResp)>,
+    );
+
+    impl<A, B, C, D, E> Default for SyncCodec<A, B, C, D, E> {
+        fn default() -> Self {
+            Self(Default::default())
+        }
+    }
+
+    #[async_trait]
+    impl<Protocol, Req, Resp, ProstReq, ProstResp> Codec
+        for SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp>
     where
-        T: AsyncRead + Unpin + Send,
+        Protocol: ProtocolName + Send + Clone,
+        Req: TryFromProtobuf<ProstReq> + ToProtobuf<ProstReq> + Send,
+        Resp: TryFromProtobuf<ProstResp> + ToProtobuf<ProstResp> + Send,
+        ProstReq: prost::Message + Default,
+        ProstResp: prost::Message + Default,
     {
-        let vec = read_length_prefixed(io, 1_000_000).await?;
+        type Protocol = Protocol;
+        type Request = Req;
+        type Response = Resp;
 
+        async fn read_request<T>(
+            &mut self,
+            _: &Self::Protocol,
+            io: &mut T,
+        ) -> std::io::Result<Self::Request>
+        where
+            T: AsyncRead + Unpin + Send,
+        {
+            decode(io, MESSAGE_SIZE_LIMIT).await
+        }
+
+        async fn read_response<T>(
+            &mut self,
+            _: &Self::Protocol,
+            io: &mut T,
+        ) -> std::io::Result<Self::Response>
+        where
+            T: AsyncRead + Unpin + Send,
+        {
+            decode(io, MESSAGE_SIZE_LIMIT).await
+        }
+
+        async fn write_request<T>(
+            &mut self,
+            _: &Self::Protocol,
+            io: &mut T,
+            request: Self::Request,
+        ) -> std::io::Result<()>
+        where
+            T: AsyncWrite + Unpin + Send,
+        {
+            encode(io, request).await
+        }
+
+        async fn write_response<T>(
+            &mut self,
+            _: &Self::Protocol,
+            io: &mut T,
+            response: Self::Response,
+        ) -> std::io::Result<()>
+        where
+            T: AsyncWrite + Unpin + Send,
+        {
+            encode(io, response).await
+        }
+    }
+
+    async fn decode<Reader, ProstDto, Dto>(
+        io: &mut Reader,
+        max_buf_size: usize,
+    ) -> std::io::Result<Dto>
+    where
+        Reader: AsyncRead + Unpin + Send,
+        ProstDto: prost::Message + Default,
+        Dto: TryFromProtobuf<ProstDto>,
+    {
+        let vec = read_length_prefixed(io, max_buf_size).await?;
         if vec.is_empty() {
             return Err(std::io::ErrorKind::UnexpectedEof.into());
         }
-
-        let request = Self::Request::from_protobuf_encoding(&vec)?;
-
-        Ok(request)
+        let prost_dto = ProstDto::decode(vec.as_ref())?;
+        let dto = Dto::try_from_protobuf(prost_dto, "TODO")?;
+        Ok(dto)
     }
 
-    async fn read_response<T>(
-        &mut self,
-        _: &BlockSyncProtocol,
-        io: &mut T,
-    ) -> std::io::Result<Self::Response>
+    async fn encode<Writer, ProstDto, Dto>(io: &mut Writer, dto: Dto) -> std::io::Result<()>
     where
-        T: AsyncRead + Unpin + Send,
+        Writer: AsyncWrite + Unpin + Send,
+        ProstDto: prost::Message,
+        Dto: ToProtobuf<ProstDto>,
     {
-        let vec = read_length_prefixed(io, 500_000_000).await?; // update transfer maximum
-
-        if vec.is_empty() {
-            return Err(std::io::ErrorKind::UnexpectedEof.into());
-        }
-
-        let response = Self::Response::from_protobuf_encoding(&vec)?;
-
-        Ok(response)
-    }
-
-    async fn write_request<T>(
-        &mut self,
-        _: &Self::Protocol,
-        io: &mut T,
-        request: Self::Request,
-    ) -> std::io::Result<()>
-    where
-        T: AsyncWrite + Unpin + Send,
-    {
-        let request = request.into_protobuf_encoding()?;
-        write_length_prefixed(io, &request).await?;
-        io.close().await?;
-
-        Ok(())
-    }
-
-    async fn write_response<T>(
-        &mut self,
-        _: &Self::Protocol,
-        io: &mut T,
-        response: Self::Response,
-    ) -> std::io::Result<()>
-    where
-        T: AsyncWrite + Unpin + Send,
-    {
-        let response = response.into_protobuf_encoding()?;
-        write_length_prefixed(io, &response).await?;
+        let data = dto.to_protobuf().encode_to_vec();
+        write_length_prefixed(io, &data).await?;
         io.close().await?;
 
         Ok(())

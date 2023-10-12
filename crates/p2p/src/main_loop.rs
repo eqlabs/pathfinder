@@ -388,7 +388,7 @@ impl MainLoop {
             // ===========================
             // Block sync
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::BlockSync(
+            SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
                 request_response::Event::Message { message, peer },
             )) => {
                 match message {
@@ -421,7 +421,7 @@ impl MainLoop {
                     }
                 }
             }
-            SwarmEvent::Behaviour(behaviour::Event::BlockSync(
+            SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
                 request_response::Event::OutboundFailure {
                     request_id, error, ..
                 },
