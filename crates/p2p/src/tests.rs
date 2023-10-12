@@ -157,7 +157,6 @@ async fn periodic_bootstrap() {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
         },
-        status_period: Duration::from_secs(60 * 60),
     };
     let mut boot = TestPeer::new(periodic_cfg);
     let mut peer1 = TestPeer::new(periodic_cfg);
@@ -294,7 +293,7 @@ async fn subscription_and_propagation() {
 #[test_log::test(tokio::test)]
 async fn sync_request_response() {
     use fake::{Fake, Faker};
-    use p2p_proto_v0::sync::{Request, Response, Status};
+    use p2p_proto_v0::sync::{Request, Response};
 
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -347,81 +346,5 @@ async fn sync_request_response() {
             .client
             .send_sync_response(resp_channel, expected_response)
             .await;
-    }
-
-    // Also test the client method used specifically to send status requests
-    let expected_sync_request = Faker.fake::<Status>();
-    peer2
-        .client
-        .send_sync_status_request(peer1.peer_id, expected_sync_request.clone())
-        .await;
-    let (request, _) = peer1_inbound_sync_requests.recv().await.unwrap();
-    assert_eq!(request, Request::Status(expected_sync_request));
-}
-
-#[test_log::test(tokio::test)]
-async fn sync_status_events_and_periodic() {
-    use assert_matches::assert_matches;
-
-    let _ = env_logger::builder().is_test(true).try_init();
-
-    let periodic_cfg = PeriodicTaskConfig {
-        bootstrap: BootstrapConfig {
-            period: Duration::from_secs(60 * 60),
-            start_offset: Duration::from_secs(60 * 60),
-        },
-        status_period: Duration::from_millis(100),
-    };
-
-    let mut peer1 = TestPeer::new(periodic_cfg);
-    let mut peer2 = TestPeer::new(periodic_cfg);
-
-    let addr1 = peer1.start_listening().await.unwrap();
-    let addr2 = peer2.start_listening().await.unwrap();
-
-    tracing::info!(%peer1.peer_id, %addr1, "peer1");
-    tracing::info!(%peer2.peer_id, %addr2, "peer2");
-    tracing::info!("peer1 < peer2 = {}", peer1.peer_id < peer2.peer_id);
-
-    #[derive(Debug)]
-    enum FilteredEvent {
-        SyncPeerConnected { from: PeerId },
-        SyncPeerRequestStatus { from: PeerId },
-    }
-
-    let filter = move |event| match event {
-        Event::SyncPeerConnected { peer_id } => {
-            Some(FilteredEvent::SyncPeerConnected { from: peer_id })
-        }
-        Event::SyncPeerRequestStatus { peer_id } => {
-            Some(FilteredEvent::SyncPeerRequestStatus { from: peer_id })
-        }
-        _ => None,
-    };
-
-    let mut peer1_events = filter_events(peer1.event_receiver, filter);
-    let mut peer2_events = filter_events(peer2.event_receiver, filter);
-
-    // Dial so that the peers have each other in their DHTs, the direction doesn't matter
-    peer1
-        .client
-        .dial(peer2.peer_id, addr2.clone())
-        .await
-        .unwrap();
-
-    assert_matches!(peer1_events.recv().await.unwrap(), FilteredEvent::SyncPeerConnected { from } => { assert_eq!(from, peer2.peer_id)});
-    assert_matches!(peer2_events.recv().await.unwrap(), FilteredEvent::SyncPeerConnected { from } => { assert_eq!(from, peer1.peer_id)});
-
-    // Only one of the peers will trigger a periodic sync status request
-    // depending on which has the lower peer id
-    tokio::select! {
-        e = peer1_events.recv() => {
-            assert_matches!(e, Some(FilteredEvent::SyncPeerRequestStatus { from }) => { assert_eq!(from, peer2.peer_id)});
-            assert!(peer1.peer_id < peer2.peer_id);
-        }
-        e = peer2_events.recv() => {
-            assert_matches!(e, Some(FilteredEvent::SyncPeerRequestStatus { from }) => { assert_eq!(from, peer1.peer_id)});
-            assert!(peer2.peer_id < peer1.peer_id);
-        }
     }
 }

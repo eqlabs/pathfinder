@@ -124,20 +124,8 @@ async fn main() -> anyhow::Result<()> {
 
     while let Some(event) = p2p_events.recv().await {
         match event {
-            p2p::Event::SyncPeerConnected { peer_id }
-            | p2p::Event::SyncPeerRequestStatus { peer_id } => {
-                use p2p_proto_v0::sync::Status;
-
-                p2p_client
-                    .send_sync_status_request(
-                        peer_id,
-                        Status {
-                            chain_id: GOERLI_CHAIN_ID.into(),
-                            height: 128,
-                            hash: Felt::ZERO,
-                        },
-                    )
-                    .await;
+            p2p::Event::SyncPeerConnected { peer_id } => {
+                tracing::info!(%peer_id, "Connected");
             }
             p2p::Event::InboundSyncRequest {
                 request, channel, ..
