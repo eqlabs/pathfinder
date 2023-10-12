@@ -5,9 +5,7 @@ use p2p::client::{peer_agnostic, peer_aware};
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr, PeerId};
 use p2p::{HeadRx, HeadTx, Peers};
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
-use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
-use stark_hash::Felt;
 use tokio::sync::RwLock;
 use tracing::Instrument;
 
@@ -25,7 +23,6 @@ pub type P2PNetworkHandle = (
 pub struct P2PContext {
     pub chain_id: ChainId,
     pub storage: Storage,
-    pub sync_state: Arc<SyncState>,
     pub proxy: bool,
     pub keypair: Keypair,
     pub listen_on: Multiaddr,
@@ -37,7 +34,6 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     let P2PContext {
         chain_id,
         mut storage,
-        sync_state,
         proxy,
         keypair,
         listen_on,
@@ -105,7 +101,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
                             break;
                         }
                         Some(event) = p2p_events.recv() => {
-                            match handle_p2p_event(event, chain_id, &mut storage, &sync_state, &mut p2p_client, &mut tx).await {
+                            match handle_p2p_event(event, &mut storage, &mut p2p_client, &mut tx).await {
                                 Ok(()) => {},
                                 Err(e) => { tracing::error!("Failed to handle P2P event: {}", e) },
                             }
@@ -127,9 +123,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
 async fn handle_p2p_event(
     event: p2p::Event,
-    chain_id: ChainId,
     storage: &mut Storage,
-    sync_state: &SyncState,
     p2p_client: &mut peer_aware::Client,
     tx: &mut HeadTx,
 ) -> anyhow::Result<()> {
@@ -151,26 +145,7 @@ async fn handle_p2p_event(
                 Request::GetClasses(r) => {
                     Response::Classes(sync_handlers::v0::get_classes(r, storage).await?)
                 }
-                Request::Status(incoming_status) => {
-                    // Use status as fallback until the first head propagation message received
-                    // Using status endlessly will cause false positive reorgs in the sync logic
-                    // when sync reaches this false|temporary head
-                    tx.send_if_modified(|head| {
-                        let current_height = head.unwrap_or_default().0.get();
-
-                        if incoming_status.height > current_height {
-                            *head = Some((
-                                BlockNumber::new_or_panic(incoming_status.height),
-                                BlockHash(incoming_status.hash),
-                            ));
-                            true
-                        } else {
-                            false
-                        }
-                    });
-
-                    Response::Status(current_status(chain_id, sync_state).await)
-                }
+                _ => unimplemented!("status request does not exist in the latest spec"),
             };
             p2p_client.send_sync_response(channel, response).await;
         }
@@ -196,23 +171,4 @@ async fn handle_p2p_event(
     }
 
     Ok(())
-}
-
-async fn current_status(chain_id: ChainId, sync_state: &SyncState) -> p2p_proto_v0::sync::Status {
-    use p2p_proto_v0::sync::Status;
-    use pathfinder_rpc::v02::types::syncing::Syncing;
-
-    let sync_status = { sync_state.status.read().await.clone() };
-    match sync_status {
-        Syncing::False(_) => Status {
-            chain_id: chain_id.0,
-            height: 0,
-            hash: Felt::ZERO,
-        },
-        Syncing::Status(status) => Status {
-            chain_id: chain_id.0,
-            height: status.current.number.get(),
-            hash: status.current.hash.0,
-        },
-    }
 }

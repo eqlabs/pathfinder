@@ -72,9 +72,7 @@ impl TryFromProtobuf<proto::sync::Request> for Request {
                 proto::sync::request::Request::GetClasses(r) => Ok(Request::GetClasses(
                     TryFromProtobuf::try_from_protobuf(r, field_name)?,
                 )),
-                proto::sync::request::Request::Status(r) => Ok(Request::Status(
-                    TryFromProtobuf::try_from_protobuf(r, field_name)?,
-                )),
+                _ => unimplemented!("status request does not exist in the latest spec"),
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -100,7 +98,7 @@ impl ToProtobuf<proto::sync::Request> for Request {
                 Request::GetClasses(r) => {
                     proto::sync::request::Request::GetClasses(r.to_protobuf())
                 }
-                Request::Status(r) => proto::sync::request::Request::Status(r.to_protobuf()),
+                _ => unimplemented!("status request does not exist in the latest spec"),
             }),
         }
     }
