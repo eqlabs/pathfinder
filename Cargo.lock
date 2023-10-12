@@ -6184,6 +6184,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "void",
  "zeroize",
 ]
 

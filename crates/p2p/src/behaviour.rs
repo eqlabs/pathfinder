@@ -10,7 +10,7 @@ use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, Kademlia
 use libp2p::ping;
 use libp2p::relay::client as relay_client;
 use libp2p::request_response::{self, ProtocolSupport};
-use libp2p::swarm::NetworkBehaviour;
+use libp2p::swarm::{keep_alive, NetworkBehaviour};
 use libp2p::{identity, kad};
 
 #[derive(NetworkBehaviour)]
@@ -21,6 +21,13 @@ pub struct Behaviour {
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
+    // TODO do we really need keep_alive?
+    // 1. sync status message was removed in the latest spec, but as we used it partially to
+    //    maintain connection with peers, we're using keep alive instead
+    // 2. I'm not sure if we really need keep alive, as connections should be closed when not used
+    //    because they consume resources, and in general we should be managing connections in a wiser manner,
+    //    please see docstring for `libp2p::swarm::keep_alive::Behaviour`
+    keep_alive: keep_alive::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
     pub gossipsub: gossipsub::Behaviour,
     pub block_sync: request_response::Behaviour<super::sync::BlockSyncCodec>,
@@ -83,6 +90,7 @@ impl Behaviour {
                     identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
                         .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
                 ),
+                keep_alive: keep_alive::Behaviour,
                 kademlia,
                 gossipsub,
                 block_sync,
@@ -115,6 +123,7 @@ pub enum Event {
     Dcutr(dcutr::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
+    KeepAlive,
     Kademlia(KademliaEvent),
     Gossipsub(gossipsub::Event),
     BlockSync(request_response::Event<p2p_proto_v0::sync::Request, p2p_proto_v0::sync::Response>),
@@ -147,6 +156,13 @@ impl From<ping::Event> for Event {
 impl From<identify::Event> for Event {
     fn from(event: identify::Event) -> Self {
         Event::Identify(Box::new(event))
+    }
+}
+
+// Keep alive
+impl From<void::Void> for Event {
+    fn from(_: void::Void) -> Self {
+        Event::KeepAlive
     }
 }
 
