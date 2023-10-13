@@ -741,7 +741,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepts_json_with_charset8() {
+    async fn accepts_json_with_charset_utf8() {
         async fn always_success(_ctx: RpcContext) -> RpcResult {
             Ok(json!("Success"))
         }
@@ -778,7 +778,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepts_json_with_charset16() {
+    async fn rejects_json_with_charset_utf16() {
         async fn always_success(_ctx: RpcContext) -> RpcResult {
             Ok(json!("Success"))
         }
@@ -788,8 +788,6 @@ mod tests {
             .build(RpcContext::for_tests());
 
         let url = spawn_server(router).await;
-
-        let expected = json!({"jsonrpc": "2.0", "result": "Success", "id": 1});
 
         let client = reqwest::Client::new();
         let res = client
@@ -807,11 +805,9 @@ mod tests {
             .send()
             .await
             .unwrap()
-            .json::<Value>()
-            .await
-            .unwrap();
+            .status();
 
-        assert_eq!(res, expected);
+        assert_eq!(res, reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE);
     }
 
     #[tokio::test]
