@@ -116,10 +116,10 @@ pub async fn rpc_handler(
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
     // Only json content allowed.
-    if content_type != ContentType::json() {
-        if &content_type.to_string() != "application/json; charset=utf-8" {
-            return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
-        }
+    if content_type != ContentType::json()
+        && content_type.to_string().as_str() != "application/json; charset=utf-8"
+    {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
     #[inline]
