@@ -745,9 +745,9 @@ mod tests {
             .send()
             .await
             .unwrap()
-        .json::<Value>()
-        .await
-        .unwrap();
+            .json::<Value>()
+            .await
+            .unwrap();
 
         assert_eq!(res, expected);
     }
