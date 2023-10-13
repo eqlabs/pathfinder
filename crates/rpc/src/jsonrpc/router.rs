@@ -109,16 +109,43 @@ impl RpcRouter {
     }
 }
 
+// A slight variation on the axum json extractor.
+fn is_utf8_encoded_json(headers: http::HeaderMap) -> bool {
+    let Some(content_type) = headers.get(http::header::CONTENT_TYPE) else {
+        return false;
+    };
+
+    let Ok(content_type) = content_type.to_str() else {
+        return false;
+    };
+
+    let mime = if let Ok(mime) = content_type.parse::<mime::Mime>() {
+        mime
+    } else {
+        return false;
+    };
+
+    // Only accept utf8 encoding, which is the default if it missing.
+    let valid_charset = mime
+        .get_param(mime::CHARSET)
+        .map(|x| x == "utf-8")
+        .unwrap_or(true);
+
+    // `application/json` or `XXX+json` are allowed.
+    let is_json = (mime.type_() == "application" && mime.subtype() == "json")
+        || mime.suffix().map_or(false, |name| name == "json");
+
+    is_json && valid_charset
+}
+
 #[axum::debug_handler]
 pub async fn rpc_handler(
     State(state): State<RpcRouter>,
-    TypedHeader(content_type): TypedHeader<ContentType>,
+    headers: http::HeaderMap,
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
-    // Only json content allowed.
-    if content_type != ContentType::json()
-        && content_type.to_string().as_str() != "application/json; charset=utf-8"
-    {
+    // Only utf8 json content allowed.
+    if !is_utf8_encoded_json(headers) {
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
@@ -716,7 +743,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepts_json_with_charset() {
+    async fn accepts_json_with_charset8() {
         async fn always_success(_ctx: RpcContext) -> RpcResult {
             Ok(json!("Success"))
         }
@@ -741,6 +768,43 @@ mod tests {
             .header(
                 reqwest::header::CONTENT_TYPE,
                 "application/json; charset=utf-8",
+            )
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+
+        assert_eq!(res, expected);
+    }
+
+    #[tokio::test]
+    async fn accepts_json_with_charset16() {
+        async fn always_success(_ctx: RpcContext) -> RpcResult {
+            Ok(json!("Success"))
+        }
+
+        let router = RpcRouter::builder("vTEST")
+            .register("success", always_success)
+            .build(RpcContext::for_tests());
+
+        let url = spawn_server(router).await;
+
+        let expected = json!({"jsonrpc": "2.0", "result": "Success", "id": 1});
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(url.clone())
+            .body(
+                json!(
+                    {"jsonrpc": "2.0", "method": "success", "id": 1}
+                )
+                .to_string(),
+            )
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/json; charset=utf-16",
             )
             .send()
             .await
