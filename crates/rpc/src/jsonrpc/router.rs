@@ -738,4 +738,35 @@ mod tests {
 
         assert_eq!(res, expected);
     }
+
+    #[tokio::test]
+    async fn response_hash_content_type_json() {
+        fn always_success() -> &'static str {
+            "Success"
+        }
+
+        let router = RpcRouter::builder("vTEST")
+            .register("success", always_success)
+            .build(RpcContext::for_tests());
+
+        let url = spawn_server(router).await;
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(url.clone())
+            .json(&json!(
+                {"jsonrpc": "2.0", "method": "success", "id": 1}
+            ))
+            .send()
+            .await
+            .unwrap();
+
+        use reqwest::header::CONTENT_TYPE;
+        let content_type = res
+            .headers()
+            .get(CONTENT_TYPE)
+            .expect("content-type header should be set");
+
+        assert_eq!(content_type, "application/json");
+    }
 }
