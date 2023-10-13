@@ -2,10 +2,8 @@ use std::collections::HashMap;
 
 use axum::async_trait;
 use axum::extract::State;
-use axum::headers::ContentType;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::TypedHeader;
 use futures::{Future, FutureExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
