@@ -170,10 +170,10 @@ pub async fn rpc_handler(
     let mut response = handle(state, body).await.into_response();
 
     use http::header::CONTENT_TYPE;
-    const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
+    static APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
     response
         .headers_mut()
-        .insert(CONTENT_TYPE, APPLICATION_JSON);
+        .insert(CONTENT_TYPE, APPLICATION_JSON.clone());
     response
 }
 
