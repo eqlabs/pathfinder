@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::TypedHeader;
 use futures::{Future, FutureExt};
+use http::HeaderValue;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -119,44 +120,61 @@ pub async fn rpc_handler(
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
-    // Unfortunately due to this https://github.com/serde-rs/json/issues/497
-    // we cannot use an enum with borrowed raw values inside to do a single deserialization
-    // for us. Instead we have to distinguish manually between a single request and a batch
-    // request which we do by checking the first byte.
-    if body.as_ref().first() != Some(&b'[') {
-        let Ok(request) = serde_json::from_slice::<&RawValue>(&body) else {
-            return RpcResponse::PARSE_ERROR.into_response();
-        };
+    #[inline]
+    /// Helper to scope the responses so we can set the content-type afterwards
+    /// instead of dealing with branches / early exits.
+    async fn handle(
+        state: RpcRouter,
+        body: axum::body::Bytes,
+    ) -> impl axum::response::IntoResponse {
+        // Unfortunately due to this https://github.com/serde-rs/json/issues/497
+        // we cannot use an enum with borrowed raw values inside to do a single deserialization
+        // for us. Instead we have to distinguish manually between a single request and a batch
+        // request which we do by checking the first byte.
+        if body.as_ref().first() != Some(&b'[') {
+            let Ok(request) = serde_json::from_slice::<&RawValue>(&body) else {
+                return RpcResponse::PARSE_ERROR.into_response();
+            };
 
-        match state.run_request(request.get()).await {
-            Some(response) => response.into_response(),
-            None => ().into_response(),
-        }
-    } else {
-        let Ok(requests) = serde_json::from_slice::<Vec<&RawValue>>(&body) else {
-            return RpcResponse::PARSE_ERROR.into_response();
-        };
-
-        if requests.is_empty() {
-            return RpcResponse::INVALID_REQUEST.into_response();
-        }
-
-        let mut responses = Vec::new();
-
-        for request in requests {
-            // Notifications return none and are skipped.
-            if let Some(response) = state.run_request(request.get()).await {
-                responses.push(response);
+            match state.run_request(request.get()).await {
+                Some(response) => response.into_response(),
+                None => ().into_response(),
             }
-        }
+        } else {
+            let Ok(requests) = serde_json::from_slice::<Vec<&RawValue>>(&body) else {
+                return RpcResponse::PARSE_ERROR.into_response();
+            };
 
-        // All requests were notifications.
-        if responses.is_empty() {
-            return ().into_response();
-        }
+            if requests.is_empty() {
+                return RpcResponse::INVALID_REQUEST.into_response();
+            }
 
-        serde_json::to_string(&responses).unwrap().into_response()
+            let mut responses = Vec::new();
+
+            for request in requests {
+                // Notifications return none and are skipped.
+                if let Some(response) = state.run_request(request.get()).await {
+                    responses.push(response);
+                }
+            }
+
+            // All requests were notifications.
+            if responses.is_empty() {
+                return ().into_response();
+            }
+
+            serde_json::to_string(&responses).unwrap().into_response()
+        }
     }
+
+    let mut response = handle(state, body).await.into_response();
+
+    use http::header::CONTENT_TYPE;
+    const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, APPLICATION_JSON);
+    response
 }
 
 #[axum::async_trait]
