@@ -1,3 +1,8 @@
+//! request-response protocol and codec definitions for sync
+//!
+//! FIXME: this is a temporary workaround until proper
+//! streaming response protocol is implemented
+
 pub mod protocol {
     use libp2p::core::upgrade::ProtocolName;
 
