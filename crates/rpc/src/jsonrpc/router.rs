@@ -117,7 +117,9 @@ pub async fn rpc_handler(
 ) -> impl axum::response::IntoResponse {
     // Only json content allowed.
     if content_type != ContentType::json() {
-        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+        if &content_type.to_string() != "application/json; charset=utf-8" {
+            return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+        }
     }
 
     #[inline]
@@ -711,6 +713,43 @@ mod tests {
             .status();
 
         assert_eq!(res, reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[tokio::test]
+    async fn accepts_json_with_charset() {
+        async fn always_success(_ctx: RpcContext) -> RpcResult {
+            Ok(json!("Success"))
+        }
+
+        let router = RpcRouter::builder("vTEST")
+            .register("success", always_success)
+            .build(RpcContext::for_tests());
+
+        let url = spawn_server(router).await;
+
+        let expected = json!({"jsonrpc": "2.0", "result": "Success", "id": 1});
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(url.clone())
+            .body(
+                json!(
+                    {"jsonrpc": "2.0", "method": "success", "id": 1}
+                )
+                .to_string(),
+            )
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/json; charset=utf-8",
+            )
+            .send()
+            .await
+            .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+
+        assert_eq!(res, expected);
     }
 
     #[tokio::test]
