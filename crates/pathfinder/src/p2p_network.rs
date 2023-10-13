@@ -128,26 +128,8 @@ async fn handle_p2p_event(
     tx: &mut HeadTx,
 ) -> anyhow::Result<()> {
     match event {
-        p2p::Event::InboundSyncRequest {
-            request, channel, ..
-        } => {
-            use p2p_proto_v0::sync::{Request, Response};
-            let response = match request {
-                Request::GetBlockHeaders(r) => {
-                    Response::BlockHeaders(sync_handlers::v0::get_block_headers(r, storage).await?)
-                }
-                Request::GetBlockBodies(r) => {
-                    Response::BlockBodies(sync_handlers::v0::get_block_bodies(r, storage).await?)
-                }
-                Request::GetStateDiffs(r) => {
-                    Response::StateDiffs(sync_handlers::v0::get_state_diffs(r, storage).await?)
-                }
-                Request::GetClasses(r) => {
-                    Response::Classes(sync_handlers::v0::get_classes(r, storage).await?)
-                }
-                _ => unimplemented!("status request does not exist in the latest spec"),
-            };
-            p2p_client.send_sync_response(channel, response).await;
+        _ => {
+            todo!("use v1");
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");

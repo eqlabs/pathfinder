@@ -11,7 +11,12 @@ use libp2p::request_response::ResponseChannel;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
-use p2p_proto_v1::block::NewBlock;
+use p2p_proto_v1::block::{
+    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse, NewBlock,
+};
+use p2p_proto_v1::event::{EventsRequest, EventsResponse};
+use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber};
 use tokio::sync::{mpsc, oneshot, RwLock};
 
@@ -112,12 +117,12 @@ enum Command {
     },
     SendSyncRequest {
         peer_id: PeerId,
-        request: p2p_proto_v0::sync::Request,
-        sender: oneshot::Sender<anyhow::Result<p2p_proto_v0::sync::Response>>,
+        request: (),                                 // TODO
+        sender: oneshot::Sender<anyhow::Result<()>>, // TODO
     },
     SendSyncResponse {
-        channel: ResponseChannel<p2p_proto_v0::sync::Response>,
-        response: p2p_proto_v0::sync::Response,
+        channel: ResponseChannel<()>, // TODO
+        response: (),                 // TODO
     },
     PublishPropagationMessage {
         topic: IdentTopic,
@@ -140,8 +145,8 @@ pub enum Event {
     },
     InboundSyncRequest {
         from: PeerId,
-        request: p2p_proto_v0::sync::Request,
-        channel: ResponseChannel<p2p_proto_v0::sync::Response>,
+        request: (),                  // TODO
+        channel: ResponseChannel<()>, // TODO
     },
     BlockPropagation {
         from: PeerId,

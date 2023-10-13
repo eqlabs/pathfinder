@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
-use libp2p::request_response::{self, RequestId};
+use libp2p::request_response::{self, Message, RequestId};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{identify, PeerId};
 use p2p_proto_v1::{ToProtobuf, TryFromProtobuf};
@@ -14,11 +15,11 @@ use tokio::time::Duration;
 
 use crate::behaviour;
 use crate::peers;
-use crate::sync;
 #[cfg(test)]
 use crate::test_utils;
-use crate::{BootstrapConfig, EmptyResultSender, PeriodicTaskConfig};
-use crate::{Command, Event, TestCommand, TestEvent};
+use crate::{
+    BootstrapConfig, Command, EmptyResultSender, Event, PeriodicTaskConfig, TestCommand, TestEvent,
+};
 
 pub struct MainLoop {
     bootstrap_cfg: BootstrapConfig,
@@ -27,8 +28,7 @@ pub struct MainLoop {
     event_sender: mpsc::Sender<Event>,
     peers: Arc<RwLock<peers::Peers>>,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
-    pending_block_sync_requests:
-        HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto_v0::sync::Response>>>,
+    pending_block_sync_requests: HashMap<RequestId, oneshot::Sender<anyhow::Result<()>>>, // TODO
     // TODO there's no sync status message anymore so we have to:
     // 1. use keep alive to keep connections open
     // 2. update the sync head info of our peers using a different mechanism
@@ -228,17 +228,6 @@ impl MainLoop {
                             tracing::debug!(%peer_id, "Added peer to DHT");
                         }
                     }
-
-                    // TODO latest spec introduces different protocols & capabilities for blocks, events, transactions, etc.
-                    if protocols
-                        .iter()
-                        .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
-                    {
-                        self.event_sender
-                            .send(Event::SyncPeerConnected { peer_id })
-                            .await
-                            .expect("Event receiver not to be dropped");
-                    }
                 }
                 Ok(())
             }
@@ -400,8 +389,8 @@ impl MainLoop {
                         self.event_sender
                             .send(Event::InboundSyncRequest {
                                 from: peer,
-                                request,
-                                channel,
+                                request: todo!("use v1"),
+                                channel: todo!("use v1"),
                             })
                             .await
                             .expect("Event receiver not to be dropped");
@@ -416,7 +405,7 @@ impl MainLoop {
                             .pending_block_sync_requests
                             .remove(&request_id)
                             .expect("Block sync request still to be pending")
-                            .send(Ok(response));
+                            .send(Ok(todo!("use v1")));
                         Ok(())
                     }
                 }
@@ -529,23 +518,12 @@ impl MainLoop {
             } => {
                 tracing::debug!(?request, "Sending sync request");
 
-                let request_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .block_sync
-                    .send_request(&peer_id, request);
-                self.pending_block_sync_requests.insert(request_id, sender);
+                todo!("use v1");
             }
             Command::SendSyncResponse { channel, response } => {
                 // This might fail, but we're just ignoring it. In case of failure a
                 // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(%response, "Sending sync response");
-
-                let _ = self
-                    .swarm
-                    .behaviour_mut()
-                    .block_sync
-                    .send_response(channel, response);
+                todo!("use v1");
             }
             Command::PublishPropagationMessage {
                 topic,

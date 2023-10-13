@@ -94,11 +94,8 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn send_sync_request(
-        &self,
-        peer_id: PeerId,
-        request: p2p_proto_v0::sync::Request,
-    ) -> anyhow::Result<p2p_proto_v0::sync::Response> {
+    // TODO
+    pub async fn send_sync_request(&self, peer_id: PeerId, request: ()) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::SendSyncRequest {
@@ -111,11 +108,8 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn send_sync_response(
-        &self,
-        channel: ResponseChannel<p2p_proto_v0::sync::Response>,
-        response: p2p_proto_v0::sync::Response,
-    ) {
+    // TODO
+    pub async fn send_sync_response(&self, channel: ResponseChannel<()>, response: ()) {
         self.sender
             .send(Command::SendSyncResponse { channel, response })
             .await

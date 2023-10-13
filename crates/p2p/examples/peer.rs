@@ -118,24 +118,8 @@ async fn main() -> anyhow::Result<()> {
             p2p::Event::SyncPeerConnected { peer_id } => {
                 tracing::info!(%peer_id, "Connected");
             }
-            p2p::Event::InboundSyncRequest {
-                request, channel, ..
-            } => {
-                use p2p_proto_v0::sync::{BlockHeaders, Request, Response};
-                let response = match request {
-                    Request::GetBlockHeaders(_r) => {
-                        Response::BlockHeaders(BlockHeaders { headers: vec![] })
-                    }
-                    Request::GetBlockBodies(_r) => Response::BlockBodies(BlockBodies {
-                        block_bodies: vec![],
-                    }),
-                    Request::GetStateDiffs(_r) => Response::StateDiffs(StateDiffs {
-                        block_state_updates: vec![],
-                    }),
-                    Request::GetClasses(_r) => Response::Classes(Classes { classes: vec![] }),
-                    _ => unimplemented!("status request does not exist in the latest spec"),
-                };
-                p2p_client.send_sync_response(channel, response).await;
+            _ => {
+                todo!("use v1")
             }
             p2p::Event::BlockPropagation { from, new_block } => {
                 tracing::info!(?from, ?new_block, "Block Propagation");

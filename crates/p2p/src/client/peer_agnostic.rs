@@ -86,9 +86,8 @@ impl Client {
 
     pub async fn block_headers(
         &self,
-        // start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
-        start_block: BlockNumber, // TODO number or hash
-        num_blocks: usize,        // FIXME, use range?
+        start_block: BlockNumber,
+        num_blocks: usize,
     ) -> Option<Vec<p2p_proto_v0::common::BlockHeader>> {
         if num_blocks == 0 {
             return Some(Vec::new());
@@ -97,31 +96,11 @@ impl Client {
         let count: u64 = num_blocks.try_into().ok()?;
 
         for peer in self.get_update_peers_with_sync_capability().await {
-            let response = self
-                .inner
-                .send_sync_request(
-                    peer,
-                    p2p_proto_v0::sync::Request::GetBlockHeaders(
-                        p2p_proto_v0::sync::GetBlockHeaders {
-                            start_block: start_block.get(),
-                            count,
-                            size_limit: u64::MAX, // FIXME
-                            direction: p2p_proto_v0::sync::Direction::Forward,
-                        },
-                    ),
-                )
-                .await;
+            let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
 
             match response {
-                Ok(p2p_proto_v0::sync::Response::BlockHeaders(x)) => {
-                    if x.headers.is_empty() {
-                        tracing::debug!(%peer, "Got empty block headers response");
-                        continue;
-                    } else {
-                        return Some(x.headers);
-                    }
-                }
                 Ok(_) => {
+                    todo!("use v1");
                     tracing::debug!(%peer, "Got unexpected response to GetBlockHeaders");
                     continue;
                 }
@@ -149,31 +128,11 @@ impl Client {
         let count: u64 = num_blocks.try_into().ok()?;
 
         for peer in self.get_update_peers_with_sync_capability().await {
-            let response = self
-                .inner
-                .send_sync_request(
-                    peer,
-                    p2p_proto_v0::sync::Request::GetBlockBodies(
-                        p2p_proto_v0::sync::GetBlockBodies {
-                            start_block: start_block_hash.0,
-                            count,
-                            size_limit: u64::MAX, // FIXME
-                            direction: p2p_proto_v0::sync::Direction::Forward,
-                        },
-                    ),
-                )
-                .await;
+            let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
 
             match response {
-                Ok(p2p_proto_v0::sync::Response::BlockBodies(x)) => {
-                    if x.block_bodies.is_empty() {
-                        tracing::debug!(%peer, "Got empty block bodies response");
-                        continue;
-                    } else {
-                        return Some(x.block_bodies);
-                    }
-                }
                 Ok(_) => {
+                    todo!("use v1");
                     tracing::debug!(%peer, "Got unexpected response to GetBlockBodies");
                     continue;
                 }
@@ -201,28 +160,10 @@ impl Client {
         let count: u64 = num_blocks.try_into().ok()?;
 
         for peer in self.get_update_peers_with_sync_capability().await {
-            let response = self
-                .inner
-                .send_sync_request(
-                    peer,
-                    p2p_proto_v0::sync::Request::GetStateDiffs(p2p_proto_v0::sync::GetStateDiffs {
-                        start_block: start_block_hash.0,
-                        count,
-                        size_limit: u64::MAX, // FIXME
-                        direction: p2p_proto_v0::sync::Direction::Forward,
-                    }),
-                )
-                .await;
+            let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
             match response {
-                Ok(p2p_proto_v0::sync::Response::StateDiffs(x)) => {
-                    if x.block_state_updates.is_empty() {
-                        tracing::debug!(%peer, "Got empty state updates response");
-                        continue;
-                    } else {
-                        return Some(x.block_state_updates);
-                    }
-                }
                 Ok(_) => {
+                    todo!("use v1");
                     tracing::debug!(%peer, "Got unexpected response to GetStateDiffs");
                     continue;
                 }
@@ -251,26 +192,10 @@ impl Client {
         let class_hashes = class_hashes.into_iter().map(|x| x.0).collect::<Vec<_>>();
 
         for peer in self.get_update_peers_with_sync_capability().await {
-            let response = self
-                .inner
-                .send_sync_request(
-                    peer,
-                    p2p_proto_v0::sync::Request::GetClasses(p2p_proto_v0::sync::GetClasses {
-                        class_hashes: class_hashes.clone(),
-                        size_limit: u64::MAX, // FIXME
-                    }),
-                )
-                .await;
+            let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
             match response {
-                Ok(p2p_proto_v0::sync::Response::Classes(x)) => {
-                    if x.classes.is_empty() {
-                        tracing::debug!(%peer, "Got empty classes response");
-                        continue;
-                    } else {
-                        return Some(x);
-                    }
-                }
                 Ok(_) => {
+                    todo!("use v1");
                     tracing::debug!(%peer, "Got unexpected response to GetClasses");
                     continue;
                 }

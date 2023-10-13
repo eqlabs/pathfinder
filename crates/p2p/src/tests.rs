@@ -285,7 +285,6 @@ async fn subscription_and_propagation() {
 #[test_log::test(tokio::test)]
 async fn sync_request_response() {
     use fake::{Fake, Faker};
-    use p2p_proto_v0::sync::{Request, Response};
 
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -298,18 +297,7 @@ async fn sync_request_response() {
     tracing::info!(%peer1.peer_id, %addr1);
     tracing::info!(%peer2.peer_id, %addr2);
 
-    let mut peer1_inbound_sync_requests =
-        filter_events(peer1.event_receiver, move |event| match event {
-            Event::InboundSyncRequest {
-                from,
-                request,
-                channel,
-            } => {
-                assert_eq!(from, peer2.peer_id);
-                Some((request, channel))
-            }
-            _ => None,
-        });
+    let mut peer1_inbound_sync_requests = todo!("use v1");
 
     consume_events(peer2.event_receiver);
 
@@ -317,26 +305,14 @@ async fn sync_request_response() {
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
     for _ in 0..10 {
-        let expected_request = Faker.fake::<Request>();
-        let expected_response = Faker.fake::<Response>();
+        // TODO
+        let expected_request = Faker.fake::<()>();
+        let expected_response = Faker.fake::<()>();
 
         let expected_request_cloned = expected_request.clone();
         let expected_response_cloned = expected_response.clone();
         let client2 = peer2.client.clone();
 
-        tokio::spawn(async move {
-            let resp = client2
-                .send_sync_request(peer1.peer_id, expected_request_cloned)
-                .await
-                .unwrap();
-            assert_eq!(resp, expected_response_cloned);
-        });
-
-        let (request, resp_channel) = peer1_inbound_sync_requests.recv().await.unwrap();
-        assert_eq!(request, expected_request);
-        peer1
-            .client
-            .send_sync_response(resp_channel, expected_response)
-            .await;
+        todo!("use v1");
     }
 }
