@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
 use pathfinder_common::ContractAddress;
 use stark_hash::Felt;
+use starknet_gateway_types::reply::state_update::StateDiff;
 
 use super::felt::IntoFelt;
 
@@ -34,10 +35,28 @@ pub enum TransactionTrace {
     L1Handler(L1HandlerTransactionTrace),
 }
 
+impl TransactionTrace {
+    pub fn clear_state_diff(&mut self) {
+        match self {
+            Self::Declare(declare) => {
+                declare.state_diff = None;
+            }
+            Self::DeployAccount(deploy) => {
+                deploy.state_diff = None;
+            }
+            Self::Invoke(invoke) => {
+                invoke.state_diff = None;
+            }
+            _ => (),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DeclareTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub state_diff: Option<StateDiff>,
 }
 
 #[derive(Debug)]
@@ -45,6 +64,7 @@ pub struct DeployAccountTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub constructor_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub state_diff: Option<StateDiff>,
 }
 
 #[derive(Debug)]
@@ -58,6 +78,7 @@ pub struct InvokeTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub execute_invocation: ExecuteInvocation,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub state_diff: Option<StateDiff>,
 }
 
 #[derive(Debug)]

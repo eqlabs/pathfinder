@@ -1,9 +1,14 @@
 use blockifier::{
+    state::{
+        cached_state::{CachedState, CommitmentStateDiff},
+        state_api::State,
+    },
     transaction::transaction_execution::Transaction,
     transaction::{errors::TransactionExecutionError, transactions::ExecutableTransaction},
 };
 use pathfinder_common::TransactionHash;
 use primitive_types::U256;
+use starknet_gateway_types::reply::state_update::StateDiff;
 
 use crate::{
     transaction::transaction_hash,
@@ -36,8 +41,14 @@ pub fn simulate(
 
         let transaction_type = transaction_type(&transaction);
 
+        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = transaction
-            .execute(&mut state, &block_context, !skip_fee_charge, !skip_validate)
+            .execute(
+                &mut tx_state,
+                &block_context,
+                !skip_fee_charge,
+                !skip_validate,
+            )
             .and_then(|mut tx_info| {
                 // skipping fee charge in .execute() means that the fee isn't calculated, do that explicitly
                 // some other cases, like having max_fee=0 also lead to not calculating fees
@@ -49,6 +60,8 @@ pub fn simulate(
                 };
                 Ok(tx_info)
             });
+        let state_diff = map_state_diff(tx_state.to_state_diff());
+        tx_state.commit();
 
         match tx_info {
             Ok(tx_info) => {
@@ -65,7 +78,7 @@ pub fn simulate(
                         gas_price,
                         overall_fee: tx_info.actual_fee.0.into(),
                     },
-                    trace: to_trace(transaction_type, tx_info)?,
+                    trace: to_trace(transaction_type, tx_info, state_diff)?,
                 });
             }
             Err(error) => {
@@ -89,8 +102,13 @@ pub fn trace_one(
     for tx in transactions {
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
-        let tx_info = tx.execute(&mut state, &block_context, charge_fee, validate)?;
-        let trace = to_trace(tx_type, tx_info)?;
+
+        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
+        let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
+        let state_diff = map_state_diff(tx_state.to_state_diff());
+        tx_state.commit();
+
+        let trace = to_trace(tx_type, tx_info, state_diff)?;
         if hash == target_transaction_hash {
             return Ok(trace);
         }
@@ -114,12 +132,29 @@ pub fn trace_all(
     for tx in transactions {
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
-        let tx_info = tx.execute(&mut state, &block_context, charge_fee, validate)?;
-        let trace = to_trace(tx_type, tx_info)?;
+
+        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
+        let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
+        let state_diff = map_state_diff(tx_state.to_state_diff());
+        tx_state.commit();
+
+        let trace = to_trace(tx_type, tx_info, state_diff)?;
         ret.push((hash, trace));
     }
 
     Ok(ret)
+}
+
+fn map_state_diff(_state_diff: CommitmentStateDiff) -> StateDiff {
+    StateDiff {
+        // TODO(SM):!
+        storage_diffs: todo!(),
+        deployed_contracts: todo!(),
+        old_declared_contracts: todo!(),
+        declared_classes: todo!(),
+        nonces: todo!(),
+        replaced_classes: todo!(),
+    }
 }
 
 enum TransactionType {
@@ -149,6 +184,7 @@ fn transaction_type(transaction: &Transaction) -> TransactionType {
 fn to_trace(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
+    state_diff: StateDiff,
 ) -> Result<TransactionTrace, TransactionExecutionError> {
     tracing::trace!(?execution_info, "Transforming trace");
 
@@ -169,12 +205,14 @@ fn to_trace(
         TransactionType::Declare => TransactionTrace::Declare(DeclareTransactionTrace {
             validate_invocation,
             fee_transfer_invocation,
+            state_diff: Some(state_diff),
         }),
         TransactionType::DeployAccount => {
             TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
                 validate_invocation,
                 constructor_invocation: maybe_function_invocation?,
                 fee_transfer_invocation,
+                state_diff: Some(state_diff),
             })
         }
         TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
@@ -185,6 +223,7 @@ fn to_trace(
                 ExecuteInvocation::FunctionInvocation(maybe_function_invocation?)
             },
             fee_transfer_invocation,
+            state_diff: Some(state_diff),
         }),
         TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
             function_invocation: maybe_function_invocation?,

@@ -29,6 +29,10 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getTransactionByHash"            , v04_method::get_transaction_by_hash)
         .register("starknet_syncing"                         , v04_method::syncing)
 
+        .register("starknet_simulateTransactions"            , v04_method::simulate_transactions)
+        .register("starknet_traceTransaction"                , v04_method::trace_transaction)
+        .register("starknet_traceBlockTransactions"          , v04_method::trace_block_transactions)
+
         .register("starknet_specVersion"                     , method::spec_version)
 
         .register("pathfinder_getProof"                      , crate::pathfinder::methods::get_proof)

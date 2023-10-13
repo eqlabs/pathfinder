@@ -61,7 +61,7 @@ fn get_state_update_from_storage(
     Ok(state_update.into())
 }
 
-mod types {
+pub mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::{

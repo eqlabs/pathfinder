@@ -1,7 +1,7 @@
 pub(crate) mod estimate_fee;
 pub(crate) mod estimate_message_fee;
 mod get_events;
-mod get_state_update;
+pub(crate) mod get_state_update;
 pub(crate) mod simulate_transaction;
 
 pub(crate) use estimate_fee::estimate_fee;
