@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use anyhow::Context;
 use blockifier::{
     state::{
         cached_state::{CachedState, CommitmentStateDiff},
@@ -6,9 +9,15 @@ use blockifier::{
     transaction::transaction_execution::Transaction,
     transaction::{errors::TransactionExecutionError, transactions::ExecutableTransaction},
 };
-use pathfinder_common::TransactionHash;
+use pathfinder_common::{
+    CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
+    TransactionHash,
+};
 use primitive_types::U256;
-use starknet_gateway_types::reply::state_update::StateDiff;
+use stark_hash::Felt;
+use starknet_gateway_types::reply::state_update::{
+    DeclaredSierraClass, DeployedContract, StateDiff, StorageDiff,
+};
 
 use crate::{
     transaction::transaction_hash,
@@ -60,7 +69,8 @@ pub fn simulate(
                 };
                 Ok(tx_info)
             });
-        let state_diff = map_state_diff(tx_state.to_state_diff());
+        let state_diff = map_state_diff(tx_state.to_state_diff())
+            .context("simulate transaction: map state diff")?;
         tx_state.commit();
 
         match tx_info {
@@ -105,7 +115,8 @@ pub fn trace_one(
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
-        let state_diff = map_state_diff(tx_state.to_state_diff());
+        let state_diff = map_state_diff(tx_state.to_state_diff())
+            .context("simulate transaction: map state diff")?;
         tx_state.commit();
 
         let trace = to_trace(tx_type, tx_info, state_diff)?;
@@ -135,7 +146,8 @@ pub fn trace_all(
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
-        let state_diff = map_state_diff(tx_state.to_state_diff());
+        let state_diff = map_state_diff(tx_state.to_state_diff())
+            .context("simulate transaction: map state diff")?;
         tx_state.commit();
 
         let trace = to_trace(tx_type, tx_info, state_diff)?;
@@ -145,16 +157,67 @@ pub fn trace_all(
     Ok(ret)
 }
 
-fn map_state_diff(_state_diff: CommitmentStateDiff) -> StateDiff {
-    StateDiff {
-        // TODO(SM):!
-        storage_diffs: todo!(),
-        deployed_contracts: todo!(),
-        old_declared_contracts: todo!(),
-        declared_classes: todo!(),
-        nonces: todo!(),
-        replaced_classes: todo!(),
-    }
+fn map_state_diff(state_diff: CommitmentStateDiff) -> anyhow::Result<StateDiff> {
+    Ok(StateDiff {
+        storage_diffs: state_diff
+            .storage_updates
+            .into_iter()
+            .map(|(addess, updates)| {
+                let address =
+                    ContractAddress::new_or_panic(Felt::from_be_slice(addess.0.key().bytes())?);
+                let updates = updates
+                    .into_iter()
+                    .map(|(key, val)| {
+                        let key =
+                            StorageAddress::new_or_panic(Felt::from_be_slice(key.0.key().bytes())?);
+                        let value = StorageValue(Felt::from_be_slice(val.bytes())?);
+                        Ok(StorageDiff { key, value })
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                Ok::<(pathfinder_common::ContractAddress, Vec<StorageDiff>), anyhow::Error>((
+                    address, updates,
+                ))
+            })
+            .collect::<anyhow::Result<HashMap<_, _>>>()?,
+        deployed_contracts: state_diff
+            .address_to_class_hash
+            .into_iter()
+            .map(|(address, class_hash)| {
+                let address =
+                    ContractAddress::new_or_panic(Felt::from_be_slice(address.0.key().bytes())?);
+                let class_hash = ClassHash(Felt::from_be_slice(class_hash.0.bytes())?);
+                Ok(DeployedContract {
+                    address,
+                    class_hash,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?,
+        old_declared_contracts: Default::default(),
+        declared_classes: state_diff
+            .class_hash_to_compiled_class_hash
+            .into_iter()
+            .map(|(class_hash, compiled_chass_hash)| {
+                let class_hash = SierraHash(Felt::from_be_slice(class_hash.0.bytes())?);
+                let compiled_class_hash =
+                    CasmHash(Felt::from_be_slice(compiled_chass_hash.0.bytes())?);
+                Ok(DeclaredSierraClass {
+                    class_hash,
+                    compiled_class_hash,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?,
+        nonces: state_diff
+            .address_to_nonce
+            .into_iter()
+            .map(|(address, nonce)| {
+                let address =
+                    ContractAddress::new_or_panic(Felt::from_be_slice(address.0.key().bytes())?);
+                let nonce = ContractNonce(Felt::from_be_slice(nonce.0.bytes())?);
+                Ok((address, nonce))
+            })
+            .collect::<anyhow::Result<HashMap<_, _>>>()?,
+        replaced_classes: Default::default(),
+    })
 }
 
 enum TransactionType {
