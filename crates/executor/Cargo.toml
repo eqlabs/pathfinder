@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 anyhow = { workspace = true }
 blockifier = { workspace = true }
 cached = "0.44.0"
-cairo-vm = "0.8.7"
+cairo-vm = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }
