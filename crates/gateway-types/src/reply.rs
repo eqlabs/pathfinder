@@ -156,11 +156,43 @@ pub mod call {
 
 /// Used to deserialize replies to Starknet transaction requests.
 ///
-/// We only care about the status so we ignore other fields.
+/// We only care about the statuses so we ignore other fields.
+/// Please note that this does not have to be backwards compatible:
+/// since we only ever use it to deserialize replies from the Starknet
+/// feeder gateway.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Transaction {
     pub status: Status,
+    pub finality_status: transaction_status::FinalityStatus,
+    #[serde(default)]
+    pub execution_status: transaction_status::ExecutionStatus,
+}
+
+/// Types used when deserializing get_transaction replies.
+pub mod transaction_status {
+    use serde::Deserialize;
+
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    pub enum FinalityStatus {
+        #[serde(rename = "NOT_RECEIVED")]
+        NotReceived,
+        #[serde(rename = "RECEIVED")]
+        Received,
+        #[serde(rename = "ACCEPTED_ON_L1")]
+        AcceptedOnL1,
+        #[serde(rename = "ACCEPTED_ON_L2")]
+        AcceptedOnL2,
+    }
+
+    #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    pub enum ExecutionStatus {
+        #[default]
+        Succeeded,
+        Reverted,
+        Rejected,
+    }
 }
 
 /// Types used when deserializing L2 transaction related data.
@@ -1234,7 +1266,7 @@ mod tests {
     /// previous version of cairo while at the same time the goerli sequencer is
     /// already using a newer version.
     mod backward_compatibility {
-        use super::super::{StateUpdate, Transaction};
+        use super::super::StateUpdate;
         use starknet_gateway_test_fixtures::*;
 
         #[test]
@@ -1260,11 +1292,6 @@ mod tests {
             serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283364).unwrap();
             // This is from integration starknet_version 0.11 and contains the new replaced_classes field.
             serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283428).unwrap();
-        }
-
-        #[test]
-        fn transaction() {
-            serde_json::from_str::<Transaction>(v0_8_2::transaction::INVOKE).unwrap();
         }
 
         #[test]
