@@ -177,6 +177,13 @@ impl<'inner> Transaction<'inner> {
         transaction::transaction_data_for_block(self, block)
     }
 
+    pub fn transaction_hashes_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<TransactionHash>>> {
+        transaction::transaction_hashes_for_block(self, block)
+    }
+
     pub fn transaction_count(&self, block: BlockId) -> anyhow::Result<usize> {
         transaction::transaction_count(self, block)
     }

@@ -1,6 +1,7 @@
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
 pub mod method;
+mod types;
 
 use crate::v02::method as v02_method;
 use crate::v03::method as v03_method;
@@ -13,6 +14,8 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_blockNumber"                     , v02_method::block_number)
         .register("starknet_chainId"                         , v02_method::chain_id)
         .register("starknet_getBlockTransactionCount"        , v02_method::get_block_transaction_count)
+        .register("starknet_getBlockWithTxHashes"            , method::get_block_with_tx_hashes)
+        .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
         .register("starknet_getClass"                        , v02_method::get_class)
         .register("starknet_getClassAt"                      , v02_method::get_class_at)
         .register("starknet_getClassHashAt"                  , v02_method::get_class_hash_at)
