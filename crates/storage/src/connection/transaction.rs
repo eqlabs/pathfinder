@@ -225,6 +225,35 @@ pub(super) fn transaction_data_for_block(
     Ok(Some(data))
 }
 
+pub(super) fn transaction_hashes_for_block(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<Vec<TransactionHash>>> {
+    let Some((_, block_hash)) = tx.block_id(block)? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare("SELECT hash FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .context("Preparing statement")?;
+
+    let mut rows = stmt
+        .query(params![&block_hash])
+        .context("Executing query")?;
+
+    let mut data = Vec::new();
+    while let Some(row) = rows.next()? {
+        let hash = row
+            .get_transaction_hash("hash")
+            .context("Fetching transaction hash")?;
+
+        data.push(hash);
+    }
+
+    Ok(Some(data))
+}
+
 pub(super) fn transaction_block_hash(
     tx: &Transaction<'_>,
     hash: TransactionHash,
@@ -492,6 +521,29 @@ mod tests {
 
         let invalid_block =
             super::transaction_data_for_block(&tx, BlockNumber::MAX.into()).unwrap();
+        assert_eq!(invalid_block, None);
+    }
+
+    #[test]
+    fn transaction_hashes_for_block() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let expected = Some(
+            body.iter()
+                .map(|(transaction, _)| transaction.hash())
+                .collect(),
+        );
+
+        let by_number = super::transaction_hashes_for_block(&tx, header.number.into()).unwrap();
+        assert_eq!(by_number, expected);
+        let by_hash = super::transaction_hashes_for_block(&tx, header.hash.into()).unwrap();
+        assert_eq!(by_hash, expected);
+        let by_latest = super::transaction_hashes_for_block(&tx, BlockId::Latest).unwrap();
+        assert_eq!(by_latest, expected);
+
+        let invalid_block =
+            super::transaction_hashes_for_block(&tx, BlockNumber::MAX.into()).unwrap();
         assert_eq!(invalid_block, None);
     }
 
