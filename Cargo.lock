@@ -901,7 +901,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blockifier"
 version = "0.2.0-rc0"
-source = "git+https://github.com/eqlabs/blockifier?rev=60f5166d3de33870d0c6462908a02a21572a3929#60f5166d3de33870d0c6462908a02a21572a3929"
+source = "git+https://github.com/starkware-libs/blockifier?rev=ebf48c445b965c5c55b8c724338be7c6e21ffdd4#ebf48c445b965c5c55b8c724338be7c6e21ffdd4"
 dependencies = [
  "ark-ec",
  "ark-ff",
