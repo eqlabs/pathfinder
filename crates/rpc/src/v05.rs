@@ -35,6 +35,7 @@ pub fn register_routes() -> RpcRouterBuilder {
 
         .register("starknet_getBlockWithTxHashes"            , method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
+        .register("starknet_getTransactionStatus"            , method::get_transaction_status)
         .register("starknet_specVersion"                     , method::spec_version)
 
         .register("pathfinder_getProof"                      , crate::pathfinder::methods::get_proof)
