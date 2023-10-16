@@ -901,7 +901,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blockifier"
 version = "0.2.0-rc0"
-source = "git+https://github.com/eqlabs/blockifier?rev=60f5166d3de33870d0c6462908a02a21572a3929#60f5166d3de33870d0c6462908a02a21572a3929"
+source = "git+https://github.com/starkware-libs/blockifier?rev=ebf48c445b965c5c55b8c724338be7c6e21ffdd4#ebf48c445b965c5c55b8c724338be7c6e21ffdd4"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -2662,9 +2662,9 @@ dependencies = [
 
 [[package]]
 name = "cairo-vm"
-version = "0.8.7"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00d9bf139b0fe845627cf09d11af43eec9575dba702033bf6b08050c776b8553"
+checksum = "656c25c13b6ffcc75e081292f3c23f27e429b3d4b8d69ecdc327a441798e91f4"
 dependencies = [
  "anyhow",
  "bincode 2.0.0-rc.3",
