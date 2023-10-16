@@ -43,7 +43,7 @@ pub(super) fn construct_block_context(
         gas_price: execution_state.gas_price.as_u128(),
         invoke_tx_max_n_steps: 1_000_000,
         validate_max_n_steps: 1_000_000,
-        max_recursion_depth: 15,
+        max_recursion_depth: 50,
     })
 }
 
