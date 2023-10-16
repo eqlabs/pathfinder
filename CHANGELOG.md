@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.9.3] - 2023-10-16
+
 ### Fixed
 
 - RPC server does not accept `charset=utf-8` in the `Content-Type` header
+- Out-of-memory crash caused by rare execution queries
 
 ## [0.9.2] - 2023-10-13
 
