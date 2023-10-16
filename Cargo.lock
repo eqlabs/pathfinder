@@ -6547,6 +6547,7 @@ dependencies = [
  "hyper",
  "lazy_static",
  "metrics",
+ "mime",
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-ethereum",

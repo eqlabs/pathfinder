@@ -15,6 +15,7 @@ futures = { workspace = true }
 http = { workspace = true }
 hyper = "0.14.27"
 metrics = { workspace = true }
+mime = "0.3"
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-ethereum = { path = "../ethereum" }
