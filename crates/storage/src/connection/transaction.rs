@@ -238,18 +238,10 @@ pub(super) fn transaction_hashes_for_block(
         .prepare("SELECT hash FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
         .context("Preparing statement")?;
 
-    let mut rows = stmt
-        .query(params![&block_hash])
-        .context("Executing query")?;
-
-    let mut data = Vec::new();
-    while let Some(row) = rows.next()? {
-        let hash = row
-            .get_transaction_hash("hash")
-            .context("Fetching transaction hash")?;
-
-        data.push(hash);
-    }
+    let data = stmt
+        .query_map(params![&block_hash], |row| row.get_transaction_hash("hash"))
+        .context("Executing query")?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Some(data))
 }
