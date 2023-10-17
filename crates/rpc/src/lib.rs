@@ -916,6 +916,7 @@ mod tests {
     #[case::v05_starknet_blockHashAndNumber("/rpc/v0.5", "starknet_blockHashAndNumber")]
     #[case::v05_starknet_blockNumber("/rpc/v0.5", "starknet_blockNumber")]
     #[case::v05_starknet_call("/rpc/v0.5", "starknet_call")]
+    #[case::v05_starknet_estimateFee("/rpc/v0.5", "starknet_estimateFee")]
     #[case::v05_starknet_getBlockTransactionCount("/rpc/v0.5", "starknet_getBlockTransactionCount")]
     #[case::v05_starknet_getBlockWithTxHashes("/rpc/v0.5", "starknet_getBlockWithTxHashes")]
     #[case::v05_starknet_getBlockWithTxs("/rpc/v0.5", "starknet_getBlockWithTxs")]
