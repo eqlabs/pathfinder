@@ -28,6 +28,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_addDeclareTransaction"           , v04_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction"     , v04_method::add_deploy_account_transaction)
         .register("starknet_addInvokeTransaction"            , v04_method::add_invoke_transaction)
+        .register("starknet_estimateMessageFee"              , v04_method::estimate_message_fee)
         .register("starknet_getTransactionByBlockIdAndIndex" , v04_method::get_transaction_by_block_id_and_index)
         .register("starknet_getTransactionByHash"            , v04_method::get_transaction_by_hash)
         .register("starknet_syncing"                         , v04_method::syncing)
