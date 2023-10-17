@@ -162,7 +162,7 @@ pub mod call {
 /// feeder gateway.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct Transaction {
+pub struct TransactionStatus {
     pub status: Status,
     pub finality_status: transaction_status::FinalityStatus,
     #[serde(default)]

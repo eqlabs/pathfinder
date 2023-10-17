@@ -60,7 +60,7 @@ pub trait GatewayApi: Sync {
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<reply::Transaction, SequencerError> {
+    ) -> Result<reply::TransactionStatus, SequencerError> {
         unimplemented!();
     }
 
@@ -183,7 +183,7 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<reply::Transaction, SequencerError> {
+    ) -> Result<reply::TransactionStatus, SequencerError> {
         self.as_ref().transaction(transaction_hash).await
     }
 
@@ -481,7 +481,7 @@ impl GatewayApi for Client {
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<reply::Transaction, SequencerError> {
+    ) -> Result<reply::TransactionStatus, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction()
             .with_transaction_hash(transaction_hash)
@@ -1055,7 +1055,7 @@ mod tests {
         }
     }
 
-    mod transaction {
+    mod transaction_status {
         use super::{reply::Status, *};
         use pretty_assertions::assert_eq;
 
@@ -1120,7 +1120,10 @@ mod tests {
                     "/feeder_gateway/get_transaction?transactionHash={}",
                     INVALID_TX_HASH.0.to_hex_str()
                 ),
-                (r#"{"status": "NOT_RECEIVED"}"#, 200),
+                (
+                    r#"{"status": "NOT_RECEIVED", "finality_status": "NOT_RECEIVED"}"#,
+                    200,
+                ),
             )]);
             assert_eq!(
                 client.transaction(INVALID_TX_HASH).await.unwrap().status,

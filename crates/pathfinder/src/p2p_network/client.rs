@@ -302,7 +302,7 @@ impl GatewayApi for HybridClient {
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<reply::Transaction, SequencerError> {
+    ) -> Result<reply::TransactionStatus, SequencerError> {
         self.as_sequencer().transaction(transaction_hash).await
     }
 
