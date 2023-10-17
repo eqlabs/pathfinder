@@ -42,7 +42,6 @@ pub mod v0_9_0 {
         pub const DECLARE: &str = str_fixture!("0.9.0/txn/declare.json");
         pub const DEPLOY: &str = str_fixture!("0.9.0/txn/deploy.json");
         pub const INVOKE: &str = str_fixture!("0.9.0/txn/invoke.json");
-        pub const STATUS: &str = str_fixture!("0.9.0/txn/status.json");
     }
 }
 

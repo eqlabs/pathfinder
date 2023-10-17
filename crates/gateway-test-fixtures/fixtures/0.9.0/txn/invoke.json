@@ -1,12 +1,19 @@
 {
+    "execution_status": "SUCCEEDED",
+    "finality_status": "ACCEPTED_ON_L1",
     "status": "ACCEPTED_ON_L1",
     "block_hash": "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
     "block_number": 231579,
     "transaction_index": 0,
     "transaction": {
-        "contract_address": "0x7463cdd01f6e6a4f13084ea9eee170298b0bbe3faa17f46924c85bb284d4c98",
+        "transaction_hash": "0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
+        "version": "0x0",
+        "max_fee": "0x1ee7b2b881350",
+        "signature": [
+            "0x6e82c6752bd13e29b68cf0c8b0d4eb9133b5a056336a842bff01756e514d04a",
+            "0xa87f00c9e39fd0711aaea4edae0f00044384188a87f489170ac383e3ad087f"
+        ],
         "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
-        "entry_point_type": "EXTERNAL",
         "calldata": [
             "0x3",
             "0x72df4dc5b6c4df72e4288857317caf2ce9da166ab8719ab8306516a2fddfff7",
@@ -40,12 +47,7 @@
             "0x0",
             "0x17"
         ],
-        "signature": [
-            "0x6e82c6752bd13e29b68cf0c8b0d4eb9133b5a056336a842bff01756e514d04a",
-            "0xa87f00c9e39fd0711aaea4edae0f00044384188a87f489170ac383e3ad087f"
-        ],
-        "transaction_hash": "0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-        "max_fee": "0x1ee7b2b881350",
+        "contract_address": "0x7463cdd01f6e6a4f13084ea9eee170298b0bbe3faa17f46924c85bb284d4c98",
         "type": "INVOKE_FUNCTION"
     }
 }
