@@ -12,7 +12,7 @@ pub mod protocol {
             pub struct $type_name;
 
             impl $type_name {
-                const NAME: &[u8] = $name;
+                pub const NAME: &[u8] = $name;
             }
 
             impl ProtocolName for $type_name {

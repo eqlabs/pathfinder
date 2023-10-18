@@ -1,22 +1,27 @@
 //! _High level_ client for p2p interaction.
 //! Frees the caller from managing peers manually.
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use libp2p::PeerId;
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use tokio::sync::RwLock;
 
+use crate::sync::protocol;
 use crate::{client::peer_aware, peers};
 
 #[derive(Clone, Debug)]
 pub struct Client {
     inner: peer_aware::Client,
     block_propagation_topic: String,
-    peers_with_sync_capability: Arc<RwLock<HashSet<PeerId>>>,
-    last_update: Arc<RwLock<std::time::Instant>>,
+    peers_with_capability: Arc<RwLock<PeersWithCapability>>,
     // FIXME
     _peers: Arc<RwLock<peers::Peers>>,
 }
+
 // FIXME make sure the api looks reasonable from the perspective of
 // the __user__, which is the sync driving algo/entity
 impl Client {
@@ -28,12 +33,7 @@ impl Client {
         Self {
             inner,
             block_propagation_topic,
-            peers_with_sync_capability: Default::default(),
-            last_update: Arc::new(RwLock::new(
-                std::time::Instant::now()
-                    .checked_sub(Duration::from_secs(55))
-                    .unwrap(),
-            )),
+            peers_with_capability: Default::default(),
             _peers: peers,
         }
     }
@@ -55,31 +55,31 @@ impl Client {
             .await
     }
 
-    async fn get_update_peers_with_sync_capability(&self) -> Vec<PeerId> {
+    async fn get_update_peers_with_sync_capability(&self, capability: &[u8]) -> Vec<PeerId> {
         use rand::seq::SliceRandom;
 
-        if self.last_update.read().await.clone().elapsed() > Duration::from_secs(60) {
+        let r = self.peers_with_capability.read().await;
+        let mut peers = if let Some(peers) = r.get(capability) {
+            peers.into_iter().copied().collect::<Vec<_>>()
+        } else {
+            // Avoid deadlock
+            drop(r);
+
             let mut peers = self
                 .inner
-                .get_capability_providers("core/blocks-sync/1")
+                .get_capability_providers(std::str::from_utf8(capability).expect("valid UTF-8"))
                 .await
                 .unwrap_or_default();
 
             let _i_should_have_the_capability_too = peers.remove(&self.inner.peer_id());
             debug_assert!(_i_should_have_the_capability_too);
 
-            let mut peers_with_sync_capability = self.peers_with_sync_capability.write().await;
-            *peers_with_sync_capability = peers;
+            let peers_vec = peers.iter().copied().collect::<Vec<_>>();
 
-            let mut last_update = self.last_update.write().await;
-            *last_update = std::time::Instant::now();
-        }
-
-        let peers_with_sync_capability = self.peers_with_sync_capability.read().await;
-        let mut peers = peers_with_sync_capability
-            .iter()
-            .map(Clone::clone)
-            .collect::<Vec<_>>();
+            let mut w = self.peers_with_capability.write().await;
+            w.update(capability, peers);
+            peers_vec
+        };
         peers.shuffle(&mut rand::thread_rng());
         peers
     }
@@ -95,7 +95,10 @@ impl Client {
 
         let count: u64 = num_blocks.try_into().ok()?;
 
-        for peer in self.get_update_peers_with_sync_capability().await {
+        for peer in self
+            .get_update_peers_with_sync_capability(protocol::Headers::NAME)
+            .await
+        {
             let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
 
             match response {
@@ -127,7 +130,10 @@ impl Client {
 
         let count: u64 = num_blocks.try_into().ok()?;
 
-        for peer in self.get_update_peers_with_sync_capability().await {
+        for peer in self
+            .get_update_peers_with_sync_capability(protocol::Bodies::NAME)
+            .await
+        {
             let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
 
             match response {
@@ -159,7 +165,10 @@ impl Client {
 
         let count: u64 = num_blocks.try_into().ok()?;
 
-        for peer in self.get_update_peers_with_sync_capability().await {
+        for peer in self
+            .get_update_peers_with_sync_capability(todo!("use v1"))
+            .await
+        {
             let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
             match response {
                 Ok(_) => {
@@ -191,7 +200,10 @@ impl Client {
 
         let class_hashes = class_hashes.into_iter().map(|x| x.0).collect::<Vec<_>>();
 
-        for peer in self.get_update_peers_with_sync_capability().await {
+        for peer in self
+            .get_update_peers_with_sync_capability(todo!("use v1"))
+            .await
+        {
             let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
             match response {
                 Ok(_) => {
@@ -209,5 +221,42 @@ impl Client {
         tracing::debug!(?class_hashes, "No peers with classes found for");
 
         None
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PeersWithCapability {
+    set: HashMap<Vec<u8>, HashSet<PeerId>>,
+    last_update: std::time::Instant,
+    timeout: Duration,
+}
+
+impl PeersWithCapability {
+    pub fn new(timeout: Duration) -> Self {
+        Self {
+            set: Default::default(),
+            last_update: std::time::Instant::now(),
+            timeout,
+        }
+    }
+
+    /// Does not clear if elapsed, instead the caller is expected to call [`Self::update`]
+    pub fn get(&self, capability: &[u8]) -> Option<&HashSet<PeerId>> {
+        if self.last_update.elapsed() > self.timeout {
+            None
+        } else {
+            self.set.get(capability)
+        }
+    }
+
+    pub fn update(&mut self, capability: &[u8], peers: HashSet<PeerId>) {
+        self.last_update = std::time::Instant::now();
+        self.set.insert(capability.to_owned(), peers);
+    }
+}
+
+impl Default for PeersWithCapability {
+    fn default() -> Self {
+        Self::new(Duration::from_secs(60))
     }
 }
