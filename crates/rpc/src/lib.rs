@@ -822,127 +822,61 @@ mod tests {
 
     #[rustfmt::skip]
     #[rstest::rstest]
-    // Ensure that a missing method would actually fail this test.
-    #[should_panic]
-    #[case::invalid("/", "invalid")]
+    #[case::root_api  ("/", "v04/starknet_api_openrpc.json",       &[])]
+    #[case::root_trace("/", "v04/starknet_trace_api_openrpc.json", &[])]
+    #[case::root_write("/", "v04/starknet_write_api.json",         &[])]
+    #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
-    #[case::root_starknet_blockHashAndNumber("/", "starknet_blockHashAndNumber")]
-    #[case::root_starknet_blockNumber("/", "starknet_blockNumber")]
-    #[case::root_starknet_call("/", "starknet_call")]
-    #[case::root_starknet_chainId("/", "starknet_chainId")]
-    #[case::root_starknet_getBlockWithTxHashes("/", "starknet_getBlockWithTxHashes")]
-    #[case::root_starknet_getBlockTransactionCount("/", "starknet_getBlockTransactionCount")]
-    #[case::root_starknet_getClass("/", "starknet_getClass")]
-    #[case::root_starknet_getClassAt("/", "starknet_getClassAt")]
-    #[case::root_starknet_getClassHashAt("/", "starknet_getClassHashAt")]
-    #[case::root_starknet_getNonce("/", "starknet_getNonce")]
-    #[case::root_starknet_getStorageAt("/", "starknet_getStorageAt")]
-    #[case::root_starknet_estimateFee("/", "starknet_estimateFee")]
-    #[case::root_starknet_getEvents("/", "starknet_getEvents")]
-    #[case::root_starknet_getStateUpdate("/", "starknet_getStateUpdate")]
-    #[case::root_starknet_addDeclareTransaction("/", "starknet_addDeclareTransaction")]
-    #[case::root_starknet_addDeployAccountTransaction("/", "starknet_addDeployAccountTransaction")]
-    #[case::root_starknet_addInvokeTransaction("/", "starknet_addInvokeTransaction")]
-    #[case::root_starknet_getBlockWithTxs("/", "starknet_getBlockWithTxs")]
-    #[case::root_starknet_getTransactionReceipt("/", "starknet_getTransactionReceipt")]
-    #[case::root_starknet_syncing("/", "starknet_syncing")]
-    #[case::root_starknet_simulateTransactions("/", "starknet_simulateTransactions")]
-    #[case::root_starknet_estimateMessageFee("/", "starknet_estimateMessageFee")]
-    #[case::root_starknet_getTransactionByBlockIdAndIndex("/", "starknet_getTransactionByBlockIdAndIndex")]
-    #[case::root_starknet_getTransactionByHash("/", "starknet_getTransactionByHash")]
-    #[case::root_starknet_pendingTransactions("/", "starknet_pendingTransactions")]
-    #[case::root_pathfinder_getProof("/", "pathfinder_getProof")]
-    #[case::root_pathfinder_getTransactionStatus("/", "pathfinder_getTransactionStatus")]
+    #[case::v05_api  ("/rpc/v0.5", "v05/starknet_api_openrpc.json",       
+        &["starknet_getTransactionStatus", "starknet_getTransactionReceipt"])]
+    #[case::v05_trace("/rpc/v0.5", "v05/starknet_trace_api_openrpc.json", 
+        &["starknet_traceTransaction","starknet_simulateTransactions", "starknet_traceBlockTransactions"])]
+    #[case::v05_write("/rpc/v0.5", "v05/starknet_write_api.json",         &[])]
+    #[case::v05_pathfinder("/rpc/v0.5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
-    #[case::v03_starknet_addDeclareTransaction("/rpc/v0.3", "starknet_addDeclareTransaction")]
-    #[case::v03_starknet_addDeployAccountTransaction("/rpc/v0.3", "starknet_addDeployAccountTransaction")]
-    #[case::v03_starknet_addInvokeTransaction("/rpc/v0.3", "starknet_addInvokeTransaction")]
-    #[case::v03_starknet_blockHashAndNumber("/rpc/v0.3", "starknet_blockHashAndNumber")]
-    #[case::v03_starknet_blockNumber("/rpc/v0.3", "starknet_blockNumber")]
-    #[case::v03_starknet_call("/rpc/v0.3", "starknet_call")]
-    #[case::v03_starknet_chainId("/rpc/v0.3", "starknet_chainId")]
-    #[case::v03_starknet_getBlockWithTxHashes("/rpc/v0.3", "starknet_getBlockWithTxHashes")]
-    #[case::v03_starknet_getBlockWithTxs("/rpc/v0.3", "starknet_getBlockWithTxs")]
-    #[case::v03_starknet_getBlockTransactionCount("/rpc/v0.3", "starknet_getBlockTransactionCount")]
-    #[case::v03_starknet_getClass("/rpc/v0.3", "starknet_getClass")]
-    #[case::v03_starknet_getClassAt("/rpc/v0.3", "starknet_getClassAt")]
-    #[case::v03_starknet_getClassHashAt("/rpc/v0.3", "starknet_getClassHashAt")]
-    #[case::v03_starknet_getNonce("/rpc/v0.3", "starknet_getNonce")]
-    #[case::v03_starknet_getStorageAt("/rpc/v0.3", "starknet_getStorageAt")]
-    #[case::v03_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.3", "starknet_getTransactionByBlockIdAndIndex")]
-    #[case::v03_starknet_getTransactionByHash("/rpc/v0.3", "starknet_getTransactionByHash")]
-    #[case::v03_starknet_getTransactionReceipt("/rpc/v0.3", "starknet_getTransactionReceipt")]
-    #[case::v03_starknet_pendingTransactions("/rpc/v0.3", "starknet_pendingTransactions")]
-    #[case::v03_starknet_syncing("/rpc/v0.3", "starknet_syncing")]
-    #[case::v03_starknet_estimateFee("/rpc/v0.3", "starknet_estimateFee")]
-    #[case::v03_starknet_getEvents("/rpc/v0.3", "starknet_getEvents")]
-    #[case::v03_starknet_getStateUpdate("/rpc/v0.3", "starknet_getStateUpdate")]
-    #[case::v03_starknet_simulateTransaction("/rpc/v0.3", "starknet_simulateTransaction")]
-    #[case::v03_starknet_estimateMessageFee("/rpc/v0.3", "starknet_estimateMessageFee")]
-    #[case::v03_pathfinder_getProof("/rpc/v0.3", "pathfinder_getProof")]
-    #[case::v03_pathfinder_getTransactionStatus("/rpc/v0.3", "pathfinder_getTransactionStatus")]
+    #[case::v04_api  ("/rpc/v0.4", "v04/starknet_api_openrpc.json",       &[])]
+    #[case::v04_trace("/rpc/v0.4", "v04/starknet_trace_api_openrpc.json", &[])]
+    #[case::v04_write("/rpc/v0.4", "v04/starknet_write_api.json",         &[])]
+    #[case::v04_pathfinder("/rpc/v0.4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
-    #[case::v04_starknet_blockHashAndNumber("/rpc/v0.4", "starknet_blockHashAndNumber")]
-    #[case::v04_starknet_blockNumber("/rpc/v0.4", "starknet_blockNumber")]
-    #[case::v04_starknet_call("/rpc/v0.4", "starknet_call")]
-    #[case::v04_starknet_chainId("/rpc/v0.4", "starknet_chainId")]
-    #[case::v04_starknet_getBlockWithTxHashes("/rpc/v0.4", "starknet_getBlockWithTxHashes")]
-    #[case::v04_starknet_getBlockTransactionCount("/rpc/v0.4", "starknet_getBlockTransactionCount")]
-    #[case::v04_starknet_getClass("/rpc/v0.4", "starknet_getClass")]
-    #[case::v04_starknet_getClassAt("/rpc/v0.4", "starknet_getClassAt")]
-    #[case::v04_starknet_getClassHashAt("/rpc/v0.4", "starknet_getClassHashAt")]
-    #[case::v04_starknet_getNonce("/rpc/v0.4", "starknet_getNonce")]
-    #[case::v04_starknet_getStorageAt("/rpc/v0.4", "starknet_getStorageAt")]
-    #[case::v04_starknet_estimateFee("/rpc/v0.4", "starknet_estimateFee")]
-    #[case::v04_starknet_getEvents("/rpc/v0.4", "starknet_getEvents")]
-    #[case::v04_starknet_getStateUpdate("/rpc/v0.4", "starknet_getStateUpdate")]
-    #[case::v04_starknet_addDeclareTransaction("/rpc/v0.4", "starknet_addDeclareTransaction")]
-    #[case::v04_starknet_addDeployAccountTransaction("/rpc/v0.4", "starknet_addDeployAccountTransaction")]
-    #[case::v04_starknet_addInvokeTransaction("/rpc/v0.4", "starknet_addInvokeTransaction")]
-    #[case::v04_starknet_getBlockWithTxs("/rpc/v0.4", "starknet_getBlockWithTxs")]
-    #[case::v04_starknet_getTransactionReceipt("/rpc/v0.4", "starknet_getTransactionReceipt")]
-    #[case::v04_starknet_syncing("/rpc/v0.4", "starknet_syncing")]
-    #[case::v04_starknet_simulateTransactions("/rpc/v0.4", "starknet_simulateTransactions")]
-    #[case::v04_starknet_estimateMessageFee("/rpc/v0.4", "starknet_estimateMessageFee")]
-    #[case::v04_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.4", "starknet_getTransactionByBlockIdAndIndex")]
-    #[case::v04_starknet_getTransactionByHash("/rpc/v0.4", "starknet_getTransactionByHash")]
-    #[case::v04_starknet_pendingTransactions("/rpc/v0.4", "starknet_pendingTransactions")]
-    #[case::v04_pathfinder_getProof("/rpc/v0.4", "pathfinder_getProof")]
-    #[case::v04_pathfinder_getTransactionStatus("/rpc/v0.4", "pathfinder_getTransactionStatus")]
+    #[case::v03_api  ("/rpc/v0.3", "v03/starknet_api_openrpc.json",       &[])]
+    #[case::v03_trace("/rpc/v0.3", "v03/starknet_trace_api_openrpc.json", 
+        &["starknet_traceTransaction", "starknet_traceBlockTransactions"])]
+    #[case::v03_write ("/rpc/v0.3", "v03/starknet_write_api.json",         &[])]
+    #[case::v03_pathfinder("/rpc/v0.3", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
 
-    #[case::v05_starknet_addDeclareTransaction("/rpc/v0.5", "starknet_addDeclareTransaction")]
-    #[case::v05_starknet_addDeployAccountTransaction("/rpc/v0.5", "starknet_addDeployAccountTransaction")]
-    #[case::v05_starknet_addInvokeTransaction("/rpc/v0.5", "starknet_addInvokeTransaction")]
-    #[case::v05_starknet_blockHashAndNumber("/rpc/v0.5", "starknet_blockHashAndNumber")]
-    #[case::v05_starknet_blockNumber("/rpc/v0.5", "starknet_blockNumber")]
-    #[case::v05_starknet_call("/rpc/v0.5", "starknet_call")]
-    #[case::v05_starknet_estimateFee("/rpc/v0.5", "starknet_estimateFee")]
-    #[case::v05_starknet_estimateMessageFee("/rpc/v0.5", "starknet_estimateMessageFee")]
-    #[case::v05_starknet_getBlockTransactionCount("/rpc/v0.5", "starknet_getBlockTransactionCount")]
-    #[case::v05_starknet_getBlockWithTxHashes("/rpc/v0.5", "starknet_getBlockWithTxHashes")]
-    #[case::v05_starknet_getBlockWithTxs("/rpc/v0.5", "starknet_getBlockWithTxs")]
-    #[case::v05_starknet_getClass("/rpc/v0.5", "starknet_getClass")]
-    #[case::v05_starknet_getClassAt("/rpc/v0.5", "starknet_getClassAt")]
-    #[case::v05_starknet_getClassHashAt("/rpc/v0.5", "starknet_getClassHashAt")]
-    #[case::v05_starknet_getEvents("/rpc/v0.5", "starknet_getEvents")]
-    #[case::v05_starknet_getNonce("/rpc/v0.5", "starknet_getNonce")]
-    #[case::v05_starknet_getStateUpdate("/rpc/v0.5", "starknet_getStateUpdate")]
-    #[case::v05_starknet_getStorageAt("/rpc/v0.5", "starknet_getStorageAt")]
-    #[case::v05_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.5", "starknet_getTransactionByBlockIdAndIndex")]
-    #[case::v05_starknet_getTransactionByHash("/rpc/v0.5", "starknet_getTransactionByHash")]
-    #[case::v05_starknet_chainId("/rpc/v0.5", "starknet_chainId")]
-    #[case::v05_starknet_specVersion("/rpc/v0.5", "starknet_specVersion")]
-    #[case::v05_starknet_syncing("/rpc/v0.5", "starknet_syncing")]
-    #[case::v05_pathfinder_getProof("/rpc/v0.5", "pathfinder_getProof")]
-    #[case::v05_pathfinder_getTransactionStatus("/rpc/v0.5", "pathfinder_getTransactionStatus")]
-
-    #[case::pathfinder_pathfinder_version("/rpc/pathfinder/v0.1", "pathfinder_version")]
-    #[case::pathfinder_pathfinder_getProof("/rpc/pathfinder/v0.1", "pathfinder_getProof")]
-    #[case::pathfinder_pathfinder_getTransactionStatus("/rpc/pathfinder/v0.1", "pathfinder_getTransactionStatus")]
-
-    #[allow(non_snake_case)]
     #[tokio::test]
-    async fn rpc_routing(#[case] route: &'static str, #[case] method: &'static str) {
+    async fn rpc_routing(
+        #[case] route: &'static str,
+        #[case] specification: std::path::PathBuf,
+        #[case] exclude: &[&'static str],
+    ) {
+        let specification = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("doc")
+            .join("rpc")
+            .join(specification);
+        let specification = std::fs::File::open(specification).unwrap();
+        let specification = serde_json::from_reader::<_, serde_json::Value>(specification).unwrap();
+
+        let mut methods = specification["methods"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+
+        for excluded in exclude {
+            assert!(
+                methods.contains(excluded),
+                "Excluded method {excluded} was not found in the specification"
+            );
+        }
+        
+        methods.retain(|x| !exclude.contains(x));
+
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
         let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
@@ -952,24 +886,61 @@ mod tests {
         let url = format!("http://{addr}{route}");
         let client = reqwest::Client::new();
 
-        let request = json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "id": 0,
-        });
-
-        let res: serde_json::Value = client
-            .post(url.clone())
-            .json(&request)
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-
         let method_not_found = json!(-32601);
 
-        assert_ne!(dbg!(&res["error"]["code"]), dbg!(&method_not_found));
+        let mut failures = Vec::new();
+        for method in methods {
+            let request = json!({
+                "jsonrpc": "2.0",
+                "method": method,
+                "id": 0,
+            });
+
+            let res: serde_json::Value = client
+                .post(url.clone())
+                .json(&request)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+
+            if res["error"]["code"] == method_not_found {
+                failures.push(method);
+            }
+        }
+
+        if !failures.is_empty() {
+            panic!("{failures:#?} were not found");
+        }
+
+        // Check that excluded methods are indeed not present.
+        failures.clear();
+        for excluded in exclude {
+            let request = json!({
+                "jsonrpc": "2.0",
+                "method": excluded,
+                "id": 0,
+            });
+
+            let res: serde_json::Value = client
+                .post(url.clone())
+                .json(&request)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+
+            if res["error"]["code"] != method_not_found {
+                failures.push(excluded);
+            }
+        }
+
+        if !failures.is_empty() {
+            panic!("{failures:#?} were marked as excluded but are actually present");
+        }
     }
 }
