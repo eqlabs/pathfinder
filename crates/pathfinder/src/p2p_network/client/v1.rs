@@ -133,8 +133,8 @@ pub mod conv {
             Self: Sized,
         {
             Ok(Self {
-                hash: BlockHash(proto.block_hash.0),
-                parent_hash: BlockHash(proto.parent_header.0),
+                hash: BlockHash(proto.hash.0),
+                parent_hash: BlockHash(proto.parent_hash.0),
                 number: BlockNumber::new(proto.number)
                     .ok_or(anyhow::anyhow!("Invalid block number > i64::MAX"))?,
                 timestamp: BlockTimestamp::new(

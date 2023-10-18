@@ -143,7 +143,7 @@ async fn handle_p2p_event(
                         if header.number > current_height {
                             *head = Some((
                                 BlockNumber::new_or_panic(header.number),
-                                BlockHash(header.block_hash.0),
+                                BlockHash(header.hash.0),
                             ));
                             true
                         } else {

@@ -186,6 +186,18 @@ impl TryFromProtobuf<proto::common::PeerId> for PeerId {
     }
 }
 
+impl From<u64> for BlockNumberOrHash {
+    fn from(x: u64) -> Self {
+        Self::Number(x)
+    }
+}
+
+impl From<Felt> for BlockNumberOrHash {
+    fn from(x: Felt) -> Self {
+        Self::Hash(Hash(x))
+    }
+}
+
 impl ToProtobuf<proto::common::iteration::Start> for BlockNumberOrHash {
     fn to_protobuf(self) -> proto::common::iteration::Start {
         use proto::common::iteration::Start::{BlockNumber, Header};

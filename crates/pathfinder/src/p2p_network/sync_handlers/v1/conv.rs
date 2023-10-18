@@ -31,7 +31,7 @@ impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
             root: Hash(Felt::ZERO),
         };
         p2p_proto_v1::block::BlockHeader {
-            parent_header: Hash(self.parent_hash.0),
+            parent_hash: Hash(self.parent_hash.0),
             number: self.number.get(),
             time: SystemTime::UNIX_EPOCH // FIXME Dunno how to convert
                 .checked_add(Duration::from_secs(self.timestamp.get()))
@@ -45,7 +45,7 @@ impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
             events: ZERO_MERKLE,
             receipts: ZERO_MERKLE,
             // FIXME extra fields added to make sync work
-            block_hash: Hash(self.hash.0),
+            hash: Hash(self.hash.0),
             gas_price: self.gas_price.0.to_be_bytes().into(),
             starknet_version: self.starknet_version.take_inner(),
         }

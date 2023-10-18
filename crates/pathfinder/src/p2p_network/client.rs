@@ -64,7 +64,7 @@ impl BlockLru {
         locked_inner.get(&number).cloned()
     }
 
-    fn clear_if_reorg(&self, header: &p2p_proto_v0::common::BlockHeader) {
+    fn clear_if_reorg(&self, header: &p2p_proto_v1::block::BlockHeader) {
         if let Some(parent_number) = header.number.checked_sub(1) {
             let mut locked_inner = self.inner.lock().unwrap();
             if let Some(parent) = locked_inner.get(&BlockNumber::new_or_panic(parent_number)) {
@@ -73,7 +73,7 @@ impl BlockLru {
                 // There's a risk we'll falsely reorg to genesis if all other peers get disconnected
                 // just after the cache is purged
                 // TODO: consider increasing the cache and just purging the last block
-                if parent.block_hash.0 != header.parent_hash {
+                if parent.block_hash.0 != header.parent_hash.0 {
                     locked_inner.clear();
                 }
             }
@@ -168,46 +168,7 @@ impl GatewayApi for HybridClient {
 
                     let header = headers.swap_remove(0);
 
-                    block_lru.clear_if_reorg(&header);
-
-                    let mut bodies = p2p_client
-                        .block_bodies(BlockHash(header.hash), 1)
-                        .await
-                        .ok_or_else(|| {
-                            block_not_found(format!("No peers with bodies for block {n}"))
-                        })?;
-
-                    if bodies.len() != 1 {
-                        return Err(block_not_found(format!(
-                            "Bodies len for block {n} is {}, expected 1",
-                            headers.len()
-                        )));
-                    }
-
-                    let body = bodies.swap_remove(0);
-                    let (transactions, transaction_receipts) =
-                        v0::conv::body::try_from_p2p(body).map_err(block_not_found)?;
-                    let header = v0::conv::header::try_from_p2p(header).map_err(block_not_found)?;
-
-                    let block = reply::Block {
-                        block_hash: header.hash,
-                        block_number: header.number,
-                        gas_price: Some(header.gas_price),
-                        parent_block_hash: header.parent_hash,
-                        sequencer_address: Some(header.sequencer_address),
-                        state_commitment: header.state_commitment,
-                        // FIXME
-                        status: starknet_gateway_types::reply::Status::AcceptedOnL2,
-                        timestamp: header.timestamp,
-                        transaction_receipts,
-                        transactions,
-                        starknet_version: header.starknet_version,
-                    };
-
-                    block_lru.insert(block.clone());
-                    tracing::trace!(number=%n, "HybridClient: updating cached block");
-
-                    Ok(block.into())
+                    todo!("use v1");
                 }
                 BlockId::Latest => {
                     unreachable!("GatewayApi.head() is used in sync and sync status instead")

@@ -14,7 +14,8 @@ pub struct Signatures {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::block::BlockHeader")]
 pub struct BlockHeader {
-    pub parent_header: Hash,
+    #[rename(parent_header)]
+    pub parent_hash: Hash,
     pub number: u64,
     pub time: SystemTime,
     pub sequencer_address: Address,
@@ -25,7 +26,7 @@ pub struct BlockHeader {
     pub events: Merkle,
     pub receipts: Merkle,
     // FIXME extra fields added to make sync work
-    pub block_hash: Hash,
+    pub hash: Hash,
     pub gas_price: Vec<u8>,
     pub starknet_version: String,
 }

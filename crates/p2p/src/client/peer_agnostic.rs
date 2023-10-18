@@ -122,14 +122,14 @@ impl Client {
 
     pub async fn block_bodies(
         &self,
-        start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
-        num_blocks: usize,           // FIXME, use range?
+        start_block_hash: BlockHash,
+        num_blocks: usize,
     ) -> Option<Vec<p2p_proto_v0::common::BlockBody>> {
         if num_blocks == 0 {
             return Some(Vec::new());
         }
 
-        let count: u64 = num_blocks.try_into().ok()?;
+        let limit: u64 = num_blocks.try_into().ok()?;
 
         for peer in self
             .get_update_peers_with_sync_capability(protocol::Bodies::NAME)

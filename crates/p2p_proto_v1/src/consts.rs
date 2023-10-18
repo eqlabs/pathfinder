@@ -119,7 +119,7 @@ mod tests {
                 transactions: Some(Merkle::full()),
                 events: Some(Merkle::full()),
                 receipts: Some(Merkle::full()),
-                block_hash: Some(Hash::full()),
+                hash: Some(Hash::full()),
                 gas_price: vec![0xFF; 32],
                 starknet_version: "999.999.999".into(),
             })),
