@@ -10,40 +10,45 @@ pub struct GetTransactionStatusInput {
     transaction_hash: TransactionHash,
 }
 
-#[derive(serde::Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 #[skip_serializing_none]
-pub struct GetTransactionStatusOutput {
-    finality_status: FinalityStatus,
-    /// Not present for received or rejected transactions.
-    execution_status: Option<ExecutionStatus>,
-}
-
-#[derive(Copy, Clone, Debug, serde::Serialize, PartialEq, Eq)]
-pub enum FinalityStatus {
-    #[serde(rename = "RECEIVED")]
+pub enum GetTransactionStatusOutput {
     Received,
-    #[serde(rename = "REJECTED")]
     Rejected,
-    #[serde(rename = "ACCEPTED_ON_L1")]
-    AcceptedOnL1,
-    #[serde(rename = "ACCEPTED_ON_L2")]
-    AcceptedOnL2,
+    AcceptedOnL1(ExecutionStatus),
+    AcceptedOnL2(ExecutionStatus),
 }
 
-impl TryFrom<starknet_gateway_types::reply::transaction_status::FinalityStatus> for FinalityStatus {
-    type Error = anyhow::Error;
+impl serde::Serialize for GetTransactionStatusOutput {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
 
-    fn try_from(
-        value: starknet_gateway_types::reply::transaction_status::FinalityStatus,
-    ) -> Result<Self, Self::Error> {
-        use starknet_gateway_types::reply::transaction_status::FinalityStatus;
-        match value {
-            FinalityStatus::NotReceived => {
-                Err(anyhow::anyhow!("Transaction not received by the gateway"))
+        match self {
+            GetTransactionStatusOutput::Received => {
+                let mut s = serializer.serialize_struct("GetTransactionStatusOutput", 1)?;
+                s.serialize_field("finality_status", "RECEIVED")?;
+                s.end()
             }
-            FinalityStatus::Received => Ok(Self::Received),
-            FinalityStatus::AcceptedOnL1 => Ok(Self::AcceptedOnL1),
-            FinalityStatus::AcceptedOnL2 => Ok(Self::AcceptedOnL2),
+            GetTransactionStatusOutput::Rejected => {
+                let mut s = serializer.serialize_struct("GetTransactionStatusOutput", 1)?;
+                s.serialize_field("finality_status", "REJECTED")?;
+                s.end()
+            }
+            GetTransactionStatusOutput::AcceptedOnL1(execution_status) => {
+                let mut s = serializer.serialize_struct("GetTransactionStatusOutput", 2)?;
+                s.serialize_field("finality_status", "ACCEPTED_ON_L1")?;
+                s.serialize_field("execution_status", execution_status)?;
+                s.end()
+            }
+            GetTransactionStatusOutput::AcceptedOnL2(execution_status) => {
+                let mut s = serializer.serialize_struct("GetTransactionStatusOutput", 2)?;
+                s.serialize_field("finality_status", "ACCEPTED_ON_L2")?;
+                s.serialize_field("execution_status", execution_status)?;
+                s.end()
+            }
         }
     }
 }
@@ -102,15 +107,10 @@ pub async fn get_transaction_status(
             .block_is_l1_accepted(block_hash.into())
             .context("Quering block's status")?;
 
-        let finality_status = if l1_accepted {
-            FinalityStatus::AcceptedOnL1
+        Ok(Some(if l1_accepted {
+            GetTransactionStatusOutput::AcceptedOnL1(receipt.execution_status.into())
         } else {
-            FinalityStatus::AcceptedOnL2
-        };
-
-        Ok(Some(GetTransactionStatusOutput {
-            finality_status,
-            execution_status: Some(receipt.execution_status.into()),
+            GetTransactionStatusOutput::AcceptedOnL2(receipt.execution_status.into())
         }))
     })
     .await
@@ -132,22 +132,13 @@ pub async fn get_transaction_status(
             use starknet_gateway_types::reply::transaction_status::ExecutionStatus as GatewayExecutionStatus;
 
             match (tx.finality_status, tx.execution_status) {
-                (_, GatewayExecutionStatus::Rejected) => Ok(GetTransactionStatusOutput {
-                    finality_status: FinalityStatus::Rejected,
-                    execution_status: None,
-                }),
-                (GatewayFinalityStatus::Received, _) => Ok(GetTransactionStatusOutput {
-                    finality_status: FinalityStatus::Received,
-                    execution_status: None,
-                }),
-                (finality_status, GatewayExecutionStatus::Reverted) => Ok(GetTransactionStatusOutput {
-                    finality_status: finality_status.try_into()?,
-                    execution_status: Some(ExecutionStatus::Reverted),
-                }),
-                (finality_status, GatewayExecutionStatus::Succeeded) => Ok(GetTransactionStatusOutput {
-                    finality_status: finality_status.try_into()?,
-                    execution_status: Some(ExecutionStatus::Succeeded),
-                }),
+                (GatewayFinalityStatus::NotReceived, _) => Err(anyhow::anyhow!("Transaction not received")),
+                (_, GatewayExecutionStatus::Rejected) => Ok(GetTransactionStatusOutput::Rejected),
+                (GatewayFinalityStatus::Received, _) => Ok(GetTransactionStatusOutput::Received),
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => Ok(GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Reverted)),
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => Ok(GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Succeeded)),
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => Ok(GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted)),
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => Ok(GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded)),
             }
         })
         .map_err(|_| GetTransactionStatusError::TxnHashNotFoundV04)
@@ -163,10 +154,9 @@ async fn pending_status(
         .map(|block| {
             block.transaction_receipts.iter().find_map(|rx| {
                 if &rx.transaction_hash == tx_hash {
-                    Some(GetTransactionStatusOutput {
-                        finality_status: FinalityStatus::AcceptedOnL2,
-                        execution_status: Some(rx.execution_status.clone().into()),
-                    })
+                    Some(GetTransactionStatusOutput::AcceptedOnL2(
+                        rx.execution_status.clone().into(),
+                    ))
                 } else {
                     None
                 }
@@ -182,6 +172,28 @@ mod tests {
 
     use super::*;
 
+    #[rstest::rstest]
+    #[case::rejected(
+        GetTransactionStatusOutput::Rejected,
+        r#"{"finality_status":"REJECTED"}"#
+    )]
+    #[case::reverted(
+        GetTransactionStatusOutput::Received,
+        r#"{"finality_status":"RECEIVED"}"#
+    )]
+    #[case::accepted_on_l1_succeeded(
+        GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Succeeded),
+        r#"{"finality_status":"ACCEPTED_ON_L1","execution_status":"SUCCEEDED"}"#
+    )]
+    #[case::accepted_on_l2_reverted(
+        GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted),
+        r#"{"finality_status":"ACCEPTED_ON_L2","execution_status":"REVERTED"}"#
+    )]
+    fn output_serialization(#[case] output: GetTransactionStatusOutput, #[case] expected: &str) {
+        let json = serde_json::to_string(&output).unwrap();
+        assert_eq!(json, expected);
+    }
+
     #[tokio::test]
     async fn l1_accepted() {
         let context = RpcContext::for_tests();
@@ -194,10 +206,7 @@ mod tests {
 
         assert_eq!(
             status,
-            GetTransactionStatusOutput {
-                finality_status: FinalityStatus::AcceptedOnL1,
-                execution_status: Some(ExecutionStatus::Succeeded)
-            }
+            GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Succeeded)
         );
     }
 
@@ -213,10 +222,7 @@ mod tests {
 
         assert_eq!(
             status,
-            GetTransactionStatusOutput {
-                finality_status: FinalityStatus::AcceptedOnL2,
-                execution_status: Some(ExecutionStatus::Succeeded)
-            }
+            GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded)
         );
     }
 
@@ -231,10 +237,7 @@ mod tests {
 
         assert_eq!(
             status,
-            GetTransactionStatusOutput {
-                finality_status: FinalityStatus::AcceptedOnL2,
-                execution_status: Some(ExecutionStatus::Succeeded)
-            }
+            GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded)
         );
     }
 
@@ -249,13 +252,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let status = get_transaction_status(context, input).await.unwrap();
 
-        assert_eq!(
-            status,
-            GetTransactionStatusOutput {
-                finality_status: FinalityStatus::Rejected,
-                execution_status: None,
-            }
-        );
+        assert_eq!(status, GetTransactionStatusOutput::Rejected);
     }
 
     #[tokio::test]
@@ -269,10 +266,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             status,
-            GetTransactionStatusOutput {
-                finality_status: FinalityStatus::AcceptedOnL2,
-                execution_status: Some(ExecutionStatus::Reverted),
-            }
+            GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted)
         );
 
         let input = GetTransactionStatusInput {
@@ -281,10 +275,7 @@ mod tests {
         let status = get_transaction_status(context, input).await.unwrap();
         assert_eq!(
             status,
-            GetTransactionStatusOutput {
-                finality_status: FinalityStatus::AcceptedOnL2,
-                execution_status: Some(ExecutionStatus::Reverted),
-            }
+            GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted)
         );
     }
 }
