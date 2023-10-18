@@ -1,5 +1,6 @@
 use blockifier::{
     execution::errors::{EntryPointExecutionError, PreExecutionError},
+    state::errors::StateError,
     transaction::errors::TransactionExecutionError,
 };
 
@@ -42,6 +43,12 @@ impl From<EntryPointExecutionError> for CallError {
             ) => Self::ContractNotFound,
             _ => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
         }
+    }
+}
+
+impl From<StateError> for CallError {
+    fn from(e: StateError) -> Self {
+        Self::Internal(anyhow::anyhow!("Internal state error: {}", e))
     }
 }
 
