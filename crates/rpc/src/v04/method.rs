@@ -7,7 +7,7 @@ mod get_transaction_by_block_and_index;
 mod get_transaction_by_hash;
 mod get_transaction_receipt;
 mod pending_transactions;
-mod simulate_transactions;
+pub(crate) mod simulate_transactions;
 mod syncing;
 mod trace_block_transactions;
 mod trace_transaction;

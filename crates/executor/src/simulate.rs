@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use blockifier::{
     state::{cached_state::CachedState, errors::StateError, state_api::State},
     transaction::transaction_execution::Transaction,
@@ -210,7 +212,7 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
             });
         } else {
             replaced_classes.push(ReplacedClass {
-                address: ContractAddress::new_or_panic(address.0.key().into_felt()),
+                contract_address: ContractAddress::new_or_panic(address.0.key().into_felt()),
                 class_hash: ClassHash(class_hash.0.into_felt()),
             });
         }
@@ -221,21 +223,28 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
             .storage_updates
             .into_iter()
             .map(|(address, diffs)| {
+                // Output the storage updates in key order
+                let diffs: BTreeMap<StorageAddress, StorageValue> = diffs
+                    .into_iter()
+                    .map(|(key, value)| {
+                        (
+                            StorageAddress::new_or_panic(key.0.key().into_felt()),
+                            StorageValue(value.into_felt()),
+                        )
+                    })
+                    .collect();
                 (
                     ContractAddress::new_or_panic(address.0.key().into_felt()),
                     diffs
                         .into_iter()
-                        .map(|(key, value)| StorageDiff {
-                            key: StorageAddress::new_or_panic(key.0.key().into_felt()),
-                            value: StorageValue(value.into_felt()),
-                        })
+                        .map(|(key, value)| StorageDiff { key, value })
                         .collect(),
                 )
             })
             .collect(),
         deployed_contracts,
         // This info is not present in the state diff, so we need to pass it separately.
-        old_declared_contracts: old_declared_contract.into_iter().collect(),
+        deprecated_declared_classes: old_declared_contract.into_iter().collect(),
         declared_classes: state_diff
             .class_hash_to_compiled_class_hash
             .into_iter()

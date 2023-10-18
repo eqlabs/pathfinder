@@ -98,6 +98,7 @@ pub mod dto {
 
     use crate::felt::RpcFelt;
     use crate::v02::method::call::FunctionCall;
+    use crate::v03::method::get_state_update::types::StateDiff;
 
     use super::*;
 
@@ -173,11 +174,11 @@ pub mod dto {
         #[serde(default)]
         pub entry_point_type: EntryPointType,
         #[serde(default)]
-        pub events: Vec<Event>,
+        pub events: Vec<OrderedEvent>,
         #[serde(flatten)]
         pub function_call: FunctionCall,
         #[serde(default)]
-        pub messages: Vec<MsgToL1>,
+        pub messages: Vec<OrderedMsgToL1>,
         #[serde(default)]
         #[serde_as(as = "Vec<RpcFelt>")]
         pub result: Vec<Felt>,
@@ -226,7 +227,8 @@ pub mod dto {
 
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
-    pub struct MsgToL1 {
+    pub struct OrderedMsgToL1 {
+        pub order: usize,
         #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<Felt>,
         #[serde_as(as = "RpcFelt")]
@@ -235,9 +237,10 @@ pub mod dto {
         pub from_address: Felt,
     }
 
-    impl From<pathfinder_executor::types::MsgToL1> for MsgToL1 {
+    impl From<pathfinder_executor::types::MsgToL1> for OrderedMsgToL1 {
         fn from(value: pathfinder_executor::types::MsgToL1) -> Self {
             Self {
+                order: value.order,
                 payload: value.payload,
                 to_address: value.to_address,
                 from_address: value.from_address,
@@ -247,16 +250,18 @@ pub mod dto {
 
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
-    pub struct Event {
+    pub struct OrderedEvent {
+        pub order: i64,
         #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<Felt>,
         #[serde_as(as = "Vec<RpcFelt>")]
         pub keys: Vec<Felt>,
     }
 
-    impl From<pathfinder_executor::types::Event> for Event {
+    impl From<pathfinder_executor::types::Event> for OrderedEvent {
         fn from(value: pathfinder_executor::types::Event) -> Self {
             Self {
+                order: value.order,
                 data: value.data,
                 keys: value.keys,
             }
@@ -291,6 +296,7 @@ pub mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
+        pub state_diff: StateDiff,
     }
 
     impl From<pathfinder_executor::types::DeclareTransactionTrace> for DeclareTxnTrace {
@@ -298,6 +304,7 @@ pub mod dto {
             Self {
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
+                state_diff: trace.state_diff.into(),
             }
         }
     }
@@ -311,6 +318,7 @@ pub mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
+        pub state_diff: StateDiff,
     }
 
     impl From<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
@@ -319,6 +327,7 @@ pub mod dto {
                 constructor_invocation: trace.constructor_invocation.map(Into::into),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
+                state_diff: trace.state_diff.into(),
             }
         }
     }
@@ -343,6 +352,7 @@ pub mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
+        pub state_diff: StateDiff,
     }
 
     impl From<pathfinder_executor::types::InvokeTransactionTrace> for InvokeTxnTrace {
@@ -361,6 +371,7 @@ pub mod dto {
                     ) => ExecuteInvocation::RevertedReason { reverted_reason },
                 },
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                state_diff: trace.state_diff.into(),
             }
         }
     }
@@ -403,15 +414,12 @@ pub mod dto {
 pub(crate) mod tests {
     use crate::v02::method::call::FunctionCall;
     use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
-        BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1,
+        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
     };
     use crate::v02::types::ContractClass;
-    use pathfinder_common::{
-        felt, BlockHeader, ContractAddress, StorageAddress, StorageValue, TransactionVersion,
-    };
-    use pathfinder_common::{macro_prelude::*, Fee};
-    use pathfinder_storage::Storage;
+    use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
+    pub(crate) use crate::v04::method::simulate_transactions::tests::setup_storage;
+    use pathfinder_common::{felt, macro_prelude::*, ClassHash, StorageValue, TransactionVersion};
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
     };
@@ -492,6 +500,24 @@ pub(crate) mod tests {
                                 },
                             ),
                             fee_transfer_invocation: None,
+                            state_diff: StateDiff {
+                                storage_diffs: vec![],
+                                deprecated_declared_classes: vec![],
+                                declared_classes: vec![],
+                                deployed_contracts: vec![
+                                    DeployedContract {
+                                        address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                        class_hash: DUMMY_ACCOUNT_CLASS_HASH
+                                    }
+                                ],
+                                replaced_classes: vec![],
+                                nonces: vec![
+                                    Nonce {
+                                        contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                        nonce: contract_nonce!("0x1")
+                                    }
+                                ]
+                            },
                         },
                     ),
             }]
@@ -501,101 +527,154 @@ pub(crate) mod tests {
         pretty_assertions::assert_eq!(result.0, expected);
     }
 
-    pub(crate) mod fixtures {
-        use pathfinder_common::{CasmHash, ClassHash, ContractAddress};
+    #[tokio::test]
+    async fn declare_cairo_v0_class() {
+        pub const CAIRO0_DEFINITION: &[u8] =
+            include_bytes!("../../../fixtures/contracts/cairo0_test.json");
 
+        pub const CAIRO0_HASH: ClassHash =
+            class_hash!("02c52e7084728572ea940b4df708a2684677c19fa6296de2ea7ba5327e3a84ef");
+
+        let contract_class = ContractClass::from_definition_bytes(CAIRO0_DEFINITION)
+            .unwrap()
+            .as_cairo()
+            .unwrap();
+
+        assert_eq!(contract_class.class_hash().unwrap().hash(), CAIRO0_HASH);
+
+        let (storage, last_block_header, account_contract_address, _, _) = setup_storage().await;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let declare = BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
+                version: TransactionVersion::ONE_WITH_QUERY_VERSION,
+                max_fee: fee!("0x10000"),
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                contract_class,
+                sender_address: account_contract_address,
+            },
+        ));
+
+        let input = SimulateTrasactionInput {
+            block_id: last_block_header.number.into(),
+            transactions: vec![declare],
+            simulation_flags: dto::SimulationFlags(vec![]),
+        };
+
+        let result = simulate_transactions(context, input).await.unwrap();
+
+        const DECLARE_GAS_CONSUMED: u64 = 2476;
+        use super::dto::*;
+        use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
+
+        pretty_assertions::assert_eq!(
+            result,
+            SimulateTransactionOutput(vec![SimulatedTransaction {
+                fee_estimation: FeeEstimate {
+                    gas_consumed: DECLARE_GAS_CONSUMED.into(),
+                    gas_price: 1.into(),
+                    overall_fee: DECLARE_GAS_CONSUMED.into(),
+                },
+                transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
+                    fee_transfer_invocation: Some(
+                        FunctionInvocation {
+                            call_type: CallType::Call,
+                            caller_address: *account_contract_address.get(),
+                            calls: vec![],
+                            class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
+                            entry_point_type: EntryPointType::External,
+                            events: vec![OrderedEvent {
+                                order: 0,
+                                data: vec![
+                                    *account_contract_address.get(),
+                                    last_block_header.sequencer_address.0,
+                                    Felt::from_u64(DECLARE_GAS_CONSUMED),
+                                    felt!("0x0"),
+                                ],
+                                keys: vec![felt!(
+                                    "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
+                                )],
+                            }],
+                            function_call: FunctionCall {
+                                calldata: vec![
+                                    CallParam(last_block_header.sequencer_address.0),
+                                    CallParam(Felt::from_u64(DECLARE_GAS_CONSUMED)),
+                                    call_param!("0x0"),
+                                ],
+                                contract_address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                                entry_point_selector: EntryPoint::hashed(b"transfer"),
+                            },
+                            messages: vec![],
+                            result: vec![felt!("0x1")],
+                        }
+                    ),
+                    validate_invocation: Some(
+                        FunctionInvocation {
+                            call_type: CallType::Call,
+                            caller_address: felt!("0x0"),
+                            calls: vec![],
+                            class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                            entry_point_type: EntryPointType::External,
+                            events: vec![],
+                            function_call: FunctionCall {
+                                contract_address: account_contract_address,
+                                entry_point_selector: EntryPoint::hashed(b"__validate_declare__"),
+                                calldata: vec![CallParam(CAIRO0_HASH.0)],
+                            },
+                            messages: vec![],
+                            result: vec![],
+                        }
+                    ),
+                    state_diff: StateDiff {
+                        storage_diffs: vec![StorageDiff {
+                            address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                            storage_entries: vec![
+                                StorageEntry {
+                                    key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff654")
+                                },
+                                StorageEntry {
+                                    key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                                    value: StorageValue(DECLARE_GAS_CONSUMED.into()),
+                                },
+                            ],
+                        }],
+                        deprecated_declared_classes: vec![
+                            CAIRO0_HASH
+                        ],
+                        declared_classes: vec![],
+                        deployed_contracts: vec![],
+                        replaced_classes: vec![],
+                        nonces: vec![Nonce {
+                            contract_address: account_contract_address,
+                            nonce: contract_nonce!("0x1"),
+                        }],
+                    }
+                }),
+            }])
+        );
+    }
+
+    pub(crate) mod fixtures {
         use super::*;
 
-        pub const SIERRA_DEFINITION: &[u8] =
-            include_bytes!("../../../fixtures/contracts/storage_access.json");
-        pub const SIERRA_HASH: ClassHash =
-            class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
-        pub const CASM_HASH: CasmHash =
-            casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
-        pub const CASM_DEFINITION: &[u8] =
-            include_bytes!("../../../fixtures/contracts/storage_access.casm");
-        const MAX_FEE: Fee = Fee(Felt::from_u64(10_000_000));
-        pub const DEPLOYED_CONTRACT_ADDRESS: ContractAddress =
-            contract_address!("0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7");
-        pub const UNIVERSAL_DEPLOYER_CLASS_HASH: ClassHash =
-            class_hash!("0x06f38fb91ddbf325a0625533576bb6f6eafd9341868a9ec3faa4b01ce6c4f4dc");
+        pub use crate::v04::method::simulate_transactions::tests::fixtures::{
+            CASM_DEFINITION, CASM_HASH, DEPLOYED_CONTRACT_ADDRESS, SIERRA_DEFINITION, SIERRA_HASH,
+            UNIVERSAL_DEPLOYER_CLASS_HASH,
+        };
 
+        // The input transactions are the same as in v04.
         pub mod input {
-            use super::*;
-
-            pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
-                let contract_class = ContractClass::from_definition_bytes(SIERRA_DEFINITION)
-                    .unwrap()
-                    .as_sierra()
-                    .unwrap();
-
-                assert_eq!(contract_class.class_hash().unwrap().hash(), SIERRA_HASH);
-
-                BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(
-                    BroadcastedDeclareTransactionV2 {
-                        version: TransactionVersion::TWO,
-                        max_fee: MAX_FEE,
-                        signature: vec![],
-                        nonce: transaction_nonce!("0x0"),
-                        contract_class,
-                        sender_address: account_contract_address,
-                        compiled_class_hash: CASM_HASH,
-                    },
-                ))
-            }
-
-            pub fn universal_deployer(
-                account_contract_address: ContractAddress,
-                universal_deployer_address: ContractAddress,
-            ) -> BroadcastedTransaction {
-                BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
-                    BroadcastedInvokeTransactionV1 {
-                        nonce: transaction_nonce!("0x1"),
-                        version: TransactionVersion::ONE,
-                        max_fee: MAX_FEE,
-                        signature: vec![],
-                        sender_address: account_contract_address,
-                        calldata: vec![
-                            CallParam(*universal_deployer_address.get()),
-                            // Entry point selector for the called contract, i.e. AccountCallArray::selector
-                            CallParam(EntryPoint::hashed(b"deployContract").0),
-                            // Length of the call data for the called contract, i.e. AccountCallArray::data_len
-                            call_param!("4"),
-                            // classHash
-                            CallParam(SIERRA_HASH.0),
-                            // salt
-                            call_param!("0x0"),
-                            // unique
-                            call_param!("0x0"),
-                            // calldata_len
-                            call_param!("0x0"),
-                        ],
-                    },
-                ))
-            }
-
-            pub fn invoke(account_contract_address: ContractAddress) -> BroadcastedTransaction {
-                BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
-                    BroadcastedInvokeTransactionV1 {
-                        nonce: transaction_nonce!("0x2"),
-                        version: TransactionVersion::ONE,
-                        max_fee: MAX_FEE,
-                        signature: vec![],
-                        sender_address: account_contract_address,
-                        calldata: vec![
-                            CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
-                            // Entry point selector for the called contract, i.e. AccountCallArray::selector
-                            CallParam(EntryPoint::hashed(b"get_data").0),
-                            // Length of the call data for the called contract, i.e. AccountCallArray::data_len
-                            call_param!("0"),
-                        ],
-                    },
-                ))
-            }
+            pub use crate::v04::method::simulate_transactions::tests::fixtures::input::*;
         }
 
+        // We have a "duplicate" set of expected outputs here because of the changes in the output format.
         pub mod expected_output {
-            use pathfinder_common::{BlockHeader, ContractAddress, StorageValue};
+            use crate::v03::method::get_state_update::types::{
+                DeclaredSierraClass, StorageDiff, StorageEntry,
+            };
+            use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
 
             use super::dto::*;
             use super::*;
@@ -618,6 +697,10 @@ pub(crate) mod tests {
                             last_block_header,
                         )),
                         validate_invocation: Some(declare_validate(account_contract_address)),
+                        state_diff: declare_state_diff(
+                            account_contract_address,
+                            declare_fee_transfer_storage_diffs(),
+                        ),
                     }),
                 }
             }
@@ -634,6 +717,7 @@ pub(crate) mod tests {
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
                         fee_transfer_invocation: None,
                         validate_invocation: Some(declare_validate(account_contract_address)),
+                        state_diff: declare_state_diff(account_contract_address, vec![]),
                     }),
                 }
             }
@@ -654,8 +738,48 @@ pub(crate) mod tests {
                             last_block_header,
                         )),
                         validate_invocation: None,
+                        state_diff: declare_state_diff(
+                            account_contract_address,
+                            declare_fee_transfer_storage_diffs(),
+                        ),
                     }),
                 }
+            }
+
+            fn declare_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> StateDiff {
+                StateDiff {
+                    storage_diffs,
+                    deprecated_declared_classes: vec![],
+                    declared_classes: vec![DeclaredSierraClass {
+                        class_hash: SierraHash(SIERRA_HASH.0),
+                        compiled_class_hash: CASM_HASH,
+                    }],
+                    deployed_contracts: vec![],
+                    replaced_classes: vec![],
+                    nonces: vec![Nonce {
+                        contract_address: account_contract_address,
+                        nonce: contract_nonce!("0x1"),
+                    }],
+                }
+            }
+
+            fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff18c")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: StorageValue(DECLARE_GAS_CONSUMED.into()),
+                        },
+                    ],
+                }]
             }
 
             fn declare_fee_transfer(
@@ -668,7 +792,8 @@ pub(crate) mod tests {
                     calls: vec![],
                     class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
                     entry_point_type: EntryPointType::External,
-                    events: vec![Event {
+                    events: vec![OrderedEvent {
+                        order: 0,
                         data: vec![
                             *account_contract_address.get(),
                             last_block_header.sequencer_address.0,
@@ -739,6 +864,10 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
+                        state_diff: universal_deployer_state_diff(
+                            account_contract_address,
+                            universal_deployer_fee_transfer_storage_diffs(),
+                        ),
                     }),
                 }
             }
@@ -765,6 +894,7 @@ pub(crate) mod tests {
                             ),
                         ),
                         fee_transfer_invocation: None,
+                        state_diff: universal_deployer_state_diff(account_contract_address, vec![]),
                     }),
                 }
             }
@@ -792,8 +922,48 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
+                        state_diff: universal_deployer_state_diff(
+                            account_contract_address,
+                            universal_deployer_fee_transfer_storage_diffs(),
+                        ),
                     }),
                 }
+            }
+
+            fn universal_deployer_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> StateDiff {
+                StateDiff {
+                    storage_diffs,
+                    deprecated_declared_classes: vec![],
+                    declared_classes: vec![],
+                    deployed_contracts: vec![DeployedContract {
+                        address: DEPLOYED_CONTRACT_ADDRESS,
+                        class_hash: SIERRA_HASH,
+                    }],
+                    replaced_classes: vec![],
+                    nonces: vec![Nonce {
+                        contract_address: account_contract_address,
+                        nonce: contract_nonce!("0x2"),
+                    }],
+                }
+            }
+
+            fn universal_deployer_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe09b")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: StorageValue((DECLARE_GAS_CONSUMED + UNIVERSAL_DEPLOYER_GAS_CONSUMED).into()),
+                        },
+                    ],
+                }]
             }
 
             fn universal_deployer_validate(
@@ -861,7 +1031,8 @@ pub(crate) mod tests {
                             class_hash: Some(UNIVERSAL_DEPLOYER_CLASS_HASH.0),
                             entry_point_type: EntryPointType::External,
                             events: vec![
-                                Event {
+                                OrderedEvent {
+                                    order: 0,
                                     data: vec![
                                         *DEPLOYED_CONTRACT_ADDRESS.get(),
                                         *account_contract_address.get(),
@@ -932,7 +1103,8 @@ pub(crate) mod tests {
                     calls: vec![],
                     class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
                     entry_point_type: EntryPointType::External,
-                    events: vec![Event {
+                    events: vec![OrderedEvent {
+                        order: 0,
                         data: vec![
                             *account_contract_address.get(),
                             last_block_header.sequencer_address.0,
@@ -981,6 +1153,10 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
+                        state_diff: invoke_state_diff(
+                            account_contract_address,
+                            invoke_fee_transfer_storage_diffs(),
+                        ),
                     }),
                 }
             }
@@ -1002,6 +1178,7 @@ pub(crate) mod tests {
                             test_storage_value,
                         )),
                         fee_transfer_invocation: None,
+                        state_diff: invoke_state_diff(account_contract_address, vec![]),
                     }),
                 }
             }
@@ -1027,8 +1204,45 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
+                        state_diff: invoke_state_diff(
+                            account_contract_address,
+                            invoke_fee_transfer_storage_diffs(),
+                        ),
                     }),
                 }
+            }
+
+            fn invoke_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> StateDiff {
+                StateDiff {
+                    storage_diffs,
+                    deprecated_declared_classes: vec![],
+                    declared_classes: vec![],
+                    deployed_contracts: vec![],
+                    replaced_classes: vec![],
+                    nonces: vec![Nonce {
+                        contract_address: account_contract_address,
+                        nonce: contract_nonce!("0x3"),
+                    }],
+                }
+            }
+
+            fn invoke_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffd6e0")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: StorageValue((DECLARE_GAS_CONSUMED + UNIVERSAL_DEPLOYER_GAS_CONSUMED + INVOKE_GAS_CONSUMED).into()),
+                        },
+                    ],
+                }]
             }
 
             fn invoke_validate(account_contract_address: ContractAddress) -> FunctionInvocation {
@@ -1104,7 +1318,8 @@ pub(crate) mod tests {
                     calls: vec![],
                     class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
                     entry_point_type: EntryPointType::External,
-                    events: vec![Event {
+                    events: vec![OrderedEvent {
+                        order: 0,
                         data: vec![
                             *account_contract_address.get(),
                             last_block_header.sequencer_address.0,
@@ -1129,36 +1344,6 @@ pub(crate) mod tests {
                 }
             }
         }
-    }
-
-    pub(crate) async fn setup_storage() -> (
-        Storage,
-        BlockHeader,
-        ContractAddress,
-        ContractAddress,
-        StorageValue,
-    ) {
-        let test_storage_key = StorageAddress::from_name(b"my_storage_var");
-        let test_storage_value = storage_value!("0x09");
-
-        // set test storage variable
-        let (storage, last_block_header, account_contract_address, universal_deployer_address) =
-            crate::test_setup::test_storage(|state_update| {
-                state_update.with_storage_update(
-                    fixtures::DEPLOYED_CONTRACT_ADDRESS,
-                    test_storage_key,
-                    test_storage_value,
-                )
-            })
-            .await;
-
-        (
-            storage,
-            last_block_header,
-            account_contract_address,
-            universal_deployer_address,
-            test_storage_value,
-        )
     }
 
     #[test_log::test(tokio::test)]

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use blockifier::execution::call_info::OrderedL2ToL1Message;
 use pathfinder_common::{
@@ -100,6 +100,7 @@ pub struct FunctionInvocation {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct MsgToL1 {
+    pub order: usize,
     pub payload: Vec<Felt>,
     pub to_address: Felt,
     pub from_address: Felt,
@@ -107,11 +108,11 @@ pub struct MsgToL1 {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct StateDiff {
-    pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
+    pub storage_diffs: BTreeMap<ContractAddress, Vec<StorageDiff>>,
     pub deployed_contracts: Vec<DeployedContract>,
-    pub old_declared_contracts: HashSet<ClassHash>,
+    pub deprecated_declared_classes: HashSet<ClassHash>,
     pub declared_classes: Vec<DeclaredSierraClass>,
-    pub nonces: HashMap<ContractAddress, ContractNonce>,
+    pub nonces: BTreeMap<ContractAddress, ContractNonce>,
     pub replaced_classes: Vec<ReplacedClass>,
 }
 
@@ -135,7 +136,7 @@ pub struct DeclaredSierraClass {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct ReplacedClass {
-    pub address: ContractAddress,
+    pub contract_address: ContractAddress,
     pub class_hash: ClassHash,
 }
 
@@ -248,6 +249,7 @@ fn ordered_l2_to_l1_messages(
             messages.insert(
                 order,
                 MsgToL1 {
+                    order: *order,
                     payload: message.payload.0.iter().map(IntoFelt::into_felt).collect(),
                     to_address: Felt::from_be_slice(message.to_address.0.as_bytes())
                         .expect("Ethereum address should fit into felt"),
