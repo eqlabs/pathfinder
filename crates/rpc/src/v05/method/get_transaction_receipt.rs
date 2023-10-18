@@ -86,10 +86,12 @@ pub mod types {
         BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
         L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash,
     };
-    use pathfinder_serde::EthereumAddressAsHexStr;
+    use pathfinder_serde::{u64_as_hex_str, EthereumAddressAsHexStr};
     use serde::Serialize;
     use serde_with::serde_as;
-    use starknet_gateway_types::reply::transaction::{L1ToL2Message, L2ToL1Message};
+    use starknet_gateway_types::reply::transaction::{
+        BuiltinCounters, ExecutionResources, L1ToL2Message, L2ToL1Message,
+    };
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -141,6 +143,7 @@ pub mod types {
         pub events: Vec<Event>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub revert_reason: Option<String>,
+        pub execution_resources: ExecutionResourcesProperties,
         pub execution_status: ExecutionStatus,
         pub finality_status: FinalityStatus,
     }
@@ -156,7 +159,69 @@ pub mod types {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub revert_reason: Option<String>,
         pub execution_status: ExecutionStatus,
+        pub execution_resources: ExecutionResourcesProperties,
         pub finality_status: FinalityStatus,
+    }
+
+    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct ExecutionResourcesProperties {
+        // All these properties are actually strings in the spec, hence the serde attributes.
+        #[serde(with = "u64_as_hex_str")]
+        pub steps: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub memory_holes: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub range_check_builtin: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub pedersen_builtin: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub poseidon_builtin: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub ec_op_builtin: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub ecdsa_builtin: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub bitwise_builtin: u64,
+        #[serde(with = "u64_as_hex_str")]
+        pub keccak_builtin: u64,
+    }
+
+    impl From<ExecutionResources> for ExecutionResourcesProperties {
+        fn from(value: ExecutionResources) -> Self {
+            let ExecutionResources {
+                builtin_instance_counter:
+                    BuiltinCounters {
+                        // Absent from the OpenRPC spec
+                        output_builtin: _,
+                        pedersen_builtin,
+                        range_check_builtin,
+                        ecdsa_builtin,
+                        bitwise_builtin,
+                        ec_op_builtin,
+                        keccak_builtin,
+                        poseidon_builtin,
+                        // Absent from the OpenRPC spec
+                        segment_arena_builtin: _,
+                    },
+                n_steps,
+                n_memory_holes,
+            } = value;
+
+            Self {
+                steps: n_steps,
+                memory_holes: n_memory_holes,
+                range_check_builtin,
+                pedersen_builtin,
+                poseidon_builtin,
+                ec_op_builtin,
+                ecdsa_builtin,
+                bitwise_builtin,
+                keccak_builtin,
+            }
+        }
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -244,6 +309,9 @@ pub mod types {
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
                 revert_reason: receipt.revert_error,
+                execution_resources: ExecutionResourcesProperties::from(
+                    receipt.execution_resources.unwrap_or_default(),
+                ),
                 execution_status: receipt.execution_status.into(),
                 finality_status,
             };
@@ -342,6 +410,9 @@ pub mod types {
                 events: receipt.events.into_iter().map(Event::from).collect(),
                 revert_reason: receipt.revert_error,
                 execution_status: receipt.execution_status.into(),
+                execution_resources: ExecutionResourcesProperties::from(
+                    receipt.execution_resources.unwrap_or_default(),
+                ),
                 finality_status: FinalityStatus::AcceptedOnL2,
             };
 
@@ -460,9 +531,11 @@ mod tests {
     // TODO: add serialization tests for each receipt variant..
 
     use super::*;
+    use crate::v05::method::get_transaction_receipt::types::ExecutionResourcesProperties;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockNumber, EthereumAddress, Fee};
     use primitive_types::H160;
+    use starknet_gateway_types::reply::transaction::{BuiltinCounters, ExecutionResources};
 
     mod parsing {
         use super::*;
@@ -543,6 +616,7 @@ mod tests {
                         execution_status: ExecutionStatus::Succeeded,
                         finality_status: FinalityStatus::AcceptedOnL1,
                         revert_reason: None,
+                        execution_resources: ExecutionResources::default().into(),
                     }
                 }
             ))
@@ -580,10 +654,63 @@ mod tests {
                         execution_status: ExecutionStatus::Succeeded,
                         finality_status: FinalityStatus::AcceptedOnL2,
                         revert_reason: None,
+                        execution_resources: ExecutionResources::default().into(),
                     }
                 }
             ))
         )
+    }
+
+    #[test]
+    fn execution_resources_properties_into() {
+        let original = ExecutionResources {
+            builtin_instance_counter: BuiltinCounters {
+                output_builtin: 0,
+                pedersen_builtin: 1,
+                range_check_builtin: 2,
+                ecdsa_builtin: 3,
+                bitwise_builtin: 4,
+                ec_op_builtin: 5,
+                keccak_builtin: 6,
+                poseidon_builtin: 7,
+                segment_arena_builtin: 8,
+            },
+            n_steps: 9,
+            n_memory_holes: 10,
+        };
+
+        let into = ExecutionResourcesProperties::from(original);
+
+        assert_eq!(into.steps, original.n_steps);
+        assert_eq!(into.memory_holes, original.n_memory_holes);
+        assert_eq!(
+            into.range_check_builtin,
+            original.builtin_instance_counter.range_check_builtin
+        );
+        assert_eq!(
+            into.pedersen_builtin,
+            original.builtin_instance_counter.pedersen_builtin
+        );
+        assert_eq!(
+            into.poseidon_builtin,
+            original.builtin_instance_counter.poseidon_builtin
+        );
+        assert_eq!(
+            into.ec_op_builtin,
+            original.builtin_instance_counter.ec_op_builtin
+        );
+        assert_eq!(
+            into.ecdsa_builtin,
+            original.builtin_instance_counter.ecdsa_builtin
+        );
+        assert_eq!(
+            into.bitwise_builtin,
+            original.builtin_instance_counter.bitwise_builtin
+        );
+        assert_eq!(
+            into.keccak_builtin,
+            original.builtin_instance_counter.keccak_builtin
+        );
     }
 
     #[tokio::test]
@@ -621,6 +748,7 @@ mod tests {
                         ],
                         revert_reason: None,
                         execution_status: ExecutionStatus::Succeeded,
+                        execution_resources: ExecutionResources::default().into(),
                         finality_status: FinalityStatus::AcceptedOnL2
                     }
                 }
@@ -687,6 +815,17 @@ mod tests {
         let expected = serde_json::json!({
             "transaction_hash": transaction_hash_bytes!(b"txn reverted"),
             "actual_fee": "0x0",
+            "execution_resources": {
+                "bitwise_builtin": "0x0",
+                "ec_op_builtin": "0x0",
+                "ecdsa_builtin": "0x0",
+                "keccak_builtin": "0x0",
+                "memory_holes": "0x0",
+                "steps": "0x0",
+                "pedersen_builtin": "0x0",
+                "poseidon_builtin": "0x0",
+                "range_check_builtin": "0x0",
+            },
             "execution_status": "REVERTED",
             "finality_status": "ACCEPTED_ON_L2",
             "block_hash": block_hash_bytes!(b"latest"),

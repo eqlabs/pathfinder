@@ -823,8 +823,7 @@ mod tests {
     #[case::root_write("/", "v04/starknet_write_api.json",         &[])]
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
-    #[case::v05_api  ("/rpc/v0.5", "v05/starknet_api_openrpc.json",       
-        &["starknet_getTransactionReceipt"])]
+    #[case::v05_api  ("/rpc/v0.5", "v05/starknet_api_openrpc.json", &[])]
     #[case::v05_trace("/rpc/v0.5", "v05/starknet_trace_api_openrpc.json", &[])]
     #[case::v05_write("/rpc/v0.5", "v05/starknet_write_api.json",         &[])]
     #[case::v05_pathfinder("/rpc/v0.5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
