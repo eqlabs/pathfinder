@@ -145,6 +145,20 @@ pub mod types {
         pub finality_status: FinalityStatus,
     }
 
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct CommonPendingTransactionReceiptProperties {
+        pub transaction_hash: TransactionHash,
+        pub actual_fee: Fee,
+        pub messages_sent: Vec<MessageToL1>,
+        pub events: Vec<Event>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub revert_reason: Option<String>,
+        pub execution_status: ExecutionStatus,
+        pub finality_status: FinalityStatus,
+    }
+
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
@@ -276,19 +290,6 @@ pub mod types {
     pub struct PendingInvokeTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
-    }
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct CommonPendingTransactionReceiptProperties {
-        pub transaction_hash: TransactionHash,
-        pub actual_fee: Fee,
-        pub messages_sent: Vec<MessageToL1>,
-        pub events: Vec<Event>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub revert_reason: Option<String>,
-        pub execution_status: ExecutionStatus,
-        pub finality_status: FinalityStatus,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
