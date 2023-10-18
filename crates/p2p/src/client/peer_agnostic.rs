@@ -137,6 +137,7 @@ impl Client {
         {
             let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
 
+            let mut bodies = Vec::new();
             match response {
                 Ok(_) => {
                     todo!("use v1");
@@ -144,7 +145,8 @@ impl Client {
                     continue;
                 }
                 Err(error) => {
-                    tracing::debug!(%peer, %error, "GetBlockBodies failed");
+                    tracing::debug!(%peer, %error, "BlockBodiesRequest failed");
+                    // Try with another peer
                     continue;
                 }
             }
