@@ -203,25 +203,7 @@ impl GatewayApi for HybridClient {
                 sequencer.class_by_hash(class_hash).await
             }
             HybridClient::NonPropagatingP2P { p2p_client, .. } => {
-                let classes = p2p_client
-                    .contract_classes(vec![class_hash])
-                    .await
-                    .ok_or_else(|| class_not_found(format!("No peers with class {class_hash}")))?;
-                let mut classes = classes.classes;
-
-                if classes.len() != 1 {
-                    return Err(class_not_found(format!(
-                        "Classes len is {}, expected 1",
-                        classes.len()
-                    )));
-                }
-
-                let p2p_proto_v0::common::RawClass { class } = classes.swap_remove(0);
-
-                let class = zstd::decode_all(class.as_slice())
-                    .map_err(|_| class_not_found("zstd failed"))?;
-
-                Ok(class.into())
+                todo!("use v1");
             }
         }
     }
@@ -237,25 +219,7 @@ impl GatewayApi for HybridClient {
                 sequencer.pending_class_by_hash(class_hash).await
             }
             HybridClient::NonPropagatingP2P { p2p_client, .. } => {
-                let classes = p2p_client
-                    .contract_classes(vec![class_hash])
-                    .await
-                    .ok_or_else(|| class_not_found(format!("No peers with class {class_hash}")))?;
-                let mut classes = classes.classes;
-
-                if classes.len() != 1 {
-                    return Err(class_not_found(format!(
-                        "Classes len is {}, expected 1",
-                        classes.len()
-                    )));
-                }
-
-                let p2p_proto_v0::common::RawClass { class } = classes.swap_remove(0);
-
-                let class = zstd::decode_all(class.as_slice())
-                    .map_err(|_| class_not_found("zstd failed"))?;
-
-                Ok(class.into())
+                todo!("use v1");
             }
         }
     }
@@ -288,14 +252,7 @@ impl GatewayApi for HybridClient {
 
                     let state_update = state_updates.swap_remove(0);
 
-                    let state_update = v0::conv::state_update::try_from_p2p(state_update)
-                        .map_err(block_not_found)?;
-
-                    if state_update.block_hash == hash {
-                        Ok(state_update.into())
-                    } else {
-                        Err(block_not_found("Block hash mismatch"))
-                    }
+                    todo!("use v1");
                 }
                 _ => unreachable!("not used in sync"),
             },

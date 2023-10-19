@@ -120,7 +120,8 @@ impl Client {
         None
     }
 
-    pub async fn block_bodies(
+    /// Including new class definitions
+    pub async fn state_updates(
         &self,
         start_block_hash: BlockHash,
         num_blocks: usize,
@@ -137,7 +138,6 @@ impl Client {
         {
             let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
 
-            let mut bodies = Vec::new();
             match response {
                 Ok(_) => {
                     todo!("use v1");
@@ -153,75 +153,6 @@ impl Client {
         }
 
         tracing::debug!(%start_block_hash, %num_blocks, "No peers with block bodies found for");
-
-        None
-    }
-
-    pub async fn state_updates(
-        &self,
-        start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
-        num_blocks: usize,           // FIXME, use range?
-    ) -> Option<Vec<p2p_proto_v0::sync::BlockStateUpdateWithHash>> {
-        if num_blocks == 0 {
-            return Some(Vec::new());
-        }
-
-        let count: u64 = num_blocks.try_into().ok()?;
-
-        for peer in self
-            .get_update_peers_with_sync_capability(todo!("use v1"))
-            .await
-        {
-            let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
-            match response {
-                Ok(_) => {
-                    todo!("use v1");
-                    tracing::debug!(%peer, "Got unexpected response to GetStateDiffs");
-                    continue;
-                }
-                Err(error) => {
-                    tracing::debug!(%peer, %error, "GetStateDiffs failed");
-                    continue;
-                }
-            }
-        }
-
-        tracing::debug!(%start_block_hash, %num_blocks, "No peers with state updates found for");
-
-        None
-    }
-
-    pub async fn contract_classes(
-        &self,
-        class_hashes: Vec<ClassHash>,
-    ) -> Option<p2p_proto_v0::sync::Classes> {
-        if class_hashes.is_empty() {
-            return Some(p2p_proto_v0::sync::Classes {
-                classes: Vec::new(),
-            });
-        }
-
-        let class_hashes = class_hashes.into_iter().map(|x| x.0).collect::<Vec<_>>();
-
-        for peer in self
-            .get_update_peers_with_sync_capability(todo!("use v1"))
-            .await
-        {
-            let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
-            match response {
-                Ok(_) => {
-                    todo!("use v1");
-                    tracing::debug!(%peer, "Got unexpected response to GetClasses");
-                    continue;
-                }
-                Err(error) => {
-                    tracing::debug!(%peer, %error, "GetStateDiffs failed");
-                    continue;
-                }
-            }
-        }
-
-        tracing::debug!(?class_hashes, "No peers with classes found for");
 
         None
     }
