@@ -23,6 +23,7 @@ p2p = [
 
 [dependencies]
 anyhow = { workspace = true }
+async-stream = "0.3"
 async-trait = { workspace = true }
 base64 = { workspace = true, optional = true }
 bitvec = { workspace = true }
@@ -61,6 +62,7 @@ tempfile = "3.8"
 thiserror = "1.0.48"
 time = { version = "0.3.28", features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio-stream = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = [
     "env-filter",
