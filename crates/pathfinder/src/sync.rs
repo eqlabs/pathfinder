@@ -3,6 +3,6 @@ mod class;
 pub mod l1;
 pub mod l2;
 mod pending;
-mod sync;
+mod sink;
 
-pub use sync::{sync, SyncContext};
+pub use sink::{sync, SyncContext};

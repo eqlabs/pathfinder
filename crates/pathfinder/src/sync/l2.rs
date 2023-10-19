@@ -1,6 +1,6 @@
 use crate::sync::block_hash::{verify_block_hash, VerifyResult};
 use crate::sync::class::{download_class, DownloadedClass};
-use crate::sync::{pending, sync::SyncEvent};
+use crate::sync::{pending, sink::SyncEvent};
 use anyhow::{anyhow, Context};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{

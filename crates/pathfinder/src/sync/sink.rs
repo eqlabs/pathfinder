@@ -983,7 +983,7 @@ fn update_starknet_state(
 #[cfg(test)]
 mod tests {
     use super::l2;
-    use crate::sync::sync::{consumer, ConsumerContext, SyncEvent};
+    use crate::sync::sink::{consumer, ConsumerContext, SyncEvent};
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt_bytes, BlockHash, BlockHeader, BlockNumber, ClassHash, EventCommitment, SierraHash,

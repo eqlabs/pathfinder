@@ -6,7 +6,7 @@ use pathfinder_retry::Retry;
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
-use crate::sync::sync::SyncEvent;
+use crate::sync::sink::SyncEvent;
 
 #[derive(Clone)]
 pub struct L1SyncContext<EthereumClient> {

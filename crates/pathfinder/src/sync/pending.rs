@@ -8,7 +8,7 @@ use starknet_gateway_types::reply::MaybePendingBlock;
 use std::sync::Arc;
 use tokio::time::Instant;
 
-use crate::sync::sync::SyncEvent;
+use crate::sync::sink::SyncEvent;
 
 /// Poll's the Sequencer's pending block and emits [pending events](SyncEvent::Pending)
 /// until the pending block is no longer connected to our current head.
@@ -111,7 +111,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
 mod tests {
     use std::sync::Arc;
 
-    use crate::sync::sync::SyncEvent;
+    use crate::sync::sink::SyncEvent;
 
     use super::poll_pending;
     use assert_matches::assert_matches;
