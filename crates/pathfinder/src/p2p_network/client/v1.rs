@@ -1,4 +1,4 @@
-pub mod conv {
+pub mod types {
     use p2p_proto_v1::receipt::{
         DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
         InvokeTransactionReceipt, L1HandlerTransactionReceipt,
@@ -20,6 +20,9 @@ pub mod conv {
     use starknet_gateway_types::reply::transaction as gw;
     use std::{collections::HashMap, time::SystemTime};
 
+    /// We don't want to introduce circular dependencies between crates
+    /// so in those cases we cannot use TryFrom and we need to work around for the orphan rule
+    /// - implement conversion fns for types ourside our crate.
     pub trait TryFromProto<T> {
         fn try_from_proto(proto: T) -> anyhow::Result<Self>
         where
@@ -127,11 +130,10 @@ pub mod conv {
         }
     }
 
-    impl TryFromProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
-        fn try_from_proto(proto: p2p_proto_v1::block::BlockHeader) -> anyhow::Result<Self>
-        where
-            Self: Sized,
-        {
+    impl TryFrom<p2p_proto_v1::block::BlockHeader> for BlockHeader {
+        type Error = anyhow::Error;
+
+        fn try_from(proto: p2p_proto_v1::block::BlockHeader) -> anyhow::Result<Self> {
             Ok(Self {
                 hash: BlockHash(proto.hash.0),
                 parent_hash: BlockHash(proto.parent_hash.0),
@@ -149,11 +151,10 @@ pub mod conv {
     }
 
     // FIXME add missing stuff to the proto representation
-    impl TryFromProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
-        fn try_from_proto(proto: p2p_proto_v1::state::StateDiff) -> anyhow::Result<Self>
-        where
-            Self: Sized,
-        {
+    impl TryFrom<p2p_proto_v1::state::StateDiff> for StateUpdate {
+        type Error = anyhow::Error;
+
+        fn try_from(proto: p2p_proto_v1::state::StateDiff) -> anyhow::Result<Self> {
             const SYSTEM_CONTRACT: ContractAddress = ContractAddress::ONE;
             let mut system_contract_update = SystemContractUpdate {
                 storage: Default::default(),
@@ -312,8 +313,10 @@ pub mod conv {
         }
     }
 
-    impl TryFromProto<p2p_proto_v1::receipt::Receipt> for Receipt {
-        fn try_from_proto(proto: p2p_proto_v1::receipt::Receipt) -> anyhow::Result<Self>
+    impl TryFrom<p2p_proto_v1::receipt::Receipt> for Receipt {
+        type Error = anyhow::Error;
+
+        fn try_from(proto: p2p_proto_v1::receipt::Receipt) -> anyhow::Result<Self>
         where
             Self: Sized,
         {

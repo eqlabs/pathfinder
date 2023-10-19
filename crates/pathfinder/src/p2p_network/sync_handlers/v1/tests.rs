@@ -295,7 +295,7 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::v1::conv::{self as simplified, TryFromProto};
+    use crate::p2p_network::client::v1::types::{self as simplified, TryFromProto};
     use crate::p2p_network::sync_handlers::v1::blocking;
     use p2p_proto_v1::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
@@ -336,7 +336,7 @@ mod prop {
                     // Make sure block data is delimited
                     assert_eq!(parts[1], BlockHeadersResponsePart::Fin(Fin::ok()));
                     // Extract the header
-                    simplified::BlockHeader::try_from_proto(parts[0].clone().into_header().unwrap()).unwrap()
+                    simplified::BlockHeader::try_from(parts[0].clone().into_header().unwrap()).unwrap()
                 }).collect::<Vec<_>>();
 
                 prop_assert_eq!(actual, expected);
@@ -379,7 +379,7 @@ mod prop {
                             let BlockId { number, hash } = reply.id.unwrap();
                             block_id = Some((BlockNumber::new(number).unwrap(), BlockHash(hash.0)));
 
-                            let state_update = simplified::StateUpdate::try_from_proto(d).unwrap();
+                            let state_update = simplified::StateUpdate::try_from(d).unwrap();
                             actual.insert(block_id.unwrap(), (state_update, HashMap::new()));
                         },
                         BlockBodyMessage::Classes(c) => {
@@ -519,7 +519,7 @@ mod prop {
                     (
                         BlockNumber::new(number).unwrap(),
                         BlockHash(hash.0),
-                        receipts.into_iter().map(|r| simplified::Receipt::try_from_proto(r).unwrap()).collect::<Vec<_>>()
+                        receipts.into_iter().map(|r| simplified::Receipt::try_from(r).unwrap()).collect::<Vec<_>>()
                     )
                 }).collect::<Vec<_>>();
 
