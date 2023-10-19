@@ -49,19 +49,27 @@ pub struct BlockHeader {
 /// 1. iterate through contact updates and check in the db if the contract is already there to figure out
 ///    if it means replacement or declaration
 /// 2. take the remaining ones which are then treated as declared and then figure out which is Cairo 0 and which is Sierra
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StateUpdate {
     pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
     /// The class associated with this update as the result of either a deploy or class replacement transaction.
     /// We don't explicitly know if it's one or the other
     pub class: Option<ClassHash>,
     pub nonce: Option<ContractNonce>,
+}
+
+/// Sierra/Cairo 0 agnostic
+#[derive(Debug, Clone, PartialEq)]
+
+pub struct Class {
+    pub hash: ClassHash,
+    pub definition: Vec<u8>,
 }
 
 impl From<pathfinder_common::BlockHeader> for BlockHeader {

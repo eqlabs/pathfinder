@@ -163,6 +163,12 @@ impl TryFromProtobuf<proto::common::Address> for Address {
     }
 }
 
+impl Display for BlockId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlockId({},{})", self.number, self.hash.0)
+    }
+}
+
 impl ToProtobuf<proto::common::PeerId> for PeerId {
     fn to_protobuf(self) -> proto::common::PeerId {
         proto::common::PeerId {

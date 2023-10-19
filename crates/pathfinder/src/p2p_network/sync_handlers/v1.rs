@@ -5,7 +5,8 @@ use p2p_proto_v1::block::{
 };
 use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Fin, Hash, Iteration, Step};
 use p2p_proto_v1::consts::{
-    CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
+    CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MAX_PARTS_PER_CLASS, MESSAGE_SIZE_LIMIT,
+    PER_CLASS_OVERHEAD,
 };
 use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, EventsResponseKind, TxnEvents};
 use p2p_proto_v1::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
@@ -34,6 +35,12 @@ const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 const _: () = assert!(
     MAX_BLOCKS_COUNT <= MAX_HEADERS_PER_MESSAGE as u64,
     "All requested block headers, limited up to MAX_BLOCKS_COUNT should fit into one reply"
+);
+
+#[cfg(not(test))]
+const _: () = assert!(
+    MAX_PARTS_PER_CLASS as u64 <= MAX_BLOCKS_COUNT,
+    "It does not make sense to accept classes that comprise more parts than the node can accept"
 );
 
 pub async fn get_headers(
