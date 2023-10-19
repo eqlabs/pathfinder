@@ -826,7 +826,7 @@ mod tests {
     #[case::v05_api  ("/rpc/v0.5", "v05/starknet_api_openrpc.json",       
         &["starknet_getTransactionReceipt"])]
     #[case::v05_trace("/rpc/v0.5", "v05/starknet_trace_api_openrpc.json", 
-        &["starknet_traceTransaction", "starknet_traceBlockTransactions"])]
+        &["starknet_traceTransaction"])]
     #[case::v05_write("/rpc/v0.5", "v05/starknet_write_api.json",         &[])]
     #[case::v05_pathfinder("/rpc/v0.5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 

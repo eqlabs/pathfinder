@@ -38,6 +38,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getTransactionStatus"            , method::get_transaction_status)
         .register("starknet_simulateTransactions"            , method::simulate_transactions)
         .register("starknet_specVersion"                     , method::spec_version)
+        .register("starknet_traceBlockTransactions"          , method::trace_block_transactions)
 
         .register("pathfinder_getProof"                      , crate::pathfinder::methods::get_proof)
         .register("pathfinder_getTransactionStatus"          , crate::pathfinder::methods::get_transaction_status)
