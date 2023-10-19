@@ -70,6 +70,7 @@ sha3 = "0.10"
 starknet_api = "=0.4.1"
 thiserror = "1.0.48"
 tokio = "1.29.1"
+tokio-stream = "0.1"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 zstd = "0.12.4"
