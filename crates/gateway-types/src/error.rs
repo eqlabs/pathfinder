@@ -47,6 +47,12 @@ impl From<KnownStarknetErrorCode> for StarknetErrorCode {
     }
 }
 
+impl StarknetError {
+    pub fn is_block_not_found(&self) -> bool {
+        self.code == StarknetErrorCode::Known(KnownStarknetErrorCode::BlockNotFound)
+    }
+}
+
 /// Represents well-known starknet specific error codes reported by the sequencer.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -120,24 +126,40 @@ pub enum KnownStarknetErrorCode {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::KnownStarknetErrorCode;
-
-    use super::StarknetErrorCode;
+    use super::*;
 
     #[test]
-    fn test_known_error_code() {
+    fn known_error_code() {
         let e = serde_json::from_str::<StarknetErrorCode>(r#""StarknetErrorCode.BLOCK_NOT_FOUND""#)
             .unwrap();
         assert_eq!(e, KnownStarknetErrorCode::BlockNotFound.into())
     }
 
     #[test]
-    fn test_unknown_error_code() {
+    fn unknown_error_code() {
         let e = serde_json::from_str::<StarknetErrorCode>(r#""StarknetErrorCode.UNKNOWN_ERROR""#)
             .unwrap();
         assert_eq!(
             e,
             StarknetErrorCode::Unknown("StarknetErrorCode.UNKNOWN_ERROR".to_owned())
         )
+    }
+
+    #[test]
+    fn block_not_found() {
+        let message = "this is the message";
+        let uut = serde_json::from_value::<StarknetError>(serde_json::json!({
+            "code": "StarknetErrorCode.BLOCK_NOT_FOUND",
+            "message": message,
+        }))
+        .unwrap();
+
+        let expected = StarknetError {
+            code: KnownStarknetErrorCode::BlockNotFound.into(),
+            message: message.to_owned(),
+        };
+
+        assert_eq!(uut, expected);
+        assert!(uut.is_block_not_found());
     }
 }
