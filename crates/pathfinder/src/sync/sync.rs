@@ -1,7 +1,4 @@
-mod class;
-pub mod l1;
-pub mod l2;
-mod pending;
+use crate::sync::l2;
 
 use anyhow::Context;
 use pathfinder_common::{
@@ -28,8 +25,8 @@ use std::time::Instant;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, Receiver};
 
-use crate::state::l1::L1SyncContext;
-use crate::state::l2::{BlockChain, L2SyncContext};
+use crate::sync::l1::L1SyncContext;
+use crate::sync::l2::{BlockChain, L2SyncContext};
 
 #[derive(Debug)]
 pub enum SyncEvent {
@@ -986,7 +983,7 @@ fn update_starknet_state(
 #[cfg(test)]
 mod tests {
     use super::l2;
-    use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
+    use crate::sync::sync::{consumer, ConsumerContext, SyncEvent};
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt_bytes, BlockHash, BlockHeader, BlockNumber, ClassHash, EventCommitment, SierraHash,

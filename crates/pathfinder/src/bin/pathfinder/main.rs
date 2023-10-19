@@ -4,10 +4,10 @@ use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
-use pathfinder_lib::state::SyncContext;
+use pathfinder_lib::sync::SyncContext;
 use pathfinder_lib::{
     monitoring::{self},
-    state,
+    sync,
 };
 use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
@@ -207,14 +207,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pending_poll_interval: config
             .poll_pending
             .then_some(std::time::Duration::from_secs(2)),
-        block_validation_mode: state::l2::BlockValidationMode::Strict,
+        block_validation_mode: sync::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_ws_senders(),
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
     };
 
-    let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));
+    let sync_handle = tokio::spawn(sync::sync(sync_context, sync::l1::sync, sync::l2::sync));
 
     let (rpc_handle, local_addr) = rpc_server
         .with_max_connections(config.max_rpc_connections.get())

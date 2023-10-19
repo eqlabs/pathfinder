@@ -1,6 +1,6 @@
-use crate::state::block_hash::{verify_block_hash, VerifyResult};
-use crate::state::sync::class::{download_class, DownloadedClass};
-use crate::state::sync::{pending, SyncEvent};
+use crate::sync::block_hash::{verify_block_hash, VerifyResult};
+use crate::sync::class::{download_class, DownloadedClass};
+use crate::sync::{pending, sync::SyncEvent};
 use anyhow::{anyhow, Context};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
@@ -598,7 +598,7 @@ async fn reorg(
 mod tests {
 
     mod sync {
-        use crate::state::l2::{BlockChain, L2SyncContext};
+        use crate::sync::l2::{BlockChain, L2SyncContext};
         use pathfinder_common::StateUpdate;
 
         use super::super::{sync, BlockValidationMode, SyncEvent};
@@ -2028,7 +2028,7 @@ mod tests {
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::BlockNumber;
 
-        use crate::state::l2::BlockChain;
+        use crate::sync::l2::BlockChain;
 
         #[test]
         fn circular_buffer_integrity() {
