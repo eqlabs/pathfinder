@@ -295,8 +295,9 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::v1::types::{self as simplified, TryFromProto};
+    use crate::p2p_network::client::v1::types as simplified;
     use crate::p2p_network::sync_handlers::v1::blocking;
+    use p2p::client::types::{self as p2p_types, TryFromProto};
     use p2p_proto_v1::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
@@ -336,7 +337,7 @@ mod prop {
                     // Make sure block data is delimited
                     assert_eq!(parts[1], BlockHeadersResponsePart::Fin(Fin::ok()));
                     // Extract the header
-                    simplified::BlockHeader::try_from(parts[0].clone().into_header().unwrap()).unwrap()
+                    p2p_types::BlockHeader::try_from(parts[0].clone().into_header().unwrap()).unwrap()
                 }).collect::<Vec<_>>();
 
                 prop_assert_eq!(actual, expected);
@@ -359,7 +360,7 @@ mod prop {
                         (state_update.into(),
                         cairo_defs.into_iter().chain(sierra_defs.into_iter().map(|(h, d)| (ClassHash(h.0), d))).collect())
                     )
-            ).collect::<HashMap<_, (simplified::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
+            ).collect::<HashMap<_, (p2p_types::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = blocking::get_bodies(tx, request).unwrap();
@@ -379,7 +380,7 @@ mod prop {
                             let BlockId { number, hash } = reply.id.unwrap();
                             block_id = Some((BlockNumber::new(number).unwrap(), BlockHash(hash.0)));
 
-                            let state_update = simplified::StateUpdate::try_from(d).unwrap();
+                            let state_update = p2p_types::StateUpdate::try_from(d).unwrap();
                             actual.insert(block_id.unwrap(), (state_update, HashMap::new()));
                         },
                         BlockBodyMessage::Classes(c) => {
