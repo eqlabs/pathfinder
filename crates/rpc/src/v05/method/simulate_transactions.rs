@@ -19,21 +19,40 @@ pub struct SimulateTrasactionInput {
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct SimulateTransactionOutput(pub Vec<dto::SimulatedTransaction>);
 
-crate::error::generate_rpc_error_subset!(
-    SimulateTransactionError: BlockNotFound,
+#[derive(Debug)]
+pub enum SimulateTransactionError {
+    Internal(anyhow::Error),
+    BlockNotFound,
     ContractNotFound,
-    ContractError
-);
+    ContractErrorV05 { revert_error: String },
+}
+
+impl From<anyhow::Error> for SimulateTransactionError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
+    }
+}
+
+impl From<SimulateTransactionError> for crate::error::RpcError {
+    fn from(e: SimulateTransactionError) -> Self {
+        match e {
+            SimulateTransactionError::Internal(internal) => Self::Internal(internal),
+            SimulateTransactionError::BlockNotFound => Self::BlockNotFound,
+            SimulateTransactionError::ContractNotFound => Self::ContractNotFound,
+            SimulateTransactionError::ContractErrorV05 { revert_error } => {
+                Self::ContractErrorV05 { revert_error }
+            }
+        }
+    }
+}
 
 impl From<CallError> for SimulateTransactionError {
     fn from(value: CallError) -> Self {
         use CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::ContractError,
-            Reverted(revert_error) => {
-                Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
-            }
+            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
+            Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             Internal(e) => Self::Internal(e),
         }
     }
