@@ -9,7 +9,7 @@ use serde_with::serde_as;
 
 /// Used to deserialize replies to Starknet block requests.
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     pub block_hash: BlockHash,
@@ -35,7 +35,7 @@ pub struct Block {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct PendingBlock {
     #[serde_as(as = "GasPriceAsHexStr")]
@@ -102,7 +102,7 @@ impl MaybePendingBlock {
 }
 
 /// Block and transaction status values.
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[derive(Copy, Clone, Default, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub enum Status {
     #[serde(rename = "NOT_RECEIVED")]
@@ -116,6 +116,7 @@ pub enum Status {
     #[serde(rename = "ACCEPTED_ON_L1")]
     AcceptedOnL1,
     #[serde(rename = "ACCEPTED_ON_L2")]
+    #[default]
     AcceptedOnL2,
     #[serde(rename = "REVERTED")]
     Reverted,
