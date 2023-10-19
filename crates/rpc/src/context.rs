@@ -1,5 +1,5 @@
 use crate::gas_price;
-use crate::jsonrpc::websocket::WebsocketSenders;
+pub use crate::jsonrpc::websocket::WebsocketContext;
 use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
@@ -17,7 +17,7 @@ pub struct RpcContext {
     pub chain_id: ChainId,
     pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
-    pub websocket: WebsocketSenders,
+    pub websocket: Option<WebsocketContext>,
 }
 
 impl RpcContext {
@@ -36,7 +36,7 @@ impl RpcContext {
             pending_data: None,
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
-            websocket: WebsocketSenders::with_capacity(1),
+            websocket: None,
         }
     }
 
@@ -88,7 +88,10 @@ impl RpcContext {
         context.with_pending_data(pending_data)
     }
 
-    pub fn with_websocket(self, websocket: WebsocketSenders) -> Self {
-        Self { websocket, ..self }
+    pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
+        Self {
+            websocket: Some(websockets),
+            ..self
+        }
     }
 }

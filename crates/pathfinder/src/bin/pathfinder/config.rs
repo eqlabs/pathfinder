@@ -60,22 +60,6 @@ Examples:
     rpc_address: SocketAddr,
 
     #[arg(
-        long = "rpc.websocket",
-        long_help = "Enable RPC WebSocket transport",
-        default_value = "false",
-        env = "PATHFINDER_RPC_WEBSOCKET"
-    )]
-    ws: bool,
-
-    #[arg(
-        long = "rpc.websocket.capacity",
-        long_help = "Maximum number of websocket subscriptions per subscription type",
-        default_value = "100",
-        env = "PATHFINDER_RPC_WEBSOCKET_CAPACITY"
-    )]
-    ws_capacity: NonZeroUsize,
-
-    #[arg(
         long = "rpc.cors-domains",
         long_help = r"Comma separated list of domains from which Cross-Origin requests will be accepted by the RPC server.
 
@@ -181,6 +165,9 @@ Examples:
     #[cfg(feature = "p2p")]
     #[clap(flatten)]
     debug: DebugCli,
+
+    #[clap(flatten)]
+    websocket: WebsocketConfig,
 
     #[cfg(not(feature = "p2p"))]
     #[clap(skip)]
@@ -423,7 +410,7 @@ pub struct Config {
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
     pub rpc_root_version: RpcVersion,
-    pub ws: Option<WebSocket>,
+    pub websocket: WebsocketConfig,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
@@ -435,10 +422,6 @@ pub struct Config {
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
-}
-
-pub struct WebSocket {
-    pub capacity: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -595,9 +578,7 @@ impl Config {
             rpc_address: cli.rpc_address,
             rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
             rpc_root_version: cli.rpc_root_version,
-            ws: cli.ws.then_some(WebSocket {
-                capacity: cli.ws_capacity,
-            }),
+            websocket: cli.websocket,
             monitor_address: cli.monitor_address,
             network,
             #[cfg(feature = "p2p")]
@@ -617,6 +598,38 @@ impl Config {
             verify_tree_hashes: cli.verify_tree_node_data,
         }
     }
+}
+
+#[derive(clap::Args, Clone)]
+pub struct WebsocketConfig {
+    #[arg(
+        long = "rpc.websocket.enabled",
+        long_help = "Enable RPC WebSocket transport at the \"/ws\" path",
+        default_value = "false",
+        env = "PATHFINDER_WEBSOCKET_ENABLED"
+    )]
+    pub enabled: bool,
+    #[arg(
+        long = "rpc.websocket.buffer-capacity",
+        long_help = "The socket buffer for outbound messages. If specific clients have their \
+            subscription sporadically closed due to lagging streams, consider increasing this \
+            buffer. See also `rpc.websocket.topic-capacity`",
+        value_name = "CAPACITY",
+        default_value = "100",
+        env = "PATHFINDER_WEBSOCKET_BUFFER_CAPACITY"
+    )]
+    pub socket_buffer_capacity: NonZeroUsize,
+    #[arg(
+        long = "rpc.websocket.topic-capacity",
+        long_help = "The topic sender capacity. The topic senders are upstream of socket buffers \
+            and common to all clients and subscriptions. If a variety of clients regularly have their \
+            subscription closed due to a lagging stream, consider increasing this buffer. See also \
+            `rpc.websocket.buffer-capacity`",
+        value_name = "CAPACITY",
+        default_value = "100",
+        env = "PATHFINDER_WEBSOCKET_TOPIC_CAPACITY"
+    )]
+    pub topic_sender_capacity: NonZeroUsize,
 }
 
 #[cfg(test)]

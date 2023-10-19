@@ -7,7 +7,7 @@ use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, StateUpdate, TransactionCommitment,
 };
-use pathfinder_rpc::{BlockHeader, WebsocketSenders};
+use pathfinder_rpc::{BlockHeader, TopicBroadcasters};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
@@ -82,7 +82,7 @@ impl BlockChain {
 
 #[derive(Clone)]
 pub struct L2SyncContext<GatewayClient> {
-    pub websocket_txs: WebsocketSenders,
+    pub broadcasters: Option<TopicBroadcasters>,
     pub sequencer: GatewayClient,
     pub chain: Chain,
     pub chain_id: ChainId,
@@ -102,7 +102,7 @@ where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
     let L2SyncContext {
-        websocket_txs,
+        broadcasters,
         sequencer,
         chain,
         chain_id,
@@ -274,7 +274,12 @@ where
             .await
             .context("Event channel closed")?;
 
-        websocket_txs.new_head.send_if_receiving(block_header)
+        if let Some(topics) = &broadcasters {
+            topics
+                .new_head
+                .send_if_receiving(block_header)
+                .context("Broadcasting failed")?;
+        }
     }
 }
 
@@ -608,7 +613,7 @@ mod tests {
             ContractAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
             StorageAddress, StorageValue,
         };
-        use pathfinder_rpc::WebsocketSenders;
+        use pathfinder_rpc::TopicBroadcasters;
         use pathfinder_storage::Storage;
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;
@@ -650,7 +655,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
-                websocket_txs: WebsocketSenders::for_test(),
+                broadcasters: Some(TopicBroadcasters::default()),
                 sequencer,
                 chain: Chain::Testnet,
                 chain_id: ChainId::TESTNET,
@@ -1018,7 +1023,7 @@ mod tests {
                 // Let's run the UUT
                 let mock = std::sync::Arc::new(mock);
                 let context = L2SyncContext {
-                    websocket_txs: WebsocketSenders::for_test(),
+                    broadcasters: Some(TopicBroadcasters::default()),
                     sequencer: mock,
                     chain: Chain::Testnet,
                     chain_id: ChainId::TESTNET,

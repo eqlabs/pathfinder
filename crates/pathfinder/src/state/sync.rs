@@ -14,7 +14,7 @@ use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
-    SyncState, WebsocketSenders,
+    SyncState, TopicBroadcasters,
 };
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
@@ -73,7 +73,7 @@ pub struct SyncContext<G, E> {
     pub pending_data: PendingData,
     pub pending_poll_interval: Option<Duration>,
     pub block_validation_mode: l2::BlockValidationMode,
-    pub websocket_txs: WebsocketSenders,
+    pub websocket_txs: Option<TopicBroadcasters>,
     pub block_cache_size: usize,
     pub restart_delay: Duration,
     pub verify_tree_hashes: bool,
@@ -93,7 +93,7 @@ impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
 impl<G, E> From<SyncContext<G, E>> for L2SyncContext<G> {
     fn from(value: SyncContext<G, E>) -> Self {
         Self {
-            websocket_txs: value.websocket_txs,
+            broadcasters: value.websocket_txs,
             sequencer: value.sequencer,
             chain: value.chain,
             chain_id: value.chain_id,

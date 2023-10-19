@@ -17,7 +17,8 @@ pub mod v05;
 pub use executor::compose_executor_transaction;
 
 use crate::jsonrpc::rpc_handler;
-pub use crate::jsonrpc::websocket::{BlockHeader, WebsocketSenders};
+use crate::jsonrpc::websocket::websocket_handler;
+pub use crate::jsonrpc::websocket::{BlockHeader, TopicBroadcasters};
 use crate::v02::types::syncing::Syncing;
 use anyhow::Context;
 use axum::error_handling::HandleErrorLayer;
@@ -28,7 +29,6 @@ use context::RpcContext;
 use http::Request;
 use hyper::Body;
 use pathfinder_common::AllowedOrigins;
-use std::num::NonZeroUsize;
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -47,7 +47,6 @@ pub struct RpcServer {
     context: RpcContext,
     max_connections: usize,
     cors: Option<CorsLayer>,
-    ws_senders: Option<WebsocketSenders>,
     default_version: DefaultVersion,
 }
 
@@ -58,15 +57,7 @@ impl RpcServer {
             context,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             cors: None,
-            ws_senders: None,
             default_version,
-        }
-    }
-
-    pub fn with_ws(self, capacity: NonZeroUsize) -> Self {
-        Self {
-            ws_senders: Some(WebsocketSenders::with_capacity(capacity.get())),
-            ..self
         }
     }
 
@@ -167,9 +158,17 @@ impl RpcServer {
             .route("/rpc/v0.5", post(rpc_handler))
             .with_state(v05_routes)
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
-            .with_state(pathfinder_routes)
+            .with_state(pathfinder_routes);
+
+        let router = if self.context.websocket.is_some() {
+            router.route("/ws", get(websocket_handler))
+        } else {
+            router
+        };
+
+        let router = router
+            .with_state(self.context.websocket.clone().unwrap_or_default())
             .layer(middleware);
-        // TODO: websockets
 
         let server_handle = tokio::spawn(async move {
             server
@@ -181,14 +180,11 @@ impl RpcServer {
         Ok((server_handle, addr))
     }
 
-    pub fn get_ws_senders(&self) -> WebsocketSenders {
-        // For parts in code that require WebsocketSenders
-        match &self.ws_senders {
-            Some(txs) => txs.clone(),
-            // Returns WebsocketSenders instance for code to work as is.
-            // Nothing is actually done coz no one can subscribe.
-            _ => WebsocketSenders::with_capacity(1),
-        }
+    pub fn get_topic_broadcasters(&self) -> Option<&TopicBroadcasters> {
+        self.context
+            .websocket
+            .as_ref()
+            .map(|websocket| &websocket.broadcasters)
     }
 }
 

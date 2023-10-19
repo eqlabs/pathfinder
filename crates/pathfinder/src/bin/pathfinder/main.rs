@@ -9,6 +9,7 @@ use pathfinder_lib::{
     monitoring::{self},
     state,
 };
+use pathfinder_rpc::context::WebsocketContext;
 use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
@@ -168,6 +169,15 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         false => context,
     };
 
+    let context = if config.websocket.enabled {
+        context.with_websockets(WebsocketContext::new(
+            config.websocket.socket_buffer_capacity,
+            config.websocket.topic_sender_capacity,
+        ))
+    } else {
+        context
+    };
+
     let default_version = match config.rpc_root_version {
         config::RpcVersion::V03 => pathfinder_rpc::DefaultVersion::V03,
         config::RpcVersion::V04 => pathfinder_rpc::DefaultVersion::V04,
@@ -177,11 +187,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
     let rpc_server = match config.rpc_cors_domains {
         Some(allowed_origins) => rpc_server.with_cors(allowed_origins),
-        None => rpc_server,
-    };
-
-    let rpc_server = match config.ws {
-        Some(ws) => rpc_server.with_ws(ws.capacity),
         None => rpc_server,
     };
 
@@ -208,7 +213,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             .poll_pending
             .then_some(std::time::Duration::from_secs(2)),
         block_validation_mode: state::l2::BlockValidationMode::Strict,
-        websocket_txs: rpc_server.get_ws_senders(),
+        websocket_txs: rpc_server.get_topic_broadcasters().cloned(),
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,

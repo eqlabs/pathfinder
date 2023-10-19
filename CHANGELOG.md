@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - RPC server does not set `content-type: application/json`
+- Restored the Websocket subscription features with new configuration keys: `rpc.websocket.enabled`
+  `rpc.websocket.buffer-capacity`, `rpc.websocket.topic-capacity`
 
 ## [0.9.1] - 2023-10-11
 

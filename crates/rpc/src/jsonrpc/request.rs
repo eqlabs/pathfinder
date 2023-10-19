@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 use crate::jsonrpc::{RequestId, RpcError};
@@ -12,8 +12,8 @@ pub struct RpcRequest<'a> {
     pub id: RequestId<'a>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-pub struct RawParams<'a>(#[serde(borrow)] Option<&'a RawValue>);
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct RawParams<'a>(#[serde(borrow)] pub Option<&'a RawValue>);
 
 impl<'a> RawParams<'a> {
     /// Returns true if there are no params or the list of params is empty.
