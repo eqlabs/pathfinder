@@ -298,24 +298,8 @@ pub async fn download_new_classes(
     version: &StarknetVersion,
     storage: Storage,
 ) -> Result<(), anyhow::Error> {
-    let deployed_classes = state_update
-        .contract_updates
-        .iter()
-        .filter_map(|x| match x.1.class {
-            Some(ContractClassUpdate::Deploy(hash)) => Some(hash),
-            _ => None,
-        });
-    let declared_cairo_classes = state_update.declared_cairo_classes.iter().cloned();
-    let declared_sierra_classes = state_update
-        .declared_sierra_classes
-        .keys()
-        .map(|x| ClassHash(x.0));
-
-    let new_classes = deployed_classes
-        .chain(declared_cairo_classes)
-        .chain(declared_sierra_classes)
-        // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
-        .collect::<HashSet<_>>()
+    let new_classes = state_update
+        .deployed_and_declared_classes()
         .into_iter()
         .collect::<Vec<_>>();
 

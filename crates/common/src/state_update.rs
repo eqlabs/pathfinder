@@ -147,34 +147,76 @@ impl StateUpdate {
                 })
                 .sum::<usize>()
     }
+
+    /// The [classes](ClassHash) deployed and declared in this state update.
+    pub fn deployed_and_declared_classes(&self) -> HashSet<ClassHash> {
+        // TODO: test this.
+        let deployed_classes = self
+            .contract_updates
+            .iter()
+            .filter_map(|x| match x.1.class {
+                Some(ContractClassUpdate::Deploy(hash)) => Some(hash),
+                _ => None,
+            });
+        let declared_cairo_classes = self.declared_cairo_classes.iter().cloned();
+        let declared_sierra_classes = self.declared_sierra_classes.keys().map(|x| ClassHash(x.0));
+
+        deployed_classes
+            .chain(declared_cairo_classes)
+            .chain(declared_sierra_classes)
+            .collect::<HashSet<_>>()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::felt;
+    use crate::macro_prelude::*;
 
     use super::*;
 
     #[test]
     fn change_count() {
         let state_update = StateUpdate::default()
-            .with_contract_nonce(ContractAddress(felt!("0x1")), ContractNonce(felt!("0x2")))
-            .with_contract_nonce(ContractAddress(felt!("0x4")), ContractNonce(felt!("0x5")))
-            .with_declared_cairo_class(ClassHash(felt!("0x3")))
-            .with_declared_sierra_class(SierraHash(felt!("0x4")), CasmHash(felt!("0x5")))
-            .with_deployed_contract(ContractAddress(felt!("0x1")), ClassHash(felt!("0x3")))
-            .with_replaced_class(ContractAddress(felt!("0x33")), ClassHash(felt!("0x35")))
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x2"))
+            .with_contract_nonce(contract_address!("0x4"), contract_nonce!("0x5"))
+            .with_declared_cairo_class(class_hash!("0x3"))
+            .with_declared_sierra_class(sierra_hash!("0x4"), casm_hash!("0x5"))
+            .with_deployed_contract(contract_address!("0x1"), class_hash!("0x3"))
+            .with_replaced_class(contract_address!("0x33"), class_hash!("0x35"))
             .with_system_storage_update(
                 ContractAddress::ONE,
-                StorageAddress(felt!("0x10")),
+                storage_address!("0x10"),
                 StorageValue(felt!("0x99")),
             )
             .with_storage_update(
-                ContractAddress(felt!("0x33")),
-                StorageAddress(felt!("0x10")),
-                StorageValue(felt!("0x99")),
+                contract_address!("0x33"),
+                storage_address!("0x10"),
+                storage_value!("0x99"),
             );
 
         assert_eq!(state_update.change_count(), 8);
+    }
+
+    #[test]
+    fn deployed_and_declared_classes() {
+        let state_update = StateUpdate::default()
+            .with_declared_cairo_class(class_hash_bytes!(b"declared cairo"))
+            .with_declared_sierra_class(
+                sierra_hash_bytes!(b"declared sierra"),
+                casm_hash_bytes!(b"casm hash"),
+            )
+            .with_deployed_contract(
+                contract_address!("0x123"),
+                class_hash_bytes!(b"deployed class"),
+            );
+
+        let classes = state_update.deployed_and_declared_classes();
+        let expected = HashSet::from([
+            class_hash_bytes!(b"declared cairo"),
+            class_hash_bytes!(b"declared sierra"),
+            class_hash_bytes!(b"deployed class"),
+        ]);
+
+        assert_eq!(classes, expected);
     }
 }
