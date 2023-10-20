@@ -1,9 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockId, TransactionHash};
+use pathfinder_common::{BlockHash, BlockId, GasPrice, TransactionHash};
 use pathfinder_executor::CallError;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
-use tokio::task::JoinError;
 
 use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
 
@@ -71,8 +70,8 @@ impl From<CallError> for TraceBlockTransactionsError {
     }
 }
 
-impl From<JoinError> for TraceBlockTransactionsError {
-    fn from(e: JoinError) -> Self {
+impl From<tokio::task::JoinError> for TraceBlockTransactionsError {
+    fn from(e: tokio::task::JoinError) -> Self {
         Self::Internal(anyhow::anyhow!("Join error: {e}"))
     }
 }
@@ -81,52 +80,44 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    let block_id = input.block_id;
-    let block_id = match block_id {
-        BlockId::Pending => return Err(TraceBlockTransactionsError::BlockNotFound),
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
+    let (transactions, gas_price, parent_block_hash) = match input.block_id {
+        BlockId::Pending => {
+            if let Some(pending) = &context.pending_data {
+                let block = pending
+                    .block()
+                    .await
+                    .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
 
-    let (transactions, gas_price, parent_block_hash): (Vec<_>, Option<U256>, BlockHash) = {
-        let span = tracing::Span::current();
+                let storage = context.storage.clone();
+                let span = tracing::Span::current();
+                tokio::task::spawn_blocking(move || {
+                    let _g = span.enter();
+                    pending_transactions(storage, block.as_ref())
+                })
+                .await
+                .context("Fetching pending transactions")??
+            } else {
+                return Err(TraceBlockTransactionsError::BlockNotFound);
+            }
+        }
+        other => {
+            let block_id = other.try_into().expect("Only pending cast should fail");
 
-        let storage = context.storage.clone();
-        tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-
-            let mut db = storage.connection()?;
-            let tx = db.transaction()?;
-
-            let header = tx.block_header(block_id)?;
-
-            let parent_block_hash = header
-                .as_ref()
-                .map(|h| h.parent_hash)
-                .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
-
-            let gas_price: Option<U256> =
-                header.as_ref().map(|header| U256::from(header.gas_price.0));
-
-            let (transactions, _): (Vec<_>, Vec<_>) = tx
-                .transaction_data_for_block(block_id)?
-                .ok_or(TraceBlockTransactionsError::BlockNotFound)?
-                .into_iter()
-                .unzip();
-
-            let transactions = transactions
-                .into_iter()
-                .map(|transaction| compose_executor_transaction(transaction, &tx))
-                .collect::<anyhow::Result<Vec<_>, _>>()?;
-
-            Ok::<_, TraceBlockTransactionsError>((transactions, gas_price, parent_block_hash))
-        })
-        .await
-        .context("trace_block_transactions: fetch block & transactions")??
+            let storage = context.storage.clone();
+            let span = tracing::Span::current();
+            tokio::task::spawn_blocking(move || {
+                let _g = span.enter();
+                fetch_block_transactions(storage, block_id)
+            })
+            .await
+            .context("Fetching transactions")??
+        }
     };
 
     let parent_block_id = pathfinder_common::BlockId::Hash(parent_block_hash);
     let execution_state =
-        crate::executor::execution_state(context, parent_block_id, gas_price).await?;
+        crate::executor::execution_state(context, parent_block_id, Some(U256::from(gas_price.0)))
+            .await?;
 
     let span = tracing::Span::current();
     let traces = tokio::task::spawn_blocking(move || {
@@ -145,6 +136,51 @@ pub async fn trace_block_transactions(
         .collect();
 
     Ok(TraceBlockTransactionsOutput(result))
+}
+
+fn pending_transactions(
+    storage: pathfinder_storage::Storage,
+    block: &starknet_gateway_types::reply::PendingBlock,
+) -> Result<(Vec<pathfinder_executor::Transaction>, GasPrice, BlockHash), TraceBlockTransactionsError>
+{
+    let mut db = storage.connection()?;
+    let tx = db.transaction()?;
+
+    Ok((
+        block
+            .transactions
+            .iter()
+            .map(|transaction| compose_executor_transaction(transaction.clone(), &tx))
+            .collect::<Result<Vec<_>, _>>()?,
+        block.gas_price,
+        block.parent_hash,
+    ))
+}
+
+fn fetch_block_transactions(
+    storage: pathfinder_storage::Storage,
+    block_id: pathfinder_storage::BlockId,
+) -> Result<(Vec<pathfinder_executor::Transaction>, GasPrice, BlockHash), TraceBlockTransactionsError>
+{
+    let mut db = storage.connection()?;
+    let tx = db.transaction()?;
+
+    let header = tx
+        .block_header(block_id)?
+        .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
+
+    let (transactions, _): (Vec<_>, Vec<_>) = tx
+        .transaction_data_for_block(block_id)?
+        .ok_or(TraceBlockTransactionsError::BlockNotFound)?
+        .into_iter()
+        .unzip();
+
+    let transactions = transactions
+        .into_iter()
+        .map(|transaction| compose_executor_transaction(transaction, &tx))
+        .collect::<anyhow::Result<Vec<_>, _>>()?;
+
+    Ok::<_, TraceBlockTransactionsError>((transactions, header.gas_price, header.parent_hash))
 }
 
 #[cfg(test)]
