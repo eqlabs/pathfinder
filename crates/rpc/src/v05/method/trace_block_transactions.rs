@@ -27,7 +27,7 @@ pub struct TraceBlockTransactionsOutput(pub Vec<Trace>);
 #[derive(Debug)]
 pub enum TraceBlockTransactionsError {
     Internal(anyhow::Error),
-    InvalidBlockHash,
+    BlockNotFound,
     ContractErrorV05 { revert_error: String },
 }
 
@@ -41,7 +41,7 @@ impl From<TraceBlockTransactionsError> for crate::error::RpcError {
     fn from(value: TraceBlockTransactionsError) -> Self {
         match value {
             TraceBlockTransactionsError::Internal(e) => Self::Internal(e),
-            TraceBlockTransactionsError::InvalidBlockHash => Self::InvalidBlockHash,
+            TraceBlockTransactionsError::BlockNotFound => Self::BlockNotFound,
             TraceBlockTransactionsError::ContractErrorV05 { revert_error } => {
                 Self::ContractErrorV05 { revert_error }
             }
@@ -52,7 +52,7 @@ impl From<TraceBlockTransactionsError> for crate::error::RpcError {
 impl From<ExecutionStateError> for TraceBlockTransactionsError {
     fn from(value: ExecutionStateError) -> Self {
         match value {
-            ExecutionStateError::BlockNotFound => Self::InvalidBlockHash,
+            ExecutionStateError::BlockNotFound => Self::BlockNotFound,
             ExecutionStateError::Internal(e) => Self::Internal(e),
         }
     }
@@ -83,7 +83,7 @@ pub async fn trace_block_transactions(
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
     let block_id = input.block_id;
     let block_id = match block_id {
-        BlockId::Pending => return Err(TraceBlockTransactionsError::InvalidBlockHash),
+        BlockId::Pending => return Err(TraceBlockTransactionsError::BlockNotFound),
         other => other.try_into().expect("Only pending cast should fail"),
     };
 
@@ -102,14 +102,14 @@ pub async fn trace_block_transactions(
             let parent_block_hash = header
                 .as_ref()
                 .map(|h| h.parent_hash)
-                .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?;
+                .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
 
             let gas_price: Option<U256> =
                 header.as_ref().map(|header| U256::from(header.gas_price.0));
 
             let (transactions, _): (Vec<_>, Vec<_>) = tx
                 .transaction_data_for_block(block_id)?
-                .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?
+                .ok_or(TraceBlockTransactionsError::BlockNotFound)?
                 .into_iter()
                 .unzip();
 
