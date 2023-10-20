@@ -26,7 +26,6 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_addDeclareTransaction"           , v04_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction"     , v04_method::add_deploy_account_transaction)
         .register("starknet_addInvokeTransaction"            , v04_method::add_invoke_transaction)
-        .register("starknet_estimateMessageFee"              , v04_method::estimate_message_fee)
         .register("starknet_getTransactionByBlockIdAndIndex" , v04_method::get_transaction_by_block_id_and_index)
         .register("starknet_getTransactionByHash"            , v04_method::get_transaction_by_hash)
         .register("starknet_getTransactionReceipt"           , method::get_transaction_receipt)
@@ -34,6 +33,7 @@ pub fn register_routes() -> RpcRouterBuilder {
 
         .register("starknet_call"                            , method::call)
         .register("starknet_estimateFee"                     , method::estimate_fee)
+        .register("starknet_estimateMessageFee"              , method::estimate_message_fee)
         .register("starknet_getBlockWithTxHashes"            , method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
         .register("starknet_getTransactionStatus"            , method::get_transaction_status)

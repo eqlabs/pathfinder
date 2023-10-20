@@ -1,57 +1,177 @@
-use pathfinder_common::{BlockId, EthereumAddress};
+use std::sync::Arc;
 
-use crate::{context::RpcContext, v05::method::call::FunctionCall};
+use anyhow::Context;
+use pathfinder_common::{
+    felt, BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress,
+    TransactionHash, TransactionNonce, TransactionVersion,
+};
+use pathfinder_executor::IntoStarkFelt;
+use stark_hash::Felt;
+use starknet_api::core::PatriciaKey;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct EstimateMessageFeeInput {
-    pub message: FunctionCall,
-    pub sender_address: EthereumAddress,
-    pub block_id: BlockId,
+use crate::{context::RpcContext, error::RpcError, v05::method::estimate_fee::FeeEstimate};
+
+#[derive(Debug)]
+pub enum EstimateMessageFeeError {
+    Internal(anyhow::Error),
+    BlockNotFound,
+    ContractNotFound,
+    ContractErrorV05 { revert_error: String },
 }
 
-crate::error::generate_rpc_error_subset!(
-    EstimateMessageFeeError: BlockNotFound,
-    ContractNotFound,
-    ContractError
-);
+impl From<anyhow::Error> for EstimateMessageFeeError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
+    }
+}
 
-impl From<crate::v05::method::estimate_message_fee::EstimateMessageFeeError>
-    for EstimateMessageFeeError
-{
-    fn from(value: crate::v05::method::estimate_message_fee::EstimateMessageFeeError) -> Self {
-        use crate::v05::method::estimate_message_fee::EstimateMessageFeeError::*;
-
-        match value {
-            Internal(e) => Self::Internal(e),
-            BlockNotFound => Self::BlockNotFound,
+impl From<pathfinder_executor::CallError> for EstimateMessageFeeError {
+    fn from(c: pathfinder_executor::CallError) -> Self {
+        use pathfinder_executor::CallError::*;
+        match c {
+            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
             ContractNotFound => Self::ContractNotFound,
-            ContractErrorV05 { revert_error } => {
-                Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
-            }
+            Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
+            Internal(e) => Self::Internal(e),
         }
     }
 }
 
-// The implementation is the same as for v05 -- the only difference is that we have to map
-// the input type and error ContractErrorV05 to an internal error.
+impl From<crate::executor::ExecutionStateError> for EstimateMessageFeeError {
+    fn from(error: crate::executor::ExecutionStateError) -> Self {
+        use crate::executor::ExecutionStateError::*;
+        match error {
+            BlockNotFound => Self::BlockNotFound,
+            Internal(e) => Self::Internal(e),
+        }
+    }
+}
+
+impl From<EstimateMessageFeeError> for RpcError {
+    fn from(value: EstimateMessageFeeError) -> Self {
+        match value {
+            EstimateMessageFeeError::BlockNotFound => RpcError::BlockNotFound,
+            EstimateMessageFeeError::ContractNotFound => RpcError::ContractNotFound,
+            EstimateMessageFeeError::ContractErrorV05 { revert_error } => {
+                RpcError::ContractErrorV05 { revert_error }
+            }
+            EstimateMessageFeeError::Internal(e) => RpcError::Internal(e),
+        }
+    }
+}
+
+#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EstimateMessageFeeInput {
+    pub message: MsgFromL1,
+    pub block_id: BlockId,
+}
+
+#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+pub struct MsgFromL1 {
+    pub from_address: EthereumAddress,
+    pub to_address: ContractAddress,
+    pub entry_point_selector: EntryPoint,
+    pub payload: Vec<CallParam>,
+}
+
 pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
-) -> Result<crate::v05::method::estimate_fee::FeeEstimate, EstimateMessageFeeError> {
-    let input = crate::v05::method::estimate_message_fee::EstimateMessageFeeInput {
-        message: crate::v05::method::estimate_message_fee::MsgFromL1 {
-            from_address: input.sender_address,
-            to_address: input.message.contract_address,
-            entry_point_selector: input.message.entry_point_selector,
-            payload: input.message.calldata,
-        },
-        block_id: input.block_id,
+) -> Result<FeeEstimate, EstimateMessageFeeError> {
+    let chain_id = context.chain_id;
+    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
+
+    let span = tracing::Span::current();
+
+    let mut result = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+
+        let transaction = create_executor_transaction(input, chain_id)?;
+
+        let result = pathfinder_executor::estimate(execution_state, vec![transaction])?;
+
+        Ok::<_, EstimateMessageFeeError>(result)
+    })
+    .await
+    .context("Estimating message fee")??;
+
+    if result.len() != 1 {
+        return Err(
+            anyhow::anyhow!("Internal error: expected exactly one fee estimation result").into(),
+        );
+    }
+
+    let result = result.pop().unwrap();
+
+    Ok(FeeEstimate {
+        gas_consumed: result.gas_consumed,
+        gas_price: result.gas_price,
+        overall_fee: result.overall_fee,
+    })
+}
+
+fn create_executor_transaction(
+    input: EstimateMessageFeeInput,
+    chain_id: ChainId,
+) -> anyhow::Result<pathfinder_executor::Transaction> {
+    let transaction_hash = calculate_transaction_hash(&input, chain_id);
+
+    // prepend sender address to calldata
+    let sender_address = Felt::from_be_slice(input.message.from_address.0.as_bytes())
+        .expect("Ethereum address is 160 bits");
+    let calldata = std::iter::once(pathfinder_common::CallParam(sender_address))
+        .chain(input.message.payload)
+        .map(|p| p.0.into_starkfelt())
+        .collect();
+
+    let tx = starknet_api::transaction::L1HandlerTransaction {
+        version: starknet_api::transaction::TransactionVersion(felt!("0x1").into_starkfelt()),
+        nonce: starknet_api::core::Nonce(Felt::ZERO.into_starkfelt()),
+        contract_address: starknet_api::core::ContractAddress(
+            PatriciaKey::try_from(input.message.to_address.0.into_starkfelt())
+                .expect("A ContractAddress should be the right size"),
+        ),
+        entry_point_selector: starknet_api::core::EntryPointSelector(
+            input.message.entry_point_selector.0.into_starkfelt(),
+        ),
+        calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
     };
 
-    crate::v05::method::estimate_message_fee::estimate_message_fee(context, input)
-        .await
-        .map_err(Into::into)
+    let transaction = pathfinder_executor::Transaction::from_api(
+        starknet_api::transaction::Transaction::L1Handler(tx),
+        starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
+        None,
+        Some(starknet_api::transaction::Fee(1)),
+        None,
+    )?;
+    Ok(transaction)
+}
+
+fn calculate_transaction_hash(
+    input: &EstimateMessageFeeInput,
+    chain_id: ChainId,
+) -> TransactionHash {
+    let call_params_hash = {
+        let mut hh = stark_hash::HashChain::default();
+        hh = input.message.payload.iter().fold(hh, |mut hh, call_param| {
+            hh.update(call_param.0);
+            hh
+        });
+        hh.finalize()
+    };
+
+    starknet_gateway_types::transaction_hash::compute_txn_hash(
+        b"l1_handler",
+        TransactionVersion::ONE,
+        input.message.to_address,
+        Some(input.message.entry_point_selector),
+        call_params_hash,
+        None,
+        chain_id,
+        TransactionNonce::ZERO,
+        None,
+    )
 }
 
 #[cfg(test)]
@@ -74,11 +194,11 @@ mod tests {
     fn test_parse_input_named() {
         let input_json = serde_json::json!({
             "message": {
-                "contract_address": "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                "to_address": "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
                 "entry_point_selector": "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01",
-                "calldata": ["0x1", "0x2"],
+                "payload": ["0x1", "0x2"],
+                "from_address": "0x0000000000000000000000000000000000000000"
             },
-            "sender_address": "0x0000000000000000000000000000000000000000",
             "block_id": {"block_number": 1},
         });
         let input = EstimateMessageFeeInput::deserialize(&input_json).unwrap();
@@ -86,16 +206,16 @@ mod tests {
         assert_eq!(
             input,
             EstimateMessageFeeInput {
-                message: FunctionCall {
-                    contract_address: contract_address!(
+                message: MsgFromL1 {
+                    to_address: contract_address!(
                         "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                     ),
                     entry_point_selector: entry_point!(
                         "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
                     ),
-                    calldata: vec![call_param!("0x1"), call_param!("0x2"),],
+                    payload: vec![call_param!("0x1"), call_param!("0x2"),],
+                    from_address: EthereumAddress(H160::zero()),
                 },
-                sender_address: EthereumAddress(H160::zero()),
                 block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
             }
         );
@@ -105,11 +225,11 @@ mod tests {
     fn test_parse_input_positional() {
         let input_json = serde_json::json!([
             {
-                "contract_address": "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                "to_address": "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
                 "entry_point_selector": "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01",
-                "calldata": ["0x1", "0x2"],
+                "payload": ["0x1", "0x2"],
+                "from_address": "0x0000000000000000000000000000000000000000"
             },
-            "0x0000000000000000000000000000000000000000",
             {"block_number": 1},
         ]);
         let input = EstimateMessageFeeInput::deserialize(&input_json).unwrap();
@@ -117,16 +237,16 @@ mod tests {
         assert_eq!(
             input,
             EstimateMessageFeeInput {
-                message: FunctionCall {
-                    contract_address: contract_address!(
+                message: MsgFromL1 {
+                    to_address: contract_address!(
                         "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                     ),
                     entry_point_selector: entry_point!(
                         "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
                     ),
-                    calldata: vec![call_param!("0x1"), call_param!("0x2"),],
+                    payload: vec![call_param!("0x1"), call_param!("0x2"),],
+                    from_address: EthereumAddress(H160::zero()),
                 },
-                sender_address: EthereumAddress(H160::zero()),
                 block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
             }
         );
@@ -201,23 +321,23 @@ mod tests {
 
     fn input() -> EstimateMessageFeeInput {
         EstimateMessageFeeInput {
-            message: FunctionCall {
-                contract_address: contract_address!(
+            message: MsgFromL1 {
+                to_address: contract_address!(
                     "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                 ),
                 entry_point_selector: entry_point!(
                     "0x31ee153a27e249dc4bade6b861b37ef1e1ea0a4c0bf73b7405a02e9e72f7be3"
                 ),
-                calldata: vec![call_param!("0x1")],
+                payload: vec![call_param!("0x1")],
+                from_address: EthereumAddress(H160::zero()),
             },
-            sender_address: EthereumAddress(H160::zero()),
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
         }
     }
 
     #[tokio::test]
     async fn test_estimate_message_fee() {
-        let expected = crate::v05::method::estimate_fee::FeeEstimate {
+        let expected = FeeEstimate {
             gas_consumed: 17105.into(),
             gas_price: 1.into(),
             overall_fee: 17105.into(),
