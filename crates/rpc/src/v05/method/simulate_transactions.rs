@@ -116,8 +116,8 @@ pub mod dto {
     use serde_with::serde_as;
 
     use crate::felt::RpcFelt;
-    use crate::v02::method::call::FunctionCall;
     use crate::v03::method::get_state_update::types::StateDiff;
+    use crate::v05::method::call::FunctionCall;
 
     use super::*;
 
@@ -431,13 +431,13 @@ pub mod dto {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::v02::method::call::FunctionCall;
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
     };
     use crate::v02::types::ContractClass;
     use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
     pub(crate) use crate::v04::method::simulate_transactions::tests::setup_storage;
+    use crate::v05::method::call::FunctionCall;
     use pathfinder_common::{felt, macro_prelude::*, ClassHash, StorageValue, TransactionVersion};
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,

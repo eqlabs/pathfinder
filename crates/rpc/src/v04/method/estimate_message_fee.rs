@@ -1,8 +1,8 @@
 use pathfinder_common::{BlockId, CallParam, ContractAddress, EntryPoint, EthereumAddress};
 
 use crate::context::RpcContext;
-use crate::v02::method::call::FunctionCall;
 use crate::v03::method::estimate_message_fee::EstimateMessageFeeError;
+use crate::v05::method::call::FunctionCall;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

@@ -1,3 +1,4 @@
+pub(crate) mod call;
 mod get_block_with_tx_hashes;
 mod get_block_with_txs;
 mod get_transaction_receipt;
@@ -7,6 +8,7 @@ mod spec_version;
 mod trace_block_transactions;
 mod trace_transaction;
 
+pub(crate) use call::call;
 pub(crate) use get_block_with_tx_hashes::get_block_with_tx_hashes;
 pub(crate) use get_block_with_txs::get_block_with_txs;
 pub(crate) use get_transaction_receipt::get_transaction_receipt;

@@ -87,7 +87,7 @@ pub(crate) mod dto {
     use serde_with::serde_as;
 
     use crate::felt::RpcFelt;
-    use crate::v02::method::call::FunctionCall;
+    use crate::v05::method::call::FunctionCall;
 
     use super::*;
 
@@ -392,8 +392,8 @@ mod tests {
     use pathfinder_common::{macro_prelude::*, StorageAddress};
     use starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
 
-    use crate::v02::method::call::FunctionCall;
     use crate::v02::types::request::BroadcastedDeployAccountTransaction;
+    use crate::v05::method::call::FunctionCall;
 
     use super::*;
 

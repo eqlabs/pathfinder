@@ -10,7 +10,7 @@ use serde_with::serde_as;
 use stark_hash::Felt;
 use starknet_api::core::PatriciaKey;
 
-use crate::{context::RpcContext, v02::method::call::FunctionCall};
+use crate::{context::RpcContext, v05::method::call::FunctionCall};
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
