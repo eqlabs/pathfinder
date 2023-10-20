@@ -79,6 +79,13 @@ impl MaybePendingBlock {
         }
     }
 
+    pub fn as_pending(self) -> Option<PendingBlock> {
+        match self {
+            MaybePendingBlock::Pending(block) => Some(block),
+            MaybePendingBlock::Block(_) => None,
+        }
+    }
+
     pub fn transactions(&self) -> &[transaction::Transaction] {
         match self {
             MaybePendingBlock::Block(b) => &b.transactions,
