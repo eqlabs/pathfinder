@@ -20,7 +20,6 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getNonce"                        , v02_method::get_nonce)
         .register("starknet_getStorageAt"                    , v02_method::get_storage_at)
         
-        .register("starknet_estimateFee"                     , v03_method::estimate_fee)
         .register("starknet_getEvents"                       , v03_method::get_events)
         .register("starknet_getStateUpdate"                  , v03_method::get_state_update)
 
@@ -34,6 +33,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_syncing"                         , v04_method::syncing)
 
         .register("starknet_call"                            , method::call)
+        .register("starknet_estimateFee"                     , method::estimate_fee)
         .register("starknet_getBlockWithTxHashes"            , method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
         .register("starknet_getTransactionStatus"            , method::get_transaction_status)
