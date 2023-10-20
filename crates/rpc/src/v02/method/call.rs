@@ -44,23 +44,6 @@ pub struct FunctionCall {
     pub calldata: Vec<CallParam>,
 }
 
-impl From<FunctionCall> for crate::v02::types::request::Call {
-    fn from(call: FunctionCall) -> Self {
-        Self {
-            contract_address: call.contract_address,
-            calldata: call.calldata,
-            entry_point_selector: Some(call.entry_point_selector),
-            // TODO: these fields are estimateFee-only and effectively ignored
-            // by the underlying implementation. We can remove these once
-            // JSON-RPC v0.1.0 is removed.
-            signature: vec![],
-            max_fee: Self::DEFAULT_MAX_FEE,
-            version: Self::DEFAULT_VERSION,
-            nonce: Self::DEFAULT_NONCE,
-        }
-    }
-}
-
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);

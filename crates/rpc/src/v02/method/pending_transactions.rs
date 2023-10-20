@@ -22,7 +22,7 @@ mod tests {
         CommonDeclareInvokeTransactionProperties, DeployTransaction, InvokeTransaction,
         InvokeTransactionV0,
     };
-    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{macro_prelude::*, Fee};
     use pathfinder_common::{TransactionNonce, TransactionVersion};
 
     #[tokio::test]
@@ -31,7 +31,7 @@ mod tests {
         let tx0 = InvokeTransactionV0 {
             common: CommonDeclareInvokeTransactionProperties {
                 hash: transaction_hash_bytes!(b"pending tx hash 0"),
-                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: Fee::ZERO,
                 signature: vec![],
                 nonce: TransactionNonce::ZERO,
             },
@@ -51,7 +51,7 @@ mod tests {
         let tx2 = InvokeTransactionV0 {
             common: CommonDeclareInvokeTransactionProperties {
                 hash: transaction_hash_bytes!(b"pending reverted"),
-                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: Fee::ZERO,
                 signature: vec![],
                 nonce: TransactionNonce::ZERO,
             },

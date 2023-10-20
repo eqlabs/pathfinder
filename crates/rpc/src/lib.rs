@@ -202,7 +202,7 @@ impl Default for SyncState {
 
 pub mod test_utils {
     use pathfinder_common::event::Event;
-    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{macro_prelude::*, Fee};
     use pathfinder_common::{
         BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
         GasPrice, SierraHash, StarknetVersion, StateUpdate, TransactionIndex, TransactionVersion,
@@ -586,7 +586,7 @@ pub mod test_utils {
                 sender_address: contract_address_bytes!(b"pending contract addr 0"),
                 entry_point_selector: entry_point_bytes!(b"entry point 0"),
                 entry_point_type: Some(EntryPointType::External),
-                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: Fee::ZERO,
                 signature: vec![],
                 transaction_hash: transaction_hash_bytes!(b"pending tx hash 0"),
             })
@@ -606,7 +606,7 @@ pub mod test_utils {
                 sender_address: contract_address_bytes!(b"pending contract addr 0"),
                 entry_point_selector: entry_point_bytes!(b"entry point 0"),
                 entry_point_type: Some(EntryPointType::External),
-                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: Fee::ZERO,
                 signature: vec![],
                 transaction_hash: transaction_hash_bytes!(b"pending reverted"),
             })
