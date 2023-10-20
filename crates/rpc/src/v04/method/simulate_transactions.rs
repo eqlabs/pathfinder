@@ -97,7 +97,7 @@ pub mod dto {
     use serde_with::serde_as;
 
     use crate::felt::RpcFelt;
-    use crate::v02::method::call::FunctionCall;
+    use crate::v05::method::call::FunctionCall;
 
     use super::*;
 
@@ -401,12 +401,12 @@ pub mod dto {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::v02::method::call::FunctionCall;
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
         BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1,
     };
     use crate::v02::types::ContractClass;
+    use crate::v05::method::call::FunctionCall;
     use pathfinder_common::{
         felt, BlockHeader, ContractAddress, StorageAddress, StorageValue, TransactionVersion,
     };

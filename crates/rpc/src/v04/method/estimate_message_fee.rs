@@ -1,37 +1,36 @@
-use pathfinder_common::{BlockId, CallParam, ContractAddress, EntryPoint, EthereumAddress};
-
 use crate::context::RpcContext;
-use crate::v02::method::call::FunctionCall;
-use crate::v03::method::estimate_message_fee::EstimateMessageFeeError;
+use crate::v05::method::estimate_message_fee::EstimateMessageFeeInput;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct EstimateMessageFeeInput {
-    message: MsgFromL1,
-    block_id: BlockId,
+crate::error::generate_rpc_error_subset!(
+    EstimateMessageFeeError: BlockNotFound,
+    ContractNotFound,
+    ContractError
+);
+
+impl From<crate::v05::method::estimate_message_fee::EstimateMessageFeeError>
+    for EstimateMessageFeeError
+{
+    fn from(value: crate::v05::method::estimate_message_fee::EstimateMessageFeeError) -> Self {
+        use crate::v05::method::estimate_message_fee::EstimateMessageFeeError::*;
+
+        match value {
+            Internal(e) => Self::Internal(e),
+            BlockNotFound => Self::BlockNotFound,
+            ContractNotFound => Self::ContractNotFound,
+            ContractErrorV05 { revert_error } => {
+                Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
+            }
+        }
+    }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-pub struct MsgFromL1 {
-    pub from_address: EthereumAddress,
-    pub to_address: ContractAddress,
-    pub entry_point_selector: EntryPoint,
-    pub payload: Vec<CallParam>,
-}
-
+// The implementation is the same as for v05 -- the only difference is that we have to map
+// ContractErrorV05 to an internal error.
 pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
-) -> Result<crate::v03::method::estimate_message_fee::FeeEstimate, EstimateMessageFeeError> {
-    let input = crate::v03::method::estimate_message_fee::EstimateMessageFeeInput {
-        message: FunctionCall {
-            contract_address: input.message.to_address,
-            entry_point_selector: input.message.entry_point_selector,
-            calldata: input.message.payload,
-        },
-        sender_address: input.message.from_address,
-        block_id: input.block_id,
-    };
-
-    crate::v03::method::estimate_message_fee(context, input).await
+) -> Result<crate::v05::method::estimate_fee::FeeEstimate, EstimateMessageFeeError> {
+    crate::v05::method::estimate_message_fee::estimate_message_fee(context, input)
+        .await
+        .map_err(Into::into)
 }

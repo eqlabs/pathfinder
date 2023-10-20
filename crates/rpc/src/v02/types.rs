@@ -12,7 +12,7 @@ pub mod request {
         CallParam, CasmHash, ChainId, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
-    use pathfinder_serde::{TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr};
+    use pathfinder_serde::TransactionVersionAsHexStr;
     use serde::Deserialize;
     use serde_with::serde_as;
     use stark_hash::{Felt, HashChain};
@@ -480,50 +480,6 @@ pub mod request {
                 None,
             )
         }
-    }
-
-    /// Contains parameters passed to `starknet_call`.
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct Call {
-        pub contract_address: ContractAddress,
-        pub calldata: Vec<CallParam>,
-        pub entry_point_selector: Option<EntryPoint>,
-        /// EstimateFee hurry: it doesn't make any sense to use decimal numbers for one field
-        #[serde(default)]
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
-        pub signature: Vec<TransactionSignatureElem>,
-        /// EstimateFee hurry: max fee is needed if there's a signature
-        #[serde(default = "call_default_max_fee")]
-        pub max_fee: Fee,
-        /// EstimateFee hurry: transaction version might be interesting, might not be around for
-        /// long
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        #[serde(default = "call_default_version")]
-        pub version: TransactionVersion,
-        #[serde(default = "call_default_nonce")]
-        pub nonce: TransactionNonce,
-    }
-
-    const fn call_default_max_fee() -> Fee {
-        Call::DEFAULT_MAX_FEE
-    }
-
-    const fn call_default_version() -> TransactionVersion {
-        Call::DEFAULT_VERSION
-    }
-
-    const fn call_default_nonce() -> TransactionNonce {
-        Call::DEFAULT_NONCE
-    }
-
-    impl Call {
-        pub const DEFAULT_MAX_FEE: Fee = Fee::ZERO;
-        pub const DEFAULT_VERSION: TransactionVersion =
-            TransactionVersion(primitive_types::H256::zero());
-        pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(stark_hash::Felt::ZERO);
     }
 
     #[cfg(test)]
