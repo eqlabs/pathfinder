@@ -1,7 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use blockifier::execution::call_info::OrderedL2ToL1Message;
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{
+    CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
+};
 use stark_hash::Felt;
 
 use super::felt::IntoFelt;
@@ -38,6 +40,7 @@ pub enum TransactionTrace {
 pub struct DeclareTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub state_diff: StateDiff,
 }
 
 #[derive(Debug)]
@@ -45,6 +48,7 @@ pub struct DeployAccountTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub constructor_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub state_diff: StateDiff,
 }
 
 #[derive(Debug)]
@@ -58,6 +62,7 @@ pub struct InvokeTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub execute_invocation: ExecuteInvocation,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub state_diff: StateDiff,
 }
 
 #[derive(Debug)]
@@ -95,9 +100,44 @@ pub struct FunctionInvocation {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct MsgToL1 {
+    pub order: usize,
     pub payload: Vec<Felt>,
     pub to_address: Felt,
     pub from_address: Felt,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct StateDiff {
+    pub storage_diffs: BTreeMap<ContractAddress, Vec<StorageDiff>>,
+    pub deployed_contracts: Vec<DeployedContract>,
+    pub deprecated_declared_classes: HashSet<ClassHash>,
+    pub declared_classes: Vec<DeclaredSierraClass>,
+    pub nonces: BTreeMap<ContractAddress, ContractNonce>,
+    pub replaced_classes: Vec<ReplacedClass>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct StorageDiff {
+    pub key: StorageAddress,
+    pub value: StorageValue,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct DeployedContract {
+    pub address: ContractAddress,
+    pub class_hash: ClassHash,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct DeclaredSierraClass {
+    pub class_hash: SierraHash,
+    pub compiled_class_hash: CasmHash,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct ReplacedClass {
+    pub contract_address: ContractAddress,
+    pub class_hash: ClassHash,
 }
 
 impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
@@ -209,6 +249,7 @@ fn ordered_l2_to_l1_messages(
             messages.insert(
                 order,
                 MsgToL1 {
+                    order: *order,
                     payload: message.payload.0.iter().map(IntoFelt::into_felt).collect(),
                     to_address: Felt::from_be_slice(message.to_address.0.as_bytes())
                         .expect("Ethereum address should fit into felt"),

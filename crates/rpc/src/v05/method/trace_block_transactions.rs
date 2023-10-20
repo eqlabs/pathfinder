@@ -1,7 +1,6 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, TransactionHash};
+use pathfinder_common::{BlockHash, BlockId, TransactionHash};
 use pathfinder_executor::CallError;
-use pathfinder_storage::BlockId;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinError;
@@ -13,7 +12,7 @@ use super::simulate_transactions::dto::TransactionTrace;
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct TraceBlockTransactionsInput {
-    block_hash: BlockHash,
+    block_id: BlockId,
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
@@ -25,9 +24,30 @@ pub struct Trace {
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct TraceBlockTransactionsOutput(pub Vec<Trace>);
 
-crate::error::generate_rpc_error_subset!(
-    TraceBlockTransactionsError: InvalidBlockHash
-);
+#[derive(Debug)]
+pub enum TraceBlockTransactionsError {
+    Internal(anyhow::Error),
+    InvalidBlockHash,
+    ContractErrorV05 { revert_error: String },
+}
+
+impl From<anyhow::Error> for TraceBlockTransactionsError {
+    fn from(value: anyhow::Error) -> Self {
+        Self::Internal(value)
+    }
+}
+
+impl From<TraceBlockTransactionsError> for crate::error::RpcError {
+    fn from(value: TraceBlockTransactionsError) -> Self {
+        match value {
+            TraceBlockTransactionsError::Internal(e) => Self::Internal(e),
+            TraceBlockTransactionsError::InvalidBlockHash => Self::InvalidBlockHash,
+            TraceBlockTransactionsError::ContractErrorV05 { revert_error } => {
+                Self::ContractErrorV05 { revert_error }
+            }
+        }
+    }
+}
 
 impl From<ExecutionStateError> for TraceBlockTransactionsError {
     fn from(value: ExecutionStateError) -> Self {
@@ -45,7 +65,7 @@ impl From<CallError> for TraceBlockTransactionsError {
             CallError::InvalidMessageSelector => {
                 Self::Internal(anyhow::anyhow!("Invalid message selector"))
             }
-            CallError::Reverted(reason) => Self::Internal(anyhow::anyhow!("Reverted: {reason}")),
+            CallError::Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             CallError::Internal(e) => Self::Internal(e),
         }
     }
@@ -61,6 +81,12 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
+    let block_id = input.block_id;
+    let block_id = match block_id {
+        BlockId::Pending => return Err(TraceBlockTransactionsError::InvalidBlockHash),
+        other => other.try_into().expect("Only pending cast should fail"),
+    };
+
     let (transactions, gas_price, parent_block_hash): (Vec<_>, Option<U256>, BlockHash) = {
         let span = tracing::Span::current();
 
@@ -71,7 +97,7 @@ pub async fn trace_block_transactions(
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
-            let header = tx.block_header(pathfinder_storage::BlockId::Hash(input.block_hash))?;
+            let header = tx.block_header(block_id)?;
 
             let parent_block_hash = header
                 .as_ref()
@@ -82,7 +108,7 @@ pub async fn trace_block_transactions(
                 header.as_ref().map(|header| U256::from(header.gas_price.0));
 
             let (transactions, _): (Vec<_>, Vec<_>) = tx
-                .transaction_data_for_block(BlockId::Hash(input.block_hash))?
+                .transaction_data_for_block(block_id)?
                 .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?
                 .into_iter()
                 .unzip();
@@ -98,8 +124,9 @@ pub async fn trace_block_transactions(
         .context("trace_block_transactions: fetch block & transactions")??
     };
 
-    let block_id = pathfinder_common::BlockId::Hash(parent_block_hash);
-    let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
+    let parent_block_id = pathfinder_common::BlockId::Hash(parent_block_hash);
+    let execution_state =
+        crate::executor::execution_state(context, parent_block_id, gas_price).await?;
 
     let span = tracing::Span::current();
     let traces = tokio::task::spawn_blocking(move || {
@@ -122,129 +149,10 @@ pub async fn trace_block_transactions(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use pathfinder_common::{
-        felt, BlockHeader, ChainId, GasPrice, SierraHash, TransactionIndex, TransactionNonce,
-    };
-    use starknet_gateway_types::reply::{
-        self as gateway,
-        transaction::{EntryPointType, ExecutionStatus, Receipt},
-    };
+    use pathfinder_common::{felt, BlockHeader, ChainId, GasPrice, SierraHash, TransactionIndex};
+    use starknet_gateway_types::reply::transaction::{ExecutionStatus, Receipt};
 
     use super::*;
-
-    impl From<crate::v02::types::request::BroadcastedTransaction>
-        for starknet_gateway_types::reply::transaction::Transaction
-    {
-        fn from(value: crate::v02::types::request::BroadcastedTransaction) -> Self {
-            match value {
-                crate::v02::types::request::BroadcastedTransaction::Declare(
-                    crate::v02::types::request::BroadcastedDeclareTransaction::V0(declare),
-                ) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
-                    starknet_gateway_types::reply::transaction::Transaction::Declare(
-                        gateway::transaction::DeclareTransaction::V0(
-                            gateway::transaction::DeclareTransactionV0V1 {
-                                class_hash,
-                                max_fee: declare.max_fee,
-                                nonce: TransactionNonce::default(),
-                                sender_address: declare.sender_address,
-                                signature: declare.signature,
-                                transaction_hash,
-                            },
-                        ),
-                    )
-                }
-                crate::v02::types::request::BroadcastedTransaction::Declare(
-                    crate::v02::types::request::BroadcastedDeclareTransaction::V1(declare),
-                ) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
-                    starknet_gateway_types::reply::transaction::Transaction::Declare(
-                        gateway::transaction::DeclareTransaction::V1(
-                            gateway::transaction::DeclareTransactionV0V1 {
-                                class_hash,
-                                max_fee: declare.max_fee,
-                                nonce: TransactionNonce::default(),
-                                sender_address: declare.sender_address,
-                                signature: declare.signature,
-                                transaction_hash,
-                            },
-                        ),
-                    )
-                }
-                crate::v02::types::request::BroadcastedTransaction::Declare(
-                    crate::v02::types::request::BroadcastedDeclareTransaction::V2(declare),
-                ) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
-                    starknet_gateway_types::reply::transaction::Transaction::Declare(
-                        gateway::transaction::DeclareTransaction::V2(
-                            gateway::transaction::DeclareTransactionV2 {
-                                class_hash,
-                                max_fee: declare.max_fee,
-                                nonce: TransactionNonce::default(),
-                                sender_address: declare.sender_address,
-                                signature: declare.signature,
-                                transaction_hash,
-                                compiled_class_hash: declare.compiled_class_hash,
-                            },
-                        ),
-                    )
-                }
-                crate::v02::types::request::BroadcastedTransaction::DeployAccount(deploy) => {
-                    starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
-                        gateway::transaction::DeployAccountTransaction {
-                            contract_address: deploy.deployed_contract_address(),
-                            transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
-                            max_fee: deploy.max_fee,
-                            version: deploy.version,
-                            signature: deploy.signature,
-                            nonce: deploy.nonce,
-                            contract_address_salt: deploy.contract_address_salt,
-                            constructor_calldata: deploy.constructor_calldata,
-                            class_hash: deploy.class_hash,
-                        },
-                    )
-                }
-                crate::v02::types::request::BroadcastedTransaction::Invoke(
-                    crate::v02::types::request::BroadcastedInvokeTransaction::V0(invoke),
-                ) => {
-                    let transaction_hash = invoke.transaction_hash(ChainId::TESTNET);
-                    starknet_gateway_types::reply::transaction::Transaction::Invoke(
-                        gateway::transaction::InvokeTransaction::V0(
-                            gateway::transaction::InvokeTransactionV0 {
-                                calldata: invoke.calldata,
-                                sender_address: invoke.contract_address,
-                                entry_point_type: Some(EntryPointType::External),
-                                entry_point_selector: invoke.entry_point_selector,
-                                max_fee: invoke.max_fee,
-                                signature: invoke.signature,
-                                transaction_hash,
-                            },
-                        ),
-                    )
-                }
-                crate::v02::types::request::BroadcastedTransaction::Invoke(
-                    crate::v02::types::request::BroadcastedInvokeTransaction::V1(invoke),
-                ) => {
-                    let transaction_hash = invoke.transaction_hash(ChainId::TESTNET);
-                    starknet_gateway_types::reply::transaction::Transaction::Invoke(
-                        gateway::transaction::InvokeTransaction::V1(
-                            gateway::transaction::InvokeTransactionV1 {
-                                calldata: invoke.calldata,
-                                sender_address: invoke.sender_address,
-                                max_fee: invoke.max_fee,
-                                signature: invoke.signature,
-                                nonce: invoke.nonce,
-                                transaction_hash,
-                            },
-                        ),
-                    )
-                }
-            }
-        }
-    }
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
@@ -354,7 +262,7 @@ pub(crate) mod tests {
         let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
-            block_hash: next_block_header.hash,
+            block_id: next_block_header.hash.into(),
         };
         let output = trace_block_transactions(context, input).await.unwrap();
         let expected = TraceBlockTransactionsOutput(traces);

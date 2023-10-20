@@ -1,16 +1,24 @@
+use std::collections::BTreeMap;
+
 use blockifier::{
+    state::{cached_state::CachedState, errors::StateError, state_api::State},
     transaction::transaction_execution::Transaction,
     transaction::{errors::TransactionExecutionError, transactions::ExecutableTransaction},
 };
-use pathfinder_common::TransactionHash;
+use pathfinder_common::{
+    CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
+    TransactionHash,
+};
 use primitive_types::U256;
 
 use crate::{
     transaction::transaction_hash,
     types::{
-        DeclareTransactionTrace, DeployAccountTransactionTrace, ExecuteInvocation,
-        InvokeTransactionTrace, L1HandlerTransactionTrace,
+        DeclareTransactionTrace, DeclaredSierraClass, DeployAccountTransactionTrace,
+        DeployedContract, ExecuteInvocation, InvokeTransactionTrace, L1HandlerTransactionTrace,
+        ReplacedClass, StateDiff, StorageDiff,
     },
+    IntoFelt,
 };
 
 use super::{
@@ -35,9 +43,17 @@ pub fn simulate(
         let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
 
         let transaction_type = transaction_type(&transaction);
+        let transaction_declared_deprecated_class_hash =
+            transaction_declared_deprecated_class(&transaction);
 
+        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = transaction
-            .execute(&mut state, &block_context, !skip_fee_charge, !skip_validate)
+            .execute(
+                &mut tx_state,
+                &block_context,
+                !skip_fee_charge,
+                !skip_validate,
+            )
             .and_then(|mut tx_info| {
                 // skipping fee charge in .execute() means that the fee isn't calculated, do that explicitly
                 // some other cases, like having max_fee=0 also lead to not calculating fees
@@ -49,6 +65,8 @@ pub fn simulate(
                 };
                 Ok(tx_info)
             });
+        let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class_hash)?;
+        tx_state.commit();
 
         match tx_info {
             Ok(tx_info) => {
@@ -65,7 +83,7 @@ pub fn simulate(
                         gas_price,
                         overall_fee: tx_info.actual_fee.0.into(),
                     },
-                    trace: to_trace(transaction_type, tx_info)?,
+                    trace: to_trace(transaction_type, tx_info, state_diff)?,
                 });
             }
             Err(error) => {
@@ -89,8 +107,14 @@ pub fn trace_one(
     for tx in transactions {
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
-        let tx_info = tx.execute(&mut state, &block_context, charge_fee, validate)?;
-        let trace = to_trace(tx_type, tx_info)?;
+        let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
+
+        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
+        let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
+        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
+        tx_state.commit();
+
+        let trace = to_trace(tx_type, tx_info, state_diff)?;
         if hash == target_transaction_hash {
             return Ok(trace);
         }
@@ -114,8 +138,14 @@ pub fn trace_all(
     for tx in transactions {
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
-        let tx_info = tx.execute(&mut state, &block_context, charge_fee, validate)?;
-        let trace = to_trace(tx_type, tx_info)?;
+        let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
+
+        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
+        let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
+        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
+        tx_state.commit();
+
+        let trace = to_trace(tx_type, tx_info, state_diff)?;
         ret.push((hash, trace));
     }
 
@@ -146,9 +176,101 @@ fn transaction_type(transaction: &Transaction) -> TransactionType {
     }
 }
 
+fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<ClassHash> {
+    match transaction {
+        Transaction::AccountTransaction(
+            blockifier::transaction::account_transaction::AccountTransaction::Declare(tx),
+        ) => match tx.tx() {
+            starknet_api::transaction::DeclareTransaction::V0(_)
+            | starknet_api::transaction::DeclareTransaction::V1(_) => {
+                Some(ClassHash(tx.class_hash().0.into_felt()))
+            }
+            starknet_api::transaction::DeclareTransaction::V2(_) => None,
+        },
+        _ => None,
+    }
+}
+
+fn to_state_diff<S: blockifier::state::state_api::StateReader>(
+    state: &mut blockifier::state::cached_state::CachedState<S>,
+    old_declared_contract: Option<ClassHash>,
+) -> Result<StateDiff, StateError> {
+    let state_diff = state.to_state_diff();
+
+    let mut deployed_contracts = Vec::new();
+    let mut replaced_classes = Vec::new();
+
+    // We need to check the previous class hash for a contract to decide if it's a deployed
+    // contract or a replaced class.
+    for (address, class_hash) in state_diff.address_to_class_hash {
+        let previous_class_hash = state.state.get_class_hash_at(address)?;
+
+        if previous_class_hash.0.into_felt().is_zero() {
+            deployed_contracts.push(DeployedContract {
+                address: ContractAddress::new_or_panic(address.0.key().into_felt()),
+                class_hash: ClassHash(class_hash.0.into_felt()),
+            });
+        } else {
+            replaced_classes.push(ReplacedClass {
+                contract_address: ContractAddress::new_or_panic(address.0.key().into_felt()),
+                class_hash: ClassHash(class_hash.0.into_felt()),
+            });
+        }
+    }
+
+    Ok(StateDiff {
+        storage_diffs: state_diff
+            .storage_updates
+            .into_iter()
+            .map(|(address, diffs)| {
+                // Output the storage updates in key order
+                let diffs: BTreeMap<StorageAddress, StorageValue> = diffs
+                    .into_iter()
+                    .map(|(key, value)| {
+                        (
+                            StorageAddress::new_or_panic(key.0.key().into_felt()),
+                            StorageValue(value.into_felt()),
+                        )
+                    })
+                    .collect();
+                (
+                    ContractAddress::new_or_panic(address.0.key().into_felt()),
+                    diffs
+                        .into_iter()
+                        .map(|(key, value)| StorageDiff { key, value })
+                        .collect(),
+                )
+            })
+            .collect(),
+        deployed_contracts,
+        // This info is not present in the state diff, so we need to pass it separately.
+        deprecated_declared_classes: old_declared_contract.into_iter().collect(),
+        declared_classes: state_diff
+            .class_hash_to_compiled_class_hash
+            .into_iter()
+            .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
+                class_hash: SierraHash(class_hash.0.into_felt()),
+                compiled_class_hash: CasmHash(compiled_class_hash.0.into_felt()),
+            })
+            .collect(),
+        nonces: state_diff
+            .address_to_nonce
+            .into_iter()
+            .map(|(address, nonce)| {
+                (
+                    ContractAddress::new_or_panic(address.0.key().into_felt()),
+                    ContractNonce(nonce.0.into_felt()),
+                )
+            })
+            .collect(),
+        replaced_classes,
+    })
+}
+
 fn to_trace(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
+    state_diff: StateDiff,
 ) -> Result<TransactionTrace, TransactionExecutionError> {
     tracing::trace!(?execution_info, "Transforming trace");
 
@@ -169,12 +291,14 @@ fn to_trace(
         TransactionType::Declare => TransactionTrace::Declare(DeclareTransactionTrace {
             validate_invocation,
             fee_transfer_invocation,
+            state_diff,
         }),
         TransactionType::DeployAccount => {
             TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
                 validate_invocation,
                 constructor_invocation: maybe_function_invocation?,
                 fee_transfer_invocation,
+                state_diff,
             })
         }
         TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
@@ -185,6 +309,7 @@ fn to_trace(
                 ExecuteInvocation::FunctionInvocation(maybe_function_invocation?)
             },
             fee_transfer_invocation,
+            state_diff,
         }),
         TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
             function_invocation: maybe_function_invocation?,

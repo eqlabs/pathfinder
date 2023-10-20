@@ -61,7 +61,7 @@ fn get_state_update_from_storage(
     Ok(state_update.into())
 }
 
-mod types {
+pub(crate) mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::{
@@ -222,6 +222,40 @@ mod types {
         pub nonces: Vec<Nonce>,
     }
 
+    impl From<pathfinder_executor::types::StateDiff> for StateDiff {
+        fn from(value: pathfinder_executor::types::StateDiff) -> Self {
+            Self {
+                storage_diffs: value
+                    .storage_diffs
+                    .into_iter()
+                    .map(|(address, diff)| StorageDiff {
+                        address,
+                        storage_entries: diff.into_iter().map(Into::into).collect(),
+                    })
+                    .collect(),
+                deprecated_declared_classes: value
+                    .deprecated_declared_classes
+                    .into_iter()
+                    .collect(),
+                declared_classes: value.declared_classes.into_iter().map(Into::into).collect(),
+                deployed_contracts: value
+                    .deployed_contracts
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                replaced_classes: value.replaced_classes.into_iter().map(Into::into).collect(),
+                nonces: value
+                    .nonces
+                    .into_iter()
+                    .map(|(contract_address, nonce)| Nonce {
+                        contract_address,
+                        nonce,
+                    })
+                    .collect(),
+            }
+        }
+    }
+
     /// L2 storage diff of a contract.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -254,6 +288,15 @@ mod types {
         }
     }
 
+    impl From<pathfinder_executor::types::StorageDiff> for StorageEntry {
+        fn from(d: pathfinder_executor::types::StorageDiff) -> Self {
+            Self {
+                key: d.key,
+                value: d.value,
+            }
+        }
+    }
+
     /// L2 state diff declared Sierra class item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -264,6 +307,15 @@ mod types {
         pub class_hash: SierraHash,
         #[serde_as(as = "RpcFelt")]
         pub compiled_class_hash: CasmHash,
+    }
+
+    impl From<pathfinder_executor::types::DeclaredSierraClass> for DeclaredSierraClass {
+        fn from(d: pathfinder_executor::types::DeclaredSierraClass) -> Self {
+            Self {
+                class_hash: d.class_hash,
+                compiled_class_hash: d.compiled_class_hash,
+            }
+        }
     }
 
     /// L2 state diff deployed contract item.
@@ -278,6 +330,15 @@ mod types {
         pub class_hash: ClassHash,
     }
 
+    impl From<pathfinder_executor::types::DeployedContract> for DeployedContract {
+        fn from(d: pathfinder_executor::types::DeployedContract) -> Self {
+            Self {
+                address: d.address,
+                class_hash: d.class_hash,
+            }
+        }
+    }
+
     /// L2 state diff replaced class item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -288,6 +349,15 @@ mod types {
         pub contract_address: ContractAddress,
         #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
+    }
+
+    impl From<pathfinder_executor::types::ReplacedClass> for ReplacedClass {
+        fn from(d: pathfinder_executor::types::ReplacedClass) -> Self {
+            Self {
+                contract_address: d.contract_address,
+                class_hash: d.class_hash,
+            }
+        }
     }
 
     /// L2 state diff nonce item.

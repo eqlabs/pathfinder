@@ -43,6 +43,8 @@ pub enum RpcError {
     TooManyKeysInFilter { limit: usize, requested: usize },
     #[error("Contract error")]
     ContractError,
+    #[error("Contract error")]
+    ContractErrorV05 { revert_error: String },
     #[error("Invalid contract class")]
     InvalidContractClass,
     #[error("Class already declared")]
@@ -99,6 +101,7 @@ impl RpcError {
             RpcError::InvalidContinuationToken => 33,
             RpcError::TooManyKeysInFilter { .. } => 34,
             RpcError::ContractError => 40,
+            RpcError::ContractErrorV05 { .. } => 40,
             RpcError::InvalidContractClass => 50,
             RpcError::ClassAlreadyDeclared => 51,
             RpcError::InvalidTransactionNonce => 52,
