@@ -239,7 +239,7 @@ impl GatewayApi for HybridClient {
             HybridClient::NonPropagatingP2P { p2p_client, .. } => match block {
                 BlockId::Hash(hash) => {
                     let mut state_updates =
-                        p2p_client.state_updates(hash, 1).await.ok_or_else(|| {
+                        p2p_client.state_updates(hash, 1).await.map_err(|_| {
                             block_not_found(format!("No peers with state update for block {hash}"))
                         })?;
 

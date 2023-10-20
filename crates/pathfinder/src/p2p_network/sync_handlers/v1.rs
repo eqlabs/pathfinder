@@ -37,7 +37,6 @@ const _: () = assert!(
     "All requested block headers, limited up to MAX_BLOCKS_COUNT should fit into one reply"
 );
 
-#[cfg(not(test))]
 const _: () = assert!(
     MAX_PARTS_PER_CLASS as u64 <= MAX_BLOCKS_COUNT,
     "It does not make sense to accept classes that comprise more parts than the node can accept"

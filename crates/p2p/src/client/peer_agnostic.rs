@@ -2,13 +2,18 @@
 //! Frees the caller from managing peers manually.
 use std::{
     collections::{HashMap, HashSet},
+    ops::ControlFlow,
     sync::Arc,
     time::Duration,
 };
 
 use libp2p::PeerId;
-use p2p_proto_v1::common::{BlockNumberOrHash, Direction, Fin, Hash, Iteration};
+use p2p_proto_v0::proto::sync::request;
 use p2p_proto_v1::consts::MAX_PARTS_PER_CLASS;
+use p2p_proto_v1::{
+    block::BlockBodiesRequest,
+    common::{BlockNumberOrHash, Direction, Fin, Hash, Iteration},
+};
 use p2p_proto_v1::{
     block::{
         BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
@@ -23,7 +28,7 @@ use crate::sync::protocol;
 use crate::{
     client::{
         peer_aware,
-        types::{BlockHeader, Class, StateUpdate},
+        types::{BlockHeader, Class, StateUpdate, StateUpdateWithDefs},
     },
     peers,
 };
@@ -140,24 +145,19 @@ impl Client {
         &self,
         start_block_hash: BlockHash,
         num_blocks: usize,
-    ) -> Option<Vec<(BlockHash, (StateUpdate, Vec<Class>))>> {
-        if num_blocks == 0 {
-            return Some(Default::default());
-        }
+    ) -> anyhow::Result<Vec<StateUpdateWithDefs>> {
+        anyhow::ensure!(num_blocks > 0, "No blocks requested");
 
-        let limit: u64 = num_blocks.try_into().ok()?;
+        let limit: u64 = num_blocks.try_into()?;
 
         // If at some point, mid-way a peer suddenly replies not according to the spec we just
         // dump everything from this peer and try with the next peer.
         // We're not permissive when it comes to following the spec.
-        let mut peers = self
+        let peers = self
             .get_update_peers_with_sync_capability(protocol::Bodies::NAME)
-            .await
-            .into_iter();
-
-        'try_next_peer: loop {
-            let peer = peers.next()?;
-            let request = BlockHeadersRequest {
+            .await;
+        for peer in peers {
+            let request = BlockBodiesRequest {
                 iteration: Iteration {
                     start: start_block_hash.0.into(),
                     direction: Direction::Forward,
@@ -169,152 +169,136 @@ impl Client {
             let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
             let response: anyhow::Result<_> = Ok(vec![]); // FIXME
 
-            let mut state_updates = HashMap::<BlockId, (StateUpdate, Vec<Class>)>::new();
             match response {
                 Ok(body_responses) => {
-                    if body_responses.is_empty() {
-                        tracing::debug!(%peer, "Empty BlockBodiesResponse");
-                        // Try with another peer
-                    } else {
-                        let mut current_id = None;
-
-                        for body_response in body_responses {
-                            let BlockBodiesResponse { id, body_message } = body_response;
-
-                            match (id, body_message) {
-                                (Some(id), BlockBodyMessage::Diff(d)) => {
-                                    match StateUpdate::try_from(d) {
-                                        Ok(su) => {
-                                            state_updates.insert(id, (su, Default::default()));
-                                            current_id = Some(id);
-                                        }
-                                        Err(error) => {
-                                            tracing::debug!(from=%peer, %error, "Decoding BlockBodiesResponse");
-                                            break 'try_next_peer;
-                                        }
-                                    }
-                                }
-                                (Some(id), BlockBodyMessage::Classes(c)) => match current_id {
-                                    Some(current_id) if current_id == id => {
-                                        match state_updates.get_mut(&id) {
-                                            Some((_, classes)) => {
-                                                match classes_from_proto(c.classes) {
-                                                    Ok(more_classes) => {
-                                                        classes.extend(more_classes)
-                                                    }
-                                                    Err(error) => {
-                                                        tracing::debug!(from=%peer, %error, "Decoding BlockBodiesResponse");
-                                                        break 'try_next_peer;
-                                                    }
-                                                }
-                                            }
-                                            None => {
-                                                tracing::debug!(from=%peer, %id, "Classes should be preceded with StateDiff for the same id in BlockBodiesResponse");
-                                                break 'try_next_peer;
-                                            }
-                                        }
-                                    }
-                                    Some(current_id) => {
-                                        tracing::debug!(from=%peer, expected=%current_id, %id, "Id mismatch in BlockBodiesResponse");
-                                        break 'try_next_peer;
-                                    }
-                                    None => {
-                                        tracing::debug!(from=%peer, %id, "Classes should be preceded with StateDiff for the same id in BlockBodiesResponse");
-                                        break 'try_next_peer;
-                                    }
-                                },
-                                (Some(_), BlockBodyMessage::Proof(_)) => {
-                                    // TODO proof handling
-                                }
-                                (id, BlockBodyMessage::Fin(Fin { error })) => {
-                                    match (id, &mut current_id) {
-                                        (Some(id), Some(curr_id)) if *curr_id == id => {
-                                            // [Diff, Classes*, Fin]
-                                            //                  ^^^
-                                            // The block is correctly delimited
-                                            if let Some(error) = error {
-                                                tracing::debug!(from=%peer, %id, ?error, "BlockBodiesResponse delimited with an error");
-                                                // This is ok, assume no more blocks from this peer past this point.
-                                                // Use only the blocks that we've accumulated so far.
-                                                break;
-                                            } else {
-                                                // Process the next block from the same peer
-                                                current_id = None;
-                                            }
-                                        }
-                                        (Some(id), Some(current_id)) => {
-                                            // [..., Diff, Classes*, Fin]
-                                            //                       ^^^
-                                            // The block is correctly delimited but the id is wrong, that's against the spec
-                                            tracing::debug!(from=%peer, expected=%current_id, %id, "Id mismatch in BlockBodiesResponse");
-                                            break 'try_next_peer;
-                                        }
-                                        (None | Some(_), None) => {
-                                            if state_updates.is_empty() {
-                                                // We only got [Fin] from this peer.
-                                                // We haven't accumulated any blocks yet.
-                                                break 'try_next_peer;
-                                            } else {
-                                                // [..., Diff, Classes*, Fin, Fin]
-                                                //                            ^^^
-                                                // The last block was properly delimited and we've got an additional Fin, which could
-                                                // signal the reason why the peer is not sending any more blocks.
-                                                tracing::debug!(from=%peer, ?error, ?id, "Additional Fin after last block BlockBodiesResponse");
-                                                // Use only the blocks that we've accumulated so far.
-                                                break;
-                                            }
-                                        }
-                                        (None, Some(_)) => {
-                                            // [Diff, Classes*, Fin]
-                                            //                  ^^^
-                                            // The block seems to be correctly delimited but Fin does not contain valid id
-                                            // which is against the spec.
-                                            break 'try_next_peer;
-                                        }
-                                    }
-
-                                    break 'try_next_peer;
-                                }
-                                (
-                                    None,
-                                    BlockBodyMessage::Diff(_)
-                                    | BlockBodyMessage::Classes(_)
-                                    | BlockBodyMessage::Proof(_),
-                                ) => {
-                                    tracing::debug!(from=%peer, "Missing id in BlockBodiesResponse");
-                                    break 'try_next_peer;
-                                }
-                            }
-                        }
-
-                        if state_updates.is_empty() {
-                            tracing::debug!(from=%peer, "Empty BlockBodiesResponse");
-                            // Try the next peer instead
-                        } else {
-                            return Some(
-                                state_updates
-                                    .into_iter()
-                                    .map(|(k, v)| (BlockHash(k.hash.0), v))
-                                    .collect(),
-                            );
+                    match parse_block_body_responses(body_responses) {
+                        // We've got something potentially useful from this peer
+                        Ok(su) if !su.is_empty() => return Ok(su),
+                        // Try the next peer instead
+                        Ok(_) => tracing::debug!(from=%peer, "Empty bodies response"),
+                        Err(error) => {
+                            tracing::debug!(from=%peer, %error, "Parsing bodies response failed")
                         }
                     }
                 }
+                // Try the next peer instead
                 Err(error) => {
-                    tracing::debug!(%peer, %error, "BlockBodiesRequest failed");
-                    // Try the next peer instead
+                    tracing::debug!(from=%peer, %error, "Bodies response failed");
                 }
             }
         }
 
-        tracing::debug!(%start_block_hash, %num_blocks, "No peers with block bodies found for");
+        anyhow::bail!(
+            "No valid responses to bodies request: start {start_block_hash}, n {num_blocks}"
+        )
+    }
+}
 
-        None
+fn parse_block_body_responses(
+    body_responses: Vec<BlockBodiesResponse>,
+) -> anyhow::Result<Vec<StateUpdateWithDefs>> {
+    let mut current_id = None;
+    let mut state_updates = Vec::new();
+
+    for body_response in body_responses {
+        let BlockBodiesResponse { id, body_message } = body_response;
+
+        match (id, body_message) {
+            (Some(id), BlockBodyMessage::Diff(diff)) => {
+                anyhow::ensure!(current_id.is_none(), "unexpected diff, id: {id}");
+
+                state_updates.push(StateUpdateWithDefs {
+                    block_hash: BlockHash(id.hash.0),
+                    state_update: diff.into(),
+                    classes: Default::default(),
+                });
+                current_id = Some(id);
+            }
+            (Some(id), BlockBodyMessage::Classes(new)) => match current_id {
+                Some(current_id) if current_id == id => {
+                    let current = state_updates
+                        .last_mut()
+                        .expect("state update for this id is present");
+                    current.classes.extend(classes_from_dto(new.classes)?);
+                }
+                Some(current_id) => {
+                    anyhow::bail!("id mismatch in classes: expected {current_id}, got {id}",)
+                }
+                None => {
+                    anyhow::bail!("unexpected classes, id: {id}")
+                }
+            },
+            (Some(_), BlockBodyMessage::Proof(_)) => {
+                unimplemented!()
+            }
+            (Some(id), BlockBodyMessage::Fin(Fin { error })) => {
+                match handle_fin(id, current_id, error, state_updates.is_empty())? {
+                    // There are still blocks from this peer to process
+                    ControlFlow::Continue(_) => current_id = None,
+                    // We've got all blocks from this peer
+                    ControlFlow::Break(_) => break,
+                }
+            }
+            (None, _) => {
+                anyhow::bail!("id missing")
+            }
+        }
+    }
+
+    Ok(state_updates)
+}
+
+fn handle_fin(
+    id: BlockId,
+    current_id: Option<BlockId>,
+    error: Option<p2p_proto_v1::common::Error>,
+    accumulator_is_empty: bool,
+) -> anyhow::Result<ControlFlow<()>> {
+    match current_id {
+        Some(curr_id) if curr_id == id => {
+            // [Diff, Classes*, Fin]
+            //                  ^^^
+            // The block is correctly delimited
+            if let Some(error) = error {
+                tracing::debug!(%id, ?error, "Bodies response delimited with an error");
+                // This is ok, assume no more blocks from this peer past this point.
+                // Use only the blocks that we've accumulated so far.
+                Ok(ControlFlow::Break(()))
+            } else {
+                // Process the next block from the same peer
+                Ok(ControlFlow::Continue(()))
+            }
+        }
+        Some(current_id) => {
+            // [..., Diff, Classes*, Fin]
+            //                       ^^^
+            // The block is correctly delimited but the id is wrong, that's against the spec
+            anyhow::bail!("Id mismatch in Fin in bodies response: expected {current_id}, got {id}",)
+        }
+        None => {
+            if accumulator_is_empty {
+                // We only got [Fin] from this peer.
+                // We haven't accumulated any blocks yet.
+                anyhow::bail!("Bodies response starts with Fin")
+            } else {
+                // [..., Diff, Classes*, Fin, Fin]
+                //                            ^^^
+                // The last block was properly delimited and we've got an additional Fin, which could
+                // signal the reason why the peer is not sending any more blocks.
+                tracing::debug!(
+                    ?error,
+                    ?id,
+                    "Additional Fin after last block in bodies response"
+                );
+                // Use only the blocks that we've accumulated so far.
+                Ok(ControlFlow::Break(()))
+            }
+        }
     }
 }
 
 /// Merges partitoned classes if necessary
-fn classes_from_proto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Result<Vec<Class>> {
+fn classes_from_dto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Result<Vec<Class>> {
     #[derive(Copy, Clone, Debug, Default, PartialEq)]
     struct Ctx {
         hash: Hash,
@@ -326,15 +310,25 @@ fn classes_from_proto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Resul
         fn matches_next_part(&self, hash: Hash, total_parts: u32, part_num: u32) -> bool {
             self.hash == hash && self.total_parts == total_parts && self.part_num + 1 == part_num
         }
+
+        fn advance(mut self) -> Option<Self> {
+            // This was the last part
+            if self.part_num == self.total_parts {
+                None
+            } else {
+                self.part_num += 1;
+                Some(self)
+            }
+        }
     }
 
-    let mut gathered = Vec::new();
+    let mut converted = Vec::new();
     let mut ctx: Option<Ctx> = None;
 
     for class in classes {
         match (class.total_parts, class.part_num) {
             // Small class definition, not partitioned
-            (None, None) => gathered.push(Class {
+            (None, None) => converted.push(Class {
                 hash: ClassHash(class.compiled_hash.0),
                 definition: class.definition,
             }),
@@ -348,7 +342,7 @@ fn classes_from_proto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Resul
                 match ctx {
                     // First part of a larger definition
                     None if part_num == 0 => {
-                        gathered.push(Class {
+                        converted.push(Class {
                             hash: ClassHash(class.compiled_hash.0),
                             definition: class.definition,
                         });
@@ -366,16 +360,13 @@ fn classes_from_proto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Resul
                             part_num,
                         ) =>
                     {
-                        gathered
+                        converted
                             .last_mut()
                             .expect("gathered is not empty")
                             .definition
                             .extend(class.definition);
 
-                        // This was the last part
-                        if total_parts == part_num {
-                            ctx = None;
-                        }
+                        ctx = some_ctx.advance();
                     }
                     None | Some(_) => {
                         anyhow::bail!("Invalid Class part: {:?}/{:?}", part_num, total_parts)
@@ -390,7 +381,7 @@ fn classes_from_proto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Resul
         }
     }
 
-    Ok(gathered)
+    Ok(converted)
 }
 
 #[derive(Clone, Debug)]

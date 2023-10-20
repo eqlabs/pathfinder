@@ -11,7 +11,7 @@ pub const MAX_HEADERS_PER_MESSAGE: usize =
     (MESSAGE_SIZE_LIMIT - HEADERS_MESSAGE_OVERHEAD + ENCODED_HEADER_SIZE) / ENCODED_HEADER_SIZE;
 /// A made up upper bound to allow discarding classes that are ridiculously large because they're
 /// from a malicious agent.
-pub const MAX_PARTS_PER_CLASS: u32 = 50;
+pub const MAX_PARTS_PER_CLASS: u32 = 10;
 
 #[cfg(test)]
 mod tests {

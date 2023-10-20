@@ -55,6 +55,15 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
 }
 
+/// Temporary wrapper until we have proper streaming response
+/// TODO remove me
+#[derive(Debug, Clone, PartialEq)]
+pub struct StateUpdateWithDefs {
+    pub block_hash: BlockHash,
+    pub state_update: StateUpdate,
+    pub classes: Vec<Class>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
@@ -129,11 +138,48 @@ impl TryFrom<p2p_proto_v1::block::BlockHeader> for BlockHeader {
     }
 }
 
-// FIXME add missing stuff to the proto representation
-impl TryFrom<p2p_proto_v1::state::StateDiff> for StateUpdate {
-    type Error = anyhow::Error;
+// // FIXME add missing stuff to the proto representation
+// impl TryFrom<p2p_proto_v1::state::StateDiff> for StateUpdate {
+//     type Error = anyhow::Error;
 
-    fn try_from(proto: p2p_proto_v1::state::StateDiff) -> anyhow::Result<Self> {
+//     fn try_from(proto: p2p_proto_v1::state::StateDiff) -> anyhow::Result<Self> {
+//         const SYSTEM_CONTRACT: ContractAddress = ContractAddress::ONE;
+//         let mut system_contract_update = SystemContractUpdate {
+//             storage: Default::default(),
+//         };
+//         let mut contract_updates = HashMap::new();
+//         proto.contract_diffs.into_iter().for_each(|diff| {
+//             if diff.address.0 == SYSTEM_CONTRACT.0 {
+//                 diff.values.into_iter().for_each(|x| {
+//                     system_contract_update
+//                         .storage
+//                         .insert(StorageAddress(x.key), StorageValue(x.value));
+//                 });
+//             } else {
+//                 contract_updates.insert(
+//                     ContractAddress(diff.address.0),
+//                     ContractUpdate {
+//                         storage: diff
+//                             .values
+//                             .into_iter()
+//                             .map(|x| (StorageAddress(x.key), StorageValue(x.value)))
+//                             .collect(),
+//                         class: diff.class_hash.map(ClassHash),
+//                         nonce: diff.nonce.map(ContractNonce),
+//                     },
+//                 );
+//             }
+//         });
+
+//         Ok(Self {
+//             contract_updates,
+//             system_contract_updates: [(SYSTEM_CONTRACT, system_contract_update)].into(),
+//         })
+//     }
+// }
+
+impl From<p2p_proto_v1::state::StateDiff> for StateUpdate {
+    fn from(proto: p2p_proto_v1::state::StateDiff) -> Self {
         const SYSTEM_CONTRACT: ContractAddress = ContractAddress::ONE;
         let mut system_contract_update = SystemContractUpdate {
             storage: Default::default(),
@@ -162,10 +208,10 @@ impl TryFrom<p2p_proto_v1::state::StateDiff> for StateUpdate {
             }
         });
 
-        Ok(Self {
+        Self {
             contract_updates,
             system_contract_updates: [(SYSTEM_CONTRACT, system_contract_update)].into(),
-        })
+        }
     }
 }
 
