@@ -155,7 +155,7 @@ impl GatewayApi for HybridClient {
                         return Ok(block.into());
                     }
 
-                    let mut headers = p2p_client.block_headers(n, 1).await.ok_or_else(|| {
+                    let mut headers = p2p_client.block_headers(n, 1).await.map_err(|_| {
                         block_not_found(format!("No peers with headers for block {n}"))
                     })?;
 

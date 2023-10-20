@@ -8,17 +8,13 @@ use std::{
 };
 
 use libp2p::PeerId;
-use p2p_proto_v0::proto::sync::request;
 use p2p_proto_v1::consts::MAX_PARTS_PER_CLASS;
 use p2p_proto_v1::{
     block::BlockBodiesRequest,
-    common::{BlockNumberOrHash, Direction, Fin, Hash, Iteration},
+    common::{Direction, Fin, Hash, Iteration},
 };
 use p2p_proto_v1::{
-    block::{
-        BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
-        BlockHeadersResponsePart,
-    },
+    block::{BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse},
     common::BlockId,
 };
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
@@ -28,7 +24,7 @@ use crate::sync::protocol;
 use crate::{
     client::{
         peer_aware,
-        types::{BlockHeader, Class, StateUpdate, StateUpdateWithDefs},
+        types::{BlockHeader, Class, StateUpdateWithDefs},
     },
     peers,
 };
@@ -109,35 +105,54 @@ impl Client {
         &self,
         start_block: BlockNumber,
         num_blocks: usize,
-    ) -> Option<Vec<p2p_proto_v0::common::BlockHeader>> {
-        if num_blocks == 0 {
-            return Some(Vec::new());
-        }
+    ) -> anyhow::Result<Vec<BlockHeader>> {
+        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
 
-        let count: u64 = num_blocks.try_into().ok()?;
+        let limit: u64 = num_blocks.try_into()?;
 
         for peer in self
             .get_update_peers_with_sync_capability(protocol::Headers::NAME)
             .await
         {
-            let response = self.inner.send_sync_request(peer, todo!("use v1")).await;
+            let request = BlockHeadersRequest {
+                iteration: Iteration {
+                    start: start_block.get().into(),
+                    direction: Direction::Forward,
+                    limit,
+                    step: 1.into(),
+                },
+            };
+            let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
+            let response: anyhow::Result<_> = todo!("fixme");
 
             match response {
-                Ok(_) => {
-                    todo!("use v1");
-                    tracing::debug!(%peer, "Got unexpected response to GetBlockHeaders");
-                    continue;
+                Ok(BlockHeadersResponse { parts }) => {
+                    let mut state = parse::block_header::State::Uninitialized;
+                    for part in parts {
+                        if let Err(error) = state.advance(part) {
+                            tracing::debug!(from=%peer, %error, "headers response parsing failed");
+                            // Try the next peer
+                            break;
+                        }
+                    }
+
+                    if let Some(headers) = state.consume() {
+                        // Success
+                        return Ok(headers);
+                    } else {
+                        // Try the next peer
+                        tracing::debug!(from=%peer, "unexpected end of part");
+                        break;
+                    }
                 }
+                // Try the next peer
                 Err(error) => {
-                    tracing::debug!(%peer, %error, "GetBlockHeaders failed");
-                    continue;
+                    tracing::debug!(from=%peer, %error, "headers request failed");
                 }
             }
         }
 
-        tracing::debug!(%start_block, %num_blocks, "No peers with block headers found for");
-
-        None
+        anyhow::bail!("No valid responses to headers request: start {start_block}, n {num_blocks}")
     }
 
     /// Including new class definitions
@@ -146,7 +161,7 @@ impl Client {
         start_block_hash: BlockHash,
         num_blocks: usize,
     ) -> anyhow::Result<Vec<StateUpdateWithDefs>> {
-        anyhow::ensure!(num_blocks > 0, "No blocks requested");
+        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
 
         let limit: u64 = num_blocks.try_into()?;
 
@@ -191,6 +206,60 @@ impl Client {
         anyhow::bail!(
             "No valid responses to bodies request: start {start_block_hash}, n {num_blocks}"
         )
+    }
+}
+
+mod parse {
+    pub(crate) mod block_header {
+        use crate::client::types::BlockHeader;
+        use anyhow::Context;
+        use p2p_proto_v1::block::BlockHeadersResponsePart;
+
+        #[derive(Debug)]
+        pub enum State {
+            Uninitialized,
+            Header { headers: Vec<BlockHeader> },
+            _Signature, // TODO add signature support
+            Fin { headers: Vec<BlockHeader> },
+        }
+
+        impl State {
+            pub fn advance(&mut self, part: BlockHeadersResponsePart) -> anyhow::Result<()> {
+                let state = std::mem::replace(self, State::Uninitialized);
+                *self = match (state, part) {
+                    (State::Uninitialized, BlockHeadersResponsePart::Header(header)) => {
+                        let header = BlockHeader::try_from(*header).context("parsing header")?;
+                        Self::Header {
+                            headers: vec![header],
+                        }
+                    }
+                    (State::Header { headers }, BlockHeadersResponsePart::Fin(_)) => {
+                        Self::Fin { headers }
+                    }
+                    (State::Header { headers: _ }, BlockHeadersResponsePart::Signatures(_)) => {
+                        todo!("add signatures support")
+                    }
+                    (State::_Signature, _) => todo!("add signatures support"),
+                    (State::Fin { mut headers }, BlockHeadersResponsePart::Header(header)) => {
+                        let header = BlockHeader::try_from(*header).context("parsing header")?;
+                        headers.push(header);
+                        Self::Header { headers }
+                    }
+                    (_, part) => anyhow::bail!("Unexpected part {part:?}"),
+                };
+                Ok(())
+            }
+
+            pub fn consume(self) -> Option<Vec<BlockHeader>> {
+                match self {
+                    State::Fin { headers } if !headers.is_empty() => Some(headers),
+                    _ => {
+                        tracing::debug!("unexpected end of part");
+                        None
+                    }
+                }
+            }
+        }
     }
 }
 
