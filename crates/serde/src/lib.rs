@@ -272,6 +272,28 @@ impl<'de> serde::Deserialize<'de> for U64AsHexStr {
     }
 }
 
+/// A Serde helper module to be used as `#[serde(with = "u64_as_hex_str")]`
+/// Helps us keep primitive types in struct fields.
+pub mod u64_as_hex_str {
+    use crate::U64AsHexStr;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        U64AsHexStr(*value).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wrapped = U64AsHexStr::deserialize(deserializer)?;
+        Ok(wrapped.0)
+    }
+}
+
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_biguint(b: BigUint) -> Result<Felt, OverflowError> {
     Felt::from_be_slice(&b.to_bytes_be())
