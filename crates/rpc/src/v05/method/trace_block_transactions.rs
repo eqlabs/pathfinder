@@ -81,8 +81,7 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    let block_id = input.block_id;
-    let block_id = match block_id {
+    let block_id = match input.block_id {
         BlockId::Pending => return Err(TraceBlockTransactionsError::BlockNotFound),
         other => other.try_into().expect("Only pending cast should fail"),
     };
@@ -93,32 +92,7 @@ pub async fn trace_block_transactions(
         let storage = context.storage.clone();
         tokio::task::spawn_blocking(move || {
             let _g = span.enter();
-
-            let mut db = storage.connection()?;
-            let tx = db.transaction()?;
-
-            let header = tx.block_header(block_id)?;
-
-            let parent_block_hash = header
-                .as_ref()
-                .map(|h| h.parent_hash)
-                .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
-
-            let gas_price: Option<U256> =
-                header.as_ref().map(|header| U256::from(header.gas_price.0));
-
-            let (transactions, _): (Vec<_>, Vec<_>) = tx
-                .transaction_data_for_block(block_id)?
-                .ok_or(TraceBlockTransactionsError::BlockNotFound)?
-                .into_iter()
-                .unzip();
-
-            let transactions = transactions
-                .into_iter()
-                .map(|transaction| compose_executor_transaction(transaction, &tx))
-                .collect::<anyhow::Result<Vec<_>, _>>()?;
-
-            Ok::<_, TraceBlockTransactionsError>((transactions, gas_price, parent_block_hash))
+            fetch_block_transactions(storage, block_id)
         })
         .await
         .context("trace_block_transactions: fetch block & transactions")??
@@ -145,6 +119,43 @@ pub async fn trace_block_transactions(
         .collect();
 
     Ok(TraceBlockTransactionsOutput(result))
+}
+
+fn fetch_block_transactions(
+    storage: pathfinder_storage::Storage,
+    block_id: pathfinder_storage::BlockId,
+) -> Result<
+    (
+        Vec<pathfinder_executor::Transaction>,
+        Option<U256>,
+        BlockHash,
+    ),
+    TraceBlockTransactionsError,
+> {
+    let mut db = storage.connection()?;
+    let tx = db.transaction()?;
+
+    let header = tx.block_header(block_id)?;
+
+    let parent_block_hash = header
+        .as_ref()
+        .map(|h| h.parent_hash)
+        .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
+
+    let gas_price: Option<U256> = header.as_ref().map(|header| U256::from(header.gas_price.0));
+
+    let (transactions, _): (Vec<_>, Vec<_>) = tx
+        .transaction_data_for_block(block_id)?
+        .ok_or(TraceBlockTransactionsError::BlockNotFound)?
+        .into_iter()
+        .unzip();
+
+    let transactions = transactions
+        .into_iter()
+        .map(|transaction| compose_executor_transaction(transaction, &tx))
+        .collect::<anyhow::Result<Vec<_>, _>>()?;
+
+    Ok::<_, TraceBlockTransactionsError>((transactions, gas_price, parent_block_hash))
 }
 
 #[cfg(test)]
