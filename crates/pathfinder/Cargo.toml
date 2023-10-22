@@ -23,7 +23,6 @@ p2p = [
 
 [dependencies]
 anyhow = { workspace = true }
-async-stream = "0.3"
 async-trait = { workspace = true }
 base64 = { workspace = true, optional = true }
 bitvec = { workspace = true }

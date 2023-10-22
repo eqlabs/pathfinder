@@ -1,63 +1,86 @@
-use futures::Stream;
+use std::pin::Pin;
 
+use futures::Stream;
 use pathfinder_common::{BlockNumber, StateUpdate};
 
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{Block, MaybePendingBlock};
+use tokio::time::Duration;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::sync::source::Gateway;
 
 /// Streams sequential blocks from the gateway. Once the tip of chain is reached,
 /// it polls at the given period i.e. before the tip it will stream as fast as possible.
-///
-/// Note: `start` will be the first block in the stream.
-pub fn block_stream<G: Gateway>(
-    gateway: G,
-    start: BlockNumber,
-    poll_period: tokio::time::Duration,
-) -> impl Stream<Item = (Block, StateUpdate)> {
-    async_stream::stream! {
-        let mut target = start;
+pub struct BlockStream(ReceiverStream<(Block, StateUpdate)>);
 
-        loop {
-            // Track starting time so we can sleep if no new block is produced.
-            let t = tokio::time::Instant::now();
-            let mut should_sleep = true;
+impl BlockStream {
+    /// Creates a [BlockStream] which starts streaming blocks from the given start point. Note
+    /// that the start block is included in the stream.
+    pub fn new(gateway: impl Gateway, start: BlockNumber, poll_period: Duration) -> Self {
+        let (tx, rx) = tokio::sync::mpsc::channel(2);
 
-            let result = gateway.state_update_with_block(target.into()).await;
+        tokio::spawn(async move {
+            let mut target = start;
 
-            match result {
-                Ok((MaybePendingBlock::Block(block), state_update)) => {
-                    should_sleep = false;
-                    target += 1;
-                    yield (block, state_update);
+            loop {
+                // Track starting time so we can sleep if no new block is produced.
+                let t = tokio::time::Instant::now();
+                let mut should_sleep = true;
+
+                let result = gateway.state_update_with_block(target.into()).await;
+
+                match result {
+                    Ok((MaybePendingBlock::Block(block), state_update)) => {
+                        should_sleep = false;
+                        target += 1;
+                        if tx.send((block, state_update)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok((MaybePendingBlock::Pending(_), _)) => {
+                        tracing::warn!(block=%target, "Gateway returned pending data")
+                    }
+                    // Don't log block not found errors as these are expected once we exceed the end of the chain.
+                    Err(SequencerError::StarknetError(e)) if e.is_block_not_found() => {}
+                    Err(error) => {
+                        tracing::warn!(?error, block=%target, "Error while streaming blocks")
+                    }
                 }
-                Ok((MaybePendingBlock::Pending(_), _)) => tracing::warn!(block=%target, "Gateway returned pending data"),
-                // Don't log block not found errors as these are expected once we exceed the end of the chain.
-                Err(SequencerError::StarknetError(e)) if e.is_block_not_found() => {},
-                Err(error) => tracing::warn!(?error, block=%target, "Error while streaming blocks"),
-            }
 
-            if should_sleep {
-                tokio::time::sleep_until(t + poll_period).await;
+                if should_sleep {
+                    tokio::time::sleep_until(t + poll_period).await;
+                }
             }
-        }
+        });
+
+        Self(ReceiverStream::new(rx))
+    }
+}
+
+impl Stream for BlockStream {
+    type Item = (Block, StateUpdate);
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        Pin::new(&mut self.get_mut().0).poll_next(cx)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, VecDeque};
-
     use super::*;
 
-    use futures::StreamExt;
+    use std::collections::{HashMap, VecDeque};
+
     use pathfinder_common::BlockId;
     use starknet_gateway_client::GatewayApi;
     use starknet_gateway_types::error::{KnownStarknetErrorCode, StarknetError, StarknetErrorCode};
     use starknet_gateway_types::reply::PendingBlock;
     use tokio::sync::Mutex;
-    use tokio::time::Duration;
+    use tokio_stream::StreamExt;
 
     /// Helper to make test responses more manageable.
     ///
@@ -141,8 +164,7 @@ mod tests {
             .with_block(BlockNumber::GENESIS);
 
         let gateway = GatewayMock::new(responses.into());
-        let mut stream =
-            block_stream(gateway, BlockNumber::GENESIS, Duration::from_nanos(1)).boxed();
+        let mut stream = BlockStream::new(gateway, BlockNumber::GENESIS, Duration::from_nanos(1));
 
         let item = stream.next().await;
         assert!(item.is_some());
@@ -155,8 +177,7 @@ mod tests {
             .with_block(BlockNumber::GENESIS);
 
         let gateway = GatewayMock::new(responses.into());
-        let mut stream =
-            block_stream(gateway, BlockNumber::GENESIS, Duration::from_nanos(1)).boxed();
+        let mut stream = BlockStream::new(gateway, BlockNumber::GENESIS, Duration::from_nanos(1));
 
         let item = stream.next().await;
         assert!(item.is_some());
@@ -170,7 +191,7 @@ mod tests {
             .with_block(BlockNumber::GENESIS + 2);
 
         let gateway = GatewayMock::new(responses.into());
-        let stream = block_stream(gateway, BlockNumber::GENESIS, Duration::from_nanos(1)).boxed();
+        let stream = BlockStream::new(gateway, BlockNumber::GENESIS, Duration::from_nanos(1));
 
         let blocks = stream
             .take(3)
