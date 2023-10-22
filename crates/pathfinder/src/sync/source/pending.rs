@@ -1,24 +1,21 @@
 use pathfinder_common::{BlockHash, BlockId, StateUpdate};
-use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::PendingBlock;
 
 use crate::sync::source::watcher::WatchSource;
+use crate::sync::source::Gateway;
 
 /// A [WatchSource] which polls a [gateway](GatewayApi) for the latest pending data.
 ///
 /// Only emits fresh pending data i.e. a new block is emitted iff:
 /// - the parent hash has changed, or
 /// - the data contains more transactions.
-pub struct PendingSource<G: GatewayApi + Send + 'static> {
+pub struct PendingSource<G: Gateway> {
     gateway: G,
     previous_tx_count: usize,
     previous_parent_hash: BlockHash,
 }
 
-impl<G> PendingSource<G>
-where
-    G: GatewayApi + Send + 'static,
-{
+impl<G: Gateway> PendingSource<G> {
     pub fn new(gateway: G) -> Self {
         Self {
             gateway,
@@ -29,10 +26,7 @@ where
 }
 
 #[async_trait::async_trait]
-impl<G> WatchSource<(PendingBlock, StateUpdate)> for PendingSource<G>
-where
-    G: GatewayApi + Send + 'static,
-{
+impl<G: Gateway> WatchSource<(PendingBlock, StateUpdate)> for PendingSource<G> {
     async fn get(&mut self) -> anyhow::Result<Option<(PendingBlock, StateUpdate)>> {
         let (block, state_update) = self
             .gateway
@@ -65,6 +59,7 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
 
+    use starknet_gateway_client::GatewayApi;
     use starknet_gateway_types::error::SequencerError;
     use starknet_gateway_types::reply::transaction::{DeployAccountTransaction, Transaction};
     use starknet_gateway_types::reply::Block;

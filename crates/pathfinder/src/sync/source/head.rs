@@ -1,22 +1,19 @@
 use pathfinder_common::{BlockHash, BlockNumber};
-use starknet_gateway_client::GatewayApi;
 
 use crate::sync::source::watcher::WatchSource;
+use crate::sync::source::Gateway;
 
 /// A [WatchSource] which polls a [gateway](GatewayApi) for the latest pending data.
 ///
 /// Only emits fresh pending data i.e. a new block is emitted iff:
 /// - the parent hash has changed, or
 /// - the data contains more transactions.
-pub struct HeadSource<G: GatewayApi + Send + 'static> {
+pub struct HeadSource<G: Gateway> {
     gateway: G,
     previous: (BlockNumber, BlockHash),
 }
 
-impl<G> HeadSource<G>
-where
-    G: GatewayApi + Send + 'static,
-{
+impl<G: Gateway> HeadSource<G> {
     pub fn new(gateway: G) -> Self {
         Self {
             gateway,
@@ -26,10 +23,7 @@ where
 }
 
 #[async_trait::async_trait]
-impl<G> WatchSource<(BlockNumber, BlockHash)> for HeadSource<G>
-where
-    G: GatewayApi + Send + 'static,
-{
+impl<G: Gateway> WatchSource<(BlockNumber, BlockHash)> for HeadSource<G> {
     async fn get(&mut self) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
         let result = self.gateway.head().await?;
 
@@ -47,6 +41,7 @@ mod tests {
     use super::*;
 
     use pathfinder_common::macro_prelude::*;
+    use starknet_gateway_client::GatewayApi;
     use starknet_gateway_types::error::SequencerError;
     use tokio::sync::Mutex;
 

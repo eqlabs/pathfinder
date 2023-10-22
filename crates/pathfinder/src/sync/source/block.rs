@@ -2,22 +2,20 @@ use futures::Stream;
 
 use pathfinder_common::{BlockNumber, StateUpdate};
 
-use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{Block, MaybePendingBlock};
+
+use crate::sync::source::Gateway;
 
 /// Streams sequential blocks from the gateway. Once the tip of chain is reached,
 /// it polls at the given period i.e. before the tip it will stream as fast as possible.
 ///
 /// Note: `start` will be the first block in the stream.
-pub fn block_stream<G>(
+pub fn block_stream<G: Gateway>(
     gateway: G,
     start: BlockNumber,
     poll_period: tokio::time::Duration,
-) -> impl Stream<Item = (Block, StateUpdate)>
-where
-    G: GatewayApi + Send + 'static,
-{
+) -> impl Stream<Item = (Block, StateUpdate)> {
     async_stream::stream! {
         let mut target = start;
 
@@ -55,6 +53,7 @@ mod tests {
 
     use futures::StreamExt;
     use pathfinder_common::BlockId;
+    use starknet_gateway_client::GatewayApi;
     use starknet_gateway_types::error::{KnownStarknetErrorCode, StarknetError, StarknetErrorCode};
     use starknet_gateway_types::reply::PendingBlock;
     use tokio::sync::Mutex;
