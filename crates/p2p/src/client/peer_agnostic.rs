@@ -7,12 +7,11 @@ use std::{
 };
 
 use libp2p::PeerId;
-use p2p_proto_v1::block::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto_v1::{
-    block::BlockBodiesRequest,
-    common::{Direction, Iteration},
-};
-use pathfinder_common::{BlockHash, BlockNumber};
+use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto_v1::common::{Direction, Iteration};
+use p2p_proto_v1::receipt::{Receipt, ReceiptsRequest};
+use p2p_proto_v1::transaction::TransactionsRequest;
+use pathfinder_common::{transaction::TransactionVariant, BlockHash, BlockNumber};
 use tokio::sync::RwLock;
 
 use crate::sync::protocol;
@@ -204,13 +203,132 @@ impl Client {
                 }
                 // Try the next peer instead
                 Err(error) => {
-                    tracing::debug!(from=%peer, %error, "bodies response failed");
+                    tracing::debug!(from=%peer, %error, "bodies request failed");
                 }
             }
         }
 
         anyhow::bail!(
             "No valid responses to bodies request: start {start_block_hash}, n {num_blocks}"
+        )
+    }
+
+    pub async fn transactions(
+        &self,
+        start_block_hash: BlockHash,
+        num_blocks: usize,
+    ) -> anyhow::Result<HashMap<BlockHash, Vec<TransactionVariant>>> {
+        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
+
+        let limit: u64 = num_blocks.try_into()?;
+
+        // If at some point, mid-way a peer suddenly replies not according to the spec we just
+        // dump everything from this peer and try with the next peer.
+        // We're not permissive when it comes to following the spec.
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
+            .await;
+        for peer in peers {
+            let request = TransactionsRequest {
+                iteration: Iteration {
+                    start: start_block_hash.0.into(),
+                    direction: Direction::Forward,
+                    limit,
+                    step: 1.into(),
+                },
+            };
+            let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
+            let response: anyhow::Result<_> = Ok(vec![]); // FIXME
+
+            match response {
+                Ok(responses) => {
+                    let mut state = parse::transactions::State::Uninitialized;
+                    for response in responses {
+                        if let Err(error) = state.advance(response) {
+                            tracing::debug!(from=%peer, %error, "transaction responses parsing");
+                            break;
+                        }
+                    }
+
+                    if let Some(transactions) = state.take_parsed() {
+                        // Success
+                        return Ok(transactions);
+                    } else {
+                        // Try the next peer
+                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
+                        break;
+                    }
+                }
+                // Try the next peer
+                Err(error) => {
+                    tracing::debug!(from=%peer, %error, "transactions request failed");
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "No valid responses to transactions request: start {start_block_hash}, n {num_blocks}"
+        )
+    }
+
+    pub async fn receipts(
+        &self,
+        start_block_hash: BlockHash,
+        num_blocks: usize,
+    ) -> anyhow::Result<HashMap<BlockHash, Vec<Receipt>>> {
+        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
+
+        let limit: u64 = num_blocks.try_into()?;
+
+        // If at some point, mid-way a peer suddenly replies not according to the spec we just
+        // dump everything from this peer and try with the next peer.
+        // We're not permissive when it comes to following the spec.
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Receipts::NAME)
+            .await;
+        for peer in peers {
+            let request = ReceiptsRequest {
+                iteration: Iteration {
+                    start: start_block_hash.0.into(),
+                    direction: Direction::Forward,
+                    limit,
+                    step: 1.into(),
+                },
+            };
+            let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
+            let response: anyhow::Result<_> = Ok(vec![]); // FIXME
+
+            match response {
+                Ok(responses) => {
+                    let mut state = parse::receipts::State::Uninitialized;
+                    for response in responses {
+                        if let Err(error) = state.advance(response) {
+                            tracing::debug!(from=%peer, %error, "receipts responses parsing");
+                            break;
+                        }
+                    }
+
+                    if let Some(receipts) = state.take_parsed() {
+                        // Success
+                        return Ok(receipts);
+                    } else {
+                        // Try the next peer
+                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
+                        break;
+                    }
+                }
+                // Try the next peer
+                Ok(response) => {
+                    tracing::debug!(from=%peer, ?response,"unexpected response to receipts request");
+                }
+                Err(error) => {
+                    tracing::debug!(from=%peer, %error, "receipts request failed");
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "No valid responses to transactions request: start {start_block_hash}, n {num_blocks}"
         )
     }
 }
