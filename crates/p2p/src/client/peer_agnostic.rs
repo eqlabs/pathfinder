@@ -212,6 +212,59 @@ impl Client {
 }
 
 mod parse {
+
+    trait ParserState {
+        type Item;
+        type Inner;
+
+        fn advance(&mut self, next: Self::Item) -> anyhow::Result<()>
+        where
+            Self: Default + Sized,
+        {
+            let current_state = std::mem::take(self);
+            let next_state = current_state.advance_inner(next)?;
+
+            *self = next_state;
+            // We need to stop parsing when a block is properly delimited but an error was signalled
+            // as the peer is not going to send any more blocks.
+
+            if self.should_stop() {
+                anyhow::bail!("no data or premature end of response")
+            } else {
+                Ok(())
+            }
+        }
+
+        fn advance_inner(self, next: Self::Item) -> anyhow::Result<Self>
+        where
+            Self: Sized;
+
+        fn take_inner(self) -> Option<Self::Inner>;
+
+        fn should_stop(&self) -> bool;
+    }
+
+    macro_rules! impl_take_inner_and_should_stop {
+        ($inner_collection: ident) => {
+            fn take_inner(self) -> Option<<Self as super::ParserState>::Inner> {
+                match self {
+                    Self::Delimited { $inner_collection }
+                    | Self::DelimitedWithError {
+                        $inner_collection, ..
+                    } => {
+                        debug_assert!(!$inner_collection.is_empty());
+                        Some($inner_collection)
+                    }
+                    _ => None,
+                }
+            }
+
+            fn should_stop(&self) -> bool {
+                matches!(self, Self::Empty { .. } | Self::DelimitedWithError { .. })
+            }
+        };
+    }
+
     pub(crate) mod block_header {
         use crate::client::types::BlockHeader;
         use anyhow::Context;
@@ -525,8 +578,6 @@ mod parse {
     }
 
     pub(crate) mod transactions {
-        use std::collections::HashMap;
-
         use crate::client::types::TryFromDto;
         use anyhow::Context;
         use p2p_proto_v1::common::{BlockId, Error, Fin};
@@ -534,10 +585,11 @@ mod parse {
             Transactions, TransactionsResponse, TransactionsResponseKind,
         };
         use pathfinder_common::transaction::TransactionVariant;
-        use pathfinder_common::BlockHash;
+        use std::collections::HashMap;
 
-        #[derive(Debug)]
+        #[derive(Debug, Default)]
         pub enum State {
+            #[default]
             Uninitialized,
             Transactions {
                 last_id: BlockId,
@@ -555,11 +607,13 @@ mod parse {
             },
         }
 
-        impl State {
-            pub fn advance(&mut self, r: TransactionsResponse) -> anyhow::Result<()> {
-                let current_state = std::mem::replace(self, State::Uninitialized);
-                let TransactionsResponse { id, kind } = r;
-                let next_state = match (current_state, id, kind) {
+        impl super::ParserState for State {
+            type Item = TransactionsResponse;
+            type Inner = HashMap<BlockId, Vec<TransactionVariant>>;
+
+            fn advance_inner(self, next: Self::Item) -> anyhow::Result<Self> {
+                let TransactionsResponse { id, kind } = next;
+                Ok(match (self, id, kind) {
                     // We've just started, accept any transactions from some block
                     (
                         State::Uninitialized,
@@ -648,38 +702,10 @@ mod parse {
                         }
                     }
                     (_, _, _) => anyhow::bail!("unexpected response"),
-                };
-
-                *self = next_state;
-                // We need to stop parsing when a block is properly delimited but an error was signalled
-                // as the peer is not going to send any more blocks.
-
-                if self.should_stop() {
-                    anyhow::bail!("no data or premature end of response")
-                } else {
-                    Ok(())
-                }
+                })
             }
 
-            pub fn take_inner(self) -> Option<HashMap<BlockHash, Vec<TransactionVariant>>> {
-                match self {
-                    State::Delimited { transactions }
-                    | State::DelimitedWithError { transactions, .. } => {
-                        debug_assert!(!transactions.is_empty());
-                        Some(
-                            transactions
-                                .into_iter()
-                                .map(|(k, v)| (BlockHash(k.hash.0), v))
-                                .collect(),
-                        )
-                    }
-                    _ => None,
-                }
-            }
-
-            pub fn should_stop(&self) -> bool {
-                matches!(self, State::Empty { .. } | State::DelimitedWithError { .. })
-            }
+            impl_take_inner_and_should_stop!(transactions);
         }
     }
 }
