@@ -202,6 +202,7 @@ impl Default for SyncState {
 }
 
 pub mod test_utils {
+    use crate::pending::PendingData;
     use pathfinder_common::event::Event;
     use pathfinder_common::{macro_prelude::*, Fee};
     use pathfinder_common::{
@@ -212,16 +213,12 @@ pub mod test_utils {
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::{H160, H256};
     use stark_hash::Felt;
-    use starknet_gateway_types::reply::transaction::{ExecutionStatus, L2ToL1Message};
-    use starknet_gateway_types::{
-        pending::PendingData,
-        reply::transaction::{
-            DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
-            InvokeTransactionV0, Receipt, Transaction,
-        },
+    use starknet_gateway_types::reply::transaction::{
+        DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
+        InvokeTransactionV0, Receipt, Transaction,
     };
+    use starknet_gateway_types::reply::transaction::{ExecutionStatus, L2ToL1Message};
     use std::collections::HashMap;
-    use std::sync::Arc;
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
@@ -739,11 +736,11 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        let pending_data = PendingData::default();
-        pending_data
-            .set(Arc::new(block), Arc::new(state_update))
-            .await;
-        pending_data
+        PendingData {
+            block,
+            state_update,
+            number: latest.number + 1,
+        }
     }
 }
 

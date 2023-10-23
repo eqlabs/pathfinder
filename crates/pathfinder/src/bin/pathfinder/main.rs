@@ -156,18 +156,17 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let sync_state = Arc::new(SyncState::default());
     let pending_state = PendingData::default();
 
+    // TODO: pass this through to sync.
+    let (tx_pending, rx_pending) = tokio::sync::watch::channel(Default::default());
+
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         execution_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
+        rx_pending,
     );
-
-    let context = match config.poll_pending {
-        true => context.with_pending_data(pending_state.clone()),
-        false => context,
-    };
 
     let context = if config.websocket.enabled {
         context.with_websockets(WebsocketContext::new(

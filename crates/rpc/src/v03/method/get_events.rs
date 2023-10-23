@@ -1,6 +1,7 @@
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 use crate::context::RpcContext;
+use crate::pending::PendingData;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
 use pathfinder_storage::{EventFilterError, V03KeyFilter};
@@ -109,28 +110,6 @@ pub async fn get_events(
         });
     }
 
-    // Grab the pending block so that we can check its validity.
-    //
-    // This is an async operation, so separating it from the sync database portion is sensible.
-    let pending_block = match context.pending_data.as_ref() {
-        Some(data) => data.block().await,
-        None => None,
-    };
-
-    // Handle the trivial (1) and (2) cases.
-    match (&request.from_block, &request.to_block) {
-        (Some(Pending), non_pending) if *non_pending != Some(Pending) => {
-            return Ok(types::GetEventsResult {
-                events: Vec::new(),
-                continuation_token: None,
-            });
-        }
-        (Some(Pending), Some(Pending)) => {
-            return get_pending_events(context, &request, pending_block, continuation_token).await;
-        }
-        _ => {}
-    }
-
     let storage = context.storage.clone();
     let keys = V03KeyFilter::new(request.keys.clone());
 
@@ -145,6 +124,24 @@ pub async fn get_events(
         let transaction = connection
             .transaction()
             .context("Creating database transaction")?;
+
+        // Handle the trivial (1) and (2) cases.
+        match (&request.from_block, &request.to_block) {
+            (Some(Pending), non_pending) if *non_pending != Some(Pending) => {
+                return Ok(types::GetEventsResult {
+                    events: Vec::new(),
+                    continuation_token: None,
+                });
+            }
+            (Some(Pending), Some(Pending)) => {
+                let pending = context
+                    .pending_data
+                    .get(&transaction)
+                    .context("Querying pending data")?;
+                return get_pending_events(&request, &pending, continuation_token);
+            }
+            _ => {}
+        }
 
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
@@ -176,71 +173,51 @@ pub async fn get_events(
             }
         })?;
 
-        // Check pending block validity if it is required -- this means checking it's parent is
-        // indeed the latest block in storage. Replace pending data if it is invalid, or not required.
-        let (pending_block, pending_block_number) = match (request.to_block, pending_block) {
-            (Some(Pending), Some(pending_block)) => {
-                let (latest_block_number, latest_block_hash) = transaction
-                    .block_id(pathfinder_storage::BlockId::Latest)
-                    .context("Querying latest block hash")?
-                    .context("Latest block hash is missing")?;
+        let new_continuation_token = match page.is_last_page {
+            true => None,
+            false => {
+                assert_eq!(page.events.len(), request.chunk_size);
+                let last_block_number = page.events.last().unwrap().block_number;
+                let number_of_events_in_last_block = page
+                    .events
+                    .iter()
+                    .rev()
+                    .take_while(|event| event.block_number == last_block_number)
+                    .count();
 
-                let pending_block =
-                    (pending_block.parent_hash == latest_block_hash).then_some(pending_block);
-                let pending_block_number = BlockNumber::new_or_panic(latest_block_number.get() + 1);
-                (pending_block, pending_block_number)
-            }
-            (_, original) => (original, BlockNumber::default()),
-        };
-
-        Ok((page, pending_block, pending_block_number))
-    });
-
-    let (page, pending_block, pending_block_number) = db_events
-        .await
-        .context("Database read panic or shutting down")??;
-
-    let new_continuation_token = match page.is_last_page {
-        true => None,
-        false => {
-            assert_eq!(page.events.len(), request.chunk_size);
-            let last_block_number = page.events.last().unwrap().block_number;
-            let number_of_events_in_last_block = page
-                .events
-                .iter()
-                .rev()
-                .take_while(|event| event.block_number == last_block_number)
-                .count();
-
-            if number_of_events_in_last_block < request.chunk_size {
-                // the page contains events from a new block
-                Some(ContinuationToken {
-                    block_number: last_block_number,
-                    offset: number_of_events_in_last_block,
-                })
-            } else {
-                match continuation_token {
-                    Some(previous_continuation_token) => Some(ContinuationToken {
-                        block_number: previous_continuation_token.block_number,
-                        offset: previous_continuation_token.offset + request.chunk_size,
-                    }),
-                    None => Some(ContinuationToken {
-                        block_number: page.events.first().unwrap().block_number,
-                        offset: request.chunk_size,
-                    }),
+                if number_of_events_in_last_block < request.chunk_size {
+                    // the page contains events from a new block
+                    Some(ContinuationToken {
+                        block_number: last_block_number,
+                        offset: number_of_events_in_last_block,
+                    })
+                } else {
+                    match continuation_token {
+                        Some(previous_continuation_token) => Some(ContinuationToken {
+                            block_number: previous_continuation_token.block_number,
+                            offset: previous_continuation_token.offset + request.chunk_size,
+                        }),
+                        None => Some(ContinuationToken {
+                            block_number: page.events.first().unwrap().block_number,
+                            offset: request.chunk_size,
+                        }),
+                    }
                 }
             }
-        }
-    };
+        };
 
-    let mut events = types::GetEventsResult {
-        events: page.events.into_iter().map(|e| e.into()).collect(),
-        continuation_token: new_continuation_token.map(|token| token.to_string()),
-    };
+        let mut events = types::GetEventsResult {
+            events: page.events.into_iter().map(|e| e.into()).collect(),
+            continuation_token: new_continuation_token.map(|token| token.to_string()),
+        };
 
-    // Append pending data if required.
-    if let Some(pending_block) = pending_block {
+        // Append pending data if required.
         if matches!(request.to_block, Some(Pending)) {
+            let pending = context
+                .pending_data
+                .get(&transaction)
+                .context("Querying pending data")?;
+
             let keys: Vec<std::collections::HashSet<_>> = request
                 .keys
                 .into_iter()
@@ -252,13 +229,13 @@ pub async fn get_events(
 
                 let current_offset = match continuation_token {
                     Some(continuation_token) => {
-                        continuation_token.offset_in_block(pending_block_number)?
+                        continuation_token.offset_in_block(pending.number)?
                     }
                     None => 0,
                 };
 
                 let is_last_page = append_pending_events(
-                    &pending_block,
+                    &pending.block,
                     &mut events.events,
                     current_offset,
                     amount,
@@ -270,7 +247,7 @@ pub async fn get_events(
                     None
                 } else {
                     let continuation_token = ContinuationToken {
-                        block_number: pending_block_number,
+                        block_number: pending.number,
                         offset: current_offset + amount,
                     };
                     Some(continuation_token.to_string())
@@ -283,113 +260,76 @@ pub async fn get_events(
                 // check if there are matching pending events
                 let mut buf: Vec<types::EmittedEvent> = Vec::new();
                 let _ =
-                    append_pending_events(&pending_block, &mut buf, 0, 1, request.address, keys);
+                    append_pending_events(&pending.block, &mut buf, 0, 1, request.address, keys);
                 if buf.is_empty() {
                     // if there are no matching events in pending we should not return a token
                     events.continuation_token = None;
                 } else {
                     let continuation_token = ContinuationToken {
-                        block_number: pending_block_number,
+                        block_number: pending.number,
                         offset: 0,
                     };
                     events.continuation_token = Some(continuation_token.to_string());
                 }
             }
         }
-    }
 
-    check_continuation_token_validity(continuation_token, &events.events)?;
+        check_continuation_token_validity(continuation_token, &events.events)?;
 
-    Ok(events)
+        Ok(events)
+    });
+
+    db_events
+        .await
+        .context("Database read panic or shutting down")?
 }
 
 // Handle the case when we're querying events exclusively from the pending block.
-async fn get_pending_events(
-    context: RpcContext,
+fn get_pending_events(
     request: &EventFilter,
-    pending_block: Option<Arc<PendingBlock>>,
+    pending: &PendingData,
     continuation_token: Option<ContinuationToken>,
 ) -> Result<types::GetEventsResult, GetEventsError> {
-    match pending_block {
-        None => match continuation_token {
-            None => {
-                // if there was no continuation token we return empty result
-                Ok(types::GetEventsResult {
-                    events: Vec::new(),
-                    continuation_token: None,
-                })
+    let current_offset = match continuation_token {
+        Some(continuation_token) => continuation_token.offset_in_block(pending.number)?,
+        None => 0,
+    };
+
+    let keys: Vec<std::collections::HashSet<_>> = request
+        .keys
+        .iter()
+        .map(|keys| keys.iter().copied().collect())
+        .collect();
+
+    let mut events = Vec::new();
+
+    let is_last_page = append_pending_events(
+        &pending.block,
+        &mut events,
+        current_offset,
+        request.chunk_size,
+        request.address,
+        keys,
+    );
+
+    check_continuation_token_validity(continuation_token, &events)?;
+
+    let continuation_token = if is_last_page {
+        None
+    } else {
+        Some(
+            ContinuationToken {
+                block_number: pending.number,
+                offset: current_offset + request.chunk_size,
             }
-            // no pending block means we can't continue from the token offset
-            Some(_) => Err(GetEventsError::InvalidContinuationToken),
-        },
-        Some(pending_block) => {
-            let storage = context.storage.clone();
+            .to_string(),
+        )
+    };
 
-            let pending_block_parent_hash = pending_block.parent_hash;
-            let pending_block_number = tokio::task::spawn_blocking(move || {
-                let mut connection = storage
-                    .connection()
-                    .context("Opening database connection")?;
-
-                let transaction = connection
-                    .transaction()
-                    .context("Creating database transaction")?;
-
-                let parent_block_id = transaction
-                    .block_id(pathfinder_storage::BlockId::Hash(pending_block_parent_hash))?;
-
-                let pending_block_number = parent_block_id
-                    .map(|(number, _hash)| BlockNumber::new_or_panic(number.get() + 1));
-
-                Ok::<_, GetEventsError>(pending_block_number.unwrap_or_default())
-            })
-            .await
-            .context("Fetching block number for pending block")??;
-
-            let current_offset = match continuation_token {
-                Some(continuation_token) => {
-                    continuation_token.offset_in_block(pending_block_number)?
-                }
-                None => 0,
-            };
-
-            let keys: Vec<std::collections::HashSet<_>> = request
-                .keys
-                .iter()
-                .map(|keys| keys.iter().copied().collect())
-                .collect();
-
-            let mut events = Vec::new();
-
-            let is_last_page = append_pending_events(
-                &pending_block,
-                &mut events,
-                current_offset,
-                request.chunk_size,
-                request.address,
-                keys,
-            );
-
-            check_continuation_token_validity(continuation_token, &events)?;
-
-            let continuation_token = if is_last_page {
-                None
-            } else {
-                Some(
-                    ContinuationToken {
-                        block_number: pending_block_number,
-                        offset: current_offset + request.chunk_size,
-                    }
-                    .to_string(),
-                )
-            };
-
-            Ok(types::GetEventsResult {
-                events,
-                continuation_token,
-            })
-        }
-    }
+    Ok(types::GetEventsResult {
+        events,
+        continuation_token,
+    })
 }
 
 // Maps `to_block` BlockId to a block number which can be used by the events query.
@@ -644,7 +584,6 @@ mod tests {
     };
     use serde_json::json;
 
-    use pathfinder_common::felt;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_storage::test_utils;
     use pretty_assertions::assert_eq;
@@ -960,7 +899,6 @@ mod tests {
     mod pending {
         use super::*;
         use pretty_assertions::assert_eq;
-        use starknet_gateway_types::pending::PendingData;
 
         #[tokio::test]
         async fn backward_range() {
@@ -1106,40 +1044,6 @@ mod tests {
             let result = get_events(context.clone(), input.clone()).await.unwrap();
             assert_eq!(result.events, &all[0..1]);
             assert_eq!(result.continuation_token, None);
-        }
-
-        #[tokio::test]
-        async fn invalid_pending() {
-            use std::sync::Arc;
-            // Invalidate the pending block data by changing its parent hash.
-            let mut context = RpcContext::for_tests_with_pending().await;
-            let pending = context.pending_data.as_ref().unwrap();
-            let mut block = pending.block().await.unwrap().as_ref().clone();
-            let state_update = pending.state_update().await.unwrap();
-            block.parent_hash.0 = block.parent_hash.0 + felt!("0x1");
-
-            let pending = PendingData::default();
-            pending.set(Arc::new(block), state_update).await;
-            context.pending_data = Some(pending);
-
-            let all_non_pending_filter = GetEventsInput {
-                filter: EventFilter {
-                    to_block: Some(BlockId::Latest),
-                    chunk_size: 1024,
-                    ..Default::default()
-                },
-            };
-
-            let mut all_filter = all_non_pending_filter.clone();
-            all_filter.filter.to_block = Some(BlockId::Pending);
-
-            let expected = get_events(context.clone(), all_non_pending_filter)
-                .await
-                .unwrap();
-
-            let all_events = get_events(context.clone(), all_filter).await.unwrap();
-
-            assert_eq!(all_events, expected);
         }
     }
 }

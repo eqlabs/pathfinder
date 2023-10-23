@@ -1,7 +1,7 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use starknet_gateway_types::pending::PendingData;
 use starknet_gateway_types::reply::transaction::ExecutionStatus;
+use starknet_gateway_types::reply::PendingBlock;
 
 use crate::context::RpcContext;
 
@@ -16,14 +16,6 @@ pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,
 ) -> Result<TransactionStatus, GetGatewayTransactionError> {
-    // Check in pending block.
-    if let Some(pending) = &context.pending_data {
-        if let Some(status) = pending_status(pending, &input.transaction_hash).await {
-            return Ok(status);
-        }
-    }
-
-    // Check database.
     let span = tracing::Span::current();
 
     let db_status = tokio::task::spawn_blocking(move || {
@@ -34,6 +26,15 @@ pub async fn get_transaction_status(
             .connection()
             .context("Opening database connection")?;
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        // Check pending transactions first.
+        let pending = context
+            .pending_data
+            .get(&db_tx)
+            .context("Querying pending data")?;
+        if let Some(status) = pending_status(&pending.block, &input.transaction_hash) {
+            return Ok(Some(status));
+        }
 
         let Some((_, receipt, block_hash)) = db_tx
             .transaction_with_receipt(input.transaction_hash)
@@ -74,27 +75,18 @@ pub async fn get_transaction_status(
         .map_err(GetGatewayTransactionError::Internal)
 }
 
-async fn pending_status(
-    pending: &PendingData,
-    tx_hash: &TransactionHash,
-) -> Option<TransactionStatus> {
-    pending
-        .block()
-        .await
-        .map(|block| {
-            block.transaction_receipts.iter().find_map(|rx| {
-                if &rx.transaction_hash == tx_hash {
-                    if rx.execution_status == ExecutionStatus::Reverted {
-                        Some(TransactionStatus::Reverted)
-                    } else {
-                        Some(TransactionStatus::AcceptedOnL2)
-                    }
-                } else {
-                    None
-                }
-            })
-        })
-        .unwrap_or_default()
+fn pending_status(pending: &PendingBlock, tx_hash: &TransactionHash) -> Option<TransactionStatus> {
+    pending.transaction_receipts.iter().find_map(|rx| {
+        if &rx.transaction_hash == tx_hash {
+            if rx.execution_status == ExecutionStatus::Reverted {
+                Some(TransactionStatus::Reverted)
+            } else {
+                Some(TransactionStatus::AcceptedOnL2)
+            }
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Copy, Clone, Debug, serde::Serialize, PartialEq)]

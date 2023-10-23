@@ -14,25 +14,6 @@ pub async fn get_transaction_receipt(
     context: RpcContext,
     input: GetTransactionReceiptInput,
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
-    // First check pending data as this is in-mem and should be faster.
-    if let Some(pending) = &context.pending_data {
-        let receipt_transaction = pending.block().await.and_then(|block| {
-            block
-                .transaction_receipts
-                .iter()
-                .zip(block.transactions.iter())
-                .find_map(|(receipt, tx)| {
-                    (receipt.transaction_hash == input.transaction_hash)
-                        .then(|| (receipt.clone(), tx.clone()))
-                })
-        });
-
-        if let Some((receipt, transaction)) = receipt_transaction {
-            let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
-            return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
-        };
-    }
-
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
@@ -43,6 +24,23 @@ pub async fn get_transaction_receipt(
             .context("Opening database connection")?;
 
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        // Check pending transactions.
+        let pending = context
+            .pending_data
+            .get(&db_tx)
+            .context("Querying pending data")?;
+
+        if let Some((transaction, receipt)) = pending
+            .block
+            .transactions
+            .iter()
+            .zip(pending.block.transaction_receipts.iter())
+            .find_map(|(t, r)| (t.hash() == input.transaction_hash).then(|| (t.clone(), r.clone())))
+        {
+            let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
+            return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
+        }
 
         let (transaction, receipt, block_hash) = db_tx
             .transaction_with_receipt(input.transaction_hash)

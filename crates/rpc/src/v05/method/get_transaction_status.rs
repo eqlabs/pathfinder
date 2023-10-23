@@ -77,13 +77,6 @@ pub async fn get_transaction_status(
     context: RpcContext,
     input: GetTransactionStatusInput,
 ) -> Result<GetTransactionStatusOutput, GetTransactionStatusError> {
-    // Check in pending block.
-    if let Some(pending) = &context.pending_data {
-        if let Some(status) = pending_status(pending, &input.transaction_hash).await {
-            return Ok(status);
-        }
-    }
-
     // Check database.
     let span = tracing::Span::current();
 
@@ -95,6 +88,20 @@ pub async fn get_transaction_status(
             .connection()
             .context("Opening database connection")?;
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        if let Some(receipt) = context
+            .pending_data
+            .get(&db_tx)
+            .context("Querying pending data")?
+            .block
+            .transaction_receipts
+            .iter()
+            .find(|rx| rx.transaction_hash == input.transaction_hash)
+        {
+            return Ok(Some(GetTransactionStatusOutput::AcceptedOnL2(
+                receipt.execution_status.clone().into(),
+            )));
+        }
 
         let Some((_, receipt, block_hash)) = db_tx
             .transaction_with_receipt(input.transaction_hash)

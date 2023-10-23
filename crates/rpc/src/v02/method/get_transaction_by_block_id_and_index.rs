@@ -26,13 +26,6 @@ pub async fn get_transaction_by_block_id_and_index_impl(
         .try_into()
         .map_err(|_| GetTransactionByBlockIdAndIndexError::InvalidTxnIndex)?;
 
-    let block_id = match input.block_id {
-        BlockId::Pending => {
-            return get_transaction_from_pending(&context.pending_data, index).await
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
@@ -43,6 +36,22 @@ pub async fn get_transaction_by_block_id_and_index_impl(
             .context("Opening database connection")?;
 
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        let block_id = match input.block_id {
+            BlockId::Pending => {
+                let result = context
+                    .pending_data
+                    .get(&db_tx)
+                    .context("Querying pending dat")?
+                    .block
+                    .transactions
+                    .get(index)
+                    .cloned()
+                    .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);
+                return result;
+            }
+            other => other.try_into().expect("Only pending cast should fail"),
+        };
 
         // Get the transaction from storage.
         match db_tx
@@ -75,27 +84,6 @@ pub async fn get_transaction_by_block_id_and_index(
     get_transaction_by_block_id_and_index_impl(context, input)
         .await
         .map(Into::into)
-}
-
-async fn get_transaction_from_pending(
-    pending: &Option<starknet_gateway_types::pending::PendingData>,
-    index: usize,
-) -> Result<GatewayTransaction, GetTransactionByBlockIdAndIndexError> {
-    // We return InvalidTxnIndex even if the pending block is technically missing.
-    // The absence of the pending block should be transparent to the end-user so
-    // we effectively handle it as an empty pending block.
-    match pending {
-        Some(pending) => pending.block().await.map_or_else(
-            || Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex),
-            |block| {
-                block.transactions.get(index).map_or(
-                    Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex),
-                    |txn| Ok(txn.clone()),
-                )
-            },
-        ),
-        None => Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex),
-    }
 }
 
 #[cfg(test)]
@@ -229,15 +217,10 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
 
         const TX_IDX: usize = 1;
-        let expected = context
-            .pending_data
-            .as_ref()
-            .unwrap()
-            .block()
-            .await
-            .unwrap();
-        assert!(TX_IDX <= expected.transactions.len());
-        let expected: Transaction = expected.transactions.get(TX_IDX).unwrap().into();
+        let expected = context.pending_data.get_unchecked();
+
+        assert!(TX_IDX <= expected.block.transactions.len());
+        let expected: Transaction = expected.block.transactions.get(TX_IDX).unwrap().into();
 
         let input = GetTransactionByBlockIdAndIndexInput {
             block_id: BlockId::Pending,

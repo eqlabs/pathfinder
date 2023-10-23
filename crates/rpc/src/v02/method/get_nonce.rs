@@ -21,17 +21,6 @@ pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<GetNonceOutput, GetNonceError> {
-    // We can potentially read the nonce from pending without having to reach out to the database.
-    let block_id = match input.block_id {
-        BlockId::Pending => {
-            match get_pending_nonce(&context.pending_data, input.contract_address).await {
-                Some(nonce) => return Ok(GetNonceOutput(nonce)),
-                None => pathfinder_storage::BlockId::Latest,
-            }
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
     let contract_address = input.contract_address;
 
     let storage = context.storage.clone();
@@ -42,6 +31,23 @@ pub async fn get_nonce(
             .connection()
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
+
+        if input.block_id.is_pending() {
+            if let Some(nonce) = context
+                .pending_data
+                .get(&tx)
+                .context("Querying pending data")?
+                .state_update
+                .contract_nonce(contract_address)
+            {
+                return Ok(GetNonceOutput(nonce));
+            }
+        }
+
+        let block_id = match input.block_id {
+            BlockId::Pending => pathfinder_storage::BlockId::Latest,
+            other => other.try_into().expect("Only pending cast should fail"),
+        };
 
         // Check that block exists. This should occur first as the block number
         // isn't checked explicitly (i.e. nonce fetch just uses <= number).

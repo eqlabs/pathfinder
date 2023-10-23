@@ -19,18 +19,6 @@ pub async fn get_class_at(
 ) -> Result<ContractClass, GetClassAtError> {
     let span = tracing::Span::current();
 
-    // Map block id to the storage variant.
-    let block_id = match input.block_id {
-        BlockId::Pending => pathfinder_storage::BlockId::Latest,
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
-    let pending_class_hash = if input.block_id == BlockId::Pending {
-        get_pending_class_hash(context.pending_data, input.contract_address).await
-    } else {
-        None
-    };
-
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut db = context
@@ -39,6 +27,23 @@ pub async fn get_class_at(
             .context("Opening database connection")?;
 
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let pending_class_hash = if input.block_id == BlockId::Pending {
+            context
+                .pending_data
+                .get(&tx)
+                .context("Querying pending data")?
+                .state_update
+                .contract_class(input.contract_address)
+        } else {
+            None
+        };
+
+        // Map block id to the storage variant.
+        let block_id = match input.block_id {
+            BlockId::Pending => pathfinder_storage::BlockId::Latest,
+            other => other.try_into().expect("Only pending cast should fail"),
+        };
 
         if !tx.block_exists(block_id)? {
             return Err(GetClassAtError::BlockNotFound);

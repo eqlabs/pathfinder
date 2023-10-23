@@ -17,18 +17,6 @@ pub async fn get_class(
     context: RpcContext,
     input: GetClassInput,
 ) -> Result<ContractClass, GetClassError> {
-    let (block_id, is_pending) = match input.block_id {
-        BlockId::Pending => {
-            let latest = pathfinder_storage::BlockId::Latest;
-            let is_pending = is_pending_class(&context.pending_data, input.class_hash).await;
-            (latest, is_pending)
-        }
-        other => (
-            other.try_into().expect("Only pending cast should fail"),
-            false,
-        ),
-    };
-
     let span = tracing::Span::current();
     let jh = tokio::task::spawn_blocking(move || -> Result<ContractClass, GetClassError> {
         let _g = span.enter();
@@ -37,6 +25,23 @@ pub async fn get_class(
             .connection()
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let is_pending = if input.block_id.is_pending() {
+            context
+                .pending_data
+                .get(&tx)
+                .context("Querying pending data")?
+                .state_update
+                .class_is_declared(input.class_hash)
+        } else {
+            false
+        };
+
+        // Map block id to the storage variant.
+        let block_id = match input.block_id {
+            BlockId::Pending => pathfinder_storage::BlockId::Latest,
+            other => other.try_into().expect("Only pending cast should fail"),
+        };
 
         // Check that block exists
         let block_exists = tx.block_exists(block_id)?;

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::StateUpdate;
+use pathfinder_common::{BlockNumber, StateUpdate};
 use pathfinder_storage::Transaction;
 use starknet_gateway_types::reply::{PendingBlock, Status};
 
@@ -9,12 +9,14 @@ use tokio::sync::watch::Receiver as WatchReceiver;
 
 /// Provides the latest [PendingData] which is consistent with a given
 /// view of storage.
+#[derive(Clone)]
 pub struct PendingWatcher(WatchReceiver<Arc<PendingData>>);
 
 #[derive(Default, Debug, PartialEq)]
 pub struct PendingData {
     pub block: PendingBlock,
     pub state_update: StateUpdate,
+    pub number: BlockNumber,
 }
 
 impl PendingWatcher {
@@ -26,7 +28,7 @@ impl PendingWatcher {
     /// available in storage.
     ///
     /// Returns an empty block with gas price and timestamp taken from the latest
-    /// block if no valid pending data is available.
+    /// block if no valid pending data is available. The block number is also incremented.
     pub fn get(&self, tx: &Transaction) -> anyhow::Result<Arc<PendingData>> {
         let latest = tx
             .block_header(pathfinder_storage::BlockId::Latest)
@@ -48,10 +50,16 @@ impl PendingWatcher {
                     ..Default::default()
                 },
                 state_update: StateUpdate::default(),
+                number: latest.number + 1,
             };
 
             Ok(Arc::new(data))
         }
+    }
+
+    #[cfg(test)]
+    pub fn get_unchecked(&self) -> Arc<PendingData> {
+        self.0.borrow().clone()
     }
 }
 
@@ -93,6 +101,7 @@ mod tests {
                 contract_address_bytes!(b"contract address"),
                 contract_nonce_bytes!(b"nonce"),
             ),
+            number: BlockNumber::GENESIS + 10,
         };
         let pending = Arc::new(pending);
         sender.send(pending.clone()).unwrap();
@@ -115,12 +124,18 @@ mod tests {
             .connection()
             .unwrap();
 
-        let latest = BlockHeader::builder()
+        // Required otherwise latest doesn't have a valid parent hash in storage.
+        let parent = BlockHeader::builder()
+            .with_number(BlockNumber::GENESIS + 12)
+            .finalize_with_hash(block_hash_bytes!(b"parent hash"));
+
+        let latest = parent.child_builder()
             .with_gas_price(GasPrice(1234))
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
         let tx = storage.transaction().unwrap();
+        tx.insert_block_header(&parent).unwrap();
         tx.insert_block_header(&latest).unwrap();
 
         let result = uut.get(&tx).unwrap();
@@ -130,6 +145,7 @@ mod tests {
         expected.block.timestamp = latest.timestamp;
         expected.block.parent_hash = latest.hash;
         expected.block.status = Status::Pending;
+        expected.number = latest.number;
 
         pretty_assertions::assert_eq!(*result, expected);
     }

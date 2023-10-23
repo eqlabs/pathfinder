@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use crate::context::RpcContext;
 use crate::v04::types::TransactionWithHash;
 
@@ -6,22 +8,34 @@ crate::error::generate_rpc_error_subset!(PendingTransactionsError:);
 pub async fn pending_transactions(
     context: RpcContext,
 ) -> Result<Vec<TransactionWithHash>, PendingTransactionsError> {
-    let transactions = match context.pending_data {
-        Some(data) => match data.block().await {
-            Some(block) => block
-                .transactions
-                .iter()
-                .map(|x| {
-                    let common_tx = pathfinder_common::transaction::Transaction::from(x.clone());
-                    common_tx.into()
-                })
-                .collect(),
-            None => Vec::new(),
-        },
-        None => Vec::new(),
-    };
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
 
-    Ok(transactions)
+    let jh = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+        let mut db = storage
+            .connection()
+            .context("Opening database connection")?;
+
+        let db_tx = db.transaction().context("Creating database transaction")?;
+
+        let transactions = context
+            .pending_data
+            .get(&db_tx)
+            .context("Querying pending data")?
+            .block
+            .transactions
+            .iter()
+            .map(|x| {
+                let common_tx = pathfinder_common::transaction::Transaction::from(x.clone());
+                common_tx.into()
+            })
+            .collect();
+
+        Ok(transactions)
+    });
+
+    jh.await.context("Database read panic or shutting down")?
 }
 
 #[cfg(test)]
