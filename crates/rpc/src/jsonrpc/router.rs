@@ -184,7 +184,11 @@ pub async fn rpc_handler(
             })
             .await;
 
-            // TODO Notifications return none and are skipped.
+            // Notifications return none and are skipped.
+            let responses = responses
+                .into_iter()
+                .filter_map(|option| option)
+                .collect::<Vec<RpcResponse>>();
 
             // All requests were notifications.
             if responses.is_empty() {
@@ -462,44 +466,43 @@ pub trait RpcMethodHandler {
 }
 
 // TODO Doc.
-// TODO vec => intoIter
-async fn run_concurrently<O, I, F, W, V>(concurrency_limit: usize, input: V, work: W) -> Vec<O>
+async fn run_concurrently<O, I, F, W, V>(concurrency_limit: usize, inputs: V, work: W) -> Vec<O>
 where
     V: IntoIterator<Item = I>,
     W: Fn(I) -> F,
-    F: Future<Output = Option<O>> + Sized,
+    F: Future<Output = O> + Sized,
 {
-    let futures = input
+    // TODO Possible to simplify this?
+    let futures = inputs
         .into_iter()
         .map(|i| async { i })
         .collect::<FuturesOrdered<_>>();
     let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(futures.len());
 
-    // TODO Get rid of the option to make this function more generic.
     futures
-        .for_each_concurrent(Some(concurrency_limit), |request| async {
-            let response = work(request).await;
+        .for_each_concurrent(Some(concurrency_limit), |input| async {
+            let result = work(input).await;
 
-            if let Some(response) = response {
-                // No reason for this to fail as:
-                //  * channel capacity is sized according to the input size,
-                //  * a sender is kept alive until completion
-                result_sender
-                    .send(response)
-                    .await
-                    .expect("This channel is expected to be open and not full. This is a bug.");
-            }
+            // No reason for this to fail as:
+            //  * channel capacity is sized according to the input size,
+            //  * a sender is kept alive until completion
+            // TODO add a timeout to make sure this doesn't loop?
+            result_sender.send(result).await.expect(
+                "This channel is expected to be open and to not go over capacity. This is a bug.",
+            );
         })
         .await;
 
     // Necessary to break the receive loop eventually.
     drop(result_sender);
 
-    let mut responses = Vec::new();
-    while let Some(response) = result_receiver.recv().await {
-        responses.push(response)
+    // TODO Maybe return the receiver? Or a stream of some kind?
+    let mut results = Vec::new();
+    while let Some(result) = result_receiver.recv().await {
+        results.push(result)
     }
-    responses
+
+    results
 }
 
 #[cfg(test)]
@@ -523,7 +526,7 @@ mod tests {
             let start = Instant::now();
             let results = run_concurrently(10, 0..iterations, |i| async move {
                 sleep(sleep_time).await;
-                Some(i)
+                i
             })
             .await;
 
@@ -546,7 +549,7 @@ mod tests {
             let start = Instant::now();
             let results = run_concurrently(1, 0..iterations, |i| async move {
                 sleep(sleep_time).await;
-                Some(i)
+                i
             })
             .await;
 
