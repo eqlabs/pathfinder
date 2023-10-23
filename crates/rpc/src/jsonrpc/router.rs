@@ -1,10 +1,10 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
 use axum::async_trait;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use futures::stream::FuturesOrdered;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
@@ -178,8 +178,8 @@ pub async fn rpc_handler(
             }
 
             // TODO Make it configurable
-            let concurrency_limit = 10;
-            let responses = run_concurrently(concurrency_limit, requests, |request| {
+            let concurrency_limit = NonZeroUsize::new(10).unwrap();
+            let responses = run_concurrently(concurrency_limit, requests.into_iter(), |request| {
                 state.run_request(request.get())
             })
             .await;
@@ -465,28 +465,27 @@ pub trait RpcMethodHandler {
     async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
 }
 
-// TODO Doc.
-async fn run_concurrently<O, I, F, W, V>(concurrency_limit: usize, inputs: V, work: W) -> Vec<O>
+/// Performs asynchronous work concurrently on an input iterator, returning a `Vec` with the output
+/// of each piece of work.
+async fn run_concurrently<O, I, F, W, V>(
+    concurrency_limit: NonZeroUsize,
+    input_iter: V,
+    work: W,
+) -> Vec<O>
 where
-    V: IntoIterator<Item = I>,
+    V: Iterator<Item = I> + ExactSizeIterator,
     W: Fn(I) -> F,
     F: Future<Output = O> + Sized,
 {
-    // TODO Possible to simplify this?
-    let futures = inputs
-        .into_iter()
-        .map(|i| async { i })
-        .collect::<FuturesOrdered<_>>();
-    let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(futures.len());
+    let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(input_iter.len());
 
-    futures
-        .for_each_concurrent(Some(concurrency_limit), |input| async {
+    futures::stream::iter(input_iter)
+        .for_each_concurrent(Some(concurrency_limit.get()), |input| async {
             let result = work(input).await;
 
             // No reason for this to fail as:
             //  * channel capacity is sized according to the input size,
             //  * a sender is kept alive until completion
-            // TODO add a timeout to make sure this doesn't loop?
             result_sender.send(result).await.expect(
                 "This channel is expected to be open and to not go over capacity. This is a bug.",
             );
@@ -496,7 +495,7 @@ where
     // Necessary to break the receive loop eventually.
     drop(result_sender);
 
-    // TODO Maybe return the receiver? Or a stream of some kind?
+    // All results should be available immediately at this point.
     let mut results = Vec::new();
     while let Some(result) = result_receiver.recv().await {
         results.push(result)
@@ -524,10 +523,14 @@ mod tests {
 
         {
             let start = Instant::now();
-            let results = run_concurrently(10, 0..iterations, |i| async move {
-                sleep(sleep_time).await;
-                i
-            })
+            let results = run_concurrently(
+                NonZeroUsize::new(10).unwrap(),
+                0..iterations,
+                |i| async move {
+                    sleep(sleep_time).await;
+                    i
+                },
+            )
             .await;
 
             // Make sure the futures were indeed executed concurrently: total time << sum of the sleep times
@@ -547,10 +550,14 @@ mod tests {
         // Now do this again with a concurrent limit of 1.
         {
             let start = Instant::now();
-            let results = run_concurrently(1, 0..iterations, |i| async move {
-                sleep(sleep_time).await;
-                i
-            })
+            let results = run_concurrently(
+                NonZeroUsize::new(1).unwrap(),
+                0..iterations,
+                |i| async move {
+                    sleep(sleep_time).await;
+                    i
+                },
+            )
             .await;
 
             // Total time should be ~= sum of the sleep times
