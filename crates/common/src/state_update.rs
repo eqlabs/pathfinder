@@ -167,6 +167,13 @@ impl StateUpdate {
         })
     }
 
+    /// A contract's new class hash, if it was deployed or replaced in this state update.
+    pub fn contract_class(&self, contract: ContractAddress) -> Option<ClassHash> {
+        self.contract_updates
+            .get(&contract)
+            .and_then(|x| x.class.as_ref().map(|x| x.class_hash()))
+    }
+
     /// Returns true if the class was declared as either a cairo 0 or sierra class.
     pub fn class_is_declared(&self, class: ClassHash) -> bool {
         if self.declared_cairo_classes.contains(&class) {
@@ -254,5 +261,27 @@ mod tests {
         assert!(state_update.class_is_declared(cairo));
         assert!(state_update.class_is_declared(sierra));
         assert!(!state_update.class_is_declared(class_hash_bytes!(b"nope")));
+    }
+
+    #[test]
+    fn contract_class() {
+        let deployed = contract_address_bytes!(b"deployed");
+        let deployed_class = class_hash_bytes!(b"deployed class");
+        let replaced = contract_address_bytes!(b"replaced");
+        let replaced_class = class_hash_bytes!(b"replaced class");
+
+        let state_update = StateUpdate::default()
+            .with_deployed_contract(deployed, deployed_class)
+            .with_replaced_class(replaced, replaced_class);
+
+        let result = state_update.contract_class(deployed);
+        assert_eq!(result, Some(deployed_class));
+
+        let result = state_update.contract_class(replaced);
+        assert_eq!(result, Some(replaced_class));
+
+        assert!(state_update
+            .contract_class(contract_address_bytes!(b"bogus"))
+            .is_none());
     }
 }
