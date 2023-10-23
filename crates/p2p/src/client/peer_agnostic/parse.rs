@@ -54,25 +54,28 @@ macro_rules! impl_take_inner_and_should_stop {
 }
 
 pub(crate) mod block_header {
+    use std::collections::HashMap;
+
     use crate::client::types::BlockHeader;
     use anyhow::Context;
     use p2p_proto_v1::block::BlockHeadersResponsePart;
     use p2p_proto_v1::common::{Error, Fin};
+    use pathfinder_common::BlockHash;
 
     #[derive(Debug, Default)]
     pub enum State {
         #[default]
         Uninitialized,
         Header {
-            headers: Vec<BlockHeader>,
+            headers: HashMap<BlockHash, BlockHeader>,
         },
         _Signatures, // TODO add signature support
         Delimited {
-            headers: Vec<BlockHeader>,
+            headers: HashMap<BlockHash, BlockHeader>,
         },
         DelimitedWithError {
             error: Error,
-            headers: Vec<BlockHeader>,
+            headers: HashMap<BlockHash, BlockHeader>,
         },
         Empty {
             error: Option<Error>,
@@ -81,7 +84,7 @@ pub(crate) mod block_header {
 
     impl super::ParserState for State {
         type Dto = BlockHeadersResponsePart;
-        type Inner = Vec<BlockHeader>;
+        type Inner = HashMap<BlockHash, BlockHeader>;
         type Out = Vec<BlockHeader>;
 
         fn transition(self, next: Self::Dto) -> anyhow::Result<Self> {
@@ -89,7 +92,7 @@ pub(crate) mod block_header {
                 (State::Uninitialized, BlockHeadersResponsePart::Header(header)) => {
                     let header = BlockHeader::try_from(*header).context("parsing header")?;
                     Self::Header {
-                        headers: vec![header],
+                        headers: [(header.hash, header)].into(),
                     }
                 }
                 (State::Uninitialized, BlockHeadersResponsePart::Fin(Fin { error })) => {
@@ -102,8 +105,12 @@ pub(crate) mod block_header {
                     }
                 }
                 (State::Delimited { mut headers }, BlockHeadersResponsePart::Header(header)) => {
+                    if headers.contains_key(&BlockHash(header.hash.0)) {
+                        anyhow::bail!("unexpected response");
+                    }
+
                     let header = BlockHeader::try_from(*header).context("parsing header")?;
-                    headers.push(header);
+                    headers.insert(header.hash, header);
                     Self::Header { headers }
                 }
                 (_, _) => anyhow::bail!("unexpected part"),
@@ -111,7 +118,7 @@ pub(crate) mod block_header {
         }
 
         fn from_inner(inner: Self::Inner) -> Self::Out {
-            inner
+            inner.into_values().collect()
         }
 
         impl_take_inner_and_should_stop!(headers);
