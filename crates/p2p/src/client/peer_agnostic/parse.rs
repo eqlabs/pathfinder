@@ -120,8 +120,9 @@ pub(crate) mod state_update {
     };
     use pathfinder_common::{BlockHash, ClassHash};
 
-    #[derive(Debug)]
+    #[derive(Debug, Default)]
     pub enum State {
+        #[default]
         Uninitialized,
         Diff {
             last_id: BlockId,
@@ -144,11 +145,13 @@ pub(crate) mod state_update {
         },
     }
 
-    impl State {
-        pub fn advance(&mut self, r: BlockBodiesResponse) -> anyhow::Result<()> {
-            let current_state = std::mem::replace(self, State::Uninitialized);
-            let BlockBodiesResponse { id, body_message } = r;
-            let next_state = match (current_state, id, body_message) {
+    impl super::ParserState for State {
+        type Item = BlockBodiesResponse;
+        type Inner = Vec<StateUpdateWithDefs>;
+
+        fn transition(self, item: Self::Item) -> anyhow::Result<Self> {
+            let BlockBodiesResponse { id, body_message } = item;
+            Ok(match (self, id, body_message) {
                 (State::Uninitialized, Some(id), BlockBodyMessage::Diff(diff)) => State::Diff {
                     last_id: id,
                     state_updates: vec![StateUpdateWithDefs {
@@ -216,33 +219,10 @@ pub(crate) mod state_update {
                     }
                 }
                 (_, _, _) => anyhow::bail!("unexpected response"),
-            };
-
-            *self = next_state;
-            // We need to stop parsing when a block is properly delimited but an error was signalled
-            // as the peer is not going to send any more blocks.
-
-            if self.should_stop() {
-                anyhow::bail!("no data or premature end of response")
-            } else {
-                Ok(())
-            }
+            })
         }
 
-        pub fn take_inner(self) -> Option<Vec<StateUpdateWithDefs>> {
-            match self {
-                State::Delimited { state_updates }
-                | State::DelimitedWithError { state_updates, .. } => {
-                    debug_assert!(!state_updates.is_empty());
-                    Some(state_updates)
-                }
-                _ => None,
-            }
-        }
-
-        pub fn should_stop(&self) -> bool {
-            matches!(self, State::Empty { .. } | State::DelimitedWithError { .. })
-        }
+        impl_take_inner_and_should_stop!(state_updates);
     }
 
     /// Merges partitoned classes if necessary
