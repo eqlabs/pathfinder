@@ -162,6 +162,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
+        config.rpc_batch_concurrency_limit,
     );
 
     let context = match config.poll_pending {

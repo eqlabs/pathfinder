@@ -467,6 +467,19 @@ pub trait RpcMethodHandler {
 
 /// Performs asynchronous work concurrently on an input iterator, returning a `Vec` with the output
 /// of each piece of work.
+///
+/// Usage example:
+/// ```ignore
+/// let results = run_concurrently(
+///     NonZeroUsize::new(10).unwrap(),
+///     (0..iterations).map(|i| Duration::from_millis(i + 10)),
+///     |i| async {
+///         sleep(i).await;
+///         i
+///     },
+/// )
+/// .await;
+/// ```
 async fn run_concurrently<O, I, F, W, V>(
     concurrency_limit: NonZeroUsize,
     input_iter: V,
@@ -479,6 +492,7 @@ where
 {
     let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(input_iter.len());
 
+    // TODO More testing required regarding ordering
     futures::stream::iter(input_iter)
         .for_each_concurrent(Some(concurrency_limit.get()), |input| async {
             let result = work(input).await;
@@ -934,10 +948,9 @@ mod tests {
         use std::time::{Duration, Instant};
         use tokio::time::sleep;
 
-        let iterations = 10;
-        // Needs to be above an unknown threshold for this test to work due to execution overhead.
-        let sleep_time = Duration::from_millis(10);
-        assert!(iterations > 2); // Needed for the duration assertion to be relevant.
+        let iterations = 10usize;
+        // https://en.wikipedia.org/wiki/1_%2B_2_%2B_3_%2B_4_%2B_%E2%8B%AF
+        let sum = iterations * (iterations + 1) / 2;
 
         {
             let start = Instant::now();
@@ -945,14 +958,15 @@ mod tests {
                 NonZeroUsize::new(10).unwrap(),
                 0..iterations,
                 |i| async move {
-                    sleep(sleep_time).await;
+                    // Make these decrease to mess up with completion order.
+                    sleep(Duration::from_millis(10 - i as u64)).await;
                     i
                 },
             )
             .await;
 
             // Make sure the futures were indeed executed concurrently: total time << sum of the sleep times
-            assert!(start.elapsed() < (sleep_time * 2));
+            assert!(start.elapsed().as_millis() < (10 * 2));
 
             // Make sure the results are complete.
             assert_eq!(results.len(), iterations);
@@ -972,17 +986,17 @@ mod tests {
                 NonZeroUsize::new(1).unwrap(),
                 0..iterations,
                 |i| async move {
-                    sleep(sleep_time).await;
+                    // Make these decrease to mess up with completion order.
+                    sleep(Duration::from_millis(10 - i as u64)).await;
                     i
                 },
             )
             .await;
 
             // Total time should be ~= sum of the sleep times
-            let elapsed = start.elapsed();
-            let margin = 2;
-            assert!(elapsed > (sleep_time * (iterations - margin).try_into().unwrap()));
-            assert!(elapsed < (sleep_time * (iterations + margin).try_into().unwrap()));
+            let elapsed = start.elapsed().as_millis();
+            assert!(elapsed > (sum - 10).try_into().unwrap());
+            assert!(elapsed < (sum - 10).try_into().unwrap());
 
             // Make sure the results are complete.
             assert_eq!(results.len(), iterations);
