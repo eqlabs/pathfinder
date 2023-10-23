@@ -4,7 +4,8 @@ use axum::async_trait;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use futures::{Future, FutureExt};
+use futures::stream::FuturesOrdered;
+use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -176,14 +177,15 @@ pub async fn rpc_handler(
                 return RpcResponse::INVALID_REQUEST.into_response();
             }
 
-            let mut responses = Vec::new();
+            // TODO Make this whole thing generic, easier to test.
+            let futures = requests
+                .into_iter()
+                .map(|request| state.run_request(request.get()))
+                .collect::<FuturesOrdered<_>>();
 
-            for request in requests {
-                // Notifications return none and are skipped.
-                if let Some(response) = state.run_request(request.get()).await {
-                    responses.push(response);
-                }
-            }
+            // TODO Make it configurable
+            let concurrency_limit = 10;
+            let responses = run_concurrently(concurrency_limit, futures).await;
 
             // All requests were notifications.
             if responses.is_empty() {
@@ -460,11 +462,104 @@ pub trait RpcMethodHandler {
     async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
 }
 
+// TODO Doc.
+async fn run_concurrently<R>(
+    concurrency_limit: usize,
+    futures: FuturesOrdered<impl Future<Output = Option<R>> + Sized>,
+) -> Vec<R> {
+    let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(futures.len());
+    // TODO Test this, we may want to move the run_request inside this closure
+    // TODO Also test the order is preserved
+    futures
+        .for_each_concurrent(Some(concurrency_limit), |response| async {
+            // Notifications return none and are skipped.
+            if let Some(response) = response {
+                // TODO Err mgmt, log err?
+                result_sender.send(response).await.unwrap();
+            }
+        })
+        .await;
+    // Necessary to break to receive loop.
+    drop(result_sender);
+
+    let mut responses = Vec::new();
+    while let Some(response) = result_receiver.recv().await {
+        responses.push(response)
+    }
+    responses
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde::Deserialize;
     use serde_json::json;
+
+    // TODO Move
+    #[tokio::test]
+    async fn concurrent_futures() {
+        use std::time::{Duration, Instant};
+        use tokio::time::sleep;
+
+        let iterations = 10;
+        // Needs to be above an unknown threshold for this test to work due to execution overhead.
+        let sleep_time = Duration::from_millis(10);
+        assert!(iterations > 2); // Needed for the duration assertion to be relevant.
+
+        {
+            let futures = (0..iterations)
+                .into_iter()
+                .map(|i| async move {
+                    sleep(sleep_time).await;
+                    Some(i)
+                })
+                .collect::<FuturesOrdered<_>>();
+            let start = Instant::now();
+            let results = run_concurrently(10, futures).await;
+
+            // Make sure the futures were indeed executed concurrently: total time << sum of the sleep times
+            assert!(start.elapsed() < (sleep_time * 2));
+
+            // Make sure the results are complete.
+            assert_eq!(results.len(), iterations);
+            // Make sure the results are ordered.
+            results
+                .into_iter()
+                .enumerate()
+                .for_each(|(expected, result)| {
+                    assert_eq!(result, expected);
+                });
+        }
+
+        // Now do this again with a concurrent limit of 1.
+        {
+            let futures = (0..iterations)
+                .into_iter()
+                .map(|i| async move {
+                    sleep(sleep_time).await;
+                    Some(i)
+                })
+                .collect::<FuturesOrdered<_>>();
+            let start = Instant::now();
+            let results = run_concurrently(1, futures).await;
+
+            // Total time should be ~= sum of the sleep times
+            let elapsed = start.elapsed();
+            dbg!(&elapsed);
+            assert!(elapsed > (sleep_time * (iterations - 1).try_into().unwrap()));
+            assert!(elapsed < (sleep_time * (iterations + 1).try_into().unwrap()));
+
+            // Make sure the results are complete.
+            assert_eq!(results.len(), iterations);
+            // Make sure the results are ordered.
+            results
+                .into_iter()
+                .enumerate()
+                .for_each(|(expected, result)| {
+                    assert_eq!(result, expected);
+                });
+        }
+    }
 
     async fn spawn_server(router: RpcRouter) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
