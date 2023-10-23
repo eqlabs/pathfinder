@@ -297,7 +297,7 @@ mod boundary_conditions {
 mod prop {
     use crate::p2p_network::client::v1::types as simplified;
     use crate::p2p_network::sync_handlers::v1::blocking;
-    use p2p::client::types::{self as p2p_types, TryFromProto};
+    use p2p::client::types::{self as p2p_types, TryFromDto};
     use p2p_proto_v1::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
@@ -473,7 +473,7 @@ mod prop {
                     (
                         BlockNumber::new(number).unwrap(),
                         BlockHash(hash.0),
-                        transactions.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
+                        transactions.into_iter().map(|t| TransactionVariant::try_from_dto(t).unwrap()).collect::<Vec<_>>()
                     )
                 }).collect::<Vec<_>>();
 
@@ -571,7 +571,7 @@ mod prop {
                         events.into_iter().map(|e|
                             (
                                 TransactionHash(e.transaction_hash.0),
-                                e.events.into_iter().map(|e| Event::try_from_proto(e).unwrap()).collect::<Vec<_>>()
+                                e.events.into_iter().map(|e| Event::try_from_dto(e).unwrap()).collect::<Vec<_>>()
                             )).collect::<Vec<_>>()
                     )
                 }).collect::<Vec<_>>();

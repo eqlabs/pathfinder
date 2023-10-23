@@ -232,7 +232,7 @@ mod parse {
                 error: Error,
                 headers: Vec<BlockHeader>,
             },
-            NoBlocks {
+            Empty {
                 error: Option<Error>,
             },
         }
@@ -248,7 +248,7 @@ mod parse {
                         }
                     }
                     (State::Uninitialized, BlockHeadersResponsePart::Fin(Fin { error })) => {
-                        Self::NoBlocks { error }
+                        Self::Empty { error }
                     }
                     (State::Header { headers }, BlockHeadersResponsePart::Fin(Fin { error })) => {
                         match error {
@@ -288,10 +288,7 @@ mod parse {
             }
 
             pub fn should_stop(&self) -> bool {
-                matches!(
-                    self,
-                    State::NoBlocks { .. } | State::DelimitedWithError { .. }
-                )
+                matches!(self, State::Empty { .. } | State::DelimitedWithError { .. })
             }
         }
     }
@@ -325,13 +322,12 @@ mod parse {
                 error: Error,
                 state_updates: Vec<StateUpdateWithDefs>,
             },
-            NoBlocks {
+            Empty {
                 error: Option<Error>,
             },
         }
 
         impl State {
-            /// Returns `true` if parsing should stop.
             pub fn advance(&mut self, r: BlockBodiesResponse) -> anyhow::Result<()> {
                 let current_state = std::mem::replace(self, State::Uninitialized);
                 let BlockBodiesResponse { id, body_message } = r;
@@ -345,7 +341,7 @@ mod parse {
                         }],
                     },
                     (State::Uninitialized, _, BlockBodyMessage::Fin(Fin { error })) => {
-                        State::NoBlocks { error }
+                        State::Empty { error }
                     }
                     (
                         State::Diff {
@@ -428,10 +424,7 @@ mod parse {
             }
 
             pub fn should_stop(&self) -> bool {
-                matches!(
-                    self,
-                    State::NoBlocks { .. } | State::DelimitedWithError { .. }
-                )
+                matches!(self, State::Empty { .. } | State::DelimitedWithError { .. })
             }
         }
 
@@ -528,6 +521,165 @@ mod parse {
             }
 
             Ok(converted)
+        }
+    }
+
+    pub(crate) mod transactions {
+        use std::collections::HashMap;
+
+        use crate::client::types::TryFromDto;
+        use anyhow::Context;
+        use p2p_proto_v1::common::{BlockId, Error, Fin};
+        use p2p_proto_v1::transaction::{
+            Transactions, TransactionsResponse, TransactionsResponseKind,
+        };
+        use pathfinder_common::transaction::TransactionVariant;
+        use pathfinder_common::BlockHash;
+
+        #[derive(Debug)]
+        pub enum State {
+            Uninitialized,
+            Transactions {
+                last_id: BlockId,
+                transactions: HashMap<BlockId, Vec<TransactionVariant>>,
+            },
+            Delimited {
+                transactions: HashMap<BlockId, Vec<TransactionVariant>>,
+            },
+            DelimitedWithError {
+                error: Error,
+                transactions: HashMap<BlockId, Vec<TransactionVariant>>,
+            },
+            Empty {
+                error: Option<Error>,
+            },
+        }
+
+        impl State {
+            pub fn advance(&mut self, r: TransactionsResponse) -> anyhow::Result<()> {
+                let current_state = std::mem::replace(self, State::Uninitialized);
+                let TransactionsResponse { id, kind } = r;
+                let next_state = match (current_state, id, kind) {
+                    // We've just started, accept any transactions from some block
+                    (
+                        State::Uninitialized,
+                        Some(id),
+                        TransactionsResponseKind::Transactions(Transactions { items }),
+                    ) => State::Transactions {
+                        last_id: id,
+                        transactions: [(
+                            id,
+                            items
+                                .into_iter()
+                                .map(TransactionVariant::try_from_dto)
+                                .collect::<anyhow::Result<Vec<_>>>()
+                                .context("parsing transactions")?,
+                        )]
+                        .into(),
+                    },
+                    // The peer does not have anything we asked for
+                    (State::Uninitialized, _, TransactionsResponseKind::Fin(Fin { error })) => {
+                        State::Empty { error }
+                    }
+                    // There's more transactions for the same block
+                    (
+                        State::Transactions {
+                            last_id,
+                            mut transactions,
+                        },
+                        Some(id),
+                        TransactionsResponseKind::Transactions(Transactions { items }),
+                    ) if last_id == id => {
+                        transactions
+                            .get_mut(&id)
+                            .expect("transactions for this id is present")
+                            .extend(
+                                items
+                                    .into_iter()
+                                    .map(TransactionVariant::try_from_dto)
+                                    .collect::<anyhow::Result<Vec<_>>>()
+                                    .context("parsing transactions")?,
+                            );
+
+                        State::Transactions {
+                            last_id,
+                            transactions,
+                        }
+                    }
+                    // This is the end of the current block
+                    (
+                        State::Transactions {
+                            last_id,
+                            transactions,
+                        },
+                        Some(id),
+                        TransactionsResponseKind::Fin(Fin { error }),
+                    ) if last_id == id => match error {
+                        Some(error) => State::DelimitedWithError {
+                            error,
+                            transactions,
+                        },
+                        None => State::Delimited { transactions },
+                    },
+                    // Accepting transactions for some other block we've not seen yet
+                    (
+                        State::Delimited { mut transactions },
+                        Some(id),
+                        TransactionsResponseKind::Transactions(Transactions { items }),
+                    ) => {
+                        debug_assert!(!transactions.is_empty());
+
+                        if transactions.contains_key(&id) {
+                            anyhow::bail!("unexpected response");
+                        }
+
+                        transactions.insert(
+                            id,
+                            items
+                                .into_iter()
+                                .map(TransactionVariant::try_from_dto)
+                                .collect::<anyhow::Result<Vec<_>>>()
+                                .context("parsing transactions")?,
+                        );
+
+                        State::Transactions {
+                            last_id: id,
+                            transactions,
+                        }
+                    }
+                    (_, _, _) => anyhow::bail!("unexpected response"),
+                };
+
+                *self = next_state;
+                // We need to stop parsing when a block is properly delimited but an error was signalled
+                // as the peer is not going to send any more blocks.
+
+                if self.should_stop() {
+                    anyhow::bail!("no data or premature end of response")
+                } else {
+                    Ok(())
+                }
+            }
+
+            pub fn take_inner(self) -> Option<HashMap<BlockHash, Vec<TransactionVariant>>> {
+                match self {
+                    State::Delimited { transactions }
+                    | State::DelimitedWithError { transactions, .. } => {
+                        debug_assert!(!transactions.is_empty());
+                        Some(
+                            transactions
+                                .into_iter()
+                                .map(|(k, v)| (BlockHash(k.hash.0), v))
+                                .collect(),
+                        )
+                    }
+                    _ => None,
+                }
+            }
+
+            pub fn should_stop(&self) -> bool {
+                matches!(self, State::Empty { .. } | State::DelimitedWithError { .. })
+            }
         }
     }
 }

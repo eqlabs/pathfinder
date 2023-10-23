@@ -17,8 +17,8 @@ use std::{collections::HashMap, time::SystemTime};
 /// We don't want to introduce circular dependencies between crates
 /// so in those cases we cannot use TryFrom and we need to work around for the orphan rule
 /// - implement conversion fns for types ourside our crate.
-pub trait TryFromProto<T> {
-    fn try_from_proto(proto: T) -> anyhow::Result<Self>
+pub trait TryFromDto<T> {
+    fn try_from_dto(dto: T) -> anyhow::Result<Self>
     where
         Self: Sized;
 }
@@ -138,46 +138,6 @@ impl TryFrom<p2p_proto_v1::block::BlockHeader> for BlockHeader {
     }
 }
 
-// // FIXME add missing stuff to the proto representation
-// impl TryFrom<p2p_proto_v1::state::StateDiff> for StateUpdate {
-//     type Error = anyhow::Error;
-
-//     fn try_from(proto: p2p_proto_v1::state::StateDiff) -> anyhow::Result<Self> {
-//         const SYSTEM_CONTRACT: ContractAddress = ContractAddress::ONE;
-//         let mut system_contract_update = SystemContractUpdate {
-//             storage: Default::default(),
-//         };
-//         let mut contract_updates = HashMap::new();
-//         proto.contract_diffs.into_iter().for_each(|diff| {
-//             if diff.address.0 == SYSTEM_CONTRACT.0 {
-//                 diff.values.into_iter().for_each(|x| {
-//                     system_contract_update
-//                         .storage
-//                         .insert(StorageAddress(x.key), StorageValue(x.value));
-//                 });
-//             } else {
-//                 contract_updates.insert(
-//                     ContractAddress(diff.address.0),
-//                     ContractUpdate {
-//                         storage: diff
-//                             .values
-//                             .into_iter()
-//                             .map(|x| (StorageAddress(x.key), StorageValue(x.value)))
-//                             .collect(),
-//                         class: diff.class_hash.map(ClassHash),
-//                         nonce: diff.nonce.map(ContractNonce),
-//                     },
-//                 );
-//             }
-//         });
-
-//         Ok(Self {
-//             contract_updates,
-//             system_contract_updates: [(SYSTEM_CONTRACT, system_contract_update)].into(),
-//         })
-//     }
-// }
-
 impl From<p2p_proto_v1::state::StateDiff> for StateUpdate {
     fn from(proto: p2p_proto_v1::state::StateDiff) -> Self {
         const SYSTEM_CONTRACT: ContractAddress = ContractAddress::ONE;
@@ -215,8 +175,8 @@ impl From<p2p_proto_v1::state::StateDiff> for StateUpdate {
     }
 }
 
-impl TryFromProto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
-    fn try_from_proto(proto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
+impl TryFromDto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
+    fn try_from_dto(proto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
@@ -338,8 +298,8 @@ impl TryFromProto<p2p_proto_v1::transaction::Transaction> for TransactionVariant
     }
 }
 
-impl TryFromProto<p2p_proto_v1::event::Event> for Event {
-    fn try_from_proto(proto: p2p_proto_v1::event::Event) -> anyhow::Result<Self>
+impl TryFromDto<p2p_proto_v1::event::Event> for Event {
+    fn try_from_dto(proto: p2p_proto_v1::event::Event) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
