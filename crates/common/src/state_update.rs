@@ -147,34 +147,88 @@ impl StateUpdate {
                 })
                 .sum::<usize>()
     }
+
+    /// Returns the contract's new [nonce](ContractNonce) value if it exists in this state update.
+    ///
+    /// Note that this will return [Some(ContractNonce::ZERO)] for a contract that has been deployed,
+    /// but without an explicit nonce update. This is consistent with expectations.
+    pub fn contract_nonce(&self, contract: ContractAddress) -> Option<ContractNonce> {
+        self.contract_updates.get(&contract).and_then(|x| {
+            x.nonce.or_else(|| {
+                x.class.as_ref().and_then(|c| match c {
+                    ContractClassUpdate::Deploy(_) => {
+                        // The contract has been just deployed in the pending block, so
+                        // its nonce is zero.
+                        Some(ContractNonce::ZERO)
+                    }
+                    ContractClassUpdate::Replace(_) => None,
+                })
+            })
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::felt;
-
     use super::*;
+    use crate::macro_prelude::*;
 
     #[test]
     fn change_count() {
         let state_update = StateUpdate::default()
-            .with_contract_nonce(ContractAddress(felt!("0x1")), ContractNonce(felt!("0x2")))
-            .with_contract_nonce(ContractAddress(felt!("0x4")), ContractNonce(felt!("0x5")))
-            .with_declared_cairo_class(ClassHash(felt!("0x3")))
-            .with_declared_sierra_class(SierraHash(felt!("0x4")), CasmHash(felt!("0x5")))
-            .with_deployed_contract(ContractAddress(felt!("0x1")), ClassHash(felt!("0x3")))
-            .with_replaced_class(ContractAddress(felt!("0x33")), ClassHash(felt!("0x35")))
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x2"))
+            .with_contract_nonce(contract_address!("0x4"), contract_nonce!("0x5"))
+            .with_declared_cairo_class(class_hash!("0x3"))
+            .with_declared_sierra_class(sierra_hash!("0x4"), casm_hash!("0x5"))
+            .with_deployed_contract(contract_address!("0x1"), class_hash!("0x3"))
+            .with_replaced_class(contract_address!("0x33"), class_hash!("0x35"))
             .with_system_storage_update(
                 ContractAddress::ONE,
-                StorageAddress(felt!("0x10")),
-                StorageValue(felt!("0x99")),
+                storage_address!("0x10"),
+                storage_value!("0x99"),
             )
             .with_storage_update(
-                ContractAddress(felt!("0x33")),
-                StorageAddress(felt!("0x10")),
-                StorageValue(felt!("0x99")),
+                contract_address!("0x33"),
+                storage_address!("0x10"),
+                storage_value!("0x99"),
             );
 
         assert_eq!(state_update.change_count(), 8);
+    }
+
+    #[test]
+    fn contract_nonce() {
+        let state_update = StateUpdate::default()
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x2"))
+            .with_deployed_contract(contract_address!("0x2"), class_hash!("0x4"))
+            .with_contract_nonce(contract_address!("0x10"), contract_nonce!("0x20"))
+            .with_deployed_contract(contract_address!("0x10"), class_hash!("0x12"))
+            .with_replaced_class(contract_address!("0x123"), class_hash!("0x1244"))
+            .with_replaced_class(contract_address!("0x1234"), class_hash!("0x12445"))
+            .with_contract_nonce(contract_address!("0x1234"), contract_nonce!("0x1111"));
+
+        assert!(state_update
+            .contract_nonce(contract_address_bytes!(b"not present"))
+            .is_none());
+
+        let result = state_update.contract_nonce(contract_address!("0x1"));
+        assert_eq!(result, Some(contract_nonce!("0x2")));
+
+        // A newly deployed contract with an explicit nonce set.
+        let result = state_update.contract_nonce(contract_address!("0x10"));
+        assert_eq!(result, Some(contract_nonce!("0x20")));
+
+        // A newly deployed contract without an explicit nonce set should be zero
+        let result = state_update.contract_nonce(contract_address!("0x2"));
+        assert_eq!(result, Some(ContractNonce::ZERO));
+
+        // A replaced contract with an explicit nonce set.
+        let result = state_update.contract_nonce(contract_address!("0x1234"));
+        assert_eq!(result, Some(contract_nonce!("0x1111")));
+
+        // A replaced class without an explicit nonce.
+        assert!(state_update
+            .contract_nonce(contract_address!("0x123"))
+            .is_none());
     }
 }
