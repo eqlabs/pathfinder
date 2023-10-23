@@ -216,34 +216,45 @@ mod parse {
         use crate::client::types::BlockHeader;
         use anyhow::Context;
         use p2p_proto_v1::block::BlockHeadersResponsePart;
+        use p2p_proto_v1::common::{Error, Fin};
 
         #[derive(Debug)]
         pub enum State {
             Uninitialized,
-            Header { headers: Vec<BlockHeader> },
-            _Signature, // TODO add signature support
-            Delimited { headers: Vec<BlockHeader> },
+            Header {
+                headers: Vec<BlockHeader>,
+            },
+            _Signatures, // TODO add signature support
+            Delimited {
+                headers: Vec<BlockHeader>,
+            },
+            DelimitedWithError {
+                error: Error,
+                headers: Vec<BlockHeader>,
+            },
+            NoBlocks {
+                error: Option<Error>,
+            },
         }
 
         impl State {
             pub fn advance(&mut self, part: BlockHeadersResponsePart) -> anyhow::Result<()> {
-                let state = std::mem::replace(self, State::Uninitialized);
-                *self = match (state, part) {
+                let current_state = std::mem::replace(self, State::Uninitialized);
+                let next_state = match (current_state, part) {
                     (State::Uninitialized, BlockHeadersResponsePart::Header(header)) => {
                         let header = BlockHeader::try_from(*header).context("parsing header")?;
                         Self::Header {
                             headers: vec![header],
                         }
                     }
-                    // FIXME State::Uninitialized + Fin
-                    (State::Header { headers }, BlockHeadersResponsePart::Fin(_)) => {
-                        Self::Delimited { headers }
+                    (State::Uninitialized, BlockHeadersResponsePart::Fin(Fin { error })) => {
+                        Self::NoBlocks { error }
                     }
-                    (State::Header { headers: _ }, BlockHeadersResponsePart::Signatures(_)) => {
-                        todo!("add signatures support")
-                    }
-                    (State::_Signature, BlockHeadersResponsePart::Signatures(_)) => {
-                        todo!("add signatures support")
+                    (State::Header { headers }, BlockHeadersResponsePart::Fin(Fin { error })) => {
+                        match error {
+                            Some(error) => State::DelimitedWithError { error, headers },
+                            None => State::Delimited { headers },
+                        }
                     }
                     (
                         State::Delimited { mut headers },
@@ -253,19 +264,34 @@ mod parse {
                         headers.push(header);
                         Self::Header { headers }
                     }
-                    (_, part) => anyhow::bail!("Unexpected part {part:?}"),
+                    (_, _) => anyhow::bail!("unexpected part"),
                 };
-                Ok(())
+                *self = next_state;
+                // We need to top parsing when a block is properly delimited but an error was signalled
+                // as the peer is not going to send any more blocks.
+
+                if self.should_stop() {
+                    anyhow::bail!("no data or premature end of response")
+                } else {
+                    Ok(())
+                }
             }
 
             pub fn take_inner(self) -> Option<Vec<BlockHeader>> {
                 match self {
-                    State::Delimited { headers } if !headers.is_empty() => Some(headers),
-                    _ => {
-                        tracing::debug!("unexpected end of part");
-                        None
+                    State::Delimited { headers } | State::DelimitedWithError { headers, .. } => {
+                        debug_assert!(!headers.is_empty());
+                        Some(headers)
                     }
+                    _ => None,
                 }
+            }
+
+            pub fn should_stop(&self) -> bool {
+                matches!(
+                    self,
+                    State::NoBlocks { .. } | State::DelimitedWithError { .. }
+                )
             }
         }
     }
@@ -380,7 +406,7 @@ mod parse {
                 };
 
                 *self = next_state;
-                // We need to top parsing when a block is properly delimited but an error was signalled
+                // We need to stop parsing when a block is properly delimited but an error was signalled
                 // as the peer is not going to send any more blocks.
 
                 if self.should_stop() {
