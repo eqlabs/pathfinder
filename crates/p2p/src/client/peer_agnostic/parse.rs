@@ -32,7 +32,7 @@ pub(crate) trait ParserState {
     fn should_stop(&self) -> bool;
 }
 
-macro_rules! impl_take_inner_and_should_stop {
+macro_rules! impl_take_parsed_and_should_stop {
     ($inner_collection: ident) => {
         fn take_parsed(self) -> Option<<Self as super::ParserState>::Out> {
             match self {
@@ -121,7 +121,7 @@ pub(crate) mod block_header {
             inner.into_values().collect()
         }
 
-        impl_take_inner_and_should_stop!(headers);
+        impl_take_parsed_and_should_stop!(headers);
     }
 }
 
@@ -247,7 +247,7 @@ pub(crate) mod state_update {
                 .collect()
         }
 
-        impl_take_inner_and_should_stop!(state_updates);
+        impl_take_parsed_and_should_stop!(state_updates);
     }
 
     /// Merges partitoned classes if necessary
@@ -475,7 +475,7 @@ pub(crate) mod transactions {
                 .collect()
         }
 
-        impl_take_inner_and_should_stop!(transactions);
+        impl_take_parsed_and_should_stop!(transactions);
     }
 }
 
@@ -581,6 +581,6 @@ pub(crate) mod receipts {
                 .collect()
         }
 
-        impl_take_inner_and_should_stop!(receipts);
+        impl_take_parsed_and_should_stop!(receipts);
     }
 }
