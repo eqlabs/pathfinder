@@ -584,3 +584,149 @@ pub(crate) mod receipts {
         impl_take_parsed_and_should_stop!(receipts);
     }
 }
+
+pub(crate) mod events {
+    use p2p_proto_v1::common::{BlockId, Error, Fin, Hash};
+    use p2p_proto_v1::event::{Event, Events, EventsResponse, EventsResponseKind, TxnEvents};
+    use pathfinder_common::{BlockHash, TransactionHash};
+    use std::collections::HashMap;
+
+    #[derive(Debug, Default)]
+    pub enum State {
+        #[default]
+        Uninitialized,
+        Events {
+            last_id: BlockId,
+            events: HashMap<BlockId, HashMap<Hash, Vec<Event>>>,
+        },
+        Delimited {
+            events: HashMap<BlockId, HashMap<Hash, Vec<Event>>>,
+        },
+        DelimitedWithError {
+            error: Error,
+            events: HashMap<BlockId, HashMap<Hash, Vec<Event>>>,
+        },
+        Empty {
+            error: Option<Error>,
+        },
+    }
+
+    impl super::ParserState for State {
+        type Dto = EventsResponse;
+        type Inner = HashMap<BlockId, HashMap<Hash, Vec<Event>>>;
+        type Out =
+            HashMap<BlockHash, HashMap<TransactionHash, Vec<pathfinder_common::event::Event>>>;
+
+        fn transition(self, next: Self::Dto) -> anyhow::Result<Self> {
+            let EventsResponse { id, kind } = next;
+            Ok(match (self, id, kind) {
+                // We've just started, accept any events from some block
+                (State::Uninitialized, Some(id), EventsResponseKind::Events(Events { items })) => {
+                    State::Events {
+                        last_id: id,
+                        events: [(
+                            id,
+                            items
+                                .into_iter()
+                                .map(|x| (x.transaction_hash, x.events))
+                                .collect(),
+                        )]
+                        .into(),
+                    }
+                }
+                // The peer does not have anything we asked for
+                (State::Uninitialized, _, EventsResponseKind::Fin(Fin { error })) => {
+                    State::Empty { error }
+                }
+                // There's more events for the same block
+                (
+                    State::Events {
+                        last_id,
+                        mut events,
+                    },
+                    Some(id),
+                    EventsResponseKind::Events(Events { items }),
+                ) if last_id == id => {
+                    events
+                        .get_mut(&id)
+                        .expect("transactions for this id is present")
+                        .extend(items.into_iter().map(|x| (x.transaction_hash, x.events)));
+
+                    State::Events { last_id, events }
+                }
+                // This is the end of the current block
+                (
+                    State::Events { last_id, events },
+                    Some(id),
+                    EventsResponseKind::Fin(Fin { error }),
+                ) if last_id == id => match error {
+                    Some(error) => State::DelimitedWithError { error, events },
+                    None => State::Delimited { events },
+                },
+                // Accepting events for some other block we've not seen yet
+                (
+                    State::Delimited { mut events },
+                    Some(id),
+                    EventsResponseKind::Events(Events { items }),
+                ) => {
+                    debug_assert!(!events.is_empty());
+
+                    if events.contains_key(&id) {
+                        anyhow::bail!("unexpected response");
+                    }
+
+                    events.insert(
+                        id,
+                        items
+                            .into_iter()
+                            .map(|x| (x.transaction_hash, x.events))
+                            .collect(),
+                    );
+
+                    State::Events {
+                        last_id: id,
+                        events,
+                    }
+                }
+                (_, _, _) => anyhow::bail!("unexpected response"),
+            })
+        }
+
+        fn from_inner(inner: Self::Inner) -> Self::Out {
+            inner
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        BlockHash(k.hash.0),
+                        v.into_iter()
+                            .map(|(k, v)| {
+                                (
+                                    TransactionHash(k.0),
+                                    v.into_iter()
+                                        .map(|x| pathfinder_common::event::Event {
+                                            data: x
+                                                .data
+                                                .into_iter()
+                                                .map(pathfinder_common::EventData)
+                                                .collect(),
+                                            from_address: pathfinder_common::ContractAddress(
+                                                x.from_address,
+                                            ),
+                                            keys: x
+                                                .keys
+                                                .into_iter()
+                                                .map(pathfinder_common::EventKey)
+                                                .collect(),
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .collect(),
+                    )
+                })
+                .collect()
+        }
+
+        impl_take_parsed_and_should_stop!(events);
+    }
+}
