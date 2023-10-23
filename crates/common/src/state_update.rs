@@ -183,6 +183,31 @@ impl StateUpdate {
         self.declared_sierra_classes
             .contains_key(&SierraHash(class.0))
     }
+
+    /// The new storage value if it exists in this state update.
+    ///
+    /// Note that this will also return the default zero value for a contract that has been deployed,
+    /// but without an explicit storage update.
+    pub fn storage_value(
+        &self,
+        contract: ContractAddress,
+        key: StorageAddress,
+    ) -> Option<StorageValue> {
+        self.contract_updates.get(&contract).and_then(|update| {
+            update
+                .storage
+                .iter()
+                .find_map(|(k, v)| (k == &key).then_some(*v))
+                .or_else(|| {
+                    update.class.as_ref().and_then(|c| match c {
+                        // If the contract has been deployed in pending but the key has not been set yet
+                        // return the default value of zero.
+                        ContractClassUpdate::Deploy(_) => Some(StorageValue::ZERO),
+                        ContractClassUpdate::Replace(_) => None,
+                    })
+                })
+        })
+    }
 }
 
 #[cfg(test)]
@@ -247,6 +272,73 @@ mod tests {
         assert!(state_update
             .contract_nonce(contract_address!("0x123"))
             .is_none());
+    }
+
+    mod storage_value {
+        use super::*;
+
+        #[test]
+        fn set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default().with_storage_update(c, k, v);
+            let result = state_update.storage_value(c, k);
+            assert_eq!(result, Some(v))
+        }
+
+        #[test]
+        fn not_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default().with_storage_update(c, k, v);
+            let result = state_update.storage_value(contract_address!("0x4"), k);
+            assert!(result.is_none());
+
+            let result = state_update.storage_value(c, storage_address!("0x24"));
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn deployed_and_not_set() {
+            let c = contract_address!("0x1");
+            let state_update = StateUpdate::default().with_deployed_contract(c, class_hash!("0x1"));
+            let result = state_update.storage_value(c, storage_address!("0x2"));
+            assert_eq!(result, Some(StorageValue::ZERO));
+        }
+
+        #[test]
+        fn deployed_and_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default()
+                .with_deployed_contract(c, class_hash!("0x1"))
+                .with_storage_update(c, k, v);
+            let result = state_update.storage_value(c, k);
+            assert_eq!(result, Some(v));
+        }
+
+        #[test]
+        fn replaced_and_not_set() {
+            let c = contract_address!("0x1");
+            let state_update = StateUpdate::default().with_replaced_class(c, class_hash!("0x1"));
+            let result = state_update.storage_value(c, storage_address!("0x2"));
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn replaced_and_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default()
+                .with_replaced_class(c, class_hash!("0x1"))
+                .with_storage_update(c, k, v);
+            let result = state_update.storage_value(c, k);
+            assert_eq!(result, Some(v));
+        }
     }
 
     #[test]
