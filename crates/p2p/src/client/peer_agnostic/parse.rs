@@ -444,3 +444,100 @@ pub(crate) mod transactions {
         impl_take_inner_and_should_stop!(transactions);
     }
 }
+
+pub(crate) mod receipts {
+    use p2p_proto_v1::common::{BlockId, Error, Fin};
+    use p2p_proto_v1::receipt::{Receipt, Receipts, ReceiptsResponse, ReceiptsResponseKind};
+    use std::collections::HashMap;
+
+    #[derive(Debug, Default)]
+    pub enum State {
+        #[default]
+        Uninitialized,
+        Receipts {
+            last_id: BlockId,
+            receipts: HashMap<BlockId, Vec<Receipt>>,
+        },
+        Delimited {
+            receipts: HashMap<BlockId, Vec<Receipt>>,
+        },
+        DelimitedWithError {
+            error: Error,
+            receipts: HashMap<BlockId, Vec<Receipt>>,
+        },
+        Empty {
+            error: Option<Error>,
+        },
+    }
+
+    impl super::ParserState for State {
+        type Item = ReceiptsResponse;
+        type Inner = HashMap<BlockId, Vec<Receipt>>;
+
+        fn transition(self, next: Self::Item) -> anyhow::Result<Self> {
+            let ReceiptsResponse { id, kind } = next;
+            Ok(match (self, id, kind) {
+                // We've just started, accept any receipts from some block
+                (
+                    State::Uninitialized,
+                    Some(id),
+                    ReceiptsResponseKind::Receipts(Receipts { items }),
+                ) => State::Receipts {
+                    last_id: id,
+                    receipts: [(id, items)].into(),
+                },
+                // The peer does not have anything we asked for
+                (State::Uninitialized, _, ReceiptsResponseKind::Fin(Fin { error })) => {
+                    State::Empty { error }
+                }
+                // There's more receipts for the same block
+                (
+                    State::Receipts {
+                        last_id,
+                        mut receipts,
+                    },
+                    Some(id),
+                    ReceiptsResponseKind::Receipts(Receipts { items }),
+                ) if last_id == id => {
+                    receipts
+                        .get_mut(&id)
+                        .expect("transactions for this id is present")
+                        .extend(items);
+
+                    State::Receipts { last_id, receipts }
+                }
+                // This is the end of the current block
+                (
+                    State::Receipts { last_id, receipts },
+                    Some(id),
+                    ReceiptsResponseKind::Fin(Fin { error }),
+                ) if last_id == id => match error {
+                    Some(error) => State::DelimitedWithError { error, receipts },
+                    None => State::Delimited { receipts },
+                },
+                // Accepting receipts for some other block we've not seen yet
+                (
+                    State::Delimited { mut receipts },
+                    Some(id),
+                    ReceiptsResponseKind::Receipts(Receipts { items }),
+                ) => {
+                    debug_assert!(!receipts.is_empty());
+
+                    if receipts.contains_key(&id) {
+                        anyhow::bail!("unexpected response");
+                    }
+
+                    receipts.insert(id, items);
+
+                    State::Receipts {
+                        last_id: id,
+                        receipts,
+                    }
+                }
+                (_, _, _) => anyhow::bail!("unexpected response"),
+            })
+        }
+
+        impl_take_inner_and_should_stop!(receipts);
+    }
+}
