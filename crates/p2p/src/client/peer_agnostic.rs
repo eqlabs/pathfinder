@@ -2,29 +2,24 @@
 //! Frees the caller from managing peers manually.
 use std::{
     collections::{HashMap, HashSet},
-    ops::ControlFlow,
     sync::Arc,
     time::Duration,
 };
 
 use libp2p::PeerId;
-use p2p_proto_v1::consts::MAX_PARTS_PER_CLASS;
+use p2p_proto_v1::block::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto_v1::{
     block::BlockBodiesRequest,
-    common::{Direction, Fin, Hash, Iteration},
+    common::{Direction, Iteration},
 };
-use p2p_proto_v1::{
-    block::{BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse},
-    common::BlockId,
-};
-use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
+use pathfinder_common::{BlockHash, BlockNumber};
 use tokio::sync::RwLock;
 
 use crate::sync::protocol;
 use crate::{
     client::{
         peer_aware,
-        types::{BlockHeader, Class, StateUpdateWithDefs},
+        types::{BlockHeader, StateUpdateWithDefs},
     },
     peers,
 };
