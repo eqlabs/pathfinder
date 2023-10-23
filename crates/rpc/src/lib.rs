@@ -7,6 +7,7 @@ pub mod gas_price;
 mod jsonrpc;
 pub mod middleware;
 mod pathfinder;
+mod pending;
 #[cfg(test)]
 mod test_setup;
 pub mod v02;
