@@ -319,7 +319,7 @@ pub(crate) mod dto {
         Empty,
         FunctionInvocation(FunctionInvocation),
         RevertedReason {
-            reverted_reason: String,
+            revert_reason: String,
         },
     }
 
@@ -346,8 +346,8 @@ pub(crate) mod dto {
                         ExecuteInvocation::Empty
                     }
                     pathfinder_executor::types::ExecuteInvocation::RevertedReason(
-                        reverted_reason,
-                    ) => ExecuteInvocation::RevertedReason { reverted_reason },
+                        revert_reason,
+                    ) => ExecuteInvocation::RevertedReason { revert_reason },
                 },
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             }
