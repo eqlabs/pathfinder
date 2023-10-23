@@ -125,7 +125,7 @@ impl Client {
                     let mut state = parse::block_header::State::Uninitialized;
                     for part in parts {
                         if let Err(error) = state.advance(part) {
-                            tracing::debug!(from=%peer, %error, "headers response parsing failed");
+                            tracing::debug!(from=%peer, %error, "headers response parsing");
                             // Try the next peer
                             break;
                         }
@@ -222,7 +222,7 @@ mod parse {
             Uninitialized,
             Header { headers: Vec<BlockHeader> },
             _Signature, // TODO add signature support
-            Fin { headers: Vec<BlockHeader> },
+            Delimited { headers: Vec<BlockHeader> },
         }
 
         impl State {
@@ -237,7 +237,7 @@ mod parse {
                     }
                     // FIXME State::Uninitialized + Fin
                     (State::Header { headers }, BlockHeadersResponsePart::Fin(_)) => {
-                        Self::Fin { headers }
+                        Self::Delimited { headers }
                     }
                     (State::Header { headers: _ }, BlockHeadersResponsePart::Signatures(_)) => {
                         todo!("add signatures support")
@@ -245,7 +245,10 @@ mod parse {
                     (State::_Signature, BlockHeadersResponsePart::Signatures(_)) => {
                         todo!("add signatures support")
                     }
-                    (State::Fin { mut headers }, BlockHeadersResponsePart::Header(header)) => {
+                    (
+                        State::Delimited { mut headers },
+                        BlockHeadersResponsePart::Header(header),
+                    ) => {
                         let header = BlockHeader::try_from(*header).context("parsing header")?;
                         headers.push(header);
                         Self::Header { headers }
@@ -257,7 +260,7 @@ mod parse {
 
             pub fn take_inner(self) -> Option<Vec<BlockHeader>> {
                 match self {
-                    State::Fin { headers } if !headers.is_empty() => Some(headers),
+                    State::Delimited { headers } if !headers.is_empty() => Some(headers),
                     _ => {
                         tracing::debug!("unexpected end of part");
                         None
@@ -289,10 +292,10 @@ mod parse {
                 state_updates: Vec<StateUpdateWithDefs>,
             },
             _Proof, // TODO add proof support
-            BlockDelimited {
+            Delimited {
                 state_updates: Vec<StateUpdateWithDefs>,
             },
-            BlockDelimitedWithError {
+            DelimitedWithError {
                 error: Error,
                 state_updates: Vec<StateUpdateWithDefs>,
             },
@@ -330,11 +333,11 @@ mod parse {
                         Some(id),
                         BlockBodyMessage::Fin(Fin { error }),
                     ) if last_id == id => match error {
-                        Some(error) => State::BlockDelimitedWithError {
+                        Some(error) => State::DelimitedWithError {
                             error,
                             state_updates,
                         },
-                        None => State::BlockDelimited { state_updates },
+                        None => State::Delimited { state_updates },
                     },
                     (
                         State::Classes {
@@ -358,7 +361,7 @@ mod parse {
                         }
                     }
                     (
-                        State::BlockDelimited { mut state_updates },
+                        State::Delimited { mut state_updates },
                         Some(id),
                         BlockBodyMessage::Diff(diff),
                     ) => {
@@ -389,8 +392,8 @@ mod parse {
 
             pub fn take_inner(self) -> Option<Vec<StateUpdateWithDefs>> {
                 match self {
-                    State::BlockDelimited { state_updates }
-                    | State::BlockDelimitedWithError { state_updates, .. } => {
+                    State::Delimited { state_updates }
+                    | State::DelimitedWithError { state_updates, .. } => {
                         debug_assert!(!state_updates.is_empty());
                         Some(state_updates)
                     }
@@ -401,7 +404,7 @@ mod parse {
             pub fn should_stop(&self) -> bool {
                 matches!(
                     self,
-                    State::NoBlocks { .. } | State::BlockDelimitedWithError { .. }
+                    State::NoBlocks { .. } | State::DelimitedWithError { .. }
                 )
             }
         }
