@@ -380,7 +380,7 @@ mod prop {
                             let BlockId { number, hash } = reply.id.unwrap();
                             block_id = Some((BlockNumber::new(number).unwrap(), BlockHash(hash.0)));
 
-                            let state_update = p2p_types::StateUpdate::try_from(d).unwrap();
+                            let state_update = p2p_types::StateUpdate::from(d);
                             actual.insert(block_id.unwrap(), (state_update, HashMap::new()));
                         },
                         BlockBodyMessage::Classes(c) => {

@@ -126,7 +126,9 @@ pub(crate) mod block_header {
 }
 
 pub(crate) mod state_update {
-    use crate::client::types::{Class, StateUpdateWithDefs};
+    use std::collections::HashMap;
+
+    use crate::client::types::{Class, StateUpdate, StateUpdateWithDefs};
     use p2p_proto_v1::{
         block::{BlockBodiesResponse, BlockBodyMessage},
         common::{BlockId, Error, Fin, Hash},
@@ -141,19 +143,19 @@ pub(crate) mod state_update {
         Uninitialized,
         Diff {
             last_id: BlockId,
-            state_updates: Vec<StateUpdateWithDefs>,
+            state_updates: HashMap<BlockId, (StateUpdate, Vec<Class>)>,
         },
         Classes {
             last_id: BlockId,
-            state_updates: Vec<StateUpdateWithDefs>,
+            state_updates: HashMap<BlockId, (StateUpdate, Vec<Class>)>,
         },
         _Proof, // TODO add proof support
         Delimited {
-            state_updates: Vec<StateUpdateWithDefs>,
+            state_updates: HashMap<BlockId, (StateUpdate, Vec<Class>)>,
         },
         DelimitedWithError {
             error: Error,
-            state_updates: Vec<StateUpdateWithDefs>,
+            state_updates: HashMap<BlockId, (StateUpdate, Vec<Class>)>,
         },
         Empty {
             error: Option<Error>,
@@ -162,7 +164,7 @@ pub(crate) mod state_update {
 
     impl super::ParserState for State {
         type Dto = BlockBodiesResponse;
-        type Inner = Vec<StateUpdateWithDefs>;
+        type Inner = HashMap<BlockId, (StateUpdate, Vec<Class>)>;
         type Out = Vec<StateUpdateWithDefs>;
 
         fn transition(self, item: Self::Dto) -> anyhow::Result<Self> {
@@ -170,11 +172,7 @@ pub(crate) mod state_update {
             Ok(match (self, id, body_message) {
                 (State::Uninitialized, Some(id), BlockBodyMessage::Diff(diff)) => State::Diff {
                     last_id: id,
-                    state_updates: vec![StateUpdateWithDefs {
-                        block_hash: BlockHash(id.hash.0),
-                        state_update: diff.into(),
-                        classes: Default::default(),
-                    }],
+                    state_updates: [(id, (diff.into(), Default::default()))].into(),
                 },
                 (State::Uninitialized, _, BlockBodyMessage::Fin(Fin { error })) => {
                     State::Empty { error }
@@ -209,9 +207,9 @@ pub(crate) mod state_update {
                     }),
                 ) if last_id == id => {
                     let current = state_updates
-                        .last_mut()
+                        .get_mut(&id)
                         .expect("state update for this id is present");
-                    current.classes.extend(classes_from_dto(classes)?);
+                    current.1.extend(classes_from_dto(classes)?);
 
                     State::Classes {
                         last_id,
@@ -223,11 +221,11 @@ pub(crate) mod state_update {
                     Some(id),
                     BlockBodyMessage::Diff(diff),
                 ) => {
-                    state_updates.push(StateUpdateWithDefs {
-                        block_hash: BlockHash(id.hash.0),
-                        state_update: diff.into(),
-                        classes: Default::default(),
-                    });
+                    if state_updates.contains_key(&id) {
+                        anyhow::bail!("unexpected response");
+                    }
+
+                    state_updates.insert(id, (diff.into(), Default::default()));
 
                     State::Diff {
                         last_id: id,
@@ -240,6 +238,13 @@ pub(crate) mod state_update {
 
         fn from_inner(inner: Self::Inner) -> Self::Out {
             inner
+                .into_iter()
+                .map(|(k, v)| StateUpdateWithDefs {
+                    block_hash: BlockHash(k.hash.0),
+                    state_update: v.0,
+                    classes: v.1,
+                })
+                .collect()
         }
 
         impl_take_inner_and_should_stop!(state_updates);
