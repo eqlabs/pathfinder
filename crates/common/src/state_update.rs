@@ -166,6 +166,16 @@ impl StateUpdate {
             })
         })
     }
+
+    /// Returns true if the class was declared as either a cairo 0 or sierra class.
+    pub fn class_is_declared(&self, class: ClassHash) -> bool {
+        if self.declared_cairo_classes.contains(&class) {
+            return true;
+        }
+
+        self.declared_sierra_classes
+            .contains_key(&SierraHash(class.0))
+    }
 }
 
 #[cfg(test)]
@@ -230,5 +240,19 @@ mod tests {
         assert!(state_update
             .contract_nonce(contract_address!("0x123"))
             .is_none());
+    }
+
+    #[test]
+    fn class_is_declared() {
+        let cairo = class_hash_bytes!(b"cairo class");
+        let sierra = class_hash_bytes!(b"sierra class");
+
+        let state_update = StateUpdate::default()
+            .with_declared_cairo_class(cairo)
+            .with_declared_sierra_class(SierraHash(sierra.0), casm_hash_bytes!(b"anything"));
+
+        assert!(state_update.class_is_declared(cairo));
+        assert!(state_update.class_is_declared(sierra));
+        assert!(!state_update.class_is_declared(class_hash_bytes!(b"nope")));
     }
 }
