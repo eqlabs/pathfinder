@@ -510,75 +510,6 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
-    // TODO Move
-    #[tokio::test]
-    async fn concurrent_futures() {
-        use std::time::{Duration, Instant};
-        use tokio::time::sleep;
-
-        let iterations = 10;
-        // Needs to be above an unknown threshold for this test to work due to execution overhead.
-        let sleep_time = Duration::from_millis(10);
-        assert!(iterations > 2); // Needed for the duration assertion to be relevant.
-
-        {
-            let start = Instant::now();
-            let results = run_concurrently(
-                NonZeroUsize::new(10).unwrap(),
-                0..iterations,
-                |i| async move {
-                    sleep(sleep_time).await;
-                    i
-                },
-            )
-            .await;
-
-            // Make sure the futures were indeed executed concurrently: total time << sum of the sleep times
-            assert!(start.elapsed() < (sleep_time * 2));
-
-            // Make sure the results are complete.
-            assert_eq!(results.len(), iterations);
-            // Make sure the results are ordered.
-            results
-                .into_iter()
-                .enumerate()
-                .for_each(|(expected, result)| {
-                    assert_eq!(result, expected);
-                });
-        }
-
-        // Now do this again with a concurrent limit of 1.
-        {
-            let start = Instant::now();
-            let results = run_concurrently(
-                NonZeroUsize::new(1).unwrap(),
-                0..iterations,
-                |i| async move {
-                    sleep(sleep_time).await;
-                    i
-                },
-            )
-            .await;
-
-            // Total time should be ~= sum of the sleep times
-            let elapsed = start.elapsed();
-            dbg!(&elapsed);
-            let margin = 2;
-            assert!(elapsed > (sleep_time * (iterations - margin).try_into().unwrap()));
-            assert!(elapsed < (sleep_time * (iterations + margin).try_into().unwrap()));
-
-            // Make sure the results are complete.
-            assert_eq!(results.len(), iterations);
-            // Make sure the results are ordered.
-            results
-                .into_iter()
-                .enumerate()
-                .for_each(|(expected, result)| {
-                    assert_eq!(result, expected);
-                });
-        }
-    }
-
     async fn spawn_server(router: RpcRouter) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
@@ -996,5 +927,72 @@ mod tests {
             .expect("content-type header should be set");
 
         assert_eq!(content_type, "application/json");
+    }
+
+    #[tokio::test]
+    async fn concurrent_futures() {
+        use std::time::{Duration, Instant};
+        use tokio::time::sleep;
+
+        let iterations = 10;
+        // Needs to be above an unknown threshold for this test to work due to execution overhead.
+        let sleep_time = Duration::from_millis(10);
+        assert!(iterations > 2); // Needed for the duration assertion to be relevant.
+
+        {
+            let start = Instant::now();
+            let results = run_concurrently(
+                NonZeroUsize::new(10).unwrap(),
+                0..iterations,
+                |i| async move {
+                    sleep(sleep_time).await;
+                    i
+                },
+            )
+            .await;
+
+            // Make sure the futures were indeed executed concurrently: total time << sum of the sleep times
+            assert!(start.elapsed() < (sleep_time * 2));
+
+            // Make sure the results are complete.
+            assert_eq!(results.len(), iterations);
+            // Make sure the results are ordered.
+            results
+                .into_iter()
+                .enumerate()
+                .for_each(|(expected, result)| {
+                    assert_eq!(result, expected);
+                });
+        }
+
+        // Now do this again with a concurrent limit of 1.
+        {
+            let start = Instant::now();
+            let results = run_concurrently(
+                NonZeroUsize::new(1).unwrap(),
+                0..iterations,
+                |i| async move {
+                    sleep(sleep_time).await;
+                    i
+                },
+            )
+            .await;
+
+            // Total time should be ~= sum of the sleep times
+            let elapsed = start.elapsed();
+            let margin = 2;
+            assert!(elapsed > (sleep_time * (iterations - margin).try_into().unwrap()));
+            assert!(elapsed < (sleep_time * (iterations + margin).try_into().unwrap()));
+
+            // Make sure the results are complete.
+            assert_eq!(results.len(), iterations);
+            // Make sure the results are ordered.
+            results
+                .into_iter()
+                .enumerate()
+                .for_each(|(expected, result)| {
+                    assert_eq!(result, expected);
+                });
+        }
     }
 }
