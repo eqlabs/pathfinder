@@ -177,15 +177,14 @@ pub async fn rpc_handler(
                 return RpcResponse::INVALID_REQUEST.into_response();
             }
 
-            // TODO Make this whole thing generic, easier to test.
-            let futures = requests
-                .into_iter()
-                .map(|request| state.run_request(request.get()))
-                .collect::<FuturesOrdered<_>>();
-
             // TODO Make it configurable
             let concurrency_limit = 10;
-            let responses = run_concurrently(concurrency_limit, futures).await;
+            let responses = run_concurrently(concurrency_limit, requests, |request| {
+                state.run_request(request.get())
+            })
+            .await;
+
+            // TODO Notifications return none and are skipped.
 
             // All requests were notifications.
             if responses.is_empty() {
@@ -463,23 +462,37 @@ pub trait RpcMethodHandler {
 }
 
 // TODO Doc.
-async fn run_concurrently<R>(
-    concurrency_limit: usize,
-    futures: FuturesOrdered<impl Future<Output = Option<R>> + Sized>,
-) -> Vec<R> {
+// TODO vec => intoIter
+async fn run_concurrently<O, I, F, W, V>(concurrency_limit: usize, input: V, work: W) -> Vec<O>
+where
+    V: IntoIterator<Item = I>,
+    W: Fn(I) -> F,
+    F: Future<Output = Option<O>> + Sized,
+{
+    let futures = input
+        .into_iter()
+        .map(|i| async { i })
+        .collect::<FuturesOrdered<_>>();
     let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(futures.len());
-    // TODO Test this, we may want to move the run_request inside this closure
-    // TODO Also test the order is preserved
+
+    // TODO Get rid of the option to make this function more generic.
     futures
-        .for_each_concurrent(Some(concurrency_limit), |response| async {
-            // Notifications return none and are skipped.
+        .for_each_concurrent(Some(concurrency_limit), |request| async {
+            let response = work(request).await;
+
             if let Some(response) = response {
-                // TODO Err mgmt, log err?
-                result_sender.send(response).await.unwrap();
+                // No reason for this to fail as:
+                //  * channel capacity is sized according to the input size,
+                //  * a sender is kept alive until completion
+                result_sender
+                    .send(response)
+                    .await
+                    .expect("This channel is expected to be open and not full. This is a bug.");
             }
         })
         .await;
-    // Necessary to break to receive loop.
+
+    // Necessary to break the receive loop eventually.
     drop(result_sender);
 
     let mut responses = Vec::new();
@@ -507,15 +520,12 @@ mod tests {
         assert!(iterations > 2); // Needed for the duration assertion to be relevant.
 
         {
-            let futures = (0..iterations)
-                .into_iter()
-                .map(|i| async move {
-                    sleep(sleep_time).await;
-                    Some(i)
-                })
-                .collect::<FuturesOrdered<_>>();
             let start = Instant::now();
-            let results = run_concurrently(10, futures).await;
+            let results = run_concurrently(10, 0..iterations, |i| async move {
+                sleep(sleep_time).await;
+                Some(i)
+            })
+            .await;
 
             // Make sure the futures were indeed executed concurrently: total time << sum of the sleep times
             assert!(start.elapsed() < (sleep_time * 2));
@@ -533,21 +543,19 @@ mod tests {
 
         // Now do this again with a concurrent limit of 1.
         {
-            let futures = (0..iterations)
-                .into_iter()
-                .map(|i| async move {
-                    sleep(sleep_time).await;
-                    Some(i)
-                })
-                .collect::<FuturesOrdered<_>>();
             let start = Instant::now();
-            let results = run_concurrently(1, futures).await;
+            let results = run_concurrently(1, 0..iterations, |i| async move {
+                sleep(sleep_time).await;
+                Some(i)
+            })
+            .await;
 
             // Total time should be ~= sum of the sleep times
             let elapsed = start.elapsed();
             dbg!(&elapsed);
-            assert!(elapsed > (sleep_time * (iterations - 1).try_into().unwrap()));
-            assert!(elapsed < (sleep_time * (iterations + 1).try_into().unwrap()));
+            let margin = 2;
+            assert!(elapsed > (sleep_time * (iterations - margin).try_into().unwrap()));
+            assert!(elapsed < (sleep_time * (iterations + margin).try_into().unwrap()));
 
             // Make sure the results are complete.
             assert_eq!(results.len(), iterations);
