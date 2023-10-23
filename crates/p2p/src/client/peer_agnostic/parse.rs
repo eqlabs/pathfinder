@@ -587,7 +587,7 @@ pub(crate) mod receipts {
 
 pub(crate) mod events {
     use p2p_proto_v1::common::{BlockId, Error, Fin, Hash};
-    use p2p_proto_v1::event::{Event, Events, EventsResponse, EventsResponseKind, TxnEvents};
+    use p2p_proto_v1::event::{Event, Events, EventsResponse, EventsResponseKind};
     use pathfinder_common::{BlockHash, TransactionHash};
     use std::collections::HashMap;
 

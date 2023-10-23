@@ -7,11 +7,16 @@ use std::{
 };
 
 use libp2p::PeerId;
-use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto_v1::common::{Direction, Iteration};
 use p2p_proto_v1::receipt::{Receipt, ReceiptsRequest};
 use p2p_proto_v1::transaction::TransactionsRequest;
-use pathfinder_common::{transaction::TransactionVariant, BlockHash, BlockNumber};
+use p2p_proto_v1::{
+    block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse},
+    event::EventsRequest,
+};
+use pathfinder_common::{
+    event::Event, transaction::TransactionVariant, BlockHash, BlockNumber, TransactionHash,
+};
 use tokio::sync::RwLock;
 
 use crate::sync::protocol;
@@ -328,7 +333,65 @@ impl Client {
         }
 
         anyhow::bail!(
-            "No valid responses to transactions request: start {start_block_hash}, n {num_blocks}"
+            "No valid responses to receipts request: start {start_block_hash}, n {num_blocks}"
+        )
+    }
+
+    pub async fn event(
+        &self,
+        start_block_hash: BlockHash,
+        num_blocks: usize,
+    ) -> anyhow::Result<HashMap<BlockHash, HashMap<TransactionHash, Vec<Event>>>> {
+        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
+
+        let limit: u64 = num_blocks.try_into()?;
+
+        // If at some point, mid-way a peer suddenly replies not according to the spec we just
+        // dump everything from this peer and try with the next peer.
+        // We're not permissive when it comes to following the spec.
+        let peers = self.get_peers_with_capability(protocol::Events::NAME).await;
+        for peer in peers {
+            let request = SyncRequest::Events(EventsRequest {
+                iteration: Iteration {
+                    start: start_block_hash.0.into(),
+                    direction: Direction::Forward,
+                    limit,
+                    step: 1.into(),
+                },
+            });
+            let response = self.inner.send_sync_request(peer, request).await;
+
+            match response {
+                Ok(SyncResponse::Events(responses)) => {
+                    let mut state = parse::events::State::Uninitialized;
+                    for response in responses {
+                        if let Err(error) = state.advance(response) {
+                            tracing::debug!(from=%peer, %error, "receipts responses parsing");
+                            break;
+                        }
+                    }
+
+                    if let Some(events) = state.take_parsed() {
+                        // Success
+                        return Ok(events);
+                    } else {
+                        // Try the next peer
+                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
+                        break;
+                    }
+                }
+                // Try the next peer
+                Ok(response) => {
+                    tracing::debug!(from=%peer, ?response,"unexpected response to receipts request");
+                }
+                Err(error) => {
+                    tracing::debug!(from=%peer, %error, "receipts request failed");
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "No valid responses to receipts request: start {start_block_hash}, n {num_blocks}"
         )
     }
 }
