@@ -1,13 +1,13 @@
-trait ParserState {
+pub(crate) trait ParserState {
     type Item;
     type Inner;
 
-    fn advance(&mut self, next: Self::Item) -> anyhow::Result<()>
+    fn advance(&mut self, item: Self::Item) -> anyhow::Result<()>
     where
         Self: Default + Sized,
     {
         let current_state = std::mem::take(self);
-        let next_state = current_state.advance_inner(next)?;
+        let next_state = current_state.transition(item)?;
 
         *self = next_state;
         // We need to stop parsing when a block is properly delimited but an error was signalled
@@ -20,7 +20,7 @@ trait ParserState {
         }
     }
 
-    fn advance_inner(self, next: Self::Item) -> anyhow::Result<Self>
+    fn transition(self, item: Self::Item) -> anyhow::Result<Self>
     where
         Self: Sized;
 
@@ -56,8 +56,9 @@ pub(crate) mod block_header {
     use p2p_proto_v1::block::BlockHeadersResponsePart;
     use p2p_proto_v1::common::{Error, Fin};
 
-    #[derive(Debug)]
+    #[derive(Debug, Default)]
     pub enum State {
+        #[default]
         Uninitialized,
         Header {
             headers: Vec<BlockHeader>,
@@ -75,10 +76,12 @@ pub(crate) mod block_header {
         },
     }
 
-    impl State {
-        pub fn advance(&mut self, part: BlockHeadersResponsePart) -> anyhow::Result<()> {
-            let current_state = std::mem::replace(self, State::Uninitialized);
-            let next_state = match (current_state, part) {
+    impl super::ParserState for State {
+        type Item = BlockHeadersResponsePart;
+        type Inner = Vec<BlockHeader>;
+
+        fn transition(self, next: Self::Item) -> anyhow::Result<Self> {
+            Ok(match (self, next) {
                 (State::Uninitialized, BlockHeadersResponsePart::Header(header)) => {
                     let header = BlockHeader::try_from(*header).context("parsing header")?;
                     Self::Header {
@@ -100,31 +103,10 @@ pub(crate) mod block_header {
                     Self::Header { headers }
                 }
                 (_, _) => anyhow::bail!("unexpected part"),
-            };
-            *self = next_state;
-            // We need to top parsing when a block is properly delimited but an error was signalled
-            // as the peer is not going to send any more blocks.
-
-            if self.should_stop() {
-                anyhow::bail!("no data or premature end of response")
-            } else {
-                Ok(())
-            }
+            })
         }
 
-        pub fn take_inner(self) -> Option<Vec<BlockHeader>> {
-            match self {
-                State::Delimited { headers } | State::DelimitedWithError { headers, .. } => {
-                    debug_assert!(!headers.is_empty());
-                    Some(headers)
-                }
-                _ => None,
-            }
-        }
-
-        pub fn should_stop(&self) -> bool {
-            matches!(self, State::Empty { .. } | State::DelimitedWithError { .. })
-        }
+        impl_take_inner_and_should_stop!(headers);
     }
 }
 
@@ -385,7 +367,7 @@ pub(crate) mod transactions {
         type Item = TransactionsResponse;
         type Inner = HashMap<BlockId, Vec<TransactionVariant>>;
 
-        fn advance_inner(self, next: Self::Item) -> anyhow::Result<Self> {
+        fn transition(self, next: Self::Item) -> anyhow::Result<Self> {
             let TransactionsResponse { id, kind } = next;
             Ok(match (self, id, kind) {
                 // We've just started, accept any transactions from some block

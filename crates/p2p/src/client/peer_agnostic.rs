@@ -26,6 +26,8 @@ use crate::{
 
 mod parse;
 
+use parse::ParserState;
+
 #[derive(Clone, Debug)]
 pub struct Client {
     inner: peer_aware::Client,
