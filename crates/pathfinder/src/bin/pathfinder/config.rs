@@ -186,6 +186,18 @@ This should only be enabled for debugging purposes as it adds substantial proces
         value_name = "BOOL"
     )]
     verify_tree_node_data: bool,
+
+    #[arg(
+        long = "rpc.batch-concurrency-limit",
+        long_help = "Sets the concurrency limit for request batch processing. \
+            May lower the latency for large batches. \
+            ⚠ While the response order is eventually preserved, execution may be performed out of \
+            order.\
+            Setting this to 1 effectively disables concurrency.",
+        env = "PATHFINDER_RPC_BATCH_CONCURRENCY_LIMIT",
+        default_value = "1"
+    )]
+    rpc_batch_concurrency_limit: NonZeroUsize,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -422,6 +434,7 @@ pub struct Config {
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
+    pub rpc_batch_concurrency_limit: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -596,6 +609,7 @@ impl Config {
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),
             verify_tree_hashes: cli.verify_tree_node_data,
+            rpc_batch_concurrency_limit: cli.rpc_batch_concurrency_limit,
         }
     }
 }

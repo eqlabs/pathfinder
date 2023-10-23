@@ -163,6 +163,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
         rx_pending,
+        config.rpc_batch_concurrency_limit,
     );
 
     let context = if config.websocket.enabled {
