@@ -136,7 +136,7 @@ impl Client {
                         }
                     }
 
-                    if let Some(headers) = state.consume() {
+                    if let Some(headers) = state.take_inner() {
                         // Success
                         return Ok(headers);
                     } else {
@@ -186,19 +186,26 @@ impl Client {
 
             match response {
                 Ok(body_responses) => {
-                    match parse_block_body_responses(body_responses) {
-                        // We've got something potentially useful from this peer
-                        Ok(su) if !su.is_empty() => return Ok(su),
-                        // Try the next peer instead
-                        Ok(_) => tracing::debug!(from=%peer, "Empty bodies response"),
-                        Err(error) => {
-                            tracing::debug!(from=%peer, %error, "Parsing bodies response failed")
+                    let mut state = parse::state_update::State::Uninitialized;
+                    for body_response in body_responses {
+                        if let Err(error) = state.advance(body_response) {
+                            tracing::debug!(from=%peer, %error, "body responses parsing");
+                            break;
                         }
+                    }
+
+                    if let Some(headers) = state.take_inner() {
+                        // Success
+                        return Ok(headers);
+                    } else {
+                        // Try the next peer
+                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
+                        break;
                     }
                 }
                 // Try the next peer instead
                 Err(error) => {
-                    tracing::debug!(from=%peer, %error, "Bodies response failed");
+                    tracing::debug!(from=%peer, %error, "bodies response failed");
                 }
             }
         }
@@ -233,13 +240,16 @@ mod parse {
                             headers: vec![header],
                         }
                     }
+                    // FIXME State::Uninitialized + Fin
                     (State::Header { headers }, BlockHeadersResponsePart::Fin(_)) => {
                         Self::Fin { headers }
                     }
                     (State::Header { headers: _ }, BlockHeadersResponsePart::Signatures(_)) => {
                         todo!("add signatures support")
                     }
-                    (State::_Signature, _) => todo!("add signatures support"),
+                    (State::_Signature, BlockHeadersResponsePart::Signatures(_)) => {
+                        todo!("add signatures support")
+                    }
                     (State::Fin { mut headers }, BlockHeadersResponsePart::Header(header)) => {
                         let header = BlockHeader::try_from(*header).context("parsing header")?;
                         headers.push(header);
@@ -250,7 +260,7 @@ mod parse {
                 Ok(())
             }
 
-            pub fn consume(self) -> Option<Vec<BlockHeader>> {
+            pub fn take_inner(self) -> Option<Vec<BlockHeader>> {
                 match self {
                     State::Fin { headers } if !headers.is_empty() => Some(headers),
                     _ => {
@@ -261,196 +271,241 @@ mod parse {
             }
         }
     }
-}
 
-fn parse_block_body_responses(
-    body_responses: Vec<BlockBodiesResponse>,
-) -> anyhow::Result<Vec<StateUpdateWithDefs>> {
-    let mut current_id = None;
-    let mut state_updates = Vec::new();
+    pub(crate) mod state_update {
+        use crate::client::types::{Class, StateUpdateWithDefs};
+        use p2p_proto_v1::{
+            block::{BlockBodiesResponse, BlockBodyMessage},
+            common::{BlockId, Error, Fin, Hash},
+            consts::MAX_PARTS_PER_CLASS,
+            state::Classes,
+        };
+        use pathfinder_common::{BlockHash, ClassHash};
 
-    for body_response in body_responses {
-        let BlockBodiesResponse { id, body_message } = body_response;
-
-        match (id, body_message) {
-            (Some(id), BlockBodyMessage::Diff(diff)) => {
-                anyhow::ensure!(current_id.is_none(), "unexpected diff, id: {id}");
-
-                state_updates.push(StateUpdateWithDefs {
-                    block_hash: BlockHash(id.hash.0),
-                    state_update: diff.into(),
-                    classes: Default::default(),
-                });
-                current_id = Some(id);
-            }
-            (Some(id), BlockBodyMessage::Classes(new)) => match current_id {
-                Some(current_id) if current_id == id => {
-                    let current = state_updates
-                        .last_mut()
-                        .expect("state update for this id is present");
-                    current.classes.extend(classes_from_dto(new.classes)?);
-                }
-                Some(current_id) => {
-                    anyhow::bail!("id mismatch in classes: expected {current_id}, got {id}",)
-                }
-                None => {
-                    anyhow::bail!("unexpected classes, id: {id}")
-                }
+        #[derive(Debug)]
+        pub enum State {
+            Uninitialized,
+            Diff {
+                last_id: BlockId,
+                state_updates: Vec<StateUpdateWithDefs>,
             },
-            (Some(_), BlockBodyMessage::Proof(_)) => {
-                unimplemented!()
-            }
-            (Some(id), BlockBodyMessage::Fin(Fin { error })) => {
-                match handle_fin(id, current_id, error, state_updates.is_empty())? {
-                    // There are still blocks from this peer to process
-                    ControlFlow::Continue(_) => current_id = None,
-                    // We've got all blocks from this peer
-                    ControlFlow::Break(_) => break,
-                }
-            }
-            (None, _) => {
-                anyhow::bail!("id missing")
-            }
-        }
-    }
-
-    Ok(state_updates)
-}
-
-fn handle_fin(
-    id: BlockId,
-    current_id: Option<BlockId>,
-    error: Option<p2p_proto_v1::common::Error>,
-    accumulator_is_empty: bool,
-) -> anyhow::Result<ControlFlow<()>> {
-    match current_id {
-        Some(curr_id) if curr_id == id => {
-            // [Diff, Classes*, Fin]
-            //                  ^^^
-            // The block is correctly delimited
-            if let Some(error) = error {
-                tracing::debug!(%id, ?error, "Bodies response delimited with an error");
-                // This is ok, assume no more blocks from this peer past this point.
-                // Use only the blocks that we've accumulated so far.
-                Ok(ControlFlow::Break(()))
-            } else {
-                // Process the next block from the same peer
-                Ok(ControlFlow::Continue(()))
-            }
-        }
-        Some(current_id) => {
-            // [..., Diff, Classes*, Fin]
-            //                       ^^^
-            // The block is correctly delimited but the id is wrong, that's against the spec
-            anyhow::bail!("Id mismatch in Fin in bodies response: expected {current_id}, got {id}",)
-        }
-        None => {
-            if accumulator_is_empty {
-                // We only got [Fin] from this peer.
-                // We haven't accumulated any blocks yet.
-                anyhow::bail!("Bodies response starts with Fin")
-            } else {
-                // [..., Diff, Classes*, Fin, Fin]
-                //                            ^^^
-                // The last block was properly delimited and we've got an additional Fin, which could
-                // signal the reason why the peer is not sending any more blocks.
-                tracing::debug!(
-                    ?error,
-                    ?id,
-                    "Additional Fin after last block in bodies response"
-                );
-                // Use only the blocks that we've accumulated so far.
-                Ok(ControlFlow::Break(()))
-            }
-        }
-    }
-}
-
-/// Merges partitoned classes if necessary
-fn classes_from_dto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Result<Vec<Class>> {
-    #[derive(Copy, Clone, Debug, Default, PartialEq)]
-    struct Ctx {
-        hash: Hash,
-        total_parts: u32,
-        part_num: u32,
-    }
-
-    impl Ctx {
-        fn matches_next_part(&self, hash: Hash, total_parts: u32, part_num: u32) -> bool {
-            self.hash == hash && self.total_parts == total_parts && self.part_num + 1 == part_num
+            Classes {
+                last_id: BlockId,
+                state_updates: Vec<StateUpdateWithDefs>,
+            },
+            _Proof, // TODO add proof support
+            BlockDelimited {
+                state_updates: Vec<StateUpdateWithDefs>,
+            },
+            BlockDelimitedWithError {
+                error: Error,
+                state_updates: Vec<StateUpdateWithDefs>,
+            },
+            NoBlocks {
+                error: Option<Error>,
+            },
         }
 
-        fn advance(mut self) -> Option<Self> {
-            // This was the last part
-            if self.part_num == self.total_parts {
-                None
-            } else {
-                self.part_num += 1;
-                Some(self)
-            }
-        }
-    }
-
-    let mut converted = Vec::new();
-    let mut ctx: Option<Ctx> = None;
-
-    for class in classes {
-        match (class.total_parts, class.part_num) {
-            // Small class definition, not partitioned
-            (None, None) => converted.push(Class {
-                hash: ClassHash(class.compiled_hash.0),
-                definition: class.definition,
-            }),
-            // Large class definition, partitioned. Immediately reject invalid values or
-            // obvious attempts at DoS-ing us.
-            (Some(total_parts), Some(part_num))
-                if total_parts > 0
-                    && total_parts < MAX_PARTS_PER_CLASS
-                    && part_num < total_parts =>
-            {
-                match ctx {
-                    // First part of a larger definition
-                    None if part_num == 0 => {
-                        converted.push(Class {
-                            hash: ClassHash(class.compiled_hash.0),
-                            definition: class.definition,
-                        });
-                        ctx = Some(Ctx {
-                            hash: class.compiled_hash,
-                            total_parts,
-                            part_num,
-                        });
+        impl State {
+            /// Returns `true` if parsing should stop.
+            pub fn advance(&mut self, r: BlockBodiesResponse) -> anyhow::Result<()> {
+                let current_state = std::mem::replace(self, State::Uninitialized);
+                let BlockBodiesResponse { id, body_message } = r;
+                let next_state = match (current_state, id, body_message) {
+                    (State::Uninitialized, Some(id), BlockBodyMessage::Diff(diff)) => State::Diff {
+                        last_id: id,
+                        state_updates: vec![StateUpdateWithDefs {
+                            block_hash: BlockHash(id.hash.0),
+                            state_update: diff.into(),
+                            classes: Default::default(),
+                        }],
+                    },
+                    (State::Uninitialized, _, BlockBodyMessage::Fin(Fin { error })) => {
+                        State::NoBlocks { error }
                     }
-                    // Another part of the same definition
-                    Some(some_ctx)
-                        if some_ctx.matches_next_part(
-                            class.compiled_hash,
-                            total_parts,
-                            part_num,
-                        ) =>
-                    {
-                        converted
+                    (
+                        State::Diff {
+                            last_id,
+                            state_updates,
+                        }
+                        | State::Classes {
+                            last_id,
+                            state_updates,
+                        },
+                        Some(id),
+                        BlockBodyMessage::Fin(Fin { error }),
+                    ) if last_id == id => match error {
+                        Some(error) => State::BlockDelimitedWithError {
+                            error,
+                            state_updates,
+                        },
+                        None => State::BlockDelimited { state_updates },
+                    },
+                    (
+                        State::Classes {
+                            last_id,
+                            mut state_updates,
+                        },
+                        Some(id),
+                        BlockBodyMessage::Classes(Classes {
+                            domain: _, // TODO
+                            classes,
+                        }),
+                    ) if last_id == id => {
+                        let current = state_updates
                             .last_mut()
-                            .expect("gathered is not empty")
-                            .definition
-                            .extend(class.definition);
+                            .expect("state update for this id is present");
+                        current.classes.extend(classes_from_dto(classes)?);
 
-                        ctx = some_ctx.advance();
+                        State::Classes {
+                            last_id,
+                            state_updates,
+                        }
                     }
-                    None | Some(_) => {
-                        anyhow::bail!("Invalid Class part: {:?}/{:?}", part_num, total_parts)
+                    (
+                        State::BlockDelimited { mut state_updates },
+                        Some(id),
+                        BlockBodyMessage::Diff(diff),
+                    ) => {
+                        state_updates.push(StateUpdateWithDefs {
+                            block_hash: BlockHash(id.hash.0),
+                            state_update: diff.into(),
+                            classes: Default::default(),
+                        });
+
+                        State::Diff {
+                            last_id: id,
+                            state_updates,
+                        }
+                    }
+                    (_, _, _) => anyhow::bail!("unexpected response"),
+                };
+
+                *self = next_state;
+                // We need to top parsing when a block is properly delimited but an error was signalled
+                // as the peer is not going to send any more blocks.
+
+                if self.should_stop() {
+                    anyhow::bail!("no data or premature end of response")
+                } else {
+                    Ok(())
+                }
+            }
+
+            pub fn take_inner(self) -> Option<Vec<StateUpdateWithDefs>> {
+                match self {
+                    State::BlockDelimited { state_updates }
+                    | State::BlockDelimitedWithError { state_updates, .. } => {
+                        debug_assert!(!state_updates.is_empty());
+                        Some(state_updates)
+                    }
+                    _ => None,
+                }
+            }
+
+            pub fn should_stop(&self) -> bool {
+                matches!(
+                    self,
+                    State::NoBlocks { .. } | State::BlockDelimitedWithError { .. }
+                )
+            }
+        }
+
+        /// Merges partitoned classes if necessary
+        fn classes_from_dto(
+            classes: Vec<p2p_proto_v1::state::Class>,
+        ) -> anyhow::Result<Vec<Class>> {
+            #[derive(Copy, Clone, Debug, Default, PartialEq)]
+            struct Ctx {
+                hash: Hash,
+                total_parts: u32,
+                part_num: u32,
+            }
+
+            impl Ctx {
+                fn matches_next_part(&self, hash: Hash, total_parts: u32, part_num: u32) -> bool {
+                    self.hash == hash
+                        && self.total_parts == total_parts
+                        && self.part_num + 1 == part_num
+                }
+
+                fn advance(mut self) -> Option<Self> {
+                    // This was the last part
+                    if self.part_num == self.total_parts {
+                        None
+                    } else {
+                        self.part_num += 1;
+                        Some(self)
                     }
                 }
             }
-            _ => anyhow::bail!(
-                "Invalid Class part: {:?}/{:?}",
-                class.part_num,
-                class.total_parts,
-            ),
+
+            let mut converted = Vec::new();
+            let mut ctx: Option<Ctx> = None;
+
+            for class in classes {
+                match (class.total_parts, class.part_num) {
+                    // Small class definition, not partitioned
+                    (None, None) => converted.push(Class {
+                        hash: ClassHash(class.compiled_hash.0),
+                        definition: class.definition,
+                    }),
+                    // Large class definition, partitioned. Immediately reject invalid values or
+                    // obvious attempts at DoS-ing us.
+                    (Some(total_parts), Some(part_num))
+                        if total_parts > 0
+                            && total_parts < MAX_PARTS_PER_CLASS
+                            && part_num < total_parts =>
+                    {
+                        match ctx {
+                            // First part of a larger definition
+                            None if part_num == 0 => {
+                                converted.push(Class {
+                                    hash: ClassHash(class.compiled_hash.0),
+                                    definition: class.definition,
+                                });
+                                ctx = Some(Ctx {
+                                    hash: class.compiled_hash,
+                                    total_parts,
+                                    part_num,
+                                });
+                            }
+                            // Another part of the same definition
+                            Some(some_ctx)
+                                if some_ctx.matches_next_part(
+                                    class.compiled_hash,
+                                    total_parts,
+                                    part_num,
+                                ) =>
+                            {
+                                converted
+                                    .last_mut()
+                                    .expect("gathered is not empty")
+                                    .definition
+                                    .extend(class.definition);
+
+                                ctx = some_ctx.advance();
+                            }
+                            None | Some(_) => {
+                                anyhow::bail!(
+                                    "Invalid Class part: {:?}/{:?}",
+                                    part_num,
+                                    total_parts
+                                )
+                            }
+                        }
+                    }
+                    _ => anyhow::bail!(
+                        "Invalid Class part: {:?}/{:?}",
+                        class.part_num,
+                        class.total_parts,
+                    ),
+                }
+            }
+
+            Ok(converted)
         }
     }
-
-    Ok(converted)
 }
 
 #[derive(Clone, Debug)]

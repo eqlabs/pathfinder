@@ -155,9 +155,10 @@ impl GatewayApi for HybridClient {
                         return Ok(block.into());
                     }
 
-                    let mut headers = p2p_client.block_headers(n, 1).await.map_err(|_| {
-                        block_not_found(format!("No peers with headers for block {n}"))
-                    })?;
+                    let mut headers = p2p_client
+                        .block_headers(n, 1)
+                        .await
+                        .map_err(block_not_found)?;
 
                     if headers.len() != 1 {
                         return Err(block_not_found(format!(
@@ -238,10 +239,10 @@ impl GatewayApi for HybridClient {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
             HybridClient::NonPropagatingP2P { p2p_client, .. } => match block {
                 BlockId::Hash(hash) => {
-                    let mut state_updates =
-                        p2p_client.state_updates(hash, 1).await.map_err(|_| {
-                            block_not_found(format!("No peers with state update for block {hash}"))
-                        })?;
+                    let mut state_updates = p2p_client
+                        .state_updates(hash, 1)
+                        .await
+                        .map_err(block_not_found)?;
 
                     if state_updates.len() != 1 {
                         return Err(block_not_found(format!(
