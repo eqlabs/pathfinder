@@ -135,7 +135,7 @@ impl Client {
                         }
                     }
 
-                    if let Some(headers) = state.take_inner() {
+                    if let Some(headers) = state.take_parsed() {
                         // Success
                         return Ok(headers);
                     } else {
@@ -193,7 +193,7 @@ impl Client {
                         }
                     }
 
-                    if let Some(headers) = state.take_inner() {
+                    if let Some(headers) = state.take_parsed() {
                         // Success
                         return Ok(headers);
                     } else {

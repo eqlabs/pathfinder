@@ -1,8 +1,9 @@
 pub(crate) trait ParserState {
-    type Item;
+    type Dto;
     type Inner;
+    type Out;
 
-    fn advance(&mut self, item: Self::Item) -> anyhow::Result<()>
+    fn advance(&mut self, item: Self::Dto) -> anyhow::Result<()>
     where
         Self: Default + Sized,
     {
@@ -20,25 +21,27 @@ pub(crate) trait ParserState {
         }
     }
 
-    fn transition(self, item: Self::Item) -> anyhow::Result<Self>
+    fn transition(self, item: Self::Dto) -> anyhow::Result<Self>
     where
         Self: Sized;
 
-    fn take_inner(self) -> Option<Self::Inner>;
+    fn from_inner(inner: Self::Inner) -> Self::Out;
+
+    fn take_parsed(self) -> Option<Self::Out>;
 
     fn should_stop(&self) -> bool;
 }
 
 macro_rules! impl_take_inner_and_should_stop {
     ($inner_collection: ident) => {
-        fn take_inner(self) -> Option<<Self as super::ParserState>::Inner> {
+        fn take_parsed(self) -> Option<<Self as super::ParserState>::Out> {
             match self {
                 Self::Delimited { $inner_collection }
                 | Self::DelimitedWithError {
                     $inner_collection, ..
                 } => {
                     debug_assert!(!$inner_collection.is_empty());
-                    Some($inner_collection)
+                    Some(Self::from_inner($inner_collection))
                 }
                 _ => None,
             }
@@ -77,10 +80,11 @@ pub(crate) mod block_header {
     }
 
     impl super::ParserState for State {
-        type Item = BlockHeadersResponsePart;
+        type Dto = BlockHeadersResponsePart;
         type Inner = Vec<BlockHeader>;
+        type Out = Vec<BlockHeader>;
 
-        fn transition(self, next: Self::Item) -> anyhow::Result<Self> {
+        fn transition(self, next: Self::Dto) -> anyhow::Result<Self> {
             Ok(match (self, next) {
                 (State::Uninitialized, BlockHeadersResponsePart::Header(header)) => {
                     let header = BlockHeader::try_from(*header).context("parsing header")?;
@@ -104,6 +108,10 @@ pub(crate) mod block_header {
                 }
                 (_, _) => anyhow::bail!("unexpected part"),
             })
+        }
+
+        fn from_inner(inner: Self::Inner) -> Self::Out {
+            inner
         }
 
         impl_take_inner_and_should_stop!(headers);
@@ -146,10 +154,11 @@ pub(crate) mod state_update {
     }
 
     impl super::ParserState for State {
-        type Item = BlockBodiesResponse;
+        type Dto = BlockBodiesResponse;
         type Inner = Vec<StateUpdateWithDefs>;
+        type Out = Vec<StateUpdateWithDefs>;
 
-        fn transition(self, item: Self::Item) -> anyhow::Result<Self> {
+        fn transition(self, item: Self::Dto) -> anyhow::Result<Self> {
             let BlockBodiesResponse { id, body_message } = item;
             Ok(match (self, id, body_message) {
                 (State::Uninitialized, Some(id), BlockBodyMessage::Diff(diff)) => State::Diff {
@@ -220,6 +229,10 @@ pub(crate) mod state_update {
                 }
                 (_, _, _) => anyhow::bail!("unexpected response"),
             })
+        }
+
+        fn from_inner(inner: Self::Inner) -> Self::Out {
+            inner
         }
 
         impl_take_inner_and_should_stop!(state_updates);
@@ -321,6 +334,7 @@ pub(crate) mod transactions {
     use p2p_proto_v1::common::{BlockId, Error, Fin};
     use p2p_proto_v1::transaction::{Transactions, TransactionsResponse, TransactionsResponseKind};
     use pathfinder_common::transaction::TransactionVariant;
+    use pathfinder_common::BlockHash;
     use std::collections::HashMap;
 
     #[derive(Debug, Default)]
@@ -344,10 +358,11 @@ pub(crate) mod transactions {
     }
 
     impl super::ParserState for State {
-        type Item = TransactionsResponse;
+        type Dto = TransactionsResponse;
         type Inner = HashMap<BlockId, Vec<TransactionVariant>>;
+        type Out = HashMap<BlockHash, Vec<TransactionVariant>>;
 
-        fn transition(self, next: Self::Item) -> anyhow::Result<Self> {
+        fn transition(self, next: Self::Dto) -> anyhow::Result<Self> {
             let TransactionsResponse { id, kind } = next;
             Ok(match (self, id, kind) {
                 // We've just started, accept any transactions from some block
@@ -441,6 +456,13 @@ pub(crate) mod transactions {
             })
         }
 
+        fn from_inner(inner: Self::Inner) -> Self::Out {
+            inner
+                .into_iter()
+                .map(|(k, v)| (BlockHash(k.hash.0), v))
+                .collect()
+        }
+
         impl_take_inner_and_should_stop!(transactions);
     }
 }
@@ -448,6 +470,7 @@ pub(crate) mod transactions {
 pub(crate) mod receipts {
     use p2p_proto_v1::common::{BlockId, Error, Fin};
     use p2p_proto_v1::receipt::{Receipt, Receipts, ReceiptsResponse, ReceiptsResponseKind};
+    use pathfinder_common::BlockHash;
     use std::collections::HashMap;
 
     #[derive(Debug, Default)]
@@ -471,10 +494,11 @@ pub(crate) mod receipts {
     }
 
     impl super::ParserState for State {
-        type Item = ReceiptsResponse;
+        type Dto = ReceiptsResponse;
         type Inner = HashMap<BlockId, Vec<Receipt>>;
+        type Out = HashMap<BlockHash, Vec<Receipt>>;
 
-        fn transition(self, next: Self::Item) -> anyhow::Result<Self> {
+        fn transition(self, next: Self::Dto) -> anyhow::Result<Self> {
             let ReceiptsResponse { id, kind } = next;
             Ok(match (self, id, kind) {
                 // We've just started, accept any receipts from some block
@@ -536,6 +560,13 @@ pub(crate) mod receipts {
                 }
                 (_, _, _) => anyhow::bail!("unexpected response"),
             })
+        }
+
+        fn from_inner(inner: Self::Inner) -> Self::Out {
+            inner
+                .into_iter()
+                .map(|(k, v)| (BlockHash(k.hash.0), v))
+                .collect()
         }
 
         impl_take_inner_and_should_stop!(receipts);
