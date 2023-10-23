@@ -4,6 +4,7 @@ use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
 use starknet_gateway_types::pending::PendingData;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 type SequencerClient = starknet_gateway_client::Client;
@@ -18,6 +19,7 @@ pub struct RpcContext {
     pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
+    pub batch_concurrency_limit: NonZeroUsize,
 }
 
 impl RpcContext {
@@ -27,6 +29,7 @@ impl RpcContext {
         sync_status: Arc<SyncState>,
         chain_id: ChainId,
         sequencer: SequencerClient,
+        batch_concurrency_limit: NonZeroUsize,
     ) -> Self {
         Self {
             storage,
@@ -37,6 +40,7 @@ impl RpcContext {
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             websocket: None,
+            batch_concurrency_limit,
         }
     }
 
@@ -62,6 +66,7 @@ impl RpcContext {
             sync_state,
             chain_id,
             sequencer.disable_retry_for_tests(),
+            NonZeroUsize::new(8).unwrap(),
         )
     }
 

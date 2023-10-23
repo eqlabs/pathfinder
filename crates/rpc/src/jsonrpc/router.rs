@@ -177,11 +177,11 @@ pub async fn rpc_handler(
                 return RpcResponse::INVALID_REQUEST.into_response();
             }
 
-            // TODO Make it configurable
-            let concurrency_limit = NonZeroUsize::new(10).unwrap();
-            let responses = run_concurrently(concurrency_limit, requests.into_iter(), |request| {
-                state.run_request(request.get())
-            })
+            let responses = run_concurrently(
+                state.context.batch_concurrency_limit,
+                requests.into_iter(),
+                |request| state.run_request(request.get()),
+            )
             .await;
 
             // Notifications return none and are skipped.
