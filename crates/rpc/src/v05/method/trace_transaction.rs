@@ -165,12 +165,30 @@ async fn fetch_block_transactions(
 
 #[cfg(test)]
 pub mod tests {
-    use super::super::trace_block_transactions::tests::setup_multi_tx_trace_test;
+    use super::super::trace_block_transactions::tests::{
+        setup_multi_tx_trace_pending_test, setup_multi_tx_trace_test,
+    };
     use super::*;
 
     #[tokio::test]
     async fn test_multiple_transactions() -> anyhow::Result<()> {
         let (context, _, traces) = setup_multi_tx_trace_test().await?;
+
+        for trace in traces {
+            let input = TraceTransactionInput {
+                transaction_hash: trace.transaction_hash,
+            };
+            let output = trace_transaction(context.clone(), input).await.unwrap();
+            let expected = TraceTransactionOutput(trace.trace_root);
+            pretty_assertions::assert_eq!(output, expected);
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
+        let (context, traces) = setup_multi_tx_trace_pending_test().await?;
 
         for trace in traces {
             let input = TraceTransactionInput {
