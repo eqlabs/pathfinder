@@ -44,6 +44,8 @@ pub async fn get_block_with_txs(
             return Ok(types::Block::from_sequencer(block.into()));
         }
 
+        println!("here");
+
         let block_id = input
             .block_id
             .try_into()
@@ -53,6 +55,7 @@ pub async fn get_block_with_txs(
             .block_header(block_id)
             .context("Reading block from database")?
             .ok_or(GetBlockError::BlockNotFound)?;
+        println!("a");
 
         let l1_accepted = transaction.block_is_l1_accepted(header.number.into())?;
         let block_status = if l1_accepted {
@@ -219,7 +222,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(result.parent_hash, block_hash_bytes!(b"latest"));
+        assert_eq!(result.block_hash, Some(block_hash_bytes!(b"latest")));
     }
 
     #[tokio::test]
@@ -235,7 +238,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(result.parent_hash, block_hash_bytes!(b"genesis"));
+        assert_eq!(result.block_hash, Some(block_hash_bytes!(b"genesis")));
     }
 
     #[tokio::test]
@@ -251,7 +254,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(result.parent_hash, block_hash_bytes!(b"genesis"));
+        assert_eq!(result.block_hash, Some(block_hash_bytes!(b"genesis")));
     }
 
     #[tokio::test]

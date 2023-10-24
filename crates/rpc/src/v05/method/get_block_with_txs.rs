@@ -183,7 +183,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(result.header.parent_hash, block_hash_bytes!(b"latest"));
+        assert_eq!(result.header.block_hash, Some(block_hash_bytes!(b"latest")));
     }
 
     #[tokio::test]
@@ -199,7 +199,10 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(result.header.parent_hash, block_hash_bytes!(b"genesis"));
+        assert_eq!(
+            result.header.block_hash,
+            Some(block_hash_bytes!(b"genesis"))
+        );
     }
 
     #[tokio::test]
@@ -215,7 +218,10 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(result.header.parent_hash, block_hash_bytes!(b"genesis"));
+        assert_eq!(
+            result.header.block_hash,
+            Some(block_hash_bytes!(b"genesis"))
+        );
     }
 
     #[tokio::test]
