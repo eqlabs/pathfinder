@@ -34,7 +34,7 @@ pub enum AddDeployAccountTransactionError {
     Internal(anyhow::Error),
 }
 
-impl From<AddDeployAccountTransactionError> for crate::error::RpcError {
+impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
     fn from(value: AddDeployAccountTransactionError) -> Self {
         match value {
             AddDeployAccountTransactionError::ClassHashNotFound => Self::ClassHashNotFound,

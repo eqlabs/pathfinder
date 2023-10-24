@@ -1,7 +1,9 @@
 use anyhow::Context;
 use serde_with::serde_as;
 
-use crate::{context::RpcContext, error::RpcError, v02::types::request::BroadcastedTransaction};
+use crate::{
+    context::RpcContext, error::ApplicationError, v02::types::request::BroadcastedTransaction,
+};
 use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -47,15 +49,15 @@ impl From<crate::executor::ExecutionStateError> for EstimateFeeError {
     }
 }
 
-impl From<EstimateFeeError> for RpcError {
+impl From<EstimateFeeError> for ApplicationError {
     fn from(value: EstimateFeeError) -> Self {
         match value {
-            EstimateFeeError::BlockNotFound => RpcError::BlockNotFound,
-            EstimateFeeError::ContractNotFound => RpcError::ContractNotFound,
+            EstimateFeeError::BlockNotFound => ApplicationError::BlockNotFound,
+            EstimateFeeError::ContractNotFound => ApplicationError::ContractNotFound,
             EstimateFeeError::ContractErrorV05 { revert_error } => {
-                RpcError::ContractErrorV05 { revert_error }
+                ApplicationError::ContractErrorV05 { revert_error }
             }
-            EstimateFeeError::Internal(e) => RpcError::Internal(e),
+            EstimateFeeError::Internal(e) => ApplicationError::Internal(e),
         }
     }
 }

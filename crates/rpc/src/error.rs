@@ -1,7 +1,7 @@
-//! Defines [RpcError], the Starknet JSON-RPC specification's error variants.
+//! Defines [ApplicationError], the Starknet JSON-RPC specification's error variants.
 //!
 //! In addition, it supplies the [generate_rpc_error_subset!] macro which should be used
-//! by each JSON-RPC method to trivially create its subset of [RpcError] along with the boilerplate involved.
+//! by each JSON-RPC method to trivially create its subset of [ApplicationError] along with the boilerplate involved.
 #![macro_use]
 use serde_json::json;
 
@@ -13,7 +13,7 @@ pub enum TraceError {
 
 /// The Starknet JSON-RPC error variants.
 #[derive(thiserror::Error, Debug)]
-pub enum RpcError {
+pub enum ApplicationError {
     #[error("Failed to write transaction")]
     FailedToReceiveTxn,
     #[error("Contract not found")]
@@ -82,45 +82,45 @@ pub enum RpcError {
     Internal(anyhow::Error),
 }
 
-impl RpcError {
+impl ApplicationError {
     pub fn code(&self) -> i32 {
         match self {
             // Taken from the official starknet json rpc api.
             // https://github.com/starkware-libs/starknet-specs
-            RpcError::FailedToReceiveTxn => 1,
-            RpcError::NoTraceAvailable(_) => 10,
-            RpcError::ContractNotFound => 20,
-            RpcError::BlockNotFound => 24,
-            RpcError::TxnHashNotFoundV03 => 25,
-            RpcError::InvalidTxnHash => 25,
-            RpcError::InvalidBlockHash => 26,
-            RpcError::InvalidTxnIndex => 27,
-            RpcError::ClassHashNotFound => 28,
-            RpcError::TxnHashNotFoundV04 => 29,
-            RpcError::PageSizeTooBig => 31,
-            RpcError::NoBlocks => 32,
-            RpcError::InvalidContinuationToken => 33,
-            RpcError::TooManyKeysInFilter { .. } => 34,
-            RpcError::ContractError => 40,
-            RpcError::ContractErrorV05 { .. } => 40,
-            RpcError::InvalidContractClass => 50,
-            RpcError::ClassAlreadyDeclared => 51,
-            RpcError::InvalidTransactionNonce => 52,
-            RpcError::InsufficientMaxFee => 53,
-            RpcError::InsufficientAccountBalance => 54,
-            RpcError::ValidationFailure => 55,
-            RpcError::CompilationFailed => 56,
-            RpcError::ContractClassSizeIsTooLarge => 57,
-            RpcError::NonAccount => 58,
-            RpcError::DuplicateTransaction => 59,
-            RpcError::CompiledClassHashMismatch => 60,
-            RpcError::UnsupportedTxVersion => 61,
-            RpcError::UnsupportedContractClassVersion => 62,
-            RpcError::UnexpectedError { .. } => 63,
+            ApplicationError::FailedToReceiveTxn => 1,
+            ApplicationError::NoTraceAvailable(_) => 10,
+            ApplicationError::ContractNotFound => 20,
+            ApplicationError::BlockNotFound => 24,
+            ApplicationError::TxnHashNotFoundV03 => 25,
+            ApplicationError::InvalidTxnHash => 25,
+            ApplicationError::InvalidBlockHash => 26,
+            ApplicationError::InvalidTxnIndex => 27,
+            ApplicationError::ClassHashNotFound => 28,
+            ApplicationError::TxnHashNotFoundV04 => 29,
+            ApplicationError::PageSizeTooBig => 31,
+            ApplicationError::NoBlocks => 32,
+            ApplicationError::InvalidContinuationToken => 33,
+            ApplicationError::TooManyKeysInFilter { .. } => 34,
+            ApplicationError::ContractError => 40,
+            ApplicationError::ContractErrorV05 { .. } => 40,
+            ApplicationError::InvalidContractClass => 50,
+            ApplicationError::ClassAlreadyDeclared => 51,
+            ApplicationError::InvalidTransactionNonce => 52,
+            ApplicationError::InsufficientMaxFee => 53,
+            ApplicationError::InsufficientAccountBalance => 54,
+            ApplicationError::ValidationFailure => 55,
+            ApplicationError::CompilationFailed => 56,
+            ApplicationError::ContractClassSizeIsTooLarge => 57,
+            ApplicationError::NonAccount => 58,
+            ApplicationError::DuplicateTransaction => 59,
+            ApplicationError::CompiledClassHashMismatch => 60,
+            ApplicationError::UnsupportedTxVersion => 61,
+            ApplicationError::UnsupportedContractClassVersion => 62,
+            ApplicationError::UnexpectedError { .. } => 63,
             // doc/rpc/pathfinder_rpc_api.json
-            RpcError::ProofLimitExceeded { .. } => 10000,
+            ApplicationError::ProofLimitExceeded { .. } => 10000,
             // https://www.jsonrpc.org/specification#error_object
-            RpcError::GatewayError(_) | RpcError::Internal(_) => -32603,
+            ApplicationError::GatewayError(_) | ApplicationError::Internal(_) => -32603,
         }
     }
 
@@ -129,36 +129,36 @@ impl RpcError {
         // here whenever a new variant is added. This will prevent adding a stateful
         // error variant but forgetting to forward its data.
         match self {
-            RpcError::FailedToReceiveTxn => None,
-            RpcError::ContractNotFound => None,
-            RpcError::BlockNotFound => None,
-            RpcError::TxnHashNotFoundV03 => None,
-            RpcError::InvalidTxnIndex => None,
-            RpcError::InvalidTxnHash => None,
-            RpcError::InvalidBlockHash => None,
-            RpcError::ClassHashNotFound => None,
-            RpcError::TxnHashNotFoundV04 => None,
-            RpcError::PageSizeTooBig => None,
-            RpcError::NoBlocks => None,
-            RpcError::InvalidContinuationToken => None,
-            RpcError::ContractError => None,
-            RpcError::InvalidContractClass => None,
-            RpcError::ClassAlreadyDeclared => None,
-            RpcError::InvalidTransactionNonce => None,
-            RpcError::InsufficientMaxFee => None,
-            RpcError::InsufficientAccountBalance => None,
-            RpcError::ValidationFailure => None,
-            RpcError::CompilationFailed => None,
-            RpcError::ContractClassSizeIsTooLarge => None,
-            RpcError::NonAccount => None,
-            RpcError::DuplicateTransaction => None,
-            RpcError::CompiledClassHashMismatch => None,
-            RpcError::UnsupportedTxVersion => None,
-            RpcError::UnsupportedContractClassVersion => None,
-            RpcError::GatewayError(error) => Some(json!({
+            ApplicationError::FailedToReceiveTxn => None,
+            ApplicationError::ContractNotFound => None,
+            ApplicationError::BlockNotFound => None,
+            ApplicationError::TxnHashNotFoundV03 => None,
+            ApplicationError::InvalidTxnIndex => None,
+            ApplicationError::InvalidTxnHash => None,
+            ApplicationError::InvalidBlockHash => None,
+            ApplicationError::ClassHashNotFound => None,
+            ApplicationError::TxnHashNotFoundV04 => None,
+            ApplicationError::PageSizeTooBig => None,
+            ApplicationError::NoBlocks => None,
+            ApplicationError::InvalidContinuationToken => None,
+            ApplicationError::ContractError => None,
+            ApplicationError::InvalidContractClass => None,
+            ApplicationError::ClassAlreadyDeclared => None,
+            ApplicationError::InvalidTransactionNonce => None,
+            ApplicationError::InsufficientMaxFee => None,
+            ApplicationError::InsufficientAccountBalance => None,
+            ApplicationError::ValidationFailure => None,
+            ApplicationError::CompilationFailed => None,
+            ApplicationError::ContractClassSizeIsTooLarge => None,
+            ApplicationError::NonAccount => None,
+            ApplicationError::DuplicateTransaction => None,
+            ApplicationError::CompiledClassHashMismatch => None,
+            ApplicationError::UnsupportedTxVersion => None,
+            ApplicationError::UnsupportedContractClassVersion => None,
+            ApplicationError::GatewayError(error) => Some(json!({
                 "error": error,
             })),
-            RpcError::Internal(error) => {
+            ApplicationError::Internal(error) => {
                 let error = error.to_string();
                 if error.is_empty() {
                     None
@@ -168,20 +168,20 @@ impl RpcError {
                     }))
                 }
             }
-            RpcError::NoTraceAvailable(error) => Some(json!({
+            ApplicationError::NoTraceAvailable(error) => Some(json!({
                 "error": error,
             })),
-            RpcError::ContractErrorV05 { revert_error } => Some(json!({
+            ApplicationError::ContractErrorV05 { revert_error } => Some(json!({
                 "revert_error": revert_error
             })),
-            RpcError::TooManyKeysInFilter { limit, requested } => Some(json!({
+            ApplicationError::TooManyKeysInFilter { limit, requested } => Some(json!({
                 "limit": limit,
                 "requested": requested,
             })),
-            RpcError::UnexpectedError { data } => Some(json!({
+            ApplicationError::UnexpectedError { data } => Some(json!({
                 "error": data,
             })),
-            RpcError::ProofLimitExceeded { limit, requested } => Some(json!({
+            ApplicationError::ProofLimitExceeded { limit, requested } => Some(json!({
                 "limit": limit,
                 "requested": requested,
             })),
@@ -189,9 +189,9 @@ impl RpcError {
     }
 }
 
-/// Generates an enum subset of [RpcError] along with boilerplate for mapping the variants back to [RpcError].
+/// Generates an enum subset of [ApplicationError] along with boilerplate for mapping the variants back to [ApplicationError].
 ///
-/// This is useful for RPC methods which only emit a few of the [RpcError] variants as this macro can be
+/// This is useful for RPC methods which only emit a few of the [ApplicationError] variants as this macro can be
 /// used to quickly create the enum-subset with the required glue code. This greatly improves the type safety
 /// of the method.
 ///
@@ -199,7 +199,7 @@ impl RpcError {
 /// ```ignore
 /// generate_rpc_error_subset!(<enum_name>: <variant a>, <variant b>, <variant N>);
 /// ```
-/// Note that the variants __must__ match the [RpcError] variant names and that [RpcError::Internal]
+/// Note that the variants __must__ match the [ApplicationError] variant names and that [ApplicationError::Internal]
 /// is always included by default (and therefore should not be part of macro input).
 ///
 /// An `Internal` only variant can be generated using `generate_rpc_error_subset!(<enum_name>)`.
@@ -301,7 +301,7 @@ macro_rules! generate_rpc_error_subset {
     // By pushing the arms from this level downwards, and creating the match statement at the lowest
     // level, we guarantee that only valid valid Rust will bubble back up.
     (@from_def, $enum_name:ident, $($variants:ident),*) => {
-        impl From<$enum_name> for crate::error::RpcError {
+        impl From<$enum_name> for crate::error::ApplicationError {
             fn from(x: $enum_name) -> Self {
                 generate_rpc_error_subset!(@parse, x, $enum_name, {}, $($variants),*)
             }
@@ -344,7 +344,7 @@ pub(super) use generate_rpc_error_subset;
 #[cfg(test)]
 mod tests {
     mod rpc_error_subset {
-        use super::super::{generate_rpc_error_subset, RpcError};
+        use super::super::{generate_rpc_error_subset, ApplicationError};
         use assert_matches::assert_matches;
 
         #[test]
@@ -357,22 +357,22 @@ mod tests {
         fn single_variant() {
             generate_rpc_error_subset!(Single: ContractNotFound);
 
-            let original = RpcError::from(Single::ContractNotFound);
+            let original = ApplicationError::from(Single::ContractNotFound);
 
-            assert_matches!(original, RpcError::ContractNotFound);
+            assert_matches!(original, ApplicationError::ContractNotFound);
         }
 
         #[test]
         fn multi_variant() {
             generate_rpc_error_subset!(Multi: ContractNotFound, NoBlocks, ContractError);
 
-            let contract_not_found = RpcError::from(Multi::ContractNotFound);
-            let no_blocks = RpcError::from(Multi::NoBlocks);
-            let contract_error = RpcError::from(Multi::ContractError);
+            let contract_not_found = ApplicationError::from(Multi::ContractNotFound);
+            let no_blocks = ApplicationError::from(Multi::NoBlocks);
+            let contract_error = ApplicationError::from(Multi::ContractError);
 
-            assert_matches!(contract_not_found, RpcError::ContractNotFound);
-            assert_matches!(no_blocks, RpcError::NoBlocks);
-            assert_matches!(contract_error, RpcError::ContractError);
+            assert_matches!(contract_not_found, ApplicationError::ContractNotFound);
+            assert_matches!(no_blocks, ApplicationError::NoBlocks);
+            assert_matches!(contract_error, ApplicationError::ContractError);
         }
     }
 }

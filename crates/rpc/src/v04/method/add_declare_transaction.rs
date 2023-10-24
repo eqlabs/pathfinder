@@ -25,7 +25,7 @@ pub enum AddDeclareTransactionError {
     UnexpectedError(String),
 }
 
-impl From<AddDeclareTransactionError> for crate::error::RpcError {
+impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
     fn from(value: AddDeclareTransactionError) -> Self {
         match value {
             AddDeclareTransactionError::ClassAlreadyDeclared => Self::ClassAlreadyDeclared,

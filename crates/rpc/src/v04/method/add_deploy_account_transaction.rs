@@ -40,7 +40,7 @@ pub enum AddDeployAccountTransactionError {
     UnexpectedError(String),
 }
 
-impl From<AddDeployAccountTransactionError> for crate::error::RpcError {
+impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
     fn from(value: AddDeployAccountTransactionError) -> Self {
         use AddDeployAccountTransactionError::*;
         match value {

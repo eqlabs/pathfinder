@@ -9,7 +9,7 @@ use pathfinder_executor::IntoStarkFelt;
 use stark_hash::Felt;
 use starknet_api::core::PatriciaKey;
 
-use crate::{context::RpcContext, error::RpcError, v05::method::estimate_fee::FeeEstimate};
+use crate::{context::RpcContext, error::ApplicationError, v05::method::estimate_fee::FeeEstimate};
 
 #[derive(Debug)]
 pub enum EstimateMessageFeeError {
@@ -47,15 +47,15 @@ impl From<crate::executor::ExecutionStateError> for EstimateMessageFeeError {
     }
 }
 
-impl From<EstimateMessageFeeError> for RpcError {
+impl From<EstimateMessageFeeError> for ApplicationError {
     fn from(value: EstimateMessageFeeError) -> Self {
         match value {
-            EstimateMessageFeeError::BlockNotFound => RpcError::BlockNotFound,
-            EstimateMessageFeeError::ContractNotFound => RpcError::ContractNotFound,
+            EstimateMessageFeeError::BlockNotFound => ApplicationError::BlockNotFound,
+            EstimateMessageFeeError::ContractNotFound => ApplicationError::ContractNotFound,
             EstimateMessageFeeError::ContractErrorV05 { revert_error } => {
-                RpcError::ContractErrorV05 { revert_error }
+                ApplicationError::ContractErrorV05 { revert_error }
             }
-            EstimateMessageFeeError::Internal(e) => RpcError::Internal(e),
+            EstimateMessageFeeError::Internal(e) => ApplicationError::Internal(e),
         }
     }
 }

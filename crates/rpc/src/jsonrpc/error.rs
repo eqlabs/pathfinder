@@ -10,7 +10,7 @@ pub enum RpcError {
     MethodNotFound,
     InvalidParams,
     InternalError(anyhow::Error),
-    ApplicationError(crate::error::RpcError),
+    ApplicationError(crate::error::ApplicationError),
     WebsocketSubscriptionClosed {
         subscription_id: u32,
         reason: String,
@@ -103,7 +103,7 @@ impl Serialize for RpcError {
 
 impl<E> From<E> for RpcError
 where
-    E: Into<crate::error::RpcError>,
+    E: Into<crate::error::ApplicationError>,
 {
     fn from(value: E) -> Self {
         Self::ApplicationError(value.into())

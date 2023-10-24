@@ -1,5 +1,5 @@
 use crate::context::RpcContext;
-use crate::error::RpcError;
+use crate::error::ApplicationError;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
@@ -40,15 +40,15 @@ impl From<crate::executor::ExecutionStateError> for CallError {
     }
 }
 
-impl From<CallError> for RpcError {
+impl From<CallError> for ApplicationError {
     fn from(value: CallError) -> Self {
         match value {
-            CallError::BlockNotFound => RpcError::BlockNotFound,
-            CallError::ContractNotFound => RpcError::ContractNotFound,
+            CallError::BlockNotFound => ApplicationError::BlockNotFound,
+            CallError::ContractNotFound => ApplicationError::ContractNotFound,
             CallError::ContractErrorV05 { revert_error } => {
-                RpcError::ContractErrorV05 { revert_error }
+                ApplicationError::ContractErrorV05 { revert_error }
             }
-            CallError::Internal(e) => RpcError::Internal(e),
+            CallError::Internal(e) => ApplicationError::Internal(e),
         }
     }
 }

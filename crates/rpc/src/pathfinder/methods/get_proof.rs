@@ -27,7 +27,7 @@ impl From<anyhow::Error> for GetProofError {
         Self::Internal(e)
     }
 }
-impl From<GetProofError> for crate::error::RpcError {
+impl From<GetProofError> for crate::error::ApplicationError {
     fn from(x: GetProofError) -> Self {
         match x {
             GetProofError::ProofLimitExceeded { limit, requested } => {

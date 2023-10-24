@@ -8,7 +8,7 @@ use tokio::task::JoinError;
 use crate::{
     compose_executor_transaction,
     context::RpcContext,
-    error::{RpcError, TraceError},
+    error::{ApplicationError, TraceError},
     executor::ExecutionStateError,
 };
 
@@ -66,12 +66,14 @@ impl From<anyhow::Error> for TraceTransactionError {
     }
 }
 
-impl From<TraceTransactionError> for RpcError {
+impl From<TraceTransactionError> for ApplicationError {
     fn from(value: TraceTransactionError) -> Self {
         match value {
-            TraceTransactionError::InvalidTxnHash => RpcError::InvalidTxnHash,
-            TraceTransactionError::NoTraceAvailable(status) => RpcError::NoTraceAvailable(status),
-            TraceTransactionError::Internal(e) => RpcError::Internal(e),
+            TraceTransactionError::InvalidTxnHash => ApplicationError::InvalidTxnHash,
+            TraceTransactionError::NoTraceAvailable(status) => {
+                ApplicationError::NoTraceAvailable(status)
+            }
+            TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
         }
     }
 }
