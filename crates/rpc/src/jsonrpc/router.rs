@@ -468,6 +468,9 @@ pub trait RpcMethodHandler {
 /// Performs asynchronous work concurrently on an input iterator, returning a `Vec` with the output
 /// of each piece of work.
 ///
+/// ⚠ Execution will be performed out of order. Results are
+/// eventually re-ordered.
+///
 /// Usage example:
 /// ```ignore
 /// let results = run_concurrently(
@@ -490,17 +493,19 @@ where
     W: Fn(I) -> F,
     F: Future<Output = O> + Sized,
 {
-    let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(input_iter.len());
+    let capacity = input_iter.len();
+    let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(capacity);
 
     // TODO More testing required regarding ordering
     futures::stream::iter(input_iter)
-        .for_each_concurrent(Some(concurrency_limit.get()), |input| async {
+        .enumerate()
+        .for_each_concurrent(Some(concurrency_limit.get()), |(index, input)| async {
             let result = work(input).await;
 
             // No reason for this to fail as:
             //  * channel capacity is sized according to the input size,
             //  * a sender is kept alive until completion
-            result_sender.send(result).await.expect(
+            result_sender.send((index, result)).await.expect(
                 "This channel is expected to be open and to not go over capacity. This is a bug.",
             );
         })
@@ -510,12 +515,18 @@ where
     drop(result_sender);
 
     // All results should be available immediately at this point.
-    let mut results = Vec::new();
-    while let Some(result) = result_receiver.recv().await {
-        results.push(result)
+    let mut indexed_results = Vec::new();
+    indexed_results.reserve_exact(capacity);
+    while let Some(indexed_result) = result_receiver.recv().await {
+        indexed_results.push(indexed_result)
     }
 
-    results
+    indexed_results.sort_by(|(index_a, _), (index_b, _)| index_a.cmp(index_b));
+
+    indexed_results
+        .into_iter()
+        .map(|(_index, result)| result)
+        .collect()
 }
 
 #[cfg(test)]
