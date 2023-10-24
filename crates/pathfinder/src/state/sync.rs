@@ -12,6 +12,7 @@ use pathfinder_common::{
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
+use pathfinder_rpc::PendingData;
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
     SyncState, TopicBroadcasters,
@@ -20,16 +21,19 @@ use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use stark_hash::Felt;
 use starknet_gateway_client::{GatewayApi, GossipApi};
+use starknet_gateway_types::reply::Block;
 use starknet_gateway_types::reply::PendingBlock;
-use starknet_gateway_types::{pending::PendingData, reply::Block};
 
 use std::future::Future;
+use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
-use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, Receiver};
 
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
+
+use tokio::sync::watch::Sender as WatchSender;
 
 #[derive(Debug)]
 pub enum SyncEvent {
@@ -57,10 +61,12 @@ pub enum SyncEvent {
         casm_hash: CasmHash,
     },
     /// A new L2 pending update was polled.
-    Pending(Arc<PendingBlock>, Arc<StateUpdate>),
+    Pending {
+        block: PendingBlock,
+        state_update: StateUpdate,
+    },
 }
 
-#[derive(Clone)]
 pub struct SyncContext<G, E> {
     pub storage: Storage,
     pub ethereum: E,
@@ -70,7 +76,7 @@ pub struct SyncContext<G, E> {
     pub sequencer: G,
     pub state: Arc<SyncState>,
     pub head_poll_interval: Duration,
-    pub pending_data: PendingData,
+    pub pending_data: WatchSender<Arc<PendingData>>,
     pub pending_poll_interval: Option<Duration>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: Option<TopicBroadcasters>,
@@ -79,10 +85,13 @@ pub struct SyncContext<G, E> {
     pub verify_tree_hashes: bool,
 }
 
-impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
-    fn from(value: SyncContext<G, E>) -> Self {
+impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
+where
+    E: Clone,
+{
+    fn from(value: &SyncContext<G, E>) -> Self {
         Self {
-            ethereum: value.ethereum,
+            ethereum: value.ethereum.clone(),
             chain: value.chain,
             core_address: value.core_address,
             poll_interval: value.head_poll_interval,
@@ -90,17 +99,20 @@ impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
     }
 }
 
-impl<G, E> From<SyncContext<G, E>> for L2SyncContext<G> {
-    fn from(value: SyncContext<G, E>) -> Self {
+impl<G, E> From<&SyncContext<G, E>> for L2SyncContext<G>
+where
+    G: Clone,
+{
+    fn from(value: &SyncContext<G, E>) -> Self {
         Self {
-            broadcasters: value.websocket_txs,
-            sequencer: value.sequencer,
+            broadcasters: value.websocket_txs.clone(),
+            sequencer: value.sequencer.clone(),
             chain: value.chain,
             chain_id: value.chain_id,
             head_poll_interval: value.head_poll_interval,
             pending_poll_interval: value.pending_poll_interval,
             block_validation_mode: value.block_validation_mode,
-            storage: value.storage,
+            storage: value.storage.clone(),
         }
     }
 }
@@ -126,8 +138,8 @@ where
         ) -> F2
         + Copy,
 {
-    let l1_context = L1SyncContext::from(context.clone());
-    let l2_context = L2SyncContext::from(context.clone());
+    let l1_context = L1SyncContext::from(&context);
+    let l2_context = L2SyncContext::from(&context);
 
     let SyncContext {
         storage,
@@ -145,7 +157,7 @@ where
         block_cache_size,
         restart_delay,
         verify_tree_hashes: _,
-    } = context.clone();
+    } = context;
 
     let mut db_conn = storage
         .connection()
@@ -198,9 +210,9 @@ where
     ));
 
     let consumer_context = ConsumerContext {
-        storage: context.storage,
-        state: context.state,
-        pending_data: context.pending_data,
+        storage,
+        state,
+        pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
     };
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context));
@@ -231,7 +243,6 @@ where
                 });
             },
             l2_producer_result = &mut l2_handle => {
-                pending_data.clear().await;
                 // L2 sync process failed; restart it.
                 match l2_producer_result.context("Join L2 sync process handle")? {
                     Ok(()) => {
@@ -319,7 +330,7 @@ where
 struct ConsumerContext {
     pub storage: Storage,
     pub state: Arc<SyncState>,
-    pub pending_data: PendingData,
+    pub pending_data: WatchSender<Arc<PendingData>>,
     pub verify_tree_hashes: bool,
 }
 
@@ -386,10 +397,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 )
                 .await
                 .with_context(|| format!("Update L2 state to {block_number}"))?;
-                // This opens a short window where `pending` overlaps with `latest` in storage. Unfortuantely
-                // there is no easy way of having a transaction over both memory and database. sqlite does support
-                // multi-database transactions, but it does not work for WAL mode.
-                pending_data.clear().await;
                 let block_time = last_block_start.elapsed();
                 let update_t = update_t.elapsed();
                 last_block_start = std::time::Instant::now();
@@ -455,8 +462,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 }
             }
             Reorg(reorg_tail) => {
-                pending_data.clear().await;
-
                 l2_reorg(&mut db_conn, reorg_tail)
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
@@ -513,9 +518,32 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
-            Pending(block, state_update) => {
-                pending_data.set(block, state_update).await;
-                tracing::debug!("Updated pending data");
+            Pending {
+                block,
+                state_update,
+            } => {
+                let (number, hash) = tokio::task::block_in_place(|| {
+                    let tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    let latest = tx
+                        .block_id(pathfinder_storage::BlockId::Latest)
+                        .context("Fetching latest block hash")?
+                        .unwrap_or_default();
+
+                    anyhow::Ok(latest)
+                })
+                .context("Fetching latest block hash")?;
+
+                if block.parent_hash == hash {
+                    let data = PendingData {
+                        block,
+                        state_update,
+                        number: number + 1,
+                    };
+                    pending_data.send_replace(Arc::new(data));
+                    tracing::debug!("Updated pending data");
+                }
             }
         }
     }
@@ -995,8 +1023,8 @@ mod tests {
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
     use stark_hash::Felt;
+    use starknet_gateway_types::reply;
     use starknet_gateway_types::reply::Block;
-    use starknet_gateway_types::{pending::PendingData, reply};
     use std::sync::Arc;
 
     /// Generate some arbitrary block chain data from genesis onwards.
@@ -1079,10 +1107,11 @@ mod tests {
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
 
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
+            pending_data: tx,
             verify_tree_hashes: false,
         };
 
@@ -1122,10 +1151,11 @@ mod tests {
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
 
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
+            pending_data: tx,
             verify_tree_hashes: false,
         };
 
@@ -1177,10 +1207,11 @@ mod tests {
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
 
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
+            pending_data: tx,
             verify_tree_hashes: false,
         };
 
@@ -1219,10 +1250,11 @@ mod tests {
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
 
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
+            pending_data: tx,
             verify_tree_hashes: false,
         };
 
@@ -1253,10 +1285,11 @@ mod tests {
         // This closes the event channel which ends the consumer task.
         drop(event_tx);
         // UUT
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
+            pending_data: tx,
             verify_tree_hashes: false,
         };
 
@@ -1290,10 +1323,11 @@ mod tests {
         // This closes the event channel which ends the consumer task.
         drop(event_tx);
 
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
+            pending_data: tx,
             verify_tree_hashes: false,
         };
 
@@ -1324,10 +1358,11 @@ mod tests {
             .unwrap();
         drop(event_tx);
 
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
+            pending_data: tx,
             verify_tree_hashes: false,
         };
 

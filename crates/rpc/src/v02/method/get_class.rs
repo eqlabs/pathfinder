@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
-use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
 
@@ -69,25 +68,6 @@ pub async fn get_class(
     });
 
     jh.await.context("Reading class from database")?
-}
-
-/// Returns true if the class is declared in the pending state.
-async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> bool {
-    let state_diff = match pending {
-        Some(pending) => match pending.state_update().await {
-            Some(pending) => pending,
-            None => return false,
-        },
-        None => return false,
-    };
-
-    let cairo = state_diff.declared_cairo_classes.iter().cloned();
-    let sierra = state_diff
-        .declared_sierra_classes
-        .keys()
-        .map(|sierra| ClassHash(sierra.0));
-
-    cairo.chain(sierra).any(|item| item == hash)
 }
 
 #[cfg(test)]

@@ -438,7 +438,6 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
-    use starknet_gateway_types::pending::PendingData;
 
     #[rstest::rstest]
     #[case::pending_by_position(json!(["pending"]), BlockId::Pending)]

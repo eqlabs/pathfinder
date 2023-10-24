@@ -1,15 +1,12 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use primitive_types::U256;
 use stark_hash::Felt;
 use starknet_api::core::PatriciaKey;
 
 use super::v02::types::request::BroadcastedTransaction;
+use pathfinder_common::BlockId;
 use pathfinder_common::ChainId;
-use pathfinder_common::{BlockId, BlockTimestamp, StateUpdate};
 use pathfinder_executor::IntoStarkFelt;
-use starknet_gateway_types::pending::PendingData;
 
 use crate::context::RpcContext;
 

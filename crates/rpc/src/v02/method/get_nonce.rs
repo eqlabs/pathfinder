@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
-use starknet_gateway_types::pending::PendingData;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -78,44 +77,12 @@ pub async fn get_nonce(
     jh.await.context("Database read panic or shutting down")?
 }
 
-// 020CFA74EE3564B4CD5435CDACE0F9C4D43B939620E4A0BB5076105DF0A626C6
-
-/// Returns the contract's pending nonce.
-async fn get_pending_nonce(
-    pending: &Option<PendingData>,
-    contract_address: ContractAddress,
-) -> Option<ContractNonce> {
-    match pending {
-        Some(pending) => pending.state_update().await.and_then(|update| {
-            update
-                .contract_updates
-                .get(&contract_address)
-                .and_then(|x| {
-                    x.nonce.or_else(|| {
-                        x.class.as_ref().and_then(|c| match c {
-                            pathfinder_common::state_update::ContractClassUpdate::Deploy(_) => {
-                                // The contract has been just deployed in the pending block, so
-                                // its nonce is zero.
-                                Some(ContractNonce::ZERO)
-                            }
-                            pathfinder_common::state_update::ContractClassUpdate::Replace(_) => {
-                                None
-                            }
-                        })
-                    })
-                })
-        }),
-        None => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
     use crate::context::RpcContext;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::StarknetVersion;
-    use pathfinder_common::{BlockId, BlockNumber, BlockTimestamp, ContractNonce, GasPrice};
+    use pathfinder_common::{BlockId, BlockNumber, ContractNonce};
 
     mod parsing {
         use super::*;
@@ -252,52 +219,5 @@ mod tests {
         };
         let nonce = get_nonce(context, input).await.unwrap();
         assert_eq!(nonce.0, ContractNonce::ZERO);
-    }
-
-    #[tokio::test]
-    async fn pending() {
-        use super::get_pending_nonce;
-        use std::sync::Arc;
-
-        // The data this test actually cares about
-        let valid_1 = contract_address_bytes!(b"i am valid");
-        let valid_2 = contract_address_bytes!(b"valid as well");
-        let nonce_1 = contract_nonce_bytes!(b"the nonce");
-        let nonce_2 = contract_nonce_bytes!(b"other nonce");
-        let invalid = contract_address_bytes!(b"not valid");
-
-        // We don't care about this data, but it is required for setting up pending data.
-        let block = starknet_gateway_types::reply::PendingBlock {
-            gas_price: GasPrice(0),
-            parent_hash: block_hash_bytes!(b"dont care"),
-            sequencer_address: sequencer_address_bytes!(b"dont care"),
-            status: starknet_gateway_types::reply::Status::Pending,
-            timestamp: BlockTimestamp::new_or_panic(1234),
-            transaction_receipts: Vec::new(),
-            transactions: Vec::new(),
-            starknet_version: StarknetVersion::default(),
-        };
-        let block = Arc::new(block);
-
-        let state_update = pathfinder_common::StateUpdate::default()
-            .with_contract_nonce(valid_1, nonce_1)
-            .with_contract_nonce(valid_2, nonce_2);
-        let state_update = Arc::new(state_update);
-
-        let pending_data = starknet_gateway_types::pending::PendingData::default();
-        pending_data.set(block, state_update).await;
-        let pending_data = Some(pending_data);
-
-        let result = get_pending_nonce(&pending_data, valid_1).await;
-        assert_eq!(result, Some(nonce_1));
-
-        let result = get_pending_nonce(&pending_data, valid_2).await;
-        assert_eq!(result, Some(nonce_2));
-
-        let result = get_pending_nonce(&pending_data, invalid).await;
-        assert_eq!(result, None);
-
-        let result = get_pending_nonce(&None, valid_1).await;
-        assert_eq!(result, None);
     }
 }

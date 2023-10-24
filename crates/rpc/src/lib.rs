@@ -16,6 +16,7 @@ pub mod v04;
 pub mod v05;
 
 pub use executor::compose_executor_transaction;
+pub use pending::PendingData;
 
 use crate::jsonrpc::rpc_handler;
 use crate::jsonrpc::websocket::websocket_handler;

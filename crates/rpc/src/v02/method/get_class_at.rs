@@ -1,8 +1,7 @@
 use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
-use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use starknet_gateway_types::pending::PendingData;
+use pathfinder_common::{BlockId, ContractAddress};
 
 crate::error::generate_rpc_error_subset!(GetClassAtError: BlockNotFound, ContractNotFound);
 
@@ -69,19 +68,6 @@ pub async fn get_class_at(
     });
 
     jh.await.context("Reading class from database")?
-}
-
-/// Returns the [ClassHash] of the given [ContractAddress] if any is defined in the pending data.
-async fn get_pending_class_hash(
-    pending: Option<PendingData>,
-    address: ContractAddress,
-) -> Option<ClassHash> {
-    pending?.state_update().await.and_then(|state_update| {
-        state_update
-            .contract_updates
-            .get(&address)
-            .and_then(|x| x.class.as_ref().map(|x| x.class_hash()))
-    })
 }
 
 #[cfg(test)]

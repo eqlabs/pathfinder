@@ -1,7 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
 use serde_with::skip_serializing_none;
-use starknet_gateway_types::pending::PendingData;
 
 use crate::context::RpcContext;
 
@@ -149,27 +148,6 @@ pub async fn get_transaction_status(
             }
         })
         .map_err(|_| GetTransactionStatusError::TxnHashNotFoundV04)
-}
-
-async fn pending_status(
-    pending: &PendingData,
-    tx_hash: &TransactionHash,
-) -> Option<GetTransactionStatusOutput> {
-    pending
-        .block()
-        .await
-        .map(|block| {
-            block.transaction_receipts.iter().find_map(|rx| {
-                if &rx.transaction_hash == tx_hash {
-                    Some(GetTransactionStatusOutput::AcceptedOnL2(
-                        rx.execution_status.clone().into(),
-                    ))
-                } else {
-                    None
-                }
-            })
-        })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

@@ -129,7 +129,8 @@ mod tests {
             .with_number(BlockNumber::GENESIS + 12)
             .finalize_with_hash(block_hash_bytes!(b"parent hash"));
 
-        let latest = parent.child_builder()
+        let latest = parent
+            .child_builder()
             .with_gas_price(GasPrice(1234))
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));

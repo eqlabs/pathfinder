@@ -5,7 +5,6 @@ use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::Block;
 use starknet_gateway_types::reply::MaybePendingBlock;
-use std::sync::Arc;
 use tokio::time::Instant;
 
 use crate::state::sync::SyncEvent;
@@ -71,7 +70,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                 );
                 return Ok((None, None));
             }
-            MaybePendingBlock::Pending(pending) if pending.transactions.len() > prev_tx_count => {
+            MaybePendingBlock::Pending(block) if block.transactions.len() > prev_tx_count => {
                 // Download, process and emit all missing classes. This can occasionally
                 // fail when querying a desync'd feeder gateway which isn't aware of the
                 // new pending classes. In this case, ignore the new pending data as it
@@ -80,19 +79,20 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                     &state_update,
                     sequencer,
                     &tx_event,
-                    &pending.starknet_version,
+                    &block.starknet_version,
                     storage.clone(),
                 )
                 .await
                 {
                     tracing::debug!(reason=?e, "Failed to download pending classes");
                 } else {
-                    prev_tx_count = pending.transactions.len();
+                    prev_tx_count = block.transactions.len();
                     tracing::trace!("Emitting a pending update");
-                    let block = Arc::new(pending);
-                    let state_update = Arc::new(state_update);
                     tx_event
-                        .send(SyncEvent::Pending(block, state_update))
+                        .send(SyncEvent::Pending {
+                            block,
+                            state_update,
+                        })
                         .await
                         .context("Event channel closed")?;
                 }
@@ -313,7 +313,7 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_UPDATE);
+        assert_matches!(result, SyncEvent::Pending { block, state_update } if block == *PENDING_BLOCK && state_update == *PENDING_UPDATE);
     }
 
     #[tokio::test]
@@ -392,13 +392,13 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result1, SyncEvent::Pending(block, diff) if *block == b0 && *diff == *PENDING_UPDATE);
+        assert_matches!(result1, SyncEvent::Pending { block, state_update } if block == b0 && state_update == *PENDING_UPDATE);
 
         let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
             .await
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result2, SyncEvent::Pending(block, diff) if *block == b1 && *diff == *PENDING_UPDATE);
+        assert_matches!(result2, SyncEvent::Pending { block, state_update } if block == b1 && state_update == *PENDING_UPDATE);
     }
 }
