@@ -90,9 +90,10 @@ impl RpcRouter {
 
         let output = match result {
             Ok(output) => output,
-            Err(_e) => {
-                tracing::warn!(method=%request.method, "RPC method panic'd");
-                Err(RpcError::InternalError(anyhow::anyhow!("Internal error")))
+            Err(e) => {
+                tracing::warn!(method=%request.method, backtrace=?e, "RPC method panic'd");
+                // No error message so that the caller cannot learn to abuse this.
+                Err(RpcError::InternalError(anyhow::anyhow!("")))
             }
         };
 

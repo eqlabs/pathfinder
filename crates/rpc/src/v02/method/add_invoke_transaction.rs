@@ -31,7 +31,7 @@ pub enum AddInvokeTransactionError {
     Internal(anyhow::Error),
 }
 
-impl From<AddInvokeTransactionError> for crate::error::RpcError {
+impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
     fn from(value: AddInvokeTransactionError) -> Self {
         match value {
             AddInvokeTransactionError::GatewayError(x) => Self::GatewayError(x),

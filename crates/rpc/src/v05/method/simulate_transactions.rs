@@ -33,7 +33,7 @@ impl From<anyhow::Error> for SimulateTransactionError {
     }
 }
 
-impl From<SimulateTransactionError> for crate::error::RpcError {
+impl From<SimulateTransactionError> for crate::error::ApplicationError {
     fn from(e: SimulateTransactionError) -> Self {
         match e {
             SimulateTransactionError::Internal(internal) => Self::Internal(internal),

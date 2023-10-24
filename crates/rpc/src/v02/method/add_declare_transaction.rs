@@ -15,7 +15,7 @@ pub enum AddDeclareTransactionError {
     Internal(anyhow::Error),
 }
 
-impl From<AddDeclareTransactionError> for crate::error::RpcError {
+impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
     fn from(value: AddDeclareTransactionError) -> Self {
         match value {
             AddDeclareTransactionError::InvalidContractClass => Self::InvalidContractClass,

@@ -23,7 +23,7 @@ impl From<anyhow::Error> for GetEventsError {
     }
 }
 
-impl From<GetEventsError> for crate::error::RpcError {
+impl From<GetEventsError> for crate::error::ApplicationError {
     fn from(e: GetEventsError) -> Self {
         match e {
             GetEventsError::Internal(internal) => Self::Internal(internal),

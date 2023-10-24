@@ -37,7 +37,7 @@ pub enum AddInvokeTransactionError {
     UnexpectedError(String),
 }
 
-impl From<AddInvokeTransactionError> for crate::error::RpcError {
+impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
     fn from(value: AddInvokeTransactionError) -> Self {
         match value {
             AddInvokeTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,

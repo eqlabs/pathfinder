@@ -36,7 +36,7 @@ impl From<anyhow::Error> for TraceBlockTransactionsError {
     }
 }
 
-impl From<TraceBlockTransactionsError> for crate::error::RpcError {
+impl From<TraceBlockTransactionsError> for crate::error::ApplicationError {
     fn from(value: TraceBlockTransactionsError) -> Self {
         match value {
             TraceBlockTransactionsError::Internal(e) => Self::Internal(e),

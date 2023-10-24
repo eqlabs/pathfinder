@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     context::RpcContext,
-    error::{RpcError, TraceError},
+    error::{ApplicationError, TraceError},
     executor::ExecutionStateError,
 };
 
@@ -70,15 +70,17 @@ impl From<super::trace_block_transactions::TraceBlockTransactionsError> for Trac
     }
 }
 
-impl From<TraceTransactionError> for RpcError {
+impl From<TraceTransactionError> for ApplicationError {
     fn from(value: TraceTransactionError) -> Self {
         match value {
-            TraceTransactionError::InvalidTxnHash => RpcError::InvalidTxnHash,
-            TraceTransactionError::NoTraceAvailable(status) => RpcError::NoTraceAvailable(status),
-            TraceTransactionError::ContractErrorV05 { revert_error } => {
-                RpcError::ContractErrorV05 { revert_error }
+            TraceTransactionError::InvalidTxnHash => ApplicationError::InvalidTxnHash,
+            TraceTransactionError::NoTraceAvailable(status) => {
+                ApplicationError::NoTraceAvailable(status)
             }
-            TraceTransactionError::Internal(e) => RpcError::Internal(e),
+            TraceTransactionError::ContractErrorV05 { revert_error } => {
+                ApplicationError::ContractErrorV05 { revert_error }
+            }
+            TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
         }
     }
 }
