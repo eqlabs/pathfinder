@@ -146,7 +146,7 @@ mod tests {
         expected.block.timestamp = latest.timestamp;
         expected.block.parent_hash = latest.hash;
         expected.block.status = Status::Pending;
-        expected.number = latest.number;
+        expected.number = latest.number + 1;
 
         pretty_assertions::assert_eq!(*result, expected);
     }

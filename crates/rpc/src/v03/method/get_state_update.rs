@@ -433,7 +433,6 @@ pub(crate) mod types {
 mod tests {
     use super::types::StateUpdate;
     use super::*;
-    use assert_matches::assert_matches;
     use serde_json::json;
 
     use pathfinder_common::macro_prelude::*;
@@ -456,8 +455,6 @@ mod tests {
         assert_eq!(input, expected);
     }
 
-    type TestCaseHandler = Box<dyn Fn(usize, &Result<types::StateUpdate, GetStateUpdateError>)>;
-
     /// Add some dummy state updates to the context for testing
     fn context_with_state_updates() -> (Vec<types::StateUpdate>, RpcContext) {
         let storage = pathfinder_storage::Storage::in_memory().unwrap();
@@ -472,34 +469,6 @@ mod tests {
         (state_updates, context)
     }
 
-    /// Execute a single test case and check its outcome.
-    async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
-        let (context, block_id, f) = test_case;
-        let mut result = get_state_update(
-            context.clone(),
-            GetStateUpdateInput {
-                block_id: *block_id,
-            },
-        )
-        .await;
-        if let Ok(r) = result.as_mut() {
-            r.sort();
-        }
-        f(test_case_idx, &result);
-    }
-
-    /// Common assertion type for most of the test cases
-    fn assert_ok(mut expected: types::StateUpdate) -> TestCaseHandler {
-        expected.sort();
-        Box::new(move |i: usize, result| {
-            assert_matches!(result, Ok(actual) => pretty_assertions::assert_eq!(
-                *actual,
-                expected,
-                "test case {i}"
-            ), "test case {i}");
-        })
-    }
-
     impl PartialEq for GetStateUpdateError {
         fn eq(&self, other: &Self) -> bool {
             match (self, other) {
@@ -509,66 +478,90 @@ mod tests {
         }
     }
 
-    /// Common assertion type for most of the error paths
-    fn assert_error(expected: GetStateUpdateError) -> TestCaseHandler {
-        Box::new(move |i: usize, result| {
-            assert_matches!(result, Err(error) => assert_eq!(*error, expected, "test case {i}"), "test case {i}");
-        })
+    /// Compares the sorted state updates.
+    fn sort_assert_eq(mut left: StateUpdate, mut right: StateUpdate) {
+        left.sort();
+        right.sort();
+
+        pretty_assertions::assert_eq!(left, right);
     }
 
     #[tokio::test]
-    async fn happy_paths_and_major_errors() {
-        // TODO: rewrite these.
+    async fn latest() {
+        let (mut in_storage, ctx) = context_with_state_updates();
 
-        // let (in_storage, ctx) = context_with_state_updates();
-        // let ctx_with_pending_empty = ctx.clone().with_pending_data(PendingData::default());
+        let result = get_state_update(
+            ctx,
+            GetStateUpdateInput {
+                block_id: BlockId::Latest,
+            },
+        )
+        .await
+        .unwrap();
 
-        // let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[
-        //     // Successful
-        //     (
-        //         ctx.clone(),
-        //         BlockId::Latest,
-        //         assert_ok(in_storage[2].clone()),
-        //     ),
-        //     (
-        //         ctx.clone(),
-        //         BlockId::Number(BlockNumber::GENESIS),
-        //         assert_ok(in_storage[0].clone()),
-        //     ),
-        //     (
-        //         ctx.clone(),
-        //         BlockId::Hash(in_storage[0].block_hash.unwrap()),
-        //         assert_ok(in_storage[0].clone()),
-        //     ),
-        //     // Errors
-        //     (
-        //         ctx.clone(),
-        //         BlockId::Number(BlockNumber::new_or_panic(9999)),
-        //         assert_error(GetStateUpdateError::BlockNotFound),
-        //     ),
-        //     (
-        //         ctx.clone(),
-        //         BlockId::Hash(block_hash_bytes!(b"non-existent")),
-        //         assert_error(GetStateUpdateError::BlockNotFound),
-        //     ),
-        //     (
-        //         // Pending is disabled for this context
-        //         ctx,
-        //         BlockId::Pending,
-        //         assert_error(GetStateUpdateError::Internal(anyhow!(
-        //             "Pending data not supported in this configuration"
-        //         ))),
-        //     ),
-        //     (
-        //         ctx_with_pending_empty,
-        //         BlockId::Pending,
-        //         assert_error(GetStateUpdateError::BlockNotFound),
-        //     ),
-        // ];
+        sort_assert_eq(result, in_storage.pop().unwrap());
+    }
 
-        // for (i, test_case) in cases.iter().enumerate() {
-        //     check(i, test_case).await;
-        // }
+    #[tokio::test]
+    async fn by_number() {
+        let (in_storage, ctx) = context_with_state_updates();
+
+        let result = get_state_update(
+            ctx,
+            GetStateUpdateInput {
+                block_id: BlockId::Number(BlockNumber::GENESIS),
+            },
+        )
+        .await
+        .unwrap();
+
+        sort_assert_eq(result, in_storage[0].clone());
+    }
+
+    #[tokio::test]
+    async fn by_hash() {
+        let (in_storage, ctx) = context_with_state_updates();
+
+        let result = get_state_update(
+            ctx,
+            GetStateUpdateInput {
+                block_id: BlockId::Hash(in_storage[1].block_hash.unwrap()),
+            },
+        )
+        .await
+        .unwrap();
+
+        sort_assert_eq(result, in_storage[1].clone());
+    }
+
+    #[tokio::test]
+    async fn not_found_by_number() {
+        let (_in_storage, ctx) = context_with_state_updates();
+
+        let result = get_state_update(
+            ctx,
+            GetStateUpdateInput {
+                block_id: BlockId::Number(BlockNumber::MAX),
+            },
+        )
+        .await;
+
+        assert_eq!(result, Err(GetStateUpdateError::BlockNotFound));
+    }
+
+    #[tokio::test]
+    async fn not_found_by_hash() {
+        let (_in_storage, ctx) = context_with_state_updates();
+
+        let result = get_state_update(
+            ctx,
+            GetStateUpdateInput {
+                block_id: BlockId::Hash(block_hash_bytes!(b"non-existent")),
+            },
+        )
+        .await;
+
+        assert_eq!(result, Err(GetStateUpdateError::BlockNotFound));
     }
 
     #[tokio::test]
@@ -587,6 +580,6 @@ mod tests {
 
         let result = get_state_update(context, input).await.unwrap();
 
-        pretty_assertions::assert_eq!(result, expected);
+        sort_assert_eq(result, expected);
     }
 }
