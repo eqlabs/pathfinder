@@ -89,10 +89,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                     prev_tx_count = block.transactions.len();
                     tracing::trace!("Emitting a pending update");
                     tx_event
-                        .send(SyncEvent::Pending {
-                            block,
-                            state_update,
-                        })
+                        .send(SyncEvent::Pending(Box::new((block, state_update))))
                         .await
                         .context("Event channel closed")?;
                 }
@@ -313,7 +310,7 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result, SyncEvent::Pending { block, state_update } if block == *PENDING_BLOCK && state_update == *PENDING_UPDATE);
+        assert_matches!(result, SyncEvent::Pending(x) if x.0 == *PENDING_BLOCK && x.1 == *PENDING_UPDATE);
     }
 
     #[tokio::test]
@@ -392,13 +389,13 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result1, SyncEvent::Pending { block, state_update } if block == b0 && state_update == *PENDING_UPDATE);
+        assert_matches!(result1, SyncEvent::Pending(x) if x.0 == b0 && x.1 == *PENDING_UPDATE);
 
         let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
             .await
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result2, SyncEvent::Pending { block, state_update } if block == b1 && state_update == *PENDING_UPDATE);
+        assert_matches!(result2, SyncEvent::Pending(x) if x.0 == b1 && x.1 == *PENDING_UPDATE);
     }
 }

@@ -61,10 +61,7 @@ pub enum SyncEvent {
         casm_hash: CasmHash,
     },
     /// A new L2 pending update was polled.
-    Pending {
-        block: PendingBlock,
-        state_update: StateUpdate,
-    },
+    Pending(Box<(PendingBlock, StateUpdate)>),
 }
 
 pub struct SyncContext<G, E> {
@@ -518,10 +515,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
-            Pending {
-                block,
-                state_update,
-            } => {
+            Pending(pending) => {
                 let (number, hash) = tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()
@@ -535,10 +529,10 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 })
                 .context("Fetching latest block hash")?;
 
-                if block.parent_hash == hash {
+                if pending.0.parent_hash == hash {
                     let data = PendingData {
-                        block,
-                        state_update,
+                        block: pending.0,
+                        state_update: pending.1,
                         number: number + 1,
                     };
                     pending_data.send_replace(Arc::new(data));

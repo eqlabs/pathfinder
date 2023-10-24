@@ -29,7 +29,7 @@ impl PendingWatcher {
     ///
     /// Returns an empty block with gas price and timestamp taken from the latest
     /// block if no valid pending data is available. The block number is also incremented.
-    pub fn get(&self, tx: &Transaction) -> anyhow::Result<Arc<PendingData>> {
+    pub fn get(&self, tx: &Transaction<'_>) -> anyhow::Result<Arc<PendingData>> {
         let latest = tx
             .block_header(pathfinder_storage::BlockId::Latest)
             .context("Querying latest block header")?

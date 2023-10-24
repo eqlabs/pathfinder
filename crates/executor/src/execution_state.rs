@@ -33,7 +33,7 @@ impl ExecutionState {
         let mut cached_state = LruCachedReader::new_cached_state(raw_reader)?;
 
         self.pending_update.as_ref().map(|pending_update| {
-            super::pending::apply_pending_update(&mut cached_state, &pending_update)
+            super::pending::apply_pending_update(&mut cached_state, pending_update)
         });
 
         Ok((cached_state, block_context))
