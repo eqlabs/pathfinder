@@ -3,6 +3,7 @@
 //! In addition, it supplies the [generate_rpc_error_subset!] macro which should be used
 //! by each JSON-RPC method to trivially create its subset of [RpcError] along with the boilerplate involved.
 #![macro_use]
+use serde_json::json;
 
 #[derive(serde::Serialize, Clone, Copy, Debug)]
 pub enum TraceError {
@@ -75,9 +76,9 @@ pub enum RpcError {
     UnexpectedError { data: String },
     #[error("Too many storage keys requested")]
     ProofLimitExceeded { limit: u32, requested: u32 },
-    #[error(transparent)]
+    #[error("Internal error")]
     GatewayError(starknet_gateway_types::error::StarknetError),
-    #[error(transparent)]
+    #[error("Internal error")]
     Internal(anyhow::Error),
 }
 
@@ -120,6 +121,70 @@ impl RpcError {
             RpcError::ProofLimitExceeded { .. } => 10000,
             // https://www.jsonrpc.org/specification#error_object
             RpcError::GatewayError(_) | RpcError::Internal(_) => -32603,
+        }
+    }
+
+    pub fn data(&self) -> Option<serde_json::Value> {
+        // We purposefully don't use a catch-all branch to force us to update
+        // here whenever a new variant is added. This will prevent adding a stateful
+        // error variant but forgetting to forward its data.
+        match self {
+            RpcError::FailedToReceiveTxn => None,
+            RpcError::ContractNotFound => None,
+            RpcError::BlockNotFound => None,
+            RpcError::TxnHashNotFoundV03 => None,
+            RpcError::InvalidTxnIndex => None,
+            RpcError::InvalidTxnHash => None,
+            RpcError::InvalidBlockHash => None,
+            RpcError::ClassHashNotFound => None,
+            RpcError::TxnHashNotFoundV04 => None,
+            RpcError::PageSizeTooBig => None,
+            RpcError::NoBlocks => None,
+            RpcError::InvalidContinuationToken => None,
+            RpcError::ContractError => None,
+            RpcError::InvalidContractClass => None,
+            RpcError::ClassAlreadyDeclared => None,
+            RpcError::InvalidTransactionNonce => None,
+            RpcError::InsufficientMaxFee => None,
+            RpcError::InsufficientAccountBalance => None,
+            RpcError::ValidationFailure => None,
+            RpcError::CompilationFailed => None,
+            RpcError::ContractClassSizeIsTooLarge => None,
+            RpcError::NonAccount => None,
+            RpcError::DuplicateTransaction => None,
+            RpcError::CompiledClassHashMismatch => None,
+            RpcError::UnsupportedTxVersion => None,
+            RpcError::UnsupportedContractClassVersion => None,
+            RpcError::GatewayError(error) => Some(json!({
+                "error": error,
+            })),
+            RpcError::Internal(error) => {
+                let error = error.to_string();
+                if error.is_empty() {
+                    None
+                } else {
+                    Some(json!({
+                        "error": error.to_string(),
+                    }))
+                }
+            }
+            RpcError::NoTraceAvailable(error) => Some(json!({
+                "error": error,
+            })),
+            RpcError::ContractErrorV05 { revert_error } => Some(json!({
+                "revert_error": revert_error
+            })),
+            RpcError::TooManyKeysInFilter { limit, requested } => Some(json!({
+                "limit": limit,
+                "requested": requested,
+            })),
+            RpcError::UnexpectedError { data } => Some(json!({
+                "error": data,
+            })),
+            RpcError::ProofLimitExceeded { limit, requested } => Some(json!({
+                "limit": limit,
+                "requested": requested,
+            })),
         }
     }
 }

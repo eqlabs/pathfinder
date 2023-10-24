@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use serde::Serialize;
-use serde_json::{Number, Value};
+use serde_json::{json, Value};
 
 #[derive(Debug)]
 pub enum RpcError {
@@ -10,10 +10,7 @@ pub enum RpcError {
     MethodNotFound,
     InvalidParams,
     InternalError(anyhow::Error),
-    ApplicationError {
-        code: i32,
-        message: String,
-    },
+    ApplicationError(crate::error::RpcError),
     WebsocketSubscriptionClosed {
         subscription_id: u32,
         reason: String,
@@ -24,16 +21,6 @@ impl PartialEq for RpcError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::InternalError(l0), Self::InternalError(r0)) => l0.to_string() == r0.to_string(),
-            (
-                Self::ApplicationError {
-                    code: l_code,
-                    message: l_message,
-                },
-                Self::ApplicationError {
-                    code: r_code,
-                    message: r_message,
-                },
-            ) => l_code == r_code && l_message == r_message,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
@@ -48,7 +35,7 @@ impl RpcError {
             RpcError::MethodNotFound { .. } => -32601,
             RpcError::InvalidParams => -32602,
             RpcError::InternalError(_) => -32603,
-            RpcError::ApplicationError { code, .. } => *code,
+            RpcError::ApplicationError(err) => err.code(),
             RpcError::WebsocketSubscriptionClosed { .. } => -32099,
         }
     }
@@ -61,20 +48,36 @@ impl RpcError {
             RpcError::InvalidParams => "Invalid params".into(),
             // TODO: this is not necessarily a good idea. All internal errors are returned here, even
             // ones that we probably should not disclose.
-            RpcError::InternalError(e) => e.to_string().into(),
-            RpcError::ApplicationError { message, .. } => message.into(),
-            RpcError::WebsocketSubscriptionClosed { reason, .. } => {
-                ("Websocket subscription closed, reason: ".to_string() + reason).into()
-            }
+            RpcError::InternalError(_) => "Internal error".into(),
+            RpcError::ApplicationError(e) => e.to_string().into(),
+            RpcError::WebsocketSubscriptionClosed { .. } => "Websocket subscription closed".into(),
         }
     }
 
     pub fn data(&self) -> Option<Value> {
         match self {
             RpcError::WebsocketSubscriptionClosed {
-                subscription_id, ..
-            } => Some(Value::Number(Number::from(*subscription_id))),
-            _ => None,
+                subscription_id,
+                reason,
+            } => Some(json!({
+                "id": subscription_id,
+                "reason": reason,
+            })),
+            RpcError::ApplicationError(e) => e.data(),
+            RpcError::InternalError(error) => {
+                let error = error.to_string();
+                if error.is_empty() {
+                    None
+                } else {
+                    Some(json!({
+                        "error": error.to_string(),
+                    }))
+                }
+            }
+            RpcError::ParseError => None,
+            RpcError::InvalidRequest => None,
+            RpcError::MethodNotFound => None,
+            RpcError::InvalidParams => None,
         }
     }
 }
@@ -103,13 +106,6 @@ where
     E: Into<crate::error::RpcError>,
 {
     fn from(value: E) -> Self {
-        match value.into() {
-            crate::error::RpcError::GatewayError(x) => RpcError::InternalError(x.into()),
-            crate::error::RpcError::Internal(x) => RpcError::InternalError(x),
-            other => RpcError::ApplicationError {
-                code: other.code(),
-                message: format!("{other}"),
-            },
-        }
+        Self::ApplicationError(value.into())
     }
 }
