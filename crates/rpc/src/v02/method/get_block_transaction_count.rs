@@ -136,11 +136,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_pending() {
-        // TODO: fix this test.
-        // let context = RpcContext::for_tests();
-        // let count = get_count(&context).await;
-        // let block_id = BlockId::Pending;
-        // check_count(context, block_id, count).await;
+        let context = RpcContext::for_tests_with_pending().await;
+        let block_id = BlockId::Pending;
+        check_count(context, block_id, 3).await;
     }
 
     #[tokio::test]

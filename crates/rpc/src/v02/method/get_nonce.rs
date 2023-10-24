@@ -180,6 +180,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pending() {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        // This contract is created in `setup_storage` and has a nonce set in the pending block.
+        let input = GetNonceInput {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"contract 1"),
+        };
+        let nonce = get_nonce(context, input).await.unwrap();
+        assert_eq!(nonce.0, contract_nonce_bytes!(b"pending nonce"));
+    }
+
+    #[tokio::test]
     async fn pending_defaults_to_latest() {
         let context = RpcContext::for_tests();
 

@@ -44,8 +44,6 @@ pub async fn get_block_with_txs(
             return Ok(types::Block::from_sequencer(block.into()));
         }
 
-        println!("here");
-
         let block_id = input
             .block_id
             .try_into()
@@ -55,7 +53,6 @@ pub async fn get_block_with_txs(
             .block_header(block_id)
             .context("Reading block from database")?
             .ok_or(GetBlockError::BlockNotFound)?;
-        println!("a");
 
         let l1_accepted = transaction.block_is_l1_accepted(header.number.into())?;
         let block_status = if l1_accepted {

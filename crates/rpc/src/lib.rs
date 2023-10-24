@@ -713,6 +713,10 @@ pub mod test_utils {
             .with_replaced_class(
                 contract_address_bytes!(b"pending contract 2 (replaced)"),
                 class_hash_bytes!(b"pending class 2 hash (replaced)"),
+            )
+            .with_contract_nonce(
+                contract_address_bytes!(b"contract 1"),
+                contract_nonce_bytes!(b"pending nonce"),
             );
 
         // The class definitions must be inserted into the database.
