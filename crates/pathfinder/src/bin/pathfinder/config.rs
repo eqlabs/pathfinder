@@ -190,7 +190,8 @@ This should only be enabled for debugging purposes as it adds substantial proces
     #[arg(
         long = "rpc-batch-concurrency-limit",
         long_help = "Sets the concurrency limit for request batch processing. \
-            May lower the latency for large batches.",
+            May lower the latency for large batches. ⚠ While the response order is preserved, the \
+            execution order is not.",
         env = "PATHFINDER_RPC_BATCH_CONCURRENCY_LIMIT",
         default_value = "1"
     )]
