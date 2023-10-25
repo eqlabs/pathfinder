@@ -460,6 +460,12 @@ pub mod transaction {
         }
     }
 
+    impl From<pathfinder_common::transaction::Transaction> for Transaction {
+        fn from(value: pathfinder_common::transaction::Transaction) -> Self {
+            todo!()
+        }
+    }
+
     impl From<Transaction> for pathfinder_common::transaction::Transaction {
         fn from(value: Transaction) -> Self {
             use pathfinder_common::transaction::TransactionVariant;

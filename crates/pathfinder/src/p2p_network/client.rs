@@ -12,11 +12,14 @@ use p2p::{
     client::types::{BlockHeader, StateUpdateWithDefs},
     HeadRx,
 };
-use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
 use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
-    ContractAddressSalt, EntryPoint, Fee, SierraHash, StateCommitment, StateUpdate,
-    TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    state_update::{ContractClassUpdate, ContractUpdate},
+    TransactionIndex,
+};
+use pathfinder_common::{
+    transaction::Transaction, BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash,
+    ContractAddress, ContractAddressSalt, EntryPoint, Fee, SierraHash, StateCommitment,
+    StateUpdate, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply;
@@ -184,37 +187,158 @@ impl GatewayApi for HybridClient {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.block(block).await,
             HybridClient::NonPropagatingP2P {
                 p2p_client, cache, ..
-            } => match block {
-                BlockId::Number(n) => {
-                    if let Some(block) = cache.get_block(n) {
-                        tracing::trace!(number=%n, "HybridClient: using cached block");
-                        return Ok(block.into());
+            } => {
+                match block {
+                    BlockId::Number(n) => {
+                        if let Some(block) = cache.get_block(n) {
+                            tracing::trace!(number=%n, "HybridClient: using cached block");
+                            return Ok(block.into());
+                        }
+
+                        let mut headers =
+                            p2p_client.block_headers(n, 1).await.map_err(|error| {
+                                block_not_found(format!(
+                                    "getting headers failed: block {n}, {error}",
+                                ))
+                            })?;
+
+                        if headers.len() != 1 {
+                            return Err(block_not_found(format!(
+                                "headers len for block {n} is {}, expected 1",
+                                headers.len()
+                            )));
+                        }
+
+                        let header = headers.swap_remove(0);
+
+                        if header.number != n {
+                            return Err(block_not_found("block number mismatch"));
+                        }
+
+                        cache.clear_if_reorg(&header);
+
+                        let block_hash = header.hash;
+
+                        let mut transactions = p2p_client
+                            .transactions(header.hash, 1)
+                            .await
+                            .map_err(|error| {
+                                block_not_found(format!(
+                                    "getting transactions failed: block {n}: {error}",
+                                ))
+                            })?;
+
+                        let transactions = transactions.remove(&block_hash).ok_or_else(|| {
+                            block_not_found(format!("no peers with transactions for block {n}",))
+                        })?;
+
+                        let receipts =
+                            p2p_client.receipts(header.hash, 1).await.map_err(|error| {
+                                block_not_found(format!(
+                                    "getting receipts failed: block {n}: {error}",
+                                ))
+                            })?;
+
+                        use crate::p2p_network::client::v1::types::Receipt;
+
+                        let mut receipts = receipts
+                            .into_iter()
+                            .map(|(k, v)| {
+                                v.into_iter()
+                                    .map(|r| Receipt::try_from(r))
+                                    .collect::<Result<Vec<_>, _>>()
+                                    .map(|r| (k, r))
+                            })
+                            .collect::<Result<HashMap<_, _>, _>>()
+                            .map_err(|error| {
+                                block_not_found(format!(
+                                    "failed to parse receipts for block {n}: {error}",
+                                ))
+                            })?;
+
+                        let receipts = receipts.remove(&block_hash).ok_or_else(|| {
+                            block_not_found(format!("no peers with receipts for block {n}",))
+                        })?;
+
+                        debug_assert_eq!(transactions.len(), receipts.len());
+
+                        let mut events =
+                            p2p_client.event(header.hash, 1).await.map_err(|error| {
+                                block_not_found(format!(
+                                    "getting events failed: block {n}: {error}",
+                                ))
+                            })?;
+
+                        let mut events = events.remove(&block_hash).ok_or_else(|| {
+                            block_not_found(format!("no peers with events for block {n}",))
+                        })?;
+
+                        // TODO: assume order is the same because proto::transaction does not carry transaction hash
+                        let (transactions, receipts): (Vec<_>, Vec<_>) = transactions
+                            .into_iter()
+                            .zip(receipts)
+                            .enumerate()
+                            .map(|(i, (t, r))| {
+                                let (execution_status, revert_error) = if r.revert_error.is_empty()
+                                {
+                                    (reply::transaction::ExecutionStatus::Succeeded, None)
+                                } else {
+                                    (
+                                        reply::transaction::ExecutionStatus::Reverted,
+                                        Some(r.revert_error),
+                                    )
+                                };
+
+                                (
+                                    reply::transaction::Transaction::from(Transaction {
+                                        hash: r.transaction_hash,
+                                        variant: t.into(),
+                                    }),
+                                    reply::transaction::Receipt {
+                                        actual_fee: Some(r.actual_fee),
+                                        events: events
+                                            .remove(&r.transaction_hash)
+                                            .unwrap_or_default(),
+                                        execution_resources: Some(r.execution_resources),
+                                        l1_to_l2_consumed_message: r.l1_to_l2_consumed_message,
+                                        l2_to_l1_messages: r.l2_to_l1_messages,
+                                        transaction_hash: r.transaction_hash,
+                                        transaction_index: TransactionIndex::new_or_panic(i as u64),
+                                        execution_status,
+                                        revert_error,
+                                    },
+                                )
+                            })
+                            .unzip();
+
+                        let block = reply::Block {
+                            block_hash: header.hash,
+                            block_number: header.number,
+                            gas_price: Some(header.gas_price),
+                            parent_block_hash: header.parent_hash,
+                            sequencer_address: Some(header.sequencer_address),
+                            state_commitment: StateCommitment::default(), // We don't verify the state commitment so it's 0
+                            // FIXME
+                            status: starknet_gateway_types::reply::Status::AcceptedOnL2,
+                            timestamp: header.timestamp,
+                            transaction_receipts: receipts,
+                            transactions,
+                            starknet_version: header.starknet_version,
+                        };
+
+                        cache.insert_block(block.clone());
+
+                        Ok(block.into())
                     }
-
-                    let mut headers = p2p_client
-                        .block_headers(n, 1)
-                        .await
-                        .map_err(block_not_found)?;
-
-                    if headers.len() != 1 {
-                        return Err(block_not_found(format!(
-                            "Headers len for block {n} is {}, expected 1",
-                            headers.len()
-                        )));
+                    BlockId::Latest => {
+                        unreachable!("GatewayApi.head() is used in sync and sync status instead")
                     }
-
-                    let header = headers.swap_remove(0);
-
-                    todo!("use v1");
+                    BlockId::Hash(_) => unreachable!("not used in sync"),
+                    BlockId::Pending => {
+                        unreachable!("pending should be disabled when p2p is enabled")
+                    }
                 }
-                BlockId::Latest => {
-                    unreachable!("GatewayApi.head() is used in sync and sync status instead")
-                }
-                BlockId::Hash(_) => unreachable!("not used in sync"),
-                BlockId::Pending => {
-                    unreachable!("pending should be disabled when p2p is enabled")
-                }
-            },
+            }
         }
     }
 
@@ -278,10 +402,12 @@ impl GatewayApi for HybridClient {
                 p2p_client, cache, ..
             } => match block {
                 BlockId::Hash(hash) => {
-                    let mut state_updates = p2p_client
-                        .state_updates(hash, 1)
-                        .await
-                        .map_err(block_not_found)?;
+                    let mut state_updates =
+                        p2p_client.state_updates(hash, 1).await.map_err(|error| {
+                            block_not_found(format!(
+                                "No peers with state update for block {hash}: {error}"
+                            ))
+                        })?;
 
                     if state_updates.len() != 1 {
                         return Err(block_not_found(format!(

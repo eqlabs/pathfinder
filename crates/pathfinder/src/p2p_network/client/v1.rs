@@ -12,7 +12,7 @@ pub mod types {
         },
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
         EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
-        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionNonce,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
     use starknet_gateway_types::reply::transaction as gw;
@@ -20,8 +20,8 @@ pub mod types {
     /// We don't want to introduce circular dependencies between crates
     /// so in those cases we cannot use TryFrom and we need to work around for the orphan rule
     /// - implement conversion fns for types ourside our crate.
-    pub trait TryFromProto<T> {
-        fn try_from_proto(proto: T) -> anyhow::Result<Self>
+    pub trait TryFromDto<T> {
+        fn try_from_dto(dto: T) -> anyhow::Result<Self>
         where
             Self: Sized;
     }
@@ -31,6 +31,7 @@ pub mod types {
     /// This type is not in the `p2p` to avoid `p2p` dependence on `starknet_gateway_types`.
     #[derive(Clone, Debug, PartialEq)]
     pub struct Receipt {
+        pub transaction_hash: TransactionHash,
         pub actual_fee: Fee,
         pub execution_resources: gw::ExecutionResources,
         pub l1_to_l2_consumed_message: Option<gw::L1ToL2Message>,
@@ -42,6 +43,7 @@ pub mod types {
     impl From<starknet_gateway_types::reply::transaction::Receipt> for Receipt {
         fn from(r: starknet_gateway_types::reply::transaction::Receipt) -> Self {
             Self {
+                transaction_hash: TransactionHash(r.transaction_hash.0),
                 actual_fee: r.actual_fee.unwrap_or_default(),
                 execution_resources: r.execution_resources.unwrap_or_default(),
                 l1_to_l2_consumed_message: r.l1_to_l2_consumed_message,
@@ -51,14 +53,14 @@ pub mod types {
         }
     }
 
-    impl TryFromProto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
-        fn try_from_proto(proto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
+    impl TryFromDto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
+        fn try_from_dto(dto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
         where
             Self: Sized,
         {
             use p2p_proto_v1::transaction::Transaction::*;
 
-            Ok(match proto {
+            Ok(match dto {
                 DeclareV0(x) => TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
                     class_hash: ClassHash(x.class_hash.0),
                     max_fee: Fee(x.max_fee),
@@ -191,6 +193,7 @@ pub mod types {
                 | L1Handler(L1HandlerTransactionReceipt { common, .. })
                 | Deploy(DeployTransactionReceipt { common, .. })
                 | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
+                    transaction_hash: TransactionHash(common.transaction_hash.0),
                     actual_fee: Fee(common.actual_fee),
                     execution_resources: gw::ExecutionResources {
                         builtin_instance_counter: gw::BuiltinCounters {
@@ -250,8 +253,8 @@ pub mod types {
         }
     }
 
-    impl TryFromProto<p2p_proto_v1::event::Event> for Event {
-        fn try_from_proto(proto: p2p_proto_v1::event::Event) -> anyhow::Result<Self>
+    impl TryFromDto<p2p_proto_v1::event::Event> for Event {
+        fn try_from_dto(proto: p2p_proto_v1::event::Event) -> anyhow::Result<Self>
         where
             Self: Sized,
         {

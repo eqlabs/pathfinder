@@ -176,13 +176,13 @@ impl From<p2p_proto_v1::state::StateDiff> for StateUpdate {
 }
 
 impl TryFromDto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
-    fn try_from_dto(proto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
+    fn try_from_dto(dto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
         use p2p_proto_v1::transaction::Transaction::*;
 
-        Ok(match proto {
+        Ok(match dto {
             DeclareV0(x) => TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
                 class_hash: ClassHash(x.class_hash.0),
                 max_fee: Fee(x.max_fee),
