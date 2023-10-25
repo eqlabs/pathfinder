@@ -52,13 +52,12 @@ pub enum HybridClient {
 
 #[derive(Clone, Debug)]
 pub struct BlockCache {
-    inner: Arc<Mutex<LruCache<BlockNumber, BlockCacheEntry>>>,
+    inner: Arc<Mutex<LruCache<BlockHash, BlockCacheEntry>>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct BlockCacheEntry {
     pub block: Block,
-    pub state_update: Option<StateUpdate>,
     pub cairo_definitions: HashMap<ClassHash, Vec<u8>>,
     pub sierra_definitions: HashMap<SierraHash, Vec<u8>>,
 }
@@ -74,21 +73,26 @@ impl Default for BlockCache {
 
 impl BlockCache {
     fn get_block(&self, number: BlockNumber) -> Option<Block> {
-        let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner.get(&number).map(|entry| entry.block.clone())
+        let mut locked = self.inner.lock().unwrap();
+        locked
+            .iter()
+            .find_map(|(_, v)| (v.block.block_number == number).then_some(v.block.clone()))
     }
 
     fn clear_if_reorg(&self, header: &BlockHeader) {
         if let Some(parent_number) = header.number.get().checked_sub(1) {
-            let mut locked_inner = self.inner.lock().unwrap();
-            if let Some(parent) = locked_inner.get(&BlockNumber::new_or_panic(parent_number)) {
+            let mut locked = self.inner.lock().unwrap();
+            if let Some(cached_parent_hash) = locked
+                .iter()
+                .find_map(|(k, v)| (v.block.block_number.get() == parent_number).then_some(k))
+            {
                 // If there's a reorg, purge the cache or we'll be stuck
                 //
                 // There's a risk we'll falsely reorg to genesis if all other peers get disconnected
                 // just after the cache is purged
                 // TODO: consider increasing the cache and just purging the last block
-                if parent.block.block_hash.0 != header.parent_hash.0 {
-                    locked_inner.clear();
+                if cached_parent_hash.0 != header.parent_hash.0 {
+                    locked.clear();
                 }
             }
         }
@@ -97,46 +101,27 @@ impl BlockCache {
     fn insert_block(&self, block: Block) {
         let mut locked_inner = self.inner.lock().unwrap();
         locked_inner.put(
-            block.block_number,
+            block.block_hash,
             BlockCacheEntry {
                 block,
-                state_update: None,
                 cairo_definitions: Default::default(),
                 sierra_definitions: Default::default(),
             },
         );
     }
 
-    fn insert_state_update(&self, block_number: BlockNumber, state_update: StateUpdate) {
-        let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner
-            .get_mut(&block_number)
-            .expect("block is already cached")
-            .state_update = Some(state_update);
-    }
-
-    fn insert_cairo_definitions(
+    fn insert_definitions(
         &self,
-        block_number: BlockNumber,
-        definitions: HashMap<ClassHash, Vec<u8>>,
+        block_hash: BlockHash,
+        cairo_definitions: HashMap<ClassHash, Vec<u8>>,
+        sierra_definitions: HashMap<SierraHash, Vec<u8>>,
     ) {
-        let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner
-            .get_mut(&block_number)
-            .expect("block is already cached")
-            .cairo_definitions = definitions;
-    }
-
-    fn insert_sierra_definitions(
-        &self,
-        block_number: BlockNumber,
-        definitions: HashMap<SierraHash, Vec<u8>>,
-    ) {
-        let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner
-            .get_mut(&block_number)
-            .expect("block is already cached")
-            .sierra_definitions = definitions;
+        let mut locked = self.inner.lock().unwrap();
+        let entry = locked
+            .get_mut(&block_hash)
+            .expect("block is already cached");
+        entry.cairo_definitions = cairo_definitions;
+        entry.sierra_definitions = sierra_definitions;
     }
 }
 
@@ -278,7 +263,11 @@ impl GatewayApi for HybridClient {
 
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
-            HybridClient::NonPropagatingP2P { p2p_client, .. } => match block {
+            HybridClient::NonPropagatingP2P {
+                p2p_client,
+                block_cache,
+                ..
+            } => match block {
                 BlockId::Hash(hash) => {
                     let mut state_updates = p2p_client
                         .state_updates(hash, 1)
@@ -317,27 +306,54 @@ impl GatewayApi for HybridClient {
                         },
                     }
 
-                    let mut declared_cairo_classes = HashSet::new();
-                    let mut declared_sierra_classes = HashMap::new();
+                    let jh = tokio::task::spawn_blocking(move || {
+                        let mut declared_cairo_classes = HashSet::new();
+                        let mut declared_sierra_classes = HashMap::new();
+                        let mut cairo_definitions = HashMap::new();
+                        let mut sierra_definitions = HashMap::new();
 
-                    for class in classes {
-                        let definition = zstd::decode_all(class.definition.as_slice())
-                            .map_err(|_| class_not_found("zstd failed"))?;
+                        for class in classes {
+                            let definition = zstd::decode_all(class.definition.as_slice())
+                                .map_err(|_| class_not_found("zstd failed"))?;
 
-                        match serde_json::from_slice::<SierraOrCairo<'_>>(definition.as_slice()) {
-                            Ok(SierraOrCairo::Sierra { .. }) => {
-                                // We don't verify the class hash
-                                declared_sierra_classes
-                                    .insert(SierraHash(class.hash.0), CasmHash::ZERO);
-                            }
-                            Ok(SierraOrCairo::Cairo { .. }) => {
-                                declared_cairo_classes.insert(class.hash);
-                            }
-                            Err(_) => {
-                                return Err(class_not_found("Invalid class definition"));
+                            match serde_json::from_slice::<SierraOrCairo<'_>>(definition.as_slice())
+                            {
+                                Ok(SierraOrCairo::Sierra { .. }) => {
+                                    let hash = SierraHash(class.hash.0);
+                                    // We don't verify the class hash
+                                    declared_sierra_classes.insert(hash, CasmHash::ZERO);
+                                    sierra_definitions.insert(hash, definition);
+                                }
+                                Ok(SierraOrCairo::Cairo { .. }) => {
+                                    declared_cairo_classes.insert(class.hash);
+                                    cairo_definitions.insert(class.hash, definition);
+                                }
+                                Err(_) => {
+                                    return Err(class_not_found("invalid class definition"));
+                                }
                             }
                         }
-                    }
+
+                        Ok((
+                            declared_cairo_classes,
+                            declared_sierra_classes,
+                            cairo_definitions,
+                            sierra_definitions,
+                        ))
+                    });
+
+                    let (
+                        declared_cairo_classes,
+                        declared_sierra_classes,
+                        cairo_definitions,
+                        sierra_definitions,
+                    ) = jh.await.map_err(|error| {
+                        class_not_found(format!(
+                            "class definition decompression task ended unexpectedly: {error}"
+                        ))
+                    })??;
+
+                    block_cache.insert_definitions(hash, cairo_definitions, sierra_definitions);
 
                     Ok(StateUpdate {
                         block_hash: hash,
