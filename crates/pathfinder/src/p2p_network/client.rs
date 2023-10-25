@@ -7,16 +7,18 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::{client::peer_agnostic, HeadRx};
+use p2p::{client::peer_agnostic, client::types::StateUpdateWithDefs, HeadRx};
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
 use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
-    ContractAddressSalt, EntryPoint, Fee, StateUpdate, TransactionHash, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    ContractAddressSalt, EntryPoint, Fee, SierraHash, StateCommitment, StateUpdate,
+    TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply;
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
@@ -40,16 +42,25 @@ pub enum HybridClient {
         /// We need to cache the last two fetched blocks via p2p otherwise sync logic will
         /// produce a false reorg from genesis when we loose connection to other p2p nodes.
         /// This was we can stay at the same height while we are disconnected.
-        block_lru: BlockLru,
+        block_cache: BlockCache,
     },
 }
 
 #[derive(Clone, Debug)]
-pub struct BlockLru {
+pub struct BlockCache {
+    // We rely on the legacy sync logic sequence
     inner: Arc<Mutex<LruCache<BlockNumber, Block>>>,
 }
 
-impl Default for BlockLru {
+#[derive(Clone, Debug)]
+pub struct BlockCacheEntry {
+    block: Block,
+    state_update: StateUpdate,
+    cairo_definitions: HashMap<ClassHash, Vec<u8>>,
+    sierra_definitions: HashMap<SierraHash, Vec<u8>>,
+}
+
+impl Default for BlockCache {
     fn default() -> Self {
         Self {
             // We only need 2 blocks: the last one and its parent
@@ -58,7 +69,7 @@ impl Default for BlockLru {
     }
 }
 
-impl BlockLru {
+impl BlockCache {
     fn get(&self, number: BlockNumber) -> Option<Block> {
         let mut locked_inner = self.inner.lock().unwrap();
         locked_inner.get(&number).cloned()
@@ -103,7 +114,7 @@ impl HybridClient {
                 p2p_client,
                 sequencer,
                 head_rx,
-                block_lru: Default::default(),
+                block_cache: Default::default(),
             }
         }
     }
@@ -146,11 +157,11 @@ impl GatewayApi for HybridClient {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.block(block).await,
             HybridClient::NonPropagatingP2P {
                 p2p_client,
-                block_lru,
+                block_cache,
                 ..
             } => match block {
                 BlockId::Number(n) => {
-                    if let Some(block) = block_lru.get(n) {
+                    if let Some(block) = block_cache.get(n) {
                         tracing::trace!(number=%n, "HybridClient: using cached block");
                         return Ok(block.into());
                     }
@@ -233,7 +244,7 @@ impl GatewayApi for HybridClient {
     }
 
     async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
-        use error::block_not_found;
+        use error::{block_not_found, class_not_found};
 
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
@@ -251,9 +262,78 @@ impl GatewayApi for HybridClient {
                         )));
                     }
 
-                    let state_update = state_updates.swap_remove(0);
+                    let StateUpdateWithDefs {
+                        block_hash,
+                        state_update,
+                        classes,
+                    } = state_updates.swap_remove(0);
 
-                    todo!("use v1");
+                    if block_hash != hash {
+                        return Err(block_not_found("Block hash mismatch"));
+                    }
+
+                    #[derive(serde::Deserialize)]
+                    #[serde(untagged)]
+                    enum SierraOrCairo<'a> {
+                        Sierra {
+                            #[allow(unused)]
+                            #[serde(borrow)]
+                            sierra_program: &'a serde_json::value::RawValue,
+                        },
+                        Cairo {
+                            #[allow(unused)]
+                            #[serde(borrow)]
+                            program: &'a serde_json::value::RawValue,
+                        },
+                    }
+
+                    let mut declared_cairo_classes = HashSet::new();
+                    let mut declared_sierra_classes = HashMap::new();
+
+                    for class in classes {
+                        let definition = zstd::decode_all(class.definition.as_slice())
+                            .map_err(|_| class_not_found("zstd failed"))?;
+
+                        match serde_json::from_slice::<SierraOrCairo<'_>>(definition.as_slice()) {
+                            Ok(SierraOrCairo::Sierra { .. }) => {
+                                // We don't verify the class hash
+                                declared_sierra_classes
+                                    .insert(SierraHash(class.hash.0), CasmHash::ZERO);
+                            }
+                            Ok(SierraOrCairo::Cairo { .. }) => {
+                                declared_cairo_classes.insert(class.hash);
+                            }
+                            Err(_) => {
+                                return Err(class_not_found("Invalid class definition"));
+                            }
+                        }
+                    }
+
+                    Ok(StateUpdate {
+                        block_hash: hash,
+                        // We don't verify the state commitment so both commitments are 0
+                        parent_state_commitment: StateCommitment::default(),
+                        state_commitment: StateCommitment::default(),
+                        contract_updates: state_update
+                            .contract_updates
+                            .into_iter()
+                            .map(|(k, v)| {
+                                (
+                                    k,
+                                    ContractUpdate {
+                                        storage: v.storage,
+                                        // It does not matter if we mark class updates as "deploy" or "replace"
+                                        // as the way those updates are inserted into our storage is "deploy/replace-agnostic"
+                                        class: v.class.map(ContractClassUpdate::Deploy),
+                                        nonce: v.nonce,
+                                    },
+                                )
+                            })
+                            .collect(),
+                        system_contract_updates: state_update.system_contract_updates,
+                        declared_cairo_classes,
+                        declared_sierra_classes,
+                    })
                 }
                 _ => unreachable!("not used in sync"),
             },
