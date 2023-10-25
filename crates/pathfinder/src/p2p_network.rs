@@ -4,9 +4,13 @@ use anyhow::Context;
 use p2p::client::{peer_agnostic, peer_aware};
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr, PeerId};
 use p2p::{HeadRx, HeadTx, Peers};
+use p2p_proto_v1::block::BlockBodiesResponseList;
+use p2p_proto_v1::event::EventsResponseList;
+use p2p_proto_v1::receipt::ReceiptsResponseList;
+use p2p_proto_v1::transaction::TransactionsResponseList;
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 use tracing::Instrument;
 
 pub mod client;
@@ -33,7 +37,7 @@ pub struct P2PContext {
 pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     let P2PContext {
         chain_id,
-        mut storage,
+        storage,
         proxy,
         keypair,
         listen_on,
@@ -101,7 +105,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
                             break;
                         }
                         Some(event) = p2p_events.recv() => {
-                            match handle_p2p_event(event, &mut storage, &mut p2p_client, &mut tx).await {
+                            match handle_p2p_event(event, storage.clone(), &mut p2p_client, &mut tx).await {
                                 Ok(()) => {},
                                 Err(e) => { tracing::error!("Failed to handle P2P event: {}", e) },
                             }
@@ -123,13 +127,105 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
 async fn handle_p2p_event(
     event: p2p::Event,
-    storage: &mut Storage,
+    storage: Storage,
     p2p_client: &mut peer_aware::Client,
     tx: &mut HeadTx,
 ) -> anyhow::Result<()> {
+    // FIXME
+    // This is because sync_handlers provide a channel while the p2p_client expects an entire collection
+    use futures::stream::StreamExt;
+    use tokio_stream::wrappers::ReceiverStream;
+
     match event {
-        _ => {
-            todo!("use v1");
+        p2p::Event::InboundHeadersSyncRequest {
+            request, channel, ..
+        } => {
+            let (rep_tx, mut rep_rx) = mpsc::channel(1);
+            sync_handlers::v1::get_headers(storage, request, rep_tx).await?;
+            p2p_client
+                .send_headers_sync_response(
+                    channel,
+                    rep_rx.recv().await.expect("sender is not dropped"),
+                )
+                .await;
+        }
+        p2p::Event::InboundBodiesSyncRequest {
+            request, channel, ..
+        } => {
+            let (resp_tx, resp_rx) = mpsc::channel(1);
+
+            let jh = tokio::spawn(sync_handlers::v1::get_bodies(storage, request, resp_tx));
+            let resp_stream = ReceiverStream::new(resp_rx);
+            let items: Vec<_> = resp_stream.collect().await;
+
+            match jh.await {
+                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
+                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
+                _ => {}
+            }
+
+            p2p_client
+                .send_bodies_sync_response(channel, BlockBodiesResponseList { items })
+                .await;
+        }
+        p2p::Event::InboundTransactionsSyncRequest {
+            request, channel, ..
+        } => {
+            let (resp_tx, resp_rx) = mpsc::channel(1);
+
+            let jh = tokio::spawn(sync_handlers::v1::get_transactions(
+                storage, request, resp_tx,
+            ));
+            let resp_stream = ReceiverStream::new(resp_rx);
+            let items: Vec<_> = resp_stream.collect().await;
+
+            match jh.await {
+                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
+                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
+                _ => {}
+            }
+
+            p2p_client
+                .send_transactions_sync_response(channel, TransactionsResponseList { items })
+                .await;
+        }
+        p2p::Event::InboundReceiptsSyncRequest {
+            request, channel, ..
+        } => {
+            let (resp_tx, resp_rx) = mpsc::channel(1);
+
+            let jh = tokio::spawn(sync_handlers::v1::get_receipts(storage, request, resp_tx));
+            let resp_stream = ReceiverStream::new(resp_rx);
+            let items: Vec<_> = resp_stream.collect().await;
+
+            match jh.await {
+                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
+                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
+                _ => {}
+            }
+
+            p2p_client
+                .send_receipts_sync_response(channel, ReceiptsResponseList { items })
+                .await;
+        }
+        p2p::Event::InboundEventsSyncRequest {
+            request, channel, ..
+        } => {
+            let (resp_tx, resp_rx) = mpsc::channel(1);
+
+            let jh = tokio::spawn(sync_handlers::v1::get_events(storage, request, resp_tx));
+            let resp_stream = ReceiverStream::new(resp_rx);
+            let items: Vec<_> = resp_stream.collect().await;
+
+            match jh.await {
+                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
+                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
+                _ => {}
+            }
+
+            p2p_client
+                .send_events_sync_response(channel, EventsResponseList { items })
+                .await;
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");
