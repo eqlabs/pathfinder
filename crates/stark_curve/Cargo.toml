@@ -10,6 +10,7 @@ name = "stark_curve"
 path = "src/lib.rs"
 
 [dependencies]
+ark-ff = { version = "0.4.2", default-features = false }
 bitvec = { workspace = true }
 ff = { git = "https://github.com/eqlabs/ff", branch = "var_time_eq", default-features = false, features = [
     "derive",

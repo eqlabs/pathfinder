@@ -8244,9 +8244,18 @@ dependencies = [
 name = "stark_curve"
 version = "0.1.0"
 dependencies = [
+ "ark-ff",
  "bitvec",
  "ff 0.12.0",
  "pretty_assertions",
+]
+
+[[package]]
+name = "stark_ecdsa"
+version = "0.1.0"
+dependencies = [
+ "stark_curve",
+ "stark_hash",
 ]
 
 [[package]]

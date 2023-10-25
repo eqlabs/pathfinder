@@ -2,10 +2,14 @@
 
 mod curve;
 mod field;
+mod field_sqrt;
+mod orderfield;
 
 pub use curve::{
-    AffinePoint, ProjectivePoint, PEDERSEN_P0, PEDERSEN_P1, PEDERSEN_P2, PEDERSEN_P3, PEDERSEN_P4,
+    AffinePoint, ProjectivePoint, CURVE_G, CURVE_ORDER, PEDERSEN_P0, PEDERSEN_P1, PEDERSEN_P2,
+    PEDERSEN_P3, PEDERSEN_P4,
 };
 pub use field::{FieldElement, FieldElementRepr};
+pub use orderfield::{CurveOrderFieldElement, CurveOrderFieldElementRepr};
 
 pub use ff;

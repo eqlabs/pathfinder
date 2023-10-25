@@ -18,6 +18,7 @@ members = [
     "crates/rpc",
     "crates/serde",
     "crates/stark_curve",
+    "crates/stark_ecdsa",
     "crates/stark_hash",
     "crates/stark_poseidon",
     "crates/storage",

@@ -1,4 +1,4 @@
-use crate::field::FieldElement;
+use crate::{field::FieldElement, field_sqrt::field_sqrt};
 use bitvec::{order::Lsb0, slice::BitSlice};
 use ff::Field;
 
@@ -30,6 +30,16 @@ impl AffinePoint {
             y: FieldElement::new(y),
             infinity: false,
         }
+    }
+
+    pub fn from_x(x: FieldElement) -> Option<Self> {
+        // Compute y from curve equation: y^2=x^3+ax+b
+        let y2 = x.square() * x + ALPHA * x + BETA;
+        field_sqrt(y2).map(|y| Self {
+            x,
+            y,
+            infinity: false,
+        })
     }
 
     pub fn identity() -> Self {
@@ -98,6 +108,18 @@ impl AffinePoint {
         }
         product
     }
+
+    pub fn multiply_elm(&self, elm: &FieldElement) -> AffinePoint {
+        let bits = elm.into_bits();
+        let mut product = AffinePoint::identity();
+        for b in bits.iter().rev() {
+            product.double();
+            if *b {
+                product.add(self);
+            }
+        }
+        product
+    }
 }
 
 /// A projective point on an elliptic curve over [FieldElement].
@@ -124,6 +146,11 @@ impl From<&AffinePoint> for ProjectivePoint {
 }
 
 impl ProjectivePoint {
+    pub fn from_x(x: FieldElement) -> Option<Self> {
+        let ap = AffinePoint::from_x(x)?;
+        Some(ProjectivePoint::from(&ap))
+    }
+
     pub fn identity() -> Self {
         Self {
             x: FieldElement::zero(),
@@ -131,6 +158,10 @@ impl ProjectivePoint {
             z: FieldElement::ONE,
             infinity: true,
         }
+    }
+
+    pub fn negate(&mut self) {
+        self.y = -self.y;
     }
 
     pub fn double(&mut self) {
@@ -248,10 +279,41 @@ impl ProjectivePoint {
         }
         product
     }
+
+    pub fn multiply_elm(&self, elm: &FieldElement) -> ProjectivePoint {
+        let bits = elm.into_bits();
+        let mut product = ProjectivePoint::identity();
+        for b in bits.iter().rev() {
+            product.double();
+            if *b {
+                product.add(self);
+            }
+        }
+        product
+    }
 }
 
+/// Constant `a` from curve equation
+pub const ALPHA: FieldElement = FieldElement::ONE;
+
+/// Constant `b` from curve equation
+pub const BETA: FieldElement = FieldElement::new([
+    3863487492851900874,
+    7432612994240712710,
+    12360725113329547591,
+    88155977965380735,
+]);
+
+/// Curve order 3618502788666131213697322783095070105526743751716087489154079457884512865583
+/// in Montgomery representation.
+pub const CURVE_ORDER: FieldElement = FieldElement::new([
+    8939893405601011193,
+    1143265896874747514,
+    9,
+    369010039416812937,
+]);
+
 /// Montgomery representation of the Stark curve generator G.
-#[allow(dead_code)]
 pub const CURVE_G: ProjectivePoint = ProjectivePoint {
     x: FieldElement::new([
         14484022957141291997,
