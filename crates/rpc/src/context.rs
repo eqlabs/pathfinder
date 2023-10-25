@@ -1,18 +1,20 @@
 use crate::gas_price;
 pub use crate::jsonrpc::websocket::WebsocketContext;
+use crate::pending::PendingData;
+use crate::pending::PendingWatcher;
 use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
-use starknet_gateway_types::pending::PendingData;
 use std::sync::Arc;
 
 type SequencerClient = starknet_gateway_client::Client;
+use tokio::sync::watch as tokio_watch;
 
 #[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
     pub execution_storage: Storage,
-    pub pending_data: Option<PendingData>,
+    pub pending_data: PendingWatcher,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
     pub eth_gas_price: gas_price::Cached,
@@ -27,13 +29,15 @@ impl RpcContext {
         sync_status: Arc<SyncState>,
         chain_id: ChainId,
         sequencer: SequencerClient,
+        pending_data: tokio_watch::Receiver<Arc<PendingData>>,
     ) -> Self {
+        let pending_data = PendingWatcher::new(pending_data);
         Self {
             storage,
             execution_storage,
             sync_status,
             chain_id,
-            pending_data: None,
+            pending_data,
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             websocket: None,
@@ -56,12 +60,15 @@ impl RpcContext {
 
         let storage = super::test_utils::setup_storage();
         let sync_state = Arc::new(SyncState::default());
+        let (_, rx) = tokio_watch::channel(Default::default());
+
         Self::new(
             storage.clone(),
             storage,
             sync_state,
             chain_id,
             sequencer.disable_retry_for_tests(),
+            rx,
         )
     }
 
@@ -73,9 +80,10 @@ impl RpcContext {
         }
     }
 
-    pub fn with_pending_data(self, pending_data: PendingData) -> Self {
+    pub fn with_pending_data(self, pending_data: tokio_watch::Receiver<Arc<PendingData>>) -> Self {
+        let pending_data = PendingWatcher::new(pending_data);
         Self {
-            pending_data: Some(pending_data),
+            pending_data,
             ..self
         }
     }
@@ -85,7 +93,11 @@ impl RpcContext {
         // having Arc also constructed is nice.
         let context = Self::for_tests();
         let pending_data = super::test_utils::create_pending_data(context.storage.clone()).await;
-        context.with_pending_data(pending_data)
+
+        let (tx, rx) = tokio_watch::channel(Default::default());
+        tx.send(Arc::new(pending_data)).unwrap();
+
+        context.with_pending_data(rx)
     }
 
     pub fn with_websockets(self, websockets: WebsocketContext) -> Self {

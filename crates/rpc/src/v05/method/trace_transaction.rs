@@ -4,6 +4,7 @@ use pathfinder_executor::CallError;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 
+use crate::compose_executor_transaction;
 use crate::{
     context::RpcContext,
     error::{ApplicationError, TraceError},
@@ -90,7 +91,7 @@ pub async fn trace_transaction(
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
     let (transactions, gas_price, parent_block_hash) =
-        fetch_transactions(&context, input.transaction_hash).await?;
+        fetch_block_transactions(context.clone(), input.transaction_hash).await?;
 
     let parent_block_id = BlockId::Hash(parent_block_hash);
     let gas_price = Some(U256::from(gas_price.0));
@@ -114,48 +115,42 @@ pub async fn trace_transaction(
     Ok(TraceTransactionOutput(trace.into()))
 }
 
-async fn fetch_transactions(
-    context: &RpcContext,
-    transaction_hash: TransactionHash,
-) -> Result<(Vec<pathfinder_executor::Transaction>, GasPrice, BlockHash), TraceTransactionError> {
-    // Try pending block first
-    if let Some(pending) = &context.pending_data {
-        if let Some(block) = pending.block().await {
-            if block
-                .transactions
-                .iter()
-                .any(|tx| tx.hash() == transaction_hash)
-            {
-                let storage = context.storage.clone();
-                let span = tracing::Span::current();
-                return tokio::task::spawn_blocking(move || {
-                    let _g = span.enter();
-                    super::trace_block_transactions::fetch_pending_transactions(
-                        storage,
-                        block.as_ref(),
-                    )
-                    .map_err(Into::into)
-                })
-                .await
-                .context("Fetching pending transactions")?;
-            }
-        }
-    };
-
-    fetch_block_transactions(context.storage.clone(), transaction_hash).await
-}
-
 async fn fetch_block_transactions(
-    storage: pathfinder_storage::Storage,
+    context: RpcContext,
     transaction_hash: TransactionHash,
 ) -> Result<(Vec<pathfinder_executor::Transaction>, GasPrice, BlockHash), TraceTransactionError> {
     let span = tracing::Span::current();
+    let storage = context.storage.clone();
 
     tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
         let mut db = storage.connection()?;
         let tx = db.transaction()?;
+
+        let pending_data = context
+            .pending_data
+            .get(&tx)
+            .context("Querying pending data")?;
+        let pending_block = &pending_data.block;
+
+        if pending_block
+            .transactions
+            .iter()
+            .any(|tx| tx.hash() == transaction_hash)
+        {
+            let transactions = pending_block
+                .transactions
+                .iter()
+                .map(|transaction| compose_executor_transaction(transaction.clone(), &tx))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            return Ok((
+                transactions,
+                pending_block.gas_price,
+                pending_block.parent_hash,
+            ));
+        }
 
         let block_hash = tx
             .transaction_block_hash(transaction_hash)?

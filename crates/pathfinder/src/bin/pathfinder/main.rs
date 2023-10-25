@@ -14,7 +14,6 @@ use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::pending::PendingData;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -154,7 +153,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     .context("Verifying database")?;
 
     let sync_state = Arc::new(SyncState::default());
-    let pending_state = PendingData::default();
+
+    let (tx_pending, rx_pending) = tokio::sync::watch::channel(Default::default());
 
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
@@ -162,12 +162,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
+        rx_pending,
     );
-
-    let context = match config.poll_pending {
-        true => context.with_pending_data(pending_state.clone()),
-        false => context,
-    };
 
     let context = if config.websocket.enabled {
         context.with_websockets(WebsocketContext::new(
@@ -208,7 +204,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         sequencer,
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
-        pending_data: pending_state,
+        pending_data: tx_pending,
         pending_poll_interval: config
             .poll_pending
             .then_some(std::time::Duration::from_secs(2)),

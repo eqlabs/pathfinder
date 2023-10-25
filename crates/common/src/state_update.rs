@@ -147,34 +147,233 @@ impl StateUpdate {
                 })
                 .sum::<usize>()
     }
+
+    /// Returns the contract's new [nonce](ContractNonce) value if it exists in this state update.
+    ///
+    /// Note that this will return [Some(ContractNonce::ZERO)] for a contract that has been deployed,
+    /// but without an explicit nonce update. This is consistent with expectations.
+    pub fn contract_nonce(&self, contract: ContractAddress) -> Option<ContractNonce> {
+        self.contract_updates.get(&contract).and_then(|x| {
+            x.nonce.or_else(|| {
+                x.class.as_ref().and_then(|c| match c {
+                    ContractClassUpdate::Deploy(_) => {
+                        // The contract has been just deployed in the pending block, so
+                        // its nonce is zero.
+                        Some(ContractNonce::ZERO)
+                    }
+                    ContractClassUpdate::Replace(_) => None,
+                })
+            })
+        })
+    }
+
+    /// A contract's new class hash, if it was deployed or replaced in this state update.
+    pub fn contract_class(&self, contract: ContractAddress) -> Option<ClassHash> {
+        self.contract_updates
+            .get(&contract)
+            .and_then(|x| x.class.as_ref().map(|x| x.class_hash()))
+    }
+
+    /// Returns true if the class was declared as either a cairo 0 or sierra class.
+    pub fn class_is_declared(&self, class: ClassHash) -> bool {
+        if self.declared_cairo_classes.contains(&class) {
+            return true;
+        }
+
+        self.declared_sierra_classes
+            .contains_key(&SierraHash(class.0))
+    }
+
+    /// The new storage value if it exists in this state update.
+    ///
+    /// Note that this will also return the default zero value for a contract that has been deployed,
+    /// but without an explicit storage update.
+    pub fn storage_value(
+        &self,
+        contract: ContractAddress,
+        key: StorageAddress,
+    ) -> Option<StorageValue> {
+        self.contract_updates.get(&contract).and_then(|update| {
+            update
+                .storage
+                .iter()
+                .find_map(|(k, v)| (k == &key).then_some(*v))
+                .or_else(|| {
+                    update.class.as_ref().and_then(|c| match c {
+                        // If the contract has been deployed in pending but the key has not been set yet
+                        // return the default value of zero.
+                        ContractClassUpdate::Deploy(_) => Some(StorageValue::ZERO),
+                        ContractClassUpdate::Replace(_) => None,
+                    })
+                })
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::felt;
-
     use super::*;
+    use crate::macro_prelude::*;
 
     #[test]
     fn change_count() {
         let state_update = StateUpdate::default()
-            .with_contract_nonce(ContractAddress(felt!("0x1")), ContractNonce(felt!("0x2")))
-            .with_contract_nonce(ContractAddress(felt!("0x4")), ContractNonce(felt!("0x5")))
-            .with_declared_cairo_class(ClassHash(felt!("0x3")))
-            .with_declared_sierra_class(SierraHash(felt!("0x4")), CasmHash(felt!("0x5")))
-            .with_deployed_contract(ContractAddress(felt!("0x1")), ClassHash(felt!("0x3")))
-            .with_replaced_class(ContractAddress(felt!("0x33")), ClassHash(felt!("0x35")))
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x2"))
+            .with_contract_nonce(contract_address!("0x4"), contract_nonce!("0x5"))
+            .with_declared_cairo_class(class_hash!("0x3"))
+            .with_declared_sierra_class(sierra_hash!("0x4"), casm_hash!("0x5"))
+            .with_deployed_contract(contract_address!("0x1"), class_hash!("0x3"))
+            .with_replaced_class(contract_address!("0x33"), class_hash!("0x35"))
             .with_system_storage_update(
                 ContractAddress::ONE,
-                StorageAddress(felt!("0x10")),
-                StorageValue(felt!("0x99")),
+                storage_address!("0x10"),
+                storage_value!("0x99"),
             )
             .with_storage_update(
-                ContractAddress(felt!("0x33")),
-                StorageAddress(felt!("0x10")),
-                StorageValue(felt!("0x99")),
+                contract_address!("0x33"),
+                storage_address!("0x10"),
+                storage_value!("0x99"),
             );
 
         assert_eq!(state_update.change_count(), 8);
+    }
+
+    #[test]
+    fn contract_nonce() {
+        let state_update = StateUpdate::default()
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x2"))
+            .with_deployed_contract(contract_address!("0x2"), class_hash!("0x4"))
+            .with_contract_nonce(contract_address!("0x10"), contract_nonce!("0x20"))
+            .with_deployed_contract(contract_address!("0x10"), class_hash!("0x12"))
+            .with_replaced_class(contract_address!("0x123"), class_hash!("0x1244"))
+            .with_replaced_class(contract_address!("0x1234"), class_hash!("0x12445"))
+            .with_contract_nonce(contract_address!("0x1234"), contract_nonce!("0x1111"));
+
+        assert!(state_update
+            .contract_nonce(contract_address_bytes!(b"not present"))
+            .is_none());
+
+        let result = state_update.contract_nonce(contract_address!("0x1"));
+        assert_eq!(result, Some(contract_nonce!("0x2")));
+
+        // A newly deployed contract with an explicit nonce set.
+        let result = state_update.contract_nonce(contract_address!("0x10"));
+        assert_eq!(result, Some(contract_nonce!("0x20")));
+
+        // A newly deployed contract without an explicit nonce set should be zero
+        let result = state_update.contract_nonce(contract_address!("0x2"));
+        assert_eq!(result, Some(ContractNonce::ZERO));
+
+        // A replaced contract with an explicit nonce set.
+        let result = state_update.contract_nonce(contract_address!("0x1234"));
+        assert_eq!(result, Some(contract_nonce!("0x1111")));
+
+        // A replaced class without an explicit nonce.
+        assert!(state_update
+            .contract_nonce(contract_address!("0x123"))
+            .is_none());
+    }
+
+    mod storage_value {
+        use super::*;
+
+        #[test]
+        fn set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default().with_storage_update(c, k, v);
+            let result = state_update.storage_value(c, k);
+            assert_eq!(result, Some(v))
+        }
+
+        #[test]
+        fn not_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default().with_storage_update(c, k, v);
+            let result = state_update.storage_value(contract_address!("0x4"), k);
+            assert!(result.is_none());
+
+            let result = state_update.storage_value(c, storage_address!("0x24"));
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn deployed_and_not_set() {
+            let c = contract_address!("0x1");
+            let state_update = StateUpdate::default().with_deployed_contract(c, class_hash!("0x1"));
+            let result = state_update.storage_value(c, storage_address!("0x2"));
+            assert_eq!(result, Some(StorageValue::ZERO));
+        }
+
+        #[test]
+        fn deployed_and_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default()
+                .with_deployed_contract(c, class_hash!("0x1"))
+                .with_storage_update(c, k, v);
+            let result = state_update.storage_value(c, k);
+            assert_eq!(result, Some(v));
+        }
+
+        #[test]
+        fn replaced_and_not_set() {
+            let c = contract_address!("0x1");
+            let state_update = StateUpdate::default().with_replaced_class(c, class_hash!("0x1"));
+            let result = state_update.storage_value(c, storage_address!("0x2"));
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn replaced_and_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default()
+                .with_replaced_class(c, class_hash!("0x1"))
+                .with_storage_update(c, k, v);
+            let result = state_update.storage_value(c, k);
+            assert_eq!(result, Some(v));
+        }
+    }
+
+    #[test]
+    fn class_is_declared() {
+        let cairo = class_hash_bytes!(b"cairo class");
+        let sierra = class_hash_bytes!(b"sierra class");
+
+        let state_update = StateUpdate::default()
+            .with_declared_cairo_class(cairo)
+            .with_declared_sierra_class(SierraHash(sierra.0), casm_hash_bytes!(b"anything"));
+
+        assert!(state_update.class_is_declared(cairo));
+        assert!(state_update.class_is_declared(sierra));
+        assert!(!state_update.class_is_declared(class_hash_bytes!(b"nope")));
+    }
+
+    #[test]
+    fn contract_class() {
+        let deployed = contract_address_bytes!(b"deployed");
+        let deployed_class = class_hash_bytes!(b"deployed class");
+        let replaced = contract_address_bytes!(b"replaced");
+        let replaced_class = class_hash_bytes!(b"replaced class");
+
+        let state_update = StateUpdate::default()
+            .with_deployed_contract(deployed, deployed_class)
+            .with_replaced_class(replaced, replaced_class);
+
+        let result = state_update.contract_class(deployed);
+        assert_eq!(result, Some(deployed_class));
+
+        let result = state_update.contract_class(replaced);
+        assert_eq!(result, Some(replaced_class));
+
+        assert!(state_update
+            .contract_class(contract_address_bytes!(b"bogus"))
+            .is_none());
     }
 }

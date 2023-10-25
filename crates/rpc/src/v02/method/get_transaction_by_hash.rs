@@ -17,20 +17,6 @@ pub async fn get_transaction_by_hash_impl(
     context: RpcContext,
     input: GetTransactionByHashInput,
 ) -> anyhow::Result<Option<GatewayTransaction>> {
-    if let Some(pending) = &context.pending_data {
-        let pending_tx = pending.block().await.and_then(|block| {
-            block
-                .transactions
-                .iter()
-                .find(|tx| tx.hash() == input.transaction_hash)
-                .cloned()
-        });
-
-        if pending_tx.is_some() {
-            return Ok(pending_tx);
-        }
-    }
-
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
@@ -41,6 +27,20 @@ pub async fn get_transaction_by_hash_impl(
             .context("Opening database connection")?;
 
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        // Check pending transactions.
+        if let Some(tx) = context
+            .pending_data
+            .get(&db_tx)
+            .context("Querying pending data")?
+            .block
+            .transactions
+            .iter()
+            .find(|tx| tx.hash() == input.transaction_hash)
+            .cloned()
+        {
+            return Ok(Some(tx));
+        }
 
         // Get the transaction from storage.
         db_tx

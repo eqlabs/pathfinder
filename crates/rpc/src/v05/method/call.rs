@@ -150,6 +150,7 @@ mod tests {
 
         use super::*;
 
+        use crate::pending::PendingData;
         use pathfinder_common::{
             felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ClassHash, ContractAddress,
             GasPrice, StateUpdate, StorageAddress, StorageValue,
@@ -158,7 +159,7 @@ mod tests {
         use starknet_gateway_test_fixtures::class_definitions::{
             CONTRACT_DEFINITION, CONTRACT_DEFINITION_CLASS_HASH,
         };
-        use starknet_gateway_types::{pending::PendingData, reply::PendingBlock};
+        use starknet_gateway_types::reply::PendingBlock;
 
         async fn test_context() -> (
             RpcContext,
@@ -250,7 +251,9 @@ mod tests {
                 StateUpdate::default().with_storage_update(contract_address, test_key, new_value),
             )
             .await;
-            let context = context.with_pending_data(pending_data);
+
+            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            let context = context.with_pending_data(rx);
 
             // unchanged on latest block
             let input = CallInput {
@@ -291,7 +294,8 @@ mod tests {
                     .with_storage_update(new_contract_address, test_key, new_value),
             )
             .await;
-            let context = context.with_pending_data(pending_data);
+            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            let context = context.with_pending_data(rx);
 
             let input = CallInput {
                 request: FunctionCall {
@@ -343,7 +347,8 @@ mod tests {
                     .with_storage_update(new_contract_address, storage_key, storage_value),
             )
             .await;
-            let context = context.with_pending_data(pending_data);
+            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            let context = context.with_pending_data(rx);
 
             let input = CallInput {
                 request: FunctionCall {
@@ -361,26 +366,20 @@ mod tests {
             last_block_header: BlockHeader,
             state_update: StateUpdate,
         ) -> PendingData {
-            let pending_data = PendingData::default();
-            pending_data
-                .set(
-                    Arc::new(PendingBlock {
-                        gas_price: last_block_header.gas_price,
-                        parent_hash: last_block_header.hash,
-                        sequencer_address: last_block_header.sequencer_address,
-                        status: starknet_gateway_types::reply::Status::Pending,
-                        timestamp: BlockTimestamp::new_or_panic(
-                            last_block_header.timestamp.get() + 1,
-                        ),
-                        transaction_receipts: vec![],
-                        transactions: vec![],
-                        starknet_version: last_block_header.starknet_version,
-                    }),
-                    Arc::new(state_update),
-                )
-                .await;
-
-            pending_data
+            PendingData {
+                block: PendingBlock {
+                    gas_price: last_block_header.gas_price,
+                    parent_hash: last_block_header.hash,
+                    sequencer_address: last_block_header.sequencer_address,
+                    status: starknet_gateway_types::reply::Status::Pending,
+                    timestamp: BlockTimestamp::new_or_panic(last_block_header.timestamp.get() + 1),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                    starknet_version: last_block_header.starknet_version,
+                },
+                state_update,
+                number: last_block_header.number + 1,
+            }
         }
 
         #[tokio::test]

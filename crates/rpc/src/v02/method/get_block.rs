@@ -1,6 +1,6 @@
 use crate::context::RpcContext;
 use crate::v02::types::reply::BlockStatus;
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber};
 use serde::Deserialize;
 
@@ -45,26 +45,6 @@ async fn get_block(
     block_id: BlockId,
     scope: types::BlockResponseScope,
 ) -> Result<types::Block, GetBlockError> {
-    let block_id = match block_id {
-        BlockId::Pending => {
-            match context
-                .pending_data
-                .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
-                .block()
-                .await
-            {
-                Some(block) => {
-                    return Ok(types::Block::from_sequencer_scoped(
-                        block.as_ref().clone().into(),
-                        scope,
-                    ))
-                }
-                None => return Err(GetBlockError::BlockNotFound),
-            }
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
@@ -77,6 +57,20 @@ async fn get_block(
         let transaction = connection
             .transaction()
             .context("Creating database transaction")?;
+
+        let block_id = match block_id {
+            BlockId::Pending => {
+                let block = context
+                    .pending_data
+                    .get(&transaction)
+                    .context("Querying pending data")?
+                    .block
+                    .clone();
+
+                return Ok(types::Block::from_sequencer_scoped(block.into(), scope));
+            }
+            other => other.try_into().expect("Only pending cast should fail"),
+        };
 
         let header = transaction
             .block_header(block_id)
@@ -258,12 +252,10 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_matches::assert_matches;
     use serde_json::{json, Value};
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
-    use starknet_gateway_types::pending::PendingData;
 
     #[rstest::rstest]
     #[case::positional_pending(json!(["pending"]), BlockId::Pending)]
@@ -282,117 +274,97 @@ mod tests {
         assert_eq!(input, expected);
     }
 
-    type TestCaseHandler = Box<dyn Fn(usize, &Result<types::Block, GetBlockError>)>;
-
-    /// Execute a single test case and check its outcome for both: `get_block_with_[txs|tx_hashes]`
-    async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
-        let (context, block_id, f) = test_case;
-        let result = get_block_with_txs(
-            context.clone(),
-            GetBlockInput {
-                block_id: *block_id,
-            },
-        )
-        .await;
-        f(test_case_idx, &result);
-        let _ = result.map(|block| assert_matches!(block.transactions, types::Transactions::Full(_) => {}, "test case {test_case_idx}: {block_id:?}"));
+    #[tokio::test]
+    async fn pending() {
+        let context = RpcContext::for_tests_with_pending().await;
 
         let result = get_block_with_tx_hashes(
-            context.clone(),
+            context,
             GetBlockInput {
-                block_id: *block_id,
+                block_id: BlockId::Pending,
             },
         )
-        .await;
-        f(test_case_idx, &result);
-        let _ = result.map(|block| assert_matches!(block.transactions, types::Transactions::HashesOnly(_) => {}, "test case {test_case_idx}: {block_id:?}"));
-    }
+        .await
+        .unwrap();
 
-    /// Common assertion type for most of the test cases
-    fn assert_hash(expected: &'static [u8]) -> TestCaseHandler {
-        Box::new(|i: usize, result| {
-            assert_matches!(result, Ok(block) => assert_eq!(
-                block.block_hash,
-                Some(block_hash_bytes!(expected)),
-                "test case {i}"
-            ));
-        })
-    }
-
-    impl PartialEq for GetBlockError {
-        fn eq(&self, other: &Self) -> bool {
-            match (self, other) {
-                (Self::Internal(l), Self::Internal(r)) => l.to_string() == r.to_string(),
-                _ => core::mem::discriminant(self) == core::mem::discriminant(other),
-            }
-        }
-    }
-
-    /// Common assertion type for most of the error paths
-    fn assert_error(expected: GetBlockError) -> TestCaseHandler {
-        Box::new(move |i: usize, result| {
-            assert_matches!(result, Err(error) => assert_eq!(*error, expected, "test case {i}"), "test case {i}");
-        })
+        assert_eq!(result.parent_hash, block_hash_bytes!(b"latest"));
     }
 
     #[tokio::test]
-    async fn happy_paths_and_major_errors() {
-        let ctx = RpcContext::for_tests_with_pending().await;
-        let ctx_with_pending_empty =
-            RpcContext::for_tests().with_pending_data(PendingData::default());
-        let ctx_with_pending_disabled = RpcContext::for_tests();
+    async fn latest() {
+        let context = RpcContext::for_tests_with_pending().await;
 
-        let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[
-            // Pending
-            (
-                ctx.clone(),
-                BlockId::Pending,
-                Box::new(|i, result| {
-                    assert_matches!(result, Ok(block) => assert_eq!(
-                        block.parent_hash,
-                        block_hash_bytes!(b"latest"),
-                        "test case {i}"
-                    ), "test case {i}")
-                }),
-            ),
-            (
-                ctx_with_pending_empty,
-                BlockId::Pending,
-                assert_error(GetBlockError::BlockNotFound),
-            ),
-            (
-                ctx_with_pending_disabled,
-                BlockId::Pending,
-                assert_error(GetBlockError::Internal(anyhow!(
-                    "Pending data not supported in this configuration"
-                ))),
-            ),
-            // Other block ids
-            (ctx.clone(), BlockId::Latest, assert_hash(b"latest")),
-            (
-                ctx.clone(),
-                BlockId::Number(BlockNumber::GENESIS),
-                assert_hash(b"genesis"),
-            ),
-            (
-                ctx.clone(),
-                BlockId::Hash(block_hash_bytes!(b"genesis")),
-                assert_hash(b"genesis"),
-            ),
-            (
-                ctx.clone(),
-                BlockId::Number(BlockNumber::new_or_panic(9999)),
-                assert_error(GetBlockError::BlockNotFound),
-            ),
-            (
-                ctx,
-                BlockId::Hash(block_hash_bytes!(b"non-existent")),
-                assert_error(GetBlockError::BlockNotFound),
-            ),
-        ];
+        let result = get_block_with_tx_hashes(
+            context,
+            GetBlockInput {
+                block_id: BlockId::Latest,
+            },
+        )
+        .await
+        .unwrap();
 
-        for (i, test_case) in cases.iter().enumerate() {
-            check(i, test_case).await;
-        }
+        assert_eq!(result.block_hash, Some(block_hash_bytes!(b"latest")));
+    }
+
+    #[tokio::test]
+    async fn by_number() {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        let result = get_block_with_tx_hashes(
+            context,
+            GetBlockInput {
+                block_id: BlockId::Number(BlockNumber::GENESIS),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.block_hash, Some(block_hash_bytes!(b"genesis")));
+    }
+
+    #[tokio::test]
+    async fn by_hash() {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        let result = get_block_with_tx_hashes(
+            context,
+            GetBlockInput {
+                block_id: BlockId::Hash(block_hash_bytes!(b"genesis")),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.block_hash, Some(block_hash_bytes!(b"genesis")));
+    }
+
+    #[tokio::test]
+    async fn not_found_by_number() {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        let result = get_block_with_tx_hashes(
+            context,
+            GetBlockInput {
+                block_id: BlockId::Number(BlockNumber::MAX),
+            },
+        )
+        .await;
+
+        assert_matches::assert_matches!(result, Err(GetBlockError::BlockNotFound));
+    }
+
+    #[tokio::test]
+    async fn not_found_by_hash() {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        let result = get_block_with_tx_hashes(
+            context,
+            GetBlockInput {
+                block_id: BlockId::Hash(block_hash_bytes!(b"non-existent")),
+            },
+        )
+        .await;
+
+        assert_matches::assert_matches!(result, Err(GetBlockError::BlockNotFound));
     }
 }

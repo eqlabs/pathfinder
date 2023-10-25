@@ -2,7 +2,6 @@ use crate::state_reader::LruCachedReader;
 use blockifier::{block_context::BlockContext, state::cached_state::CachedState};
 use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress, StateUpdate};
 use primitive_types::U256;
-use std::sync::Arc;
 
 use super::state_reader::PathfinderStateReader;
 
@@ -14,7 +13,7 @@ pub struct ExecutionState {
     pub sequencer_address: SequencerAddress,
     pub state_at_block: Option<BlockNumber>,
     pub gas_price: U256,
-    pub pending_update: Option<Arc<StateUpdate>>,
+    pub pending_update: Option<StateUpdate>,
 }
 
 impl ExecutionState {
@@ -34,7 +33,7 @@ impl ExecutionState {
         let mut cached_state = LruCachedReader::new_cached_state(raw_reader)?;
 
         self.pending_update.as_ref().map(|pending_update| {
-            super::pending::apply_pending_update(&mut cached_state, pending_update.as_ref())
+            super::pending::apply_pending_update(&mut cached_state, pending_update)
         });
 
         Ok((cached_state, block_context))

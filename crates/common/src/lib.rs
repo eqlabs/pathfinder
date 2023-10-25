@@ -209,6 +209,16 @@ pub enum BlockId {
     Pending,
 }
 
+impl BlockId {
+    pub fn is_pending(&self) -> bool {
+        self == &BlockId::Pending
+    }
+
+    pub fn is_latest(&self) -> bool {
+        self == &BlockId::Latest
+    }
+}
+
 impl BlockNumber {
     pub const GENESIS: BlockNumber = BlockNumber::new_or_panic(0);
     /// The maximum [BlockNumber] we can support. Restricted to `u64::MAX/2` to

@@ -7,6 +7,7 @@ pub mod gas_price;
 mod jsonrpc;
 pub mod middleware;
 mod pathfinder;
+mod pending;
 #[cfg(test)]
 mod test_setup;
 pub mod v02;
@@ -15,6 +16,7 @@ pub mod v04;
 pub mod v05;
 
 pub use executor::compose_executor_transaction;
+pub use pending::PendingData;
 
 use crate::jsonrpc::rpc_handler;
 use crate::jsonrpc::websocket::websocket_handler;
@@ -201,6 +203,7 @@ impl Default for SyncState {
 }
 
 pub mod test_utils {
+    use crate::pending::PendingData;
     use pathfinder_common::event::Event;
     use pathfinder_common::{macro_prelude::*, Fee};
     use pathfinder_common::{
@@ -211,16 +214,12 @@ pub mod test_utils {
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::{H160, H256};
     use stark_hash::Felt;
-    use starknet_gateway_types::reply::transaction::{ExecutionStatus, L2ToL1Message};
-    use starknet_gateway_types::{
-        pending::PendingData,
-        reply::transaction::{
-            DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
-            InvokeTransactionV0, Receipt, Transaction,
-        },
+    use starknet_gateway_types::reply::transaction::{
+        DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
+        InvokeTransactionV0, Receipt, Transaction,
     };
+    use starknet_gateway_types::reply::transaction::{ExecutionStatus, L2ToL1Message};
     use std::collections::HashMap;
-    use std::sync::Arc;
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
@@ -714,6 +713,10 @@ pub mod test_utils {
             .with_replaced_class(
                 contract_address_bytes!(b"pending contract 2 (replaced)"),
                 class_hash_bytes!(b"pending class 2 hash (replaced)"),
+            )
+            .with_contract_nonce(
+                contract_address_bytes!(b"contract 1"),
+                contract_nonce_bytes!(b"pending nonce"),
             );
 
         // The class definitions must be inserted into the database.
@@ -738,11 +741,11 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        let pending_data = PendingData::default();
-        pending_data
-            .set(Arc::new(block), Arc::new(state_update))
-            .await;
-        pending_data
+        PendingData {
+            block,
+            state_update,
+            number: latest.number + 1,
+        }
     }
 }
 
