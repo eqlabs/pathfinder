@@ -79,6 +79,13 @@ pub struct BlockBodiesResponse {
     pub body_message: BlockBodyMessage,
 }
 
+// TODO remove when streaming response implemented
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[protobuf(name = "crate::proto::block::BlockBodiesResponseList")]
+pub struct BlockBodiesResponseList {
+    pub items: Vec<BlockBodiesResponse>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum BlockBodyMessage {
     Diff(StateDiff),

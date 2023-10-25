@@ -130,6 +130,13 @@ pub struct ReceiptsResponse {
     pub kind: ReceiptsResponseKind,
 }
 
+// TODO remove when streaming response implemented
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[protobuf(name = "crate::proto::receipt::ReceiptsResponseList")]
+pub struct ReceiptsResponseList {
+    pub items: Vec<ReceiptsResponse>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum ReceiptsResponseKind {
     Receipts(Receipts),

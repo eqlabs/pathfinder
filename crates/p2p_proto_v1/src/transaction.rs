@@ -198,6 +198,13 @@ pub struct TransactionsResponse {
     pub kind: TransactionsResponseKind,
 }
 
+// TODO remove when streaming response implemented
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[protobuf(name = "crate::proto::transaction::TransactionsResponseList")]
+pub struct TransactionsResponseList {
+    pub items: Vec<TransactionsResponse>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum TransactionsResponseKind {
     Transactions(Transactions),

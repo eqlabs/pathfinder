@@ -38,6 +38,13 @@ pub struct EventsResponse {
     pub kind: EventsResponseKind,
 }
 
+// TODO remove when streaming response implemented
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[protobuf(name = "crate::proto::event::EventsResponseList")]
+pub struct EventsResponseList {
+    pub items: Vec<EventsResponse>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventsResponseKind {
     Events(Events),

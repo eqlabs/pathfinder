@@ -53,33 +53,33 @@ pub mod codec {
     pub type Bodies = SyncCodec<
         protocol::Bodies,
         block::BlockBodiesRequest,
-        block::BlockBodiesResponse,
+        block::BlockBodiesResponseList,
         proto::block::BlockBodiesRequest,
-        proto::block::BlockBodiesResponse,
+        proto::block::BlockBodiesResponseList,
     >;
 
     pub type Transactions = SyncCodec<
         protocol::Transactions,
         transaction::TransactionsRequest,
-        transaction::TransactionsResponse,
+        transaction::TransactionsResponseList,
         proto::transaction::TransactionsRequest,
-        proto::transaction::TransactionsResponse,
+        proto::transaction::TransactionsResponseList,
     >;
 
     pub type Receipts = SyncCodec<
         protocol::Receipts,
         receipt::ReceiptsRequest,
-        receipt::ReceiptsResponse,
+        receipt::ReceiptsResponseList,
         proto::receipt::ReceiptsRequest,
-        proto::receipt::ReceiptsResponse,
+        proto::receipt::ReceiptsResponseList,
     >;
 
     pub type Events = SyncCodec<
         protocol::Events,
         event::EventsRequest,
-        event::EventsResponse,
+        event::EventsResponseList,
         proto::event::EventsRequest,
-        proto::event::EventsResponse,
+        proto::event::EventsResponseList,
     >;
 
     #[derive(Clone, Debug)]
@@ -168,7 +168,7 @@ pub mod codec {
             return Err(std::io::ErrorKind::UnexpectedEof.into());
         }
         let prost_dto = ProstDto::decode(vec.as_ref())?;
-        let dto = Dto::try_from_protobuf(prost_dto, "TODO")?;
+        let dto = Dto::try_from_protobuf(prost_dto, std::any::type_name::<ProstDto>())?;
         Ok(dto)
     }
 
