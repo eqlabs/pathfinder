@@ -4,7 +4,13 @@ use std::collections::HashSet;
 
 use anyhow::Context;
 use libp2p::{gossipsub::IdentTopic, request_response::ResponseChannel, Multiaddr, PeerId};
-use p2p_proto_v1::block::NewBlock;
+use p2p_proto_v1::block::{
+    BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
+    NewBlock,
+};
+use p2p_proto_v1::event::{EventsRequest, EventsResponseList};
+use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseList};
+use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseList};
 use tokio::sync::{mpsc, oneshot};
 
 #[cfg(test)]
@@ -15,6 +21,34 @@ use crate::Command;
 pub struct Client {
     sender: mpsc::Sender<Command>,
     peer_id: PeerId,
+}
+
+macro_rules! impl_send {
+    ($fn_name_req: ident, $fn_name_res: ident, $req_command: ident, $res_command: ident, $req_type: ty, $res_type: ty) => {
+        pub async fn $fn_name_req(
+            &self,
+            peer_id: PeerId,
+            request: $req_type,
+        ) -> anyhow::Result<$res_type> {
+            let (sender, receiver) = oneshot::channel();
+            self.sender
+                .send(Command::$req_command {
+                    peer_id,
+                    request,
+                    sender,
+                })
+                .await
+                .expect("Command receiver not to be dropped");
+            receiver.await.expect("Sender not to be dropped")
+        }
+
+        pub async fn $fn_name_res(&self, channel: ResponseChannel<$res_type>, response: $res_type) {
+            self.sender
+                .send(Command::$res_command { channel, response })
+                .await
+                .expect("Command receiver not to be dropped");
+        }
+    };
 }
 
 impl Client {
@@ -94,27 +128,50 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    // TODO
-    pub async fn send_sync_request(&self, peer_id: PeerId, request: ()) -> anyhow::Result<()> {
-        let (sender, receiver) = oneshot::channel();
-        self.sender
-            .send(Command::SendSyncRequest {
-                peer_id,
-                request,
-                sender,
-            })
-            .await
-            .expect("Command receiver not to be dropped");
-        receiver.await.expect("Sender not to be dropped")
-    }
+    impl_send!(
+        send_headers_sync_request,
+        send_headers_sync_response,
+        SendHeadersSyncRequest,
+        SendHeadersSyncResponse,
+        BlockHeadersRequest,
+        BlockHeadersResponse
+    );
 
-    // TODO
-    pub async fn send_sync_response(&self, channel: ResponseChannel<()>, response: ()) {
-        self.sender
-            .send(Command::SendSyncResponse { channel, response })
-            .await
-            .expect("Command receiver not to be dropped");
-    }
+    impl_send!(
+        send_bodies_sync_request,
+        send_bodies_sync_response,
+        SendBodiesSyncRequest,
+        SendBodiesSyncResponse,
+        BlockBodiesRequest,
+        BlockBodiesResponseList
+    );
+
+    impl_send!(
+        send_transactions_sync_request,
+        send_transactions_sync_response,
+        SendTransactionsSyncRequest,
+        SendTransactionsSyncResponse,
+        TransactionsRequest,
+        TransactionsResponseList
+    );
+
+    impl_send!(
+        send_receipts_sync_request,
+        send_receipts_sync_response,
+        SendReceiptsSyncRequest,
+        SendReceiptsSyncResponse,
+        ReceiptsRequest,
+        ReceiptsResponseList
+    );
+
+    impl_send!(
+        send_events_sync_request,
+        send_events_sync_response,
+        SendEventsSyncRequest,
+        SendEventsSyncResponse,
+        EventsRequest,
+        EventsResponseList
+    );
 
     pub async fn publish(&self, topic: &str, new_block: NewBlock) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();

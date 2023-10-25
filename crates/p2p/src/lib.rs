@@ -12,11 +12,12 @@ use libp2p::swarm::SwarmBuilder;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
 use p2p_proto_v1::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse, NewBlock,
+    BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
+    NewBlock,
 };
-use p2p_proto_v1::event::{EventsRequest, EventsResponse};
-use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponse};
-use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto_v1::event::{EventsRequest, EventsResponseList};
+use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseList};
+use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseList};
 use pathfinder_common::{BlockHash, BlockNumber};
 use tokio::sync::{mpsc, oneshot, RwLock};
 
@@ -115,14 +116,50 @@ enum Command {
         topic: IdentTopic,
         sender: EmptyResultSender,
     },
-    SendSyncRequest {
+    SendHeadersSyncRequest {
         peer_id: PeerId,
-        request: (),                                 // TODO
-        sender: oneshot::Sender<anyhow::Result<()>>, // TODO
+        request: BlockHeadersRequest,
+        sender: oneshot::Sender<anyhow::Result<BlockHeadersResponse>>,
     },
-    SendSyncResponse {
-        channel: ResponseChannel<()>, // TODO
-        response: (),                 // TODO
+    SendBodiesSyncRequest {
+        peer_id: PeerId,
+        request: BlockBodiesRequest,
+        sender: oneshot::Sender<anyhow::Result<BlockBodiesResponseList>>,
+    },
+    SendTransactionsSyncRequest {
+        peer_id: PeerId,
+        request: TransactionsRequest,
+        sender: oneshot::Sender<anyhow::Result<TransactionsResponseList>>,
+    },
+    SendReceiptsSyncRequest {
+        peer_id: PeerId,
+        request: ReceiptsRequest,
+        sender: oneshot::Sender<anyhow::Result<ReceiptsResponseList>>,
+    },
+    SendEventsSyncRequest {
+        peer_id: PeerId,
+        request: EventsRequest,
+        sender: oneshot::Sender<anyhow::Result<EventsResponseList>>,
+    },
+    SendHeadersSyncResponse {
+        channel: ResponseChannel<BlockHeadersResponse>,
+        response: BlockHeadersResponse,
+    },
+    SendBodiesSyncResponse {
+        channel: ResponseChannel<BlockBodiesResponseList>,
+        response: BlockBodiesResponseList,
+    },
+    SendTransactionsSyncResponse {
+        channel: ResponseChannel<TransactionsResponseList>,
+        response: TransactionsResponseList,
+    },
+    SendReceiptsSyncResponse {
+        channel: ResponseChannel<ReceiptsResponseList>,
+        response: ReceiptsResponseList,
+    },
+    SendEventsSyncResponse {
+        channel: ResponseChannel<EventsResponseList>,
+        response: EventsResponseList,
     },
     PublishPropagationMessage {
         topic: IdentTopic,
@@ -143,10 +180,30 @@ pub enum Event {
     SyncPeerConnected {
         peer_id: PeerId,
     },
-    InboundSyncRequest {
+    InboundHeadersSyncRequest {
         from: PeerId,
-        request: (),                  // TODO
-        channel: ResponseChannel<()>, // TODO
+        request: BlockHeadersRequest,
+        channel: ResponseChannel<BlockHeadersResponse>,
+    },
+    InboundBodiesSyncRequest {
+        from: PeerId,
+        request: BlockBodiesRequest,
+        channel: ResponseChannel<BlockBodiesResponseList>,
+    },
+    InboundTransactionsSyncRequest {
+        from: PeerId,
+        request: TransactionsRequest,
+        channel: ResponseChannel<TransactionsResponseList>,
+    },
+    InboundReceiptsSyncRequest {
+        from: PeerId,
+        request: ReceiptsRequest,
+        channel: ResponseChannel<ReceiptsResponseList>,
+    },
+    InboundEventsSyncRequest {
+        from: PeerId,
+        request: EventsRequest,
+        channel: ResponseChannel<EventsResponseList>,
     },
     BlockPropagation {
         from: PeerId,

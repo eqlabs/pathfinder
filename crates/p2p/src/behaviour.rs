@@ -14,11 +14,11 @@ use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::swarm::{keep_alive, NetworkBehaviour};
 use libp2p::{identity, kad};
 use p2p_proto_v1::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse,
+    BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
 };
-use p2p_proto_v1::event::{EventsRequest, EventsResponse};
-use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponse};
-use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto_v1::event::{EventsRequest, EventsResponseList};
+use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseList};
+use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseList};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event", event_process = false)]
@@ -154,10 +154,10 @@ pub enum Event {
     Kademlia(KademliaEvent),
     Gossipsub(gossipsub::Event),
     HeadersSync(request_response::Event<BlockHeadersRequest, BlockHeadersResponse>),
-    BodiesSync(request_response::Event<BlockBodiesRequest, BlockBodiesResponse>),
-    TransactionsSync(request_response::Event<TransactionsRequest, TransactionsResponse>),
-    ReceiptsSync(request_response::Event<ReceiptsRequest, ReceiptsResponse>),
-    EventSync(request_response::Event<EventsRequest, EventsResponse>),
+    BodiesSync(request_response::Event<BlockBodiesRequest, BlockBodiesResponseList>),
+    TransactionsSync(request_response::Event<TransactionsRequest, TransactionsResponseList>),
+    ReceiptsSync(request_response::Event<ReceiptsRequest, ReceiptsResponseList>),
+    EventsSync(request_response::Event<EventsRequest, EventsResponseList>),
 }
 
 impl From<relay_client::Event> for Event {
@@ -215,27 +215,27 @@ impl From<request_response::Event<BlockHeadersRequest, BlockHeadersResponse>> fo
     }
 }
 
-impl From<request_response::Event<BlockBodiesRequest, BlockBodiesResponse>> for Event {
-    fn from(event: request_response::Event<BlockBodiesRequest, BlockBodiesResponse>) -> Self {
+impl From<request_response::Event<BlockBodiesRequest, BlockBodiesResponseList>> for Event {
+    fn from(event: request_response::Event<BlockBodiesRequest, BlockBodiesResponseList>) -> Self {
         Event::BodiesSync(event)
     }
 }
 
-impl From<request_response::Event<TransactionsRequest, TransactionsResponse>> for Event {
-    fn from(event: request_response::Event<TransactionsRequest, TransactionsResponse>) -> Self {
+impl From<request_response::Event<TransactionsRequest, TransactionsResponseList>> for Event {
+    fn from(event: request_response::Event<TransactionsRequest, TransactionsResponseList>) -> Self {
         Event::TransactionsSync(event)
     }
 }
 
-impl From<request_response::Event<ReceiptsRequest, ReceiptsResponse>> for Event {
-    fn from(event: request_response::Event<ReceiptsRequest, ReceiptsResponse>) -> Self {
+impl From<request_response::Event<ReceiptsRequest, ReceiptsResponseList>> for Event {
+    fn from(event: request_response::Event<ReceiptsRequest, ReceiptsResponseList>) -> Self {
         Event::ReceiptsSync(event)
     }
 }
 
-impl From<request_response::Event<EventsRequest, EventsResponse>> for Event {
-    fn from(event: request_response::Event<EventsRequest, EventsResponse>) -> Self {
-        Event::EventSync(event)
+impl From<request_response::Event<EventsRequest, EventsResponseList>> for Event {
+    fn from(event: request_response::Event<EventsRequest, EventsResponseList>) -> Self {
+        Event::EventsSync(event)
     }
 }
 

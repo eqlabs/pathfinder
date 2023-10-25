@@ -7,13 +7,13 @@ use std::{
 };
 
 use libp2p::PeerId;
-use p2p_proto_v1::common::{Direction, Iteration};
-use p2p_proto_v1::receipt::{Receipt, ReceiptsRequest};
-use p2p_proto_v1::transaction::TransactionsRequest;
-use p2p_proto_v1::{
-    block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse},
-    event::EventsRequest,
+use p2p_proto_v1::block::{
+    BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
 };
+use p2p_proto_v1::common::{Direction, Iteration};
+use p2p_proto_v1::event::{EventsRequest, EventsResponseList};
+use p2p_proto_v1::receipt::{Receipt, ReceiptsRequest, ReceiptsResponseList};
+use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseList};
 use pathfinder_common::{
     event::Event, transaction::TransactionVariant, BlockHash, BlockNumber, TransactionHash,
 };
@@ -125,8 +125,7 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
-            let response: anyhow::Result<_> = todo!("fixme");
+            let response = self.inner.send_headers_sync_request(peer, request).await;
 
             match response {
                 Ok(BlockHeadersResponse { parts }) => {
@@ -183,15 +182,13 @@ impl Client {
                     step: 1.into(),
                 },
             };
+            let responses = self.inner.send_bodies_sync_request(peer, request).await;
 
-            let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
-            let response: anyhow::Result<_> = Ok(vec![]); // FIXME
-
-            match response {
-                Ok(body_responses) => {
+            match responses {
+                Ok(BlockBodiesResponseList { items }) => {
                     let mut state = parse::state_update::State::Uninitialized;
-                    for body_response in body_responses {
-                        if let Err(error) = state.advance(body_response) {
+                    for response in items {
+                        if let Err(error) = state.advance(response) {
                             tracing::debug!(from=%peer, %error, "body responses parsing");
                             break;
                         }
@@ -242,13 +239,15 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
-            let response: anyhow::Result<_> = Ok(vec![]); // FIXME
+            let responses = self
+                .inner
+                .send_transactions_sync_request(peer, request)
+                .await;
 
-            match response {
-                Ok(responses) => {
+            match responses {
+                Ok(TransactionsResponseList { items }) => {
                     let mut state = parse::transactions::State::Uninitialized;
-                    for response in responses {
+                    for response in items {
                         if let Err(error) = state.advance(response) {
                             tracing::debug!(from=%peer, %error, "transaction responses parsing");
                             break;
@@ -300,13 +299,12 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response = self.inner.send_sync_request(peer, todo!("fixme")).await;
-            let response: anyhow::Result<_> = Ok(vec![]); // FIXME
+            let responses = self.inner.send_receipts_sync_request(peer, request).await;
 
-            match response {
-                Ok(responses) => {
+            match responses {
+                Ok(ReceiptsResponseList { items }) => {
                     let mut state = parse::receipts::State::Uninitialized;
-                    for response in responses {
+                    for response in items {
                         if let Err(error) = state.advance(response) {
                             tracing::debug!(from=%peer, %error, "receipts responses parsing");
                             break;
@@ -323,9 +321,6 @@ impl Client {
                     }
                 }
                 // Try the next peer
-                Ok(response) => {
-                    tracing::debug!(from=%peer, ?response,"unexpected response to receipts request");
-                }
                 Err(error) => {
                     tracing::debug!(from=%peer, %error, "receipts request failed");
                 }
@@ -349,22 +344,24 @@ impl Client {
         // If at some point, mid-way a peer suddenly replies not according to the spec we just
         // dump everything from this peer and try with the next peer.
         // We're not permissive when it comes to following the spec.
-        let peers = self.get_peers_with_capability(protocol::Events::NAME).await;
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Events::NAME)
+            .await;
         for peer in peers {
-            let request = SyncRequest::Events(EventsRequest {
+            let request = EventsRequest {
                 iteration: Iteration {
                     start: start_block_hash.0.into(),
                     direction: Direction::Forward,
                     limit,
                     step: 1.into(),
                 },
-            });
-            let response = self.inner.send_sync_request(peer, request).await;
+            };
+            let items = self.inner.send_events_sync_request(peer, request).await;
 
-            match response {
-                Ok(SyncResponse::Events(responses)) => {
+            match items {
+                Ok(EventsResponseList { items }) => {
                     let mut state = parse::events::State::Uninitialized;
-                    for response in responses {
+                    for response in items {
                         if let Err(error) = state.advance(response) {
                             tracing::debug!(from=%peer, %error, "receipts responses parsing");
                             break;
@@ -381,9 +378,6 @@ impl Client {
                     }
                 }
                 // Try the next peer
-                Ok(response) => {
-                    tracing::debug!(from=%peer, ?response,"unexpected response to receipts request");
-                }
                 Err(error) => {
                     tracing::debug!(from=%peer, %error, "receipts request failed");
                 }
