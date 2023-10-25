@@ -278,3 +278,12 @@ pub mod testnet {
     pub const INVALID_CLASS_HASH: ClassHash =
         class_hash!("031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2");
 }
+
+pub mod traces {
+    pub const TESTNET_GENESIS: &[u8] = bytes_fixture!("traces/block_testnet_0.json");
+    pub const TESTNET_889_517: &[u8] = bytes_fixture!("traces/block_testnet_889_517.json");
+
+    pub const TESTNET_TX_0_0: &[u8] = bytes_fixture!("traces/transaction_testnet_0_0.json");
+    pub const TESTNET_TX_899_517_0: &[u8] =
+        bytes_fixture!("traces/transaction_testnet_889_517_0.json");
+}

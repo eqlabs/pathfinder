@@ -1,0 +1,27 @@
+{
+    "function_invocation": {
+        "caller_address": "0x0",
+        "contract_address": "0x2f40faa63fdd5871415b2dcfb1a5e3e1ca06435b3dda6e2ba9df3f726fd3251",
+        "calldata": [
+            "0x635b73abaa9efff71570cb08f3e5014424788470c3b972b952368fb3fc27cc3",
+            "0x7e92479a573a24241ee6f3e4ade742ff37bae4a60bacef5be1caaff5e7e04f3"
+        ],
+        "result": [],
+        "execution_resources": {
+            "n_steps": 29,
+            "builtin_instance_counter": {
+                "pedersen_builtin": 0,
+                "range_check_builtin": 0,
+                "bitwise_builtin": 0,
+                "output_builtin": 0,
+                "ecdsa_builtin": 0,
+                "ec_op_builtin": 0
+            },
+            "n_memory_holes": 0
+        },
+        "internal_calls": [],
+        "events": [],
+        "messages": []
+    },
+    "signature": []
+}

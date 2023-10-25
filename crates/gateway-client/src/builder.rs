@@ -129,6 +129,8 @@ impl<'a> Request<'a, stage::Method> {
         get_transaction,
         get_state_update,
         get_contract_addresses,
+        get_block_traces,
+        get_transaction_trace,
     );
 
     /// Appends the given method to the request url.
