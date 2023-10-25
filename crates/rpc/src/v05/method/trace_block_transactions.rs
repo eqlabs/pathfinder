@@ -171,7 +171,11 @@ pub(super) fn fetch_block_transactions(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use pathfinder_common::{felt, BlockHeader, ChainId, GasPrice, SierraHash, TransactionIndex};
+    use std::sync::Arc;
+
+    use pathfinder_common::{
+        felt, BlockHeader, ChainId, GasPrice, SierraHash, StateUpdate, TransactionIndex,
+    };
     use starknet_gateway_types::reply::transaction::{ExecutionStatus, Receipt};
 
     use super::*;
@@ -285,6 +289,133 @@ pub(crate) mod tests {
 
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
+        };
+        let output = trace_block_transactions(context, input).await.unwrap();
+        let expected = TraceBlockTransactionsOutput(traces);
+
+        pretty_assertions::assert_eq!(output, expected);
+        Ok(())
+    }
+
+    pub(crate) async fn setup_multi_tx_trace_pending_test(
+    ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
+        use super::super::simulate_transactions::tests::fixtures;
+        use super::super::simulate_transactions::tests::setup_storage;
+
+        let (
+            storage,
+            last_block_header,
+            account_contract_address,
+            universal_deployer_address,
+            test_storage_value,
+        ) = setup_storage().await;
+        let context = RpcContext::for_tests().with_storage(storage.clone());
+
+        let transactions = vec![
+            fixtures::input::declare(account_contract_address),
+            fixtures::input::universal_deployer(
+                account_contract_address,
+                universal_deployer_address,
+            ),
+            fixtures::input::invoke(account_contract_address),
+        ];
+
+        let traces = vec![
+            fixtures::expected_output::declare(account_contract_address, &last_block_header)
+                .transaction_trace,
+            fixtures::expected_output::universal_deployer(
+                account_contract_address,
+                &last_block_header,
+                universal_deployer_address,
+            )
+            .transaction_trace,
+            fixtures::expected_output::invoke(
+                account_contract_address,
+                &last_block_header,
+                test_storage_value,
+            )
+            .transaction_trace,
+        ];
+
+        let pending_block = {
+            let mut db = storage.connection()?;
+            let tx = db.transaction()?;
+
+            tx.insert_sierra_class(
+                &SierraHash(fixtures::SIERRA_HASH.0),
+                fixtures::SIERRA_DEFINITION,
+                &fixtures::CASM_HASH,
+                fixtures::CASM_DEFINITION,
+                "compiler version",
+            )?;
+
+            let dummy_receipt: Receipt = Receipt {
+                actual_fee: None,
+                events: vec![],
+                execution_resources: None,
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: TransactionHash(felt!("0x1")),
+                transaction_index: TransactionIndex::new_or_panic(0),
+                execution_status: ExecutionStatus::default(),
+                revert_error: None,
+            };
+
+            let transaction_receipts =
+                vec![dummy_receipt.clone(), dummy_receipt.clone(), dummy_receipt];
+
+            let pending_block = starknet_gateway_types::reply::PendingBlock {
+                gas_price: GasPrice(1),
+                parent_hash: last_block_header.hash,
+                sequencer_address: last_block_header.sequencer_address,
+                status: starknet_gateway_types::reply::Status::Pending,
+                timestamp: last_block_header.timestamp,
+                transaction_receipts,
+                transactions: transactions.iter().cloned().map(Into::into).collect(),
+                starknet_version: last_block_header.starknet_version,
+            };
+
+            tx.commit()?;
+
+            pending_block
+        };
+
+        let pending_data = crate::pending::PendingData {
+            block: pending_block,
+            state_update: StateUpdate::default(),
+            number: last_block_header.number + 1,
+        };
+
+        let (tx, rx) = tokio::sync::watch::channel(Default::default());
+        tx.send(Arc::new(pending_data)).unwrap();
+
+        let context = context.with_pending_data(rx);
+
+        let traces = vec![
+            Trace {
+                transaction_hash: transactions[0]
+                    .transaction_hash(ChainId::TESTNET, Some(fixtures::SIERRA_HASH)),
+                trace_root: traces[0].clone(),
+            },
+            Trace {
+                transaction_hash: transactions[1].transaction_hash(ChainId::TESTNET, None),
+                trace_root: traces[1].clone(),
+            },
+            Trace {
+                transaction_hash: transactions[2].transaction_hash(ChainId::TESTNET, None),
+                trace_root: traces[2].clone(),
+            },
+        ];
+
+        Ok((context, traces))
+    }
+
+    #[tokio::test]
+    async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
+        let (context, traces) = setup_multi_tx_trace_pending_test().await?;
+
+        let input = TraceBlockTransactionsInput {
+            block_id: BlockId::Pending,
         };
         let output = trace_block_transactions(context, input).await.unwrap();
         let expected = TraceBlockTransactionsOutput(traces);
