@@ -46,23 +46,22 @@ pub enum HybridClient {
         /// We need to cache the last two fetched blocks via p2p otherwise sync logic will
         /// produce a false reorg from genesis when we loose connection to other p2p nodes.
         /// This was we can stay at the same height while we are disconnected.
-        block_cache: BlockCache,
+        cache: Cache,
     },
 }
 
 #[derive(Clone, Debug)]
-pub struct BlockCache {
-    inner: Arc<Mutex<LruCache<BlockHash, BlockCacheEntry>>>,
+pub struct Cache {
+    inner: Arc<Mutex<LruCache<BlockHash, CacheEntry>>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct BlockCacheEntry {
+pub struct CacheEntry {
     pub block: Block,
-    pub cairo_definitions: HashMap<ClassHash, Vec<u8>>,
-    pub sierra_definitions: HashMap<SierraHash, Vec<u8>>,
+    pub definitions: HashMap<ClassHash, Vec<u8>>,
 }
 
-impl Default for BlockCache {
+impl Default for Cache {
     fn default() -> Self {
         Self {
             // We only need 2 blocks: the last one and its parent
@@ -71,12 +70,19 @@ impl Default for BlockCache {
     }
 }
 
-impl BlockCache {
+impl Cache {
     fn get_block(&self, number: BlockNumber) -> Option<Block> {
-        let mut locked = self.inner.lock().unwrap();
+        let locked = self.inner.lock().unwrap();
         locked
             .iter()
             .find_map(|(_, v)| (v.block.block_number == number).then_some(v.block.clone()))
+    }
+
+    fn get_definition(&self, class_hash: ClassHash) -> Option<Vec<u8>> {
+        let locked = self.inner.lock().unwrap();
+        locked
+            .iter()
+            .find_map(|(_, v)| v.definitions.get(&class_hash).cloned())
     }
 
     fn clear_if_reorg(&self, header: &BlockHeader) {
@@ -102,26 +108,19 @@ impl BlockCache {
         let mut locked_inner = self.inner.lock().unwrap();
         locked_inner.put(
             block.block_hash,
-            BlockCacheEntry {
+            CacheEntry {
                 block,
-                cairo_definitions: Default::default(),
-                sierra_definitions: Default::default(),
+                definitions: Default::default(),
             },
         );
     }
 
-    fn insert_definitions(
-        &self,
-        block_hash: BlockHash,
-        cairo_definitions: HashMap<ClassHash, Vec<u8>>,
-        sierra_definitions: HashMap<SierraHash, Vec<u8>>,
-    ) {
+    fn insert_definitions(&self, block_hash: BlockHash, definitions: HashMap<ClassHash, Vec<u8>>) {
         let mut locked = self.inner.lock().unwrap();
-        let entry = locked
+        locked
             .get_mut(&block_hash)
-            .expect("block is already cached");
-        entry.cairo_definitions = cairo_definitions;
-        entry.sierra_definitions = sierra_definitions;
+            .expect("block is already cached")
+            .definitions = definitions;
     }
 }
 
@@ -142,7 +141,7 @@ impl HybridClient {
                 p2p_client,
                 sequencer,
                 head_rx,
-                block_cache: Default::default(),
+                cache: Default::default(),
             }
         }
     }
@@ -184,12 +183,10 @@ impl GatewayApi for HybridClient {
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.block(block).await,
             HybridClient::NonPropagatingP2P {
-                p2p_client,
-                block_cache,
-                ..
+                p2p_client, cache, ..
             } => match block {
                 BlockId::Number(n) => {
-                    if let Some(block) = block_cache.get_block(n) {
+                    if let Some(block) = cache.get_block(n) {
                         tracing::trace!(number=%n, "HybridClient: using cached block");
                         return Ok(block.into());
                     }
@@ -245,8 +242,22 @@ impl GatewayApi for HybridClient {
             HybridClient::GatewayProxy { sequencer, .. } => {
                 sequencer.pending_class_by_hash(class_hash).await
             }
-            HybridClient::NonPropagatingP2P { p2p_client, .. } => {
-                todo!("use v1");
+            HybridClient::NonPropagatingP2P { cache, .. } => {
+                let def = cache
+                    .get_definition(class_hash)
+                    .ok_or_else(|| class_not_found(format!("No peers with class {class_hash}")))?;
+                let jh = tokio::task::spawn_blocking(move || zstd::decode_all(def.as_slice()));
+                let def = jh
+                    .await
+                    .map_err(|error| {
+                        class_not_found(format!(
+                            "class decompression task ended unexpectedly: {error}"
+                        ))
+                    })?
+                    .map_err(|error| {
+                        class_not_found(format!("class decompression failed: {error}"))
+                    })?;
+                Ok(def.into())
             }
         }
     }
@@ -264,9 +275,7 @@ impl GatewayApi for HybridClient {
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
             HybridClient::NonPropagatingP2P {
-                p2p_client,
-                block_cache,
-                ..
+                p2p_client, cache, ..
             } => match block {
                 BlockId::Hash(hash) => {
                     let mut state_updates = p2p_client
@@ -309,8 +318,7 @@ impl GatewayApi for HybridClient {
                     let jh = tokio::task::spawn_blocking(move || {
                         let mut declared_cairo_classes = HashSet::new();
                         let mut declared_sierra_classes = HashMap::new();
-                        let mut cairo_definitions = HashMap::new();
-                        let mut sierra_definitions = HashMap::new();
+                        let mut definitions = HashMap::new();
 
                         for class in classes {
                             let definition = zstd::decode_all(class.definition.as_slice())
@@ -319,14 +327,14 @@ impl GatewayApi for HybridClient {
                             match serde_json::from_slice::<SierraOrCairo<'_>>(definition.as_slice())
                             {
                                 Ok(SierraOrCairo::Sierra { .. }) => {
-                                    let hash = SierraHash(class.hash.0);
-                                    // We don't verify the class hash
-                                    declared_sierra_classes.insert(hash, CasmHash::ZERO);
-                                    sierra_definitions.insert(hash, definition);
+                                    // We don't verify the class hash so casm hash is not needed (?)
+                                    declared_sierra_classes
+                                        .insert(SierraHash(class.hash.0), CasmHash::ZERO);
+                                    definitions.insert(class.hash, definition);
                                 }
                                 Ok(SierraOrCairo::Cairo { .. }) => {
                                     declared_cairo_classes.insert(class.hash);
-                                    cairo_definitions.insert(class.hash, definition);
+                                    definitions.insert(class.hash, definition);
                                 }
                                 Err(_) => {
                                     return Err(class_not_found("invalid class definition"));
@@ -334,26 +342,17 @@ impl GatewayApi for HybridClient {
                             }
                         }
 
-                        Ok((
-                            declared_cairo_classes,
-                            declared_sierra_classes,
-                            cairo_definitions,
-                            sierra_definitions,
-                        ))
+                        Ok((declared_cairo_classes, declared_sierra_classes, definitions))
                     });
 
-                    let (
-                        declared_cairo_classes,
-                        declared_sierra_classes,
-                        cairo_definitions,
-                        sierra_definitions,
-                    ) = jh.await.map_err(|error| {
-                        class_not_found(format!(
-                            "class definition decompression task ended unexpectedly: {error}"
-                        ))
-                    })??;
+                    let (declared_cairo_classes, declared_sierra_classes, definitions) =
+                        jh.await.map_err(|error| {
+                            class_not_found(format!(
+                                "class definition decompression task ended unexpectedly: {error}"
+                            ))
+                        })??;
 
-                    block_cache.insert_definitions(hash, cairo_definitions, sierra_definitions);
+                    cache.insert_definitions(hash, definitions);
 
                     Ok(StateUpdate {
                         block_hash: hash,
