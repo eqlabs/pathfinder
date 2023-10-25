@@ -282,37 +282,8 @@ async fn subscription_and_propagation() {
     assert_eq!(msg, expected);
 }
 
+#[ignore = "implement once streaming response supported"]
 #[test_log::test(tokio::test)]
-async fn sync_request_response() {
-    use fake::{Fake, Faker};
-
-    let _ = env_logger::builder().is_test(true).try_init();
-
-    let mut peer1 = TestPeer::default();
-    let mut peer2 = TestPeer::default();
-
-    let addr1 = peer1.start_listening().await.unwrap();
-    let addr2 = peer2.start_listening().await.unwrap();
-
-    tracing::info!(%peer1.peer_id, %addr1);
-    tracing::info!(%peer2.peer_id, %addr2);
-
-    let mut peer1_inbound_sync_requests = todo!("use v1");
-
-    consume_events(peer2.event_receiver);
-
-    // Dial so that the peers have each other in their DHTs, the direction doesn't matter
-    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
-
-    for _ in 0..10 {
-        // TODO
-        let expected_request = Faker.fake::<()>();
-        let expected_response = Faker.fake::<()>();
-
-        let expected_request_cloned = expected_request.clone();
-        let expected_response_cloned = expected_response.clone();
-        let client2 = peer2.client.clone();
-
-        todo!("use v1");
-    }
+async fn sync_request_stream_response() {
+    // TODO
 }
