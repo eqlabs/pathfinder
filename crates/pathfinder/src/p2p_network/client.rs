@@ -22,7 +22,7 @@ use pathfinder_common::{
     StateUpdate, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
-use starknet_gateway_types::reply;
+use starknet_gateway_types::reply as gw;
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
 use std::collections::{HashMap, HashSet};
@@ -180,7 +180,7 @@ mod error {
 
 #[async_trait::async_trait]
 impl GatewayApi for HybridClient {
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
+    async fn block(&self, block: BlockId) -> Result<gw::MaybePendingBlock, SequencerError> {
         use error::block_not_found;
 
         match self {
@@ -281,20 +281,20 @@ impl GatewayApi for HybridClient {
                             .map(|(i, (t, r))| {
                                 let (execution_status, revert_error) = if r.revert_error.is_empty()
                                 {
-                                    (reply::transaction::ExecutionStatus::Succeeded, None)
+                                    (gw::transaction::ExecutionStatus::Succeeded, None)
                                 } else {
                                     (
-                                        reply::transaction::ExecutionStatus::Reverted,
+                                        gw::transaction::ExecutionStatus::Reverted,
                                         Some(r.revert_error),
                                     )
                                 };
 
                                 (
-                                    reply::transaction::Transaction::from(Transaction {
+                                    gw::transaction::Transaction::from(Transaction {
                                         hash: r.transaction_hash,
                                         variant: t.into(),
                                     }),
-                                    reply::transaction::Receipt {
+                                    gw::transaction::Receipt {
                                         actual_fee: Some(r.actual_fee),
                                         events: events
                                             .remove(&r.transaction_hash)
@@ -311,7 +311,7 @@ impl GatewayApi for HybridClient {
                             })
                             .unzip();
 
-                        let block = reply::Block {
+                        let block = gw::Block {
                             block_hash: header.hash,
                             block_number: header.number,
                             gas_price: Some(header.gas_price),
@@ -319,7 +319,7 @@ impl GatewayApi for HybridClient {
                             sequencer_address: Some(header.sequencer_address),
                             state_commitment: StateCommitment::default(), // We don't verify the state commitment so it's 0
                             // FIXME
-                            status: starknet_gateway_types::reply::Status::AcceptedOnL2,
+                            status: gw::Status::AcceptedOnL2,
                             timestamp: header.timestamp,
                             transaction_receipts: receipts,
                             transactions,
@@ -345,7 +345,7 @@ impl GatewayApi for HybridClient {
     async fn block_without_retry(
         &self,
         block: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+    ) -> Result<gw::MaybePendingBlock, SequencerError> {
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => {
                 sequencer.block_without_retry(block).await
@@ -389,7 +389,7 @@ impl GatewayApi for HybridClient {
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<reply::TransactionStatus, SequencerError> {
+    ) -> Result<gw::TransactionStatus, SequencerError> {
         self.as_sequencer().transaction(transaction_hash).await
     }
 
@@ -511,7 +511,7 @@ impl GatewayApi for HybridClient {
         }
     }
 
-    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
+    async fn eth_contract_addresses(&self) -> Result<gw::EthContractAddresses, SequencerError> {
         self.as_sequencer().eth_contract_addresses().await
     }
 
@@ -525,7 +525,7 @@ impl GatewayApi for HybridClient {
         contract_address: ContractAddress,
         entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+    ) -> Result<gw::add_transaction::InvokeResponse, SequencerError> {
         self.as_sequencer()
             .add_invoke_transaction(
                 version,
@@ -550,7 +550,7 @@ impl GatewayApi for HybridClient {
         sender_address: ContractAddress,
         compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
-    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
+    ) -> Result<gw::add_transaction::DeclareResponse, SequencerError> {
         self.as_sequencer()
             .add_declare_transaction(
                 version,
@@ -575,7 +575,7 @@ impl GatewayApi for HybridClient {
         contract_address_salt: ContractAddressSalt,
         class_hash: ClassHash,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
+    ) -> Result<gw::add_transaction::DeployAccountResponse, SequencerError> {
         self.as_sequencer()
             .add_deploy_account(
                 version,
