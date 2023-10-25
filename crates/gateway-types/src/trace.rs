@@ -32,6 +32,7 @@ pub enum CallType {
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Event {
     pub order: i64,
     pub data: Vec<Felt>,
@@ -76,7 +77,9 @@ pub enum EntryPointType {
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct MsgToL1 {
+    pub order: usize,
     pub payload: Vec<Felt>,
     pub to_address: Felt,
 }

@@ -1,10 +1,12 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockId, GasPrice, TransactionHash};
+use pathfinder_common::{BlockHash, BlockId, GasPrice, StarknetVersion, TransactionHash};
 use pathfinder_executor::CallError;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
+use starknet_gateway_client::GatewayApi;
 
 use crate::compose_executor_transaction;
+use crate::v05::method::trace_block_transactions::map_gateway_trace;
 use crate::{
     context::RpcContext,
     error::{ApplicationError, TraceError},
@@ -90,8 +92,30 @@ pub async fn trace_transaction(
     context: RpcContext,
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
-    let (transactions, gas_price, parent_block_hash) =
+    let (transactions, gas_price, parent_block_hash, starknet_version) =
         fetch_block_transactions(context.clone(), input.transaction_hash).await?;
+
+    const V_0_12_0: semver::Version = semver::Version::new(0, 12, 0);
+    let starknet_version = starknet_version
+        .parse_as_semver()
+        .context("Parsing starknet version")?
+        .unwrap_or(semver::Version::new(0, 0, 0));
+    if starknet_version <= V_0_12_0 {
+        let trace = context
+            .sequencer
+            .transaction_trace(input.transaction_hash)
+            .await
+            .context("Proxying call to feeder gateway")?;
+
+        let transaction = transactions
+            .into_iter()
+            .find(|tx| input.transaction_hash == pathfinder_executor::transaction_hash(tx))
+            .context("Transaction hash was not found")?;
+
+        let trace = map_gateway_trace(transaction, trace);
+
+        return Ok(TraceTransactionOutput(trace));
+    }
 
     let parent_block_id = BlockId::Hash(parent_block_hash);
     let gas_price = Some(U256::from(gas_price.0));
@@ -118,7 +142,15 @@ pub async fn trace_transaction(
 async fn fetch_block_transactions(
     context: RpcContext,
     transaction_hash: TransactionHash,
-) -> Result<(Vec<pathfinder_executor::Transaction>, GasPrice, BlockHash), TraceTransactionError> {
+) -> Result<
+    (
+        Vec<pathfinder_executor::Transaction>,
+        GasPrice,
+        BlockHash,
+        StarknetVersion,
+    ),
+    TraceTransactionError,
+> {
     let span = tracing::Span::current();
     let storage = context.storage.clone();
 
@@ -149,6 +181,7 @@ async fn fetch_block_transactions(
                 transactions,
                 pending_block.gas_price,
                 pending_block.parent_hash,
+                pending_block.starknet_version.clone(),
             ));
         }
 

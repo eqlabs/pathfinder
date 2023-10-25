@@ -115,6 +115,8 @@ pub async fn simulate_transactions(
 pub mod dto {
     use serde_with::serde_as;
 
+    use starknet_gateway_types::trace as gateway_trace;
+
     use crate::felt::RpcFelt;
     use crate::v03::method::get_state_update::types::StateDiff;
     use crate::v05::method::call::FunctionCall;
@@ -426,6 +428,67 @@ pub mod dto {
             dto::SimulatedTransaction {
                 fee_estimation: tx.fee_estimation.into(),
                 transaction_trace: tx.trace.into(),
+            }
+        }
+    }
+
+    impl From<gateway_trace::FunctionInvocation> for FunctionInvocation {
+        fn from(value: gateway_trace::FunctionInvocation) -> Self {
+            Self {
+                call_type: value.call_type.map(Into::into).unwrap_or(CallType::Call),
+                function_call: FunctionCall {
+                    calldata: value.calldata.into_iter().map(CallParam).collect(),
+                    contract_address: value.contract_address,
+                    entry_point_selector: EntryPoint(value.selector.unwrap_or_default()),
+                },
+                caller_address: value.caller_address,
+                calls: value.internal_calls.into_iter().map(Into::into).collect(),
+                class_hash: value.class_hash,
+                entry_point_type: value
+                    .entry_point_type
+                    .map(Into::into)
+                    .unwrap_or(EntryPointType::External),
+                events: value.events.into_iter().map(Into::into).collect(),
+                messages: value
+                    .messages
+                    .into_iter()
+                    .map(|message| OrderedMsgToL1 {
+                        order: message.order,
+                        payload: message.payload,
+                        to_address: message.to_address,
+                        from_address: value.contract_address.0,
+                    })
+                    .collect(),
+                result: value.result,
+            }
+        }
+    }
+
+    impl From<gateway_trace::CallType> for CallType {
+        fn from(value: gateway_trace::CallType) -> Self {
+            match value {
+                gateway_trace::CallType::Call => Self::Call,
+                gateway_trace::CallType::Delegate => Self::Delegate,
+            }
+        }
+    }
+
+    impl From<gateway_trace::EntryPointType> for EntryPointType {
+        fn from(value: gateway_trace::EntryPointType) -> Self {
+            match value {
+                gateway_trace::EntryPointType::Constructor => Self::Constructor,
+                gateway_trace::EntryPointType::External => Self::External,
+                gateway_trace::EntryPointType::L1Handler => Self::L1Handler,
+            }
+        }
+    }
+
+    impl From<gateway_trace::Event> for OrderedEvent {
+        fn from(value: gateway_trace::Event) -> Self {
+            Self {
+                order: value.order,
+                data: value.data,
+                keys: value.keys,
             }
         }
     }

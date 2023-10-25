@@ -1,9 +1,14 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockId, GasPrice, TransactionHash};
-use pathfinder_executor::CallError;
+use pathfinder_common::{BlockHash, BlockId, GasPrice, StarknetVersion, TransactionHash};
+use pathfinder_executor::{transaction_hash, CallError};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
+use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
 
+use crate::v05::method::simulate_transactions::dto::{
+    DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
+};
 use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
 
 use super::simulate_transactions::dto::TransactionTrace;
@@ -76,12 +81,87 @@ impl From<tokio::task::JoinError> for TraceBlockTransactionsError {
     }
 }
 
+pub(crate) fn map_gateway_trace(
+    transaction: pathfinder_executor::Transaction,
+    trace: GatewayTxTrace,
+) -> TransactionTrace {
+    use pathfinder_executor::{AccountTransaction, Transaction};
+
+    match transaction {
+        Transaction::AccountTransaction(AccountTransaction::Declare(_)) => {
+            TransactionTrace::Declare(DeclareTxnTrace {
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                validate_invocation: trace.validate_invocation.map(Into::into),
+                state_diff: Default::default(),
+            })
+        }
+        Transaction::AccountTransaction(AccountTransaction::DeployAccount(_)) => {
+            TransactionTrace::DeployAccount(DeployAccountTxnTrace {
+                constructor_invocation: trace.function_invocation.map(Into::into),
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                validate_invocation: trace.validate_invocation.map(Into::into),
+                state_diff: Default::default(),
+            })
+        }
+        Transaction::AccountTransaction(AccountTransaction::Invoke(_)) => {
+            TransactionTrace::Invoke(InvokeTxnTrace {
+                execute_invocation: if let Some(revert_reason) = trace.revert_error {
+                    ExecuteInvocation::RevertedReason { revert_reason }
+                } else {
+                    trace
+                        .function_invocation
+                        .map(|invocation| ExecuteInvocation::FunctionInvocation(invocation.into()))
+                        .unwrap_or_else(|| ExecuteInvocation::Empty)
+                },
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                validate_invocation: trace.validate_invocation.map(Into::into),
+                state_diff: Default::default(),
+            })
+        }
+        Transaction::L1HandlerTransaction(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
+            function_invocation: trace.function_invocation.map(Into::into),
+        }),
+    }
+}
+
 pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    let (transactions, gas_price, parent_block_hash) =
+    let (transactions, gas_price, parent_block_hash, starknet_version) =
         fetch_transactions(context.clone(), input.block_id).await?;
+
+    const V_0_12_0: semver::Version = semver::Version::new(0, 12, 0);
+    let starknet_version = starknet_version
+        .parse_as_semver()
+        .context("Parsing starknet version")?
+        .unwrap_or(semver::Version::new(0, 0, 0));
+    if starknet_version < V_0_12_0 {
+        let traces = context
+            .sequencer
+            .block_traces(input.block_id)
+            .await
+            .context("Proxying call to feeder gateway")?;
+
+        // TODO: should we check the lengths match?
+
+        let traces = traces
+            .traces
+            .into_iter()
+            .zip(transactions.into_iter())
+            .map(|(trace, tx)| {
+                let transaction_hash = transaction_hash(&tx);
+                let trace_root = map_gateway_trace(tx, trace);
+
+                Trace {
+                    transaction_hash,
+                    trace_root,
+                }
+            })
+            .collect();
+
+        return Ok(TraceBlockTransactionsOutput(traces));
+    }
 
     let parent_block_id = pathfinder_common::BlockId::Hash(parent_block_hash);
     let execution_state =
@@ -110,8 +190,15 @@ pub async fn trace_block_transactions(
 async fn fetch_transactions(
     context: RpcContext,
     block_id: BlockId,
-) -> Result<(Vec<pathfinder_executor::Transaction>, GasPrice, BlockHash), TraceBlockTransactionsError>
-{
+) -> Result<
+    (
+        Vec<pathfinder_executor::Transaction>,
+        GasPrice,
+        BlockHash,
+        StarknetVersion,
+    ),
+    TraceBlockTransactionsError,
+> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
     tokio::task::spawn_blocking(move || {
@@ -136,6 +223,7 @@ async fn fetch_transactions(
                 transactions,
                 pending_data.block.gas_price,
                 pending_data.block.parent_hash,
+                pending_data.block.starknet_version.clone(),
             ));
         }
 
@@ -149,8 +237,15 @@ async fn fetch_transactions(
 pub(super) fn fetch_block_transactions(
     tx: &pathfinder_storage::Transaction<'_>,
     block_id: pathfinder_storage::BlockId,
-) -> Result<(Vec<pathfinder_executor::Transaction>, GasPrice, BlockHash), TraceBlockTransactionsError>
-{
+) -> Result<
+    (
+        Vec<pathfinder_executor::Transaction>,
+        GasPrice,
+        BlockHash,
+        StarknetVersion,
+    ),
+    TraceBlockTransactionsError,
+> {
     let header = tx
         .block_header(block_id)?
         .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
@@ -166,7 +261,12 @@ pub(super) fn fetch_block_transactions(
         .map(|transaction| compose_executor_transaction(transaction, tx))
         .collect::<anyhow::Result<Vec<_>, _>>()?;
 
-    Ok::<_, TraceBlockTransactionsError>((transactions, header.gas_price, header.parent_hash))
+    Ok::<_, TraceBlockTransactionsError>((
+        transactions,
+        header.gas_price,
+        header.parent_hash,
+        header.starknet_version,
+    ))
 }
 
 #[cfg(test)]
@@ -236,6 +336,7 @@ pub(crate) mod tests {
                 .with_number(last_block_header.number + 1)
                 .with_gas_price(GasPrice(1))
                 .with_parent_hash(last_block_header.hash)
+                .with_starknet_version(StarknetVersion::new(0, 12, 1))
                 .finalize_with_hash(BlockHash(felt!("0x1")));
             tx.insert_block_header(&next_block_header)?;
 

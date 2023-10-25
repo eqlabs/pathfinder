@@ -44,6 +44,7 @@ impl PendingWatcher {
                     gas_price: latest.gas_price,
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,
+                    starknet_version: latest.starknet_version,
                     // This shouldn't have an impact anywhere as the RPC methods should
                     // know this is a pending block. But rather safe than sorry.
                     status: Status::Pending,
@@ -145,6 +146,7 @@ mod tests {
         expected.block.gas_price = latest.gas_price;
         expected.block.timestamp = latest.timestamp;
         expected.block.parent_hash = latest.hash;
+        expected.block.starknet_version = latest.starknet_version;
         expected.block.status = Status::Pending;
         expected.number = latest.number + 1;
 
