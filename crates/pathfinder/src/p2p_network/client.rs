@@ -7,7 +7,11 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::{client::peer_agnostic, client::types::StateUpdateWithDefs, HeadRx};
+use p2p::{
+    client::peer_agnostic,
+    client::types::{BlockHeader, StateUpdateWithDefs},
+    HeadRx,
+};
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
 use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
@@ -48,16 +52,15 @@ pub enum HybridClient {
 
 #[derive(Clone, Debug)]
 pub struct BlockCache {
-    // We rely on the legacy sync logic sequence
-    inner: Arc<Mutex<LruCache<BlockNumber, Block>>>,
+    inner: Arc<Mutex<LruCache<BlockNumber, BlockCacheEntry>>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct BlockCacheEntry {
-    block: Block,
-    state_update: StateUpdate,
-    cairo_definitions: HashMap<ClassHash, Vec<u8>>,
-    sierra_definitions: HashMap<SierraHash, Vec<u8>>,
+    pub block: Block,
+    pub state_update: Option<StateUpdate>,
+    pub cairo_definitions: HashMap<ClassHash, Vec<u8>>,
+    pub sierra_definitions: HashMap<SierraHash, Vec<u8>>,
 }
 
 impl Default for BlockCache {
@@ -70,13 +73,13 @@ impl Default for BlockCache {
 }
 
 impl BlockCache {
-    fn get(&self, number: BlockNumber) -> Option<Block> {
+    fn get_block(&self, number: BlockNumber) -> Option<Block> {
         let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner.get(&number).cloned()
+        locked_inner.get(&number).map(|entry| entry.block.clone())
     }
 
-    fn clear_if_reorg(&self, header: &p2p_proto_v1::block::BlockHeader) {
-        if let Some(parent_number) = header.number.checked_sub(1) {
+    fn clear_if_reorg(&self, header: &BlockHeader) {
+        if let Some(parent_number) = header.number.get().checked_sub(1) {
             let mut locked_inner = self.inner.lock().unwrap();
             if let Some(parent) = locked_inner.get(&BlockNumber::new_or_panic(parent_number)) {
                 // If there's a reorg, purge the cache or we'll be stuck
@@ -84,16 +87,56 @@ impl BlockCache {
                 // There's a risk we'll falsely reorg to genesis if all other peers get disconnected
                 // just after the cache is purged
                 // TODO: consider increasing the cache and just purging the last block
-                if parent.block_hash.0 != header.parent_hash.0 {
+                if parent.block.block_hash.0 != header.parent_hash.0 {
                     locked_inner.clear();
                 }
             }
         }
     }
 
-    fn insert(&self, block: Block) {
+    fn insert_block(&self, block: Block) {
         let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner.put(block.block_number, block);
+        locked_inner.put(
+            block.block_number,
+            BlockCacheEntry {
+                block,
+                state_update: None,
+                cairo_definitions: Default::default(),
+                sierra_definitions: Default::default(),
+            },
+        );
+    }
+
+    fn insert_state_update(&self, block_number: BlockNumber, state_update: StateUpdate) {
+        let mut locked_inner = self.inner.lock().unwrap();
+        locked_inner
+            .get_mut(&block_number)
+            .expect("block is already cached")
+            .state_update = Some(state_update);
+    }
+
+    fn insert_cairo_definitions(
+        &self,
+        block_number: BlockNumber,
+        definitions: HashMap<ClassHash, Vec<u8>>,
+    ) {
+        let mut locked_inner = self.inner.lock().unwrap();
+        locked_inner
+            .get_mut(&block_number)
+            .expect("block is already cached")
+            .cairo_definitions = definitions;
+    }
+
+    fn insert_sierra_definitions(
+        &self,
+        block_number: BlockNumber,
+        definitions: HashMap<SierraHash, Vec<u8>>,
+    ) {
+        let mut locked_inner = self.inner.lock().unwrap();
+        locked_inner
+            .get_mut(&block_number)
+            .expect("block is already cached")
+            .sierra_definitions = definitions;
     }
 }
 
@@ -161,7 +204,7 @@ impl GatewayApi for HybridClient {
                 ..
             } => match block {
                 BlockId::Number(n) => {
-                    if let Some(block) = block_cache.get(n) {
+                    if let Some(block) = block_cache.get_block(n) {
                         tracing::trace!(number=%n, "HybridClient: using cached block");
                         return Ok(block.into());
                     }
