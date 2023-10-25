@@ -245,7 +245,7 @@ impl GatewayApi for HybridClient {
                             .into_iter()
                             .map(|(k, v)| {
                                 v.into_iter()
-                                    .map(|r| Receipt::try_from(r))
+                                    .map(Receipt::try_from)
                                     .collect::<Result<Vec<_>, _>>()
                                     .map(|r| (k, r))
                             })
@@ -292,7 +292,7 @@ impl GatewayApi for HybridClient {
                                 (
                                     gw::transaction::Transaction::from(Transaction {
                                         hash: r.transaction_hash,
-                                        variant: t.into(),
+                                        variant: t,
                                     }),
                                     gw::transaction::Receipt {
                                         actual_fee: Some(r.actual_fee),

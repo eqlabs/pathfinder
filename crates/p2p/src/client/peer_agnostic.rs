@@ -80,7 +80,7 @@ impl Client {
 
         let r = self.peers_with_capability.read().await;
         let mut peers = if let Some(peers) = r.get(capability) {
-            peers.into_iter().copied().collect::<Vec<_>>()
+            peers.iter().copied().collect::<Vec<_>>()
         } else {
             // Avoid deadlock
             drop(r);
@@ -91,7 +91,7 @@ impl Client {
                 .await
                 .unwrap_or_default();
 
-            let _i_should_have_the_capability_too = peers.remove(&self.inner.peer_id());
+            let _i_should_have_the_capability_too = peers.remove(self.inner.peer_id());
             debug_assert!(_i_should_have_the_capability_too);
 
             let peers_vec = peers.iter().copied().collect::<Vec<_>>();

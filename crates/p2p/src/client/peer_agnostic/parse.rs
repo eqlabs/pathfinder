@@ -196,7 +196,11 @@ pub(crate) mod state_update {
                     None => State::Delimited { state_updates },
                 },
                 (
-                    State::Classes {
+                    State::Diff {
+                        last_id,
+                        mut state_updates,
+                    }
+                    | State::Classes {
                         last_id,
                         mut state_updates,
                     },
