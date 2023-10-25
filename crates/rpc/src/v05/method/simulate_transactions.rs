@@ -164,6 +164,8 @@ pub mod dto {
         Call,
         #[serde(rename = "LIBRARY_CALL")]
         LibraryCall,
+        #[serde(rename = "DELEGATE")]
+        Delegate,
     }
 
     impl From<pathfinder_executor::types::CallType> for CallType {
