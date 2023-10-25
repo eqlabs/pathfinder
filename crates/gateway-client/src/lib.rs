@@ -39,10 +39,6 @@ pub trait GatewayApi: Sync {
         unimplemented!()
     }
 
-    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-        unimplemented!();
-    }
-
     async fn pending_class_by_hash(
         &self,
         class_hash: ClassHash,
@@ -160,10 +156,6 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         block: BlockId,
     ) -> Result<(BlockNumber, BlockHash), SequencerError> {
         self.as_ref().block_header(block).await
-    }
-
-    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-        self.as_ref().class_by_hash(class_hash).await
     }
 
     async fn pending_class_by_hash(
@@ -433,17 +425,6 @@ impl GatewayApi for Client {
             .await?;
 
         Ok((header.block_number, header.block_hash))
-    }
-
-    /// Gets class for a particular class hash.
-    #[tracing::instrument(skip(self))]
-    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-        self.feeder_gateway_request()
-            .get_class_by_hash()
-            .with_class_hash(class_hash)
-            .with_retry(self.retry)
-            .get_as_bytes()
-            .await
     }
 
     /// Gets class for a particular class hash.
@@ -1021,41 +1002,7 @@ mod tests {
         }
     }
 
-    mod class_by_hash {
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[test_log::test(tokio::test)]
-        async fn invalid_class_hash() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_class_by_hash?classHash={}",
-                    INVALID_CLASS_HASH.0.to_hex_str()
-                ),
-                response_from(KnownStarknetErrorCode::UndeclaredClass),
-            )]);
-            let error = client.class_by_hash(INVALID_CLASS_HASH).await.unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::UndeclaredClass.into())
-            );
-        }
-
-        #[tokio::test]
-        async fn success() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_class_by_hash?classHash={}",
-                    VALID_CLASS_HASH.0.to_hex_str()
-                ),
-                (r#"{"hello":"world"}"#, 200),
-            )]);
-            let bytes = client.class_by_hash(VALID_CLASS_HASH).await.unwrap();
-            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
-        }
-    }
-
-    mod transaction_status {
+    mod transaction {
         use super::{reply::Status, *};
         use pretty_assertions::assert_eq;
 

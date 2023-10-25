@@ -250,19 +250,6 @@ impl GatewayApi for HybridClient {
         }
     }
 
-    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-        use error::class_not_found;
-
-        match self {
-            HybridClient::GatewayProxy { sequencer, .. } => {
-                sequencer.class_by_hash(class_hash).await
-            }
-            HybridClient::NonPropagatingP2P { p2p_client, .. } => {
-                todo!("use v1");
-            }
-        }
-    }
-
     async fn pending_class_by_hash(
         &self,
         class_hash: ClassHash,
