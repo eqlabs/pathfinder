@@ -229,23 +229,30 @@ async fn handle_p2p_event(
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");
-            use p2p_proto_v1::block::{BlockHeadersResponse, BlockHeadersResponsePart, NewBlock};
+            use p2p_proto_v1::block::NewBlock;
 
-            if let NewBlock::Header(BlockHeadersResponse { mut parts }) = new_block {
-                if let Some(BlockHeadersResponsePart::Header(header)) = parts.pop() {
-                    tx.send_if_modified(|head| {
-                        let current_height = head.unwrap_or_default().0.get();
+            let id = match new_block {
+                NewBlock::Id(id) => Some(id),
+                NewBlock::Header(h) => h.parts.first().and_then(|part| part.id()),
+                NewBlock::Body(b) => b.id,
+            };
+            let new_head =
+                id.and_then(|id| BlockNumber::new(id.number).map(|n| (n, BlockHash(id.hash.0))));
+            match new_head {
+                Some((new_height, new_hash)) => {
+                    tx.send_if_modified(|head| -> bool {
+                        let current_height = head.unwrap_or_default().0;
 
-                        if header.number > current_height {
-                            *head = Some((
-                                BlockNumber::new_or_panic(header.number),
-                                BlockHash(header.hash.0),
-                            ));
+                        if new_height > current_height {
+                            *head = Some((new_height, new_hash));
                             true
                         } else {
                             false
                         }
                     });
+                }
+                None => {
+                    tracing::warn!("Received block propagation without a valid head: {id:?}")
                 }
             }
         }

@@ -219,6 +219,17 @@ impl BlockHeadersResponsePart {
             _ => None,
         }
     }
+
+    pub fn id(&self) -> Option<BlockId> {
+        match self {
+            Self::Header(header) => Some(BlockId {
+                hash: header.hash,
+                number: header.number,
+            }),
+            Self::Signatures(signatures) => Some(signatures.block),
+            Self::Fin(_) => None,
+        }
+    }
 }
 
 impl BlockBodyMessage {
