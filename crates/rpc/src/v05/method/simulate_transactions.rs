@@ -71,45 +71,65 @@ pub async fn simulate_transactions(
     context: RpcContext,
     input: SimulateTrasactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
-    let chain_id = context.chain_id;
-
-    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
-
-    let skip_validate = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
-
-    let skip_fee_charge = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipFeeCharge);
-
     let span = tracing::Span::current();
-
-    let txs = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let _g = span.enter();
+
+        let skip_validate = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
+
+        let skip_fee_charge = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &dto::SimulationFlag::SkipFeeCharge);
+
+        let mut db = context
+            .storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let (header, pending) = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_data
+                    .get(&db)
+                    .context("Querying pending data")?;
+
+                (pending.header(), Some(pending.state_update.clone()))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending should fail");
+
+                let header = db
+                    .block_header(block_id)
+                    .context("Fetching block header")?
+                    .ok_or(SimulateTransactionError::BlockNotFound)?;
+
+                (header, None)
+            }
+        };
+
+        let state =
+            pathfinder_executor::ExecutionState::simulation(&db, context.chain_id, header, pending);
 
         let transactions = input
             .transactions
             .iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
+            .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        pathfinder_executor::simulate(
-            execution_state,
-            transactions,
-            skip_validate,
-            skip_fee_charge,
-        )
+        let txs =
+            pathfinder_executor::simulate(state, transactions, skip_validate, skip_fee_charge)?;
+        let txs = txs.into_iter().map(Into::into).collect();
+        Ok(SimulateTransactionOutput(txs))
     })
     .await
-    .context("Simulating transaction")??;
-
-    let txs = txs.into_iter().map(Into::into).collect();
-    Ok(SimulateTransactionOutput(txs))
+    .context("Simulating transaction")?
 }
 
 pub mod dto {

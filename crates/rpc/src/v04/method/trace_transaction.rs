@@ -1,10 +1,12 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockId, TransactionHash};
-use pathfinder_executor::{CallError, Transaction};
-use primitive_types::U256;
+use pathfinder_common::TransactionHash;
+use pathfinder_executor::{CallError, ExecutionState};
 use serde::{Deserialize, Serialize};
+use starknet_gateway_client::GatewayApi;
 use tokio::task::JoinError;
 
+use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
+use crate::v04::v04_method::simulate_transactions::dto::map_gateway_trace;
 use crate::{
     compose_executor_transaction,
     context::RpcContext,
@@ -82,65 +84,129 @@ pub async fn trace_transaction(
     context: RpcContext,
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
-    let (transactions, parent_block_hash, gas_price): (Vec<Transaction>, BlockHash, Option<U256>) = {
-        let span = tracing::Span::current();
+    #[allow(clippy::large_enum_variant)]
+    enum LocalExecution {
+        Success(TransactionTrace),
+        Unsupported(starknet_gateway_types::reply::transaction::Transaction),
+    }
 
-        let storage = context.storage.clone();
-        tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
+    let span = tracing::Span::current();
+    let local = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
 
-            let mut db = storage.connection()?;
-            let tx = db.transaction()?;
+        let mut db = context
+            .storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
 
-            let block_hash = tx
+        // Find the transaction's block.
+        let pending = context
+            .pending_data
+            .get(&db)
+            .context("Querying pending data")?;
+
+        let (header, transactions) = if let Some(pending_idx) = pending
+            .block
+            .transactions
+            .iter()
+            .position(|tx| tx.hash() == input.transaction_hash)
+        {
+            let header = pending.header();
+
+            let starknet_version = header
+                .starknet_version
+                .parse_as_semver()
+                .context("Parsing starknet version")?
+                .unwrap_or(semver::Version::new(0, 0, 0));
+            if starknet_version
+                < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
+            {
+                return Ok(LocalExecution::Unsupported(
+                    pending.block.transactions[pending_idx].clone(),
+                ));
+            }
+
+            (
+                header,
+                pending
+                    .block
+                    .transactions
+                    .iter()
+                    .take(pending_idx + 1)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            let block_hash = db
                 .transaction_block_hash(input.transaction_hash)?
                 .ok_or(TraceTransactionError::InvalidTxnHash)?;
 
-            let header = tx.block_header(pathfinder_storage::BlockId::Hash(block_hash))?;
+            let header = db
+                .block_header(block_hash.into())
+                .context("Fetching block header")?
+                .context("Block header is missing")?;
 
-            let parent_block_hash = header
-                .as_ref()
-                .map(|h| h.parent_hash)
-                .ok_or(TraceTransactionError::InvalidTxnHash)?;
+            let starknet_version = header
+                .starknet_version
+                .parse_as_semver()
+                .context("Parsing starknet version")?
+                .unwrap_or(semver::Version::new(0, 0, 0));
+            if starknet_version
+                < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
+            {
+                let transaction = db
+                    .transaction(input.transaction_hash)
+                    .context("Fetching transaction data")?
+                    .context("Transaction data missing")?;
 
-            let gas_price: Option<U256> =
-                header.as_ref().map(|header| U256::from(header.gas_price.0));
+                return Ok(LocalExecution::Unsupported(transaction));
+            }
 
-            let (transactions, _): (Vec<_>, Vec<_>) = tx
-                .transaction_data_for_block(pathfinder_storage::BlockId::Hash(block_hash))?
-                .ok_or(TraceTransactionError::InvalidTxnHash)?
-                .into_iter()
-                .unzip();
+            let transactions = db
+                .transactions_for_block(header.number.into())
+                .context("Fetching block transactions")?
+                .context("Block transactions missing")?;
 
-            let transactions = transactions
-                .into_iter()
-                .map(|transaction| compose_executor_transaction(transaction, &tx))
-                .collect::<anyhow::Result<Vec<_>, _>>()?;
+            let index = transactions
+                .iter()
+                .position(|tx| tx.hash() == input.transaction_hash)
+                .context("Failed to find transaction in the batch")?;
 
-            Ok::<_, TraceTransactionError>((transactions, parent_block_hash, gas_price))
-        })
-        .await
-        .context("trace_transaction: fetch & map the transaction")??
-    };
+            (
+                header,
+                transactions.into_iter().take(index + 1).collect::<Vec<_>>(),
+            )
+        };
 
-    let block_id = BlockId::Hash(parent_block_hash);
-    let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
+        let state = ExecutionState::trace(&db, context.chain_id, header, None);
 
-    let span = tracing::Span::current();
-    let trace = tokio::task::spawn_blocking(move || {
-        let _g = span.enter();
-        pathfinder_executor::trace_one(
-            execution_state,
-            transactions,
-            input.transaction_hash,
-            true,
-            true,
-        )
+        let transactions = transactions
+            .into_iter()
+            .map(|transaction| compose_executor_transaction(transaction.clone(), &db))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        pathfinder_executor::trace_one(state, transactions, input.transaction_hash, true, true)
+            .map_err(TraceTransactionError::from)
+            .map(|x| LocalExecution::Success(x.into()))
     })
     .await
     .context("trace_transaction: execution")??;
 
-    Ok(TraceTransactionOutput(trace.into()))
+    let transaction = match local {
+        LocalExecution::Success(trace) => return Ok(TraceTransactionOutput(trace)),
+        LocalExecution::Unsupported(x) => x,
+    };
+
+    let trace = context
+        .sequencer
+        .transaction_trace(input.transaction_hash)
+        .await
+        .context("Proxying call to feeder gateway")?;
+
+    let trace = map_gateway_trace(transaction, trace);
+
+    Ok(TraceTransactionOutput(trace))
 }
 
 #[cfg(test)]

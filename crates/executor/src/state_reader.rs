@@ -124,8 +124,8 @@ where
     }
 }
 
-pub(super) struct PathfinderStateReader<'conn> {
-    transaction: pathfinder_storage::Transaction<'conn>,
+pub(super) struct PathfinderStateReader<'tx> {
+    transaction: &'tx pathfinder_storage::Transaction<'tx>,
     pub block_number: Option<BlockNumber>,
     // Classes in pending state have already been downloaded and added to the database.
     // This flag makes it possible to find these classes -- essentially makes the state
@@ -133,19 +133,17 @@ pub(super) struct PathfinderStateReader<'conn> {
     ignore_block_number_for_classes: bool,
 }
 
-impl<'conn> PathfinderStateReader<'conn> {
+impl<'tx> PathfinderStateReader<'tx> {
     pub fn new(
-        connection: &'conn mut pathfinder_storage::Connection,
+        transaction: &'tx pathfinder_storage::Transaction<'tx>,
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
-    ) -> anyhow::Result<Self> {
-        let transaction = connection.transaction()?;
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             transaction,
             block_number,
             ignore_block_number_for_classes,
-        })
+        }
     }
     fn state_block_id(&self) -> Option<pathfinder_storage::BlockId> {
         self.block_number.map(Into::into)

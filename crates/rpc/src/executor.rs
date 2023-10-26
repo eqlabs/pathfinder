@@ -1,14 +1,10 @@
 use anyhow::Context;
-use primitive_types::U256;
 use stark_hash::Felt;
 use starknet_api::core::PatriciaKey;
 
 use super::v02::types::request::BroadcastedTransaction;
-use pathfinder_common::BlockId;
 use pathfinder_common::ChainId;
 use pathfinder_executor::IntoStarkFelt;
-
-use crate::context::RpcContext;
 
 pub enum ExecutionStateError {
     BlockNotFound,
@@ -21,107 +17,8 @@ impl From<anyhow::Error> for ExecutionStateError {
     }
 }
 
-pub(crate) async fn execution_state(
-    context: RpcContext,
-    block_id: BlockId,
-    forced_gas_price: Option<U256>,
-) -> Result<pathfinder_executor::ExecutionState, ExecutionStateError> {
-    let gas_price = match forced_gas_price {
-        Some(forced_gas_price) => GasPriceSource::Current(forced_gas_price),
-        None => {
-            // discussed during estimateFee work: when user is requesting using block_hash use the
-            // gasPrice from the starknet_blocks::gas_price column, otherwise (tags) get the latest
-            // eth_gasPrice.
-            //
-            // the fact that [`base_block_and_pending_for_call`] transforms pending cases to use
-            // actual parent blocks by hash is an internal transformation we do for correctness,
-            // unrelated to this consideration.
-            if matches!(block_id, BlockId::Pending | BlockId::Latest) {
-                let gas_price = context
-                    .eth_gas_price
-                    .get()
-                    .await
-                    .ok_or_else(|| anyhow::anyhow!("Current gas price is unavailable"))?;
-                GasPriceSource::Current(gas_price)
-            } else {
-                GasPriceSource::PastBlock
-            }
-        }
-    };
-
-    let storage = context.execution_storage.clone();
-    let span = tracing::Span::current();
-
-    let (block, pending_timestamp, pending_update) = tokio::task::spawn_blocking(move || {
-        let _g = span.enter();
-
-        let mut db = storage.connection()?;
-        let tx = db.transaction().context("Creating database transaction")?;
-
-        let (pending_timestamp, pending_update) = if block_id.is_pending() {
-            let pending = context
-                .pending_data
-                .get(&tx)
-                .context("Querying pending data")?;
-
-            (
-                Some(pending.block.timestamp),
-                Some(pending.state_update.clone()),
-            )
-        } else {
-            (None, None)
-        };
-
-        let at_block = match block_id {
-            BlockId::Number(x) => x.into(),
-            BlockId::Hash(x) => x.into(),
-            BlockId::Latest => pathfinder_storage::BlockId::Latest,
-            BlockId::Pending => pathfinder_storage::BlockId::Latest,
-        };
-
-        let block = tx
-            .block_header(at_block)
-            .context("Reading block")?
-            .ok_or_else(|| ExecutionStateError::BlockNotFound)?;
-
-        Ok::<_, ExecutionStateError>((block, pending_timestamp, pending_update))
-    })
-    .await
-    .context("Getting block")??;
-
-    let gas_price = match gas_price {
-        GasPriceSource::PastBlock => block.gas_price.0.into(),
-        GasPriceSource::Current(c) => c,
-    };
-
-    let timestamp = pending_timestamp.unwrap_or(block.timestamp);
-
-    let connection = context.storage.connection()?;
-
-    let execution_state = pathfinder_executor::ExecutionState {
-        connection,
-        chain_id: context.chain_id,
-        block_number: block.number,
-        block_timestamp: timestamp,
-        sequencer_address: block.sequencer_address,
-        state_at_block: Some(block.number),
-        gas_price,
-        pending_update,
-    };
-
-    Ok(execution_state)
-}
-
-/// Where should the call code get the used `BlockInfo::gas_price`
-pub enum GasPriceSource {
-    /// Use gasPrice recorded on the `starknet_blocks::gas_price`.
-    ///
-    /// This is not implied by other arguments such as `at_block` because we might need to
-    /// manufacture a block hash for some future use cases.
-    PastBlock,
-    /// Use this latest value from `eth_gasPrice`.
-    Current(primitive_types::U256),
-}
+pub const VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY:
+    semver::Version = semver::Version::new(0, 12, 3);
 
 pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,

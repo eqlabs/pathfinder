@@ -3,6 +3,7 @@ use crate::error::ApplicationError;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
+use pathfinder_executor::ExecutionState;
 
 #[derive(Debug)]
 pub enum CallError {
@@ -73,16 +74,40 @@ pub struct FunctionCall {
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] pub Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
-    let execution_state =
-        crate::executor::execution_state(context, input.block_id, Some(1.into())).await?;
-
     let span = tracing::Span::current();
-
     let result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
+        let mut db = context
+            .storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let (header, pending) = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_data
+                    .get(&db)
+                    .context("Querying pending data")?;
+
+                (pending.header(), Some(pending.state_update.clone()))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending cast should fail");
+                let header = db
+                    .block_header(block_id)
+                    .context("Querying block header")?
+                    .ok_or(CallError::BlockNotFound)?;
+
+                (header, None)
+            }
+        };
+
+        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
+
         let result = pathfinder_executor::call(
-            execution_state,
+            state,
             input.request.contract_address,
             input.request.entry_point_selector,
             input.request.calldata,

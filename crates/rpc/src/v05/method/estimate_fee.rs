@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_executor::ExecutionState;
 use serde_with::serde_as;
 
 use crate::{
@@ -87,22 +88,45 @@ pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
-    let chain_id = context.chain_id;
-
-    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
-
     let span = tracing::Span::current();
 
     let result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
+        let mut db = context
+            .storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let (header, pending) = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_data
+                    .get(&db)
+                    .context("Querying pending data")?;
+
+                (pending.header(), Some(pending.state_update.clone()))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending cast should fail");
+                let header = db
+                    .block_header(block_id)
+                    .context("Querying block header")?
+                    .ok_or(EstimateFeeError::BlockNotFound)?;
+
+                (header, None)
+            }
+        };
+
+        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
 
         let transactions = input
             .request
             .iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
+            .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let result = pathfinder_executor::estimate(execution_state, transactions)?;
+        let result = pathfinder_executor::estimate(state, transactions)?;
 
         Ok::<_, EstimateFeeError>(result)
     })

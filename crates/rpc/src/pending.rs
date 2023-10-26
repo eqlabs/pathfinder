@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::{BlockNumber, StateUpdate};
+use pathfinder_common::{BlockHeader, BlockNumber, StateUpdate};
 use pathfinder_storage::Transaction;
 use starknet_gateway_types::reply::{PendingBlock, Status};
 
@@ -17,6 +17,30 @@ pub struct PendingData {
     pub block: PendingBlock,
     pub state_update: StateUpdate,
     pub number: BlockNumber,
+}
+
+impl PendingData {
+    pub fn header(&self) -> BlockHeader {
+        // Be explicit about fields so that we are forced to check
+        // if any new fields are added.
+        BlockHeader {
+            parent_hash: self.block.parent_hash,
+            number: self.number,
+            timestamp: self.block.timestamp,
+            gas_price: self.block.gas_price,
+            sequencer_address: self.block.sequencer_address,
+            starknet_version: self.block.starknet_version.clone(),
+            // Pending block does not know what these are yet.
+            hash: Default::default(),
+            class_commitment: Default::default(),
+            event_commitment: Default::default(),
+            state_commitment: Default::default(),
+            storage_commitment: Default::default(),
+            transaction_commitment: Default::default(),
+            transaction_count: Default::default(),
+            event_count: Default::default(),
+        }
+    }
 }
 
 impl PendingWatcher {

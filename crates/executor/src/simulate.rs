@@ -28,13 +28,13 @@ use super::{
 };
 
 pub fn simulate(
-    mut execution_state: ExecutionState,
+    mut execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     skip_validate: bool,
     skip_fee_charge: bool,
 ) -> Result<Vec<TransactionSimulation>, CallError> {
-    let gas_price = execution_state.gas_price;
-    let block_number = execution_state.block_number;
+    let gas_price: U256 = execution_state.header.gas_price.0.into();
+    let block_number = execution_state.header.number;
 
     let (mut state, block_context) = execution_state.starknet_state()?;
 
@@ -96,7 +96,7 @@ pub fn simulate(
 }
 
 pub fn trace_one(
-    mut execution_state: ExecutionState,
+    mut execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     target_transaction_hash: TransactionHash,
     charge_fee: bool,
@@ -127,7 +127,7 @@ pub fn trace_one(
 }
 
 pub fn trace_all(
-    mut execution_state: ExecutionState,
+    mut execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     charge_fee: bool,
     validate: bool,

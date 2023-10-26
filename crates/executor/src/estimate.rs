@@ -7,11 +7,11 @@ use blockifier::{
 use primitive_types::U256;
 
 pub fn estimate(
-    mut execution_state: ExecutionState,
+    mut execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
 ) -> Result<Vec<FeeEstimate>, CallError> {
-    let gas_price = execution_state.gas_price;
-    let block_number = execution_state.block_number;
+    let gas_price: U256 = execution_state.header.gas_price.0.into();
+    let block_number = execution_state.header.number;
 
     let (mut state, block_context) = execution_state.starknet_state()?;
 
