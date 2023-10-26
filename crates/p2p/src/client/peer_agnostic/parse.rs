@@ -125,8 +125,6 @@ pub(crate) mod block_header {
 }
 
 pub(crate) mod state_update {
-    use std::collections::HashMap;
-
     use crate::client::types::{Class, StateUpdate, StateUpdateWithDefs};
     use p2p_proto_v1::{
         block::{BlockBodiesResponse, BlockBodyMessage},
@@ -134,7 +132,8 @@ pub(crate) mod state_update {
         consts::MAX_PARTS_PER_CLASS,
         state::Classes,
     };
-    use pathfinder_common::{BlockHash, ClassHash};
+    use pathfinder_common::BlockHash;
+    use std::collections::HashMap;
 
     #[derive(Debug, Default)]
     pub enum State {
@@ -280,16 +279,13 @@ pub(crate) mod state_update {
             }
         }
 
-        let mut converted = Vec::new();
+        let mut converted = Vec::<Class>::new();
         let mut ctx: Option<Ctx> = None;
 
         for class in classes {
             match (class.total_parts, class.part_num) {
                 // Small class definition, not partitioned
-                (None, None) => converted.push(Class {
-                    hash: ClassHash(class.compiled_hash.0),
-                    definition: class.definition,
-                }),
+                (None, None) => converted.push(class.into()),
                 // Large class definition, partitioned. Immediately reject invalid values or
                 // obvious attempts at DoS-ing us.
                 (Some(total_parts), Some(part_num))
@@ -300,15 +296,12 @@ pub(crate) mod state_update {
                     match ctx {
                         // First part of a larger definition
                         None if part_num == 0 => {
-                            converted.push(Class {
-                                hash: ClassHash(class.compiled_hash.0),
-                                definition: class.definition,
-                            });
                             ctx = Some(Ctx {
                                 hash: class.compiled_hash,
                                 total_parts,
                                 part_num,
                             });
+                            converted.push(class.into());
                         }
                         // Another part of the same definition
                         Some(some_ctx)
@@ -321,7 +314,7 @@ pub(crate) mod state_update {
                             converted
                                 .last_mut()
                                 .expect("gathered is not empty")
-                                .definition
+                                .definition_mut()
                                 .extend(class.definition);
 
                             ctx = some_ctx.advance();

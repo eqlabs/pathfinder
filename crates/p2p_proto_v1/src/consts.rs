@@ -2,15 +2,15 @@
 pub const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
 pub const CLASSES_MESSAGE_OVERHEAD: usize = 58;
 /// Upper bound
-pub const PER_CLASS_OVERHEAD: usize = 60;
+pub const PER_CLASS_OVERHEAD: usize = 96;
 /// Upper bound
 pub const ENCODED_HEADER_SIZE: usize = 483;
 pub const HEADERS_MESSAGE_OVERHEAD: usize = 1;
 /// Lower bound
 pub const MAX_HEADERS_PER_MESSAGE: usize =
     (MESSAGE_SIZE_LIMIT - HEADERS_MESSAGE_OVERHEAD + ENCODED_HEADER_SIZE) / ENCODED_HEADER_SIZE;
-/// A made up upper bound to allow discarding classes that are ridiculously large because they're
-/// from a malicious agent.
+/// A wild guess at an upper bound to allow discarding classes that couldn't have been created by the cairo compiler
+/// so must come from a faulty/malicious agent.
 pub const MAX_PARTS_PER_CLASS: u32 = 10;
 
 #[cfg(test)]
@@ -60,16 +60,6 @@ mod tests {
         }
     }
 
-    /// Trying to estimate the overhead of the classes message so that we know what is the limit
-    /// on compressed class definition size, varint delimiting of the message is taken into account
-    ///
-    /// 0 classes == 58 bytes
-    /// 1 x 1MiB class == 118 bytes; 60 bytes/class
-    /// 3 x 1MiB class == 232 bytes; 58 bytes/class
-    /// 10 x 1MiB class == 624 bytes; 57 bytes/class
-    ///
-    /// It's generally safe to assume:
-    /// N classes == 58 + 60 * N bytes
     #[cfg(test)]
     #[test]
     fn check_classes_message_overhead_upper_bound() {
@@ -88,6 +78,7 @@ mod tests {
             definition: vec![0xFF; MESSAGE_SIZE_LIMIT],
             total_parts: Some(u32::MAX),
             part_num: Some(u32::MAX),
+            casm_hash: Some(Hash::full()),
         };
         let len = response(vec![class]).encode_length_delimited_to_vec().len();
         assert_eq!(
@@ -96,13 +87,6 @@ mod tests {
         );
     }
 
-    /// 0 hdrs == 1 byte
-    /// 1 hdr  == 448 bytes; 447 bytes/header
-    /// 10 hdrs == 4462 bytes; 447 bytes/class
-    /// 100 hdrs == 44603 bytes; 447 bytes/class
-    ///
-    /// It's generally safe to assume:
-    /// N headers == 1 + 447 * N bytes
     #[cfg(test)]
     #[rstest::rstest]
     #[test]

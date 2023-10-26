@@ -712,10 +712,9 @@ mod prop {
 }
 
 mod classes {
-    use crate::p2p_network::sync_handlers::v1::classes;
+    use crate::p2p_network::sync_handlers::v1::{classes, ClassId};
     use fake::{Fake, Faker};
     use p2p_proto_v1::common::BlockId;
-    use pathfinder_common::ClassHash;
 
     #[test]
     fn empty_input_yields_empty_output() {
@@ -778,7 +777,7 @@ mod classes {
             // Small one again, is not glued to the last chunk of the previous partitioned definition, no matter how small that chunk is
             fake::vec![u8; 1..=SMALL],
         ];
-        let class_hashes = fake::vec![ClassHash; defs.len()];
+        let class_ids = fake::vec![ClassId; defs.len()];
         let mut def_it = defs.clone().into_iter();
         let class_definition_getter = |_, _| Ok(def_it.next().unwrap());
 
@@ -787,7 +786,7 @@ mod classes {
         assert!(classes(
             block_number,
             block_hash,
-            class_hashes.clone(),
+            class_ids.clone(),
             &mut responses,
             class_definition_getter,
         )
@@ -814,11 +813,15 @@ mod classes {
             })
             .collect::<Vec<_>>();
 
-        let definition = |i| Class {
-            compiled_hash: Hash((class_hashes[i] as ClassHash).0),
-            definition: (&defs[i] as &Vec<u8>).clone(),
-            total_parts: None,
-            part_num: None,
+        let definition = |i| {
+            let (compiled_hash, casm_hash) = (class_ids[i] as ClassId).into_dto();
+            Class {
+                compiled_hash,
+                definition: (&defs[i] as &Vec<u8>).clone(),
+                casm_hash,
+                total_parts: None,
+                part_num: None,
+            }
         };
         let part = |i, d: &[u8], t, p| Class {
             definition: d.to_vec(),

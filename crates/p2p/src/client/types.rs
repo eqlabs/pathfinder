@@ -11,14 +11,13 @@ use pathfinder_common::{
     },
     BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam,
     ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey, Fee,
-    GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageAddress, StorageValue,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateCommitment, StorageAddress,
+    StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use std::{collections::HashMap, time::SystemTime};
 
 /// We don't want to introduce circular dependencies between crates
-/// so in those cases we cannot use TryFrom and we need to work around for the orphan rule
-/// - implement conversion fns for types ourside our crate.
+/// and we need to work around for the orphan rule - implement conversion fns for types ourside our crate.
 pub trait TryFromDto<T> {
     fn try_from_dto(dto: T) -> anyhow::Result<Self>
     where
@@ -50,8 +49,6 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
 }
 
-/// Temporary wrapper until we have proper streaming response
-/// TODO remove me
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateUpdateWithDefs {
     pub block_hash: BlockHash,
@@ -68,12 +65,42 @@ pub struct ContractUpdate {
     pub nonce: Option<ContractNonce>,
 }
 
-/// Sierra/Cairo 0 agnostic
 #[derive(Debug, Clone, PartialEq)]
+pub enum Class {
+    Cairo {
+        hash: ClassHash,
+        definition: Vec<u8>,
+    },
+    Sierra {
+        sierra_hash: SierraHash,
+        definition: Vec<u8>,
+        casm_hash: CasmHash,
+    },
+}
 
-pub struct Class {
-    pub hash: ClassHash,
-    pub definition: Vec<u8>,
+impl Class {
+    pub fn definition_mut(&mut self) -> &mut Vec<u8> {
+        match self {
+            Class::Cairo { definition, .. } => definition,
+            Class::Sierra { definition, .. } => definition,
+        }
+    }
+}
+
+impl From<p2p_proto_v1::state::Class> for Class {
+    fn from(class: p2p_proto_v1::state::Class) -> Self {
+        match class.casm_hash {
+            Some(casm_hash) => Class::Sierra {
+                sierra_hash: SierraHash(class.compiled_hash.0),
+                definition: class.definition,
+                casm_hash: CasmHash(casm_hash.0),
+            },
+            None => Class::Cairo {
+                hash: ClassHash(class.compiled_hash.0),
+                definition: class.definition,
+            },
+        }
+    }
 }
 
 impl From<pathfinder_common::BlockHeader> for BlockHeader {
@@ -169,9 +196,15 @@ impl From<p2p_proto_v1::state::StateDiff> for StateUpdate {
             }
         });
 
+        let system_contract_updates = if system_contract_update.storage.is_empty() {
+            Default::default()
+        } else {
+            [(SYSTEM_CONTRACT, system_contract_update)].into()
+        };
+
         Self {
             contract_updates,
-            system_contract_updates: [(SYSTEM_CONTRACT, system_contract_update)].into(),
+            system_contract_updates,
         }
     }
 }

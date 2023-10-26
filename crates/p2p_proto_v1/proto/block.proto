@@ -35,10 +35,8 @@ message BlockHeader {
 
     // The protocol is not yet stabilized and we would like these fields to be included in the block header
     //
-    // Currently we are not verifying the signatures, so it would be nice to at least verify the block hash
-    // in the same way as we do with the centralized sequencer endpoints.
-    // Apart from that there is a range of old blocks for which we cannot calculate the block hash
-    // and at least for those we still need their hashes to verify the signatures.
+    // 1. Currently we are not verifying the signatures, so we need the expected block hash value for verification.
+    // 2. Even when we have signature verification there is a range of old blocks for which we cannot calculate the block hash.
     starknet.common.Hash      hash              = 11;
     // Gas price is not included in the spec but it would be nice to have; big endian
     bytes                     gas_price         = 12;

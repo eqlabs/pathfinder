@@ -724,6 +724,7 @@ async fn l2_update(
             "State root mismatch"
         );
 
+        // FIXME EEEEEEE does not work for non-proxy nodeeeeeees
         // In p2p the state commitment can be missing, which is marked as 0.
         // Once signature support is added this way of verifying state commitment will be deprecated.
         #[cfg(feature = "p2p")]

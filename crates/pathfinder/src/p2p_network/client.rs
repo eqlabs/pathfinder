@@ -7,9 +7,8 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::client::types::BlockHeader;
-use p2p::{client::peer_agnostic, client::types::StateUpdateWithDefs, HeadRx};
-use pathfinder_common::SierraHash;
+use p2p::client::types::{BlockHeader, Class, StateUpdateWithDefs};
+use p2p::{client::peer_agnostic, HeadRx};
 use pathfinder_common::{
     state_update::{ContractClassUpdate, ContractUpdate},
     TransactionIndex,
@@ -79,6 +78,13 @@ impl Cache {
             .find_map(|(_, v)| (v.block.block_number == number).then_some(v.block.clone()))
     }
 
+    fn get_state_commitment(&self, block_hash: BlockHash) -> Option<StateCommitment> {
+        let locked = self.inner.lock().unwrap();
+        locked
+            .peek(&block_hash)
+            .map(|entry| entry.block.state_commitment)
+    }
+
     fn get_definition(&self, class_hash: ClassHash) -> Option<Vec<u8>> {
         let locked = self.inner.lock().unwrap();
         locked
@@ -119,7 +125,7 @@ impl Cache {
     fn insert_definitions(&self, block_hash: BlockHash, definitions: HashMap<ClassHash, Vec<u8>>) {
         let mut locked = self.inner.lock().unwrap();
         locked
-            .get_mut(&block_hash)
+            .peek_mut(&block_hash)
             .expect("block is already cached")
             .definitions = definitions;
     }
@@ -392,7 +398,7 @@ impl GatewayApi for HybridClient {
     }
 
     async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
-        use error::{block_not_found, class_not_found};
+        use error::block_not_found;
 
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
@@ -424,65 +430,37 @@ impl GatewayApi for HybridClient {
                         return Err(block_not_found("Block hash mismatch"));
                     }
 
-                    #[derive(serde::Deserialize)]
-                    #[serde(untagged)]
-                    enum SierraOrCairo<'a> {
-                        Sierra {
-                            #[allow(unused)]
-                            #[serde(borrow)]
-                            sierra_program: &'a serde_json::value::RawValue,
-                        },
-                        Cairo {
-                            #[allow(unused)]
-                            #[serde(borrow)]
-                            program: &'a serde_json::value::RawValue,
-                        },
-                    }
+                    let mut declared_cairo_classes = HashSet::new();
+                    let mut declared_sierra_classes = HashMap::new();
+                    let mut definitions = HashMap::new();
 
-                    let jh = tokio::task::spawn_blocking(move || {
-                        let mut declared_cairo_classes = HashSet::new();
-                        let mut declared_sierra_classes = HashMap::new();
-                        let mut definitions = HashMap::new();
-
-                        for class in classes {
-                            let definition = zstd::decode_all(class.definition.as_slice())
-                                .map_err(|_| class_not_found("zstd failed"))?;
-
-                            match serde_json::from_slice::<SierraOrCairo<'_>>(definition.as_slice())
-                            {
-                                Ok(SierraOrCairo::Sierra { .. }) => {
-                                    // We don't verify the class hash so casm hash is not needed (?)
-                                    declared_sierra_classes
-                                        .insert(SierraHash(class.hash.0), CasmHash::ZERO);
-                                    definitions.insert(class.hash, definition);
-                                }
-                                Ok(SierraOrCairo::Cairo { .. }) => {
-                                    declared_cairo_classes.insert(class.hash);
-                                    definitions.insert(class.hash, definition);
-                                }
-                                Err(_) => {
-                                    return Err(class_not_found("invalid class definition"));
-                                }
+                    for class in classes {
+                        match class {
+                            Class::Cairo { hash, definition } => {
+                                declared_cairo_classes.insert(hash);
+                                definitions.insert(hash, definition);
+                            }
+                            Class::Sierra {
+                                sierra_hash,
+                                definition,
+                                casm_hash,
+                            } => {
+                                declared_sierra_classes.insert(sierra_hash, casm_hash);
+                                definitions.insert(ClassHash(sierra_hash.0), definition);
                             }
                         }
-
-                        Ok((declared_cairo_classes, declared_sierra_classes, definitions))
-                    });
-
-                    let (declared_cairo_classes, declared_sierra_classes, definitions) =
-                        jh.await.map_err(|error| {
-                            class_not_found(format!(
-                                "class definition decompression task ended unexpectedly: {error}"
-                            ))
-                        })??;
+                    }
 
                     cache.insert_definitions(hash, definitions);
 
+                    let state_commitment =
+                        cache.get_state_commitment(block_hash).unwrap_or_default();
+
                     Ok(StateUpdate {
-                        block_hash: hash,
-                        // We don't verify the state commitment so both commitments are 0
+                        block_hash,
+                        // Luckily this field is only used when polling pending which is disabled with p2p
                         parent_state_commitment: StateCommitment::default(),
-                        state_commitment: StateCommitment::default(),
+                        state_commitment,
                         contract_updates: state_update
                             .contract_updates
                             .into_iter()
