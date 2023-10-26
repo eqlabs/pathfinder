@@ -35,6 +35,7 @@ mod transport;
 
 pub use libp2p;
 pub use peers::Peers;
+pub use sync::protocol::PROTOCOLS;
 
 use client::peer_aware::Client;
 use main_loop::MainLoop;

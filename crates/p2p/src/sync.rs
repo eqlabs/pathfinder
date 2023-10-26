@@ -28,9 +28,17 @@ pub mod protocol {
     define_protocol!(Transactions, b"/core/transactions-sync/1");
     define_protocol!(Receipts, b"/core/receipts-sync/1");
     define_protocol!(Events, b"/core/events-sync/1");
+
+    pub const PROTOCOLS: &[&[u8]] = &[
+        Headers::NAME,
+        Bodies::NAME,
+        Transactions::NAME,
+        Receipts::NAME,
+        Events::NAME,
+    ];
 }
 
-pub mod codec {
+pub(crate) mod codec {
     use super::protocol;
     use async_trait::async_trait;
     use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
