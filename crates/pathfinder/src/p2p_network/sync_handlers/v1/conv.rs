@@ -8,10 +8,10 @@ use p2p_proto_v1::receipt::{
 };
 use p2p_proto_v1::state::{ContractDiff, ContractStoredValue, StateDiff};
 use p2p_proto_v1::transaction::AccountSignature;
-use pathfinder_common::TransactionHash;
 use pathfinder_common::{
     event::Event, state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
 };
+use pathfinder_common::{StateCommitment, TransactionHash};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gw;
 use std::time::{Duration, SystemTime};
@@ -48,6 +48,8 @@ impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
             hash: Hash(self.hash.0),
             gas_price: self.gas_price.0.to_be_bytes().into(),
             starknet_version: self.starknet_version.take_inner(),
+            state_commitment: (self.state_commitment != StateCommitment::ZERO)
+                .then_some(Hash(self.state_commitment.0)),
         }
     }
 }
@@ -98,7 +100,6 @@ impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
                     }
                 }))
                 .collect(),
-            // FIXME missing: declared classes cairo & sierra, replaced classes
         }
     }
 }

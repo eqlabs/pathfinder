@@ -7,19 +7,17 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::{
-    client::peer_agnostic,
-    client::types::{BlockHeader, StateUpdateWithDefs},
-    HeadRx,
-};
+use p2p::client::types::BlockHeader;
+use p2p::{client::peer_agnostic, client::types::StateUpdateWithDefs, HeadRx};
+use pathfinder_common::SierraHash;
 use pathfinder_common::{
     state_update::{ContractClassUpdate, ContractUpdate},
     TransactionIndex,
 };
 use pathfinder_common::{
     transaction::Transaction, BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash,
-    ContractAddress, ContractAddressSalt, EntryPoint, Fee, SierraHash, StateCommitment,
-    StateUpdate, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    ContractAddress, ContractAddressSalt, EntryPoint, Fee, StateCommitment, StateUpdate,
+    TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply as gw;
@@ -317,7 +315,7 @@ impl GatewayApi for HybridClient {
                             gas_price: Some(header.gas_price),
                             parent_block_hash: header.parent_hash,
                             sequencer_address: Some(header.sequencer_address),
-                            state_commitment: StateCommitment::default(), // We don't verify the state commitment so it's 0
+                            state_commitment: header.state_commitment,
                             // FIXME
                             status: gw::Status::AcceptedOnL2,
                             timestamp: header.timestamp,

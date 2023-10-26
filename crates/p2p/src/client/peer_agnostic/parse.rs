@@ -54,13 +54,12 @@ macro_rules! impl_take_parsed_and_should_stop {
 }
 
 pub(crate) mod block_header {
-    use std::collections::HashMap;
-
     use crate::client::types::BlockHeader;
     use anyhow::Context;
     use p2p_proto_v1::block::BlockHeadersResponsePart;
     use p2p_proto_v1::common::{Error, Fin};
     use pathfinder_common::BlockHash;
+    use std::collections::HashMap;
 
     #[derive(Debug, Default)]
     pub enum State {

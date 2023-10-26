@@ -718,8 +718,18 @@ async fn l2_update(
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
+        #[cfg(not(feature = "p2p"))]
         anyhow::ensure!(
             state_commitment == block.state_commitment,
+            "State root mismatch"
+        );
+
+        // In p2p the state commitment can be missing, which is marked as 0.
+        // Once signature support is added this way of verifying state commitment will be deprecated.
+        #[cfg(feature = "p2p")]
+        anyhow::ensure!(
+            block.state_commitment == StateCommitment::ZERO
+                || state_commitment == block.state_commitment,
             "State root mismatch"
         );
 

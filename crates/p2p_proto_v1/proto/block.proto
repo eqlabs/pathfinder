@@ -33,16 +33,19 @@ message BlockHeader {
     starknet.common.Merkle    events            = 9;   // By order of issuance. TBD: in receipts?
     starknet.common.Merkle    receipts          = 10;  // By order of issuance.
 
-    // FIXME right now we are unable to calculate the block hash either
-    // 1. because it does not carry all the items required for the calculation
-    // 2. or because there are some old blocks for which we simply don't know how to do it
-    // This is why we're adding the block hash here
+    // The protocol is not yet stabilized and we would like these fields to be included in the block header
+    //
+    // Currently we are not verifying the signatures, so it would be nice to at least verify the block hash
+    // in the same way as we do with the centralized sequencer endpoints.
+    // Apart from that there is a range of old blocks for which we cannot calculate the block hash
+    // and at least for those we still need their hashes to verify the signatures.
     starknet.common.Hash      hash              = 11;
-    // FIXME we also need gas_price and starknet_version, other stuff need to calculate the block hash like
-    // transaction, event, contract storage, class commitments can be taken from responses to respective queries
-    // later in the sync process
-    bytes                     gas_price         = 12; // big endian
+    // Gas price is not included in the spec but it would be nice to have; big endian
+    bytes                     gas_price         = 12;
+    // We still rely on starknet version internally for several thins, e.g. sierra compilation
     string                    starknet_version  = 13;
+    // Allows for state commitment verification and block hash calculation in pathfinder
+    starknet.common.Hash      state_commitment  = 14;
 }
 
 message BlockProof {
@@ -97,4 +100,3 @@ message BlockBodiesResponse {
 message BlockBodiesResponseList {
   repeated BlockBodiesResponse items = 1;
 }
-  

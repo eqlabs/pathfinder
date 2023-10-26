@@ -1,3 +1,6 @@
+//! Conversions between DTOs and common types.
+//!
+//! Also includes some "bridging" types which should eventually be removed
 use pathfinder_common::{
     event::Event,
     state_update::SystemContractUpdate,
@@ -8,10 +11,9 @@ use pathfinder_common::{
     },
     BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam,
     ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey, Fee,
-    GasPrice, SequencerAddress, StarknetVersion, StorageAddress, StorageValue, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageAddress, StorageValue,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
-// use starknet_gateway_types::reply::transaction as gw;
 use std::{collections::HashMap, time::SystemTime};
 
 /// We don't want to introduce circular dependencies between crates
@@ -23,11 +25,8 @@ pub trait TryFromDto<T> {
         Self: Sized;
 }
 
-/// Simple block header meant for the temporary p2p client hidden behind
-/// the gateway client api, ie.: does not contain any commitments
-///
-/// TODO: remove this once proper p2p friendly sync is implemented
-#[derive(Debug, Clone, PartialEq)]
+/// Block hash but without most of the commitments
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BlockHeader {
     pub hash: BlockHash,
     pub parent_hash: BlockHash,
@@ -36,6 +35,7 @@ pub struct BlockHeader {
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
+    pub state_commitment: StateCommitment,
 }
 
 /// Simple state update meant for the temporary p2p client hidden behind
@@ -44,11 +44,6 @@ pub struct BlockHeader {
 /// - does not specify if the class was declared or replaced
 ///
 /// TODO: remove this once proper p2p friendly sync is implemented
-///
-/// How to manage this modest state update:
-/// 1. iterate through contact updates and check in the db if the contract is already there to figure out
-///    if it means replacement or declaration
-/// 2. take the remaining ones which are then treated as declared and then figure out which is Cairo 0 and which is Sierra
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateUpdate {
     pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
@@ -82,16 +77,42 @@ pub struct Class {
 }
 
 impl From<pathfinder_common::BlockHeader> for BlockHeader {
-    fn from(h: pathfinder_common::BlockHeader) -> Self {
+    fn from(value: pathfinder_common::BlockHeader) -> Self {
         Self {
-            hash: h.hash,
-            parent_hash: h.parent_hash,
-            number: h.number,
-            timestamp: h.timestamp,
-            gas_price: h.gas_price,
-            sequencer_address: h.sequencer_address,
-            starknet_version: h.starknet_version,
+            hash: value.hash,
+            parent_hash: value.parent_hash,
+            number: value.number,
+            timestamp: value.timestamp,
+            gas_price: value.gas_price,
+            sequencer_address: value.sequencer_address,
+            starknet_version: value.starknet_version,
+            state_commitment: value.state_commitment,
         }
+    }
+}
+
+impl TryFrom<p2p_proto_v1::block::BlockHeader> for BlockHeader {
+    type Error = anyhow::Error;
+
+    fn try_from(dto: p2p_proto_v1::block::BlockHeader) -> anyhow::Result<Self> {
+        Ok(Self {
+            hash: BlockHash(dto.hash.0),
+            parent_hash: BlockHash(dto.parent_hash.0),
+            number: BlockNumber::new(dto.number)
+                .ok_or(anyhow::anyhow!("Invalid block number > i64::MAX"))?,
+            timestamp: BlockTimestamp::new(
+                dto.time.duration_since(SystemTime::UNIX_EPOCH)?.as_secs(),
+            )
+            .ok_or(anyhow::anyhow!("Invalid block timestamp"))?,
+            sequencer_address: SequencerAddress(dto.sequencer_address.0),
+            // TODO imo missing in the spec
+            gas_price: GasPrice::from_be_slice(dto.gas_price.as_slice())?,
+            // TODO not sure if should be in the spec
+            starknet_version: StarknetVersion::from(dto.starknet_version),
+            // TODO remove this field when signature verification is done
+            // allows to verify block hash and state commitment when present
+            state_commitment: StateCommitment(dto.state_commitment.unwrap_or_default().0),
+        })
     }
 }
 
@@ -115,26 +136,6 @@ impl From<pathfinder_common::state_update::ContractUpdate> for ContractUpdate {
             class: c.class.map(|x| x.class_hash()),
             nonce: c.nonce,
         }
-    }
-}
-
-impl TryFrom<p2p_proto_v1::block::BlockHeader> for BlockHeader {
-    type Error = anyhow::Error;
-
-    fn try_from(proto: p2p_proto_v1::block::BlockHeader) -> anyhow::Result<Self> {
-        Ok(Self {
-            hash: BlockHash(proto.hash.0),
-            parent_hash: BlockHash(proto.parent_hash.0),
-            number: BlockNumber::new(proto.number)
-                .ok_or(anyhow::anyhow!("Invalid block number > i64::MAX"))?,
-            timestamp: BlockTimestamp::new(
-                proto.time.duration_since(SystemTime::UNIX_EPOCH)?.as_secs(),
-            )
-            .ok_or(anyhow::anyhow!("Invalid block timestamp"))?,
-            gas_price: GasPrice::from_be_slice(proto.gas_price.as_slice())?,
-            sequencer_address: SequencerAddress(proto.sequencer_address.0),
-            starknet_version: StarknetVersion::from(proto.starknet_version),
-        })
     }
 }
 

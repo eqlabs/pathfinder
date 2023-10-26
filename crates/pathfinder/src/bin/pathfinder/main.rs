@@ -208,6 +208,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pending_poll_interval: config
             .poll_pending
             .then_some(std::time::Duration::from_secs(2)),
+        // Currently p2p does not perform block hash and state commitment verification if p2p header lacks state commitment
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_topic_broadcasters().cloned(),
         block_cache_size: 1_000,

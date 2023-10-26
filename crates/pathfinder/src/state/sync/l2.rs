@@ -446,6 +446,12 @@ async fn download_block(
             // Check if block hash is correct.
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
+                // In p2p the state commitment which is required to calculate the block hash can be missing, and in such case it is marked as 0s.
+                #[cfg(feature = "p2p")]
+                if block.state_commitment == StateCommitment::ZERO {
+                    return Ok((block, VerifyResult::NotVerifiable));
+                }
+
                 let verify_result = verify_block_hash(&block, chain, chain_id, block.block_hash)
                     .with_context(move || format!("Verify block {block_number}"))?;
                 Ok((block, verify_result))

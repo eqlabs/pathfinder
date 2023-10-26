@@ -4,7 +4,7 @@ pub const CLASSES_MESSAGE_OVERHEAD: usize = 58;
 /// Upper bound
 pub const PER_CLASS_OVERHEAD: usize = 60;
 /// Upper bound
-pub const ENCODED_HEADER_SIZE: usize = 447;
+pub const ENCODED_HEADER_SIZE: usize = 483;
 pub const HEADERS_MESSAGE_OVERHEAD: usize = 1;
 /// Lower bound
 pub const MAX_HEADERS_PER_MESSAGE: usize =
@@ -125,6 +125,7 @@ mod tests {
                 hash: Some(Hash::full()),
                 gas_price: vec![0xFF; 32],
                 starknet_version: "999.999.999".into(),
+                state_commitment: Some(Hash::full()),
             })),
         };
         let len = BlockHeadersResponse { part: vec![part] }

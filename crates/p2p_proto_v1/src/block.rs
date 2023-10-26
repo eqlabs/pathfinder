@@ -2,6 +2,7 @@ use crate::common::{Address, BlockId, ConsensusSignature, Fin, Hash, Iteration, 
 use crate::state::{Classes, StateDiff};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::{Dummy, Fake, Faker};
+use std::fmt::Display;
 use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -25,10 +26,11 @@ pub struct BlockHeader {
     pub transactions: Merkle,
     pub events: Merkle,
     pub receipts: Merkle,
-    // FIXME extra fields added to make sync work
     pub hash: Hash,
     pub gas_price: Vec<u8>,
     pub starknet_version: String,
+    #[optional]
+    pub state_commitment: Option<Hash>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -143,6 +145,7 @@ impl<T> Dummy<T> for BlockHeader {
             hash: Faker.fake_with_rng(rng),
             gas_price: Faker.fake_with_rng(rng),
             starknet_version: Faker.fake_with_rng(rng),
+            state_commitment: Faker.fake_with_rng(rng),
         }
     }
 }
@@ -192,6 +195,24 @@ impl BlockHeadersResponse {
     }
 }
 
+impl Display for BlockHeadersResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlockHeadersResponse[")?;
+        let l = self.parts.len();
+        match l {
+            1 => write!(f, "{}", self.parts[0])?,
+            _ if l > 1 => write!(
+                f,
+                "{},..,{}",
+                self.parts.first().unwrap(),
+                self.parts.last().unwrap()
+            )?,
+            _ => {}
+        }
+        write!(f, "]")
+    }
+}
+
 impl From<Fin> for BlockHeadersResponsePart {
     fn from(fin: Fin) -> Self {
         Self::Fin(fin)
@@ -228,6 +249,16 @@ impl BlockHeadersResponsePart {
             }),
             Self::Signatures(signatures) => Some(signatures.block),
             Self::Fin(_) => None,
+        }
+    }
+}
+
+impl Display for BlockHeadersResponsePart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Header(header) => write!(f, "({},{})", header.number, header.hash.0),
+            Self::Signatures(signatures) => write!(f, "{}", signatures.block),
+            Self::Fin(_) => write!(f, "Fin"),
         }
     }
 }
@@ -340,5 +371,30 @@ impl TryFromProtobuf<proto::block::block_bodies_response::BodyMessage> for Block
             Proof(proof) => Self::Proof(BlockProof::try_from_protobuf(proof, field_name)?),
             Fin(fin) => Self::Fin(self::Fin::try_from_protobuf(fin, field_name)?),
         })
+    }
+}
+
+impl Display for BlockBodiesResponseList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlockBodiesResponseList[")?;
+        let l = self.items.len();
+        match l {
+            1 => {
+                if let Some(id) = self.items[0].id {
+                    id.fmt(f)?
+                } else {
+                    write!(f, "...")?
+                }
+            }
+            _ if l > 1 => match (
+                self.items.first().unwrap().id,
+                self.items.last().unwrap().id,
+            ) {
+                (Some(a), Some(b)) => write!(f, "{a},..,{b}", a = a, b = b)?,
+                _ => write!(f, "...")?,
+            },
+            _ => {}
+        }
+        write!(f, "]")
     }
 }
