@@ -784,10 +784,9 @@ impl MainLoop {
                     .send_request(&peer_id, request);
                 self.pending_sync_requests.events.insert(request_id, sender);
             }
+            // All Send*SyncResponse: In case of failure a RequestResponseEvent::InboundFailure will or has been be emitted.
             Command::SendHeadersSyncResponse { channel, response } => {
-                // This might fail, but we're just ignoring it. In case of failure a
-                // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(?response, "Sending sync response");
+                tracing::debug!(%response, "Sending sync response");
 
                 let _ = self
                     .swarm
@@ -796,9 +795,7 @@ impl MainLoop {
                     .send_response(channel, response);
             }
             Command::SendBodiesSyncResponse { channel, response } => {
-                // This might fail, but we're just ignoring it. In case of failure a
-                // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(?response, "Sending sync response");
+                tracing::debug!(%response, "Sending sync response");
 
                 let _ = self
                     .swarm
@@ -807,9 +804,7 @@ impl MainLoop {
                     .send_response(channel, response);
             }
             Command::SendTransactionsSyncResponse { channel, response } => {
-                // This might fail, but we're just ignoring it. In case of failure a
-                // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(?response, "Sending sync response");
+                tracing::debug!(%response, "Sending sync response");
 
                 let _ = self
                     .swarm
@@ -818,9 +813,7 @@ impl MainLoop {
                     .send_response(channel, response);
             }
             Command::SendReceiptsSyncResponse { channel, response } => {
-                // This might fail, but we're just ignoring it. In case of failure a
-                // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(?response, "Sending sync response");
+                tracing::debug!(%response, "Sending sync response");
 
                 let _ = self
                     .swarm
@@ -829,9 +822,7 @@ impl MainLoop {
                     .send_response(channel, response);
             }
             Command::SendEventsSyncResponse { channel, response } => {
-                // This might fail, but we're just ignoring it. In case of failure a
-                // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(?response, "Sending sync response");
+                tracing::debug!(%response, "Sending sync response");
 
                 let _ = self
                     .swarm

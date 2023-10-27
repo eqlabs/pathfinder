@@ -165,7 +165,7 @@ impl TryFromProtobuf<proto::common::Address> for Address {
 
 impl Display for BlockId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BlockId({},{})", self.number, self.hash.0)
+        write!(f, "({},{})", self.number, self.hash.0)
     }
 }
 

@@ -198,16 +198,15 @@ impl BlockHeadersResponse {
 impl Display for BlockHeadersResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockHeadersResponse[")?;
-        let l = self.parts.len();
-        match l {
-            1 => write!(f, "{}", self.parts[0])?,
-            _ if l > 1 => write!(
+        if self.parts.len() == 1 {
+            write!(f, "{}", self.parts[0])?;
+        } else if self.parts.len() > 1 {
+            write!(
                 f,
                 "{},..,{}",
                 self.parts.first().unwrap(),
                 self.parts.last().unwrap()
-            )?,
-            _ => {}
+            )?;
         }
         write!(f, "]")
     }
@@ -377,23 +376,20 @@ impl TryFromProtobuf<proto::block::block_bodies_response::BodyMessage> for Block
 impl Display for BlockBodiesResponseList {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockBodiesResponseList[")?;
-        let l = self.items.len();
-        match l {
-            1 => {
-                if let Some(id) = self.items[0].id {
-                    id.fmt(f)?
-                } else {
-                    write!(f, "...")?
-                }
+        if self.items.len() == 1 {
+            if let Some(id) = self.items[0].id {
+                id.fmt(f)?
+            } else {
+                write!(f, "...")?
             }
-            _ if l > 1 => match (
+        } else if self.items.len() > 1 {
+            match (
                 self.items.first().unwrap().id,
                 self.items.last().unwrap().id,
             ) {
-                (Some(a), Some(b)) => write!(f, "{a},..,{b}", a = a, b = b)?,
+                (Some(a), Some(b)) => write!(f, "{a},..,{b}")?,
                 _ => write!(f, "...")?,
-            },
-            _ => {}
+            }
         }
         write!(f, "]")
     }

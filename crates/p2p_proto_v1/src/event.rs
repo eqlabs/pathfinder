@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::common::{BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use stark_hash::Felt;
@@ -106,5 +108,11 @@ impl TryFromProtobuf<proto::event::events_response::Responses> for EventsRespons
                 fin, field_name,
             )?)),
         }
+    }
+}
+
+impl Display for EventsResponseList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "EventsResponseList[len={}]", self.items.len())
     }
 }

@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::common::{Address, BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
@@ -346,5 +348,11 @@ impl TryFromProtobuf<i32> for EntryPointType {
             External => Self::External,
             L1Handler => Self::L1Handler,
         })
+    }
+}
+
+impl Display for TransactionsResponseList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TransactionsResponseList[len={}]", self.items.len())
     }
 }
