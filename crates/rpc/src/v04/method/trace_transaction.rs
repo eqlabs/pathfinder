@@ -182,8 +182,8 @@ pub async fn trace_transaction(
         let state = ExecutionState::trace(&db, context.chain_id, header, None);
 
         let transactions = transactions
-            .into_iter()
-            .map(|transaction| compose_executor_transaction(transaction.clone(), &db))
+            .iter()
+            .map(|transaction| compose_executor_transaction(transaction, &db))
             .collect::<Result<Vec<_>, _>>()?;
 
         pathfinder_executor::trace_one(state, transactions, input.transaction_hash, true, true)

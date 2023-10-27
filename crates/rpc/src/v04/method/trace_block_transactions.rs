@@ -100,7 +100,7 @@ pub async fn trace_block_transactions(
 
         let transactions = transactions
             .iter()
-            .map(|transaction| compose_executor_transaction(transaction.clone(), &db))
+            .map(|transaction| compose_executor_transaction(transaction, &db))
             .collect::<Result<Vec<_>, _>>()?;
 
         let state = ExecutionState::trace(&db, context.chain_id, header, None);

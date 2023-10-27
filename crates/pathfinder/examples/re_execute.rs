@@ -144,7 +144,7 @@ fn execute(storage: Storage, chain_id: ChainId, rx: crossbeam_channel::Receiver<
 
         let transactions = work
             .transactions
-            .into_iter()
+            .iter()
             .map(|tx| pathfinder_rpc::compose_executor_transaction(tx, &db_tx))
             .collect::<Result<Vec<_>, _>>();
 
