@@ -5,6 +5,7 @@ use crate::pending::PendingWatcher;
 use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 type SequencerClient = starknet_gateway_client::Client;
@@ -20,6 +21,7 @@ pub struct RpcContext {
     pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
+    pub batch_concurrency_limit: NonZeroUsize,
 }
 
 impl RpcContext {
@@ -30,6 +32,7 @@ impl RpcContext {
         chain_id: ChainId,
         sequencer: SequencerClient,
         pending_data: tokio_watch::Receiver<Arc<PendingData>>,
+        batch_concurrency_limit: NonZeroUsize,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
         Self {
@@ -41,6 +44,7 @@ impl RpcContext {
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             websocket: None,
+            batch_concurrency_limit,
         }
     }
 
@@ -69,6 +73,7 @@ impl RpcContext {
             chain_id,
             sequencer.disable_retry_for_tests(),
             rx,
+            NonZeroUsize::new(8).unwrap(),
         )
     }
 

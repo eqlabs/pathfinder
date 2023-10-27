@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
 use axum::async_trait;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use futures::{Future, FutureExt};
+use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -177,14 +178,14 @@ pub async fn rpc_handler(
                 return RpcResponse::INVALID_REQUEST.into_response();
             }
 
-            let mut responses = Vec::new();
-
-            for request in requests {
-                // Notifications return none and are skipped.
-                if let Some(response) = state.run_request(request.get()).await {
-                    responses.push(response);
-                }
-            }
+            let responses = run_concurrently(
+                state.context.batch_concurrency_limit,
+                requests.into_iter(),
+                |request| state.run_request(request.get()),
+            )
+            .await
+            .flatten()
+            .collect::<Vec<RpcResponse<'_>>>();
 
             // All requests were notifications.
             if responses.is_empty() {
@@ -459,6 +460,72 @@ mod sealed {
 #[async_trait]
 pub trait RpcMethodHandler {
     async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
+}
+
+/// Performs asynchronous work concurrently on an input iterator, returning an `Iterator` with the output
+/// of each piece of work.
+///
+/// ⚠ Execution will be performed out of order. Results are
+/// eventually re-ordered.
+///
+/// Usage example:
+/// ```ignore
+/// let results = run_concurrently(
+///     NonZeroUsize::new(10).unwrap(),
+///     0..iterations,
+///     |i| async move {
+///         sleep(Duration::from_millis(i) as u64).await;
+///         i
+///     },
+/// )
+/// .await
+/// .collect::<Vec<i>>();
+/// ```
+async fn run_concurrently<O, I, F, W, V>(
+    concurrency_limit: NonZeroUsize,
+    input_iter: V,
+    work: W,
+) -> impl Iterator<Item = O>
+where
+    V: Iterator<Item = I> + ExactSizeIterator,
+    W: Fn(I) -> F,
+    F: Future<Output = O> + Sized,
+{
+    let capacity = input_iter.len();
+    let (result_sender, mut result_receiver) = tokio::sync::mpsc::channel(capacity);
+
+    futures::stream::iter(input_iter)
+        .enumerate()
+        .for_each_concurrent(Some(concurrency_limit.get()), |(index, input)| {
+            let result_sender = result_sender.clone();
+            let future = work(input);
+
+            async move {
+                let result = future.await;
+
+                // No reason for this to fail as:
+                //  * channel capacity is sized according to the input size,
+                //  * a sender is kept alive until completion
+                result_sender.send((index, result)).await.expect(
+                    "This channel is expected to be open and to not go over capacity. This is a bug.",
+                );
+            }
+        })
+        .await;
+
+    // Necessary to break the receive loop eventually.
+    drop(result_sender);
+
+    // All results should be available immediately at this point.
+    let mut indexed_results = Vec::new();
+    indexed_results.reserve_exact(capacity);
+    while let Some(indexed_result) = result_receiver.recv().await {
+        indexed_results.push(indexed_result)
+    }
+
+    indexed_results.sort_by(|(index_a, _), (index_b, _)| index_a.cmp(index_b));
+
+    indexed_results.into_iter().map(|(_index, result)| result)
 }
 
 #[cfg(test)]
@@ -884,5 +951,169 @@ mod tests {
             .expect("content-type header should be set");
 
         assert_eq!(content_type, "application/json");
+    }
+
+    mod concurrent_futures {
+        use super::*;
+        use std::cmp::max;
+        use std::sync::Arc;
+        use std::time::Duration;
+        use tokio::sync::Notify;
+        use tokio::time::timeout;
+
+        pub enum TaskEvent {
+            Start(usize),
+            End(usize),
+        }
+
+        #[tokio::test]
+        async fn concurrent_futures() {
+            let iterations = 100;
+            let concurrency_limit = iterations / 2;
+            let events =
+                concurrent_count(iterations, NonZeroUsize::new(concurrency_limit).unwrap()).await;
+            assert_eq!(max_concurrency_level(&events), concurrency_limit);
+
+            // The test should have messed up with the execution order, which is important to assess
+            // that the results are ordered according to the input order and not the execution order.
+            let order_difference = events
+                .into_iter()
+                .filter_map(|event| {
+                    if let TaskEvent::End(index) = event {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                })
+                .enumerate()
+                .any(|(execution_index, task_index)| execution_index != task_index);
+            assert!(order_difference);
+        }
+
+        #[tokio::test]
+        async fn sequential_futures() {
+            let iterations = 100;
+            let concurrency_limit = 1;
+            let events =
+                concurrent_count(iterations, NonZeroUsize::new(concurrency_limit).unwrap()).await;
+            assert_eq!(max_concurrency_level(&events), concurrency_limit);
+
+            // Make sure there isn't a change in the execution order so there is no change in
+            // behavior with the introduction of this feature.
+            let order_match = events
+                .into_iter()
+                .filter_map(|event| {
+                    if let TaskEvent::End(index) = event {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                })
+                .enumerate()
+                .all(|(execution_index, task_index)| execution_index == task_index);
+            assert!(order_match);
+        }
+
+        async fn concurrent_count(
+            iterations: usize,
+            concurrency_limit: NonZeroUsize,
+        ) -> Vec<TaskEvent> {
+            #[derive(Clone)]
+            struct State {
+                index: usize,
+                notify: Arc<Notify>,
+            }
+
+            let task_states = (0..iterations)
+                .map(|index| State {
+                    index,
+                    notify: Arc::new(Notify::new()),
+                })
+                .collect::<Vec<State>>();
+
+            let (event_sender, mut event_receiver) = tokio::sync::mpsc::channel(iterations * 2);
+            let (result_sender, result_receiver) = tokio::sync::oneshot::channel();
+
+            // Run the tasks in the background
+            tokio::spawn({
+                let task_states = task_states.clone();
+                async move {
+                    let results =
+                        run_concurrently(concurrency_limit, task_states.into_iter(), |state| {
+                            let event_sender = event_sender.clone();
+                            async move {
+                                event_sender
+                                    .send(TaskEvent::Start(state.index))
+                                    .await
+                                    .unwrap();
+                                // Wait until allowed to continue.
+                                let _start = state.notify.notified().await;
+                                event_sender
+                                    .send(TaskEvent::End(state.index))
+                                    .await
+                                    .unwrap();
+                                state.index
+                            }
+                        })
+                        .await
+                        .collect::<Vec<usize>>();
+
+                    result_sender.send(results).unwrap();
+                }
+            });
+
+            // N tasks should already have started, N being the `concurrency_limit`.
+            let mut events = vec![];
+            for _i in 0..concurrency_limit.get() {
+                let event = timeout(Duration::from_millis(100), event_receiver.recv())
+                    .await
+                    .expect("Timeout reached, there's something wrong with the concurrency limit")
+                    .expect("The event channel closed early");
+                events.push(event);
+            }
+
+            // Allow all tasks to continue, descending order to mess up with completion order.
+            for i in (0..iterations).rev() {
+                task_states[i].notify.notify_one();
+            }
+
+            let results = result_receiver.await.unwrap();
+
+            // Make sure the results are complete.
+            assert_eq!(results.len(), iterations);
+            // Make sure the results are ordered consistently with the input.
+            results
+                .into_iter()
+                .enumerate()
+                .for_each(|(expected, result)| {
+                    assert_eq!(result, expected);
+                });
+
+            // Now retrieve the rest of the events
+            while let Some(event) = event_receiver.recv().await {
+                events.push(event)
+            }
+
+            events
+        }
+
+        fn max_concurrency_level(events: &[TaskEvent]) -> usize {
+            let mut started_task = 0;
+            let mut max_simultaneous = 0;
+
+            for event in events {
+                match event {
+                    TaskEvent::Start(_) => {
+                        started_task += 1;
+                        max_simultaneous = max(max_simultaneous, started_task);
+                    }
+                    TaskEvent::End(_) => {
+                        started_task -= 1;
+                    }
+                }
+            }
+
+            max_simultaneous
+        }
     }
 }
