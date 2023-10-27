@@ -177,6 +177,13 @@ impl<'inner> Transaction<'inner> {
         transaction::transaction_data_for_block(self, block)
     }
 
+    pub fn transactions_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<gateway::Transaction>>> {
+        transaction::transactions_for_block(self, block)
+    }
+
     pub fn transaction_hashes_for_block(
         &self,
         block: BlockId,
