@@ -198,15 +198,15 @@ impl BlockHeadersResponse {
 impl Display for BlockHeadersResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockHeadersResponse[")?;
-        if self.parts.len() == 1 {
-            write!(f, "{}", self.parts[0])?;
-        } else if self.parts.len() > 1 {
-            write!(
+        match self.parts.len().cmp(&1) {
+            std::cmp::Ordering::Less => {}
+            std::cmp::Ordering::Equal => write!(f, "{}", self.parts[0])?,
+            std::cmp::Ordering::Greater => write!(
                 f,
                 "{},..,{}",
                 self.parts.first().unwrap(),
                 self.parts.last().unwrap()
-            )?;
+            )?,
         }
         write!(f, "]")
     }
@@ -376,20 +376,22 @@ impl TryFromProtobuf<proto::block::block_bodies_response::BodyMessage> for Block
 impl Display for BlockBodiesResponseList {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockBodiesResponseList[")?;
-        if self.items.len() == 1 {
-            if let Some(id) = self.items[0].id {
-                id.fmt(f)?
-            } else {
-                write!(f, "...")?
+        match self.items.len().cmp(&1) {
+            std::cmp::Ordering::Less => {}
+            std::cmp::Ordering::Equal => {
+                if let Some(id) = self.items[0].id {
+                    id.fmt(f)?
+                } else {
+                    write!(f, "...")?
+                }
             }
-        } else if self.items.len() > 1 {
-            match (
+            std::cmp::Ordering::Greater => match (
                 self.items.first().unwrap().id,
                 self.items.last().unwrap().id,
             ) {
                 (Some(a), Some(b)) => write!(f, "{a},..,{b}")?,
                 _ => write!(f, "...")?,
-            }
+            },
         }
         write!(f, "]")
     }
