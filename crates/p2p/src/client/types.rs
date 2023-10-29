@@ -24,7 +24,7 @@ pub trait TryFromDto<T> {
         Self: Sized;
 }
 
-/// Block hash but without most of the commitments
+/// Block header but without most of the commitments
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BlockHeader {
     pub hash: BlockHash,
