@@ -11,8 +11,8 @@ pub(crate) trait ParserState {
         let next_state = current_state.transition(item)?;
 
         *self = next_state;
-        // We need to stop parsing when a block is properly delimited but an error was signalled
-        // as the peer is not going to send any more blocks.
+        // We need to stop parsing when a block is properly delimited and an error was signalled.
+        // TODO With streaming response we could then just close the stream.
 
         if self.should_stop() {
             anyhow::bail!("no data or premature end of response")
