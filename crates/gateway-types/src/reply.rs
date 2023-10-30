@@ -223,15 +223,21 @@ pub mod transaction {
         L1Handler,
     }
 
+    impl From<pathfinder_common::transaction::EntryPointType> for EntryPointType {
+        fn from(value: pathfinder_common::transaction::EntryPointType) -> Self {
+            use pathfinder_common::transaction::EntryPointType::{External, L1Handler};
+            match value {
+                External => Self::External,
+                L1Handler => Self::L1Handler,
+            }
+        }
+    }
+
     impl From<EntryPointType> for pathfinder_common::transaction::EntryPointType {
         fn from(value: EntryPointType) -> Self {
             match value {
-                EntryPointType::External => {
-                    pathfinder_common::transaction::EntryPointType::External
-                }
-                EntryPointType::L1Handler => {
-                    pathfinder_common::transaction::EntryPointType::L1Handler
-                }
+                EntryPointType::External => Self::External,
+                EntryPointType::L1Handler => Self::L1Handler,
             }
         }
     }
@@ -457,6 +463,145 @@ pub mod transaction {
             };
 
             Ok(tx)
+        }
+    }
+
+    impl From<pathfinder_common::transaction::Transaction> for Transaction {
+        fn from(value: pathfinder_common::transaction::Transaction) -> Self {
+            use pathfinder_common::transaction::TransactionVariant::{
+                DeclareV0, DeclareV1, DeclareV2, Deploy, DeployAccount, InvokeV0, InvokeV1,
+                L1Handler,
+            };
+            use pathfinder_common::transaction::{
+                DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
+                DeployTransaction, InvokeTransactionV0, InvokeTransactionV1, L1HandlerTransaction,
+            };
+
+            let transaction_hash = value.hash;
+            match value.variant {
+                DeclareV0(DeclareTransactionV0V1 {
+                    class_hash,
+                    max_fee,
+                    nonce,
+                    sender_address,
+                    signature,
+                }) => Self::Declare(DeclareTransaction::V0(self::DeclareTransactionV0V1 {
+                    class_hash,
+                    max_fee,
+                    nonce,
+                    sender_address,
+                    signature,
+                    transaction_hash,
+                })),
+                DeclareV1(DeclareTransactionV0V1 {
+                    class_hash,
+                    max_fee,
+                    nonce,
+                    sender_address,
+                    signature,
+                }) => Self::Declare(DeclareTransaction::V1(self::DeclareTransactionV0V1 {
+                    class_hash,
+                    max_fee,
+                    nonce,
+                    sender_address,
+                    signature,
+                    transaction_hash,
+                })),
+                DeclareV2(DeclareTransactionV2 {
+                    class_hash,
+                    max_fee,
+                    nonce,
+                    sender_address,
+                    signature,
+                    compiled_class_hash,
+                }) => Self::Declare(DeclareTransaction::V2(self::DeclareTransactionV2 {
+                    class_hash,
+                    max_fee,
+                    nonce,
+                    sender_address,
+                    signature,
+                    transaction_hash,
+                    compiled_class_hash,
+                })),
+                Deploy(DeployTransaction {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                    version,
+                }) => Self::Deploy(self::DeployTransaction {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                    transaction_hash,
+                    version,
+                }),
+                DeployAccount(DeployAccountTransaction {
+                    contract_address,
+                    max_fee,
+                    version,
+                    signature,
+                    nonce,
+                    contract_address_salt,
+                    constructor_calldata,
+                    class_hash,
+                }) => Self::DeployAccount(self::DeployAccountTransaction {
+                    contract_address,
+                    transaction_hash,
+                    max_fee,
+                    version,
+                    signature,
+                    nonce,
+                    contract_address_salt,
+                    constructor_calldata,
+                    class_hash,
+                }),
+                InvokeV0(InvokeTransactionV0 {
+                    calldata,
+                    sender_address,
+                    entry_point_selector,
+                    entry_point_type,
+                    max_fee,
+                    signature,
+                }) => Self::Invoke(InvokeTransaction::V0(self::InvokeTransactionV0 {
+                    calldata,
+                    sender_address,
+                    entry_point_selector,
+                    entry_point_type: entry_point_type.map(Into::into),
+                    max_fee,
+                    signature,
+                    transaction_hash,
+                })),
+                InvokeV1(InvokeTransactionV1 {
+                    calldata,
+                    sender_address,
+                    max_fee,
+                    signature,
+                    nonce,
+                }) => Self::Invoke(InvokeTransaction::V1(self::InvokeTransactionV1 {
+                    calldata,
+                    sender_address,
+                    max_fee,
+                    signature,
+                    nonce,
+                    transaction_hash,
+                })),
+                L1Handler(L1HandlerTransaction {
+                    contract_address,
+                    entry_point_selector,
+                    nonce,
+                    calldata,
+                    version,
+                }) => Self::L1Handler(self::L1HandlerTransaction {
+                    contract_address,
+                    entry_point_selector,
+                    nonce,
+                    calldata,
+                    transaction_hash,
+                    version,
+                }),
+            }
         }
     }
 

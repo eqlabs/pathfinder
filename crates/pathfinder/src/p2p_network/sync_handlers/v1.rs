@@ -5,14 +5,15 @@ use p2p_proto_v1::block::{
 };
 use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Fin, Hash, Iteration, Step};
 use p2p_proto_v1::consts::{
-    CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
+    CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MAX_PARTS_PER_CLASS, MESSAGE_SIZE_LIMIT,
+    PER_CLASS_OVERHEAD,
 };
 use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, EventsResponseKind, TxnEvents};
 use p2p_proto_v1::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
 use p2p_proto_v1::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
 };
-use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
+use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
 use tokio::sync::mpsc;
@@ -34,6 +35,11 @@ const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 const _: () = assert!(
     MAX_BLOCKS_COUNT <= MAX_HEADERS_PER_MESSAGE as u64,
     "All requested block headers, limited up to MAX_BLOCKS_COUNT should fit into one reply"
+);
+
+const _: () = assert!(
+    MAX_PARTS_PER_CLASS as u64 <= MAX_BLOCKS_COUNT,
+    "It does not make sense to accept classes that comprise more parts than the node can accept"
 );
 
 pub async fn get_headers(
@@ -139,6 +145,31 @@ fn get_header(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(test, derive(fake::Dummy))]
+enum ClassId {
+    Cairo(ClassHash),
+    Sierra(SierraHash, CasmHash),
+}
+
+impl ClassId {
+    pub fn into_dto(self) -> (Hash, Option<Hash>) {
+        match self {
+            ClassId::Cairo(class_hash) => (Hash(class_hash.0), None),
+            ClassId::Sierra(sierra_hash, casm_hash) => {
+                (Hash(sierra_hash.0), Some(Hash(casm_hash.0)))
+            }
+        }
+    }
+
+    pub fn class_hash(&self) -> ClassHash {
+        match self {
+            ClassId::Cairo(class_hash) => *class_hash,
+            ClassId::Sierra(sierra_hash, _) => ClassHash(sierra_hash.0),
+        }
+    }
+}
+
 fn get_body(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
@@ -151,12 +182,12 @@ fn get_body(
     let new_classes = state_diff
         .declared_cairo_classes
         .iter()
-        .copied()
+        .map(|&class_hash| ClassId::Cairo(class_hash))
         .chain(
             state_diff
                 .declared_sierra_classes
-                .keys()
-                .map(|x| ClassHash(x.0)),
+                .iter()
+                .map(|(&sierra_hash, &casm_hash)| ClassId::Sierra(sierra_hash, casm_hash)),
         )
         .collect::<Vec<_>>();
     let block_hash = state_diff.block_hash;
@@ -381,17 +412,17 @@ fn get_start_block_number(
 fn classes(
     block_number: BlockNumber,
     block_hash: BlockHash,
-    new_classes: Vec<ClassHash>,
+    new_classes: Vec<ClassId>,
     responses: &mut Vec<BlockBodiesResponse>,
     mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
 ) -> anyhow::Result<()> {
     let mut estimated_message_size = CLASSES_MESSAGE_OVERHEAD;
-    let mut classes_for_this_msg: Vec<(ClassHash, Vec<u8>)> = Vec::new();
+    let mut classes_for_this_msg: Vec<(ClassId, Vec<u8>)> = Vec::new();
     let new_classes = new_classes.into_iter();
 
     // 1. Let's take the next class definition from storage
-    for class_hash in new_classes {
-        let compressed_definition = class_definition_getter(block_number, class_hash)?;
+    for class_id in new_classes {
+        let compressed_definition = class_definition_getter(block_number, class_id.class_hash())?;
 
         // 2. Let's check if this definition needs to be chunked
         if (CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
@@ -403,7 +434,7 @@ fn classes(
 
             if estimated_message_size <= MESSAGE_SIZE_LIMIT {
                 // 2.A.A Ok, it fits, let's add it to the message but don't send the message yet
-                classes_for_this_msg.push((class_hash, compressed_definition));
+                classes_for_this_msg.push((class_id, compressed_definition));
                 // --> 1.
             } else {
                 // 2.A.B Current definition would be too much for the current message, so send what we have accumulated so far
@@ -431,7 +462,7 @@ fn classes(
                 // Now we reset the counter and start over with the current definition that didn't fit
                 estimated_message_size =
                     CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len();
-                classes_for_this_msg.push((class_hash, compressed_definition));
+                classes_for_this_msg.push((class_id, compressed_definition));
                 // --> 1.
             }
         } else {
@@ -465,7 +496,7 @@ fn classes(
                 responses.push(block_bodies_response::from_class_definition_part(
                     block_number,
                     block_hash,
-                    class_hash,
+                    class_id,
                     chunk,
                     chunk_count,
                     chunk_idx,
@@ -491,20 +522,20 @@ fn classes(
 }
 
 mod block_bodies_response {
+    use super::*;
     use p2p_proto_v1::block::BlockBodyMessage;
 
-    use super::*;
-
     /// It is assumed that the chunk is not empty
-    pub fn from_class_definition_part(
+    pub(super) fn from_class_definition_part(
         block_number: BlockNumber,
         block_hash: BlockHash,
-        class_hash: ClassHash,
+        class_id: ClassId,
         part: &[u8],
         parts_count: u32,
         part_idx: u32,
     ) -> BlockBodiesResponse {
         use p2p_proto_v1::state::{Class, Classes};
+        let (compiled_hash, casm_hash) = class_id.into_dto();
         BlockBodiesResponse {
             id: Some(BlockId {
                 number: block_number.get(),
@@ -513,8 +544,9 @@ mod block_bodies_response {
             body_message: BlockBodyMessage::Classes(Classes {
                 domain: 0, // FIXME
                 classes: vec![Class {
-                    compiled_hash: Hash(class_hash.0),
+                    compiled_hash,
                     definition: part.to_vec(),
+                    casm_hash,
                     total_parts: Some(parts_count),
                     part_num: Some(part_idx),
                 }],
@@ -524,19 +556,24 @@ mod block_bodies_response {
 
     /// Pops all elements from `class_definitions` leaving the vector empty as if it was just `clear()`-ed,
     /// so that later on it can be reused.
-    pub fn take_from_class_definitions(
+    pub(super) fn take_from_class_definitions(
         block_number: BlockNumber,
         block_hash: BlockHash,
-        class_definitions: &mut Vec<(ClassHash, Vec<u8>)>,
+        class_definitions: &mut Vec<(ClassId, Vec<u8>)>,
     ) -> BlockBodiesResponse {
         use p2p_proto_v1::state::{Class, Classes};
         let classes = class_definitions
             .drain(..)
-            .map(|(class_hash, definition)| Class {
-                compiled_hash: Hash(class_hash.0),
-                definition,
-                total_parts: None,
-                part_num: None,
+            .map(|(class_id, definition)| {
+                let (compiled_hash, casm_hash) = class_id.into_dto();
+
+                Class {
+                    compiled_hash,
+                    definition,
+                    casm_hash,
+                    total_parts: None,
+                    part_num: None,
+                }
             })
             .collect();
         BlockBodiesResponse {

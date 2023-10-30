@@ -10,25 +10,25 @@ license = "MIT OR Apache-2.0"
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
-delay_map = "0.1.2"
 futures = { workspace = true }
 libp2p = { version = "0.51.3", default-features = false, features = [
-    "identify",
+    "autonat",
+    "dcutr",
+    "dns",
     "gossipsub",
+    "identify",
     "kad",
+    "macros",
     "noise",
     "ping",
-    "dns",
+    "relay",
+    "request-response",
     "tcp",
     "tokio",
     "yamux",
-    "request-response",
-    "autonat",
-    "relay",
-    "dcutr",
-    "macros",
 ] }
 p2p_proto_v0 = { path = "../p2p_proto_v0" }
+p2p_proto_v1 = { path = "../p2p_proto_v1" }
 pathfinder-common = { path = "../common" }
 prost = "0.12.1"
 rand = { workspace = true }
@@ -36,8 +36,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = "0.10.7"
 stark_hash = { path = "../stark_hash" }
-tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "sync"] }
 tracing = "0.1.37"
+void = "1.0.2"
 zeroize = "1.6.0"
 
 [dev-dependencies]

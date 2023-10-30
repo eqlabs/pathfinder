@@ -39,6 +39,9 @@ pub struct Class {
     pub total_parts: Option<u32>,
     #[optional]
     pub part_num: Option<u32>,
+    // FIXME needed for sierra classes, occurs in first chunk
+    #[optional]
+    pub casm_hash: Option<Hash>,
 }
 
 impl Debug for Class {

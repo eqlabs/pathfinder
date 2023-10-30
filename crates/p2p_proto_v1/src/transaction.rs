@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::common::{Address, BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
@@ -198,6 +200,13 @@ pub struct TransactionsResponse {
     pub kind: TransactionsResponseKind,
 }
 
+// TODO remove when streaming response implemented
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[protobuf(name = "crate::proto::transaction::TransactionsResponseList")]
+pub struct TransactionsResponseList {
+    pub items: Vec<TransactionsResponse>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum TransactionsResponseKind {
     Transactions(Transactions),
@@ -339,5 +348,11 @@ impl TryFromProtobuf<i32> for EntryPointType {
             External => Self::External,
             L1Handler => Self::L1Handler,
         })
+    }
+}
+
+impl Display for TransactionsResponseList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TransactionsResponseList[len={}]", self.items.len())
     }
 }

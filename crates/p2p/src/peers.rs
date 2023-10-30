@@ -5,7 +5,8 @@ use libp2p::PeerId;
 #[derive(Debug, Default)]
 struct Peer {
     connection_status: ConnectionStatus,
-    sync_status: Option<p2p_proto_v0::sync::Status>,
+    // TODO are we still able to maintain info about peers' sync heads?
+    // sync_status: Option<p2p_proto_v0::sync::Status>,
 }
 
 impl Peer {
@@ -22,8 +23,8 @@ impl Peer {
         };
     }
 
-    pub fn update_sync_status(&mut self, new_status: p2p_proto_v0::sync::Status) {
-        self.sync_status = Some(new_status);
+    pub fn _update_sync_status(&mut self, _new_status: () /*p2p_proto_v0::sync::Status*/) {
+        todo!("not sure rn if we can reliaby maintain info about peers' sync heads")
     }
 
     pub fn is_connected(&self) -> bool {
@@ -53,14 +54,8 @@ impl Peers {
             .update_connection_status(connection_status);
     }
 
-    pub fn update_sync_status(
-        &mut self,
-        peer_id: &PeerId,
-        sync_status: p2p_proto_v0::sync::Status,
-    ) {
-        self.peers
-            .entry(*peer_id)
-            .and_modify(|peer| peer.update_sync_status(sync_status));
+    pub fn update_sync_status(&mut self, _peer_id: &PeerId, _sync_status: ()) {
+        todo!("not sure rn if we can reliaby maintain info about peers' sync heads")
     }
 
     pub fn peer_dialing(&mut self, peer_id: &PeerId) {
@@ -111,10 +106,9 @@ impl Peers {
         })
     }
 
-    pub fn syncing(&self) -> impl Iterator<Item = (&PeerId, &p2p_proto_v0::sync::Status)> {
-        self.peers
-            .iter()
-            .filter_map(|(peer_id, peer)| peer.sync_status.as_ref().map(|status| (peer_id, status)))
+    pub fn syncing(&self) /* -> impl Iterator<Item = (&PeerId, &p2p_proto_v0::sync::Status)> */
+    {
+        todo!("not sure rn if we can reliaby maintain info about peers' sync heads")
     }
 
     pub fn remove(&mut self, peer_id: &PeerId) {

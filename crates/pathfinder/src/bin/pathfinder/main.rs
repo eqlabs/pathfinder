@@ -190,7 +190,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let (p2p_handle, sequencer) = start_p2p(
         pathfinder_context.network_id,
         p2p_storage,
-        sync_state.clone(),
         pathfinder_context.gateway,
         config.p2p,
     )
@@ -209,6 +208,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pending_poll_interval: config
             .poll_pending
             .then_some(std::time::Duration::from_secs(2)),
+        // Currently p2p does not perform block hash and state commitment verification if p2p header lacks state commitment
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_topic_broadcasters().cloned(),
         block_cache_size: 1_000,
@@ -320,7 +320,6 @@ fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
 async fn start_p2p(
     chain_id: ChainId,
     storage: Storage,
-    sync_state: Arc<SyncState>,
     sequencer: starknet_gateway_client::Client,
     config: config::P2PConfig,
 ) -> anyhow::Result<(
@@ -365,7 +364,6 @@ async fn start_p2p(
     let context = P2PContext {
         chain_id,
         storage,
-        sync_state,
         proxy: config.proxy,
         keypair,
         listen_on: config.listen_on,
@@ -385,7 +383,6 @@ async fn start_p2p(
 async fn start_p2p(
     _: ChainId,
     _: Storage,
-    _: Arc<SyncState>,
     sequencer: starknet_gateway_client::Client,
     _: config::P2PConfig,
 ) -> anyhow::Result<(tokio::task::JoinHandle<()>, starknet_gateway_client::Client)> {

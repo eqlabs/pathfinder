@@ -7,16 +7,22 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::HeadRx;
+use p2p::client::types::{BlockHeader, Class, StateUpdateWithDefs};
+use p2p::{client::peer_agnostic, HeadRx};
 use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
-    ContractAddressSalt, EntryPoint, Fee, StateUpdate, TransactionHash, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    state_update::{ContractClassUpdate, ContractUpdate},
+    TransactionIndex,
+};
+use pathfinder_common::{
+    transaction::Transaction, BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash,
+    ContractAddress, ContractAddressSalt, EntryPoint, Fee, StateCommitment, StateUpdate,
+    TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
-use starknet_gateway_types::reply;
+use starknet_gateway_types::reply as gw;
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
@@ -29,27 +35,33 @@ pub enum HybridClient {
     /// Syncs from the feeder gateway, propagates new headers via p2p/gossipsub
     /// Proxies blockchain data to non propagating nodes via p2p
     GatewayProxy {
-        p2p_client: p2p::SyncClient,
+        p2p_client: peer_agnostic::Client,
         sequencer: starknet_gateway_client::Client,
     },
     /// Syncs from p2p network, does not propagate
     NonPropagatingP2P {
-        p2p_client: p2p::SyncClient,
+        p2p_client: peer_agnostic::Client,
         sequencer: starknet_gateway_client::Client,
         head_rx: HeadRx,
         /// We need to cache the last two fetched blocks via p2p otherwise sync logic will
         /// produce a false reorg from genesis when we loose connection to other p2p nodes.
         /// This was we can stay at the same height while we are disconnected.
-        block_lru: BlockLru,
+        cache: Cache,
     },
 }
 
 #[derive(Clone, Debug)]
-pub struct BlockLru {
-    inner: Arc<Mutex<LruCache<BlockNumber, Block>>>,
+pub struct Cache {
+    inner: Arc<Mutex<LruCache<BlockHash, CacheEntry>>>,
 }
 
-impl Default for BlockLru {
+#[derive(Clone, Debug)]
+pub struct CacheEntry {
+    pub block: Block,
+    pub definitions: HashMap<ClassHash, Vec<u8>>,
+}
+
+impl Default for Cache {
     fn default() -> Self {
         Self {
             // We only need 2 blocks: the last one and its parent
@@ -58,38 +70,71 @@ impl Default for BlockLru {
     }
 }
 
-impl BlockLru {
-    fn get(&self, number: BlockNumber) -> Option<Block> {
-        let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner.get(&number).cloned()
+impl Cache {
+    fn get_block(&self, number: BlockNumber) -> Option<Block> {
+        let locked = self.inner.lock().unwrap();
+        locked
+            .iter()
+            .find_map(|(_, v)| (v.block.block_number == number).then_some(v.block.clone()))
     }
 
-    fn clear_if_reorg(&self, header: &p2p_proto_v0::common::BlockHeader) {
-        if let Some(parent_number) = header.number.checked_sub(1) {
-            let mut locked_inner = self.inner.lock().unwrap();
-            if let Some(parent) = locked_inner.get(&BlockNumber::new_or_panic(parent_number)) {
+    fn get_state_commitment(&self, block_hash: BlockHash) -> Option<StateCommitment> {
+        let locked = self.inner.lock().unwrap();
+        locked
+            .peek(&block_hash)
+            .map(|entry| entry.block.state_commitment)
+    }
+
+    fn get_definition(&self, class_hash: ClassHash) -> Option<Vec<u8>> {
+        let locked = self.inner.lock().unwrap();
+        locked
+            .iter()
+            .find_map(|(_, v)| v.definitions.get(&class_hash).cloned())
+    }
+
+    fn clear_if_reorg(&self, header: &BlockHeader) {
+        if let Some(parent_number) = header.number.get().checked_sub(1) {
+            let mut locked = self.inner.lock().unwrap();
+            if let Some(cached_parent_hash) = locked
+                .iter()
+                .find_map(|(k, v)| (v.block.block_number.get() == parent_number).then_some(k))
+            {
                 // If there's a reorg, purge the cache or we'll be stuck
                 //
                 // There's a risk we'll falsely reorg to genesis if all other peers get disconnected
                 // just after the cache is purged
                 // TODO: consider increasing the cache and just purging the last block
-                if parent.block_hash.0 != header.parent_hash {
-                    locked_inner.clear();
+                if cached_parent_hash.0 != header.parent_hash.0 {
+                    locked.clear();
                 }
             }
         }
     }
 
-    fn insert(&self, block: Block) {
+    fn insert_block(&self, block: Block) {
         let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner.put(block.block_number, block);
+        locked_inner.put(
+            block.block_hash,
+            CacheEntry {
+                block,
+                definitions: Default::default(),
+            },
+        );
+    }
+
+    fn insert_definitions(&self, block_hash: BlockHash, definitions: HashMap<ClassHash, Vec<u8>>) {
+        let mut locked = self.inner.lock().unwrap();
+        locked
+            .peek_mut(&block_hash)
+            .expect("block is already cached")
+            .definitions = definitions;
     }
 }
 
 impl HybridClient {
     pub fn new(
         i_am_proxy: bool,
-        p2p_client: p2p::SyncClient,
+        p2p_client: peer_agnostic::Client,
         sequencer: starknet_gateway_client::Client,
         head_rx: HeadRx,
     ) -> Self {
@@ -103,7 +148,7 @@ impl HybridClient {
                 p2p_client,
                 sequencer,
                 head_rx,
-                block_lru: Default::default(),
+                cache: Default::default(),
             }
         }
     }
@@ -139,128 +184,178 @@ mod error {
 
 #[async_trait::async_trait]
 impl GatewayApi for HybridClient {
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
+    async fn block(&self, block: BlockId) -> Result<gw::MaybePendingBlock, SequencerError> {
         use error::block_not_found;
 
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.block(block).await,
             HybridClient::NonPropagatingP2P {
-                p2p_client,
-                block_lru,
-                ..
-            } => match block {
-                BlockId::Number(n) => {
-                    if let Some(block) = block_lru.get(n) {
-                        tracing::trace!(number=%n, "HybridClient: using cached block");
-                        return Ok(block.into());
-                    }
+                p2p_client, cache, ..
+            } => {
+                match block {
+                    BlockId::Number(n) => {
+                        if let Some(block) = cache.get_block(n) {
+                            tracing::trace!(number=%n, "HybridClient: using cached block");
+                            return Ok(block.into());
+                        }
 
-                    let mut headers = p2p_client.block_headers(n, 1).await.ok_or_else(|| {
-                        block_not_found(format!("No peers with headers for block {n}"))
-                    })?;
+                        let mut headers =
+                            p2p_client.block_headers(n, 1).await.map_err(|error| {
+                                block_not_found(format!(
+                                    "getting headers failed: block {n}, {error}",
+                                ))
+                            })?;
 
-                    if headers.len() != 1 {
-                        return Err(block_not_found(format!(
-                            "Headers len for block {n} is {}, expected 1",
-                            headers.len()
-                        )));
-                    }
+                        if headers.len() != 1 {
+                            return Err(block_not_found(format!(
+                                "headers len for block {n} is {}, expected 1",
+                                headers.len()
+                            )));
+                        }
 
-                    let header = headers.swap_remove(0);
+                        let header = headers.swap_remove(0);
 
-                    block_lru.clear_if_reorg(&header);
+                        if header.number != n {
+                            return Err(block_not_found("block number mismatch"));
+                        }
 
-                    let mut bodies = p2p_client
-                        .block_bodies(BlockHash(header.hash), 1)
-                        .await
-                        .ok_or_else(|| {
-                            block_not_found(format!("No peers with bodies for block {n}"))
+                        cache.clear_if_reorg(&header);
+
+                        let block_hash = header.hash;
+
+                        let mut transactions = p2p_client
+                            .transactions(header.hash, 1)
+                            .await
+                            .map_err(|error| {
+                                block_not_found(format!(
+                                    "getting transactions failed: block {n}: {error}",
+                                ))
+                            })?;
+
+                        let transactions = transactions.remove(&block_hash).ok_or_else(|| {
+                            block_not_found(format!("no peers with transactions for block {n}",))
                         })?;
 
-                    if bodies.len() != 1 {
-                        return Err(block_not_found(format!(
-                            "Bodies len for block {n} is {}, expected 1",
-                            headers.len()
-                        )));
+                        let receipts =
+                            p2p_client.receipts(header.hash, 1).await.map_err(|error| {
+                                block_not_found(format!(
+                                    "getting receipts failed: block {n}: {error}",
+                                ))
+                            })?;
+
+                        use crate::p2p_network::client::v1::types::Receipt;
+
+                        let mut receipts = receipts
+                            .into_iter()
+                            .map(|(k, v)| {
+                                v.into_iter()
+                                    .map(Receipt::try_from)
+                                    .collect::<Result<Vec<_>, _>>()
+                                    .map(|r| (k, r))
+                            })
+                            .collect::<Result<HashMap<_, _>, _>>()
+                            .map_err(|error| {
+                                block_not_found(format!(
+                                    "failed to parse receipts for block {n}: {error}",
+                                ))
+                            })?;
+
+                        let receipts = receipts.remove(&block_hash).ok_or_else(|| {
+                            block_not_found(format!("no peers with receipts for block {n}",))
+                        })?;
+
+                        debug_assert_eq!(transactions.len(), receipts.len());
+
+                        let mut events =
+                            p2p_client.event(header.hash, 1).await.map_err(|error| {
+                                block_not_found(format!(
+                                    "getting events failed: block {n}: {error}",
+                                ))
+                            })?;
+
+                        let mut events = events.remove(&block_hash).ok_or_else(|| {
+                            block_not_found(format!("no peers with events for block {n}",))
+                        })?;
+
+                        // TODO: assume order is the same because proto::transaction does not carry transaction hash
+                        let (transactions, receipts): (Vec<_>, Vec<_>) = transactions
+                            .into_iter()
+                            .zip(receipts)
+                            .enumerate()
+                            .map(|(i, (t, r))| {
+                                let (execution_status, revert_error) = if r.revert_error.is_empty()
+                                {
+                                    (gw::transaction::ExecutionStatus::Succeeded, None)
+                                } else {
+                                    (
+                                        gw::transaction::ExecutionStatus::Reverted,
+                                        Some(r.revert_error),
+                                    )
+                                };
+
+                                (
+                                    gw::transaction::Transaction::from(Transaction {
+                                        hash: r.transaction_hash,
+                                        variant: t,
+                                    }),
+                                    gw::transaction::Receipt {
+                                        actual_fee: Some(r.actual_fee),
+                                        events: events
+                                            .remove(&r.transaction_hash)
+                                            .unwrap_or_default(),
+                                        execution_resources: Some(r.execution_resources),
+                                        l1_to_l2_consumed_message: r.l1_to_l2_consumed_message,
+                                        l2_to_l1_messages: r.l2_to_l1_messages,
+                                        transaction_hash: r.transaction_hash,
+                                        transaction_index: TransactionIndex::new_or_panic(i as u64),
+                                        execution_status,
+                                        revert_error,
+                                    },
+                                )
+                            })
+                            .unzip();
+
+                        let block = gw::Block {
+                            block_hash: header.hash,
+                            block_number: header.number,
+                            gas_price: Some(header.gas_price),
+                            parent_block_hash: header.parent_hash,
+                            sequencer_address: Some(header.sequencer_address),
+                            state_commitment: header.state_commitment,
+                            // FIXME
+                            status: gw::Status::AcceptedOnL2,
+                            timestamp: header.timestamp,
+                            transaction_receipts: receipts,
+                            transactions,
+                            starknet_version: header.starknet_version,
+                        };
+
+                        cache.insert_block(block.clone());
+
+                        Ok(block.into())
                     }
-
-                    let body = bodies.swap_remove(0);
-                    let (transactions, transaction_receipts) =
-                        v0::conv::body::try_from_p2p(body).map_err(block_not_found)?;
-                    let header = v0::conv::header::try_from_p2p(header).map_err(block_not_found)?;
-
-                    let block = reply::Block {
-                        block_hash: header.hash,
-                        block_number: header.number,
-                        gas_price: Some(header.gas_price),
-                        parent_block_hash: header.parent_hash,
-                        sequencer_address: Some(header.sequencer_address),
-                        state_commitment: header.state_commitment,
-                        // FIXME
-                        status: starknet_gateway_types::reply::Status::AcceptedOnL2,
-                        timestamp: header.timestamp,
-                        transaction_receipts,
-                        transactions,
-                        starknet_version: header.starknet_version,
-                    };
-
-                    block_lru.insert(block.clone());
-                    tracing::trace!(number=%n, "HybridClient: updating cached block");
-
-                    Ok(block.into())
+                    BlockId::Latest => {
+                        unreachable!("GatewayApi.head() is used in sync and sync status instead")
+                    }
+                    BlockId::Hash(_) => unreachable!("not used in sync"),
+                    BlockId::Pending => {
+                        unreachable!("pending should be disabled when p2p is enabled")
+                    }
                 }
-                BlockId::Latest => {
-                    unreachable!("GatewayApi.head() is used in sync and sync status instead")
-                }
-                BlockId::Hash(_) => unreachable!("not used in sync"),
-                BlockId::Pending => {
-                    unreachable!("pending should be disabled when p2p is enabled")
-                }
-            },
+            }
         }
     }
 
     async fn block_without_retry(
         &self,
         block: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+    ) -> Result<gw::MaybePendingBlock, SequencerError> {
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => {
                 sequencer.block_without_retry(block).await
             }
             HybridClient::NonPropagatingP2P { .. } => {
                 unreachable!("used for gas price and not in sync")
-            }
-        }
-    }
-
-    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-        use error::class_not_found;
-
-        match self {
-            HybridClient::GatewayProxy { sequencer, .. } => {
-                sequencer.class_by_hash(class_hash).await
-            }
-            HybridClient::NonPropagatingP2P { p2p_client, .. } => {
-                let classes = p2p_client
-                    .contract_classes(vec![class_hash])
-                    .await
-                    .ok_or_else(|| class_not_found(format!("No peers with class {class_hash}")))?;
-                let mut classes = classes.classes;
-
-                if classes.len() != 1 {
-                    return Err(class_not_found(format!(
-                        "Classes len is {}, expected 1",
-                        classes.len()
-                    )));
-                }
-
-                let p2p_proto_v0::common::RawClass { class } = classes.swap_remove(0);
-
-                let class = zstd::decode_all(class.as_slice())
-                    .map_err(|_| class_not_found("zstd failed"))?;
-
-                Ok(class.into())
             }
         }
     }
@@ -275,26 +370,22 @@ impl GatewayApi for HybridClient {
             HybridClient::GatewayProxy { sequencer, .. } => {
                 sequencer.pending_class_by_hash(class_hash).await
             }
-            HybridClient::NonPropagatingP2P { p2p_client, .. } => {
-                let classes = p2p_client
-                    .contract_classes(vec![class_hash])
-                    .await
+            HybridClient::NonPropagatingP2P { cache, .. } => {
+                let def = cache
+                    .get_definition(class_hash)
                     .ok_or_else(|| class_not_found(format!("No peers with class {class_hash}")))?;
-                let mut classes = classes.classes;
-
-                if classes.len() != 1 {
-                    return Err(class_not_found(format!(
-                        "Classes len is {}, expected 1",
-                        classes.len()
-                    )));
-                }
-
-                let p2p_proto_v0::common::RawClass { class } = classes.swap_remove(0);
-
-                let class = zstd::decode_all(class.as_slice())
-                    .map_err(|_| class_not_found("zstd failed"))?;
-
-                Ok(class.into())
+                let jh = tokio::task::spawn_blocking(move || zstd::decode_all(def.as_slice()));
+                let def = jh
+                    .await
+                    .map_err(|error| {
+                        class_not_found(format!(
+                            "class decompression task ended unexpectedly: {error}"
+                        ))
+                    })?
+                    .map_err(|error| {
+                        class_not_found(format!("class decompression failed: {error}"))
+                    })?;
+                Ok(def.into())
             }
         }
     }
@@ -302,7 +393,7 @@ impl GatewayApi for HybridClient {
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<reply::TransactionStatus, SequencerError> {
+    ) -> Result<gw::TransactionStatus, SequencerError> {
         self.as_sequencer().transaction(transaction_hash).await
     }
 
@@ -311,11 +402,15 @@ impl GatewayApi for HybridClient {
 
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
-            HybridClient::NonPropagatingP2P { p2p_client, .. } => match block {
+            HybridClient::NonPropagatingP2P {
+                p2p_client, cache, ..
+            } => match block {
                 BlockId::Hash(hash) => {
                     let mut state_updates =
-                        p2p_client.state_updates(hash, 1).await.ok_or_else(|| {
-                            block_not_found(format!("No peers with state update for block {hash}"))
+                        p2p_client.state_updates(hash, 1).await.map_err(|error| {
+                            block_not_found(format!(
+                                "No peers with state update for block {hash}: {error}"
+                            ))
                         })?;
 
                     if state_updates.len() != 1 {
@@ -325,23 +420,74 @@ impl GatewayApi for HybridClient {
                         )));
                     }
 
-                    let state_update = state_updates.swap_remove(0);
+                    let StateUpdateWithDefs {
+                        block_hash,
+                        state_update,
+                        classes,
+                    } = state_updates.swap_remove(0);
 
-                    let state_update = v0::conv::state_update::try_from_p2p(state_update)
-                        .map_err(block_not_found)?;
-
-                    if state_update.block_hash == hash {
-                        Ok(state_update.into())
-                    } else {
-                        Err(block_not_found("Block hash mismatch"))
+                    if block_hash != hash {
+                        return Err(block_not_found("Block hash mismatch"));
                     }
+
+                    let mut declared_cairo_classes = HashSet::new();
+                    let mut declared_sierra_classes = HashMap::new();
+                    let mut definitions = HashMap::new();
+
+                    for class in classes {
+                        match class {
+                            Class::Cairo { hash, definition } => {
+                                declared_cairo_classes.insert(hash);
+                                definitions.insert(hash, definition);
+                            }
+                            Class::Sierra {
+                                sierra_hash,
+                                definition,
+                                casm_hash,
+                            } => {
+                                declared_sierra_classes.insert(sierra_hash, casm_hash);
+                                definitions.insert(ClassHash(sierra_hash.0), definition);
+                            }
+                        }
+                    }
+
+                    cache.insert_definitions(hash, definitions);
+
+                    let state_commitment =
+                        cache.get_state_commitment(block_hash).unwrap_or_default();
+
+                    Ok(StateUpdate {
+                        block_hash,
+                        // Luckily this field is only used when polling pending which is disabled with p2p
+                        parent_state_commitment: StateCommitment::default(),
+                        state_commitment,
+                        contract_updates: state_update
+                            .contract_updates
+                            .into_iter()
+                            .map(|(k, v)| {
+                                (
+                                    k,
+                                    ContractUpdate {
+                                        storage: v.storage,
+                                        // It does not matter if we mark class updates as "deploy" or "replace"
+                                        // as the way those updates are inserted into our storage is "deploy/replace-agnostic"
+                                        class: v.class.map(ContractClassUpdate::Deploy),
+                                        nonce: v.nonce,
+                                    },
+                                )
+                            })
+                            .collect(),
+                        system_contract_updates: state_update.system_contract_updates,
+                        declared_cairo_classes,
+                        declared_sierra_classes,
+                    })
                 }
                 _ => unreachable!("not used in sync"),
             },
         }
     }
 
-    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
+    async fn eth_contract_addresses(&self) -> Result<gw::EthContractAddresses, SequencerError> {
         self.as_sequencer().eth_contract_addresses().await
     }
 
@@ -355,7 +501,7 @@ impl GatewayApi for HybridClient {
         contract_address: ContractAddress,
         entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+    ) -> Result<gw::add_transaction::InvokeResponse, SequencerError> {
         self.as_sequencer()
             .add_invoke_transaction(
                 version,
@@ -380,7 +526,7 @@ impl GatewayApi for HybridClient {
         sender_address: ContractAddress,
         compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
-    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
+    ) -> Result<gw::add_transaction::DeclareResponse, SequencerError> {
         self.as_sequencer()
             .add_declare_transaction(
                 version,
@@ -405,7 +551,7 @@ impl GatewayApi for HybridClient {
         contract_address_salt: ContractAddressSalt,
         class_hash: ClassHash,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
+    ) -> Result<gw::add_transaction::DeployAccountResponse, SequencerError> {
         self.as_sequencer()
             .add_deploy_account(
                 version,
@@ -439,18 +585,18 @@ impl GatewayApi for HybridClient {
 #[async_trait::async_trait]
 impl GossipApi for HybridClient {
     async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
+        use p2p_proto_v1::common::{BlockId, Hash};
         match self {
             HybridClient::GatewayProxy { p2p_client, .. } => {
                 match p2p_client
-                    .propagate_new_header(p2p_proto_v0::common::BlockHeader {
-                        hash: block_hash.0,
+                    .propagate_new_head(BlockId {
                         number: block_number.get(),
-                        ..Default::default()
+                        hash: Hash(block_hash.0),
                     })
                     .await
                 {
                     Ok(_) => {}
-                    Err(error) => tracing::warn!(%error, "Propagating block header failed"),
+                    Err(error) => tracing::warn!(%error, "Propagating head failed"),
                 }
             }
             HybridClient::NonPropagatingP2P { .. } => {

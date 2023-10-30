@@ -295,8 +295,9 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::v1::conv::{self as simplified, TryFromProto};
+    use crate::p2p_network::client::v1::types as simplified;
     use crate::p2p_network::sync_handlers::v1::blocking;
+    use p2p::client::types::{self as p2p_types, TryFromDto};
     use p2p_proto_v1::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
@@ -336,7 +337,7 @@ mod prop {
                     // Make sure block data is delimited
                     assert_eq!(parts[1], BlockHeadersResponsePart::Fin(Fin::ok()));
                     // Extract the header
-                    simplified::BlockHeader::try_from_proto(parts[0].clone().into_header().unwrap()).unwrap()
+                    p2p_types::BlockHeader::try_from(parts[0].clone().into_header().unwrap()).unwrap()
                 }).collect::<Vec<_>>();
 
                 prop_assert_eq!(actual, expected);
@@ -359,7 +360,7 @@ mod prop {
                         (state_update.into(),
                         cairo_defs.into_iter().chain(sierra_defs.into_iter().map(|(h, d)| (ClassHash(h.0), d))).collect())
                     )
-            ).collect::<HashMap<_, (simplified::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
+            ).collect::<HashMap<_, (p2p_types::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = blocking::get_bodies(tx, request).unwrap();
@@ -379,7 +380,7 @@ mod prop {
                             let BlockId { number, hash } = reply.id.unwrap();
                             block_id = Some((BlockNumber::new(number).unwrap(), BlockHash(hash.0)));
 
-                            let state_update = simplified::StateUpdate::try_from_proto(d).unwrap();
+                            let state_update = p2p_types::StateUpdate::from(d);
                             actual.insert(block_id.unwrap(), (state_update, HashMap::new()));
                         },
                         BlockBodyMessage::Classes(c) => {
@@ -472,7 +473,7 @@ mod prop {
                     (
                         BlockNumber::new(number).unwrap(),
                         BlockHash(hash.0),
-                        transactions.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
+                        transactions.into_iter().map(|t| TransactionVariant::try_from_dto(t).unwrap()).collect::<Vec<_>>()
                     )
                 }).collect::<Vec<_>>();
 
@@ -519,7 +520,7 @@ mod prop {
                     (
                         BlockNumber::new(number).unwrap(),
                         BlockHash(hash.0),
-                        receipts.into_iter().map(|r| simplified::Receipt::try_from_proto(r).unwrap()).collect::<Vec<_>>()
+                        receipts.into_iter().map(|r| simplified::Receipt::try_from(r).unwrap()).collect::<Vec<_>>()
                     )
                 }).collect::<Vec<_>>();
 
@@ -570,7 +571,7 @@ mod prop {
                         events.into_iter().map(|e|
                             (
                                 TransactionHash(e.transaction_hash.0),
-                                e.events.into_iter().map(|e| Event::try_from_proto(e).unwrap()).collect::<Vec<_>>()
+                                e.events.into_iter().map(|e| Event::try_from_dto(e).unwrap()).collect::<Vec<_>>()
                             )).collect::<Vec<_>>()
                     )
                 }).collect::<Vec<_>>();
@@ -711,10 +712,9 @@ mod prop {
 }
 
 mod classes {
-    use crate::p2p_network::sync_handlers::v1::classes;
+    use crate::p2p_network::sync_handlers::v1::{classes, ClassId};
     use fake::{Fake, Faker};
     use p2p_proto_v1::common::BlockId;
-    use pathfinder_common::ClassHash;
 
     #[test]
     fn empty_input_yields_empty_output() {
@@ -777,7 +777,7 @@ mod classes {
             // Small one again, is not glued to the last chunk of the previous partitioned definition, no matter how small that chunk is
             fake::vec![u8; 1..=SMALL],
         ];
-        let class_hashes = fake::vec![ClassHash; defs.len()];
+        let class_ids = fake::vec![ClassId; defs.len()];
         let mut def_it = defs.clone().into_iter();
         let class_definition_getter = |_, _| Ok(def_it.next().unwrap());
 
@@ -786,7 +786,7 @@ mod classes {
         assert!(classes(
             block_number,
             block_hash,
-            class_hashes.clone(),
+            class_ids.clone(),
             &mut responses,
             class_definition_getter,
         )
@@ -813,11 +813,15 @@ mod classes {
             })
             .collect::<Vec<_>>();
 
-        let definition = |i| Class {
-            compiled_hash: Hash((class_hashes[i] as ClassHash).0),
-            definition: (&defs[i] as &Vec<u8>).clone(),
-            total_parts: None,
-            part_num: None,
+        let definition = |i| {
+            let (compiled_hash, casm_hash) = (class_ids[i] as ClassId).into_dto();
+            Class {
+                compiled_hash,
+                definition: (&defs[i] as &Vec<u8>).clone(),
+                casm_hash,
+                total_parts: None,
+                part_num: None,
+            }
         };
         let part = |i, d: &[u8], t, p| Class {
             definition: d.to_vec(),

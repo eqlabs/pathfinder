@@ -33,6 +33,8 @@ message Class {
     bytes                definition         = 3;  // compressed? size limit or split to chunks.
     optional             uint32 total_parts = 4;  // if a class is too large to be sent in one message
     optional             uint32 part_num    = 5;  // 0 based
+    // FIXME needed for sierra classes, occurs in first chunk
+    optional starknet.common.Hash casm_hash = 6;
 }
 
 message Classes {
