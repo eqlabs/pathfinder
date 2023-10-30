@@ -244,7 +244,7 @@ async fn provide_capability() {
 #[test_log::test(tokio::test)]
 async fn subscription_and_propagation() {
     use fake::{Fake, Faker};
-    use p2p_proto_v1::block::NewBlock;
+    use p2p_proto::block::NewBlock;
 
     let _ = env_logger::builder().is_test(true).try_init();
 

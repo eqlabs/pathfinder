@@ -11,13 +11,13 @@ use libp2p::request_response::ResponseChannel;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
-use p2p_proto_v1::block::{
+use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
     NewBlock,
 };
-use p2p_proto_v1::event::{EventsRequest, EventsResponseList};
-use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseList};
-use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseList};
+use p2p_proto::event::{EventsRequest, EventsResponseList};
+use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponseList};
+use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseList};
 use pathfinder_common::{BlockHash, BlockNumber};
 use tokio::sync::{mpsc, oneshot, RwLock};
 

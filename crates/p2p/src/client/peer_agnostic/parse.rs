@@ -56,8 +56,8 @@ macro_rules! impl_take_parsed_and_should_stop {
 pub(crate) mod block_header {
     use crate::client::types::BlockHeader;
     use anyhow::Context;
-    use p2p_proto_v1::block::BlockHeadersResponsePart;
-    use p2p_proto_v1::common::{Error, Fin};
+    use p2p_proto::block::BlockHeadersResponsePart;
+    use p2p_proto::common::{Error, Fin};
     use pathfinder_common::BlockHash;
     use std::collections::HashMap;
 
@@ -126,7 +126,7 @@ pub(crate) mod block_header {
 
 pub(crate) mod state_update {
     use crate::client::types::{Class, StateUpdate, StateUpdateWithDefs};
-    use p2p_proto_v1::{
+    use p2p_proto::{
         block::{BlockBodiesResponse, BlockBodyMessage},
         common::{BlockId, Error, Fin, Hash},
         consts::MAX_PARTS_PER_CLASS,
@@ -253,7 +253,7 @@ pub(crate) mod state_update {
     }
 
     /// Merges partitoned classes if necessary
-    fn classes_from_dto(classes: Vec<p2p_proto_v1::state::Class>) -> anyhow::Result<Vec<Class>> {
+    fn classes_from_dto(classes: Vec<p2p_proto::state::Class>) -> anyhow::Result<Vec<Class>> {
         #[derive(Copy, Clone, Debug, Default, PartialEq)]
         struct Ctx {
             hash: Hash,
@@ -339,8 +339,8 @@ pub(crate) mod state_update {
 pub(crate) mod transactions {
     use crate::client::types::TryFromDto;
     use anyhow::Context;
-    use p2p_proto_v1::common::{BlockId, Error, Fin};
-    use p2p_proto_v1::transaction::{Transactions, TransactionsResponse, TransactionsResponseKind};
+    use p2p_proto::common::{BlockId, Error, Fin};
+    use p2p_proto::transaction::{Transactions, TransactionsResponse, TransactionsResponseKind};
     use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::BlockHash;
     use std::collections::HashMap;
@@ -476,8 +476,8 @@ pub(crate) mod transactions {
 }
 
 pub(crate) mod receipts {
-    use p2p_proto_v1::common::{BlockId, Error, Fin};
-    use p2p_proto_v1::receipt::{Receipt, Receipts, ReceiptsResponse, ReceiptsResponseKind};
+    use p2p_proto::common::{BlockId, Error, Fin};
+    use p2p_proto::receipt::{Receipt, Receipts, ReceiptsResponse, ReceiptsResponseKind};
     use pathfinder_common::BlockHash;
     use std::collections::HashMap;
 
@@ -582,8 +582,8 @@ pub(crate) mod receipts {
 }
 
 pub(crate) mod events {
-    use p2p_proto_v1::common::{BlockId, Error, Fin, Hash};
-    use p2p_proto_v1::event::{Event, Events, EventsResponse, EventsResponseKind};
+    use p2p_proto::common::{BlockId, Error, Fin, Hash};
+    use p2p_proto::event::{Event, Events, EventsResponse, EventsResponseKind};
     use pathfinder_common::{BlockHash, TransactionHash};
     use std::collections::HashMap;
 

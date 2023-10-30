@@ -45,9 +45,9 @@ pub(crate) mod codec {
     use libp2p::core::upgrade::ProtocolName;
     use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
     use libp2p::request_response::Codec;
-    use p2p_proto_v1::consts::MESSAGE_SIZE_LIMIT;
-    use p2p_proto_v1::{block, event, proto, receipt, transaction};
-    use p2p_proto_v1::{ToProtobuf, TryFromProtobuf};
+    use p2p_proto::consts::MESSAGE_SIZE_LIMIT;
+    use p2p_proto::{block, event, proto, receipt, transaction};
+    use p2p_proto::{ToProtobuf, TryFromProtobuf};
     use std::marker::PhantomData;
 
     pub type Headers = SyncCodec<

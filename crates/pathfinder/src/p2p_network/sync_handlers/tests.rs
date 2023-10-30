@@ -1,4 +1,4 @@
-use p2p_proto_v1::common::{Direction, Step};
+use p2p_proto::common::{Direction, Step};
 use pathfinder_common::BlockNumber;
 use rstest::rstest;
 
@@ -32,20 +32,19 @@ fn get_next_block_number(
 
 mod boundary_conditions {
     use super::I64_MAX;
-    use crate::p2p_network::sync_handlers::v1::{self, MAX_COUNT_IN_TESTS};
-    use crate::p2p_network::sync_handlers::v1::{
-        get_bodies, get_events, get_headers, get_receipts, get_transactions,
+    use crate::p2p_network::sync_handlers::{
+        get_bodies, get_events, get_headers, get_receipts, get_transactions, MAX_COUNT_IN_TESTS,
     };
     use assert_matches::assert_matches;
     use fake::{Fake, Faker};
-    use p2p_proto_v1::block::{
+    use p2p_proto::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
     };
-    use p2p_proto_v1::common::{BlockNumberOrHash, Direction, Fin, Iteration};
-    use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
-    use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
-    use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
+    use p2p_proto::common::{BlockNumberOrHash, Direction, Fin, Iteration};
+    use p2p_proto::event::{EventsRequest, EventsResponseKind};
+    use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponseKind};
+    use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseKind};
     use pathfinder_storage::fake::with_n_blocks;
     use pathfinder_storage::Storage;
     use rand::{thread_rng, Rng};
@@ -115,11 +114,11 @@ mod boundary_conditions {
 
         #[rstest]
         #[tokio::test]
-        async fn get_headers(
+        async fn test_get_headers(
             #[values(Direction::Backward, Direction::Forward)] direction: Direction,
         ) {
             let (storage, iteration, tx, mut rx) = init_test(direction);
-            v1::get_headers(storage, BlockHeadersRequest { iteration }, tx)
+            get_headers(storage, BlockHeadersRequest { iteration }, tx)
                 .await
                 .unwrap();
             let BlockHeadersResponse { parts } = rx.recv().await.unwrap();
@@ -131,15 +130,11 @@ mod boundary_conditions {
 
         #[rstest]
         #[tokio::test]
-        async fn get_bodies(
+        async fn test_get_bodies(
             #[values(Direction::Backward, Direction::Forward)] direction: Direction,
         ) {
             let (storage, iteration, tx, mut rx) = init_test(direction);
-            let _jh = tokio::spawn(v1::get_bodies(
-                storage,
-                BlockBodiesRequest { iteration },
-                tx,
-            ));
+            let _jh = tokio::spawn(get_bodies(storage, BlockBodiesRequest { iteration }, tx));
             rx.recv().await.unwrap(); // Diff
             match rx.recv().await.unwrap().body_message {
                 // New classes in block
@@ -156,12 +151,12 @@ mod boundary_conditions {
         }
 
         macro_rules! define_test {
-            ($uut_name:ident, $request:tt, $reply:tt) => {
+            ($name:ident, $uut_name:ident, $request:tt, $reply:tt) => {
                 #[rstest]
                 #[tokio::test]
-                async fn $uut_name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
+                async fn $name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
                     let (storage, iteration, tx, mut rx) = init_test(direction);
-                    let _jh = tokio::spawn(v1::$uut_name(
+                    let _jh = tokio::spawn($uut_name(
                         storage,
                         $request { iteration },
                         tx,
@@ -178,12 +173,23 @@ mod boundary_conditions {
         }
 
         define_test!(
+            test_get_transactions,
             get_transactions,
             TransactionsRequest,
             TransactionsResponseKind
         );
-        define_test!(get_receipts, ReceiptsRequest, ReceiptsResponseKind);
-        define_test!(get_events, EventsRequest, EventsResponseKind);
+        define_test!(
+            test_get_receipts,
+            get_receipts,
+            ReceiptsRequest,
+            ReceiptsResponseKind
+        );
+        define_test!(
+            test_get_events,
+            get_events,
+            EventsRequest,
+            EventsResponseKind
+        );
     }
 
     mod internally_limited_requests_end_with_additional_fin_too_much {
@@ -213,11 +219,11 @@ mod boundary_conditions {
 
         #[rstest]
         #[tokio::test]
-        async fn get_headers(
+        async fn test_get_headers(
             #[values(Direction::Backward, Direction::Forward)] direction: Direction,
         ) {
             let (storage, iteration, tx, mut rx) = init_test(direction);
-            v1::get_headers(storage, BlockHeadersRequest { iteration }, tx.clone())
+            get_headers(storage, BlockHeadersRequest { iteration }, tx.clone())
                 .await
                 .unwrap();
 
@@ -230,15 +236,11 @@ mod boundary_conditions {
 
         #[rstest]
         #[tokio::test]
-        async fn get_bodies(
+        async fn test_get_bodies(
             #[values(Direction::Backward, Direction::Forward)] direction: Direction,
         ) {
             let (storage, iteration, tx, mut rx) = init_test(direction);
-            let _jh = tokio::spawn(v1::get_bodies(
-                storage,
-                BlockBodiesRequest { iteration },
-                tx,
-            ));
+            let _jh = tokio::spawn(get_bodies(storage, BlockBodiesRequest { iteration }, tx));
             // 10 x [Diff, Classes*, Fin::ok()]
             for _ in 0..NUM_BLOCKS_IN_STORAGE {
                 rx.recv().await.unwrap(); // Diff
@@ -260,12 +262,12 @@ mod boundary_conditions {
         }
 
         macro_rules! define_test {
-            ($uut_name:ident, $request:tt, $reply:tt) => {
+            ($name:ident, $uut_name:ident, $request:tt, $reply:tt) => {
                 #[rstest]
                 #[tokio::test]
-                async fn $uut_name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
+                async fn $name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
                     let (storage, iteration, tx, mut rx) = init_test(direction);
-                    let _jh = tokio::spawn(v1::$uut_name(
+                    let _jh = tokio::spawn($uut_name(
                         storage,
                         $request { iteration },
                         tx,
@@ -284,28 +286,39 @@ mod boundary_conditions {
         }
 
         define_test!(
+            test_get_transactions,
             get_transactions,
             TransactionsRequest,
             TransactionsResponseKind
         );
-        define_test!(get_receipts, ReceiptsRequest, ReceiptsResponseKind);
-        define_test!(get_events, EventsRequest, EventsResponseKind);
+        define_test!(
+            test_get_receipts,
+            get_receipts,
+            ReceiptsRequest,
+            ReceiptsResponseKind
+        );
+        define_test!(
+            test_get_events,
+            get_events,
+            EventsRequest,
+            EventsResponseKind
+        );
     }
 }
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::v1::types as simplified;
-    use crate::p2p_network::sync_handlers::v1::blocking;
+    use crate::p2p_network::client::types as simplified;
+    use crate::p2p_network::sync_handlers::blocking;
     use p2p::client::types::{self as p2p_types, TryFromDto};
-    use p2p_proto_v1::block::{
+    use p2p_proto::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
     };
-    use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Error, Fin, Iteration};
-    use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
-    use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
-    use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
+    use p2p_proto::common::{BlockId, BlockNumberOrHash, Error, Fin, Iteration};
+    use p2p_proto::event::{EventsRequest, EventsResponseKind};
+    use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponseKind};
+    use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseKind};
     use pathfinder_common::event::Event;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
     use pathfinder_common::{BlockHash, BlockNumber, ClassHash, TransactionHash};
@@ -583,7 +596,7 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use crate::p2p_network::sync_handlers::v1::MAX_COUNT_IN_TESTS;
+        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
         use pathfinder_storage::fake::{with_n_blocks_and_rng, StorageInitializer};
         use pathfinder_storage::Storage;
 
@@ -602,8 +615,8 @@ mod prop {
 
     /// Find overlapping range between the DB and the request
     mod overlapping {
-        use crate::p2p_network::sync_handlers::v1::MAX_COUNT_IN_TESTS;
-        use p2p_proto_v1::common::{Direction, Step};
+        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
+        use p2p_proto::common::{Direction, Step};
         use pathfinder_storage::fake::{StorageInitializer, StorageInitializerItem};
 
         pub fn get(
@@ -660,8 +673,8 @@ mod prop {
     /// Building blocks for the ultimate composite strategy used in all property tests
     mod strategy {
         use super::fixtures::MAX_NUM_BLOCKS;
-        use crate::p2p_network::sync_handlers::v1::tests::I64_MAX;
-        use p2p_proto_v1::common::{Direction, Step};
+        use crate::p2p_network::sync_handlers::tests::I64_MAX;
+        use p2p_proto::common::{Direction, Step};
         use proptest::prelude::*;
         use std::ops::Range;
 
@@ -712,9 +725,9 @@ mod prop {
 }
 
 mod classes {
-    use crate::p2p_network::sync_handlers::v1::{classes, ClassId};
+    use crate::p2p_network::sync_handlers::{classes, ClassId};
     use fake::{Fake, Faker};
-    use p2p_proto_v1::common::BlockId;
+    use p2p_proto::common::BlockId;
 
     #[test]
     fn empty_input_yields_empty_output() {
@@ -746,12 +759,10 @@ mod classes {
 
     #[test]
     fn batching_and_partitioning() {
-        use p2p_proto_v1::block::BlockBodyMessage::Classes;
-        use p2p_proto_v1::common::Hash;
-        use p2p_proto_v1::consts::{
-            CLASSES_MESSAGE_OVERHEAD, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
-        };
-        use p2p_proto_v1::state::Class;
+        use p2p_proto::block::BlockBodyMessage::Classes;
+        use p2p_proto::common::Hash;
+        use p2p_proto::consts::{CLASSES_MESSAGE_OVERHEAD, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD};
+        use p2p_proto::state::Class;
 
         // Max size of definition that can be stored in one message
         const FULL: usize = MESSAGE_SIZE_LIMIT - CLASSES_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;

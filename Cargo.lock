@@ -6161,8 +6161,7 @@ dependencies = [
  "futures",
  "hex",
  "libp2p",
- "p2p_proto_v0",
- "p2p_proto_v1",
+ "p2p_proto",
  "pathfinder-common",
  "prost 0.12.1",
  "rand 0.8.5",
@@ -6196,30 +6195,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "p2p_proto_derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "p2p_proto_v0"
-version = "0.1.0"
-dependencies = [
- "fake",
- "p2p_proto_derive",
- "primitive-types",
- "prost 0.12.1",
- "prost-build",
- "rand 0.8.5",
- "stark_hash",
- "zstd",
-]
-
-[[package]]
-name = "p2p_proto_v1"
+name = "p2p_proto"
 version = "0.1.0"
 dependencies = [
  "fake",
@@ -6232,6 +6208,15 @@ dependencies = [
  "rand 0.8.5",
  "rstest",
  "stark_hash",
+]
+
+[[package]]
+name = "p2p_proto_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -6378,8 +6363,7 @@ dependencies = [
  "mimalloc",
  "mockall",
  "p2p",
- "p2p_proto_v0",
- "p2p_proto_v1",
+ "p2p_proto",
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-ethereum",

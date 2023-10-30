@@ -1,13 +1,13 @@
 //! Workaround for the orphan rule - implement conversion fns for types ourside our crate.
-use p2p_proto_v1::common::{Address, Hash, Merkle, Patricia};
-use p2p_proto_v1::receipt::EthereumAddress;
-use p2p_proto_v1::receipt::{
+use p2p_proto::common::{Address, Hash, Merkle, Patricia};
+use p2p_proto::receipt::EthereumAddress;
+use p2p_proto::receipt::{
     execution_resources::BuiltinCounter, DeclareTransactionReceipt,
     DeployAccountTransactionReceipt, DeployTransactionReceipt, ExecutionResources,
     InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1, MessageToL2, ReceiptCommon,
 };
-use p2p_proto_v1::state::{ContractDiff, ContractStoredValue, StateDiff};
-use p2p_proto_v1::transaction::AccountSignature;
+use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
+use p2p_proto::transaction::AccountSignature;
 use pathfinder_common::{
     event::Event, state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
 };
@@ -20,8 +20,8 @@ pub trait ToProto<T> {
     fn to_proto(self) -> T;
 }
 
-impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
-    fn to_proto(self) -> p2p_proto_v1::block::BlockHeader {
+impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
+    fn to_proto(self) -> p2p_proto::block::BlockHeader {
         const ZERO_MERKLE: Merkle = Merkle {
             n_leaves: 0,
             root: Hash(Felt::ZERO),
@@ -30,7 +30,7 @@ impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
             height: 0,
             root: Hash(Felt::ZERO),
         };
-        p2p_proto_v1::block::BlockHeader {
+        p2p_proto::block::BlockHeader {
             parent_hash: Hash(self.parent_hash.0),
             number: self.number.get(),
             time: SystemTime::UNIX_EPOCH // FIXME Dunno how to convert
@@ -54,8 +54,8 @@ impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
     }
 }
 
-impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
-    fn to_proto(self) -> p2p_proto_v1::state::StateDiff {
+impl ToProto<p2p_proto::state::StateDiff> for StateUpdate {
+    fn to_proto(self) -> p2p_proto::state::StateDiff {
         StateDiff {
             domain: 0, // FIXME there will initially be 2 trees, dunno which id is which
             contract_diffs: self
@@ -104,9 +104,9 @@ impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
     }
 }
 
-impl ToProto<p2p_proto_v1::transaction::Transaction> for Transaction {
-    fn to_proto(self) -> p2p_proto_v1::transaction::Transaction {
-        use p2p_proto_v1::transaction as proto;
+impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
+    fn to_proto(self) -> p2p_proto::transaction::Transaction {
+        use p2p_proto::transaction as proto;
         use pathfinder_common::transaction::TransactionVariant::{
             DeclareV0, DeclareV1, DeclareV2, Deploy, DeployAccount, InvokeV0, InvokeV1, L1Handler,
         };
@@ -193,9 +193,9 @@ impl ToProto<p2p_proto_v1::transaction::Transaction> for Transaction {
     }
 }
 
-impl ToProto<p2p_proto_v1::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
-    fn to_proto(self) -> p2p_proto_v1::receipt::Receipt {
-        use p2p_proto_v1::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
+impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
+    fn to_proto(self) -> p2p_proto::receipt::Receipt {
+        use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         let common = ReceiptCommon {
             transaction_hash: Hash(self.1.transaction_hash.0),
             actual_fee: self.1.actual_fee.unwrap_or_default().0,
@@ -286,9 +286,9 @@ impl ToProto<p2p_proto_v1::receipt::Receipt> for (gw::Transaction, gw::Receipt) 
     }
 }
 
-impl ToProto<p2p_proto_v1::event::Event> for Event {
-    fn to_proto(self) -> p2p_proto_v1::event::Event {
-        p2p_proto_v1::event::Event {
+impl ToProto<p2p_proto::event::Event> for Event {
+    fn to_proto(self) -> p2p_proto::event::Event {
+        p2p_proto::event::Event {
             from_address: self.from_address.0,
             keys: self.keys.into_iter().map(|k| k.0).collect(),
             data: self.data.into_iter().map(|d| d.0).collect(),
@@ -296,9 +296,9 @@ impl ToProto<p2p_proto_v1::event::Event> for Event {
     }
 }
 
-impl ToProto<p2p_proto_v1::event::TxnEvents> for (TransactionHash, Vec<Event>) {
-    fn to_proto(self) -> p2p_proto_v1::event::TxnEvents {
-        p2p_proto_v1::event::TxnEvents {
+impl ToProto<p2p_proto::event::TxnEvents> for (TransactionHash, Vec<Event>) {
+    fn to_proto(self) -> p2p_proto::event::TxnEvents {
+        p2p_proto::event::TxnEvents {
             transaction_hash: Hash(self.0 .0),
             events: self.1.into_iter().map(ToProto::to_proto).collect(),
         }

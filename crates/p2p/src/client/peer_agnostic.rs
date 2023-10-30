@@ -7,13 +7,13 @@ use std::{
 };
 
 use libp2p::PeerId;
-use p2p_proto_v1::block::{
+use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
 };
-use p2p_proto_v1::common::{Direction, Iteration};
-use p2p_proto_v1::event::{EventsRequest, EventsResponseList};
-use p2p_proto_v1::receipt::{Receipt, ReceiptsRequest, ReceiptsResponseList};
-use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseList};
+use p2p_proto::common::{Direction, Iteration};
+use p2p_proto::event::{EventsRequest, EventsResponseList};
+use p2p_proto::receipt::{Receipt, ReceiptsRequest, ReceiptsResponseList};
+use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseList};
 use pathfinder_common::{
     event::Event, transaction::TransactionVariant, BlockHash, BlockNumber, TransactionHash,
 };
@@ -61,7 +61,7 @@ impl Client {
     // Propagate new L2 head head
     pub async fn propagate_new_head(
         &self,
-        block_id: p2p_proto_v1::common::BlockId,
+        block_id: p2p_proto::common::BlockId,
     ) -> anyhow::Result<()> {
         tracing::debug!(number=%block_id.number, hash=%block_id.hash.0, topic=%self.block_propagation_topic,
             "Propagating head"
@@ -70,7 +70,7 @@ impl Client {
         self.inner
             .publish(
                 &self.block_propagation_topic,
-                p2p_proto_v1::block::NewBlock::Id(block_id),
+                p2p_proto::block::NewBlock::Id(block_id),
             )
             .await
     }
