@@ -26,7 +26,6 @@ use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
-pub mod v0;
 pub mod v1;
 
 /// Hybrid, as it uses either p2p or the gateway depending on role and api call
