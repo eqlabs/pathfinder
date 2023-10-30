@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
-pub mod v1;
+pub mod types;
 
 /// Hybrid, as it uses either p2p or the gateway depending on role and api call
 #[derive(Clone, Debug)]
@@ -242,7 +242,7 @@ impl GatewayApi for HybridClient {
                                 ))
                             })?;
 
-                        use crate::p2p_network::client::v1::types::Receipt;
+                        use crate::p2p_network::client::types::Receipt;
 
                         let mut receipts = receipts
                             .into_iter()
@@ -584,7 +584,7 @@ impl GatewayApi for HybridClient {
 #[async_trait::async_trait]
 impl GossipApi for HybridClient {
     async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
-        use p2p_proto_v1::common::{BlockId, Hash};
+        use p2p_proto::common::{BlockId, Hash};
         match self {
             HybridClient::GatewayProxy { p2p_client, .. } => {
                 match p2p_client

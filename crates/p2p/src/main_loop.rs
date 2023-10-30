@@ -9,11 +9,11 @@ use libp2p::multiaddr::Protocol;
 use libp2p::request_response::{self, RequestId};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{identify, PeerId};
-use p2p_proto_v1::block::{BlockBodiesResponseList, BlockHeadersResponse};
-use p2p_proto_v1::event::EventsResponseList;
-use p2p_proto_v1::receipt::ReceiptsResponseList;
-use p2p_proto_v1::transaction::TransactionsResponseList;
-use p2p_proto_v1::{ToProtobuf, TryFromProtobuf};
+use p2p_proto::block::{BlockBodiesResponseList, BlockHeadersResponse};
+use p2p_proto::event::EventsResponseList;
+use p2p_proto::receipt::ReceiptsResponseList;
+use p2p_proto::transaction::TransactionsResponseList;
+use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::time::Duration;
 
@@ -254,10 +254,9 @@ impl MainLoop {
             })) => {
                 use prost::Message;
 
-                match p2p_proto_v1::proto::block::NewBlock::decode(message.data.as_ref()) {
+                match p2p_proto::proto::block::NewBlock::decode(message.data.as_ref()) {
                     Ok(new_block) => {
-                        match p2p_proto_v1::block::NewBlock::try_from_protobuf(new_block, "message")
-                        {
+                        match p2p_proto::block::NewBlock::try_from_protobuf(new_block, "message") {
                             Ok(new_block) => {
                                 tracing::trace!(
                                     "Gossipsub Message: [id={}][peer={}] {:?} ({} bytes)",

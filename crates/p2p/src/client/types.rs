@@ -87,8 +87,8 @@ impl Class {
     }
 }
 
-impl From<p2p_proto_v1::state::Class> for Class {
-    fn from(class: p2p_proto_v1::state::Class) -> Self {
+impl From<p2p_proto::state::Class> for Class {
+    fn from(class: p2p_proto::state::Class) -> Self {
         match class.casm_hash {
             Some(casm_hash) => Class::Sierra {
                 sierra_hash: SierraHash(class.compiled_hash.0),
@@ -118,10 +118,10 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
     }
 }
 
-impl TryFrom<p2p_proto_v1::block::BlockHeader> for BlockHeader {
+impl TryFrom<p2p_proto::block::BlockHeader> for BlockHeader {
     type Error = anyhow::Error;
 
-    fn try_from(dto: p2p_proto_v1::block::BlockHeader) -> anyhow::Result<Self> {
+    fn try_from(dto: p2p_proto::block::BlockHeader) -> anyhow::Result<Self> {
         Ok(Self {
             hash: BlockHash(dto.hash.0),
             parent_hash: BlockHash(dto.parent_hash.0),
@@ -166,8 +166,8 @@ impl From<pathfinder_common::state_update::ContractUpdate> for ContractUpdate {
     }
 }
 
-impl From<p2p_proto_v1::state::StateDiff> for StateUpdate {
-    fn from(proto: p2p_proto_v1::state::StateDiff) -> Self {
+impl From<p2p_proto::state::StateDiff> for StateUpdate {
+    fn from(proto: p2p_proto::state::StateDiff) -> Self {
         const SYSTEM_CONTRACT: ContractAddress = ContractAddress::ONE;
         let mut system_contract_update = SystemContractUpdate {
             storage: Default::default(),
@@ -209,12 +209,12 @@ impl From<p2p_proto_v1::state::StateDiff> for StateUpdate {
     }
 }
 
-impl TryFromDto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
-    fn try_from_dto(dto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
+impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
+    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        use p2p_proto_v1::transaction::Transaction::*;
+        use p2p_proto::transaction::Transaction::*;
 
         Ok(match dto {
             DeclareV0(x) => TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
@@ -287,7 +287,7 @@ impl TryFromDto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
                 sender_address: ContractAddress(x.address.0),
                 entry_point_selector: EntryPoint(x.entry_point_selector),
                 entry_point_type: x.entry_point_type.map(|x| {
-                    use p2p_proto_v1::transaction::EntryPointType::{External, L1Handler};
+                    use p2p_proto::transaction::EntryPointType::{External, L1Handler};
                     match x {
                         External => EntryPointType::External,
                         L1Handler => EntryPointType::L1Handler,
@@ -332,8 +332,8 @@ impl TryFromDto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
     }
 }
 
-impl TryFromDto<p2p_proto_v1::event::Event> for Event {
-    fn try_from_dto(proto: p2p_proto_v1::event::Event) -> anyhow::Result<Self>
+impl TryFromDto<p2p_proto::event::Event> for Event {
+    fn try_from_dto(proto: p2p_proto::event::Event) -> anyhow::Result<Self>
     where
         Self: Sized,
     {

@@ -4,10 +4,10 @@ use anyhow::Context;
 use p2p::client::{peer_agnostic, peer_aware};
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr, PeerId};
 use p2p::{HeadRx, HeadTx, Peers};
-use p2p_proto_v1::block::BlockBodiesResponseList;
-use p2p_proto_v1::event::EventsResponseList;
-use p2p_proto_v1::receipt::ReceiptsResponseList;
-use p2p_proto_v1::transaction::TransactionsResponseList;
+use p2p_proto::block::BlockBodiesResponseList;
+use p2p_proto::event::EventsResponseList;
+use p2p_proto::receipt::ReceiptsResponseList;
+use p2p_proto::transaction::TransactionsResponseList;
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, RwLock};
@@ -142,7 +142,7 @@ async fn handle_p2p_event(
             request, channel, ..
         } => {
             let (rep_tx, mut rep_rx) = mpsc::channel(1);
-            sync_handlers::v1::get_headers(storage, request, rep_tx).await?;
+            sync_handlers::get_headers(storage, request, rep_tx).await?;
             p2p_client
                 .send_headers_sync_response(
                     channel,
@@ -155,7 +155,7 @@ async fn handle_p2p_event(
         } => {
             let (resp_tx, resp_rx) = mpsc::channel(1);
 
-            let jh = tokio::spawn(sync_handlers::v1::get_bodies(storage, request, resp_tx));
+            let jh = tokio::spawn(sync_handlers::get_bodies(storage, request, resp_tx));
             let resp_stream = ReceiverStream::new(resp_rx);
             let items: Vec<_> = resp_stream.collect().await;
 
@@ -174,9 +174,7 @@ async fn handle_p2p_event(
         } => {
             let (resp_tx, resp_rx) = mpsc::channel(1);
 
-            let jh = tokio::spawn(sync_handlers::v1::get_transactions(
-                storage, request, resp_tx,
-            ));
+            let jh = tokio::spawn(sync_handlers::get_transactions(storage, request, resp_tx));
             let resp_stream = ReceiverStream::new(resp_rx);
             let items: Vec<_> = resp_stream.collect().await;
 
@@ -195,7 +193,7 @@ async fn handle_p2p_event(
         } => {
             let (resp_tx, resp_rx) = mpsc::channel(1);
 
-            let jh = tokio::spawn(sync_handlers::v1::get_receipts(storage, request, resp_tx));
+            let jh = tokio::spawn(sync_handlers::get_receipts(storage, request, resp_tx));
             let resp_stream = ReceiverStream::new(resp_rx);
             let items: Vec<_> = resp_stream.collect().await;
 
@@ -214,7 +212,7 @@ async fn handle_p2p_event(
         } => {
             let (resp_tx, resp_rx) = mpsc::channel(1);
 
-            let jh = tokio::spawn(sync_handlers::v1::get_events(storage, request, resp_tx));
+            let jh = tokio::spawn(sync_handlers::get_events(storage, request, resp_tx));
             let resp_stream = ReceiverStream::new(resp_rx);
             let items: Vec<_> = resp_stream.collect().await;
 
@@ -230,7 +228,7 @@ async fn handle_p2p_event(
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");
-            use p2p_proto_v1::block::NewBlock;
+            use p2p_proto::block::NewBlock;
 
             let id = match new_block {
                 NewBlock::Id(id) => Some(id),
