@@ -11,16 +11,16 @@ pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
         match transaction {
             Transaction::AccountTransaction(tx) => match tx {
                 blockifier::transaction::account_transaction::AccountTransaction::Declare(tx) => {
-                    tx.tx_hash()
+                    tx.tx().transaction_hash()
                 }
                 blockifier::transaction::account_transaction::AccountTransaction::DeployAccount(
                     tx,
-                ) => tx.tx_hash,
+                ) => tx.transaction_hash,
                 blockifier::transaction::account_transaction::AccountTransaction::Invoke(tx) => {
-                    tx.tx_hash
+                    tx.transaction_hash()
                 }
             },
-            Transaction::L1HandlerTransaction(tx) => tx.tx_hash,
+            Transaction::L1HandlerTransaction(tx) => tx.tx.transaction_hash,
         }
         .0
         .into_felt(),

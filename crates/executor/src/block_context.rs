@@ -37,7 +37,6 @@ pub(super) fn construct_block_context(
             PatriciaKey::try_from(execution_state.sequencer_address.0.into_starkfelt())
                 .expect("Sequencer address overflow"),
         ),
-        deprecated_fee_token_address: fee_token_address,
         fee_token_address,
         vm_resource_fee_cost: Arc::new(default_resource_fee_costs()),
         gas_price: execution_state.gas_price.as_u128(),

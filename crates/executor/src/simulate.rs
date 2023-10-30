@@ -181,9 +181,9 @@ fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<Cl
         Transaction::AccountTransaction(
             blockifier::transaction::account_transaction::AccountTransaction::Declare(tx),
         ) => match tx.tx() {
-            starknet_api::transaction::DeclareTransaction::V0(_)
-            | starknet_api::transaction::DeclareTransaction::V1(_) => {
-                Some(ClassHash(tx.class_hash().0.into_felt()))
+            starknet_api::transaction::DeclareTransaction::V0(tx)
+            | starknet_api::transaction::DeclareTransaction::V1(tx) => {
+                Some(ClassHash(tx.class_hash.0.into_felt()))
             }
             starknet_api::transaction::DeclareTransaction::V2(_) => None,
         },
