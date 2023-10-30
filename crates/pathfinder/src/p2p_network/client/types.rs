@@ -1,4 +1,3 @@
-
 use p2p_proto::receipt::{
     DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
     InvokeTransactionReceipt, L1HandlerTransactionReceipt,
