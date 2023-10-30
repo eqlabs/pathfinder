@@ -15,7 +15,7 @@ pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
                 }
                 blockifier::transaction::account_transaction::AccountTransaction::DeployAccount(
                     tx,
-                ) => tx.transaction_hash(),
+                ) => tx.transaction_hash,
                 blockifier::transaction::account_transaction::AccountTransaction::Invoke(tx) => {
                     tx.transaction_hash()
                 }
