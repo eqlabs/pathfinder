@@ -77,12 +77,6 @@ impl From<CallError> for TraceBlockTransactionsError {
     }
 }
 
-impl From<tokio::task::JoinError> for TraceBlockTransactionsError {
-    fn from(e: tokio::task::JoinError) -> Self {
-        Self::Internal(anyhow::anyhow!("Join error: {e}"))
-    }
-}
-
 pub(crate) fn map_gateway_trace(
     transaction: GatewayTransaction,
     trace: GatewayTxTrace,
@@ -178,7 +172,18 @@ pub async fn trace_block_transactions(
         if starknet_version
             < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
         {
-            return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported(transactions));
+            match input.block_id {
+                BlockId::Pending => {
+                    return Err(TraceBlockTransactionsError::Internal(anyhow::anyhow!(
+                        "Traces are not supported for pending blocks by the feeder gateway"
+                    )))
+                }
+                _ => {
+                    return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported(
+                        transactions,
+                    ))
+                }
+            }
         }
 
         let transactions = transactions
