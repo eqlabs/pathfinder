@@ -141,6 +141,11 @@ pub mod v0_12_2 {
     pub mod state_update {
         pub const PENDING_WITH_BLOCK: &str =
             str_fixture!("0.12.2/state-update/pending_with_block.json");
+        pub const BLOCK_350000: &str = str_fixture!("0.12.2/state-update/350000.json");
+    }
+
+    pub mod signature {
+        pub const BLOCK_350000: &str = str_fixture!("0.12.2/signature/350000.json");
     }
 }
 

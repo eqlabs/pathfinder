@@ -424,6 +424,7 @@ impl From<String> for StarknetVersion {
 macros::felt_newtypes!(
     [
         ByteCodeOffset,
+        BlockCommitmentSignatureElem,
         CallParam,
         CallResultValue,
         ClassCommitment,
@@ -446,6 +447,7 @@ macros::felt_newtypes!(
         BlockHash,
         TransactionHash,
         StateCommitment,
+        StateDiffCommitment,
         StorageCommitment,
         StorageValue,
         TransactionCommitment,
