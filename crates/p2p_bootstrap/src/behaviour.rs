@@ -8,6 +8,7 @@ use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, Kademlia
 use libp2p::ping;
 use libp2p::relay;
 use libp2p::swarm::NetworkBehaviour;
+use libp2p::StreamProtocol;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "BootstrapEvent", event_process = false)]
@@ -20,7 +21,7 @@ pub struct BootstrapBehaviour {
     pub kademlia: Kademlia<MemoryStore>,
 }
 
-pub const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
+pub const KADEMLIA_PROTOCOL_NAME: &str = "/pathfinder/kad/1.0.0";
 
 impl BootstrapBehaviour {
     pub fn new(pub_key: identity::PublicKey) -> Self {
@@ -35,8 +36,7 @@ impl BootstrapBehaviour {
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         // FIXME: this make sure that the DHT we're implementing is incompatible with the "default" IPFS
         // DHT from libp2p.
-        kademlia_config
-            .set_protocol_names(vec![std::borrow::Cow::Borrowed(KADEMLIA_PROTOCOL_NAME)]);
+        kademlia_config.set_protocol_names(vec![StreamProtocol::new(KADEMLIA_PROTOCOL_NAME)]);
 
         let kademlia = Kademlia::with_config(
             pub_key.to_peer_id(),

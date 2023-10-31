@@ -6,11 +6,13 @@ use std::time::Duration;
 use clap::Parser;
 use futures::StreamExt;
 use libp2p::core::upgrade;
+use libp2p::dns;
 use libp2p::identify::{Event as IdentifyEvent, Info as IdentifyInfo};
 use libp2p::identity::Keypair;
+use libp2p::noise;
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
+use libp2p::Multiaddr;
 use libp2p::Transport;
-use libp2p::{dns, noise, Multiaddr};
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
@@ -135,13 +137,31 @@ async fn main() -> anyhow::Result<()> {
                                 IdentifyInfo {
                                     listen_addrs,
                                     protocols,
+                                    observed_addr,
                                     ..
                                 },
                         } = *e
                         {
+                            // Important change in libp2p-v0.52 compared to v0.51:
+                            //
+                            // https://github.com/libp2p/rust-libp2p/releases/tag/libp2p-v0.52.0
+                            //
+                            // As a consequence, the observed address reported by identify is no longer
+                            // considered an external address but just an address candidate.
+                            //
+                            // https://github.com/libp2p/rust-libp2p/blob/master/protocols/identify/CHANGELOG.md#0430
+                            //
+                            // Observed addresses (aka. external address candidates) of the local node, reported by a remote node via libp2p-identify,
+                            // are no longer automatically considered confirmed external addresses, in other words they are no longer trusted by default.
+                            // Instead users need to confirm the reported observed address either manually, or by using libp2p-autonat.
+                            // In trusted environments users can simply extract observed addresses from a
+                            // libp2p-identify::Event::Received { info: libp2p_identify::Info { observed_addr }} and confirm them via Swarm::add_external_address.
+
+                            swarm.add_external_address(observed_addr);
+
                             if protocols
                                 .iter()
-                                .any(|p| p.as_bytes() == behaviour::KADEMLIA_PROTOCOL_NAME)
+                                .any(|p| p.as_ref() == behaviour::KADEMLIA_PROTOCOL_NAME)
                             {
                                 for addr in listen_addrs {
                                     swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
