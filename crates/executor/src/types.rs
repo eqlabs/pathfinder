@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use blockifier::execution::call_info::OrderedL2ToL1Message;
+use blockifier::execution::entry_point::OrderedL2ToL1Message;
 use pathfinder_common::{
     CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
 };
@@ -140,11 +140,11 @@ pub struct ReplacedClass {
     pub class_hash: ClassHash,
 }
 
-impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
+impl TryFrom<blockifier::execution::entry_point::CallInfo> for FunctionInvocation {
     type Error = blockifier::transaction::errors::TransactionExecutionError;
 
     fn try_from(
-        call_info: blockifier::execution::call_info::CallInfo,
+        call_info: blockifier::execution::entry_point::CallInfo,
     ) -> Result<Self, Self::Error> {
         call_info.get_sorted_l2_to_l1_payloads_length()?;
         let messages = ordered_l2_to_l1_messages(&call_info);
@@ -218,8 +218,8 @@ impl From<starknet_api::deprecated_contract_class::EntryPointType> for EntryPoin
     }
 }
 
-impl From<blockifier::execution::call_info::OrderedEvent> for Event {
-    fn from(value: blockifier::execution::call_info::OrderedEvent) -> Self {
+impl From<blockifier::execution::entry_point::OrderedEvent> for Event {
+    fn from(value: blockifier::execution::entry_point::OrderedEvent) -> Self {
         Self {
             order: value.order as i64,
             data: value
@@ -240,7 +240,7 @@ impl From<blockifier::execution::call_info::OrderedEvent> for Event {
 }
 
 fn ordered_l2_to_l1_messages(
-    call_info: &blockifier::execution::call_info::CallInfo,
+    call_info: &blockifier::execution::entry_point::CallInfo,
 ) -> Vec<MsgToL1> {
     let mut messages = BTreeMap::new();
 

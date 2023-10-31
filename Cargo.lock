@@ -420,7 +420,7 @@ dependencies = [
  "num-traits 0.2.16",
  "rusticata-macros",
  "thiserror",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -436,7 +436,7 @@ dependencies = [
  "num-traits 0.2.16",
  "rusticata-macros",
  "thiserror",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -900,14 +900,13 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 
 [[package]]
 name = "blockifier"
-version = "0.2.0-rc0"
-source = "git+https://github.com/starkware-libs/blockifier?rev=ebf48c445b965c5c55b8c724338be7c6e21ffdd4#ebf48c445b965c5c55b8c724338be7c6e21ffdd4"
+version = "0.4.0-rc0"
+source = "git+https://github.com/starkware-libs/blockifier?rev=16e60551ba0f55a110e9c0acb2c16ec43b3758c4#16e60551ba0f55a110e9c0acb2c16ec43b3758c4"
 dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-secp256k1",
  "ark-secp256r1",
- "cached",
  "cairo-felt 0.8.7",
  "cairo-lang-casm 2.1.1",
  "cairo-lang-runner",
@@ -2624,7 +2623,7 @@ dependencies = [
  "num-integer",
  "num-traits 0.2.16",
  "serde",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -2641,7 +2640,7 @@ dependencies = [
  "num-integer",
  "num-traits 0.2.16",
  "serde",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -6392,7 +6391,7 @@ dependencies = [
  "starknet_api",
  "tempfile",
  "thiserror",
- "time 0.3.28",
+ "time 0.3.26",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -7314,7 +7313,7 @@ checksum = "6413f3de1edee53342e6138e75b56d32e7bc6e332b3bd62d497b1929d4cfbcdd"
 dependencies = [
  "pem",
  "ring",
- "time 0.3.28",
+ "time 0.3.26",
  "x509-parser 0.13.2",
  "yasna",
 ]
@@ -7327,7 +7326,7 @@ checksum = "ffbe84efe2f38dea12e9bfc1f65377fdf03e53a18cb3b995faedf7934c7e785b"
 dependencies = [
  "pem",
  "ring",
- "time 0.3.28",
+ "time 0.3.26",
  "yasna",
 ]
 
@@ -7878,18 +7877,18 @@ checksum = "b0293b4b29daaf487284529cc2f5675b8e57c61f70167ba415a463651fd6a918"
 
 [[package]]
 name = "serde"
-version = "1.0.188"
+version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf9e0fcba69a370eed61bcf2b728575f726b50b55cba78064753d708ddc7549e"
+checksum = "30e27d1e4fd7659406c492fd6cfaf2066ba8773de45ca75e855590f856dc34a9"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.188"
+version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eca7ac642d82aa35b60049a6eccb4be6be75e599bd2e9adb5f875a737654af2"
+checksum = "389894603bd18c46fa56231694f8d827779c0951a667087194cf9de94ed24682"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7973,7 +7972,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with_macros",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -8380,9 +8379,8 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6e445fbd6bf3826dda26fd64aa5311353b4799c9bd1119d6ec1906be4c73bf"
+version = "0.1.0"
+source = "git+https://github.com/starkware-libs/starknet-api?rev=8f620bc#8f620bcec38b47ce0f2515f3ef158f4c6319608f"
 dependencies = [
  "cairo-lang-starknet 2.1.1",
  "derive_more",
@@ -8663,9 +8661,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.28"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17f6bb557fd245c28e6411aa56b6403c689ad95061f50e4be16c274e70a17e48"
+checksum = "a79d09ac6b08c1ab3906a2f7cc2e81a0e27c7ae89c63812df75e52bef0751e07"
 dependencies = [
  "deranged",
  "itoa",
@@ -8684,9 +8682,9 @@ checksum = "7300fbefb4dadc1af235a9cef3737cea692a9d97e1b9cbcd4ebdae6f8868e6fb"
 
 [[package]]
 name = "time-macros"
-version = "0.2.14"
+version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a942f44339478ef67935ab2bbaec2fb0322496cf3cbe84b261e06ac3814c572"
+checksum = "75c65469ed6b3a4809d987a41eb1dc918e9bc1d92211cbad7ae82931846f7451"
 dependencies = [
  "time-core",
 ]
@@ -9049,7 +9047,7 @@ dependencies = [
  "sharded-slab",
  "smallvec",
  "thread_local",
- "time 0.3.28",
+ "time 0.3.26",
  "tracing",
  "tracing-core",
  "tracing-log",
@@ -9358,7 +9356,7 @@ checksum = "bbc5ad0d9d26b2c49a5ab7da76c3e79d3ee37e7821799f8223fcb8f2f391a2e7"
 dependencies = [
  "anyhow",
  "rustversion",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -9608,7 +9606,7 @@ dependencies = [
  "sha2 0.10.7",
  "stun",
  "thiserror",
- "time 0.3.28",
+ "time 0.3.26",
  "tokio",
  "turn",
  "url",
@@ -10023,7 +10021,7 @@ dependencies = [
  "ring",
  "rusticata-macros",
  "thiserror",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -10041,7 +10039,7 @@ dependencies = [
  "oid-registry 0.6.1",
  "rusticata-macros",
  "thiserror",
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
@@ -10085,7 +10083,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
 dependencies = [
- "time 0.3.28",
+ "time 0.3.26",
 ]
 
 [[package]]
