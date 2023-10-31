@@ -54,12 +54,6 @@ impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
     }
 }
 
-impl From<anyhow::Error> for AddInvokeTransactionError {
-    fn from(value: anyhow::Error) -> Self {
-        AddInvokeTransactionError::UnexpectedError(value.to_string())
-    }
-}
-
 impl From<SequencerError> for AddInvokeTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{

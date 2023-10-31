@@ -8,6 +8,7 @@ use pathfinder_executor::ExecutionState;
 #[derive(Debug)]
 pub enum CallError {
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
     ContractErrorV05 { revert_error: String },
@@ -24,9 +25,10 @@ impl From<pathfinder_executor::CallError> for CallError {
         use pathfinder_executor::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
+            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
             Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
         }
     }
 }
@@ -50,6 +52,7 @@ impl From<CallError> for ApplicationError {
                 ApplicationError::ContractErrorV05 { revert_error }
             }
             CallError::Internal(e) => ApplicationError::Internal(e),
+            CallError::Custom(e) => ApplicationError::Custom(e),
         }
     }
 }
@@ -550,7 +553,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let error = call(context, input).await;
-            assert_matches::assert_matches!(error, Err(CallError::Internal(_)));
+            assert_matches::assert_matches!(error, Err(CallError::Custom(_)));
         }
 
         #[tokio::test]

@@ -57,12 +57,6 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
     }
 }
 
-impl From<anyhow::Error> for AddDeployAccountTransactionError {
-    fn from(value: anyhow::Error) -> Self {
-        AddDeployAccountTransactionError::UnexpectedError(value.to_string())
-    }
-}
-
 impl From<SequencerError> for AddDeployAccountTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{

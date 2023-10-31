@@ -44,12 +44,6 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
     }
 }
 
-impl From<anyhow::Error> for AddDeployAccountTransactionError {
-    fn from(value: anyhow::Error) -> Self {
-        AddDeployAccountTransactionError::Internal(value)
-    }
-}
-
 pub async fn add_deploy_account_transaction(
     context: RpcContext,
     input: AddDeployAccountTransactionInput,

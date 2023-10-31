@@ -1,3 +1,4 @@
+use crate::error::ApplicationError;
 use axum::response::IntoResponse;
 use serde::Serialize;
 use serde_json::Value;
@@ -67,6 +68,18 @@ impl Serialize for RpcResponse<'_> {
 
 impl IntoResponse for RpcResponse<'_> {
     fn into_response(self) -> axum::response::Response {
+        // Log internal errors.
+        match &self.output {
+            Err(RpcError::InternalError(e))
+            | Err(RpcError::ApplicationError(ApplicationError::Internal(e))) => {
+                tracing::warn!(backtrace = ?e, "Internal error");
+            }
+            Err(RpcError::ApplicationError(ApplicationError::Custom(e))) => {
+                tracing::debug!(backtrace = ?e, "Custom error");
+            }
+            _ => {}
+        }
+
         serde_json::to_vec(&self).unwrap().into_response()
     }
 }

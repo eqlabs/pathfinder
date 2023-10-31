@@ -22,6 +22,7 @@ pub struct SimulateTransactionOutput(pub Vec<dto::SimulatedTransaction>);
 #[derive(Debug)]
 pub enum SimulateTransactionError {
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
     ContractErrorV05 { revert_error: String },
@@ -37,6 +38,7 @@ impl From<SimulateTransactionError> for crate::error::ApplicationError {
     fn from(e: SimulateTransactionError) -> Self {
         match e {
             SimulateTransactionError::Internal(internal) => Self::Internal(internal),
+            SimulateTransactionError::Custom(internal) => Self::Custom(internal),
             SimulateTransactionError::BlockNotFound => Self::BlockNotFound,
             SimulateTransactionError::ContractNotFound => Self::ContractNotFound,
             SimulateTransactionError::ContractErrorV05 { revert_error } => {
@@ -51,9 +53,10 @@ impl From<CallError> for SimulateTransactionError {
         use CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
+            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
             Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
         }
     }
 }

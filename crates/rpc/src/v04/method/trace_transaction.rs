@@ -3,7 +3,6 @@ use pathfinder_common::TransactionHash;
 use pathfinder_executor::{CallError, ExecutionState};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
-use tokio::task::JoinError;
 
 use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
 use crate::v04::v04_method::simulate_transactions::dto::map_gateway_trace;
@@ -30,14 +29,13 @@ pub enum TraceTransactionError {
     InvalidTxnHash,
     NoTraceAvailable(TraceError),
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
 }
 
 impl From<ExecutionStateError> for TraceTransactionError {
     fn from(value: ExecutionStateError) -> Self {
         match value {
-            ExecutionStateError::BlockNotFound => {
-                Self::Internal(anyhow::anyhow!("Block not found"))
-            }
+            ExecutionStateError::BlockNotFound => Self::Custom(anyhow::anyhow!("Block not found")),
             ExecutionStateError::Internal(e) => Self::Internal(e),
         }
     }
@@ -46,19 +44,14 @@ impl From<ExecutionStateError> for TraceTransactionError {
 impl From<CallError> for TraceTransactionError {
     fn from(value: CallError) -> Self {
         match value {
-            CallError::ContractNotFound => Self::Internal(anyhow::anyhow!("Contract not found")),
+            CallError::ContractNotFound => Self::Custom(anyhow::anyhow!("Contract not found")),
             CallError::InvalidMessageSelector => {
-                Self::Internal(anyhow::anyhow!("Invalid message selector"))
+                Self::Custom(anyhow::anyhow!("Invalid message selector"))
             }
-            CallError::Reverted(reason) => Self::Internal(anyhow::anyhow!("Reverted: {reason}")),
+            CallError::Reverted(reason) => Self::Custom(anyhow::anyhow!("Reverted: {reason}")),
             CallError::Internal(e) => Self::Internal(e),
+            CallError::Custom(e) => Self::Custom(e),
         }
-    }
-}
-
-impl From<JoinError> for TraceTransactionError {
-    fn from(e: JoinError) -> Self {
-        Self::Internal(anyhow::anyhow!("Join error: {e}"))
     }
 }
 
@@ -76,6 +69,7 @@ impl From<TraceTransactionError> for ApplicationError {
                 ApplicationError::NoTraceAvailable(status)
             }
             TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
+            TraceTransactionError::Custom(e) => ApplicationError::Custom(e),
         }
     }
 }

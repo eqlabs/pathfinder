@@ -22,11 +22,13 @@ pub enum GetProofError {
     BlockNotFound,
     ProofLimitExceeded { limit: u32, requested: u32 },
 }
+
 impl From<anyhow::Error> for GetProofError {
     fn from(e: anyhow::Error) -> Self {
         Self::Internal(e)
     }
 }
+
 impl From<GetProofError> for crate::error::ApplicationError {
     fn from(x: GetProofError) -> Self {
         match x {

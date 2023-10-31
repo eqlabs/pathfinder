@@ -17,6 +17,7 @@ pub enum EstimateMessageFeeError {
     BlockNotFound,
     ContractNotFound,
     ContractErrorV05 { revert_error: String },
+    Custom(anyhow::Error),
 }
 
 impl From<anyhow::Error> for EstimateMessageFeeError {
@@ -29,10 +30,11 @@ impl From<pathfinder_executor::CallError> for EstimateMessageFeeError {
     fn from(c: pathfinder_executor::CallError) -> Self {
         use pathfinder_executor::CallError::*;
         match c {
-            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
+            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
             ContractNotFound => Self::ContractNotFound,
             Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
         }
     }
 }
@@ -56,6 +58,7 @@ impl From<EstimateMessageFeeError> for ApplicationError {
                 ApplicationError::ContractErrorV05 { revert_error }
             }
             EstimateMessageFeeError::Internal(e) => ApplicationError::Internal(e),
+            EstimateMessageFeeError::Custom(e) => ApplicationError::Custom(e),
         }
     }
 }
@@ -401,7 +404,7 @@ mod tests {
         let rpc = setup(Setup::Full).await.expect("RPC context");
         assert_matches::assert_matches!(
             estimate_message_fee(rpc, input).await,
-            Err(EstimateMessageFeeError::Internal(_))
+            Err(EstimateMessageFeeError::Custom(_))
         );
     }
 }

@@ -17,6 +17,7 @@ pub struct EstimateFeeInput {
 #[derive(Debug)]
 pub enum EstimateFeeError {
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
     ContractErrorV05 { revert_error: String },
@@ -36,6 +37,7 @@ impl From<pathfinder_executor::CallError> for EstimateFeeError {
             InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
             Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
         }
     }
 }
@@ -59,6 +61,7 @@ impl From<EstimateFeeError> for ApplicationError {
                 ApplicationError::ContractErrorV05 { revert_error }
             }
             EstimateFeeError::Internal(e) => ApplicationError::Internal(e),
+            EstimateFeeError::Custom(e) => ApplicationError::Custom(e),
         }
     }
 }

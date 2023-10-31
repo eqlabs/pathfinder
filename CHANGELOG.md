@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- RPC errors now only include the root cause if white-listed as non-sensitive
+
 ### Fixed
 
 - JSON-RPC 0.5 transaction traces now have the required `type` property.
