@@ -81,11 +81,9 @@ pub async fn trace_block_transactions(
             .block_header(input.block_hash.into())?
             .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?;
 
-        let (transactions, _): (Vec<_>, Vec<_>) = db
-            .transaction_data_for_block(input.block_hash.into())?
-            .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?
-            .into_iter()
-            .unzip();
+        let transactions = db
+            .transactions_for_block(input.block_hash.into())?
+            .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?;
 
         let starknet_version = header
             .starknet_version

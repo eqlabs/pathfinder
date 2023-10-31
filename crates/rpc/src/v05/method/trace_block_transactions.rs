@@ -162,11 +162,9 @@ pub async fn trace_block_transactions(
                     .block_header(block_id)?
                     .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
 
-                let (transactions, _): (Vec<_>, Vec<_>) = db
-                    .transaction_data_for_block(block_id)?
-                    .context("Transaction data missing")?
-                    .into_iter()
-                    .unzip();
+                let transactions = db
+                    .transactions_for_block(block_id)?
+                    .context("Transaction data missing")?;
 
                 (header, transactions)
             }
