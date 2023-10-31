@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use p2p::client::{peer_agnostic, peer_aware};
-use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr, PeerId};
+use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr};
 use p2p::{HeadRx, HeadTx, Peers};
 use p2p_proto::block::BlockBodiesResponseList;
 use p2p_proto::event::EventsResponseList;
@@ -65,7 +65,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         let peer_id = bootstrap_address
             .iter()
             .find_map(|p| match p {
-                p2p::libp2p::multiaddr::Protocol::P2p(h) => PeerId::from_multihash(h).ok(),
+                p2p::libp2p::multiaddr::Protocol::P2p(peer_id) => Some(peer_id),
                 _ => None,
             })
             .ok_or_else(|| anyhow::anyhow!("Boostrap addresses must inlcude peer ID"))?;
@@ -88,9 +88,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     }
 
     for capability in p2p::PROTOCOLS {
-        p2p_client
-            .provide_capability(std::str::from_utf8(capability)?)
-            .await?
+        p2p_client.provide_capability(capability).await?
     }
 
     let (mut tx, rx) = tokio::sync::watch::channel(None);
