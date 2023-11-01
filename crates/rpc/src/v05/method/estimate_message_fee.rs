@@ -169,6 +169,7 @@ fn create_executor_transaction(
         starknet_api::transaction::Transaction::L1Handler(tx),
         None,
         Some(starknet_api::transaction::Fee(1)),
+        false,
     )?;
     Ok(transaction)
 }

@@ -31,6 +31,8 @@ pub(crate) fn map_broadcasted_transaction(
 
                 let transaction_hash = transaction.transaction_hash(chain_id, Some(class_hash));
 
+                let version = tx.version;
+
                 let contract_class_json = tx
                     .contract_class
                     .serialize_to_json()
@@ -63,6 +65,7 @@ pub(crate) fn map_broadcasted_transaction(
                     ),
                     Some(contract_class),
                     None,
+                    version.has_query_version(),
                 )?;
                 Ok(tx)
             }
@@ -70,6 +73,8 @@ pub(crate) fn map_broadcasted_transaction(
                 let class_hash = tx.contract_class.class_hash()?.hash();
 
                 let transaction_hash = transaction.transaction_hash(chain_id, Some(class_hash));
+
+                let version = tx.version;
 
                 let contract_class_json = tx
                     .contract_class
@@ -103,6 +108,7 @@ pub(crate) fn map_broadcasted_transaction(
                     ),
                     Some(contract_class),
                     None,
+                    version.has_query_version(),
                 )?;
                 Ok(tx)
             }
@@ -111,6 +117,8 @@ pub(crate) fn map_broadcasted_transaction(
 
                 let transaction_hash =
                     transaction.transaction_hash(chain_id, Some(sierra_class_hash));
+
+                let version = tx.version;
 
                 let casm_contract_definition =
                     pathfinder_compiler::compile_to_casm_with_latest_compiler(
@@ -151,6 +159,7 @@ pub(crate) fn map_broadcasted_transaction(
                     ),
                     Some(casm_contract_definition),
                     None,
+                    version.has_query_version(),
                 )?;
 
                 Ok(tx)
@@ -159,6 +168,8 @@ pub(crate) fn map_broadcasted_transaction(
         BroadcastedTransaction::Invoke(tx) => match tx {
             crate::v02::types::request::BroadcastedInvokeTransaction::V0(tx) => {
                 let transaction_hash = transaction.transaction_hash(chain_id, None);
+
+                let version = tx.version;
 
                 let tx = starknet_api::transaction::InvokeTransactionV0 {
                     // TODO: maybe we should store tx.max_fee as u128 internally?
@@ -190,12 +201,15 @@ pub(crate) fn map_broadcasted_transaction(
                     ),
                     None,
                     None,
+                    version.has_query_version(),
                 )?;
 
                 Ok(tx)
             }
             crate::v02::types::request::BroadcastedInvokeTransaction::V1(tx) => {
                 let transaction_hash = transaction.transaction_hash(chain_id, None);
+
+                let version = tx.version;
 
                 let tx = starknet_api::transaction::InvokeTransactionV1 {
                     // TODO: maybe we should store tx.max_fee as u128 internally?
@@ -224,6 +238,7 @@ pub(crate) fn map_broadcasted_transaction(
                     ),
                     None,
                     None,
+                    version.has_query_version(),
                 )?;
 
                 Ok(tx)
@@ -231,6 +246,8 @@ pub(crate) fn map_broadcasted_transaction(
         },
         BroadcastedTransaction::DeployAccount(tx) => {
             let transaction_hash = transaction.transaction_hash(chain_id, None);
+
+            let version = tx.version;
 
             let deployed_contract_address = tx.deployed_contract_address();
 
@@ -269,6 +286,7 @@ pub(crate) fn map_broadcasted_transaction(
                 starknet_api::transaction::Transaction::DeployAccount(tx),
                 None,
                 None,
+                version.has_query_version(),
             )?;
 
             Ok(tx)
@@ -320,6 +338,7 @@ pub fn compose_executor_transaction(
                     ),
                     Some(contract_class),
                     None,
+                    false,
                 )?;
 
                 Ok(tx)
@@ -354,6 +373,7 @@ pub fn compose_executor_transaction(
                     ),
                     Some(contract_class),
                     None,
+                    false,
                 )?;
 
                 Ok(tx)
@@ -390,6 +410,7 @@ pub fn compose_executor_transaction(
                     ),
                     Some(contract_class),
                     None,
+                    false,
                 )?;
 
                 Ok(tx)
@@ -435,6 +456,7 @@ pub fn compose_executor_transaction(
                 starknet_api::transaction::Transaction::DeployAccount(tx),
                 None,
                 None,
+                false,
             )?;
 
             Ok(tx)
@@ -469,6 +491,7 @@ pub fn compose_executor_transaction(
                     ),
                     None,
                     None,
+                    false,
                 )?;
 
                 Ok(tx)
@@ -499,6 +522,7 @@ pub fn compose_executor_transaction(
                     ),
                     None,
                     None,
+                    false,
                 )?;
 
                 Ok(tx)
@@ -528,6 +552,7 @@ pub fn compose_executor_transaction(
                 starknet_api::transaction::Transaction::L1Handler(tx),
                 None,
                 Some(starknet_api::transaction::Fee(1_000_000_000_000)),
+                false,
             )?;
 
             Ok(tx)
