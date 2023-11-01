@@ -2,10 +2,9 @@ use std::num::NonZeroU32;
 
 use anyhow::Context;
 use mimalloc::MiMalloc;
-use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress};
+use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
 use pathfinder_executor::ExecutionState;
 use pathfinder_storage::{BlockId, JournalMode, Storage};
-use primitive_types::U256;
 use starknet_gateway_types::reply::transaction::{Receipt, Transaction};
 
 // Due to the amount of JSON parsing that gets done during execution we use an alternate
@@ -83,18 +82,8 @@ fn main() -> anyhow::Result<()> {
 
         tracing::debug!(%block_number, num_transactions=%transactions.len(), "Submitting block");
 
-        let previous_block = if block_number > 0 {
-            Some(BlockNumber::new_or_panic(block_number - 1))
-        } else {
-            None
-        };
-
         tx.send(Work {
-            block_number: block_header.number,
-            block_timestamp: block_header.timestamp,
-            sequencer_address: block_header.sequencer_address,
-            state_at_block: previous_block,
-            gas_price: block_header.gas_price.0.into(),
+            header: block_header,
             transactions,
             receipts,
         })
@@ -137,11 +126,7 @@ fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chai
 
 #[derive(Debug)]
 struct Work {
-    block_number: BlockNumber,
-    block_timestamp: BlockTimestamp,
-    sequencer_address: SequencerAddress,
-    state_at_block: Option<BlockNumber>,
-    gas_price: U256,
+    header: BlockHeader,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
 }
@@ -151,36 +136,22 @@ fn execute(storage: Storage, chain_id: ChainId, rx: crossbeam_channel::Receiver<
         let start_time = std::time::Instant::now();
         let num_transactions = work.transactions.len();
 
-        let connection = storage.connection().unwrap();
+        let mut connection = storage.connection().unwrap();
 
-        let mut execution_state = ExecutionState {
-            connection,
-            chain_id,
-            block_number: work.block_number,
-            block_timestamp: work.block_timestamp,
-            sequencer_address: work.sequencer_address,
-            state_at_block: work.state_at_block,
-            gas_price: work.gas_price,
-            pending_update: None,
-        };
+        let db_tx = connection.transaction().expect("Create transaction");
 
-        let db_tx = execution_state
-            .connection
-            .transaction()
-            .expect("Create transaction");
+        let execution_state = ExecutionState::trace(&db_tx, chain_id, work.header.clone(), None);
 
         let transactions = work
             .transactions
-            .into_iter()
+            .iter()
             .map(|tx| pathfinder_rpc::compose_executor_transaction(tx, &db_tx))
             .collect::<Result<Vec<_>, _>>();
-
-        drop(db_tx);
 
         let transactions = match transactions {
             Ok(transactions) => transactions,
             Err(error) => {
-                tracing::error!(block_number=%work.block_number, %error, "Transaction conversion failed");
+                tracing::error!(block_number=%work.header.number, %error, "Transaction conversion failed");
                 continue;
             }
         };
@@ -198,7 +169,7 @@ fn execute(storage: Storage, chain_id: ChainId, rx: crossbeam_channel::Receiver<
                             continue;
                         }
 
-                        let gas_price = work.gas_price.as_u128();
+                        let gas_price = work.header.gas_price.0;
                         let actual_gas_consumed = actual_fee / gas_price.max(1);
 
                         let estimated_gas_consumed = estimate.gas_consumed.as_u128();
@@ -206,18 +177,18 @@ fn execute(storage: Storage, chain_id: ChainId, rx: crossbeam_channel::Receiver<
                         let diff = actual_gas_consumed.abs_diff(estimated_gas_consumed);
 
                         if diff > (actual_gas_consumed * 2 / 10) {
-                            tracing::warn!(block_number=%work.block_number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
+                            tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
                         }
                     }
                 }
             }
             Err(error) => {
-                tracing::error!(block_number=%work.block_number, ?error, "Transaction re-execution failed");
+                tracing::error!(block_number=%work.header.number, ?error, "Transaction re-execution failed");
             }
         }
 
         let elapsed = start_time.elapsed().as_millis();
 
-        tracing::debug!(block_number=%work.block_number, %num_transactions, %elapsed, "Re-executed block");
+        tracing::debug!(block_number=%work.header.number, %num_transactions, %elapsed, "Re-executed block");
     }
 }

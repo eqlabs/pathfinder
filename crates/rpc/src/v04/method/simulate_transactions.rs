@@ -7,6 +7,8 @@ use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_executor::{types::TransactionSimulation, CallError};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
+use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
+use starknet_gateway_types::trace as gateway_trace;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -52,45 +54,65 @@ pub async fn simulate_transactions(
     context: RpcContext,
     input: SimulateTrasactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
-    let chain_id = context.chain_id;
-
-    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
-
-    let skip_validate = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
-
-    let skip_fee_charge = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipFeeCharge);
-
     let span = tracing::Span::current();
-
-    let txs = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let _g = span.enter();
+
+        let skip_validate = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
+
+        let skip_fee_charge = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &dto::SimulationFlag::SkipFeeCharge);
+
+        let mut db = context
+            .storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let (header, pending) = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_data
+                    .get(&db)
+                    .context("Querying pending data")?;
+
+                (pending.header(), Some(pending.state_update.clone()))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending should fail");
+
+                let header = db
+                    .block_header(block_id)
+                    .context("Fetching block header")?
+                    .ok_or(SimulateTransactionError::BlockNotFound)?;
+
+                (header, None)
+            }
+        };
+
+        let state =
+            pathfinder_executor::ExecutionState::simulation(&db, context.chain_id, header, pending);
 
         let transactions = input
             .transactions
             .iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
+            .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        pathfinder_executor::simulate(
-            execution_state,
-            transactions,
-            skip_validate,
-            skip_fee_charge,
-        )
+        let txs =
+            pathfinder_executor::simulate(state, transactions, skip_validate, skip_fee_charge)?;
+        let txs = txs.into_iter().map(Into::into).collect();
+        Ok(SimulateTransactionOutput(txs))
     })
     .await
-    .context("Simulating transaction")??;
-
-    let txs = txs.into_iter().map(Into::into).collect();
-    Ok(SimulateTransactionOutput(txs))
+    .context("Simulating transaction")?
 }
 
 pub mod dto {
@@ -394,6 +416,108 @@ pub mod dto {
             dto::SimulatedTransaction {
                 fee_estimation: tx.fee_estimation.into(),
                 transaction_trace: tx.trace.into(),
+            }
+        }
+    }
+
+    impl From<gateway_trace::CallType> for CallType {
+        fn from(value: gateway_trace::CallType) -> Self {
+            match value {
+                gateway_trace::CallType::Call => Self::Call,
+                gateway_trace::CallType::Delegate => Self::LibraryCall,
+            }
+        }
+    }
+
+    impl From<gateway_trace::EntryPointType> for EntryPointType {
+        fn from(value: gateway_trace::EntryPointType) -> Self {
+            match value {
+                gateway_trace::EntryPointType::Constructor => Self::Constructor,
+                gateway_trace::EntryPointType::External => Self::External,
+                gateway_trace::EntryPointType::L1Handler => Self::L1Handler,
+            }
+        }
+    }
+
+    impl From<gateway_trace::Event> for Event {
+        fn from(value: gateway_trace::Event) -> Self {
+            Self {
+                data: value.data,
+                keys: value.keys,
+            }
+        }
+    }
+
+    impl From<gateway_trace::FunctionInvocation> for FunctionInvocation {
+        fn from(value: starknet_gateway_types::trace::FunctionInvocation) -> Self {
+            Self {
+                call_type: value.call_type.map(Into::into).unwrap_or(CallType::Call),
+                function_call: FunctionCall {
+                    calldata: value.calldata.into_iter().map(CallParam).collect(),
+                    contract_address: value.contract_address,
+                    entry_point_selector: EntryPoint(value.selector.unwrap_or_default()),
+                },
+                caller_address: value.caller_address,
+                calls: value.internal_calls.into_iter().map(Into::into).collect(),
+                class_hash: value.class_hash,
+                entry_point_type: value
+                    .entry_point_type
+                    .map(Into::into)
+                    .unwrap_or(EntryPointType::External),
+                events: value.events.into_iter().map(Into::into).collect(),
+                messages: value
+                    .messages
+                    .into_iter()
+                    .map(|message| MsgToL1 {
+                        payload: message.payload,
+                        to_address: message.to_address,
+                        from_address: value.contract_address.0,
+                    })
+                    .collect(),
+                result: value.result,
+            }
+        }
+    }
+
+    pub(crate) fn map_gateway_trace(
+        transaction: GatewayTransaction,
+        trace: gateway_trace::TransactionTrace,
+    ) -> TransactionTrace {
+        match transaction {
+            GatewayTransaction::Declare(_) => dto::TransactionTrace::Declare(DeclareTxnTrace {
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                validate_invocation: trace.validate_invocation.map(Into::into),
+            }),
+            GatewayTransaction::Deploy(_) => {
+                dto::TransactionTrace::DeployAccount(DeployAccountTxnTrace {
+                    constructor_invocation: trace.function_invocation.map(Into::into),
+                    fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                    validate_invocation: trace.validate_invocation.map(Into::into),
+                })
+            }
+            GatewayTransaction::DeployAccount(_) => {
+                dto::TransactionTrace::DeployAccount(DeployAccountTxnTrace {
+                    constructor_invocation: trace.function_invocation.map(Into::into),
+                    fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                    validate_invocation: trace.validate_invocation.map(Into::into),
+                })
+            }
+            GatewayTransaction::Invoke(_) => TransactionTrace::Invoke(InvokeTxnTrace {
+                execute_invocation: if let Some(revert_reason) = trace.revert_error {
+                    ExecuteInvocation::RevertedReason { revert_reason }
+                } else {
+                    trace
+                        .function_invocation
+                        .map(|invocation| ExecuteInvocation::FunctionInvocation(invocation.into()))
+                        .unwrap_or_else(|| ExecuteInvocation::Empty)
+                },
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                validate_invocation: trace.validate_invocation.map(Into::into),
+            }),
+            GatewayTransaction::L1Handler(_) => {
+                dto::TransactionTrace::L1Handler(L1HandlerTxnTrace {
+                    function_invocation: trace.function_invocation.map(Into::into),
+                })
             }
         }
     }

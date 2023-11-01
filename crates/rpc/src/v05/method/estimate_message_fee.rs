@@ -5,7 +5,7 @@ use pathfinder_common::{
     felt, BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress,
     TransactionHash, TransactionNonce, TransactionVersion,
 };
-use pathfinder_executor::IntoStarkFelt;
+use pathfinder_executor::{ExecutionState, IntoStarkFelt};
 use stark_hash::Felt;
 use starknet_api::core::PatriciaKey;
 
@@ -79,17 +79,41 @@ pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
 ) -> Result<FeeEstimate, EstimateMessageFeeError> {
-    let chain_id = context.chain_id;
-    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
-
     let span = tracing::Span::current();
 
     let mut result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
+        let mut db = context
+            .storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
 
-        let transaction = create_executor_transaction(input, chain_id)?;
+        let (header, pending) = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_data
+                    .get(&db)
+                    .context("Querying pending data")?;
 
-        let result = pathfinder_executor::estimate(execution_state, vec![transaction])?;
+                (pending.header(), Some(pending.state_update.clone()))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending cast should fail");
+                let header = db
+                    .block_header(block_id)
+                    .context("Querying block header")?
+                    .ok_or(EstimateMessageFeeError::BlockNotFound)?;
+
+                (header, None)
+            }
+        };
+
+        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
+
+        let transaction = create_executor_transaction(input, context.chain_id)?;
+
+        let result = pathfinder_executor::estimate(state, vec![transaction])?;
 
         Ok::<_, EstimateMessageFeeError>(result)
     })

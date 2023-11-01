@@ -5,6 +5,7 @@ use pathfinder_common::{
     TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
+use starknet_gateway_types::trace::{BlockTrace, TransactionTrace};
 use starknet_gateway_types::{
     error::SequencerError,
     reply,
@@ -123,6 +124,17 @@ pub trait GatewayApi: Sync {
     /// TODO remove when p2p friendly sync is implemented
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         self.block_header(BlockId::Latest).await
+    }
+
+    async fn block_traces(&self, block: BlockId) -> Result<BlockTrace, SequencerError> {
+        unimplemented!();
+    }
+
+    async fn transaction_trace(
+        &self,
+        transaction: TransactionHash,
+    ) -> Result<TransactionTrace, SequencerError> {
+        unimplemented!();
     }
 }
 
@@ -266,6 +278,17 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
                 calldata,
             )
             .await
+    }
+
+    async fn block_traces(&self, block: BlockId) -> Result<BlockTrace, SequencerError> {
+        self.as_ref().block_traces(block).await
+    }
+
+    async fn transaction_trace(
+        &self,
+        transaction: TransactionHash,
+    ) -> Result<TransactionTrace, SequencerError> {
+        self.as_ref().transaction_trace(transaction).await
     }
 }
 
@@ -617,6 +640,31 @@ impl GatewayApi for Client {
             .post_with_json(&req)
             .await
     }
+
+    #[tracing::instrument(skip(self))]
+    async fn block_traces(&self, block: BlockId) -> Result<BlockTrace, SequencerError> {
+        self.feeder_gateway_request()
+            .get_block_traces()
+            .with_block(block)
+            .with_retry(self.retry)
+            .get()
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn transaction_trace(
+        &self,
+        transaction: TransactionHash,
+    ) -> Result<TransactionTrace, SequencerError> {
+        self.feeder_gateway_request()
+            .get_transaction_trace()
+            .with_transaction_hash(transaction)
+            .with_retry(self.retry)
+            .get()
+            .await
+    }
+
+    //
 }
 
 #[async_trait::async_trait]

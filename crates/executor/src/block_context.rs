@@ -13,7 +13,7 @@ pub const FEE_TOKEN_ADDRESS: ContractAddress =
     contract_address!("0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7");
 
 pub(super) fn construct_block_context(
-    execution_state: &ExecutionState,
+    execution_state: &ExecutionState<'_>,
 ) -> anyhow::Result<BlockContext> {
     let fee_token_address = starknet_api::core::ContractAddress(
         PatriciaKey::try_from(FEE_TOKEN_ADDRESS.0.into_starkfelt())
@@ -31,15 +31,17 @@ pub(super) fn construct_block_context(
 
     Ok(BlockContext {
         chain_id: starknet_api::core::ChainId(chain_id),
-        block_number: starknet_api::block::BlockNumber(execution_state.block_number.get()),
-        block_timestamp: starknet_api::block::BlockTimestamp(execution_state.block_timestamp.get()),
+        block_number: starknet_api::block::BlockNumber(execution_state.header.number.get()),
+        block_timestamp: starknet_api::block::BlockTimestamp(
+            execution_state.header.timestamp.get(),
+        ),
         sequencer_address: starknet_api::core::ContractAddress(
-            PatriciaKey::try_from(execution_state.sequencer_address.0.into_starkfelt())
+            PatriciaKey::try_from(execution_state.header.sequencer_address.0.into_starkfelt())
                 .expect("Sequencer address overflow"),
         ),
         fee_token_address,
         vm_resource_fee_cost: Arc::new(default_resource_fee_costs()),
-        gas_price: execution_state.gas_price.as_u128(),
+        gas_price: execution_state.header.gas_price.0,
         invoke_tx_max_n_steps: 1_000_000,
         validate_max_n_steps: 1_000_000,
         max_recursion_depth: 50,

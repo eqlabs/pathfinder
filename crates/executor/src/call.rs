@@ -14,7 +14,7 @@ use super::{
 };
 
 pub fn call(
-    mut execution_state: ExecutionState,
+    mut execution_state: ExecutionState<'_>,
     contract_address: ContractAddress,
     entry_point_selector: EntryPoint,
     calldata: Vec<CallParam>,

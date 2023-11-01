@@ -207,7 +207,7 @@ pub(crate) mod types {
 
     /// L2 state diff.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Default)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {

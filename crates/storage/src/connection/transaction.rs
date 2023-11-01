@@ -225,6 +225,39 @@ pub(super) fn transaction_data_for_block(
     Ok(Some(data))
 }
 
+pub(super) fn transactions_for_block(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<Vec<gateway::Transaction>>> {
+    let Some((_, block_hash)) = tx.block_id(block)? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .context("Preparing statement")?;
+
+    let mut rows = stmt
+        .query(params![&block_hash])
+        .context("Executing query")?;
+
+    let mut data = Vec::new();
+    while let Some(row) = rows.next()? {
+        let transaction = row
+            .get_ref_unwrap("tx")
+            .as_blob_or_null()?
+            .context("Transaction data missing")?;
+        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+        let transaction =
+            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
+
+        data.push(transaction);
+    }
+
+    Ok(Some(data))
+}
+
 pub(super) fn transaction_hashes_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
@@ -509,6 +542,25 @@ mod tests {
         let by_hash = super::transaction_data_for_block(&tx, header.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
         let by_latest = super::transaction_data_for_block(&tx, BlockId::Latest).unwrap();
+        assert_eq!(by_latest, expected);
+
+        let invalid_block =
+            super::transaction_data_for_block(&tx, BlockNumber::MAX.into()).unwrap();
+        assert_eq!(invalid_block, None);
+    }
+
+    #[test]
+    fn transactions_for_block() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let expected = Some(body.into_iter().map(|(t, _)| t).collect::<Vec<_>>());
+
+        let by_number = super::transactions_for_block(&tx, header.number.into()).unwrap();
+        assert_eq!(by_number, expected);
+        let by_hash = super::transactions_for_block(&tx, header.hash.into()).unwrap();
+        assert_eq!(by_hash, expected);
+        let by_latest = super::transactions_for_block(&tx, BlockId::Latest).unwrap();
         assert_eq!(by_latest, expected);
 
         let invalid_block =

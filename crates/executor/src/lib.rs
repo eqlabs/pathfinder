@@ -21,4 +21,6 @@ pub use felt::{IntoFelt, IntoStarkFelt};
 pub use simulate::{simulate, trace_all, trace_one};
 
 // re-export blockifier transaction type since it's exposed on our API
+pub use blockifier::transaction::account_transaction::AccountTransaction;
 pub use blockifier::transaction::transaction_execution::Transaction;
+pub use transaction::transaction_hash;

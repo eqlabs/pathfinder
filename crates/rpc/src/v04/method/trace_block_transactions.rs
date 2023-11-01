@@ -1,11 +1,13 @@
 use anyhow::Context;
 use pathfinder_common::{BlockHash, TransactionHash};
-use pathfinder_executor::CallError;
-use pathfinder_storage::BlockId;
-use primitive_types::U256;
+use pathfinder_executor::{CallError, ExecutionState};
 use serde::{Deserialize, Serialize};
+use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 use tokio::task::JoinError;
 
+use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
+use crate::v04::v04_method::simulate_transactions::dto::map_gateway_trace;
 use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
 
 use super::simulate_transactions::dto::TransactionTrace;
@@ -61,63 +63,89 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    let (transactions, gas_price, parent_block_hash): (Vec<_>, Option<U256>, BlockHash) = {
-        let span = tracing::Span::current();
-
-        let storage = context.storage.clone();
-        tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-
-            let mut db = storage.connection()?;
-            let tx = db.transaction()?;
-
-            let header = tx.block_header(pathfinder_storage::BlockId::Hash(input.block_hash))?;
-
-            let parent_block_hash = header
-                .as_ref()
-                .map(|h| h.parent_hash)
-                .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?;
-
-            let gas_price: Option<U256> =
-                header.as_ref().map(|header| U256::from(header.gas_price.0));
-
-            let (transactions, _): (Vec<_>, Vec<_>) = tx
-                .transaction_data_for_block(BlockId::Hash(input.block_hash))?
-                .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?
-                .into_iter()
-                .unzip();
-
-            let transactions = transactions
-                .into_iter()
-                .map(|transaction| compose_executor_transaction(transaction, &tx))
-                .collect::<anyhow::Result<Vec<_>, _>>()?;
-
-            Ok::<_, TraceBlockTransactionsError>((transactions, gas_price, parent_block_hash))
-        })
-        .await
-        .context("trace_block_transactions: fetch block & transactions")??
-    };
-
-    let block_id = pathfinder_common::BlockId::Hash(parent_block_hash);
-    let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
+    enum LocalExecution {
+        Success(Vec<Trace>),
+        Unsupported(Vec<GatewayTransaction>),
+    }
 
     let span = tracing::Span::current();
+
+    let storage = context.storage.clone();
     let traces = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        pathfinder_executor::trace_all(execution_state, transactions, true, true)
+
+        let mut db = storage.connection()?;
+        let db = db.transaction()?;
+
+        let header = db
+            .block_header(input.block_hash.into())?
+            .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?;
+
+        let transactions = db
+            .transactions_for_block(input.block_hash.into())?
+            .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?;
+
+        let starknet_version = header
+            .starknet_version
+            .parse_as_semver()
+            .context("Parsing starknet version")?
+            .unwrap_or(semver::Version::new(0, 0, 0));
+        if starknet_version
+            < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
+        {
+            return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported(transactions));
+        }
+
+        let transactions = transactions
+            .iter()
+            .map(|transaction| compose_executor_transaction(transaction, &db))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let state = ExecutionState::trace(&db, context.chain_id, header, None);
+        let traces = pathfinder_executor::trace_all(state, transactions, true, true)?;
+
+        let result = traces
+            .into_iter()
+            .map(|(hash, trace)| Trace {
+                transaction_hash: hash,
+                trace_root: trace.into(),
+            })
+            .collect();
+
+        Ok(LocalExecution::Success(result))
     })
     .await
-    .context("trace_block_transactions: execution")??;
+    .context("trace_block_transactions: fetch block & transactions")??;
 
-    let result = traces
-        .into_iter()
-        .map(|(hash, trace)| Trace {
-            transaction_hash: hash,
-            trace_root: trace.into(),
+    let transactions = match traces {
+        LocalExecution::Success(traces) => return Ok(TraceBlockTransactionsOutput(traces)),
+        LocalExecution::Unsupported(transactions) => transactions,
+    };
+
+    context
+        .sequencer
+        .block_traces(input.block_hash.into())
+        .await
+        .context("Forwarding to feeder gateway")
+        .map_err(Into::into)
+        .map(|trace| {
+            TraceBlockTransactionsOutput(
+                trace
+                    .traces
+                    .into_iter()
+                    .zip(transactions.into_iter())
+                    .map(|(trace, tx)| {
+                        let transaction_hash = tx.hash();
+                        let trace_root = map_gateway_trace(tx, trace);
+
+                        Trace {
+                            transaction_hash,
+                            trace_root,
+                        }
+                    })
+                    .collect(),
+            )
         })
-        .collect();
-
-    Ok(TraceBlockTransactionsOutput(result))
 }
 
 #[cfg(test)]
@@ -302,6 +330,9 @@ pub(crate) mod tests {
                 .with_number(last_block_header.number + 1)
                 .with_gas_price(GasPrice(1))
                 .with_parent_hash(last_block_header.hash)
+                .with_starknet_version(last_block_header.starknet_version)
+                .with_sequencer_address(last_block_header.sequencer_address)
+                .with_timestamp(last_block_header.timestamp)
                 .finalize_with_hash(BlockHash(felt!("0x1")));
             tx.insert_block_header(&next_block_header)?;
 
