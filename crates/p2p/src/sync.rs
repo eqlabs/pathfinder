@@ -4,32 +4,30 @@
 //! streaming response protocol is implemented
 
 pub mod protocol {
-    use libp2p::core::upgrade::ProtocolName;
-
     macro_rules! define_protocol {
         ($type_name:ident, $name:literal) => {
             #[derive(Debug, Clone, Default)]
             pub struct $type_name;
 
             impl $type_name {
-                pub const NAME: &[u8] = $name;
+                pub const NAME: &str = $name;
             }
 
-            impl ProtocolName for $type_name {
-                fn protocol_name(&self) -> &[u8] {
+            impl AsRef<str> for $type_name {
+                fn as_ref(&self) -> &str {
                     Self::NAME
                 }
             }
         };
     }
 
-    define_protocol!(Headers, b"/core/headers-sync/1");
-    define_protocol!(Bodies, b"/core/bodies-sync/1");
-    define_protocol!(Transactions, b"/core/transactions-sync/1");
-    define_protocol!(Receipts, b"/core/receipts-sync/1");
-    define_protocol!(Events, b"/core/events-sync/1");
+    define_protocol!(Headers, "/core/headers-sync/1");
+    define_protocol!(Bodies, "/core/bodies-sync/1");
+    define_protocol!(Transactions, "/core/transactions-sync/1");
+    define_protocol!(Receipts, "/core/receipts-sync/1");
+    define_protocol!(Events, "/core/events-sync/1");
 
-    pub const PROTOCOLS: &[&[u8]] = &[
+    pub const PROTOCOLS: &[&str] = &[
         Headers::NAME,
         Bodies::NAME,
         Transactions::NAME,
@@ -42,7 +40,6 @@ pub(crate) mod codec {
     use super::protocol;
     use async_trait::async_trait;
     use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
-    use libp2p::core::upgrade::ProtocolName;
     use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
     use libp2p::request_response::Codec;
     use p2p_proto::consts::MESSAGE_SIZE_LIMIT;
@@ -105,7 +102,7 @@ pub(crate) mod codec {
     impl<Protocol, Req, Resp, ProstReq, ProstResp> Codec
         for SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp>
     where
-        Protocol: ProtocolName + Send + Clone,
+        Protocol: AsRef<str> + Send + Clone,
         Req: TryFromProtobuf<ProstReq> + ToProtobuf<ProstReq> + Send,
         Resp: TryFromProtobuf<ProstResp> + ToProtobuf<ProstResp> + Send,
         ProstReq: prost::Message + Default,

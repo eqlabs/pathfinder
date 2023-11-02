@@ -13,7 +13,7 @@ pub fn create(
 ) -> libp2p::core::transport::Boxed<(PeerId, StreamMuxerBox)> {
     let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new());
     let transport = OrTransport::new(transport, relay_transport);
-    let transport = dns::TokioDnsConfig::system(transport).unwrap();
+    let transport = dns::tokio::Transport::system(transport).unwrap();
 
     let noise_config =
         noise::Config::new(keypair).expect("Signing libp2p-noise static DH keypair failed.");

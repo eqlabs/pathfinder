@@ -7,12 +7,13 @@ use libp2p::autonat;
 use libp2p::dcutr;
 use libp2p::gossipsub::{self, IdentTopic, MessageAuthenticity, MessageId};
 use libp2p::identify;
-use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
+use libp2p::identity;
+use libp2p::kad::{self, record::store::MemoryStore};
 use libp2p::ping;
-use libp2p::relay::client as relay_client;
+use libp2p::relay;
 use libp2p::request_response::{self, ProtocolSupport};
-use libp2p::swarm::{keep_alive, NetworkBehaviour};
-use libp2p::{identity, kad};
+use libp2p::swarm::NetworkBehaviour;
+use libp2p::StreamProtocol;
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
 };
@@ -21,21 +22,14 @@ use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponseList};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseList};
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "Event", event_process = false)]
+#[behaviour(to_swarm = "Event", event_process = false)]
 pub struct Behaviour {
-    relay: relay_client::Behaviour,
+    relay: relay::client::Behaviour,
     autonat: autonat::Behaviour,
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
-    // TODO do we really need keep_alive?
-    // 1. sync status message was removed in the latest spec, but as we used it partially to
-    //    maintain connection with peers, we're using keep alive instead
-    // 2. I'm not sure if we really need keep alive, as connections should be closed when not used
-    //    because they consume resources, and in general we should be managing connections in a wiser manner,
-    //    please see docstring for `libp2p::swarm::keep_alive::Behaviour`
-    keep_alive: keep_alive::Behaviour,
-    pub kademlia: Kademlia<MemoryStore>,
+    pub kademlia: kad::Behaviour<MemoryStore>,
     pub gossipsub: gossipsub::Behaviour,
     pub headers_sync: request_response::Behaviour<codec::Headers>,
     pub bodies_sync: request_response::Behaviour<codec::Bodies>,
@@ -44,27 +38,27 @@ pub struct Behaviour {
     pub events_sync: request_response::Behaviour<codec::Events>,
 }
 
-pub const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
+pub const KADEMLIA_PROTOCOL_NAME: &str = "/pathfinder/kad/1.0.0";
 // FIXME: clarify what version number should be
 // FIXME: we're also missing the starting '/'
 const PROTOCOL_VERSION: &str = "starknet/0.9.1";
 
 impl Behaviour {
-    pub fn new(identity: &identity::Keypair) -> (Self, relay_client::Transport) {
+    pub fn new(identity: &identity::Keypair) -> (Self, relay::client::Transport) {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
 
-        let mut kademlia_config = KademliaConfig::default();
+        let mut kademlia_config = kad::Config::default();
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
         kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         // This makes sure that the DHT we're implementing is incompatible with the "default" IPFS
         // DHT from libp2p.
-        kademlia_config
-            .set_protocol_names(vec![std::borrow::Cow::Borrowed(KADEMLIA_PROTOCOL_NAME)]);
+        kademlia_config.set_protocol_names(vec![StreamProtocol::new(KADEMLIA_PROTOCOL_NAME)]);
 
         let peer_id = identity.public().to_peer_id();
 
-        let kademlia = Kademlia::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
+        let kademlia =
+            kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
 
         // FIXME: find out how we should derive message id
         let message_id_fn = |message: &gossipsub::Message| {
@@ -89,7 +83,7 @@ impl Behaviour {
         let receipts_sync = request_response_behavior::<codec::Receipts>();
         let events_sync = request_response_behavior::<codec::Events>();
 
-        let (relay_transport, relay) = relay_client::new(peer_id);
+        let (relay_transport, relay) = relay::client::new(peer_id);
 
         (
             Self {
@@ -101,7 +95,6 @@ impl Behaviour {
                     identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
                         .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
                 ),
-                keep_alive: keep_alive::Behaviour,
                 kademlia,
                 gossipsub,
                 headers_sync,
@@ -137,7 +130,6 @@ where
     C::Protocol: Default,
 {
     request_response::Behaviour::new(
-        C::default(),
         std::iter::once((C::Protocol::default(), ProtocolSupport::Full)),
         Default::default(),
     )
@@ -145,13 +137,12 @@ where
 
 #[derive(Debug)]
 pub enum Event {
-    Relay(relay_client::Event),
+    Relay(relay::client::Event),
     Autonat(autonat::Event),
     Dcutr(dcutr::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
-    KeepAlive,
-    Kademlia(KademliaEvent),
+    Kademlia(kad::Event),
     Gossipsub(gossipsub::Event),
     HeadersSync(request_response::Event<BlockHeadersRequest, BlockHeadersResponse>),
     BodiesSync(request_response::Event<BlockBodiesRequest, BlockBodiesResponseList>),
@@ -160,8 +151,8 @@ pub enum Event {
     EventsSync(request_response::Event<EventsRequest, EventsResponseList>),
 }
 
-impl From<relay_client::Event> for Event {
-    fn from(event: relay_client::Event) -> Self {
+impl From<relay::client::Event> for Event {
+    fn from(event: relay::client::Event) -> Self {
         Event::Relay(event)
     }
 }
@@ -190,15 +181,8 @@ impl From<identify::Event> for Event {
     }
 }
 
-// Keep alive
-impl From<void::Void> for Event {
-    fn from(_: void::Void) -> Self {
-        Event::KeepAlive
-    }
-}
-
-impl From<KademliaEvent> for Event {
-    fn from(event: KademliaEvent) -> Self {
+impl From<kad::Event> for Event {
+    fn from(event: kad::Event) -> Self {
         Event::Kademlia(event)
     }
 }

@@ -4,23 +4,24 @@ use libp2p::autonat;
 use libp2p::dcutr;
 use libp2p::identify;
 use libp2p::identity;
-use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
+use libp2p::kad::{self, record::store::MemoryStore};
 use libp2p::ping;
 use libp2p::relay;
 use libp2p::swarm::NetworkBehaviour;
+use libp2p::StreamProtocol;
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "BootstrapEvent", event_process = false)]
+#[behaviour(to_swarm = "BootstrapEvent", event_process = false)]
 pub struct BootstrapBehaviour {
     relay: relay::Behaviour,
     autonat: autonat::Behaviour,
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
-    pub kademlia: Kademlia<MemoryStore>,
+    pub kademlia: kad::Behaviour<MemoryStore>,
 }
 
-pub const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
+pub const KADEMLIA_PROTOCOL_NAME: &str = "/pathfinder/kad/1.0.0";
 
 impl BootstrapBehaviour {
     pub fn new(pub_key: identity::PublicKey) -> Self {
@@ -29,16 +30,15 @@ impl BootstrapBehaviour {
         // FIXME: we're also missing the starting '/'
         const PROTOCOL_VERSION: &str = "starknet/0.9.1";
 
-        let mut kademlia_config = KademliaConfig::default();
+        let mut kademlia_config = kad::Config::default();
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
         kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         // FIXME: this make sure that the DHT we're implementing is incompatible with the "default" IPFS
         // DHT from libp2p.
-        kademlia_config
-            .set_protocol_names(vec![std::borrow::Cow::Borrowed(KADEMLIA_PROTOCOL_NAME)]);
+        kademlia_config.set_protocol_names(vec![StreamProtocol::new(KADEMLIA_PROTOCOL_NAME)]);
 
-        let kademlia = Kademlia::with_config(
+        let kademlia = kad::Behaviour::with_config(
             pub_key.to_peer_id(),
             MemoryStore::new(pub_key.to_peer_id()),
             kademlia_config,
@@ -67,7 +67,7 @@ pub enum BootstrapEvent {
     Dcutr(dcutr::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
-    Kademlia(KademliaEvent),
+    Kademlia(kad::Event),
 }
 
 impl From<relay::Event> for BootstrapEvent {
@@ -100,8 +100,8 @@ impl From<identify::Event> for BootstrapEvent {
     }
 }
 
-impl From<KademliaEvent> for BootstrapEvent {
-    fn from(event: KademliaEvent) -> Self {
+impl From<kad::Event> for BootstrapEvent {
+    fn from(event: kad::Event) -> Self {
         BootstrapEvent::Kademlia(event)
     }
 }

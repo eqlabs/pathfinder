@@ -4,11 +4,13 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
-use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
+use libp2p::identify;
+use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::request_response::{self, RequestId};
+use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
 use libp2p::swarm::SwarmEvent;
-use libp2p::{identify, PeerId};
+use libp2p::PeerId;
 use p2p_proto::block::{BlockBodiesResponseList, BlockHeadersResponse};
 use p2p_proto::event::EventsResponseList;
 use p2p_proto::receipt::ReceiptsResponseList;
@@ -34,7 +36,7 @@ pub struct MainLoop {
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
-    // 1. use keep alive to keep connections open
+    // 1. set the idle connection timeout to maximum value to keep connections open (earlier: keep alive::Behavior)
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
@@ -180,7 +182,7 @@ impl MainLoop {
 
                 Ok(())
             }
-            SwarmEvent::OutgoingConnectionError { peer_id, error } => {
+            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = peer_id {
                     self.peers.write().await.peer_dial_error(&peer_id);
 
@@ -195,6 +197,7 @@ impl MainLoop {
             SwarmEvent::ConnectionClosed {
                 peer_id,
                 num_established,
+                connection_id: _, // TODO consider tracking connection IDs for peers
                 ..
             } => {
                 if num_established == 0 {
@@ -205,7 +208,12 @@ impl MainLoop {
                 }
                 Ok(())
             }
-            SwarmEvent::Dialing(peer_id) => {
+            SwarmEvent::Dialing {
+                // The only API available to the caller [`crate::client::peer_aware::Client`] only allows for dialing
+                // **known** peers, so we can discard the `None` case here.
+                peer_id: Some(peer_id),
+                connection_id: _, // TODO consider tracking connection ids for peers
+            } => {
                 self.peers.write().await.peer_dialing(&peer_id);
                 tracing::debug!(%peer_id, "Dialing peer");
                 Ok(())
@@ -220,13 +228,31 @@ impl MainLoop {
                         identify::Info {
                             listen_addrs,
                             protocols,
+                            observed_addr,
                             ..
                         },
                 } = *e
                 {
+                    // Important change in libp2p-v0.52 compared to v0.51:
+                    //
+                    // https://github.com/libp2p/rust-libp2p/releases/tag/libp2p-v0.52.0
+                    //
+                    // As a consequence, the observed address reported by identify is no longer
+                    // considered an external address but just an address candidate.
+                    //
+                    // https://github.com/libp2p/rust-libp2p/blob/master/protocols/identify/CHANGELOG.md#0430
+                    //
+                    // Observed addresses (aka. external address candidates) of the local node, reported by a remote node via libp2p-identify,
+                    // are no longer automatically considered confirmed external addresses, in other words they are no longer trusted by default.
+                    // Instead users need to confirm the reported observed address either manually, or by using libp2p-autonat.
+                    // In trusted environments users can simply extract observed addresses from a
+                    // libp2p-identify::Event::Received { info: libp2p_identify::Info { observed_addr }} and confirm them via Swarm::add_external_address.
+
+                    self.swarm.add_external_address(observed_addr);
+
                     if protocols
                         .iter()
-                        .any(|p| p.as_bytes() == behaviour::KADEMLIA_PROTOCOL_NAME)
+                        .any(|p| p.as_ref() == behaviour::KADEMLIA_PROTOCOL_NAME)
                     {
                         for addr in &listen_addrs {
                             self.swarm
@@ -288,7 +314,7 @@ impl MainLoop {
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
                 match e {
-                    KademliaEvent::OutboundQueryProgressed {
+                    kad::Event::OutboundQueryProgressed {
                         step, result, id, ..
                     } => {
                         if step.last {
@@ -370,7 +396,7 @@ impl MainLoop {
                             self.test_query_progressed(id, result).await;
                         }
                     }
-                    KademliaEvent::RoutingUpdated {
+                    kad::Event::RoutingUpdated {
                         peer, is_new_peer, ..
                     } => {
                         if is_new_peer {
@@ -634,7 +660,7 @@ impl MainLoop {
                 match &event {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         let my_peerid = *self.swarm.local_peer_id();
-                        let address = address.clone().with(Protocol::P2p(my_peerid.into()));
+                        let address = address.clone().with(Protocol::P2p(my_peerid));
 
                         tracing::debug!(%address, "New listen");
                     }
@@ -669,7 +695,15 @@ impl MainLoop {
                         .behaviour_mut()
                         .kademlia
                         .add_address(&peer_id, addr.clone());
-                    match self.swarm.dial(addr.clone()) {
+                    match self.swarm.dial(
+                        // Dial a known peer with a given address only if it's not connected yet
+                        // and we haven't started dialing yet.
+                        DialOpts::peer_id(peer_id)
+                            .addresses(vec![addr.clone()])
+                            .condition(PeerCondition::Disconnected)
+                            .extend_addresses_through_behaviour() // TODO not sure if we need it
+                            .build(),
+                    ) {
                         Ok(_) => {
                             tracing::debug!(%addr, "Dialed peer");
                             e.insert(sender);

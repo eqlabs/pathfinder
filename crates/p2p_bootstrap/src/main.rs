@@ -6,11 +6,11 @@ use std::time::Duration;
 use clap::Parser;
 use futures::StreamExt;
 use libp2p::core::upgrade;
-use libp2p::identify::{Event as IdentifyEvent, Info as IdentifyInfo};
+use libp2p::identify;
 use libp2p::identity::Keypair;
-use libp2p::swarm::{SwarmBuilder, SwarmEvent};
-use libp2p::Transport;
-use libp2p::{dns, noise, Multiaddr};
+use libp2p::swarm::{Config, SwarmEvent};
+use libp2p::{dns, noise};
+use libp2p::{Multiaddr, Swarm, Transport};
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
@@ -45,17 +45,6 @@ impl zeroize::Zeroize for IdentityConfig {
     }
 }
 
-pub struct TokioExecutor();
-
-impl libp2p::swarm::Executor for TokioExecutor {
-    fn exec(
-        &self,
-        future: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'static + Send>>,
-    ) {
-        tokio::task::spawn(future);
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -82,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(%peer_id, "Starting up");
 
     let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new());
-    let transport = dns::TokioDnsConfig::system(transport).unwrap();
+    let transport = dns::tokio::Transport::system(transport).unwrap();
     let noise_config =
         noise::Config::new(&keypair).expect("Signing libp2p-noise static DH keypair failed.");
     let transport = transport
@@ -91,13 +80,12 @@ async fn main() -> anyhow::Result<()> {
         .multiplex(libp2p::yamux::Config::default())
         .boxed();
 
-    let mut swarm = SwarmBuilder::with_executor(
+    let mut swarm = Swarm::new(
         transport,
         behaviour::BootstrapBehaviour::new(keypair.public()),
         keypair.public().to_peer_id(),
-        TokioExecutor(),
-    )
-    .build();
+        Config::with_tokio_executor(),
+    );
 
     swarm.listen_on(args.listen_on)?;
 
@@ -129,19 +117,37 @@ async fn main() -> anyhow::Result<()> {
             Some(event) = swarm.next() => {
                 match event {
                     SwarmEvent::Behaviour(behaviour::BootstrapEvent::Identify(e)) => {
-                        if let IdentifyEvent::Received {
+                        if let identify::Event::Received {
                             peer_id,
                             info:
-                                IdentifyInfo {
+                                identify::Info {
                                     listen_addrs,
                                     protocols,
+                                    observed_addr,
                                     ..
                                 },
                         } = *e
                         {
+                            // Important change in libp2p-v0.52 compared to v0.51:
+                            //
+                            // https://github.com/libp2p/rust-libp2p/releases/tag/libp2p-v0.52.0
+                            //
+                            // As a consequence, the observed address reported by identify is no longer
+                            // considered an external address but just an address candidate.
+                            //
+                            // https://github.com/libp2p/rust-libp2p/blob/master/protocols/identify/CHANGELOG.md#0430
+                            //
+                            // Observed addresses (aka. external address candidates) of the local node, reported by a remote node via libp2p-identify,
+                            // are no longer automatically considered confirmed external addresses, in other words they are no longer trusted by default.
+                            // Instead users need to confirm the reported observed address either manually, or by using libp2p-autonat.
+                            // In trusted environments users can simply extract observed addresses from a
+                            // libp2p-identify::Event::Received { info: libp2p_identify::Info { observed_addr }} and confirm them via Swarm::add_external_address.
+
+                            swarm.add_external_address(observed_addr);
+
                             if protocols
                                 .iter()
-                                .any(|p| p.as_bytes() == behaviour::KADEMLIA_PROTOCOL_NAME)
+                                .any(|p| p.as_ref() == behaviour::KADEMLIA_PROTOCOL_NAME)
                             {
                                 for addr in listen_addrs {
                                     swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);

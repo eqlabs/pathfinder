@@ -75,7 +75,7 @@ impl Client {
             .await
     }
 
-    async fn get_update_peers_with_sync_capability(&self, capability: &[u8]) -> Vec<PeerId> {
+    async fn get_update_peers_with_sync_capability(&self, capability: &str) -> Vec<PeerId> {
         use rand::seq::SliceRandom;
 
         let r = self.peers_with_capability.read().await;
@@ -87,7 +87,7 @@ impl Client {
 
             let mut peers = self
                 .inner
-                .get_capability_providers(std::str::from_utf8(capability).expect("valid UTF-8"))
+                .get_capability_providers(capability)
                 .await
                 .unwrap_or_default();
 
@@ -392,7 +392,7 @@ impl Client {
 
 #[derive(Clone, Debug)]
 struct PeersWithCapability {
-    set: HashMap<Vec<u8>, HashSet<PeerId>>,
+    set: HashMap<String, HashSet<PeerId>>,
     last_update: std::time::Instant,
     timeout: Duration,
 }
@@ -407,7 +407,7 @@ impl PeersWithCapability {
     }
 
     /// Does not clear if elapsed, instead the caller is expected to call [`Self::update`]
-    pub fn get(&self, capability: &[u8]) -> Option<&HashSet<PeerId>> {
+    pub fn get(&self, capability: &str) -> Option<&HashSet<PeerId>> {
         if self.last_update.elapsed() > self.timeout {
             None
         } else {
@@ -415,7 +415,7 @@ impl PeersWithCapability {
         }
     }
 
-    pub fn update(&mut self, capability: &[u8], peers: HashSet<PeerId>) {
+    pub fn update(&mut self, capability: &str, peers: HashSet<PeerId>) {
         self.last_update = std::time::Instant::now();
         self.set.insert(capability.to_owned(), peers);
     }

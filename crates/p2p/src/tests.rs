@@ -163,7 +163,7 @@ async fn periodic_bootstrap() {
     let mut peer2 = TestPeer::new(periodic_cfg);
 
     let mut boot_addr = boot.start_listening().await.unwrap();
-    boot_addr.push(Protocol::P2p(boot.peer_id.into()));
+    boot_addr.push(Protocol::P2p(boot.peer_id));
 
     let addr1 = peer1.start_listening().await.unwrap();
     let addr2 = peer2.start_listening().await.unwrap();
