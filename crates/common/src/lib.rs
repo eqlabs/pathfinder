@@ -180,6 +180,10 @@ impl TransactionVersion {
         self
     }
 
+    pub const fn has_query_version(&self) -> bool {
+        self.0 .0[15] & 0b0000_0001 != 0
+    }
+
     pub const ZERO: Self = Self(H256::zero());
     pub const ONE: Self = Self(H256([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

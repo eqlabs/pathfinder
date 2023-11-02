@@ -40,7 +40,7 @@ async-trait = "0.1.73"
 axum = { version = "0.6.19", features = ["macros"] }
 base64 = "0.13.1"
 bitvec = "1.0.1"
-blockifier = { git = "https://github.com/starkware-libs/blockifier", rev = "16e60551ba0f55a110e9c0acb2c16ec43b3758c4" }
+blockifier = { git = "https://github.com/starkware-libs/blockifier", rev = "b5dfbd31ff879cb8309b1e5e21d8f8556c796b6a" }
 bytes = "1.4.0"
 # This one needs to match the version used by blockifier
 cairo-vm = "=0.8.2"
