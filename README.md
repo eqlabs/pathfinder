@@ -330,6 +330,10 @@ These __will not work__:
 - `block_download` time taken to download current block's data excluding classes
 - `block_processing` time taken to process and store the current block
 
+### Build info metrics
+
+- `pathfinder_build_info` reports curent version as a `version` property
+
 ## License
 
 Licensed under either of
