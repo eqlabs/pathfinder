@@ -6,13 +6,11 @@ use std::time::Duration;
 use clap::Parser;
 use futures::StreamExt;
 use libp2p::core::upgrade;
-use libp2p::dns;
-use libp2p::identify::{Event as IdentifyEvent, Info as IdentifyInfo};
+use libp2p::identify;
 use libp2p::identity::Keypair;
-use libp2p::noise;
-use libp2p::swarm::{SwarmBuilder, SwarmEvent};
-use libp2p::Multiaddr;
-use libp2p::Transport;
+use libp2p::swarm::{Config, SwarmEvent};
+use libp2p::{dns, noise};
+use libp2p::{Multiaddr, Swarm, Transport};
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
@@ -47,17 +45,6 @@ impl zeroize::Zeroize for IdentityConfig {
     }
 }
 
-pub struct TokioExecutor();
-
-impl libp2p::swarm::Executor for TokioExecutor {
-    fn exec(
-        &self,
-        future: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'static + Send>>,
-    ) {
-        tokio::task::spawn(future);
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -84,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(%peer_id, "Starting up");
 
     let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new());
-    let transport = dns::TokioDnsConfig::system(transport).unwrap();
+    let transport = dns::tokio::Transport::system(transport).unwrap();
     let noise_config =
         noise::Config::new(&keypair).expect("Signing libp2p-noise static DH keypair failed.");
     let transport = transport
@@ -93,13 +80,12 @@ async fn main() -> anyhow::Result<()> {
         .multiplex(libp2p::yamux::Config::default())
         .boxed();
 
-    let mut swarm = SwarmBuilder::with_executor(
+    let mut swarm = Swarm::new(
         transport,
         behaviour::BootstrapBehaviour::new(keypair.public()),
         keypair.public().to_peer_id(),
-        TokioExecutor(),
-    )
-    .build();
+        Config::with_tokio_executor(),
+    );
 
     swarm.listen_on(args.listen_on)?;
 
@@ -131,10 +117,10 @@ async fn main() -> anyhow::Result<()> {
             Some(event) = swarm.next() => {
                 match event {
                     SwarmEvent::Behaviour(behaviour::BootstrapEvent::Identify(e)) => {
-                        if let IdentifyEvent::Received {
+                        if let identify::Event::Received {
                             peer_id,
                             info:
-                                IdentifyInfo {
+                                identify::Info {
                                     listen_addrs,
                                     protocols,
                                     observed_addr,
