@@ -7,7 +7,7 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.9.4] - 2023-11-02
 
 ### Changed
 
@@ -16,11 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - RPC errors do not always include the root cause. For example, some gateway error messages are not output when pathfinder forwards the request.
-- RPC trace object uses wrong property `reverted_reason` instead of `revert_reason`
-- RPC execution steps limits have been updated to match the setup of the Starknet sequencer
+- RPC trace object uses wrong property `reverted_reason` instead of `revert_reason`.
+- RPC execution steps limits have been updated to match the setup of the Starknet sequencer.
+- RPC query version bit is now correctly passed through to the blockifier.
 
 ### Added
 
+- RPC v0.5.0 support
 - Added the ability to concurrently process RPC batches, see the `rpc.batch-concurrency-limit` CLI argument.
 
 ## [0.9.3] - 2023-10-16
