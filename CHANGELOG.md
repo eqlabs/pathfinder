@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - RPC errors do not always include the root cause. For example, some gateway error messages are not output when pathfinder forwards the request.
 - RPC trace object uses wrong property `reverted_reason` instead of `revert_reason`
+- RPC execution steps limits have been updated to match the setup of the Starknet sequencer
 
 ### Added
 
