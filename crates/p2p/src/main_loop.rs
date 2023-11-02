@@ -660,7 +660,7 @@ impl MainLoop {
                 match &event {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         let my_peerid = *self.swarm.local_peer_id();
-                        let address = address.clone().with(Protocol::P2p(my_peerid.into()));
+                        let address = address.clone().with(Protocol::P2p(my_peerid));
 
                         tracing::debug!(%address, "New listen");
                     }
