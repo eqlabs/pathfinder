@@ -8,9 +8,8 @@ use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::record::Key;
 use libp2p::request_response::ResponseChannel;
-use libp2p::swarm::SwarmBuilder;
-use libp2p::Multiaddr;
-use libp2p::PeerId;
+use libp2p::swarm::Config;
+use libp2p::{Multiaddr, PeerId, Swarm};
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
     NewBlock,
@@ -23,7 +22,6 @@ use tokio::sync::{mpsc, oneshot, RwLock};
 
 mod behaviour;
 pub mod client;
-mod executor;
 mod main_loop;
 mod peers;
 mod sync;
@@ -49,13 +47,21 @@ pub fn new(
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
 
-    let swarm = SwarmBuilder::with_executor(
+    let swarm = Swarm::new(
         transport::create(&keypair, relay_transport),
         behaviour,
         local_peer_id,
-        executor::TokioExecutor(),
-    )
-    .build();
+        // libp2p v0.52 related change: `libp2p::swarm::keep_alive`` has been deprecated and
+        // it is advised to set the idle connection timeout to maximum value instead.
+        //
+        // TODO but ultimately do we really need keep_alive?
+        // 1. sync status message was removed in the latest spec, but as we used it partially to
+        //    maintain connection with peers, we're using keep alive instead
+        // 2. I'm not sure if we really need keep alive, as connections should be closed when not used
+        //    because they consume resources, and in general we should be managing connections in a wiser manner,
+        //    the deprecated `libp2p::swarm::keep_alive::Behaviour` was supposed to be mostly used for testing anyway.
+        Config::with_tokio_executor().with_idle_connection_timeout(Duration::MAX),
+    );
 
     let (command_sender, command_receiver) = mpsc::channel(1);
     let (event_sender, event_receiver) = mpsc::channel(1);

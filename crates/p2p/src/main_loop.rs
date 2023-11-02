@@ -5,7 +5,7 @@ use std::sync::Arc;
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identify;
-use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
+use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::request_response::{self, RequestId};
 use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
@@ -36,7 +36,7 @@ pub struct MainLoop {
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
-    // 1. use keep alive to keep connections open
+    // 1. set the idle connection timeout to maximum value to keep connections open (earlier: keep alive::Behavior)
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
@@ -314,7 +314,7 @@ impl MainLoop {
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
                 match e {
-                    KademliaEvent::OutboundQueryProgressed {
+                    kad::Event::OutboundQueryProgressed {
                         step, result, id, ..
                     } => {
                         if step.last {
@@ -396,7 +396,7 @@ impl MainLoop {
                             self.test_query_progressed(id, result).await;
                         }
                     }
-                    KademliaEvent::RoutingUpdated {
+                    kad::Event::RoutingUpdated {
                         peer, is_new_peer, ..
                     } => {
                         if is_new_peer {
