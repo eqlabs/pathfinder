@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- RPC methods now uses an empty block for pending data if no viable pending data is present. Requests for pending data will no longer fail with `BlockNotFound` if there is no pending data available, but rather use an empty block on-top of the latest local block.
+- RPC methods now use an empty block for pending data if no viable pending data is present. Requests for pending data will no longer fail with `BlockNotFound` if there is no pending data available, but rather use an empty block on-top of the latest local block.
 
 ### Fixed
 
