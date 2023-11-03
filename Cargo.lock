@@ -4596,7 +4596,7 @@ dependencies = [
  "libp2p-ping",
  "libp2p-quic",
  "libp2p-relay",
- "libp2p-request-response 0.26.0",
+ "libp2p-request-response",
  "libp2p-swarm 0.44.0",
  "libp2p-tcp",
  "libp2p-upnp",
@@ -4644,7 +4644,7 @@ dependencies = [
  "instant",
  "libp2p-core 0.41.0",
  "libp2p-identity",
- "libp2p-request-response 0.26.0",
+ "libp2p-request-response",
  "libp2p-swarm 0.44.0",
  "quick-protobuf",
  "quick-protobuf-codec",
@@ -5007,19 +5007,6 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "tracing",
- "void",
-]
-
-[[package]]
-name = "libp2p-request-response"
-version = "0.25.2"
-dependencies = [
- "async-trait",
- "futures",
- "libp2p 0.52.4",
- "log",
- "rand",
- "smallvec",
  "void",
 ]
 
@@ -5909,6 +5896,19 @@ dependencies = [
  "unsigned-varint 0.8.0",
  "void",
  "zeroize",
+]
+
+[[package]]
+name = "p2p-rrs"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "libp2p 0.52.4",
+ "log",
+ "rand",
+ "smallvec",
+ "void",
 ]
 
 [[package]]

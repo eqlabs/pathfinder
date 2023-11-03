@@ -1,19 +1,16 @@
 [package]
-name = "libp2p-request-response"
+name = "p2p-rrs"
+version = "0.1.0"
 edition = "2021"
-description = "Generic Request/Response Protocols"
-version = "0.25.2"
-authors = ["Parity Technologies <admin@parity.io>"]
-license = "MIT"
-repository = "https://github.com/libp2p/rust-libp2p"
-keywords = ["peer-to-peer", "libp2p", "networking"]
-categories = ["network-programming", "asynchronous"]
+description = "Libp2p Request/Response-Stream protocol for Pathfinder P2P"
+license = "MIT OR Apache-2.0"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-trait = "0.1"
-futures = "0.3.28"
-libp2p = { version = "0.52.4", default-features = false, features = [] }
-rand = "0.8"
+async-trait = { workspace = true }
+futures = { workspace = true }
+libp2p = { version = "0.52.4", default-features = false }
+rand = { workspace = true }
 smallvec = "1.11.1"
 void = "1.0.2"
 log = "0.4.20"
