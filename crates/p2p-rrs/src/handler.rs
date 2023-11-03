@@ -291,7 +291,7 @@ where
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<
-        ConnectionHandlerEvent<RequestProtocol<TCodec>, RequestId, Self::ToBehaviour, Self::Error>,
+        ConnectionHandlerEvent<RequestProtocol<TCodec>, RequestId, Self::ToBehaviour, void::Void>,
     > {
         // Drain pending events.
         if let Some(event) = self.pending_events.pop_front() {
