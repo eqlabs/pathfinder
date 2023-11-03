@@ -1,8 +1,9 @@
 [package]
 name = "p2p_proto_derive"
 version = "0.1.0"
-edition = "2021"
-license = "MIT"
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
 
 [lib]
 proc-macro = true
