@@ -39,14 +39,6 @@
 //! receiving a [`Message::Request`] via
 //! [`Event::Message`].
 //!
-//! ## Predefined codecs
-//!
-//! In case your message types implement [`serde::Serialize`] and [`serde::Deserialize`],
-//! you can use two predefined behaviours:
-//!
-//! - [`cbor::Behaviour`] for CBOR-encoded messages
-//! - [`json::Behaviour`] for JSON-encoded messages
-//!
 //! ## Protocol Families
 //!
 //! A single [`Behaviour`] instance can be used with an entire
