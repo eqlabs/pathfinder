@@ -33,6 +33,11 @@ inherits = "release"
 codegen-units = 1
 lto = true
 
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.72"
+
 [workspace.dependencies]
 anyhow = "1.0.75"
 assert_matches = "1.5.0"

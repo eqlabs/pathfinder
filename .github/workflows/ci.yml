@@ -89,7 +89,7 @@ jobs:
       - name: read msrv
         id: msrv
         run: |
-          msrv=$(grep -P "rust-version =" crates/pathfinder/Cargo.toml | awk '{print $3}' | tr -d '"')
+          msrv=$(grep -P "rust-version =" Cargo.toml | awk '{print $3}' | tr -d '"')
           echo Found msrc: $msrv
           echo "MSRV=$msrv" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@master
