@@ -53,16 +53,6 @@
 //! protocol family that share the same request and response types.
 //! For that purpose, [`Codec::Protocol`] is typically
 //! instantiated with a sum type.
-//!
-//! ## Limited Protocol Support
-//!
-//! It is possible to only support inbound or outbound requests for
-//! a particular protocol. This is achieved by instantiating `Behaviour`
-//! with protocols using [`ProtocolSupport::Inbound`] or
-//! [`ProtocolSupport::Outbound`]. Any subset of protocols of a protocol
-//! family can be configured in this way. Such protocols will not be
-//! advertised during inbound respectively outbound protocol negotiation
-//! on the substreams.
 
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
@@ -70,7 +60,6 @@ mod codec;
 mod handler;
 
 pub use codec::Codec;
-pub use handler::ProtocolSupport;
 
 use crate::handler::protocol::RequestProtocol;
 use futures::channel::oneshot;
@@ -305,10 +294,8 @@ pub struct Behaviour<TCodec>
 where
     TCodec: Codec + Clone + Send + 'static,
 {
-    /// The supported inbound protocols.
-    inbound_protocols: SmallVec<[TCodec::Protocol; 2]>,
-    /// The supported outbound protocols.
-    outbound_protocols: SmallVec<[TCodec::Protocol; 2]>,
+    /// The supported protocols.
+    protocols: SmallVec<[TCodec::Protocol; 2]>,
     /// The next (local) request ID.
     next_request_id: RequestId,
     /// The next (inbound) request ID.
@@ -337,7 +324,7 @@ where
     /// Creates a new `Behaviour` for the given protocols and configuration, using [`Default`] to construct the codec.
     pub fn new<I>(protocols: I, cfg: Config) -> Self
     where
-        I: IntoIterator<Item = (TCodec::Protocol, ProtocolSupport)>,
+        I: IntoIterator<Item = TCodec::Protocol>,
     {
         Self::with_codec(TCodec::default(), protocols, cfg)
     }
@@ -351,21 +338,10 @@ where
     /// protocols, codec and configuration.
     pub fn with_codec<I>(codec: TCodec, protocols: I, cfg: Config) -> Self
     where
-        I: IntoIterator<Item = (TCodec::Protocol, ProtocolSupport)>,
+        I: IntoIterator<Item = TCodec::Protocol>,
     {
-        let mut inbound_protocols = SmallVec::new();
-        let mut outbound_protocols = SmallVec::new();
-        for (p, s) in protocols {
-            if s.inbound() {
-                inbound_protocols.push(p.clone());
-            }
-            if s.outbound() {
-                outbound_protocols.push(p.clone());
-            }
-        }
         Behaviour {
-            inbound_protocols,
-            outbound_protocols,
+            protocols: protocols.into_iter().collect(),
             next_request_id: RequestId(1),
             next_inbound_id: Arc::new(AtomicU64::new(1)),
             config: cfg,
@@ -394,7 +370,7 @@ where
         let request = RequestProtocol {
             request_id,
             codec: self.codec.clone(),
-            protocols: self.outbound_protocols.clone(),
+            protocols: self.protocols.clone(),
             request,
         };
 
@@ -701,7 +677,7 @@ where
         _: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::new(
-            self.inbound_protocols.clone(),
+            self.protocols.clone(),
             self.codec.clone(),
             self.config.request_timeout,
             self.config.connection_keep_alive,
@@ -744,7 +720,7 @@ where
         _: Endpoint,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::new(
-            self.inbound_protocols.clone(),
+            self.protocols.clone(),
             self.codec.clone(),
             self.config.request_timeout,
             self.config.connection_keep_alive,

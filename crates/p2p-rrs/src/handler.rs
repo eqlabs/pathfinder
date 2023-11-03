@@ -20,8 +20,6 @@
 
 pub(crate) mod protocol;
 
-pub use protocol::ProtocolSupport;
-
 use crate::codec::Codec;
 use crate::handler::protocol::{RequestProtocol, ResponseProtocol};
 use crate::{RequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
