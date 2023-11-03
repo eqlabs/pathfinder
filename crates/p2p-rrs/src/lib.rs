@@ -54,7 +54,7 @@ mod handler;
 pub use codec::Codec;
 
 use crate::handler::protocol::RequestProtocol;
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use handler::Handler;
 use libp2p::core::{ConnectedPoint, Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
@@ -73,6 +73,7 @@ use std::{
     time::Duration,
 };
 
+/// TODO remove
 /// An inbound request or response.
 #[derive(Debug)]
 pub enum Message<TRequest, TResponse, TChannelResponse = TResponse> {
@@ -103,6 +104,31 @@ pub enum Message<TRequest, TResponse, TChannelResponse = TResponse> {
 /// The events emitted by a request-response [`Behaviour`].
 #[derive(Debug)]
 pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
+    /// An incoming request from another peer.
+    InboundRequest {
+        /// The peer who sent the request.
+        peer: PeerId,
+        /// The ID of the request.
+        request_id: RequestId,
+        /// The request message.
+        request: TRequest,
+        /// The channel through which we are expected to send responses.
+        ///
+        /// TODO handle the channel related errors
+        channel: mpsc::Sender<TChannelResponse>,
+    },
+    /// Outbound request to another peer was accepted and we can now await responses.
+    OutboundRequestAcceptedAwaitingResponses {
+        /// The peer who received our request.
+        peer: PeerId,
+        /// The ID of the outbound request.
+        request_id: RequestId,
+        /// The channel through which we can receive the responses.
+        ///
+        /// TODO handle the channel related errors
+        channel: mpsc::Receiver<TResponse>,
+    },
+    /// TODO remove
     /// An incoming message (request or response).
     Message {
         /// The peer who sent the message.
@@ -128,6 +154,7 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The error that occurred.
         error: InboundFailure,
     },
+    /// TODO remove
     /// A response to an inbound request has been sent.
     ///
     /// When this event is received, the response has been flushed on
@@ -140,6 +167,7 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
     },
 }
 
+/// TODO thiserror
 /// Possible failures occurring in the context of sending
 /// an outbound request and receiving the response.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +205,7 @@ impl fmt::Display for OutboundFailure {
 
 impl std::error::Error for OutboundFailure {}
 
+/// TODO thiserror
 /// Possible failures occurring in the context of receiving an
 /// inbound request and sending a response.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,6 +249,7 @@ impl fmt::Display for InboundFailure {
 
 impl std::error::Error for InboundFailure {}
 
+/// TODO remove
 /// A channel for sending a response to an inbound request.
 ///
 /// See [`Behaviour::send_response`].

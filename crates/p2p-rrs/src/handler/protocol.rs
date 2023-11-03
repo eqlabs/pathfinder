@@ -26,7 +26,11 @@
 use crate::codec::Codec;
 use crate::RequestId;
 
-use futures::{channel::oneshot, future::BoxFuture, prelude::*};
+use futures::{
+    channel::{mpsc, oneshot},
+    future::BoxFuture,
+    prelude::*,
+};
 use libp2p::core::upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
 use libp2p::swarm::Stream;
 use smallvec::SmallVec;
