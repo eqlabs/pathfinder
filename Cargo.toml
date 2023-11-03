@@ -13,6 +13,7 @@ members = [
     "crates/p2p_proto",
     "crates/p2p_proto_derive",
     "crates/pathfinder",
+    "crates/request-response",
     "crates/retry",
     "crates/rpc",
     "crates/serde",

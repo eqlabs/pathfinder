@@ -79,9 +79,9 @@ pub use handler::ProtocolSupport;
 use crate::handler::protocol::RequestProtocol;
 use futures::channel::oneshot;
 use handler::Handler;
-use libp2p_core::{ConnectedPoint, Endpoint, Multiaddr};
-use libp2p_identity::PeerId;
-use libp2p_swarm::{
+use libp2p::core::{ConnectedPoint, Endpoint, Multiaddr};
+use libp2p::identity::PeerId;
+use libp2p::swarm::{
     behaviour::{AddressChange, ConnectionClosed, DialFailure, FromSwarm},
     dial_opts::DialOpts,
     ConnectionDenied, ConnectionHandler, ConnectionId, NetworkBehaviour, NotifyHandler,

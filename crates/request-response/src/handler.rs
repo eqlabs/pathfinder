@@ -28,11 +28,11 @@ use crate::{RequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
 
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use instant::Instant;
-use libp2p_swarm::handler::{
+use libp2p::swarm::handler::{
     ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound, FullyNegotiatedOutbound,
     ListenUpgradeError,
 };
-use libp2p_swarm::{
+use libp2p::swarm::{
     handler::{ConnectionHandler, ConnectionHandlerEvent, KeepAlive, StreamUpgradeError},
     SubstreamProtocol,
 };

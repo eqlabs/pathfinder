@@ -46,7 +46,7 @@ mod codec {
     use async_trait::async_trait;
     use futures::prelude::*;
     use futures::{AsyncRead, AsyncWrite};
-    use libp2p_swarm::StreamProtocol;
+    use libp2p::swarm::StreamProtocol;
     use serde::{de::DeserializeOwned, Serialize};
     use std::{io, marker::PhantomData};
 
