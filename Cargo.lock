@@ -5905,9 +5905,9 @@ dependencies = [
  "async-trait",
  "futures",
  "libp2p 0.52.4",
- "log",
  "rand",
  "smallvec",
+ "tracing",
  "void",
 ]
 

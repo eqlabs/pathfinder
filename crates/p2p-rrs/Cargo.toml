@@ -12,5 +12,5 @@ futures = { workspace = true }
 libp2p = { version = "0.52.4", default-features = false }
 rand = { workspace = true }
 smallvec = "1.11.1"
+tracing = { workspace = true }
 void = "1.0.2"
-log = "0.4.20"
