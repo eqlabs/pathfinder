@@ -66,12 +66,8 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-#[cfg(feature = "cbor")]
-pub mod cbor;
 mod codec;
 mod handler;
-#[cfg(feature = "json")]
-pub mod json;
 
 pub use codec::Codec;
 pub use handler::ProtocolSupport;
