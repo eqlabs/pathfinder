@@ -5016,7 +5016,6 @@ version = "0.25.2"
 dependencies = [
  "async-trait",
  "futures",
- "instant",
  "libp2p 0.52.4",
  "log",
  "rand",
