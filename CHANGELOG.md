@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - RPC v0.5.0 support
 - Added the ability to concurrently process RPC batches, see the `rpc.batch-concurrency-limit` CLI argument.
+- The `pathfinder_build_info` metric having `version` label to report current version of Pathfinder.
 
 ## [0.9.3] - 2023-10-16
 
