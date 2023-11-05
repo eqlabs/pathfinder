@@ -172,19 +172,19 @@ pub mod types {
         #[serde(with = "u64_as_hex_str")]
         pub memory_holes: u64,
         #[serde(with = "u64_as_hex_str")]
-        pub range_check_builtin: u64,
+        pub range_check_builtin_applications: u64,
         #[serde(with = "u64_as_hex_str")]
-        pub pedersen_builtin: u64,
+        pub pedersen_builtin_applications: u64,
         #[serde(with = "u64_as_hex_str")]
-        pub poseidon_builtin: u64,
+        pub poseidon_builtin_applications: u64,
         #[serde(with = "u64_as_hex_str")]
-        pub ec_op_builtin: u64,
+        pub ec_op_builtin_applications: u64,
         #[serde(with = "u64_as_hex_str")]
-        pub ecdsa_builtin: u64,
+        pub ecdsa_builtin_applications: u64,
         #[serde(with = "u64_as_hex_str")]
-        pub bitwise_builtin: u64,
+        pub bitwise_builtin_applications: u64,
         #[serde(with = "u64_as_hex_str")]
-        pub keccak_builtin: u64,
+        pub keccak_builtin_applications: u64,
     }
 
     impl From<ExecutionResources> for ExecutionResourcesProperties {
@@ -211,13 +211,13 @@ pub mod types {
             Self {
                 steps: n_steps,
                 memory_holes: n_memory_holes,
-                range_check_builtin,
-                pedersen_builtin,
-                poseidon_builtin,
-                ec_op_builtin,
-                ecdsa_builtin,
-                bitwise_builtin,
-                keccak_builtin,
+                range_check_builtin_applications: range_check_builtin,
+                pedersen_builtin_applications: pedersen_builtin,
+                poseidon_builtin_applications: poseidon_builtin,
+                ec_op_builtin_applications: ec_op_builtin,
+                ecdsa_builtin_applications: ecdsa_builtin,
+                bitwise_builtin_applications: bitwise_builtin,
+                keccak_builtin_applications: keccak_builtin,
             }
         }
     }
@@ -682,31 +682,31 @@ mod tests {
         assert_eq!(into.steps, original.n_steps);
         assert_eq!(into.memory_holes, original.n_memory_holes);
         assert_eq!(
-            into.range_check_builtin,
+            into.range_check_builtin_applications,
             original.builtin_instance_counter.range_check_builtin
         );
         assert_eq!(
-            into.pedersen_builtin,
+            into.pedersen_builtin_applications,
             original.builtin_instance_counter.pedersen_builtin
         );
         assert_eq!(
-            into.poseidon_builtin,
+            into.poseidon_builtin_applications,
             original.builtin_instance_counter.poseidon_builtin
         );
         assert_eq!(
-            into.ec_op_builtin,
+            into.ec_op_builtin_applications,
             original.builtin_instance_counter.ec_op_builtin
         );
         assert_eq!(
-            into.ecdsa_builtin,
+            into.ecdsa_builtin_applications,
             original.builtin_instance_counter.ecdsa_builtin
         );
         assert_eq!(
-            into.bitwise_builtin,
+            into.bitwise_builtin_applications,
             original.builtin_instance_counter.bitwise_builtin
         );
         assert_eq!(
-            into.keccak_builtin,
+            into.keccak_builtin_applications,
             original.builtin_instance_counter.keccak_builtin
         );
     }
@@ -814,15 +814,15 @@ mod tests {
             "transaction_hash": transaction_hash_bytes!(b"txn reverted"),
             "actual_fee": "0x0",
             "execution_resources": {
-                "bitwise_builtin": "0x0",
-                "ec_op_builtin": "0x0",
-                "ecdsa_builtin": "0x0",
-                "keccak_builtin": "0x0",
+                "bitwise_builtin_applications": "0x0",
+                "ec_op_builtin_applications": "0x0",
+                "ecdsa_builtin_applications": "0x0",
+                "keccak_builtin_applications": "0x0",
                 "memory_holes": "0x0",
                 "steps": "0x0",
-                "pedersen_builtin": "0x0",
-                "poseidon_builtin": "0x0",
-                "range_check_builtin": "0x0",
+                "pedersen_builtin_applications": "0x0",
+                "poseidon_builtin_applications": "0x0",
+                "range_check_builtin_applications": "0x0",
             },
             "execution_status": "REVERTED",
             "finality_status": "ACCEPTED_ON_L2",
