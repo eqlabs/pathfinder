@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: false
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
