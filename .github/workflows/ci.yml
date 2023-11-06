@@ -64,8 +64,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.3
       - run: cargo fmt --all -- --check
 
   doc:
