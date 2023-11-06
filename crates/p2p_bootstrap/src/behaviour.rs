@@ -4,7 +4,7 @@ use libp2p::autonat;
 use libp2p::dcutr;
 use libp2p::identify;
 use libp2p::identity;
-use libp2p::kad::{self, record::store::MemoryStore};
+use libp2p::kad::{self, store::MemoryStore};
 use libp2p::ping;
 use libp2p::relay;
 use libp2p::swarm::NetworkBehaviour;

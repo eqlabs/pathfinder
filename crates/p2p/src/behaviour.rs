@@ -8,7 +8,7 @@ use libp2p::dcutr;
 use libp2p::gossipsub::{self, IdentTopic, MessageAuthenticity, MessageId};
 use libp2p::identify;
 use libp2p::identity;
-use libp2p::kad::{self, record::store::MemoryStore};
+use libp2p::kad::{self, store::MemoryStore};
 use libp2p::ping;
 use libp2p::relay;
 use libp2p::request_response::{self, ProtocolSupport};
@@ -223,10 +223,10 @@ impl From<request_response::Event<EventsRequest, EventsResponseList>> for Event 
     }
 }
 
-fn string_to_key(input: &str) -> kad::record::Key {
+fn string_to_key(input: &str) -> kad::RecordKey {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let result = hasher.finalize();
-    kad::record::Key::new(&result.as_slice())
+    kad::RecordKey::new(&result.as_slice())
 }

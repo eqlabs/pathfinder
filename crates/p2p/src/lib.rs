@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
-use libp2p::kad::record::Key;
+use libp2p::kad::RecordKey;
 use libp2p::request_response::ResponseChannel;
 use libp2p::swarm::Config;
 use libp2p::{Multiaddr, PeerId, Swarm};
@@ -224,7 +224,7 @@ pub enum Event {
 pub enum TestEvent {
     NewListenAddress(Multiaddr),
     PeriodicBootstrapCompleted(Result<PeerId, PeerId>),
-    StartProvidingCompleted(Result<Key, Key>),
+    StartProvidingCompleted(Result<RecordKey, RecordKey>),
     ConnectionEstablished { outbound: bool, remote: PeerId },
     Subscribed { remote: PeerId, topic: String },
     PeerAddedToDHT { remote: PeerId },

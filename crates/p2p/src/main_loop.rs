@@ -7,7 +7,7 @@ use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identify;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
-use libp2p::request_response::{self, RequestId};
+use libp2p::request_response::{self, OutboundRequestId};
 use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
 use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
@@ -45,11 +45,13 @@ pub struct MainLoop {
 
 #[derive(Debug, Default)]
 struct PendingRequests {
-    pub headers: HashMap<RequestId, oneshot::Sender<anyhow::Result<BlockHeadersResponse>>>,
-    pub bodies: HashMap<RequestId, oneshot::Sender<anyhow::Result<BlockBodiesResponseList>>>,
-    pub transactions: HashMap<RequestId, oneshot::Sender<anyhow::Result<TransactionsResponseList>>>,
-    pub receipts: HashMap<RequestId, oneshot::Sender<anyhow::Result<ReceiptsResponseList>>>,
-    pub events: HashMap<RequestId, oneshot::Sender<anyhow::Result<EventsResponseList>>>,
+    pub headers: HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<BlockHeadersResponse>>>,
+    pub bodies:
+        HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<BlockBodiesResponseList>>>,
+    pub transactions:
+        HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<TransactionsResponseList>>>,
+    pub receipts: HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<ReceiptsResponseList>>>,
+    pub events: HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<EventsResponseList>>>,
 }
 
 #[derive(Debug, Default)]
@@ -139,19 +141,12 @@ impl MainLoop {
                         None => return,
                     }
                 }
-                Some(event) = self.swarm.next() => {
-                    if let Err(e) = self.handle_event(event).await {
-                        tracing::error!("event handling failed: {}", e);
-                    }
-                },
+                Some(event) = self.swarm.next() => self.handle_event(event).await,
             }
         }
     }
 
-    async fn handle_event<E: std::fmt::Debug>(
-        &mut self,
-        event: SwarmEvent<behaviour::Event, E>,
-    ) -> anyhow::Result<()> {
+    async fn handle_event(&mut self, event: SwarmEvent<behaviour::Event>) {
         match event {
             // ===========================
             // Connection management
@@ -179,8 +174,6 @@ impl MainLoop {
                     },
                 )
                 .await;
-
-                Ok(())
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = peer_id {
@@ -192,7 +185,6 @@ impl MainLoop {
                         let _ = sender.send(Err(error.into()));
                     }
                 }
-                Ok(())
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
@@ -206,7 +198,6 @@ impl MainLoop {
                 } else {
                     tracing::debug!(%peer_id, other_connections_for_this_peer=%num_established, "Connection closed");
                 }
-                Ok(())
             }
             SwarmEvent::Dialing {
                 // The only API available to the caller [`crate::client::peer_aware::Client`] only allows for dialing
@@ -216,7 +207,6 @@ impl MainLoop {
             } => {
                 self.peers.write().await.peer_dialing(&peer_id);
                 tracing::debug!(%peer_id, "Dialing peer");
-                Ok(())
             }
             // ===========================
             // Identify
@@ -268,7 +258,6 @@ impl MainLoop {
                         }
                     }
                 }
-                Ok(())
             }
             // ===========================
             // Block propagation
@@ -296,7 +285,8 @@ impl MainLoop {
                                         from: peer_id,
                                         new_block,
                                     })
-                                    .await?;
+                                    .await
+                                    .expect("Event receiver not to be dropped");
                             }
                             Err(error) => {
                                 tracing::error!(from=%peer_id, %error, "Gossipsub Message")
@@ -307,111 +297,104 @@ impl MainLoop {
                         tracing::error!(from=%peer_id, %error, "Gossipsub Message");
                     }
                 };
-                Ok(())
             }
             // ===========================
             // Discovery
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
-                match e {
-                    kad::Event::OutboundQueryProgressed {
-                        step, result, id, ..
-                    } => {
-                        if step.last {
-                            match result {
-                                libp2p::kad::QueryResult::Bootstrap(result) => {
-                                    let network_info = self.swarm.network_info();
-                                    let num_peers = network_info.num_peers();
-                                    let connection_counters = network_info.connection_counters();
-                                    let num_connections = connection_counters.num_connections();
+            SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => match e {
+                kad::Event::OutboundQueryProgressed {
+                    step, result, id, ..
+                } => {
+                    if step.last {
+                        match result {
+                            libp2p::kad::QueryResult::Bootstrap(result) => {
+                                let network_info = self.swarm.network_info();
+                                let num_peers = network_info.num_peers();
+                                let connection_counters = network_info.connection_counters();
+                                let num_connections = connection_counters.num_connections();
 
-                                    let result = match result {
-                                        Ok(BootstrapOk { peer, .. }) => {
-                                            tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
-                                            Ok(peer)
-                                        }
-                                        Err(BootstrapError::Timeout { peer, .. }) => {
-                                            tracing::warn!(%num_peers, %num_connections, "Periodic bootstrap failed");
-                                            Err(peer)
-                                        }
-                                    };
-                                    send_test_event(
-                                        &self.event_sender,
-                                        TestEvent::PeriodicBootstrapCompleted(result),
-                                    )
-                                    .await;
-                                }
-                                QueryResult::GetProviders(result) => {
-                                    use libp2p::kad::GetProvidersOk;
-
-                                    let result = match result {
-                                        Ok(GetProvidersOk::FoundProviders {
-                                            providers, ..
-                                        }) => Ok(providers),
-                                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
-                                            ..
-                                        }) => Ok(Default::default()),
-                                        Err(e) => Err(e.into()),
-                                    };
-
-                                    let sender = self
-                                        .pending_queries
-                                        .get_providers
-                                        .remove(&id)
-                                        .expect("Query to be pending");
-
-                                    sender
-                                        .send(result)
-                                        .await
-                                        .expect("Receiver not to be dropped");
-                                }
-                                _ => self.test_query_completed(id, result).await,
+                                let result = match result {
+                                    Ok(BootstrapOk { peer, .. }) => {
+                                        tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                                        Ok(peer)
+                                    }
+                                    Err(BootstrapError::Timeout { peer, .. }) => {
+                                        tracing::warn!(%num_peers, %num_connections, "Periodic bootstrap failed");
+                                        Err(peer)
+                                    }
+                                };
+                                send_test_event(
+                                    &self.event_sender,
+                                    TestEvent::PeriodicBootstrapCompleted(result),
+                                )
+                                .await;
                             }
-                        } else if let QueryResult::GetProviders(result) = result {
-                            use libp2p::kad::GetProvidersOk;
+                            QueryResult::GetProviders(result) => {
+                                use libp2p::kad::GetProvidersOk;
 
-                            let result = match result {
-                                Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
-                                    Ok(providers)
-                                }
-                                Ok(_) => Ok(Default::default()),
-                                Err(_) => {
-                                    unreachable!(
-                                        "when a query times out libp2p makes it the last stage"
-                                    )
-                                }
-                            };
+                                let result = match result {
+                                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
+                                        Ok(providers)
+                                    }
+                                    Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
+                                        ..
+                                    }) => Ok(Default::default()),
+                                    Err(e) => Err(e.into()),
+                                };
 
-                            let sender = self
-                                .pending_queries
-                                .get_providers
-                                .get(&id)
-                                .expect("Query to be pending");
+                                let sender = self
+                                    .pending_queries
+                                    .get_providers
+                                    .remove(&id)
+                                    .expect("Query to be pending");
 
-                            sender
-                                .send(result)
-                                .await
-                                .expect("Receiver not to be dropped");
-                        } else {
-                            self.test_query_progressed(id, result).await;
+                                sender
+                                    .send(result)
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
+                            _ => self.test_query_completed(id, result).await,
                         }
-                    }
-                    kad::Event::RoutingUpdated {
-                        peer, is_new_peer, ..
-                    } => {
-                        if is_new_peer {
-                            send_test_event(
-                                &self.event_sender,
-                                TestEvent::PeerAddedToDHT { remote: peer },
-                            )
+                    } else if let QueryResult::GetProviders(result) = result {
+                        use libp2p::kad::GetProvidersOk;
+
+                        let result = match result {
+                            Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
+                            Ok(_) => Ok(Default::default()),
+                            Err(_) => {
+                                unreachable!(
+                                    "when a query times out libp2p makes it the last stage"
+                                )
+                            }
+                        };
+
+                        let sender = self
+                            .pending_queries
+                            .get_providers
+                            .get(&id)
+                            .expect("Query to be pending");
+
+                        sender
+                            .send(result)
                             .await
-                        }
+                            .expect("Receiver not to be dropped");
+                    } else {
+                        self.test_query_progressed(id, result).await;
                     }
-                    _ => {}
                 }
-
-                Ok(())
-            }
+                kad::Event::RoutingUpdated {
+                    peer, is_new_peer, ..
+                } => {
+                    if is_new_peer {
+                        send_test_event(
+                            &self.event_sender,
+                            TestEvent::PeerAddedToDHT { remote: peer },
+                        )
+                        .await
+                    }
+                }
+                _ => {}
+            },
             // ===========================
             // Block sync
             // ===========================
@@ -431,8 +414,6 @@ impl MainLoop {
                         })
                         .await
                         .expect("Event receiver not to be dropped");
-
-                    Ok(())
                 }
                 request_response::Message::Response {
                     request_id,
@@ -444,7 +425,6 @@ impl MainLoop {
                         .remove(&request_id)
                         .expect("Block sync request still to be pending")
                         .send(Ok(response));
-                    Ok(())
                 }
             },
             SwarmEvent::Behaviour(behaviour::Event::BodiesSync(
@@ -463,8 +443,6 @@ impl MainLoop {
                         })
                         .await
                         .expect("Event receiver not to be dropped");
-
-                    Ok(())
                 }
                 request_response::Message::Response {
                     request_id,
@@ -476,7 +454,6 @@ impl MainLoop {
                         .remove(&request_id)
                         .expect("Block sync request still to be pending")
                         .send(Ok(response));
-                    Ok(())
                 }
             },
             SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
@@ -495,8 +472,6 @@ impl MainLoop {
                         })
                         .await
                         .expect("Event receiver not to be dropped");
-
-                    Ok(())
                 }
                 request_response::Message::Response {
                     request_id,
@@ -508,7 +483,6 @@ impl MainLoop {
                         .remove(&request_id)
                         .expect("Block sync request still to be pending")
                         .send(Ok(response));
-                    Ok(())
                 }
             },
             SwarmEvent::Behaviour(behaviour::Event::ReceiptsSync(
@@ -527,8 +501,6 @@ impl MainLoop {
                         })
                         .await
                         .expect("Event receiver not to be dropped");
-
-                    Ok(())
                 }
                 request_response::Message::Response {
                     request_id,
@@ -540,7 +512,6 @@ impl MainLoop {
                         .remove(&request_id)
                         .expect("Block sync request still to be pending")
                         .send(Ok(response));
-                    Ok(())
                 }
             },
             SwarmEvent::Behaviour(behaviour::Event::EventsSync(
@@ -559,8 +530,6 @@ impl MainLoop {
                         })
                         .await
                         .expect("Event receiver not to be dropped");
-
-                    Ok(())
                 }
                 request_response::Message::Response {
                     request_id,
@@ -572,7 +541,6 @@ impl MainLoop {
                         .remove(&request_id)
                         .expect("Block sync request still to be pending")
                         .send(Ok(response));
-                    Ok(())
                 }
             },
             SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
@@ -587,7 +555,6 @@ impl MainLoop {
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
-                Ok(())
             }
             SwarmEvent::Behaviour(behaviour::Event::BodiesSync(
                 request_response::Event::OutboundFailure {
@@ -601,7 +568,6 @@ impl MainLoop {
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
-                Ok(())
             }
             SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
                 request_response::Event::OutboundFailure {
@@ -615,7 +581,6 @@ impl MainLoop {
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
-                Ok(())
             }
             SwarmEvent::Behaviour(behaviour::Event::ReceiptsSync(
                 request_response::Event::OutboundFailure {
@@ -629,7 +594,6 @@ impl MainLoop {
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
-                Ok(())
             }
             SwarmEvent::Behaviour(behaviour::Event::EventsSync(
                 request_response::Event::OutboundFailure {
@@ -643,14 +607,12 @@ impl MainLoop {
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
-                Ok(())
             }
             // ===========================
             // NAT hole punching
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Dcutr(event)) => {
                 tracing::debug!(?event, "DCUtR event");
-                Ok(())
             }
             // ===========================
             // Ignored or forwarded for
@@ -667,7 +629,6 @@ impl MainLoop {
                     _ => tracing::trace!(?event, "Ignoring event"),
                 }
                 self.handle_event_for_test(event).await;
-                Ok(())
             }
         }
     }
@@ -889,10 +850,7 @@ impl MainLoop {
     }
 
     /// No-op outside tests
-    async fn handle_event_for_test<E: std::fmt::Debug>(
-        &mut self,
-        _event: SwarmEvent<behaviour::Event, E>,
-    ) {
+    async fn handle_event_for_test(&mut self, _event: SwarmEvent<behaviour::Event>) {
         #[cfg(test)]
         test_utils::handle_event(&self.event_sender, _event).await
     }
