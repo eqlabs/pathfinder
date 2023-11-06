@@ -610,6 +610,7 @@ mod tests {
 
     mod sync {
         use crate::state::l2::{BlockChain, L2SyncContext};
+        use pathfinder_common::macro_prelude::*;
         use pathfinder_common::StateUpdate;
 
         use super::super::{sync, BlockValidationMode, SyncEvent};
@@ -654,6 +655,40 @@ mod tests {
         const BLOCK3_NUMBER: BlockNumber = BlockNumber::new_or_panic(3);
         const BLOCK4_NUMBER: BlockNumber = BlockNumber::new_or_panic(4);
 
+        const BLOCK0_HASH: BlockHash = block_hash_bytes!(b"block 0 hash");
+        const BLOCK0_HASH_V2: BlockHash = block_hash_bytes!(b"block 0 hash v2");
+        const BLOCK1_HASH: BlockHash = block_hash_bytes!(b"block 1 hash");
+        const BLOCK1_HASH_V2: BlockHash = block_hash_bytes!(b"block 1 hash v2");
+        const BLOCK2_HASH: BlockHash = block_hash_bytes!(b"block 2 hash");
+        const BLOCK2_HASH_V2: BlockHash = block_hash_bytes!(b"block 2 hash v2");
+        const BLOCK3_HASH: BlockHash = block_hash_bytes!(b"block 3 hash");
+
+        const GLOBAL_ROOT0: StateCommitment = state_commitment_bytes!(b"global root 0");
+        const GLOBAL_ROOT0_V2: StateCommitment = state_commitment_bytes!(b"global root 0 v2");
+        const GLOBAL_ROOT1: StateCommitment = state_commitment_bytes!(b"global root 1");
+        const GLOBAL_ROOT1_V2: StateCommitment = state_commitment_bytes!(b"global root 1 v2");
+        const GLOBAL_ROOT2: StateCommitment = state_commitment_bytes!(b"global root 2");
+        const GLOBAL_ROOT2_V2: StateCommitment = state_commitment_bytes!(b"global root 2 v2");
+        const GLOBAL_ROOT3: StateCommitment = state_commitment_bytes!(b"global root 3");
+
+        const CONTRACT0_ADDR: ContractAddress = contract_address_bytes!(b"contract 0 addr");
+        const CONTRACT0_ADDR_V2: ContractAddress = contract_address_bytes!(b"contract 0 addr v2");
+        const CONTRACT1_ADDR: ContractAddress = contract_address_bytes!(b"contract 1 addr");
+
+        const CONTRACT0_HASH: ClassHash =
+            class_hash!("0x03CC4D0167577958ADD7DD759418506E0930BB061597519CCEB8C3AC6277692E");
+        const CONTRACT0_HASH_V2: ClassHash =
+            class_hash!("0x01BE539E97D3BEFAE5D56D780BAF433802B3203DC6B2947FDB90C384AEF39F3E");
+        const CONTRACT1_HASH: ClassHash =
+            class_hash!("0x071B088C5C8CD884F3106D62C6CB8B423D1D3A58BFAD2EAA8AAC9E4E3E73529D");
+
+        const STORAGE_KEY0: StorageAddress = storage_address_bytes!(b"contract 0 storage addr 0");
+        const STORAGE_KEY1: StorageAddress = storage_address_bytes!(b"contract 1 storage addr 0");
+
+        const STORAGE_VAL0: StorageValue = storage_value_bytes!(b"contract 0 storage val 0");
+        const STORAGE_VAL0_V2: StorageValue = storage_value_bytes!(b"contract 0 storage val 0 v2");
+        const STORAGE_VAL1: StorageValue = storage_value_bytes!(b"contract 1 storage val 0");
+
         fn spawn_sync_default(
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
@@ -680,63 +715,17 @@ mod tests {
         }
 
         lazy_static::lazy_static! {
-            static ref BLOCK0_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());
-            static ref BLOCK0_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash v2").unwrap());
-            static ref BLOCK1_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash").unwrap());
-            static ref BLOCK1_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash v2").unwrap());
-            static ref BLOCK2_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash").unwrap());
-            static ref BLOCK2_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
-            static ref BLOCK3_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
-
-            static ref GLOBAL_ROOT0: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0").unwrap());
-            static ref GLOBAL_ROOT0_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0 v2").unwrap());
-            static ref GLOBAL_ROOT1: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 1").unwrap());
-            static ref GLOBAL_ROOT1_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 1 v2").unwrap());
-            static ref GLOBAL_ROOT2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 2").unwrap());
-            static ref GLOBAL_ROOT2_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 2 v2").unwrap());
-            static ref GLOBAL_ROOT3: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 3").unwrap());
-
-            static ref CONTRACT0_ADDR: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr").unwrap());
-            static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr v2").unwrap());
-            static ref CONTRACT1_ADDR: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 1 addr").unwrap());
-
-            static ref CONTRACT0_HASH: ClassHash = ClassHash(
-                Felt::from_hex_str(
-                    "0x03CC4D0167577958ADD7DD759418506E0930BB061597519CCEB8C3AC6277692E",
-                )
-                .unwrap(),
-            );
-            static ref CONTRACT0_HASH_V2: ClassHash = ClassHash(
-                Felt::from_hex_str(
-                    "0x01BE539E97D3BEFAE5D56D780BAF433802B3203DC6B2947FDB90C384AEF39F3E",
-                )
-                .unwrap(),
-            );
-            static ref CONTRACT1_HASH: ClassHash = ClassHash(
-                Felt::from_hex_str(
-                    "0x071B088C5C8CD884F3106D62C6CB8B423D1D3A58BFAD2EAA8AAC9E4E3E73529D",
-                )
-                .unwrap(),
-            );
-
             static ref CONTRACT0_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0{DEF1}"));
             static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0 v2{DEF1}"));
             static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}1{DEF1}"));
 
-            static ref STORAGE_KEY0: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 0 storage addr 0").unwrap());
-            static ref STORAGE_KEY1: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 1 storage addr 0").unwrap());
-
-            static ref STORAGE_VAL0: StorageValue = StorageValue(Felt::from_be_slice(b"contract 0 storage val 0").unwrap());
-            static ref STORAGE_VAL0_V2: StorageValue = StorageValue(Felt::from_be_slice(b"contract 0 storage val 0 v2").unwrap());
-            static ref STORAGE_VAL1: StorageValue = StorageValue(Felt::from_be_slice(b"contract 1 storage val 0").unwrap());
-
             static ref BLOCK0: reply::Block = reply::Block {
-                block_hash: *BLOCK0_HASH,
+                block_hash: BLOCK0_HASH,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::ZERO),
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-                state_commitment: *GLOBAL_ROOT0,
+                state_commitment: GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: BlockTimestamp::new_or_panic(0),
                 transaction_receipts: vec![],
@@ -744,12 +733,12 @@ mod tests {
                 starknet_version: StarknetVersion::default(),
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
-                block_hash: *BLOCK0_HASH_V2,
+                block_hash: BLOCK0_HASH_V2,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
-                state_commitment: *GLOBAL_ROOT0_V2,
+                state_commitment: GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,
                 timestamp: BlockTimestamp::new_or_panic(10),
                 transaction_receipts: vec![],
@@ -757,12 +746,12 @@ mod tests {
                 starknet_version: StarknetVersion::new(0, 9, 1),
             };
             static ref BLOCK1: reply::Block = reply::Block {
-                block_hash: *BLOCK1_HASH,
+                block_hash: BLOCK1_HASH,
                 block_number: BLOCK1_NUMBER,
                 gas_price: Some(GasPrice::from(1)),
-                parent_block_hash: *BLOCK0_HASH,
+                parent_block_hash: BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
-                state_commitment: *GLOBAL_ROOT1,
+                state_commitment: GLOBAL_ROOT1,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: BlockTimestamp::new_or_panic(1),
                 transaction_receipts: vec![],
@@ -770,12 +759,12 @@ mod tests {
                 starknet_version: StarknetVersion::new(0, 9, 1),
             };
             static ref BLOCK2: reply::Block = reply::Block {
-                block_hash: *BLOCK2_HASH,
+                block_hash: BLOCK2_HASH,
                 block_number: BLOCK2_NUMBER,
                 gas_price: Some(GasPrice::from(2)),
-                parent_block_hash: *BLOCK1_HASH,
+                parent_block_hash: BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
-                state_commitment: *GLOBAL_ROOT2,
+                state_commitment: GLOBAL_ROOT2,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: BlockTimestamp::new_or_panic(2),
                 transaction_receipts: vec![],
@@ -785,51 +774,51 @@ mod tests {
 
             static ref STATE_UPDATE0: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK0_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT0)
-                    .with_deployed_contract(*CONTRACT0_ADDR, *CONTRACT0_HASH)
-                    .with_storage_update(*CONTRACT0_ADDR, *STORAGE_KEY0, *STORAGE_VAL0)
+                    .with_block_hash(BLOCK0_HASH)
+                    .with_state_commitment(GLOBAL_ROOT0)
+                    .with_deployed_contract(CONTRACT0_ADDR, CONTRACT0_HASH)
+                    .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0)
             };
             static ref STATE_UPDATE0_V2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK0_HASH_V2)
-                    .with_state_commitment(*GLOBAL_ROOT0_V2)
-                    .with_deployed_contract(*CONTRACT0_ADDR_V2, *CONTRACT0_HASH_V2)
+                    .with_block_hash(BLOCK0_HASH_V2)
+                    .with_state_commitment(GLOBAL_ROOT0_V2)
+                    .with_deployed_contract(CONTRACT0_ADDR_V2, CONTRACT0_HASH_V2)
             };
 
             static ref STATE_UPDATE1: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK1_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT1)
-                    .with_parent_state_commitment(*GLOBAL_ROOT0)
-                    .with_deployed_contract(*CONTRACT1_ADDR, *CONTRACT1_HASH)
-                    .with_storage_update(*CONTRACT0_ADDR, *STORAGE_KEY0, *STORAGE_VAL0_V2)
-                    .with_storage_update(*CONTRACT1_ADDR, *STORAGE_KEY1, *STORAGE_VAL1)
+                    .with_block_hash(BLOCK1_HASH)
+                    .with_state_commitment(GLOBAL_ROOT1)
+                    .with_parent_state_commitment(GLOBAL_ROOT0)
+                    .with_deployed_contract(CONTRACT1_ADDR, CONTRACT1_HASH)
+                    .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0_V2)
+                    .with_storage_update(CONTRACT1_ADDR, STORAGE_KEY1, STORAGE_VAL1)
             };
 
             static ref STATE_UPDATE1_V2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK1_HASH_V2)
-                    .with_state_commitment(*GLOBAL_ROOT1_V2)
-                    .with_parent_state_commitment(*GLOBAL_ROOT0_V2)
+                    .with_block_hash(BLOCK1_HASH_V2)
+                    .with_state_commitment(GLOBAL_ROOT1_V2)
+                    .with_parent_state_commitment(GLOBAL_ROOT0_V2)
             };
             static ref STATE_UPDATE2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK2_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT2)
-                    .with_parent_state_commitment(*GLOBAL_ROOT1)
+                    .with_block_hash(BLOCK2_HASH)
+                    .with_state_commitment(GLOBAL_ROOT2)
+                    .with_parent_state_commitment(GLOBAL_ROOT1)
             };
             static ref STATE_UPDATE2_V2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK2_HASH_V2)
-                    .with_state_commitment(*GLOBAL_ROOT2_V2)
-                    .with_parent_state_commitment(*GLOBAL_ROOT1_V2)
+                    .with_block_hash(BLOCK2_HASH_V2)
+                    .with_state_commitment(GLOBAL_ROOT2_V2)
+                    .with_parent_state_commitment(GLOBAL_ROOT1_V2)
             };
             static ref STATE_UPDATE3: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK3_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT3)
-                    .with_parent_state_commitment(*GLOBAL_ROOT2)
+                    .with_block_hash(BLOCK3_HASH)
+                    .with_state_commitment(GLOBAL_ROOT3)
+                    .with_parent_state_commitment(GLOBAL_ROOT2)
             };
         }
 
@@ -923,13 +912,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    (BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Downlad block #1 with respective state update and contracts
@@ -942,13 +931,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Stay at head, no more blocks available
@@ -970,7 +959,7 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass { hash, .. } => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
@@ -978,7 +967,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass { hash, .. } => {
-                    assert_eq!(hash, *CONTRACT1_HASH);
+                    assert_eq!(hash, CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1002,13 +991,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
 
@@ -1042,16 +1031,16 @@ mod tests {
                 let _jh = tokio::spawn(sync(
                     tx_event,
                     context,
-                    Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
+                    Some((BLOCK0_NUMBER, BLOCK0_HASH, GLOBAL_ROOT0)),
                     BlockChain::with_capacity(
                         100,
-                        vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
+                        vec![(BLOCK0_NUMBER, BLOCK0_HASH, GLOBAL_ROOT0)],
                     ),
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                 SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1112,13 +1101,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
 
@@ -1150,13 +1139,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH_V2).into(),
+                    BLOCK0_HASH_V2.into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH_V2,
+                    CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
 
@@ -1181,7 +1170,7 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
@@ -1193,7 +1182,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH_V2);
+                        assert_eq!(hash, CONTRACT0_HASH_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
@@ -1216,14 +1205,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
+                    block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH_V2,
+                    parent_block_hash: BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT1_V2,
+                    state_commitment: GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1241,13 +1230,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1260,13 +1249,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1279,7 +1268,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
                 );
 
@@ -1326,13 +1315,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH_V2).into(),
+                    BLOCK0_HASH_V2.into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH_V2,
+                    CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
                 // Fetch the new block #1 from the fork with respective state update and contracts
@@ -1345,7 +1334,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH_V2).into(),
+                    BLOCK1_HASH_V2.into(),
                     Ok(STATE_UPDATE1_V2.clone()),
                 );
 
@@ -1369,7 +1358,7 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
@@ -1377,7 +1366,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1393,7 +1382,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH_V2);
+                        assert_eq!(hash, CONTRACT0_HASH_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
@@ -1421,14 +1410,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
+                    block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH,
+                    parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT1_V2,
+                    state_commitment: GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1436,14 +1425,14 @@ mod tests {
                     starknet_version: StarknetVersion::default(),
                 };
                 let block2_v2 = reply::Block {
-                    block_hash: *BLOCK2_HASH_V2,
+                    block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH_V2,
+                    parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT2_V2,
+                    state_commitment: GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1451,14 +1440,14 @@ mod tests {
                     starknet_version: StarknetVersion::default(),
                 };
                 let block3 = reply::Block {
-                    block_hash: *BLOCK3_HASH,
+                    block_hash: BLOCK3_HASH,
                     block_number: BLOCK3_NUMBER,
                     gas_price: Some(GasPrice::from(3)),
-                    parent_block_hash: *BLOCK2_HASH,
+                    parent_block_hash: BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 3").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT3,
+                    state_commitment: GLOBAL_ROOT3,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: BlockTimestamp::new_or_panic(3),
                     transaction_receipts: vec![],
@@ -1476,13 +1465,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1495,13 +1484,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1514,7 +1503,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
                 );
                 // Fetch block #3 with respective state update and contracts
@@ -1527,7 +1516,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK3_HASH).into(),
+                    BLOCK3_HASH.into(),
                     Ok(STATE_UPDATE3.clone()),
                 );
                 // Block #4 is not there
@@ -1578,7 +1567,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH_V2).into(),
+                    BLOCK1_HASH_V2.into(),
                     Ok(STATE_UPDATE1_V2.clone()),
                 );
                 // Fetch the new block #2 from the fork with respective state update
@@ -1591,7 +1580,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH_V2).into(),
+                    BLOCK2_HASH_V2.into(),
                     Ok(STATE_UPDATE2_V2.clone()),
                 );
 
@@ -1614,7 +1603,7 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
@@ -1622,7 +1611,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1666,14 +1655,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block2_v2 = reply::Block {
-                    block_hash: *BLOCK2_HASH_V2,
+                    block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH,
+                    parent_block_hash: BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT2_V2,
+                    state_commitment: GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1691,13 +1680,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1710,13 +1699,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1729,7 +1718,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
                 );
                 // Block #3 is not there
@@ -1768,7 +1757,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH_V2).into(),
+                    BLOCK2_HASH_V2.into(),
                     Ok(STATE_UPDATE2_V2.clone()),
                 );
 
@@ -1791,7 +1780,7 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
@@ -1799,7 +1788,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1833,14 +1822,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
+                    block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH,
+                    parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT1_V2,
+                    state_commitment: GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1848,14 +1837,14 @@ mod tests {
                     starknet_version: StarknetVersion::default(),
                 };
                 let block2 = reply::Block {
-                    block_hash: *BLOCK2_HASH,
+                    block_hash: BLOCK2_HASH,
                     block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH_V2,
+                    parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT2,
+                    state_commitment: GLOBAL_ROOT2,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1873,13 +1862,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1892,13 +1881,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 whose parent hash does not match block #1 hash
@@ -1929,7 +1918,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH_V2).into(),
+                    BLOCK1_HASH_V2.into(),
                     Ok(STATE_UPDATE1_V2.clone()),
                 );
                 // Fetch the block #2 again, now with respective state update
@@ -1942,7 +1931,7 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
                 );
 
@@ -1965,7 +1954,7 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
@@ -1973,7 +1962,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -2011,13 +2000,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    (BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
 
