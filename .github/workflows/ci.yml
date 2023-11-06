@@ -34,6 +34,7 @@ jobs:
           remove-docker-images: 'true'
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+      - uses: rui314/setup-mold@v1
       - name: sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
       - uses: Noelware/setup-protoc@1.1.0
@@ -145,8 +146,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
-        with:
-          workspaces: "crates/load-test"
       - name: cargo check
         run: |
           cd crates/load-test
