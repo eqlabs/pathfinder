@@ -312,11 +312,15 @@ pub mod dto {
     }
 
     #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
-    #[serde(untagged)]
+    #[serde(tag = "type")]
     pub enum TransactionTrace {
+        #[serde(rename = "DECLARE")]
         Declare(DeclareTxnTrace),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
         DeployAccount(DeployAccountTxnTrace),
+        #[serde(rename = "INVOKE")]
         Invoke(InvokeTxnTrace),
+        #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTxnTrace),
     }
 
