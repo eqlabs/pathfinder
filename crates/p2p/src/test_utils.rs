@@ -30,9 +30,9 @@ impl Client {
     }
 }
 
-pub(super) async fn handle_event<E: std::fmt::Debug>(
+pub(super) async fn handle_event(
     event_sender: &mpsc::Sender<Event>,
-    event: SwarmEvent<behaviour::Event, E>,
+    event: SwarmEvent<behaviour::Event>,
 ) {
     match event {
         SwarmEvent::NewListenAddr { address, .. } => {
