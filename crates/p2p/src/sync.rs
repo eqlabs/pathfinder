@@ -39,13 +39,13 @@ pub mod protocol {
 pub(crate) mod codec {
     use super::protocol;
     use async_trait::async_trait;
-    use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
-    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
+    use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
     use libp2p::request_response::Codec;
     use p2p_proto::consts::MESSAGE_SIZE_LIMIT;
     use p2p_proto::{block, event, proto, receipt, transaction};
     use p2p_proto::{ToProtobuf, TryFromProtobuf};
     use std::marker::PhantomData;
+    use unsigned_varint::aio::read_usize;
 
     pub type Headers = SyncCodec<
         protocol::Headers,
@@ -160,7 +160,7 @@ pub(crate) mod codec {
     }
 
     async fn decode<Reader, ProstDto, Dto>(
-        io: &mut Reader,
+        mut io: &mut Reader,
         max_buf_size: usize,
     ) -> std::io::Result<Dto>
     where
@@ -168,11 +168,24 @@ pub(crate) mod codec {
         ProstDto: prost::Message + Default,
         Dto: TryFromProtobuf<ProstDto>,
     {
-        let vec = read_length_prefixed(io, max_buf_size).await?;
-        if vec.is_empty() {
-            return Err(std::io::ErrorKind::UnexpectedEof.into());
+        let encoded_len = read_usize(&mut io)
+            .await
+            .map_err(Into::<std::io::Error>::into)?;
+
+        if encoded_len > max_buf_size {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Encoded length {} exceeds the maximum buffer size {}",
+                    encoded_len, max_buf_size
+                ),
+            ));
         }
-        let prost_dto = ProstDto::decode(vec.as_ref())?;
+
+        let mut buf = vec![0u8; encoded_len];
+        io.read_exact(&mut buf).await?;
+
+        let prost_dto = ProstDto::decode(buf.as_ref())?;
         let dto = Dto::try_from_protobuf(prost_dto, std::any::type_name::<ProstDto>())?;
         Ok(dto)
     }
@@ -183,10 +196,9 @@ pub(crate) mod codec {
         ProstDto: prost::Message,
         Dto: ToProtobuf<ProstDto>,
     {
-        let data = dto.to_protobuf().encode_to_vec();
-        write_length_prefixed(io, &data).await?;
+        let data = dto.to_protobuf().encode_length_delimited_to_vec();
+        io.write_all(&data).await?;
         io.close().await?;
-
         Ok(())
     }
 }

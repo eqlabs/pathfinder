@@ -8,6 +8,10 @@ rust-version = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+futures = { workspace = true }
 libp2p = { version = "0.53.0", default-features = false, features = [
     "autonat",
     "dcutr",
@@ -25,10 +29,6 @@ libp2p = { version = "0.53.0", default-features = false, features = [
     "tokio",
     "yamux",
 ] }
-anyhow = { workspace = true }
-async-trait = { workspace = true }
-base64 = { workspace = true }
-futures = { workspace = true }
 p2p_proto = { path = "../p2p_proto" }
 pathfinder-common = { path = "../common" }
 prost = "0.12.1"
@@ -39,6 +39,7 @@ sha2 = "0.10.7"
 stark_hash = { path = "../stark_hash" }
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "sync"] }
 tracing = "0.1.37"
+unsigned-varint = { version = "0.8.0", features = ["futures"] }
 void = "1.0.2"
 zeroize = "1.6.0"
 
