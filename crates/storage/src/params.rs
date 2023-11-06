@@ -1,11 +1,11 @@
 use anyhow::Result;
 use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset, CallParam, CallResultValue, CasmHash,
-    ClassCommitment, ClassCommitmentLeafHash, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint,
-    EventCommitment, EventData, EventKey, Fee, GasPrice, L1ToL2MessageNonce,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress, SierraHash,
-    StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
+    BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset,
+    CallParam, CallResultValue, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash,
+    ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot,
+    ContractStateHash, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
+    L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress,
+    SierraHash, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
     TransactionCommitment, TransactionHash, TransactionNonce, TransactionSignatureElem,
 };
 use rusqlite::types::{FromSqlError, ToSqlOutput};
@@ -44,6 +44,7 @@ impl ToSql for StarknetVersion {
 
 to_sql_felt!(
     BlockHash,
+    BlockCommitmentSignatureElem,
     ByteCodeOffset,
     CallParam,
     CallResultValue,
