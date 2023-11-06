@@ -210,6 +210,7 @@ pub mod transaction {
         L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
         TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
+    use primitive_types::H256;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
 
@@ -819,7 +820,6 @@ pub mod transaction {
         where
             D: serde::Deserializer<'de>,
         {
-            use primitive_types::H256;
             use serde::de;
 
             #[serde_as]
@@ -914,10 +914,8 @@ pub mod transaction {
 
     impl<T> Dummy<T> for DeployTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            use primitive_types::H256;
             Self {
                 version: TransactionVersion(H256::from_low_u64_be(rng.gen_range(0..=1))),
-
                 contract_address: Faker.fake_with_rng(rng),
                 contract_address_salt: Faker.fake_with_rng(rng),
                 class_hash: Faker.fake_with_rng(rng),
@@ -978,7 +976,6 @@ pub mod transaction {
         where
             D: serde::Deserializer<'de>,
         {
-            use primitive_types::H256;
             use serde::de;
 
             #[serde_as]
@@ -1066,12 +1063,48 @@ pub mod transaction {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
         // FIXME: remove once starkware fixes their gateway bug which was missing this field.
-        #[serde(default = "l1_handler_default_nonce")]
+        #[serde(default)]
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,
         pub transaction_hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
+    }
+
+    impl L1HandlerTransaction {
+        pub fn calculate_message_hash(&self) -> H256 {
+            use sha3::{Digest, Keccak256};
+
+            let Some((from_address, payload)) = self.calldata.split_first() else {
+                // This would indicate a pretty severe error in the L1 transaction.
+                // But since we haven't encoded this during serialization, this could in
+                // theory mess us up here.
+                //
+                // We should incorporate this into the deserialization instead. Returning an
+                // error here is unergonomic and far too late.
+                return H256::zero();
+            };
+
+            let mut hash = Keccak256::new();
+
+            // This is an ethereum address
+            hash.update(from_address.0.as_be_bytes());
+            hash.update(self.contract_address.0.as_be_bytes());
+            hash.update(self.nonce.0.as_be_bytes());
+            hash.update(self.entry_point_selector.0.as_be_bytes());
+
+            // Pad the u64 to 32 bytes to match a felt.
+            hash.update([0u8; 24]);
+            hash.update((payload.len() as u64).to_be_bytes());
+
+            for elem in payload {
+                hash.update(elem.0.as_be_bytes());
+            }
+
+            let hash = <[u8; 32]>::from(hash.finalize());
+
+            hash.into()
+        }
     }
 
     impl<T> Dummy<T> for L1HandlerTransaction {
@@ -1087,10 +1120,6 @@ pub mod transaction {
                 transaction_hash: Faker.fake_with_rng(rng),
             }
         }
-    }
-
-    const fn l1_handler_default_nonce() -> TransactionNonce {
-        TransactionNonce(stark_hash::Felt::ZERO)
     }
 
     impl From<DeclareTransaction> for Transaction {
@@ -1402,10 +1431,14 @@ pub mod add_transaction {
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
+    use std::str::FromStr;
+
+    use primitive_types::H256;
 
     use crate::reply::state_update::{
         DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff,
     };
+    use crate::reply::transaction::L1HandlerTransaction;
 
     /// The aim of these tests is to make sure pathfinder is still able to correctly
     /// deserialize replies from the mainnet sequencer when it still is using some
@@ -1636,5 +1669,34 @@ mod tests {
         });
 
         serde_json::from_value::<crate::reply::EthContractAddresses>(json).unwrap();
+    }
+
+    #[test]
+    fn l1_handler_message_hash() {
+        // Transaction taken from mainnet.
+        let json = serde_json::json!({
+            "transaction_hash": "0x63f36452a4255a9d3f06def95a08bbc295f0de0515adefbf04ee795ed4c3f12",
+            "version": "0x0",
+            "contract_address": "0x73314940630fd6dcda0d772d4c972c4e0a9946bef9dabf4ef84eda8ef542b82",
+            "entry_point_selector": "0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5",
+            "nonce": "0x17824b",
+            "calldata": [
+                "0xae0ee0a63a2ce6baeeffe56e7714fb4efe48d419",
+                "0x2c63ec1313901744d1321b93bda51418cc18998a1562d368960711367f7530f",
+                "0x11e14e1039c000",
+                "0x0"
+            ],
+        });
+
+        let l1_handler = serde_json::from_value::<L1HandlerTransaction>(json).unwrap();
+
+        let message_hash = l1_handler.calculate_message_hash();
+
+        // Taken from starkscan: https://starkscan.co/tx/0x063f36452a4255a9d3f06def95a08bbc295f0de0515adefbf04ee795ed4c3f12
+        let expected =
+            H256::from_str("573aeff3cf703775e8a76a27adee9e80f2ce558a6a38ec87e0249a8b175e5c1a")
+                .unwrap();
+
+        assert_eq!(message_hash, expected);
     }
 }
