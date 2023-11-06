@@ -136,6 +136,10 @@ pub trait GatewayApi: Sync {
     ) -> Result<TransactionTrace, SequencerError> {
         unimplemented!();
     }
+
+    async fn signature(&self, block: BlockId) -> Result<reply::BlockSignature, SequencerError> {
+        unimplemented!();
+    }
 }
 
 /// This is a **temporary** measure to keep the sync logic unchanged
@@ -289,6 +293,10 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         transaction: TransactionHash,
     ) -> Result<TransactionTrace, SequencerError> {
         self.as_ref().transaction_trace(transaction).await
+    }
+
+    async fn signature(&self, block: BlockId) -> Result<reply::BlockSignature, SequencerError> {
+        self.as_ref().signature(block).await
     }
 }
 
@@ -664,7 +672,15 @@ impl GatewayApi for Client {
             .await
     }
 
-    //
+    #[tracing::instrument(skip(self))]
+    async fn signature(&self, block: BlockId) -> Result<reply::BlockSignature, SequencerError> {
+        self.feeder_gateway_request()
+            .get_signature()
+            .with_block(block)
+            .with_retry(self.retry)
+            .get()
+            .await
+    }
 }
 
 #[async_trait::async_trait]
@@ -1767,6 +1783,26 @@ mod tests {
         async fn invalid() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Invalid);
             sequencer.chain().await.unwrap_err();
+        }
+    }
+
+    mod signature {
+        use super::*;
+
+        #[tokio::test]
+        async fn success() {
+            let (_jh, client) = setup([(
+                "/feeder_gateway/get_signature?blockNumber=350000",
+                (
+                    starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000,
+                    200,
+                ),
+            )]);
+
+            client
+                .signature(BlockId::Number(BlockNumber::new_or_panic(350000)))
+                .await
+                .unwrap();
         }
     }
 }
