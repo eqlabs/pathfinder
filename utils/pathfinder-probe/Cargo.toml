@@ -3,7 +3,7 @@ name = "pathfinder-probe"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.72"
+rust-version = "1.73"
 
 [dependencies]
 anyhow = "1.0.71"
