@@ -14,11 +14,13 @@ pub mod hash;
 mod header;
 mod macros;
 pub mod prelude;
+pub mod signature;
 pub mod state_update;
 pub mod test_utils;
 pub mod transaction;
 pub mod trie;
 
+pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
 
 pub use header::{BlockHeader, BlockHeaderBuilder};

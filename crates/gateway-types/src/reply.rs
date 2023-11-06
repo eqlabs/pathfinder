@@ -1442,6 +1442,15 @@ pub struct BlockSignatureInput {
     pub state_diff_commitment: StateDiffCommitment,
 }
 
+impl From<BlockSignature> for pathfinder_common::BlockCommitmentSignature {
+    fn from(value: BlockSignature) -> Self {
+        Self {
+            r: value.signature[0],
+            s: value.signature[1],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
