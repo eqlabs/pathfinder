@@ -11,6 +11,12 @@ on:
 concurrency:
   group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
   cancel-in-progress: true
+
+env:
+  # Enable sccache for rust builds.
+  # https://github.com/Mozilla-Actions/sccache-action#rust-code
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
     
 jobs:
   test:
@@ -28,7 +34,8 @@ jobs:
           remove-docker-images: 'true'
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - uses: Noelware/setup-protoc@1.1.0
       - uses: taiki-e/install-action@nextest
       - name: Compile unit tests
@@ -44,7 +51,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - name: sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - uses: Noelware/setup-protoc@1.1.0
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
 
@@ -55,7 +63,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - name: sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - run: cargo fmt --all -- --check
 
   doc:
@@ -65,7 +74,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - uses: Noelware/setup-protoc@1.1.0
       - run: cargo doc --no-deps --document-private-items
 
@@ -78,7 +88,6 @@ jobs:
         with:
           crate: cargo-sort
           version: "^1.0.9"
-      - uses: Swatinem/rust-cache@v2
       - run: |
           cargo sort --check --workspace
 
@@ -96,7 +105,8 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.MSRV }}
       - uses: Noelware/setup-protoc@1.1.0
-      - uses: Swatinem/rust-cache@v2
+      - name: sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - name: check
         run: cargo check
 
@@ -121,9 +131,8 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: "mold"
+      - name: sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       - run: cargo install cargo-fuzz
       - name: stark_hash
         run: cargo fuzz build
@@ -134,7 +143,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
         with:
           workspaces: "crates/load-test"
       - name: cargo check
