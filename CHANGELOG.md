@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - JSON-RPC 0.5 transaction traces now have the required `type` property.
+- RPC v0.5: L1 Handler receipt is missing the `message_hash` property.
 
 ## [0.9.4] - 2023-11-02
 
