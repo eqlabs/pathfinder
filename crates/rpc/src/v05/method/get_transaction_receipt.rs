@@ -77,18 +77,19 @@ pub async fn get_transaction_receipt(
     jh.await.context("Database read panic or shutting down")?
 }
 
-pub mod types {
+mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
         BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
-        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash,
+        L2ToL1MessagePayloadElem, TransactionHash,
     };
-    use pathfinder_serde::{u64_as_hex_str, EthereumAddressAsHexStr};
+    use pathfinder_serde::{u64_as_hex_str, EthereumAddressAsHexStr, H256AsNoLeadingZerosHexStr};
+    use primitive_types::H256;
     use serde::Serialize;
     use serde_with::serde_as;
     use starknet_gateway_types::reply::transaction::{
-        BuiltinCounters, ExecutionResources, L1ToL2Message, L2ToL1Message,
+        BuiltinCounters, ExecutionResources, L2ToL1Message,
     };
 
     /// L2 transaction receipt as returned by the RPC API.
@@ -251,11 +252,14 @@ pub mod types {
         AcceptedOnL1,
     }
 
+    #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct L1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
+        #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
+        pub message_hash: H256,
     }
 
     #[serde_as]
@@ -326,7 +330,10 @@ pub mod types {
                     contract_address: tx.contract_address,
                 }),
                 Invoke(_) => Self::Invoke(InvokeTransactionReceipt { common }),
-                L1Handler(_) => Self::L1Handler(L1HandlerTransactionReceipt { common }),
+                L1Handler(tx) => Self::L1Handler(L1HandlerTransactionReceipt {
+                    common,
+                    message_hash: tx.calculate_message_hash(),
+                }),
             }
         }
     }
@@ -383,11 +390,14 @@ pub mod types {
         pub contract_address: ContractAddress,
     }
 
+    #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct PendingL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
+        #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
+        pub message_hash: H256,
     }
 
     impl PendingTransactionReceipt {
@@ -426,7 +436,10 @@ pub mod types {
                     contract_address: tx.contract_address,
                 }),
                 Invoke(_) => Self::Invoke(PendingInvokeTransactionReceipt { common }),
-                L1Handler(_) => Self::L1Handler(PendingL1HandlerTransactionReceipt { common }),
+                L1Handler(tx) => Self::L1Handler(PendingL1HandlerTransactionReceipt {
+                    common,
+                    message_hash: tx.calculate_message_hash(),
+                }),
             }
         }
     }
@@ -449,27 +462,6 @@ pub mod types {
             Self {
                 from_address: msg.from_address,
                 to_address: msg.to_address,
-                payload: msg.payload,
-            }
-        }
-    }
-
-    /// Message sent from L1 to L2.
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct MessageToL2 {
-        #[serde_as(as = "EthereumAddressAsHexStr")]
-        pub from_address: EthereumAddress,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub payload: Vec<L1ToL2MessagePayloadElem>,
-    }
-
-    impl From<L1ToL2Message> for MessageToL2 {
-        fn from(msg: L1ToL2Message) -> Self {
-            Self {
-                from_address: msg.from_address,
                 payload: msg.payload,
             }
         }
