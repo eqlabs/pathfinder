@@ -13,6 +13,7 @@ pub enum AddDeclareTransactionError {
     InvalidContractClass,
     GatewayError(StarknetError),
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
 }
 
 impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
@@ -21,6 +22,7 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
             AddDeclareTransactionError::InvalidContractClass => Self::InvalidContractClass,
             AddDeclareTransactionError::GatewayError(x) => Self::GatewayError(x),
             AddDeclareTransactionError::Internal(x) => Self::Internal(x),
+            AddDeclareTransactionError::Custom(x) => Self::Custom(x),
         }
     }
 }
@@ -80,7 +82,7 @@ pub async fn add_declare_transaction(
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
     match input.declare_transaction {
         Transaction::Declare(BroadcastedDeclareTransaction::V0(_)) => {
-            Err(AddDeclareTransactionError::Internal(anyhow::anyhow!(
+            Err(AddDeclareTransactionError::Custom(anyhow::anyhow!(
                 "Declare v0 transactions are not allowed"
             )))
         }

@@ -29,6 +29,7 @@ impl From<crate::v05::method::estimate_message_fee::EstimateMessageFeeError>
             ContractErrorV05 { revert_error } => {
                 Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
             }
+            Custom(error) => Self::Custom(error),
         }
     }
 }
@@ -255,7 +256,7 @@ mod tests {
         let rpc = setup(Setup::Full).await.expect("RPC context");
         assert_matches::assert_matches!(
             estimate_message_fee(rpc, input).await,
-            Err(EstimateMessageFeeError::Internal(_))
+            Err(EstimateMessageFeeError::Custom(_))
         );
     }
 }

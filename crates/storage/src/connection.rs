@@ -195,7 +195,10 @@ impl<'inner> Transaction<'inner> {
         transaction::transaction_count(self, block)
     }
 
-    pub fn events(&self, filter: &EventFilter<impl KeyFilter>) -> anyhow::Result<PageOfEvents> {
+    pub fn events(
+        &self,
+        filter: &EventFilter<impl KeyFilter>,
+    ) -> Result<PageOfEvents, EventFilterError> {
         event::get_events(self, filter)
     }
 

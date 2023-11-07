@@ -20,6 +20,7 @@ impl From<crate::v05::method::estimate_message_fee::EstimateMessageFeeError>
             ContractErrorV05 { revert_error } => {
                 Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
             }
+            Custom(error) => Self::Custom(error),
         }
     }
 }

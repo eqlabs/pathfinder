@@ -32,10 +32,14 @@ pub struct EmittedEvent {
     pub transaction_hash: TransactionHash,
 }
 
-#[derive(Copy, Clone, Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error)]
 pub enum EventFilterError {
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
     #[error("requested page size is too big, supported maximum is {0}")]
     PageSizeTooBig(usize),
+    #[error("requested page size is too small, supported minimum is 1")]
+    PageSizeTooSmall,
     #[error("Event query too broad. Reduce the block range or add more keys.")]
     TooManyMatches,
 }
@@ -128,13 +132,13 @@ pub(super) fn event_count_for_block(tx: &Transaction<'_>, block: BlockId) -> any
 pub(super) fn get_events<K: KeyFilter>(
     tx: &Transaction<'_>,
     filter: &EventFilter<K>,
-) -> anyhow::Result<PageOfEvents> {
+) -> Result<PageOfEvents, EventFilterError> {
     if filter.page_size > PAGE_SIZE_LIMIT {
-        return Err(EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT).into());
+        return Err(EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT));
     }
 
     if filter.page_size < 1 {
-        anyhow::bail!("Invalid page size");
+        return Err(EventFilterError::PageSizeTooSmall);
     }
 
     let strategy = select_query_strategy(
@@ -196,21 +200,35 @@ pub(super) fn get_events<K: KeyFilter>(
             // This means that there are more pages.
             is_last_page = false;
         } else {
-            let block_number = row.get_block_number("block_number")?;
-            let block_hash = row.get_block_hash("block_hash")?;
-            let transaction_hash = row.get_transaction_hash("transaction_hash")?;
-            let from_address = row.get_contract_address("from_address")?;
+            let block_number = row
+                .get_block_number("block_number")
+                .map_err(anyhow::Error::from)?;
+            let block_hash = row
+                .get_block_hash("block_hash")
+                .map_err(anyhow::Error::from)?;
+            let transaction_hash = row
+                .get_transaction_hash("transaction_hash")
+                .map_err(anyhow::Error::from)?;
+            let from_address = row
+                .get_contract_address("from_address")
+                .map_err(anyhow::Error::from)?;
 
-            let data = row.get_ref_unwrap("data").as_blob().unwrap();
+            let data = row
+                .get_ref_unwrap("data")
+                .as_blob()
+                .map_err(anyhow::Error::from)?;
             let data: Vec<_> = data
                 .chunks_exact(32)
                 .map(|data| {
-                    let data = Felt::from_be_slice(data).unwrap();
-                    EventData(data)
+                    let data = Felt::from_be_slice(data).map_err(anyhow::Error::from)?;
+                    Ok(EventData(data))
                 })
-                .collect();
+                .collect::<Result<_, EventFilterError>>()?;
 
-            let keys = row.get_ref_unwrap("keys").as_str().unwrap();
+            let keys = row
+                .get_ref_unwrap("keys")
+                .as_str()
+                .map_err(anyhow::Error::from)?;
 
             // no need to allocate a vec for this in loop
             let mut temp = [0u8; 32];
@@ -218,12 +236,12 @@ pub(super) fn get_events<K: KeyFilter>(
             let keys: Vec<_> = keys
                 .split(' ')
                 .map(|key| {
-                    let used =
-                        base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
-                    let key = Felt::from_be_slice(&temp[..used]).unwrap();
-                    EventKey(key)
+                    let used = base64::decode_config_slice(key, base64::STANDARD, &mut temp)
+                        .map_err(anyhow::Error::from)?;
+                    let key = Felt::from_be_slice(&temp[..used]).map_err(anyhow::Error::from)?;
+                    Ok(EventKey(key))
                 })
-                .collect();
+                .collect::<Result<_, EventFilterError>>()?;
 
             let event = EmittedEvent {
                 data,
@@ -1062,7 +1080,7 @@ mod tests {
         };
         let result = get_events(&tx, &filter);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "Invalid page size");
+        assert_matches!(result.unwrap_err(), EventFilterError::PageSizeTooSmall);
 
         let filter = EventFilter {
             from_block: None,
@@ -1074,8 +1092,8 @@ mod tests {
         };
         let result = get_events(&tx, &filter);
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().downcast::<EventFilterError>().unwrap(),
+        assert_matches!(
+            result.unwrap_err(),
             EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT)
         );
     }

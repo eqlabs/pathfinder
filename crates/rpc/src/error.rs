@@ -78,8 +78,15 @@ pub enum ApplicationError {
     ProofLimitExceeded { limit: u32, requested: u32 },
     #[error("Internal error")]
     GatewayError(starknet_gateway_types::error::StarknetError),
+    /// Internal errors are errors whose details we don't want to show to the end user.
+    /// These are logged, and a simple "internal error" message is shown to the end
+    /// user.
     #[error("Internal error")]
     Internal(anyhow::Error),
+    /// Custom errors are mostly treated as internal errors with the big difference that the error
+    /// details aren't logged and are eventually displayed to the end user.
+    #[error("Internal error")]
+    Custom(anyhow::Error),
 }
 
 impl ApplicationError {
@@ -120,7 +127,9 @@ impl ApplicationError {
             // doc/rpc/pathfinder_rpc_api.json
             ApplicationError::ProofLimitExceeded { .. } => 10000,
             // https://www.jsonrpc.org/specification#error_object
-            ApplicationError::GatewayError(_) | ApplicationError::Internal(_) => -32603,
+            ApplicationError::GatewayError(_)
+            | ApplicationError::Internal(_)
+            | ApplicationError::Custom(_) => -32603,
         }
     }
 
@@ -158,13 +167,14 @@ impl ApplicationError {
             ApplicationError::GatewayError(error) => Some(json!({
                 "error": error,
             })),
-            ApplicationError::Internal(error) => {
-                let error = error.to_string();
-                if error.is_empty() {
+            ApplicationError::Internal(_) => None,
+            ApplicationError::Custom(cause) => {
+                let cause = cause.to_string();
+                if cause.is_empty() {
                     None
                 } else {
                     Some(json!({
-                        "error": error.to_string(),
+                        "error": cause.to_string(),
                     }))
                 }
             }
@@ -200,7 +210,7 @@ impl ApplicationError {
 /// generate_rpc_error_subset!(<enum_name>: <variant a>, <variant b>, <variant N>);
 /// ```
 /// Note that the variants __must__ match the [ApplicationError] variant names and that [ApplicationError::Internal]
-/// is always included by default (and therefore should not be part of macro input).
+/// and [ApplicationError::Custom] are always included by default (and therefore should not be part of macro input).
 ///
 /// An `Internal` only variant can be generated using `generate_rpc_error_subset!(<enum_name>)`.
 ///
@@ -208,10 +218,9 @@ impl ApplicationError {
 /// This macro generates the following:
 ///
 /// 1. New enum definition with `#[derive(Debug)]`
-/// 2. `impl From<NewEnum> for RpcError`
-/// 3. `impl From<anyhow::Error> for NewEnum`
-///
-/// It always includes the `Internal(anyhow::Error)` variant.
+/// 2. `Internal(anyhow::Error)` and `Custom(anyhow::Error)` variants
+/// 3. `impl From<NewEnum> for RpcError`
+/// 4. `impl From<anyhow::Error> for NewEnum`, mapping to the `Internal` variant
 ///
 /// ## Example with expansion
 /// This macro invocation:
@@ -224,7 +233,10 @@ impl ApplicationError {
 /// pub enum MyError {
 ///     BlockNotFound,
 ///     NoBlocks,
+///     /// See [`crate::error::ApplicationError::Internal`]
 ///     Internal(anyhow::Error),
+///     /// See [`crate::error::ApplicationError::Custom`]
+///     Custom(anyhow::Error),
 /// }
 ///
 /// impl From<MyError> for RpcError {
@@ -274,7 +286,10 @@ macro_rules! generate_rpc_error_subset {
     (@enum_def, $enum_name:ident, $($subset:tt),*) => {
         #[derive(Debug)]
         pub enum $enum_name {
+            /// See [`crate::error::ApplicationError::Internal`]
             Internal(anyhow::Error),
+            /// See [`crate::error::ApplicationError::Custom`]
+            Custom(anyhow::Error),
             $($subset),*
         }
     };
@@ -312,6 +327,7 @@ macro_rules! generate_rpc_error_subset {
         match $var {
             $($arms)*
             $enum_name::Internal(internal) => Self::Internal(internal),
+            $enum_name::Custom(error) => Self::Custom(error),
         }
     };
     // Special case for single variant. This could probably be folded into one of the other

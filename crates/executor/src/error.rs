@@ -10,6 +10,7 @@ pub enum CallError {
     InvalidMessageSelector,
     Reverted(String),
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
 }
 
 impl From<TransactionExecutionError> for CallError {

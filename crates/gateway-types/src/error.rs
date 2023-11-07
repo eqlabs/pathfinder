@@ -10,7 +10,7 @@ pub enum SequencerError {
     /// Errors directly coming from reqwest
     #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),
-    /// Custom errors that we fidded with because the original error was either
+    /// Custom errors that we fiddled with because the original error was either
     /// not informative enough or bloated
     #[error("error decoding response body: invalid error variant")]
     InvalidStarknetErrorVariant,

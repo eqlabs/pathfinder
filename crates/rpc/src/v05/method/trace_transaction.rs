@@ -27,6 +27,7 @@ pub struct TraceTransactionOutput(pub TransactionTrace);
 #[derive(Debug)]
 pub enum TraceTransactionError {
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
     InvalidTxnHash,
     NoTraceAvailable(TraceError),
     ContractErrorV05 { revert_error: String },
@@ -35,9 +36,7 @@ pub enum TraceTransactionError {
 impl From<ExecutionStateError> for TraceTransactionError {
     fn from(value: ExecutionStateError) -> Self {
         match value {
-            ExecutionStateError::BlockNotFound => {
-                Self::Internal(anyhow::anyhow!("Block not found"))
-            }
+            ExecutionStateError::BlockNotFound => Self::Custom(anyhow::anyhow!("Block not found")),
             ExecutionStateError::Internal(e) => Self::Internal(e),
         }
     }
@@ -46,12 +45,13 @@ impl From<ExecutionStateError> for TraceTransactionError {
 impl From<CallError> for TraceTransactionError {
     fn from(value: CallError) -> Self {
         match value {
-            CallError::ContractNotFound => Self::Internal(anyhow::anyhow!("Contract not found")),
+            CallError::ContractNotFound => Self::Custom(anyhow::anyhow!("Contract not found")),
             CallError::InvalidMessageSelector => {
-                Self::Internal(anyhow::anyhow!("Invalid message selector"))
+                Self::Custom(anyhow::anyhow!("Invalid message selector"))
             }
             CallError::Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             CallError::Internal(e) => Self::Internal(e),
+            CallError::Custom(e) => Self::Custom(e),
         }
     }
 }
@@ -67,8 +67,9 @@ impl From<super::trace_block_transactions::TraceBlockTransactionsError> for Trac
         use super::trace_block_transactions::TraceBlockTransactionsError::*;
         match e {
             Internal(e) => Self::Internal(e),
-            BlockNotFound => Self::Internal(anyhow::anyhow!("Block not found")),
+            BlockNotFound => Self::Custom(anyhow::anyhow!("Block not found")),
             ContractErrorV05 { revert_error } => Self::ContractErrorV05 { revert_error },
+            Custom(e) => Self::Custom(e),
         }
     }
 }
@@ -84,6 +85,7 @@ impl From<TraceTransactionError> for ApplicationError {
                 ApplicationError::ContractErrorV05 { revert_error }
             }
             TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
+            TraceTransactionError::Custom(e) => ApplicationError::Custom(e),
         }
     }
 }

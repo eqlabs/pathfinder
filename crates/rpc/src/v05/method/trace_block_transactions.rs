@@ -33,6 +33,7 @@ pub struct TraceBlockTransactionsOutput(pub Vec<Trace>);
 #[derive(Debug)]
 pub enum TraceBlockTransactionsError {
     Internal(anyhow::Error),
+    Custom(anyhow::Error),
     BlockNotFound,
     ContractErrorV05 { revert_error: String },
 }
@@ -51,6 +52,7 @@ impl From<TraceBlockTransactionsError> for crate::error::ApplicationError {
             TraceBlockTransactionsError::ContractErrorV05 { revert_error } => {
                 Self::ContractErrorV05 { revert_error }
             }
+            TraceBlockTransactionsError::Custom(e) => Self::Custom(e),
         }
     }
 }
@@ -67,12 +69,13 @@ impl From<ExecutionStateError> for TraceBlockTransactionsError {
 impl From<CallError> for TraceBlockTransactionsError {
     fn from(value: CallError) -> Self {
         match value {
-            CallError::ContractNotFound => Self::Internal(anyhow::anyhow!("Contract not found")),
+            CallError::ContractNotFound => Self::Custom(anyhow::anyhow!("Contract not found")),
             CallError::InvalidMessageSelector => {
-                Self::Internal(anyhow::anyhow!("Invalid message selector"))
+                Self::Custom(anyhow::anyhow!("Invalid message selector"))
             }
             CallError::Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
             CallError::Internal(e) => Self::Internal(e),
+            CallError::Custom(e) => Self::Custom(e),
         }
     }
 }
