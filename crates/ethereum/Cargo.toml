@@ -22,5 +22,5 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-httpmock = "0.6.8"
+httpmock = "0.7.0-rc.1"
 tokio = { workspace = true, features = ["macros"] }
