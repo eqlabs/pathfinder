@@ -45,7 +45,7 @@ RUN TARGETARCH=${TARGETARCH} \
 FROM debian:bookworm-slim AS runner
 ARG TARGETARCH
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates libgmp10 tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates libzstd1 libgmp10 tini && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pathfinder --no-create-home pathfinder
 
 COPY --from=rust-builder /usr/src/pathfinder/pathfinder-${TARGETARCH} /usr/local/bin/pathfinder
