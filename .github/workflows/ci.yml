@@ -28,6 +28,7 @@ jobs:
           remove-docker-images: 'true'
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+      - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -88,19 +89,6 @@ jobs:
         with:
           toolchain: nightly
       - uses: rui314/setup-mold@v1
-        with:
-          mold-version: 1.4.1
-          make-default: false
-      - name: Enable mold
-        run: |
-          mkdir -p $HOME/.cargo
-          cat << EOF >> $HOME/.cargo/config.toml
-          [target.x86_64-unknown-linux-gnu]
-          linker = "/usr/bin/clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/mold"]
-          EOF
-
-          cat $HOME/.cargo/config.toml
       - run: cargo install cargo-fuzz
       - name: stark_hash
         run: cargo fuzz build
