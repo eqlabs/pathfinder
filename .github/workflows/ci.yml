@@ -17,13 +17,14 @@ env:
   # https://github.com/Mozilla-Actions/sccache-action#rust-code
   SCCACHE_GHA_ENABLED: "true"
   RUSTC_WRAPPER: "sccache"
+  CARGO_INCREMENTAL: false
+  CARGO_TERM_COLOR: always
+  SCCACHE_ERROR_LOG: /tmp/sccache_log.txt
+  SCCACHE_LOG: debug
     
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_INCREMENTAL: false
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -45,6 +46,9 @@ jobs:
 
       - name: Run unit tests
         run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
+
+      - name: sccache log
+        run: cat /tmp/sccache_log.txt
 
   clippy:
     runs-on: ubuntu-latest
