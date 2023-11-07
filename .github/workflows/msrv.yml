@@ -1,0 +1,27 @@
+name: MSRV
+
+on:
+  workflow_dispatch:
+  # Daily at midnight
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  msrv:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v3
+      - name: read msrv
+        id: msrv
+        run: |
+          msrv=$(grep -P "rust-version =" Cargo.toml | awk '{print $3}' | tr -d '"')
+          echo Found msrc: $msrv
+          echo "MSRV=$msrv" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.MSRV }}
+      - uses: Noelware/setup-protoc@1.1.0
+      - name: check
+        run: cargo check

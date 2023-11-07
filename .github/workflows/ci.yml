@@ -80,23 +80,6 @@ jobs:
       - run: |
           cargo sort --check --workspace
 
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: read msrv
-        id: msrv
-        run: |
-          msrv=$(grep -P "rust-version =" Cargo.toml | awk '{print $3}' | tr -d '"')
-          echo Found msrc: $msrv
-          echo "MSRV=$msrv" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.msrv.outputs.MSRV }}
-      - uses: Noelware/setup-protoc@1.1.0
-      - name: check
-        run: cargo check
-
   fuzz_targets:
     runs-on: ubuntu-latest
     steps:
