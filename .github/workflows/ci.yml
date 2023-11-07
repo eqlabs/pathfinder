@@ -26,6 +26,8 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          root-reserve-mb: '2048'
+          temp-reserve-mb: '2048'
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
