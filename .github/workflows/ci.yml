@@ -35,10 +35,15 @@ jobs:
       - uses: Noelware/setup-protoc@1.1.0
       - uses: taiki-e/install-action@nextest
       - name: Compile unit tests
-        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run
-
+        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings
       - name: Run unit tests
         run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
+      - name: Store timings
+        uses: actions/upload-artifact@v3
+        with: 
+          name: timings
+          path: target/cargo-timings/
+          if-no-files-found: warn
 
   clippy:
     runs-on: ubuntu-latest
