@@ -44,7 +44,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
       - uses: Noelware/setup-protoc@1.1.0
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
 
@@ -55,7 +54,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
 
   doc:
@@ -65,7 +63,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: Noelware/setup-protoc@1.1.0
       - run: cargo doc --no-deps --document-private-items
 
@@ -78,7 +75,6 @@ jobs:
         with:
           crate: cargo-sort
           version: "^1.0.9"
-      - uses: Swatinem/rust-cache@v2
       - run: |
           cargo sort --check --workspace
 
@@ -96,7 +92,6 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.MSRV }}
       - uses: Noelware/setup-protoc@1.1.0
-      - uses: Swatinem/rust-cache@v2
       - name: check
         run: cargo check
 
@@ -121,9 +116,6 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: "mold"
       - run: cargo install cargo-fuzz
       - name: stark_hash
         run: cargo fuzz build
@@ -134,9 +126,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "crates/load-test"
       - name: cargo check
         run: |
           cd crates/load-test
