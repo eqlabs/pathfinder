@@ -88,20 +88,20 @@ pub(crate) fn map_gateway_trace(
         GatewayTransaction::Declare(_) => TransactionTrace::Declare(DeclareTxnTrace {
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),
-            state_diff: Default::default(),
+            state_diff: None,
         }),
         GatewayTransaction::Deploy(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
             constructor_invocation: trace.function_invocation.map(Into::into),
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),
-            state_diff: Default::default(),
+            state_diff: None,
         }),
         GatewayTransaction::DeployAccount(_) => {
             TransactionTrace::DeployAccount(DeployAccountTxnTrace {
                 constructor_invocation: trace.function_invocation.map(Into::into),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
-                state_diff: Default::default(),
+                state_diff: None,
             })
         }
         GatewayTransaction::Invoke(_) => TransactionTrace::Invoke(InvokeTxnTrace {
@@ -115,11 +115,11 @@ pub(crate) fn map_gateway_trace(
             },
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),
-            state_diff: Default::default(),
+            state_diff: None,
         }),
         GatewayTransaction::L1Handler(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
             function_invocation: trace.function_invocation.map(Into::into),
-            state_diff: Default::default(),
+            state_diff: None,
         }),
     }
 }
