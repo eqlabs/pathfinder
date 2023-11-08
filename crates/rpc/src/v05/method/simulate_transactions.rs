@@ -431,12 +431,14 @@ pub mod dto {
     pub struct L1HandlerTxnTrace {
         #[serde(default)]
         pub function_invocation: Option<FunctionInvocation>,
+        pub state_diff: StateDiff,
     }
 
     impl From<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
         fn from(trace: pathfinder_executor::types::L1HandlerTransactionTrace) -> Self {
             Self {
                 function_invocation: trace.function_invocation.map(Into::into),
+                state_diff: trace.state_diff.into(),
             }
         }
     }

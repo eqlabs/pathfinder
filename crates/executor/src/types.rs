@@ -68,6 +68,7 @@ pub struct InvokeTransactionTrace {
 #[derive(Debug)]
 pub struct L1HandlerTransactionTrace {
     pub function_invocation: Option<FunctionInvocation>,
+    pub state_diff: StateDiff,
 }
 
 #[derive(Debug, Eq, PartialEq)]

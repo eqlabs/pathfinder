@@ -313,6 +313,7 @@ fn to_trace(
         }),
         TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
             function_invocation: maybe_function_invocation?,
+            state_diff,
         }),
     };
 
