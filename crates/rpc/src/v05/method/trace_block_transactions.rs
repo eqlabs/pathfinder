@@ -119,6 +119,7 @@ pub(crate) fn map_gateway_trace(
         }),
         GatewayTransaction::L1Handler(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
             function_invocation: trace.function_invocation.map(Into::into),
+            state_diff: Default::default(),
         }),
     }
 }

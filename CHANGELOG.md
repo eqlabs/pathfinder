@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - RPC errors now only include the root cause if white-listed as non-sensitive
+- RPC v0.5 updated from v0.5.0 to v0.5.1
 
 ### Fixed
 
