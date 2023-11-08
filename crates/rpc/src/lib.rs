@@ -154,10 +154,13 @@ impl RpcServer {
             .route("/", get(empty_body).post(rpc_handler))
             .with_state(default_router)
             .route("/rpc/v0.3", post(rpc_handler))
+            .route("/rpc/v0_3", post(rpc_handler))
             .with_state(v03_routes)
             .route("/rpc/v0.4", post(rpc_handler))
+            .route("/rpc/v0_4", post(rpc_handler))
             .with_state(v04_routes)
             .route("/rpc/v0.5", post(rpc_handler))
+            .route("/rpc/v0_5", post(rpc_handler))
             .with_state(v05_routes)
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
             .with_state(pathfinder_routes);
@@ -830,17 +833,32 @@ mod tests {
     #[case::v05_trace("/rpc/v0.5", "v05/starknet_trace_api_openrpc.json", &[])]
     #[case::v05_write("/rpc/v0.5", "v05/starknet_write_api.json",         &[])]
     #[case::v05_pathfinder("/rpc/v0.5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    #[case::v0_5_api  ("/rpc/v0_5", "v05/starknet_api_openrpc.json", &[])]
+    #[case::v0_5_trace("/rpc/v0_5", "v05/starknet_trace_api_openrpc.json", &[])]
+    #[case::v0_5_write("/rpc/v0_5", "v05/starknet_write_api.json",         &[])]
+    #[case::v0_5_pathfinder("/rpc/v0_5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
     #[case::v04_api  ("/rpc/v0.4", "v04/starknet_api_openrpc.json",       &[])]
     #[case::v04_trace("/rpc/v0.4", "v04/starknet_trace_api_openrpc.json", &[])]
     #[case::v04_write("/rpc/v0.4", "v04/starknet_write_api.json",         &[])]
     #[case::v04_pathfinder("/rpc/v0.4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    #[case::v0_4_api  ("/rpc/v0_4", "v04/starknet_api_openrpc.json", &[])]
+    #[case::v0_4_trace("/rpc/v0_4", "v04/starknet_trace_api_openrpc.json", &[])]
+    #[case::v0_4_write("/rpc/v0_4", "v04/starknet_write_api.json",         &[])]
+    #[case::v0_4_pathfinder("/rpc/v0_4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
     #[case::v03_api  ("/rpc/v0.3", "v03/starknet_api_openrpc.json",       &[])]
     #[case::v03_trace("/rpc/v0.3", "v03/starknet_trace_api_openrpc.json", 
         &["starknet_traceTransaction", "starknet_traceBlockTransactions"])]
     #[case::v03_write ("/rpc/v0.3", "v03/starknet_write_api.json",         &[])]
     #[case::v03_pathfinder("/rpc/v0.3", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
+    #[case::v0_3_api  ("/rpc/v0_3", "v03/starknet_api_openrpc.json",       &[])]
+    #[case::v0_3_trace("/rpc/v0_3", "v03/starknet_trace_api_openrpc.json", 
+        &["starknet_traceTransaction", "starknet_traceBlockTransactions"])]
+    #[case::v0_3_write ("/rpc/v0_3", "v03/starknet_write_api.json",         &[])]
+    #[case::v0_3_pathfinder("/rpc/v0_3", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
 
     #[tokio::test]

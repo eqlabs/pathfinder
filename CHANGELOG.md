@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Host JSON-RPC on `/rpc/v0_x` in addition to the existing `/rpc/v0.x` endpoints. This applies to all supported JSON-RPC versions.
+
 ### Changed
 
 - RPC errors now only include the root cause if white-listed as non-sensitive
