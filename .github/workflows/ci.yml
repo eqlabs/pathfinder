@@ -54,6 +54,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - uses: Noelware/setup-protoc@1.1.0
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
 
@@ -73,6 +76,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - uses: Noelware/setup-protoc@1.1.0
       - run: cargo doc --no-deps --document-private-items
 
