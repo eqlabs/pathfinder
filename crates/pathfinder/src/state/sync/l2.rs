@@ -25,6 +25,7 @@ pub struct Timings {
     pub block_download: Duration,
     pub state_diff_download: Duration,
     pub class_declaration: Duration,
+    pub signature_download: Duration,
 }
 
 /// A cache containing the last `N` blocks in the chain. Used to determine reorg extents
@@ -254,6 +255,22 @@ where
         .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
 
+        let t_signature = std::time::Instant::now();
+        let signature = sequencer
+            .signature(block_hash.into())
+            .await
+            .with_context(|| format!("Fetch signature for block {next:?} from sequencer"))?;
+        let t_signature = t_signature.elapsed();
+
+        // An extra sanity check for the signature API.
+        anyhow::ensure!(
+            block_hash == signature.signature_input.block_hash,
+            "Signature block hash mismatch, actual {:x}, expected {:x}",
+            signature.signature_input.block_hash.0,
+            block_hash.0,
+        );
+        let signature = signature.into();
+
         head = Some((next, block_hash, state_update.state_commitment));
         blocks.push(next, block_hash, state_update.state_commitment);
 
@@ -261,6 +278,7 @@ where
             block_download: t_block,
             state_diff_download: t_update,
             class_declaration: t_declare,
+            signature_download: t_signature,
         };
 
         let block_header = BlockHeader::from(block.as_ref());
@@ -269,6 +287,7 @@ where
             .send(SyncEvent::Block(
                 (block, commitments),
                 Box::new(state_update),
+                Box::new(signature),
                 timings,
             ))
             .await
@@ -610,6 +629,8 @@ mod tests {
 
     mod sync {
         use crate::state::l2::{BlockChain, L2SyncContext};
+        use pathfinder_common::macro_prelude::*;
+        use pathfinder_common::BlockCommitmentSignature;
         use pathfinder_common::StateUpdate;
 
         use super::super::{sync, BlockValidationMode, SyncEvent};
@@ -654,6 +675,141 @@ mod tests {
         const BLOCK3_NUMBER: BlockNumber = BlockNumber::new_or_panic(3);
         const BLOCK4_NUMBER: BlockNumber = BlockNumber::new_or_panic(4);
 
+        const BLOCK0_HASH: BlockHash = block_hash_bytes!(b"block 0 hash");
+        const BLOCK0_HASH_V2: BlockHash = block_hash_bytes!(b"block 0 hash v2");
+        const BLOCK1_HASH: BlockHash = block_hash_bytes!(b"block 1 hash");
+        const BLOCK1_HASH_V2: BlockHash = block_hash_bytes!(b"block 1 hash v2");
+        const BLOCK2_HASH: BlockHash = block_hash_bytes!(b"block 2 hash");
+        const BLOCK2_HASH_V2: BlockHash = block_hash_bytes!(b"block 2 hash v2");
+        const BLOCK3_HASH: BlockHash = block_hash_bytes!(b"block 3 hash");
+
+        const GLOBAL_ROOT0: StateCommitment = state_commitment_bytes!(b"global root 0");
+        const GLOBAL_ROOT0_V2: StateCommitment = state_commitment_bytes!(b"global root 0 v2");
+        const GLOBAL_ROOT1: StateCommitment = state_commitment_bytes!(b"global root 1");
+        const GLOBAL_ROOT1_V2: StateCommitment = state_commitment_bytes!(b"global root 1 v2");
+        const GLOBAL_ROOT2: StateCommitment = state_commitment_bytes!(b"global root 2");
+        const GLOBAL_ROOT2_V2: StateCommitment = state_commitment_bytes!(b"global root 2 v2");
+        const GLOBAL_ROOT3: StateCommitment = state_commitment_bytes!(b"global root 3");
+
+        const CONTRACT0_ADDR: ContractAddress = contract_address_bytes!(b"contract 0 addr");
+        const CONTRACT0_ADDR_V2: ContractAddress = contract_address_bytes!(b"contract 0 addr v2");
+        const CONTRACT1_ADDR: ContractAddress = contract_address_bytes!(b"contract 1 addr");
+
+        const CONTRACT0_HASH: ClassHash =
+            class_hash!("0x03CC4D0167577958ADD7DD759418506E0930BB061597519CCEB8C3AC6277692E");
+        const CONTRACT0_HASH_V2: ClassHash =
+            class_hash!("0x01BE539E97D3BEFAE5D56D780BAF433802B3203DC6B2947FDB90C384AEF39F3E");
+        const CONTRACT1_HASH: ClassHash =
+            class_hash!("0x071B088C5C8CD884F3106D62C6CB8B423D1D3A58BFAD2EAA8AAC9E4E3E73529D");
+
+        const STORAGE_KEY0: StorageAddress = storage_address_bytes!(b"contract 0 storage addr 0");
+        const STORAGE_KEY1: StorageAddress = storage_address_bytes!(b"contract 1 storage addr 0");
+
+        const STORAGE_VAL0: StorageValue = storage_value_bytes!(b"contract 0 storage val 0");
+        const STORAGE_VAL0_V2: StorageValue = storage_value_bytes!(b"contract 0 storage val 0 v2");
+        const STORAGE_VAL1: StorageValue = storage_value_bytes!(b"contract 1 storage val 0");
+
+        const BLOCK0_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_number: BLOCK0_NUMBER,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 0 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 0 signature s"),
+            ],
+            signature_input: reply::BlockSignatureInput {
+                block_hash: BLOCK0_HASH,
+                state_diff_commitment: state_diff_commitment_bytes!(
+                    b"block 0 state diff commitment"
+                ),
+            },
+        };
+        const BLOCK0_COMMITMENT_SIGNATURE: BlockCommitmentSignature = BlockCommitmentSignature {
+            r: BLOCK0_SIGNATURE.signature[0],
+            s: BLOCK0_SIGNATURE.signature[1],
+        };
+        const BLOCK0_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_number: BLOCK0_NUMBER,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 0 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 0 signature s 2"),
+            ],
+            signature_input: reply::BlockSignatureInput {
+                block_hash: BLOCK0_HASH_V2,
+                state_diff_commitment: state_diff_commitment_bytes!(
+                    b"block 0 state diff commitment 2"
+                ),
+            },
+        };
+
+        const BLOCK1_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_number: BLOCK1_NUMBER,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 1 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 1 signature s"),
+            ],
+            signature_input: reply::BlockSignatureInput {
+                block_hash: BLOCK1_HASH,
+                state_diff_commitment: state_diff_commitment_bytes!(
+                    b"block 1 state diff commitment"
+                ),
+            },
+        };
+        const BLOCK1_COMMITMENT_SIGNATURE: BlockCommitmentSignature = BlockCommitmentSignature {
+            r: BLOCK1_SIGNATURE.signature[0],
+            s: BLOCK1_SIGNATURE.signature[1],
+        };
+        const BLOCK1_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_number: BLOCK1_NUMBER,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 1 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 1 signature s 2"),
+            ],
+            signature_input: reply::BlockSignatureInput {
+                block_hash: BLOCK1_HASH_V2,
+                state_diff_commitment: state_diff_commitment_bytes!(
+                    b"block 1 state diff commitment 2"
+                ),
+            },
+        };
+        const BLOCK2_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_number: BLOCK2_NUMBER,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 2 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 2 signature s"),
+            ],
+            signature_input: reply::BlockSignatureInput {
+                block_hash: BLOCK2_HASH,
+                state_diff_commitment: state_diff_commitment_bytes!(
+                    b"block 2 state diff commitment"
+                ),
+            },
+        };
+        const BLOCK2_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_number: BLOCK2_NUMBER,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 2 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 2 signature s 2"),
+            ],
+            signature_input: reply::BlockSignatureInput {
+                block_hash: BLOCK2_HASH_V2,
+                state_diff_commitment: state_diff_commitment_bytes!(
+                    b"block 2 state diff commitment 2"
+                ),
+            },
+        };
+        const BLOCK3_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_number: BLOCK3_NUMBER,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 3 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 3 signature s"),
+            ],
+            signature_input: reply::BlockSignatureInput {
+                block_hash: BLOCK3_HASH,
+                state_diff_commitment: state_diff_commitment_bytes!(
+                    b"block 3 state diff commitment"
+                ),
+            },
+        };
+
         fn spawn_sync_default(
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
@@ -680,63 +836,17 @@ mod tests {
         }
 
         lazy_static::lazy_static! {
-            static ref BLOCK0_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());
-            static ref BLOCK0_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash v2").unwrap());
-            static ref BLOCK1_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash").unwrap());
-            static ref BLOCK1_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash v2").unwrap());
-            static ref BLOCK2_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash").unwrap());
-            static ref BLOCK2_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
-            static ref BLOCK3_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
-
-            static ref GLOBAL_ROOT0: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0").unwrap());
-            static ref GLOBAL_ROOT0_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0 v2").unwrap());
-            static ref GLOBAL_ROOT1: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 1").unwrap());
-            static ref GLOBAL_ROOT1_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 1 v2").unwrap());
-            static ref GLOBAL_ROOT2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 2").unwrap());
-            static ref GLOBAL_ROOT2_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 2 v2").unwrap());
-            static ref GLOBAL_ROOT3: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 3").unwrap());
-
-            static ref CONTRACT0_ADDR: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr").unwrap());
-            static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr v2").unwrap());
-            static ref CONTRACT1_ADDR: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 1 addr").unwrap());
-
-            static ref CONTRACT0_HASH: ClassHash = ClassHash(
-                Felt::from_hex_str(
-                    "0x03CC4D0167577958ADD7DD759418506E0930BB061597519CCEB8C3AC6277692E",
-                )
-                .unwrap(),
-            );
-            static ref CONTRACT0_HASH_V2: ClassHash = ClassHash(
-                Felt::from_hex_str(
-                    "0x01BE539E97D3BEFAE5D56D780BAF433802B3203DC6B2947FDB90C384AEF39F3E",
-                )
-                .unwrap(),
-            );
-            static ref CONTRACT1_HASH: ClassHash = ClassHash(
-                Felt::from_hex_str(
-                    "0x071B088C5C8CD884F3106D62C6CB8B423D1D3A58BFAD2EAA8AAC9E4E3E73529D",
-                )
-                .unwrap(),
-            );
-
             static ref CONTRACT0_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0{DEF1}"));
             static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0 v2{DEF1}"));
             static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}1{DEF1}"));
 
-            static ref STORAGE_KEY0: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 0 storage addr 0").unwrap());
-            static ref STORAGE_KEY1: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 1 storage addr 0").unwrap());
-
-            static ref STORAGE_VAL0: StorageValue = StorageValue(Felt::from_be_slice(b"contract 0 storage val 0").unwrap());
-            static ref STORAGE_VAL0_V2: StorageValue = StorageValue(Felt::from_be_slice(b"contract 0 storage val 0 v2").unwrap());
-            static ref STORAGE_VAL1: StorageValue = StorageValue(Felt::from_be_slice(b"contract 1 storage val 0").unwrap());
-
             static ref BLOCK0: reply::Block = reply::Block {
-                block_hash: *BLOCK0_HASH,
+                block_hash: BLOCK0_HASH,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::ZERO),
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-                state_commitment: *GLOBAL_ROOT0,
+                state_commitment: GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: BlockTimestamp::new_or_panic(0),
                 transaction_receipts: vec![],
@@ -744,12 +854,12 @@ mod tests {
                 starknet_version: StarknetVersion::default(),
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
-                block_hash: *BLOCK0_HASH_V2,
+                block_hash: BLOCK0_HASH_V2,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
-                state_commitment: *GLOBAL_ROOT0_V2,
+                state_commitment: GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,
                 timestamp: BlockTimestamp::new_or_panic(10),
                 transaction_receipts: vec![],
@@ -757,12 +867,12 @@ mod tests {
                 starknet_version: StarknetVersion::new(0, 9, 1),
             };
             static ref BLOCK1: reply::Block = reply::Block {
-                block_hash: *BLOCK1_HASH,
+                block_hash: BLOCK1_HASH,
                 block_number: BLOCK1_NUMBER,
                 gas_price: Some(GasPrice::from(1)),
-                parent_block_hash: *BLOCK0_HASH,
+                parent_block_hash: BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
-                state_commitment: *GLOBAL_ROOT1,
+                state_commitment: GLOBAL_ROOT1,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: BlockTimestamp::new_or_panic(1),
                 transaction_receipts: vec![],
@@ -770,12 +880,12 @@ mod tests {
                 starknet_version: StarknetVersion::new(0, 9, 1),
             };
             static ref BLOCK2: reply::Block = reply::Block {
-                block_hash: *BLOCK2_HASH,
+                block_hash: BLOCK2_HASH,
                 block_number: BLOCK2_NUMBER,
                 gas_price: Some(GasPrice::from(2)),
-                parent_block_hash: *BLOCK1_HASH,
+                parent_block_hash: BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
-                state_commitment: *GLOBAL_ROOT2,
+                state_commitment: GLOBAL_ROOT2,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: BlockTimestamp::new_or_panic(2),
                 transaction_receipts: vec![],
@@ -785,51 +895,51 @@ mod tests {
 
             static ref STATE_UPDATE0: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK0_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT0)
-                    .with_deployed_contract(*CONTRACT0_ADDR, *CONTRACT0_HASH)
-                    .with_storage_update(*CONTRACT0_ADDR, *STORAGE_KEY0, *STORAGE_VAL0)
+                    .with_block_hash(BLOCK0_HASH)
+                    .with_state_commitment(GLOBAL_ROOT0)
+                    .with_deployed_contract(CONTRACT0_ADDR, CONTRACT0_HASH)
+                    .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0)
             };
             static ref STATE_UPDATE0_V2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK0_HASH_V2)
-                    .with_state_commitment(*GLOBAL_ROOT0_V2)
-                    .with_deployed_contract(*CONTRACT0_ADDR_V2, *CONTRACT0_HASH_V2)
+                    .with_block_hash(BLOCK0_HASH_V2)
+                    .with_state_commitment(GLOBAL_ROOT0_V2)
+                    .with_deployed_contract(CONTRACT0_ADDR_V2, CONTRACT0_HASH_V2)
             };
 
             static ref STATE_UPDATE1: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK1_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT1)
-                    .with_parent_state_commitment(*GLOBAL_ROOT0)
-                    .with_deployed_contract(*CONTRACT1_ADDR, *CONTRACT1_HASH)
-                    .with_storage_update(*CONTRACT0_ADDR, *STORAGE_KEY0, *STORAGE_VAL0_V2)
-                    .with_storage_update(*CONTRACT1_ADDR, *STORAGE_KEY1, *STORAGE_VAL1)
+                    .with_block_hash(BLOCK1_HASH)
+                    .with_state_commitment(GLOBAL_ROOT1)
+                    .with_parent_state_commitment(GLOBAL_ROOT0)
+                    .with_deployed_contract(CONTRACT1_ADDR, CONTRACT1_HASH)
+                    .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0_V2)
+                    .with_storage_update(CONTRACT1_ADDR, STORAGE_KEY1, STORAGE_VAL1)
             };
 
             static ref STATE_UPDATE1_V2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK1_HASH_V2)
-                    .with_state_commitment(*GLOBAL_ROOT1_V2)
-                    .with_parent_state_commitment(*GLOBAL_ROOT0_V2)
+                    .with_block_hash(BLOCK1_HASH_V2)
+                    .with_state_commitment(GLOBAL_ROOT1_V2)
+                    .with_parent_state_commitment(GLOBAL_ROOT0_V2)
             };
             static ref STATE_UPDATE2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK2_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT2)
-                    .with_parent_state_commitment(*GLOBAL_ROOT1)
+                    .with_block_hash(BLOCK2_HASH)
+                    .with_state_commitment(GLOBAL_ROOT2)
+                    .with_parent_state_commitment(GLOBAL_ROOT1)
             };
             static ref STATE_UPDATE2_V2: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK2_HASH_V2)
-                    .with_state_commitment(*GLOBAL_ROOT2_V2)
-                    .with_parent_state_commitment(*GLOBAL_ROOT1_V2)
+                    .with_block_hash(BLOCK2_HASH_V2)
+                    .with_state_commitment(GLOBAL_ROOT2_V2)
+                    .with_parent_state_commitment(GLOBAL_ROOT1_V2)
             };
             static ref STATE_UPDATE3: StateUpdate = {
                 StateUpdate::default()
-                    .with_block_hash(*BLOCK3_HASH)
-                    .with_state_commitment(*GLOBAL_ROOT3)
-                    .with_parent_state_commitment(*GLOBAL_ROOT2)
+                    .with_block_hash(BLOCK3_HASH)
+                    .with_state_commitment(GLOBAL_ROOT3)
+                    .with_parent_state_commitment(GLOBAL_ROOT2)
             };
         }
 
@@ -882,6 +992,22 @@ mod tests {
         }
 
         /// Convenience wrapper
+        fn expect_signature(
+            mock: &mut MockGatewayApi,
+            seq: &mut mockall::Sequence,
+            block: BlockId,
+            returned_result: Result<reply::BlockSignature, SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_signature()
+                .with(eq(block))
+                .times(1)
+                .in_sequence(seq)
+                .return_once(|_| returned_result);
+        }
+
+        /// Convenience wrapper
         fn expect_class_by_hash(
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
@@ -923,14 +1049,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
                 );
                 // Downlad block #1 with respective state update and contracts
                 expect_block(
@@ -942,14 +1074,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
                 );
                 // Stay at head, no more blocks available
                 expect_block(
@@ -958,11 +1096,11 @@ mod tests {
                     BLOCK2_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(BLOCK1.clone().into()),
+                    Ok((BLOCK1.block_number, BLOCK1.block_hash)),
                 );
 
                 // Let's run the UUT
@@ -970,19 +1108,21 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass { hash, .. } => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
+                    assert_eq!(*signature, BLOCK0_COMMITMENT_SIGNATURE);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass { hash, .. } => {
-                    assert_eq!(hash, *CONTRACT1_HASH);
+                    assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
+                    assert_eq!(*signature, BLOCK1_COMMITMENT_SIGNATURE);
                 });
             }
 
@@ -1002,14 +1142,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
                 );
 
                 // Stay at head, no more blocks available
@@ -1019,11 +1165,11 @@ mod tests {
                     BLOCK2_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(BLOCK1.clone().into()),
+                    Ok((BLOCK1.block_number, BLOCK1.block_hash)),
                 );
 
                 // Let's run the UUT
@@ -1042,18 +1188,18 @@ mod tests {
                 let _jh = tokio::spawn(sync(
                     tx_event,
                     context,
-                    Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
+                    Some((BLOCK0_NUMBER, BLOCK0_HASH, GLOBAL_ROOT0)),
                     BlockChain::with_capacity(
                         100,
-                        vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
+                        vec![(BLOCK0_NUMBER, BLOCK0_HASH, GLOBAL_ROOT0)],
                     ),
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                 SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -1112,14 +1258,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
                 );
 
                 // Block #1 is not there
@@ -1150,14 +1302,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH_V2).into(),
+                    BLOCK0_HASH_V2.into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH_V2,
+                    CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH_V2.into(),
+                    Ok(BLOCK0_SIGNATURE_V2.clone()),
                 );
 
                 // Indicate that we are still staying at the head - no new blocks
@@ -1181,9 +1339,9 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -1193,9 +1351,9 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH_V2);
+                        assert_eq!(hash, CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
@@ -1216,14 +1374,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
+                    block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH_V2,
+                    parent_block_hash: BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT1_V2,
+                    state_commitment: GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1241,14 +1399,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
                 expect_block(
@@ -1260,14 +1424,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
                 expect_block(
@@ -1279,10 +1449,15 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
                 );
-
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_HASH.into(),
+                    Ok(BLOCK2_SIGNATURE.clone()),
+                );
                 // Block #3 is not there
                 expect_block(
                     &mut mock,
@@ -1326,14 +1501,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH_V2).into(),
+                    BLOCK0_HASH_V2.into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH_V2,
+                    CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH_V2.into(),
+                    Ok(BLOCK0_SIGNATURE_V2.clone()),
                 );
                 // Fetch the new block #1 from the fork with respective state update and contracts
                 expect_block(
@@ -1345,8 +1526,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH_V2).into(),
+                    BLOCK1_HASH_V2.into(),
                     Ok(STATE_UPDATE1_V2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH_V2.into(),
+                    Ok(BLOCK1_SIGNATURE_V2.clone()),
                 );
 
                 // Indicate that we are still staying at the head
@@ -1369,21 +1556,21 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
@@ -1393,13 +1580,13 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH_V2);
+                        assert_eq!(hash, CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, block1_v2);
                     assert!(state_update.contract_updates.is_empty());
                 });
@@ -1421,14 +1608,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
+                    block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH,
+                    parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT1_V2,
+                    state_commitment: GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1436,14 +1623,14 @@ mod tests {
                     starknet_version: StarknetVersion::default(),
                 };
                 let block2_v2 = reply::Block {
-                    block_hash: *BLOCK2_HASH_V2,
+                    block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH_V2,
+                    parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT2_V2,
+                    state_commitment: GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1451,14 +1638,14 @@ mod tests {
                     starknet_version: StarknetVersion::default(),
                 };
                 let block3 = reply::Block {
-                    block_hash: *BLOCK3_HASH,
+                    block_hash: BLOCK3_HASH,
                     block_number: BLOCK3_NUMBER,
                     gas_price: Some(GasPrice::from(3)),
-                    parent_block_hash: *BLOCK2_HASH,
+                    parent_block_hash: BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 3").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT3,
+                    state_commitment: GLOBAL_ROOT3,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: BlockTimestamp::new_or_panic(3),
                     transaction_receipts: vec![],
@@ -1476,14 +1663,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
                 expect_block(
@@ -1495,14 +1688,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
                 expect_block(
@@ -1514,8 +1713,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_HASH.into(),
+                    Ok(BLOCK2_SIGNATURE.clone()),
                 );
                 // Fetch block #3 with respective state update and contracts
                 expect_block(
@@ -1527,8 +1732,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK3_HASH).into(),
+                    BLOCK3_HASH.into(),
                     Ok(STATE_UPDATE3.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK3_HASH.into(),
+                    Ok(BLOCK3_SIGNATURE.clone()),
                 );
                 // Block #4 is not there
                 expect_block(
@@ -1578,8 +1789,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH_V2).into(),
+                    BLOCK1_HASH_V2.into(),
                     Ok(STATE_UPDATE1_V2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH_V2.into(),
+                    Ok(BLOCK1_SIGNATURE_V2.clone()),
                 );
                 // Fetch the new block #2 from the fork with respective state update
                 expect_block(
@@ -1591,10 +1808,15 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH_V2).into(),
+                    BLOCK2_HASH_V2.into(),
                     Ok(STATE_UPDATE2_V2.clone()),
                 );
-
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_HASH_V2.into(),
+                    Ok(BLOCK2_SIGNATURE_V2.clone()),
+                );
                 // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
                 expect_block(
                     &mut mock,
@@ -1614,25 +1836,25 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, block3);
                     assert_eq!(*state_update, *STATE_UPDATE3);
                 });
@@ -1640,11 +1862,11 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -1666,14 +1888,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block2_v2 = reply::Block {
-                    block_hash: *BLOCK2_HASH_V2,
+                    block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH,
+                    parent_block_hash: BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT2_V2,
+                    state_commitment: GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1691,14 +1913,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
                 expect_block(
@@ -1710,14 +1938,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
                 expect_block(
@@ -1729,8 +1963,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_HASH.into(),
+                    Ok(BLOCK2_SIGNATURE.clone()),
                 );
                 // Block #3 is not there
                 expect_block(
@@ -1768,8 +2008,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH_V2).into(),
+                    BLOCK2_HASH_V2.into(),
                     Ok(STATE_UPDATE2_V2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_HASH_V2.into(),
+                    Ok(BLOCK2_SIGNATURE_V2.clone()),
                 );
 
                 // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
@@ -1791,21 +2037,21 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
@@ -1813,7 +2059,7 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK2_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -1833,14 +2079,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
+                    block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH,
+                    parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT1_V2,
+                    state_commitment: GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1848,14 +2094,14 @@ mod tests {
                     starknet_version: StarknetVersion::default(),
                 };
                 let block2 = reply::Block {
-                    block_hash: *BLOCK2_HASH,
+                    block_hash: BLOCK2_HASH,
                     block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH_V2,
+                    parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 2").unwrap(),
                     )),
-                    state_commitment: *GLOBAL_ROOT2,
+                    state_commitment: GLOBAL_ROOT2,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1873,15 +2119,22 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    BLOCK0_HASH.into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_HASH.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
+                );
+
                 // Fetch block #1 with respective state update and contracts
                 expect_block(
                     &mut mock,
@@ -1892,14 +2145,20 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH).into(),
+                    BLOCK1_HASH.into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_HASH,
+                    CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
                 );
                 // Fetch block #2 whose parent hash does not match block #1 hash
                 expect_block(
@@ -1929,8 +2188,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK1_HASH_V2).into(),
+                    BLOCK1_HASH_V2.into(),
                     Ok(STATE_UPDATE1_V2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_HASH_V2.into(),
+                    Ok(BLOCK1_SIGNATURE_V2.clone()),
                 );
                 // Fetch the block #2 again, now with respective state update
                 expect_block(
@@ -1942,8 +2207,14 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK2_HASH).into(),
+                    BLOCK2_HASH.into(),
                     Ok(STATE_UPDATE2.clone()),
+                );
+                expect_signature(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_HASH.into(),
+                    Ok(BLOCK2_SIGNATURE.clone()),
                 );
 
                 // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
@@ -1953,11 +2224,11 @@ mod tests {
                     BLOCK3_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(block2.clone().into()),
+                    Ok((block2.block_number, block2.block_hash)),
                 );
 
                 // Run the UUT
@@ -1965,17 +2236,17 @@ mod tests {
 
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT0_HASH);
+                        assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass{hash, ..} => {
-                        assert_eq!(hash, *CONTRACT1_HASH);
+                        assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -1983,11 +2254,11 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, block2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
@@ -2011,13 +2282,13 @@ mod tests {
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    (*BLOCK0_HASH).into(),
+                    (BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
                 expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_HASH,
+                    CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
 

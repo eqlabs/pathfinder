@@ -1,7 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, ContractAddress, EthereumAddress, GasPrice,
-    SequencerAddress, StarknetVersion, StateCommitment,
+    BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ContractAddress,
+    EthereumAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+    StateDiffCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
@@ -1428,6 +1429,28 @@ pub mod add_transaction {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct BlockSignature {
+    pub block_number: BlockNumber,
+    pub signature: [BlockCommitmentSignatureElem; 2],
+    pub signature_input: BlockSignatureInput,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct BlockSignatureInput {
+    pub block_hash: BlockHash,
+    pub state_diff_commitment: StateDiffCommitment,
+}
+
+impl From<BlockSignature> for pathfinder_common::BlockCommitmentSignature {
+    fn from(value: BlockSignature) -> Self {
+        Self {
+            r: value.signature[0],
+            s: value.signature[1],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
@@ -1698,5 +1721,42 @@ mod tests {
                 .unwrap();
 
         assert_eq!(message_hash, expected);
+    }
+
+    mod block_signature {
+        use pathfinder_common::{
+            block_commitment_signature_elem, block_hash, state_diff_commitment, BlockNumber,
+        };
+
+        use super::super::{BlockSignature, BlockSignatureInput};
+
+        #[test]
+        fn parse() {
+            let json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
+
+            let expected = BlockSignature {
+                block_number: BlockNumber::new_or_panic(350000),
+                signature: [
+                    block_commitment_signature_elem!(
+                        "0x95e98f5b91d39ae2b1bf77447a4fc01725352ae8b0b2c0a3fe09d43d1d9e57"
+                    ),
+                    block_commitment_signature_elem!(
+                        "0x541b2db8dae6d5ae24b34e427d251edc2e94dcffddd85f207e1b51f2f4bb1ef"
+                    ),
+                ],
+                signature_input: BlockSignatureInput {
+                    block_hash: block_hash!(
+                        "0x6f7342a680d7f99bdfdd859f587c75299e7ffabe62c071ded3a6d8a34cb132c"
+                    ),
+                    state_diff_commitment: state_diff_commitment!(
+                        "0x432e8e2ad833548e1c1077fc298991b055ba1e6f7a17dd332db98f4f428c56c"
+                    ),
+                },
+            };
+
+            let signature: BlockSignature = serde_json::from_str(json).unwrap();
+
+            assert_eq!(signature, expected);
+        }
     }
 }

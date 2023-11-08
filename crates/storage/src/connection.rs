@@ -5,6 +5,7 @@ mod class;
 mod ethereum;
 mod event;
 mod reference;
+mod signature;
 mod state_update;
 mod transaction;
 mod trie;
@@ -20,9 +21,10 @@ pub use transaction::TransactionStatus;
 pub use trie::{Child, Node, StoredNode};
 
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash,
-    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, SierraHash,
-    StateUpdate, StorageAddress, StorageCommitment, StorageValue, TransactionHash,
+    BlockCommitmentSignature, BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment,
+    ClassCommitmentLeafHash, ClassHash, ContractAddress, ContractNonce, ContractRoot,
+    ContractStateHash, SierraHash, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
+    TransactionHash,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
 use stark_hash::Felt;
@@ -451,6 +453,14 @@ impl<'inner> Transaction<'inner> {
         block_id: BlockId,
     ) -> anyhow::Result<bool> {
         state_update::contract_exists(self, contract_address, block_id)
+    }
+
+    pub fn insert_signature(
+        &self,
+        block_number: BlockNumber,
+        signature: &BlockCommitmentSignature,
+    ) -> anyhow::Result<()> {
+        signature::insert_signature(self, block_number, signature)
     }
 
     pub(self) fn inner(&self) -> &rusqlite::Transaction<'_> {

@@ -5,9 +5,9 @@ mod pending;
 
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-    EventCommitment, GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate,
-    StorageCommitment, TransactionCommitment,
+    BlockCommitmentSignature, BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId,
+    ClassCommitment, ClassHash, EventCommitment, GasPrice, SequencerAddress, SierraHash,
+    StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -42,6 +42,7 @@ pub enum SyncEvent {
     Block(
         (Box<Block>, (TransactionCommitment, EventCommitment)),
         Box<StateUpdate>,
+        Box<BlockCommitmentSignature>,
         l2::Timings,
     ),
     /// An L2 reorg was detected, contains the reorg-tail which
@@ -368,7 +369,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 l1_update(&mut db_conn, &update).await?;
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
-            Block((block, (tx_comm, ev_comm)), state_update, timings) => {
+            Block((block, (tx_comm, ev_comm)), state_update, signature, timings) => {
                 if block.block_number < next_number {
                     tracing::debug!("Ignoring duplicate block {}", block.block_number);
                     continue;
@@ -389,6 +390,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     tx_comm,
                     ev_comm,
                     *state_update,
+                    *signature,
                     verify_tree_hashes,
                     storage.clone(),
                 )
@@ -421,7 +423,8 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 
                 let download_time = (timings.block_download
                     + timings.class_declaration
-                    + timings.state_diff_download)
+                    + timings.state_diff_download
+                    + timings.signature_download)
                     .as_secs_f64();
 
                 metrics::gauge!("block_download", download_time);
@@ -445,7 +448,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                         tracing::info!("Updated Starknet state with block {}", block_number)
                     }
                     Some(_) => {
-                        tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                        tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s, signature in {:2}s",
                                     block_number,
                                     block_time.as_secs_f32(),
                                     block_time_avg.as_secs_f32(),
@@ -454,6 +457,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                                     update_t.as_secs_f32(),
                                     timings.block_download.as_secs_f32(),
                                     timings.state_diff_download.as_secs_f32(),
+                                    timings.signature_download.as_secs_f32(),
                                 );
                     }
                 }
@@ -692,12 +696,14 @@ async fn l1_update(
 }
 
 /// Returns the new [StateCommitment] after the update.
+#[allow(clippy::too_many_arguments)]
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
     transaction_commitment: TransactionCommitment,
     event_commitment: EventCommitment,
     state_update: StateUpdate,
+    signature: BlockCommitmentSignature,
     verify_tree_hashes: bool,
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
@@ -789,6 +795,11 @@ async fn l2_update(
         transaction
             .insert_state_update(block.block_number, &state_update)
             .context("Insert state update into database")?;
+
+        // Insert signature
+        transaction
+            .insert_signature(block.block_number, &signature)
+            .context("Insert signature into database")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
@@ -1020,11 +1031,11 @@ fn update_starknet_state(
 mod tests {
     use super::l2;
     use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
-    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt_bytes, BlockHash, BlockHeader, BlockNumber, ClassHash, EventCommitment, SierraHash,
         StateCommitment, StateUpdate, TransactionCommitment,
     };
+    use pathfinder_common::{macro_prelude::*, BlockCommitmentSignature};
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
     use stark_hash::Felt;
@@ -1039,6 +1050,7 @@ mod tests {
     fn generate_block_data() -> Vec<(
         (Box<Block>, (TransactionCommitment, EventCommitment)),
         Box<StateUpdate>,
+        Box<BlockCommitmentSignature>,
         l2::Timings,
     )> {
         let genesis_header =
@@ -1080,12 +1092,18 @@ mod tests {
                 starknet_version: header.starknet_version,
             });
 
+            let signature = Box::new(BlockCommitmentSignature {
+                r: block_commitment_signature_elem!("0x1001"),
+                s: block_commitment_signature_elem!("0x1002"),
+            });
+
             data.push((
                 (
                     block,
                     (header.transaction_commitment, header.event_commitment),
                 ),
                 state_update,
+                signature,
                 timings,
             ));
 
@@ -1106,8 +1124,8 @@ mod tests {
         let num_blocks = block_data.len();
 
         // Send block updates, followed by a reorg to genesis.
-        for (a, b, c) in block_data {
-            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        for (a, b, c, d) in block_data {
+            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
         }
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
@@ -1146,8 +1164,8 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
         // Send block updates, followed by a reorg to genesis.
-        for (a, b, c) in generate_block_data() {
-            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        for (a, b, c, d) in generate_block_data() {
+            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
         }
         event_tx
             .send(SyncEvent::Reorg(BlockNumber::new_or_panic(2)))
@@ -1195,8 +1213,8 @@ mod tests {
         // Then republish block 2, which should succeed.
         let blocks = generate_block_data();
         let block2 = blocks[2].clone();
-        for (a, b, c) in blocks {
-            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        for (a, b, c, d) in blocks {
+            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
         }
         event_tx
             .send(SyncEvent::Reorg(block2.0 .0.block_number))
@@ -1206,7 +1224,7 @@ mod tests {
         // updated after a reorg, causing the reorg'd block numbers to be considered
         // duplicates and skipped - breaking sync.
         event_tx
-            .send(SyncEvent::Block(block2.0, block2.1, block2.2))
+            .send(SyncEvent::Block(block2.0, block2.1, block2.2, block2.3))
             .await
             .unwrap();
         // Close the event channel which allows the consumer task to exit.
@@ -1245,8 +1263,8 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
         // Send block updates, followed by a reorg to genesis.
-        for (a, b, c) in generate_block_data() {
-            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        for (a, b, c, d) in generate_block_data() {
+            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
         }
         event_tx
             .send(SyncEvent::Reorg(BlockNumber::GENESIS))
@@ -1351,14 +1369,14 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
 
         let blocks = generate_block_data();
-        let (a, b, c) = blocks[0].clone();
+        let (a, b, c, d) = blocks[0].clone();
 
         event_tx
-            .send(SyncEvent::Block(a.clone(), b.clone(), c))
+            .send(SyncEvent::Block(a.clone(), b.clone(), c.clone(), d))
             .await
             .unwrap();
         event_tx
-            .send(SyncEvent::Block(a.clone(), b.clone(), c))
+            .send(SyncEvent::Block(a.clone(), b.clone(), c, d))
             .await
             .unwrap();
         drop(event_tx);
