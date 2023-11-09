@@ -1,7 +1,7 @@
 {
     "openrpc": "1.0.0-rc1",
     "info": {
-        "version": "0.5.0",
+        "version": "0.5.1",
         "title": "StarkNet Trace API",
         "license": {}
     },
@@ -195,11 +195,8 @@
                             }
                         },
                         "required": [
-                            "validate_invocation",
-                            "execute_invocation",
-                            "fee_transfer_invocation",
-                            "state_diff",
-                            "type"
+                            "type",
+                            "execute_invocation"
                         ]
                     },
                     {
@@ -227,9 +224,6 @@
                             }
                         },
                         "required": [
-                            "validate_invocation",
-                            "fee_transfer_invocation",
-                            "state_diff",
                             "type"
                         ]
                     },
@@ -262,11 +256,8 @@
                             }
                         },
                         "required": [
-                            "validate_invocation",
-                            "constructor_invocation",
-                            "fee_transfer_invocation",
-                            "state_diff",
-                            "type"
+                            "type",
+                            "constructor_invocation"
                         ]
                     },
                     {
@@ -278,6 +269,11 @@
                                 "description": "the trace of the __execute__ call or constructor call, depending on the transaction type (none for declare transactions)",
                                 "$ref": "#/components/schemas/FUNCTION_INVOCATION"
                             },
+                            "state_diff": {
+                                "title": "state_diff",
+                                "description": "the state diffs induced by the transaction",
+                                "$ref": "#/components/schemas/STATE_DIFF"
+                            },
                             "type": {
                                 "title": "Type",
                                 "type": "string",
@@ -287,8 +283,8 @@
                             }
                         },
                         "required": [
-                            "function_invocation",
-                            "type"
+                            "type",
+                            "function_invocation"
                         ]
                     }
                 ]
@@ -385,6 +381,7 @@
             "CALL_TYPE": {
                 "type": "string",
                 "enum": [
+                    "DELEGATE",
                     "LIBRARY_CALL",
                     "CALL"
                 ]

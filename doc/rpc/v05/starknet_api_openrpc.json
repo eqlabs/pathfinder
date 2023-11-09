@@ -1,7 +1,7 @@
 {
     "openrpc": "1.0.0-rc1",
     "info": {
-        "version": "0.5.0",
+        "version": "0.5.1",
         "title": "StarkNet Node API",
         "license": {}
     },
@@ -922,6 +922,8 @@
                             }
                         },
                         "required": [
+                            "block_hash",
+                            "block_number",
                             "transaction_hash"
                         ]
                     }
@@ -2702,8 +2704,7 @@
                     "finality_status",
                     "execution_status",
                     "execution_resources"
-                ],
-                "additionalProperties": false
+                ]
             },
             "MSG_TO_L1": {
                 "title": "Message to L1",
@@ -3277,47 +3278,47 @@
                     "steps": {
                         "title": "Steps",
                         "description": "The number of Cairo steps used",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "memory_holes": {
                         "title": "Memory holes",
                         "description": "The number of unused memory cells (each cell is roughly equivalent to a step)",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "range_check_builtin_applications": {
                         "title": "Range check applications",
                         "description": "The number of RANGE_CHECK builtin instances",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "pedersen_builtin_applications": {
                         "title": "Pedersen applications",
                         "description": "The number of Pedersen builtin instances",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "poseidon_builtin_applications": {
                         "title": "Poseidon applications",
                         "description": "The number of Poseidon builtin instances",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "ec_op_builtin_applications": {
                         "title": "EC_OP applications",
                         "description": "the number of EC_OP builtin instances",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "ecdsa_builtin_applications": {
                         "title": "ECDSA applications",
                         "description": "the number of ECDSA builtin instances",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "bitwise_builtin_applications": {
                         "title": "BITWISE applications",
                         "description": "the number of BITWISE builtin instances",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     },
                     "keccak_builtin_applications": {
                         "title": "Keccak applications",
                         "description": "The number of KECCAK builtin instances",
-                        "type": "integer"
+                        "$ref": "#/components/schemas/NUM_AS_HEX"
                     }
                 },
                 "required": [
