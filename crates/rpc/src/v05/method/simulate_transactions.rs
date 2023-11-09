@@ -188,7 +188,7 @@ pub mod dto {
         #[serde(rename = "CALL")]
         Call,
         #[serde(rename = "LIBRARY_CALL")]
-        LibraryCall,
+        _LibraryCall,
         #[serde(rename = "DELEGATE")]
         Delegate,
     }
@@ -198,7 +198,7 @@ pub mod dto {
             use pathfinder_executor::types::CallType::*;
             match value {
                 Call => Self::Call,
-                Delegate => Self::LibraryCall,
+                Delegate => Self::Delegate,
             }
         }
     }

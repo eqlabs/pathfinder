@@ -38,7 +38,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
         .register("starknet_getTransactionStatus"            , method::get_transaction_status)
         .register("starknet_simulateTransactions"            , method::simulate_transactions)
-        .register("starknet_specVersion"                     , method::spec_version)
+        .register("starknet_specVersion"                     , || "v0.5.1")
         .register("starknet_traceBlockTransactions"          , method::trace_block_transactions)
         .register("starknet_traceTransaction"                , method::trace_transaction)
 
