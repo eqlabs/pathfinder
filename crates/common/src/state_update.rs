@@ -1,10 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use fake::Dummy;
+use stark_curve::FieldElement;
+use stark_poseidon::{poseidon_hash_many, PoseidonHasher};
 
 use crate::{
     BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
-    StorageAddress, StorageValue,
+    StateDiffCommitment, StorageAddress, StorageValue,
 };
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
@@ -207,6 +209,186 @@ impl StateUpdate {
                     })
                 })
         })
+    }
+
+    /// Compute the state diff commitment used in block commitment signatures.
+    ///
+    /// How to compute the value is documented in [this Starknet Community article](https://community.starknet.io/t/introducing-p2p-authentication-and-mismatch-resolution-in-v0-12-2/97993).
+    pub fn compute_state_diff_commitment(&self) -> StateDiffCommitment {
+        StateDiffCommitment(
+            poseidon_hash_many(&[
+                // state_diff_version
+                FieldElement::ZERO,
+                self.compute_hash_of_deployed_contracts(),
+                self.compute_hash_of_declared_classes(),
+                self.compute_hash_of_old_declared_classes(),
+                // number_of_DA_modes
+                FieldElement::ONE,
+                // DA_mode_0
+                FieldElement::ZERO,
+                self.compute_hash_of_storage_domain_state_diff(),
+            ])
+            .into(),
+        )
+    }
+
+    fn compute_hash_of_deployed_contracts(&self) -> FieldElement {
+        let deployed_contracts: BTreeMap<ContractAddress, ClassHash> = self
+            .contract_updates
+            .iter()
+            .filter_map(|(address, update)| {
+                update
+                    .class
+                    .as_ref()
+                    .map(|update| (*address, update.class_hash()))
+            })
+            .collect();
+
+        let number_of_deployed_contracts = deployed_contracts.len() as u64;
+
+        deployed_contracts
+            .iter()
+            .fold(
+                {
+                    let mut hasher = PoseidonHasher::new();
+                    hasher.write(number_of_deployed_contracts.into());
+                    hasher
+                },
+                |mut hasher, (address, class_hash)| {
+                    hasher.write(address.0.into());
+                    hasher.write(class_hash.0.into());
+                    hasher
+                },
+            )
+            .finish()
+    }
+
+    fn compute_hash_of_declared_classes(&self) -> FieldElement {
+        let declared_classes: BTreeSet<(SierraHash, CasmHash)> = self
+            .declared_sierra_classes
+            .iter()
+            .map(|(sierra, casm)| (*sierra, *casm))
+            .collect();
+
+        let number_of_declared_classes = declared_classes.len() as u64;
+
+        declared_classes
+            .iter()
+            .fold(
+                {
+                    let mut hasher = PoseidonHasher::new();
+                    hasher.write(number_of_declared_classes.into());
+                    hasher
+                },
+                |mut hasher, (sierra, casm)| {
+                    hasher.write(sierra.0.into());
+                    hasher.write(casm.0.into());
+                    hasher
+                },
+            )
+            .finish()
+    }
+
+    fn compute_hash_of_old_declared_classes(&self) -> FieldElement {
+        let declared_classes: BTreeSet<ClassHash> =
+            self.declared_cairo_classes.iter().copied().collect();
+
+        let number_of_declared_classes = declared_classes.len() as u64;
+
+        declared_classes
+            .iter()
+            .fold(
+                {
+                    let mut hasher = PoseidonHasher::new();
+                    hasher.write(number_of_declared_classes.into());
+                    hasher
+                },
+                |mut hasher, class_hash| {
+                    hasher.write(class_hash.0.into());
+                    hasher
+                },
+            )
+            .finish()
+    }
+
+    fn compute_hash_of_storage_domain_state_diff(&self) -> FieldElement {
+        let storage_diffs = self
+            .contract_updates
+            .iter()
+            .filter_map(|(address, update)| {
+                if update.storage.is_empty() {
+                    None
+                } else {
+                    let updates = update
+                        .storage
+                        .iter()
+                        .map(|(key, value)| (*key, *value))
+                        .collect();
+
+                    Some((*address, updates))
+                }
+            });
+        let system_storage_diffs =
+            self.system_contract_updates
+                .iter()
+                .filter_map(|(address, update)| {
+                    if update.storage.is_empty() {
+                        None
+                    } else {
+                        let updates: BTreeMap<StorageAddress, StorageValue> = update
+                            .storage
+                            .iter()
+                            .map(|(key, value)| (*key, *value))
+                            .collect();
+
+                        Some((*address, updates))
+                    }
+                });
+        let storage_diffs: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
+            storage_diffs.chain(system_storage_diffs).collect();
+
+        let number_of_updated_contracts = storage_diffs.len() as u64;
+
+        let mut hasher = storage_diffs.iter().fold(
+            {
+                let mut hasher = PoseidonHasher::new();
+                hasher.write(number_of_updated_contracts.into());
+                hasher
+            },
+            |mut hasher, (address, updates)| {
+                hasher.write(address.0.into());
+                let number_of_updates = updates.len() as u64;
+                hasher.write(number_of_updates.into());
+
+                updates.iter().fold(hasher, |mut hasher, (key, value)| {
+                    hasher.write(key.0.into());
+                    hasher.write(value.0.into());
+                    hasher
+                })
+            },
+        );
+
+        let nonces: BTreeMap<ContractAddress, ContractNonce> = self
+            .contract_updates
+            .iter()
+            .filter_map(|(address, update)| update.nonce.map(|nonce| (*address, nonce)))
+            .collect();
+
+        let number_of_updated_nonces = nonces.len() as u64;
+
+        let hasher = nonces.iter().fold(
+            {
+                hasher.write(number_of_updated_nonces.into());
+                hasher
+            },
+            |mut hasher, (address, nonce)| {
+                hasher.write(address.0.into());
+                hasher.write(nonce.0.into());
+                hasher
+            },
+        );
+
+        hasher.finish()
     }
 }
 

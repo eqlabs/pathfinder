@@ -1728,7 +1728,7 @@ mod tests {
             block_commitment_signature_elem, block_hash, state_diff_commitment, BlockNumber,
         };
 
-        use super::super::{BlockSignature, BlockSignatureInput};
+        use super::super::{BlockSignature, BlockSignatureInput, StateUpdate};
 
         #[test]
         fn parse() {
@@ -1757,6 +1757,23 @@ mod tests {
             let signature: BlockSignature = serde_json::from_str(json).unwrap();
 
             assert_eq!(signature, expected);
+        }
+
+        #[test]
+        fn state_diff_commitment() {
+            let signature_json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
+            let signature: BlockSignature = serde_json::from_str(signature_json).unwrap();
+
+            let state_update_json =
+                starknet_gateway_test_fixtures::v0_12_2::state_update::BLOCK_350000;
+            let state_update: StateUpdate = serde_json::from_str(state_update_json).unwrap();
+
+            let state_update = pathfinder_common::StateUpdate::from(state_update);
+
+            assert_eq!(
+                state_update.compute_state_diff_commitment(),
+                signature.signature_input.state_diff_commitment
+            )
         }
     }
 }
