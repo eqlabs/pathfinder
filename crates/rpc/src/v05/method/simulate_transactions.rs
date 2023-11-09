@@ -346,7 +346,7 @@ pub mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
-        pub state_diff: StateDiff,
+        pub state_diff: Option<StateDiff>,
     }
 
     impl From<pathfinder_executor::types::DeclareTransactionTrace> for DeclareTxnTrace {
@@ -354,7 +354,7 @@ pub mod dto {
             Self {
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
-                state_diff: trace.state_diff.into(),
+                state_diff: Some(trace.state_diff.into()),
             }
         }
     }
@@ -368,7 +368,7 @@ pub mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
-        pub state_diff: StateDiff,
+        pub state_diff: Option<StateDiff>,
     }
 
     impl From<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
@@ -377,7 +377,7 @@ pub mod dto {
                 constructor_invocation: trace.constructor_invocation.map(Into::into),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
-                state_diff: trace.state_diff.into(),
+                state_diff: Some(trace.state_diff.into()),
             }
         }
     }
@@ -402,7 +402,7 @@ pub mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
-        pub state_diff: StateDiff,
+        pub state_diff: Option<StateDiff>,
     }
 
     impl From<pathfinder_executor::types::InvokeTransactionTrace> for InvokeTxnTrace {
@@ -421,7 +421,7 @@ pub mod dto {
                     ) => ExecuteInvocation::RevertedReason { revert_reason },
                 },
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
-                state_diff: trace.state_diff.into(),
+                state_diff: Some(trace.state_diff.into()),
             }
         }
     }
@@ -431,14 +431,14 @@ pub mod dto {
     pub struct L1HandlerTxnTrace {
         #[serde(default)]
         pub function_invocation: Option<FunctionInvocation>,
-        pub state_diff: StateDiff,
+        pub state_diff: Option<StateDiff>,
     }
 
     impl From<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
         fn from(trace: pathfinder_executor::types::L1HandlerTransactionTrace) -> Self {
             Self {
                 function_invocation: trace.function_invocation.map(Into::into),
-                state_diff: trace.state_diff.into(),
+                state_diff: Some(trace.state_diff.into()),
             }
         }
     }
@@ -613,7 +613,7 @@ pub(crate) mod tests {
                                 },
                             ),
                             fee_transfer_invocation: None,
-                            state_diff: StateDiff {
+                            state_diff: Some(StateDiff {
                                 storage_diffs: vec![],
                                 deprecated_declared_classes: vec![],
                                 declared_classes: vec![],
@@ -630,7 +630,7 @@ pub(crate) mod tests {
                                         nonce: contract_nonce!("0x1")
                                     }
                                 ]
-                            },
+                            }),
                         },
                     ),
             }]
@@ -739,7 +739,7 @@ pub(crate) mod tests {
                             result: vec![],
                         }
                     ),
-                    state_diff: StateDiff {
+                    state_diff: Some(StateDiff {
                         storage_diffs: vec![StorageDiff {
                             address: pathfinder_executor::FEE_TOKEN_ADDRESS,
                             storage_entries: vec![
@@ -763,7 +763,7 @@ pub(crate) mod tests {
                             contract_address: account_contract_address,
                             nonce: contract_nonce!("0x1"),
                         }],
-                    }
+                    })
                 }),
             }])
         );
@@ -810,10 +810,10 @@ pub(crate) mod tests {
                             last_block_header,
                         )),
                         validate_invocation: Some(declare_validate(account_contract_address)),
-                        state_diff: declare_state_diff(
+                        state_diff: Some(declare_state_diff(
                             account_contract_address,
                             declare_fee_transfer_storage_diffs(),
-                        ),
+                        )),
                     }),
                 }
             }
@@ -830,7 +830,7 @@ pub(crate) mod tests {
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
                         fee_transfer_invocation: None,
                         validate_invocation: Some(declare_validate(account_contract_address)),
-                        state_diff: declare_state_diff(account_contract_address, vec![]),
+                        state_diff: Some(declare_state_diff(account_contract_address, vec![])),
                     }),
                 }
             }
@@ -851,10 +851,10 @@ pub(crate) mod tests {
                             last_block_header,
                         )),
                         validate_invocation: None,
-                        state_diff: declare_state_diff(
+                        state_diff: Some(declare_state_diff(
                             account_contract_address,
                             declare_fee_transfer_storage_diffs(),
-                        ),
+                        )),
                     }),
                 }
             }
@@ -977,10 +977,10 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
-                        state_diff: universal_deployer_state_diff(
+                        state_diff: Some(universal_deployer_state_diff(
                             account_contract_address,
                             universal_deployer_fee_transfer_storage_diffs(),
-                        ),
+                        )),
                     }),
                 }
             }
@@ -1007,7 +1007,10 @@ pub(crate) mod tests {
                             ),
                         ),
                         fee_transfer_invocation: None,
-                        state_diff: universal_deployer_state_diff(account_contract_address, vec![]),
+                        state_diff: Some(universal_deployer_state_diff(
+                            account_contract_address,
+                            vec![],
+                        )),
                     }),
                 }
             }
@@ -1035,10 +1038,10 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
-                        state_diff: universal_deployer_state_diff(
+                        state_diff: Some(universal_deployer_state_diff(
                             account_contract_address,
                             universal_deployer_fee_transfer_storage_diffs(),
-                        ),
+                        )),
                     }),
                 }
             }
@@ -1266,10 +1269,10 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
-                        state_diff: invoke_state_diff(
+                        state_diff: Some(invoke_state_diff(
                             account_contract_address,
                             invoke_fee_transfer_storage_diffs(),
-                        ),
+                        )),
                     }),
                 }
             }
@@ -1291,7 +1294,7 @@ pub(crate) mod tests {
                             test_storage_value,
                         )),
                         fee_transfer_invocation: None,
-                        state_diff: invoke_state_diff(account_contract_address, vec![]),
+                        state_diff: Some(invoke_state_diff(account_contract_address, vec![])),
                     }),
                 }
             }
@@ -1317,10 +1320,10 @@ pub(crate) mod tests {
                             account_contract_address,
                             last_block_header,
                         )),
-                        state_diff: invoke_state_diff(
+                        state_diff: Some(invoke_state_diff(
                             account_contract_address,
                             invoke_fee_transfer_storage_diffs(),
-                        ),
+                        )),
                     }),
                 }
             }
