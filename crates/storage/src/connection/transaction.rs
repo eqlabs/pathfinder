@@ -298,8 +298,8 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHeader, TransactionIndex, TransactionVersion};
     use starknet_gateway_types::reply::transaction::{
-        DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction, DeployTransaction,
-        InvokeTransactionV0, InvokeTransactionV1,
+        DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
+        DeployAccountTransactionV0V1, DeployTransaction, InvokeTransactionV0, InvokeTransactionV1,
     };
 
     use super::*;
@@ -364,23 +364,27 @@ mod tests {
                 transaction_hash: transaction_hash_bytes!(b"deploy tx hash"),
                 version: TransactionVersion::ZERO,
             }),
-            gateway::Transaction::DeployAccount(DeployAccountTransaction {
-                contract_address: contract_address_bytes!(b"deploy account contract address"),
-                transaction_hash: transaction_hash_bytes!(b"deploy account tx hash"),
-                max_fee: fee_bytes!(b"deploy account max fee"),
-                version: TransactionVersion::ZERO,
-                signature: vec![
-                    transaction_signature_elem_bytes!(b"deploy account tx sig 0"),
-                    transaction_signature_elem_bytes!(b"deploy account tx sig 1"),
-                ],
-                nonce: transaction_nonce_bytes!(b"deploy account tx nonce"),
-                contract_address_salt: contract_address_salt_bytes!(b"deploy account address salt"),
-                constructor_calldata: vec![
-                    call_param_bytes!(b"deploy account call data 0"),
-                    call_param_bytes!(b"deploy account call data 1"),
-                ],
-                class_hash: class_hash_bytes!(b"deploy account class hash"),
-            }),
+            gateway::Transaction::DeployAccount(DeployAccountTransaction::V0V1(
+                DeployAccountTransactionV0V1 {
+                    contract_address: contract_address_bytes!(b"deploy account contract address"),
+                    transaction_hash: transaction_hash_bytes!(b"deploy account tx hash"),
+                    max_fee: fee_bytes!(b"deploy account max fee"),
+                    version: TransactionVersion::ZERO,
+                    signature: vec![
+                        transaction_signature_elem_bytes!(b"deploy account tx sig 0"),
+                        transaction_signature_elem_bytes!(b"deploy account tx sig 1"),
+                    ],
+                    nonce: transaction_nonce_bytes!(b"deploy account tx nonce"),
+                    contract_address_salt: contract_address_salt_bytes!(
+                        b"deploy account address salt"
+                    ),
+                    constructor_calldata: vec![
+                        call_param_bytes!(b"deploy account call data 0"),
+                        call_param_bytes!(b"deploy account call data 1"),
+                    ],
+                    class_hash: class_hash_bytes!(b"deploy account class hash"),
+                },
+            )),
             gateway::Transaction::Invoke(gateway::InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![
                     call_param_bytes!(b"invoke v0 call data 0"),

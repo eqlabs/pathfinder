@@ -99,9 +99,9 @@ pub struct DeclareTransactionV3 {
     pub resource_bounds: ResourceBounds,
     pub tip: Tip,
     pub paymaster_data: Vec<PaymasterDataElem>,
+    pub signature: Vec<TransactionSignatureElem>,
     pub account_deployment_data: Vec<AccountDeploymentDataElem>,
     pub sender_address: ContractAddress,
-    pub signature: Vec<TransactionSignatureElem>,
     pub compiled_class_hash: CasmHash,
 }
 

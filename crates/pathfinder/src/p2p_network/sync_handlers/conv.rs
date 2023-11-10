@@ -336,7 +336,7 @@ impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
             }),
             gw::Transaction::DeployAccount(x) => DeployAccount(DeployAccountTransactionReceipt {
                 common,
-                contract_address: x.contract_address.0,
+                contract_address: x.contract_address().0,
             }),
             gw::Transaction::Invoke(_) => Invoke(InvokeTransactionReceipt { common }),
             gw::Transaction::L1Handler(_) => L1Handler(L1HandlerTransactionReceipt {

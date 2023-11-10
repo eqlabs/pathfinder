@@ -2,8 +2,8 @@
 
 use crate::reply::transaction::{
     DeclareTransaction, DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
-    DeployTransaction, InvokeTransaction, InvokeTransactionV0, InvokeTransactionV1,
-    L1HandlerTransaction, Transaction,
+    DeployAccountTransactionV0V1, DeployTransaction, InvokeTransaction, InvokeTransactionV0,
+    InvokeTransactionV1, L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::{
     BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, TransactionHash,
@@ -75,10 +75,15 @@ pub fn compute_transaction_hash(txn: &Transaction, chain_id: ChainId) -> Transac
         Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn, chain_id),
+        Transaction::Declare(DeclareTransaction::V3(_)) => todo!(),
         Transaction::Deploy(txn) => compute_deploy_hash(txn, chain_id),
-        Transaction::DeployAccount(txn) => compute_deploy_account_hash(txn, chain_id),
+        Transaction::DeployAccount(DeployAccountTransaction::V0V1(txn)) => {
+            compute_deploy_account_hash_v0v1(txn, chain_id)
+        }
+        Transaction::DeployAccount(DeployAccountTransaction::V3(_)) => todo!(),
         Transaction::Invoke(InvokeTransaction::V0(txn)) => compute_invoke_v0_hash(txn, chain_id),
         Transaction::Invoke(InvokeTransaction::V1(txn)) => compute_invoke_v1_hash(txn, chain_id),
+        Transaction::Invoke(InvokeTransaction::V3(_)) => todo!(),
         Transaction::L1Handler(txn) => compute_l1_handler_hash(txn, chain_id),
     }
 }
@@ -223,8 +228,8 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> Transactio
 /// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_deploy_account_hash(
-    txn: &DeployAccountTransaction,
+fn compute_deploy_account_hash_v0v1(
+    txn: &DeployAccountTransactionV0V1,
     chain_id: ChainId,
 ) -> TransactionHash {
     compute_txn_hash(

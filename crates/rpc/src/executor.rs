@@ -415,52 +415,56 @@ pub fn compose_executor_transaction(
 
                 Ok(tx)
             }
+            starknet_gateway_types::reply::transaction::DeclareTransaction::V3(_) => todo!(),
         },
         starknet_gateway_types::reply::transaction::Transaction::Deploy(_) => Err(anyhow::anyhow!(
             "Deploy transactions are not yet supported in blockifier"
         )),
-        starknet_gateway_types::reply::transaction::Transaction::DeployAccount(tx) => {
-            let contract_address = starknet_api::core::ContractAddress(
-                PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
-                    .expect("No contract address overflow expected"),
-            );
+        starknet_gateway_types::reply::transaction::Transaction::DeployAccount(tx) => match tx {
+            starknet_gateway_types::reply::transaction::DeployAccountTransaction::V0V1(tx) => {
+                let contract_address = starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
+                        .expect("No contract address overflow expected"),
+                );
 
-            let tx = starknet_api::transaction::DeployAccountTransaction {
-                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                )),
-                version: starknet_api::transaction::TransactionVersion(
-                    StarkFelt::new(tx.version.0.as_fixed_bytes().to_owned())
-                        .expect("No transaction version overflow expected"),
-                ),
-                signature: starknet_api::transaction::TransactionSignature(
-                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
-                nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+                let tx = starknet_api::transaction::DeployAccountTransaction {
+                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
+                    )),
+                    version: starknet_api::transaction::TransactionVersion(
+                        StarkFelt::new(tx.version.0.as_fixed_bytes().to_owned())
+                            .expect("No transaction version overflow expected"),
+                    ),
+                    signature: starknet_api::transaction::TransactionSignature(
+                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                    ),
+                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                    class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
 
-                contract_address_salt: starknet_api::transaction::ContractAddressSalt(
-                    tx.contract_address_salt.0.into_starkfelt(),
-                ),
-                constructor_calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
-                    tx.constructor_calldata
-                        .iter()
-                        .map(|c| c.0.into_starkfelt())
-                        .collect(),
-                )),
-                transaction_hash: tx_hash,
-                contract_address,
-            };
+                    contract_address_salt: starknet_api::transaction::ContractAddressSalt(
+                        tx.contract_address_salt.0.into_starkfelt(),
+                    ),
+                    constructor_calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                        tx.constructor_calldata
+                            .iter()
+                            .map(|c| c.0.into_starkfelt())
+                            .collect(),
+                    )),
+                    transaction_hash: tx_hash,
+                    contract_address,
+                };
 
-            let tx = pathfinder_executor::Transaction::from_api(
-                starknet_api::transaction::Transaction::DeployAccount(tx),
-                None,
-                None,
-                false,
-            )?;
+                let tx = pathfinder_executor::Transaction::from_api(
+                    starknet_api::transaction::Transaction::DeployAccount(tx),
+                    None,
+                    None,
+                    false,
+                )?;
 
-            Ok(tx)
-        }
+                Ok(tx)
+            }
+            starknet_gateway_types::reply::transaction::DeployAccountTransaction::V3(_) => todo!(),
+        },
         starknet_gateway_types::reply::transaction::Transaction::Invoke(tx) => match tx {
             starknet_gateway_types::reply::transaction::InvokeTransaction::V0(tx) => {
                 let tx = starknet_api::transaction::InvokeTransactionV0 {
@@ -527,6 +531,7 @@ pub fn compose_executor_transaction(
 
                 Ok(tx)
             }
+            starknet_gateway_types::reply::transaction::InvokeTransaction::V3(_) => todo!(),
         },
         starknet_gateway_types::reply::transaction::Transaction::L1Handler(tx) => {
             let tx = starknet_api::transaction::L1HandlerTransaction {

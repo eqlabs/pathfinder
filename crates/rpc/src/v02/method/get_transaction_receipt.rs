@@ -225,7 +225,7 @@ mod types {
                 }),
                 DeployAccount(tx) => Self::DeployAccount(DeployAccountTransactionReceipt {
                     common,
-                    contract_address: tx.contract_address,
+                    contract_address: tx.contract_address(),
                 }),
                 Invoke(_) => Self::Invoke(InvokeTransactionReceipt { common }),
                 L1Handler(_) => Self::L1Handler(L1HandlerTransactionReceipt { common }),
@@ -328,7 +328,7 @@ mod types {
                 }),
                 DeployAccount(tx) => Self::DeployAccount(PendingDeployAccountTransactionReceipt {
                     common,
-                    contract_address: tx.contract_address,
+                    contract_address: tx.contract_address(),
                 }),
                 Invoke(_) => Self::Invoke(PendingInvokeTransactionReceipt { common }),
                 L1Handler(_) => Self::L1Handler(PendingL1HandlerTransactionReceipt { common }),

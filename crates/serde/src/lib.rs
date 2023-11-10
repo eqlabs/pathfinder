@@ -3,7 +3,8 @@
 use num_bigint::BigUint;
 use pathfinder_common::{
     BlockNumber, CallParam, ConstructorParam, EthereumAddress, GasPrice, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, TransactionSignatureElem, TransactionVersion,
+    L2ToL1MessagePayloadElem, ResourceAmount, ResourcePricePerUnit, Tip, TransactionSignatureElem,
+    TransactionVersion,
 };
 use pathfinder_crypto::{Felt, HexParseError, OverflowError};
 use primitive_types::{H160, H256, U256};
@@ -229,6 +230,27 @@ serde_with::serde_conv!(
     primitive_types::U256,
     |u: &U256| { let mut b = [0u8; 32]; u.to_big_endian(&mut b); bytes_to_hex_str(&b) },
     |s: &str| bytes_from_hex_str::<32>(s).map(U256::from)
+);
+
+serde_with::serde_conv!(
+    pub ResourceAmountAsHexStr,
+    ResourceAmount,
+    |serialize_me: &ResourceAmount| { let b = serialize_me.0.to_be_bytes(); bytes_to_hex_str(&b) },
+    |s: &str| bytes_from_hex_str::<8>(s).map(|b| ResourceAmount(u64::from_be_bytes(b)))
+);
+
+serde_with::serde_conv!(
+    pub ResourcePricePerUnitAsHexStr,
+    ResourcePricePerUnit,
+    |serialize_me: &ResourcePricePerUnit| { let b = serialize_me.0.to_be_bytes(); bytes_to_hex_str(&b) },
+    |s: &str| bytes_from_hex_str::<8>(s).map(|b| ResourcePricePerUnit(u64::from_be_bytes(b)))
+);
+
+serde_with::serde_conv!(
+    pub TipAsHexStr,
+    Tip,
+    |serialize_me: &Tip| { let b = serialize_me.0.to_be_bytes(); bytes_to_hex_str(&b) },
+    |s: &str| bytes_from_hex_str::<8>(s).map(|b| Tip(u64::from_be_bytes(b)))
 );
 
 pub struct U64AsHexStr(pub u64);
