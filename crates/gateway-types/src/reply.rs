@@ -470,14 +470,8 @@ pub mod transaction {
 
     impl From<pathfinder_common::transaction::Transaction> for Transaction {
         fn from(value: pathfinder_common::transaction::Transaction) -> Self {
-            use pathfinder_common::transaction::TransactionVariant::{
-                DeclareV0, DeclareV1, DeclareV2, Deploy, DeployAccount, InvokeV0, InvokeV1,
-                L1Handler,
-            };
-            use pathfinder_common::transaction::{
-                DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
-                DeployTransaction, InvokeTransactionV0, InvokeTransactionV1, L1HandlerTransaction,
-            };
+            use pathfinder_common::transaction::TransactionVariant::*;
+            use pathfinder_common::transaction::*;
 
             let transaction_hash = value.hash;
             match value.variant {
@@ -525,6 +519,7 @@ pub mod transaction {
                     transaction_hash,
                     compiled_class_hash,
                 })),
+                DeclareV3(_) => unimplemented!(),
                 Deploy(DeployTransaction {
                     contract_address,
                     contract_address_salt,
@@ -539,7 +534,7 @@ pub mod transaction {
                     transaction_hash,
                     version,
                 }),
-                DeployAccount(DeployAccountTransaction {
+                DeployAccountV1V2(DeployAccountTransactionV1V2 {
                     contract_address,
                     max_fee,
                     version,
@@ -559,6 +554,7 @@ pub mod transaction {
                     constructor_calldata,
                     class_hash,
                 }),
+                DeployAccountV3(_) => unimplemented!(),
                 InvokeV0(InvokeTransactionV0 {
                     calldata,
                     sender_address,
@@ -589,6 +585,7 @@ pub mod transaction {
                     nonce,
                     transaction_hash,
                 })),
+                InvokeV3(_) => unimplemented!(),
                 L1Handler(L1HandlerTransaction {
                     contract_address,
                     entry_point_selector,
@@ -689,8 +686,8 @@ pub mod transaction {
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) => TransactionVariant::DeployAccount(
-                    pathfinder_common::transaction::DeployAccountTransaction {
+                }) => TransactionVariant::DeployAccountV1V2(
+                    pathfinder_common::transaction::DeployAccountTransactionV1V2 {
                         contract_address,
                         max_fee,
                         version,

@@ -157,6 +157,18 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct GasPrice(pub u128);
 
+/// Starknet resource bound: amount.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+pub struct ResourceAmount(pub u64);
+
+// Transaction tip: the prioritization metric determines the sorting order of transactions in the mempool.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+pub struct Tip(pub u64);
+
+/// Starknet resource bound: price per unit.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+pub struct ResourcePricePerUnit(pub u64);
+
 /// Starknet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct TransactionVersion(pub H256);
@@ -194,6 +206,10 @@ impl TransactionVersion {
     pub const TWO: Self = Self(H256([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 2,
+    ]));
+    pub const THREE: Self = Self(H256([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 3,
     ]));
     pub const ZERO_WITH_QUERY_VERSION: Self = Self::ZERO.with_query_version();
     pub const ONE_WITH_QUERY_VERSION: Self = Self::ONE.with_query_version();
@@ -425,6 +441,8 @@ impl From<String> for StarknetVersion {
 
 macros::felt_newtypes!(
     [
+        AccountDeploymentDataElem,
+        BlockHash,
         ByteCodeOffset,
         BlockCommitmentSignatureElem,
         CallParam,
@@ -445,14 +463,14 @@ macros::felt_newtypes!(
         L1ToL2MessageNonce,
         L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem,
+        PaymasterDataElem,
         SequencerAddress,
-        BlockHash,
-        TransactionHash,
         StateCommitment,
         StateDiffCommitment,
         StorageCommitment,
         StorageValue,
         TransactionCommitment,
+        TransactionHash,
         TransactionNonce,
         TransactionSignatureElem,
     ];

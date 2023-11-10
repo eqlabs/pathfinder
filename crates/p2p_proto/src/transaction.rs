@@ -53,18 +53,20 @@ pub struct DeclareV2 {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeclareV3")]
 pub struct DeclareV3 {
-    sender: Address,
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
-    nonce: Felt,
-    compiled_class_hash: Felt,
-    l1_gas: ResourceLimits,
-    l2_gas: ResourceLimits,
-    tip: Felt,
-    paymaster: Address,
-    nonce_domain: String,
-    fee_domain: String,
+    pub sender: Address,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub class_hash: Hash,
+    pub nonce: Felt,
+    pub compiled_class_hash: Felt,
+    pub l1_gas: ResourceLimits,
+    pub l2_gas: ResourceLimits,
+    pub tip: Felt,
+    pub paymaster: Address,
+    pub nonce_domain: String,
+    pub fee_domain: String,
+    pub paymaster_data: Vec<Felt>,
+    pub account_deployment_data: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -94,18 +96,20 @@ pub struct DeployAccountV1 {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeployAccountV3")]
 pub struct DeployAccountV3 {
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
-    nonce: Felt,
-    address_salt: Felt,
-    calldata: Vec<Felt>,
-    l1_gas: ResourceLimits,
-    l2_gas: ResourceLimits,
-    tip: Felt,
-    paymaster: Address,
-    nonce_domain: String,
-    fee_domain: String,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub class_hash: Hash,
+    pub nonce: Felt,
+    pub address_salt: Felt,
+    pub calldata: Vec<Felt>,
+    pub l1_gas: ResourceLimits,
+    pub l2_gas: ResourceLimits,
+    pub tip: Felt,
+    pub paymaster: Address,
+    pub nonce_domain: String,
+    pub fee_domain: String,
+    pub paymaster_data: Vec<Felt>,
+    pub address: Address,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -142,17 +146,19 @@ pub struct InvokeV1 {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::InvokeV3")]
 pub struct InvokeV3 {
-    sender: Address,
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
-    calldata: Vec<Felt>,
-    l1_gas: ResourceLimits,
-    l2_gas: ResourceLimits,
-    tip: Felt,
-    paymaster: Address,
-    nonce_domain: String,
-    fee_domain: String,
+    pub sender: Address,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub calldata: Vec<Felt>,
+    pub l1_gas: ResourceLimits,
+    pub l2_gas: ResourceLimits,
+    pub tip: Felt,
+    pub paymaster: Address,
+    pub nonce_domain: String,
+    pub fee_domain: String,
+    pub nonce: Felt,
+    pub paymaster_data: Vec<Felt>,
+    pub account_deployment_data: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
