@@ -3,9 +3,9 @@ use pathfinder_common::GasPrice;
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, SequencerAddress, StarknetVersion, StateCommitment,
 };
+use pathfinder_crypto::Felt;
 use serde::Serialize;
 use serde_with::{serde_as, skip_serializing_none};
-use stark_hash::Felt;
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

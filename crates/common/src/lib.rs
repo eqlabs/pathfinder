@@ -4,9 +4,9 @@
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
 use anyhow::Context;
 use fake::Dummy;
+use pathfinder_crypto::Felt;
 use primitive_types::{H160, H256};
 use serde::{Deserialize, Serialize};
-use stark_hash::Felt;
 
 pub mod consts;
 pub mod event;
@@ -78,7 +78,7 @@ impl StateCommitment {
             const GLOBAL_STATE_VERSION: Felt = felt_bytes!(b"STARKNET_STATE_V0");
 
             StateCommitment(
-                stark_poseidon::poseidon_hash_many(&[
+                pathfinder_crypto::hash::poseidon::poseidon_hash_many(&[
                     GLOBAL_STATE_VERSION.into(),
                     storage_commitment.0.into(),
                     class_commitment.0.into(),
@@ -102,7 +102,7 @@ impl StorageAddress {
         use std::ops::Rem;
 
         let intermediate = truncated_keccak(<[u8; 32]>::from(sha3::Keccak256::digest(name)));
-        let value = stark_hash::stark_hash(intermediate, key);
+        let value = pathfinder_crypto::hash::pedersen_hash(intermediate, key);
 
         let value = primitive_types::U256::from_big_endian(value.as_be_bytes());
         let max_address = primitive_types::U256::from_str_radix(
@@ -503,9 +503,10 @@ pub fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
 pub fn calculate_class_commitment_leaf_hash(
     compiled_class_hash: CasmHash,
 ) -> ClassCommitmentLeafHash {
-    const CONTRACT_CLASS_HASH_VERSION: stark_hash::Felt = felt_bytes!(b"CONTRACT_CLASS_LEAF_V0");
+    const CONTRACT_CLASS_HASH_VERSION: pathfinder_crypto::Felt =
+        felt_bytes!(b"CONTRACT_CLASS_LEAF_V0");
     ClassCommitmentLeafHash(
-        stark_poseidon::poseidon_hash(
+        pathfinder_crypto::hash::poseidon_hash(
             CONTRACT_CLASS_HASH_VERSION.into(),
             compiled_class_hash.0.into(),
         )

@@ -527,7 +527,7 @@ mod pathfinder_context {
             chain_id: String,
             data_directory: PathBuf,
         ) -> anyhow::Result<Self> {
-            use stark_hash::Felt;
+            use pathfinder_crypto::Felt;
             use starknet_gateway_client::GatewayApi;
 
             let gateway =

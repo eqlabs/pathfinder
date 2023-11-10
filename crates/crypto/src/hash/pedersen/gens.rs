@@ -1,0 +1,34 @@
+//! Generators for the Pedersen hash function.
+//!
+//! See <https://docs.starkware.co/starkex/crypto/pedersen-hash-function.html>
+use crate::algebra::curve::{projective_point_str, ProjectivePoint};
+
+/// Montgomery representation of the Stark curve constant P0.
+pub const PEDERSEN_P0: ProjectivePoint = projective_point_str!(
+    "2089986280348253421170679821480865132823066470938446095505822317253594081284",
+    "1713931329540660377023406109199410414810705867260802078187082345529207694986"
+);
+
+/// Montgomery representation of the Stark curve constant P1.
+pub const PEDERSEN_P1: ProjectivePoint = projective_point_str!(
+    "996781205833008774514500082376783249102396023663454813447423147977397232763",
+    "1668503676786377725805489344771023921079126552019160156920634619255970485781"
+);
+
+/// Montgomery representation of the Stark curve constant P2.
+pub const PEDERSEN_P2: ProjectivePoint = projective_point_str!(
+    "2251563274489750535117886426533222435294046428347329203627021249169616184184",
+    "1798716007562728905295480679789526322175868328062420237419143593021674992973"
+);
+
+/// Montgomery representation of the Stark curve constant P3.
+pub const PEDERSEN_P3: ProjectivePoint = projective_point_str!(
+    "2138414695194151160943305727036575959195309218611738193261179310511854807447",
+    "113410276730064486255102093846540133784865286929052426931474106396135072156"
+);
+
+/// Montgomery representation of the Stark curve constant P4.
+pub const PEDERSEN_P4: ProjectivePoint = projective_point_str!(
+    "2379962749567351885752724891227938183011949129833673362440656643086021394946",
+    "776496453633298175483985398648758586525933812536653089401905292063708816422"
+);

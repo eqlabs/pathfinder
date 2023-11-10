@@ -210,7 +210,7 @@ mod tests {
     use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion};
-    use stark_hash::Felt;
+    use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::class_definitions::{
         CAIRO_2_0_0_STACK_OVERFLOW, CONTRACT_DEFINITION,
     };

@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::common::{BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::event::Event")]

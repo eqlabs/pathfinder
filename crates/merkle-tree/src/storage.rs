@@ -1,6 +1,6 @@
 use bitvec::prelude::*;
+use pathfinder_crypto::Felt;
 use pathfinder_storage::StoredNode;
-use stark_hash::Felt;
 
 /// Read-only storage used by the [Merkle tree](crate::tree::MerkleTree).
 pub trait Storage {

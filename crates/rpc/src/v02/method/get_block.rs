@@ -127,9 +127,9 @@ mod types {
         BlockHash, BlockHeader, BlockNumber, BlockTimestamp, SequencerAddress, StateCommitment,
         TransactionHash,
     };
+    use pathfinder_crypto::Felt;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
-    use stark_hash::Felt;
 
     /// Determines the type of response to block related queries.
     #[derive(Copy, Clone, Debug)]

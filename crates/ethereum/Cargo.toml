@@ -13,10 +13,10 @@ const-decoder = "0.3.0"
 hex = { workspace = true }
 keccak-hash = "0.10.0"
 pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true }
 reqwest = { workspace = true }
 serde_json = { workspace = true }
-stark_hash = { path = "../stark_hash" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

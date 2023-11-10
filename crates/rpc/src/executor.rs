@@ -1,5 +1,5 @@
 use anyhow::Context;
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 use starknet_api::core::PatriciaKey;
 
 use super::v02::types::request::BroadcastedTransaction;

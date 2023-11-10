@@ -5,10 +5,10 @@ use pathfinder_common::{
     BlockNumber, CallParam, ConstructorParam, EthereumAddress, GasPrice, L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem, TransactionSignatureElem, TransactionVersion,
 };
+use pathfinder_crypto::{Felt, HexParseError, OverflowError};
 use primitive_types::{H160, H256, U256};
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
-use stark_hash::{Felt, HexParseError, OverflowError};
 use std::borrow::Cow;
 use std::str::FromStr;
 
@@ -581,7 +581,7 @@ mod tests {
             0, 0, 1, 0,
         ];
 
-        use stark_hash::HexParseError;
+        use pathfinder_crypto::HexParseError;
         assert_eq!(
             starkhash_from_biguint(BigUint::from_bytes_be(&TOO_LONG_BYTES)),
             Err(OverflowError)

@@ -1,6 +1,6 @@
 use bitvec::view::BitView;
+use pathfinder_crypto::Felt;
 use pathfinder_storage::StoredNode;
-use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
 use pathfinder_common::hash::PedersenHash;

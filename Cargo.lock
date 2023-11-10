@@ -3,17 +3,6 @@
 version = 3
 
 [[package]]
-name = "addchain"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b2e69442aa5628ea6951fa33e24efe8313f4321a91bd729fc2f75bdfc858570"
-dependencies = [
- "num-bigint 0.3.3",
- "num-integer",
- "num-traits 0.2.16",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -206,7 +195,7 @@ dependencies = [
  "derivative",
  "digest",
  "itertools 0.10.5",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "paste",
  "rustc_version",
@@ -229,7 +218,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7abe79b0e4288889c4574159ab790824d0033b9fdcb2a112a3182fac2e514565"
 dependencies = [
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "proc-macro2",
  "quote",
@@ -280,7 +269,7 @@ dependencies = [
  "ark-serialize-derive",
  "ark-std",
  "digest",
- "num-bigint 0.4.4",
+ "num-bigint",
 ]
 
 [[package]]
@@ -803,7 +792,7 @@ dependencies = [
  "itertools 0.10.5",
  "keccak",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "phf",
@@ -911,7 +900,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "250f460db3bb8e8589812495fdca7301e9674b3a2c81f2380e9c07d914979a42"
 dependencies = [
  "lazy_static",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "serde",
@@ -924,7 +913,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a93dedd19b8edf685798f1f12e4e0ac21ac196ea5262c300783f69f3fa0cb28b"
 dependencies = [
  "lazy_static",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "serde",
@@ -937,7 +926,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5972097b8800ca5dffb458040e74c724a2ac4fa4b5b480b50f5b96c7e67d6427"
 dependencies = [
  "lazy_static",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "serde",
@@ -950,7 +939,7 @@ source = "git+https://github.com/starkware-libs/cairo?tag=v1.0.0-alpha.6#439da05
 dependencies = [
  "cairo-lang-utils 1.0.0-alpha.6",
  "indoc 1.0.9",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "serde",
  "thiserror",
@@ -963,7 +952,7 @@ source = "git+https://github.com/starkware-libs/cairo?tag=v1.0.0-rc0#05867c82de4
 dependencies = [
  "cairo-lang-utils 1.0.0-rc0",
  "indoc 2.0.3",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "serde",
  "thiserror",
@@ -977,7 +966,7 @@ checksum = "076a07a68b7f4b3f04e0e23f1e4bee42358abab54929b7842b42108bdb76a164"
 dependencies = [
  "cairo-lang-utils 1.1.1",
  "indoc 2.0.3",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "serde",
  "thiserror",
@@ -991,7 +980,7 @@ checksum = "213103e1cf9049abd443f97088939d9cf6ef5500b295003be2b244c702d8fe9c"
 dependencies = [
  "cairo-lang-utils 2.1.1",
  "indoc 2.0.3",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "parity-scale-codec",
  "parity-scale-codec-derive",
@@ -1359,7 +1348,7 @@ dependencies = [
  "indexmap 1.9.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.1.24",
@@ -1383,7 +1372,7 @@ dependencies = [
  "indexmap 1.9.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1408,7 +1397,7 @@ dependencies = [
  "indexmap 1.9.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1433,7 +1422,7 @@ dependencies = [
  "indexmap 2.0.0",
  "itertools 0.11.0",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1469,7 +1458,7 @@ dependencies = [
  "colored",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1490,7 +1479,7 @@ dependencies = [
  "colored",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1511,7 +1500,7 @@ dependencies = [
  "colored",
  "itertools 0.11.0",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1589,7 +1578,7 @@ dependencies = [
  "cairo-lang-utils 2.1.1",
  "indoc 2.0.3",
  "itertools 0.11.0",
- "num-bigint 0.4.4",
+ "num-bigint",
  "salsa",
  "smol_str 0.2.0",
 ]
@@ -1717,7 +1706,7 @@ dependencies = [
  "cairo-vm",
  "itertools 0.11.0",
  "keccak",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "salsa",
@@ -1740,7 +1729,7 @@ dependencies = [
  "id-arena",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "pretty_assertions",
  "salsa",
@@ -1764,7 +1753,7 @@ dependencies = [
  "id-arena",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1787,7 +1776,7 @@ dependencies = [
  "id-arena",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1810,7 +1799,7 @@ dependencies = [
  "id-arena",
  "itertools 0.11.0",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -1828,7 +1817,7 @@ dependencies = [
  "itertools 0.10.5",
  "lalrpop 0.19.12",
  "lalrpop-util 0.19.12",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "regex",
  "salsa",
@@ -1850,7 +1839,7 @@ dependencies = [
  "itertools 0.10.5",
  "lalrpop 0.19.12",
  "lalrpop-util 0.19.12",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "regex",
  "salsa",
@@ -1873,7 +1862,7 @@ dependencies = [
  "itertools 0.10.5",
  "lalrpop 0.19.12",
  "lalrpop-util 0.19.12",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "regex",
  "salsa",
@@ -1896,7 +1885,7 @@ dependencies = [
  "itertools 0.11.0",
  "lalrpop 0.20.0",
  "lalrpop-util 0.20.0",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "regex",
  "salsa",
@@ -2028,7 +2017,7 @@ dependencies = [
  "id-arena",
  "indexmap 1.9.3",
  "itertools 0.10.5",
- "num-bigint 0.4.4",
+ "num-bigint",
  "salsa",
  "smol_str 0.1.24",
 ]
@@ -2053,7 +2042,7 @@ dependencies = [
  "id-arena",
  "indexmap 1.9.3",
  "itertools 0.10.5",
- "num-bigint 0.4.4",
+ "num-bigint",
  "salsa",
  "smol_str 0.2.0",
 ]
@@ -2079,7 +2068,7 @@ dependencies = [
  "id-arena",
  "indexmap 1.9.3",
  "itertools 0.10.5",
- "num-bigint 0.4.4",
+ "num-bigint",
  "salsa",
  "smol_str 0.2.0",
 ]
@@ -2105,7 +2094,7 @@ dependencies = [
  "id-arena",
  "indexmap 2.0.0",
  "itertools 0.11.0",
- "num-bigint 0.4.4",
+ "num-bigint",
  "salsa",
  "smol_str 0.2.0",
 ]
@@ -2127,7 +2116,7 @@ dependencies = [
  "indoc 1.0.9",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "thiserror",
 ]
@@ -2149,7 +2138,7 @@ dependencies = [
  "indoc 2.0.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "thiserror",
 ]
@@ -2172,7 +2161,7 @@ dependencies = [
  "indoc 2.0.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "thiserror",
 ]
@@ -2194,7 +2183,7 @@ dependencies = [
  "indoc 2.0.3",
  "itertools 0.11.0",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "thiserror",
 ]
@@ -2238,7 +2227,7 @@ dependencies = [
  "itertools 0.10.5",
  "lazy_static",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "serde",
@@ -2277,7 +2266,7 @@ dependencies = [
  "indoc 2.0.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "once_cell",
@@ -2318,7 +2307,7 @@ dependencies = [
  "indoc 2.0.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "once_cell",
@@ -2359,7 +2348,7 @@ dependencies = [
  "indoc 2.0.3",
  "itertools 0.11.0",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "once_cell",
@@ -2390,7 +2379,7 @@ dependencies = [
  "cairo-lang-debug 1.0.0-rc0",
  "cairo-lang-filesystem 1.0.0-rc0",
  "cairo-lang-utils 1.0.0-rc0",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -2407,7 +2396,7 @@ dependencies = [
  "cairo-lang-debug 1.1.1",
  "cairo-lang-filesystem 1.1.1",
  "cairo-lang-utils 1.1.1",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -2424,7 +2413,7 @@ dependencies = [
  "cairo-lang-debug 2.1.1",
  "cairo-lang-filesystem 2.1.1",
  "cairo-lang-utils 2.1.1",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "salsa",
  "smol_str 0.2.0",
@@ -2486,7 +2475,7 @@ dependencies = [
  "indexmap 1.9.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "serde",
@@ -2501,7 +2490,7 @@ dependencies = [
  "indexmap 1.9.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "serde",
@@ -2518,7 +2507,7 @@ dependencies = [
  "indexmap 1.9.3",
  "itertools 0.10.5",
  "log",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "serde",
@@ -2533,7 +2522,7 @@ checksum = "b2b4bdb1d6509e2579d04d1757070f88c2542ff033194f749772669a1615c7e4"
 dependencies = [
  "indexmap 2.0.0",
  "itertools 0.11.0",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "parity-scale-codec",
@@ -2558,7 +2547,7 @@ dependencies = [
  "lazy_static",
  "mimalloc",
  "nom",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-prime",
  "num-traits 0.2.16",
@@ -3138,7 +3127,7 @@ dependencies = [
  "asn1-rs",
  "displaydoc",
  "nom",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-traits 0.2.16",
  "rusticata-macros",
 ]
@@ -3417,32 +3406,6 @@ name = "fastrand"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
-
-[[package]]
-name = "ff"
-version = "0.12.0"
-source = "git+https://github.com/eqlabs/ff?branch=var_time_eq#e4ce228a5da140465a620cb0a455fcb08f23fb52"
-dependencies = [
- "byteorder",
- "ff_derive",
- "rand_core",
- "subtle",
-]
-
-[[package]]
-name = "ff_derive"
-version = "0.12.0"
-source = "git+https://github.com/eqlabs/ff?branch=var_time_eq#e4ce228a5da140465a620cb0a455fcb08f23fb52"
-dependencies = [
- "addchain",
- "cfg-if",
- "num-bigint 0.3.3",
- "num-integer",
- "num-traits 0.2.16",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "fiat-crypto"
@@ -5503,17 +5466,6 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f6f7833f2cbf2360a6cfd58cd41a53aa7a90bd4c202f5b1c7dd2ed73c57b2c3"
-dependencies = [
- "autocfg",
- "num-integer",
- "num-traits 0.2.16",
-]
-
-[[package]]
-name = "num-bigint"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "608e7659b5c3d7cba262d894801b9ec9d00de989e8a82bd4bef91d08da45cdc0"
@@ -5551,7 +5503,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64a5fe11d4135c3bcdf3a95b18b194afa9608a5f6ff034f5d857bc9a27fb0119"
 dependencies = [
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
 ]
@@ -5565,7 +5517,7 @@ dependencies = [
  "bitvec",
  "either",
  "lru 0.7.8",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-modular",
  "num-traits 0.2.16",
@@ -5712,12 +5664,12 @@ dependencies = [
  "libp2p",
  "p2p_proto",
  "pathfinder-common",
+ "pathfinder-crypto",
  "prost 0.12.1",
  "rand",
  "serde",
  "serde_json",
  "sha2",
- "stark_hash",
  "test-log",
  "tokio",
  "tracing",
@@ -5751,13 +5703,13 @@ dependencies = [
  "fake",
  "libp2p-identity",
  "p2p_proto_derive",
+ "pathfinder-crypto",
  "primitive-types",
  "prost 0.12.1",
  "prost-build",
  "prost-types 0.12.1",
  "rand",
  "rstest",
- "stark_hash",
 ]
 
 [[package]]
@@ -5895,6 +5847,7 @@ dependencies = [
  "p2p_proto",
  "pathfinder-common",
  "pathfinder-compiler",
+ "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-executor",
  "pathfinder-merkle-tree",
@@ -5914,7 +5867,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "stark_hash",
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
@@ -5940,8 +5892,9 @@ dependencies = [
  "bitvec",
  "fake",
  "metrics",
- "num-bigint 0.4.4",
+ "num-bigint",
  "paste",
+ "pathfinder-crypto",
  "primitive-types",
  "rand",
  "semver",
@@ -5949,9 +5902,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
- "stark_curve",
- "stark_hash",
- "stark_poseidon",
  "thiserror",
  "vergen",
 ]
@@ -5973,6 +5923,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-crypto"
+version = "0.1.0"
+dependencies = [
+ "ark-ec",
+ "ark-ff",
+ "assert_matches",
+ "bitvec",
+ "criterion",
+ "fake",
+ "hex",
+ "num-bigint",
+ "pretty_assertions",
+ "rand",
+ "rand_core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pathfinder-ethereum"
 version = "0.1.0"
 dependencies = [
@@ -5983,10 +5952,10 @@ dependencies = [
  "httpmock",
  "keccak-hash",
  "pathfinder-common",
+ "pathfinder-crypto",
  "primitive-types",
  "reqwest",
  "serde_json",
- "stark_hash",
  "thiserror",
  "tokio",
  "tracing",
@@ -6002,9 +5971,9 @@ dependencies = [
  "cairo-vm",
  "lazy_static",
  "pathfinder-common",
+ "pathfinder-crypto",
  "pathfinder-storage",
  "primitive-types",
- "stark_hash",
  "starknet-gateway-types",
  "starknet_api",
  "tracing",
@@ -6017,12 +5986,10 @@ dependencies = [
  "anyhow",
  "bitvec",
  "pathfinder-common",
+ "pathfinder-crypto",
  "pathfinder-storage",
  "pretty_assertions",
  "rand",
- "stark_curve",
- "stark_hash",
- "stark_poseidon",
  "starknet-gateway-types",
  "thiserror",
  "tracing",
@@ -6055,6 +6022,7 @@ dependencies = [
  "mime",
  "pathfinder-common",
  "pathfinder-compiler",
+ "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-executor",
  "pathfinder-merkle-tree",
@@ -6068,7 +6036,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "stark_hash",
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
@@ -6091,14 +6058,14 @@ name = "pathfinder-serde"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "num-bigint 0.4.4",
+ "num-bigint",
  "pathfinder-common",
+ "pathfinder-crypto",
  "pretty_assertions",
  "primitive-types",
  "serde",
  "serde_json",
  "serde_with",
- "stark_hash",
 ]
 
 [[package]]
@@ -6116,6 +6083,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "pathfinder-common",
+ "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-serde",
  "primitive-types",
@@ -6128,8 +6096,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
- "stark_hash",
- "stark_poseidon",
  "starknet-gateway-types",
  "tempfile",
  "thiserror",
@@ -7583,43 +7549,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stark_curve"
-version = "0.1.0"
-dependencies = [
- "bitvec",
- "ff",
- "pretty_assertions",
-]
-
-[[package]]
-name = "stark_hash"
-version = "0.1.0"
-dependencies = [
- "assert_matches",
- "bitvec",
- "criterion",
- "fake",
- "hex",
- "pretty_assertions",
- "rand",
- "rand_core",
- "serde",
- "serde_json",
- "stark_curve",
-]
-
-[[package]]
-name = "stark_poseidon"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "num-bigint 0.4.4",
- "rand",
- "stark_curve",
- "stark_hash",
-]
-
-[[package]]
 name = "starknet-crypto"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7628,7 +7557,7 @@ dependencies = [
  "crypto-bigint",
  "hex",
  "hmac",
- "num-bigint 0.4.4",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.16",
  "rfc6979",
@@ -7696,13 +7625,13 @@ dependencies = [
  "metrics",
  "mockall",
  "pathfinder-common",
+ "pathfinder-crypto",
  "pathfinder-retry",
  "pathfinder-serde",
  "pretty_assertions",
  "reqwest",
  "serde",
  "serde_json",
- "stark_hash",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
  "test-log",
@@ -7717,7 +7646,7 @@ name = "starknet-gateway-test-fixtures"
 version = "0.1.0"
 dependencies = [
  "pathfinder-common",
- "stark_hash",
+ "pathfinder-crypto",
 ]
 
 [[package]]
@@ -7729,6 +7658,7 @@ dependencies = [
  "fake",
  "lazy_static",
  "pathfinder-common",
+ "pathfinder-crypto",
  "pathfinder-serde",
  "primitive-types",
  "rand",
@@ -7737,8 +7667,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
- "stark_hash",
- "stark_poseidon",
  "starknet-gateway-test-fixtures",
  "thiserror",
  "tokio",

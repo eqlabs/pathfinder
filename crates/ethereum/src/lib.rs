@@ -1,6 +1,6 @@
 use pathfinder_common::{BlockHash, BlockNumber, EthereumChain, StateCommitment};
+use pathfinder_crypto::Felt;
 use primitive_types::{H160, H256, U256};
-use stark_hash::Felt;
 
 pub mod core_addr {
     use const_decoder::Decoder;

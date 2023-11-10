@@ -17,6 +17,7 @@ fake = { workspace = true }
 hex = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
 primitive-types = { workspace = true }
@@ -31,8 +32,6 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
-stark_hash = { path = "../stark_hash" }
-stark_poseidon = { path = "../stark_poseidon" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }

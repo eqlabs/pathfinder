@@ -5,8 +5,8 @@ use crate::{
     proto, ToProtobuf, TryFromProtobuf,
 };
 use fake::Dummy;
+use pathfinder_crypto::Felt;
 use primitive_types::H160;
-use stark_hash::Felt;
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::MessageToL1")]

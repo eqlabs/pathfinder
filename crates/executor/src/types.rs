@@ -4,7 +4,7 @@ use blockifier::execution::entry_point::OrderedL2ToL1Message;
 use pathfinder_common::{
     CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
 };
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 use super::felt::IntoFelt;
 

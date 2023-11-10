@@ -1,6 +1,6 @@
 use pathfinder_common::{ContractAddress, TransactionHash};
+use pathfinder_crypto::Felt;
 use serde::Deserialize;
-use stark_hash::Felt;
 
 use crate::reply::transaction::ExecutionResources;
 

@@ -77,7 +77,7 @@ impl From<(BlockHash, BlockNumber)> for NumberedBlock {
 #[cfg(test)]
 impl<'a> From<(&'a str, u64)> for NumberedBlock {
     fn from((h, n): (&'a str, u64)) -> Self {
-        use stark_hash::Felt;
+        use pathfinder_crypto::Felt;
         NumberedBlock {
             hash: BlockHash(Felt::from_hex_str(h).unwrap()),
             number: BlockNumber::new_or_panic(n),

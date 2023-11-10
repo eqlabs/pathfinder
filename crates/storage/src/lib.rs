@@ -355,7 +355,7 @@ fn schema_version(connection: &rusqlite::Connection) -> anyhow::Result<usize> {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::felt;
-    use stark_hash::Felt;
+    use pathfinder_crypto::Felt;
 
     use super::*;
 

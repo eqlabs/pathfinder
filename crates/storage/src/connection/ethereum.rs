@@ -82,8 +82,8 @@ mod tests {
     use crate::Storage;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, StateCommitment};
+    use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumStateUpdate;
-    use stark_hash::Felt;
 
     /// Creates a set of consecutive [StateUpdateLog]s starting from L2 genesis,
     /// with arbitrary other values.

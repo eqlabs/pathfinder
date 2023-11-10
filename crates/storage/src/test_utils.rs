@@ -9,8 +9,8 @@ use pathfinder_common::{
     TransactionHash, TransactionIndex, TransactionNonce, TransactionSignatureElem,
     TransactionVersion,
 };
+use pathfinder_crypto::Felt;
 use primitive_types::H256;
-use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
     self, DeclareTransaction, DeclareTransactionV0V1, DeployTransaction, EntryPointType,
     InvokeTransaction, InvokeTransactionV0, Receipt,

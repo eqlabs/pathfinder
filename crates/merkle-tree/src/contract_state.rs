@@ -6,8 +6,8 @@ use pathfinder_common::{
     BlockNumber, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     StorageAddress, StorageValue,
 };
+use pathfinder_crypto::{hash::pedersen_hash, Felt};
 use pathfinder_storage::{Node, Transaction};
-use stark_hash::{stark_hash, Felt};
 
 pub struct ContractStateUpdateResult {
     pub state_hash: ContractStateHash,
@@ -127,9 +127,9 @@ pub fn calculate_contract_state_hash(
     const CONTRACT_STATE_HASH_VERSION: Felt = Felt::ZERO;
 
     // The contract state hash is defined as H(H(H(hash, root), nonce), CONTRACT_STATE_HASH_VERSION)
-    let hash = stark_hash(hash.0, root.0);
-    let hash = stark_hash(hash, nonce.0);
-    let hash = stark_hash(hash, CONTRACT_STATE_HASH_VERSION);
+    let hash = pedersen_hash(hash.0, root.0);
+    let hash = pedersen_hash(hash, nonce.0);
+    let hash = pedersen_hash(hash, CONTRACT_STATE_HASH_VERSION);
 
     // Compare this with the HashChain construction used in the contract_hash: the number of
     // elements is not hashed to this hash, and this is supposed to be different.

@@ -213,10 +213,10 @@ pub mod test_utils {
         BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
         GasPrice, SierraHash, StarknetVersion, StateUpdate, TransactionIndex, TransactionVersion,
     };
+    use pathfinder_crypto::Felt;
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::{H160, H256};
-    use stark_hash::Felt;
     use starknet_gateway_types::reply::transaction::{
         DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
         InvokeTransactionV0, Receipt, Transaction,

@@ -18,6 +18,7 @@ metrics = { workspace = true }
 mime = "0.3"
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
@@ -32,7 +33,6 @@ serde_json = { workspace = true, features = [
     "raw_value",
 ] }
 serde_with = { workspace = true }
-stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet-gateway-types = { path = "../gateway-types" }
@@ -40,8 +40,17 @@ starknet_api = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tower = { version = "0.4.13", default-features = false, features = ["filter", "util", "limit", "timeout"] }
-tower-http = { version = "0.4.0", default-features = false, features = ["cors", "limit", "trace"] }
+tower = { version = "0.4.13", default-features = false, features = [
+    "filter",
+    "util",
+    "limit",
+    "timeout",
+] }
+tower-http = { version = "0.4.0", default-features = false, features = [
+    "cors",
+    "limit",
+    "trace",
+] }
 tracing = { workspace = true }
 zstd = { workspace = true }
 
@@ -51,9 +60,9 @@ bytes = { workspace = true }
 flate2 = { workspace = true }
 hex = { workspace = true }
 lazy_static = { workspace = true }
+pathfinder-crypto = { path = "../crypto" }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
-stark_hash = { path = "../stark_hash" }
 tempfile = "3.6"
 test-log = { version = "0.2.12", default-features = false, features = [
     "trace",

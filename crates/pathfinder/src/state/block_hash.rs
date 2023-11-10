@@ -4,8 +4,11 @@ use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
     StarknetVersion, StateCommitment, TransactionCommitment, TransactionSignatureElem,
 };
+use pathfinder_crypto::{
+    hash::{pedersen_hash, HashChain},
+    Felt,
+};
 use pathfinder_merkle_tree::TransactionOrEventTree;
-use stark_hash::{stark_hash, Felt, HashChain};
 use starknet_gateway_types::reply::{
     transaction::{Receipt, Transaction},
     Block,
@@ -369,7 +372,7 @@ fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Fel
         | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 
-    stark_hash(tx.hash().0, signature_hash)
+    pedersen_hash(tx.hash().0, signature_hash)
 }
 
 /// Compute the combined hash of the transaction hash and the signature.
@@ -393,7 +396,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
         Transaction::Deploy(_) | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 
-    stark_hash(tx.hash().0, signature_hash)
+    pedersen_hash(tx.hash().0, signature_hash)
 }
 
 fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {

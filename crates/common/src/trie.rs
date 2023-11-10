@@ -1,6 +1,6 @@
 use bitvec::prelude::Msb0;
 use bitvec::vec::BitVec;
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 use crate::hash::FeltHash;
 

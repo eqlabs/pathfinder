@@ -2,6 +2,7 @@
 members = [
     "crates/common",
     "crates/compiler",
+    "crates/crypto",
     "crates/ethereum",
     "crates/executor",
     "crates/gateway-client",
@@ -16,9 +17,6 @@ members = [
     "crates/retry",
     "crates/rpc",
     "crates/serde",
-    "crates/stark_curve",
-    "crates/stark_hash",
-    "crates/stark_poseidon",
     "crates/storage",
 ]
 exclude = [

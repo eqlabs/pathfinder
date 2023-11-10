@@ -2,8 +2,8 @@ use std::str::FromStr;
 
 use fake::Dummy;
 use num_bigint::BigUint;
+use pathfinder_crypto::Felt;
 use serde_with::serde_conv;
-use stark_hash::Felt;
 
 use crate::{ContractAddress, EventData, EventKey};
 

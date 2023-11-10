@@ -4,9 +4,9 @@ use crate::{
 
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
+use pathfinder_crypto::Felt;
 use pathfinder_executor::{types::TransactionSimulation, CallError};
 use serde::{Deserialize, Serialize};
-use stark_hash::Felt;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]

@@ -5,8 +5,8 @@ use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
 use pathfinder_common::{prelude::*, BlockId};
+use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
-use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetProofInput {

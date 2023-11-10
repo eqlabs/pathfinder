@@ -259,7 +259,7 @@ pub mod testnet {
     use pathfinder_common::{
         CallParam, ClassHash, ContractAddress, EntryPoint, StorageAddress, TransactionHash,
     };
-    use stark_hash::Felt;
+    use pathfinder_crypto::Felt;
 
     pub const VALID_TX_HASH: TransactionHash =
         transaction_hash!("0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24");
