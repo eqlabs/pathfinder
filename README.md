@@ -335,6 +335,10 @@ These __will not work__:
 
 - `pathfinder_build_info` reports curent version as a `version` property
 
+## Build from source
+
+See the [guide](https://github.com/eqlabs/pathfinder/blob/main/doc/install-from-source.md).
+
 ## License
 
 Licensed under either of
