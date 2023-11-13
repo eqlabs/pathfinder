@@ -43,7 +43,9 @@ pub async fn get_transaction_receipt(
             if receipt.execution_status == ExecutionStatus::Reverted {
                 let reason = receipt.revert_error.unwrap_or_default();
 
-                return Err(anyhow::anyhow!("Reverted: {reason}")).map_err(Into::into);
+                return Err(GetTransactionReceiptError::Custom(anyhow::anyhow!(
+                    "Reverted: {reason}"
+                )));
             }
 
             let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
@@ -58,7 +60,9 @@ pub async fn get_transaction_receipt(
         if receipt.execution_status == ExecutionStatus::Reverted {
             let reason = receipt.revert_error.unwrap_or_default();
 
-            return Err(anyhow::anyhow!("Reverted: {reason}")).map_err(Into::into);
+            return Err(GetTransactionReceiptError::Custom(anyhow::anyhow!(
+                "Reverted: {reason}"
+            )));
         }
 
         let block_number = db_tx
