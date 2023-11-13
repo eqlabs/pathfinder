@@ -175,7 +175,7 @@ pub async fn get_events(
             "from_block": from_block,
             "to_block": to_block,
             "address": filter.address,
-            "keys": vec![filter.keys],
+            "keys": filter.keys,
             "chunk_size": 1000,
         }}),
     )
@@ -186,7 +186,7 @@ pub struct EventFilter {
     pub from_block: Option<u64>,
     pub to_block: Option<u64>,
     pub address: Option<Felt>,
-    pub keys: Vec<Felt>,
+    pub keys: Vec<Vec<Felt>>,
     pub page_size: u64,
     pub page_number: u64,
 }
@@ -274,7 +274,7 @@ async fn post_jsonrpc_request<T: DeserializeOwned>(
 ) -> MethodResult<T> {
     let request = jsonrpc_request(method, params);
     let response = user
-        .post_json("/rpc/v0.3", &request)
+        .post_json("/rpc/v0.5", &request)
         .await?
         .response
         .map_err(|e| Box::new(e.into()))?;
