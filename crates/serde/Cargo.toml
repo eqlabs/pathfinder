@@ -10,11 +10,11 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 num-bigint = { workspace = true }
 pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
-stark_hash = { path = "../stark_hash" }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

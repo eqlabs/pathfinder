@@ -1,9 +1,9 @@
 use std::io::{Cursor, Read};
 
 use anyhow::Context;
+use pathfinder_crypto::Felt;
 use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
-use stark_hash::Felt;
 use starknet_gateway_types::class_hash::{compute_class_hash, ComputedClassHash};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

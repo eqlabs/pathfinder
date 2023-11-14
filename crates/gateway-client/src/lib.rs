@@ -865,7 +865,7 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
-    use stark_hash::Felt;
+    use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::KnownStarknetErrorCode;
     use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};

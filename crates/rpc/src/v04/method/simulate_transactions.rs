@@ -4,9 +4,9 @@ use crate::{
 
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
+use pathfinder_crypto::Felt;
 use pathfinder_executor::{types::TransactionSimulation, CallError};
 use serde::{Deserialize, Serialize};
-use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 use starknet_gateway_types::trace as gateway_trace;
 

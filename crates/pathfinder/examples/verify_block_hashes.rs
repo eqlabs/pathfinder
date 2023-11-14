@@ -2,9 +2,9 @@ use std::num::NonZeroU32;
 
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, StarknetVersion};
+use pathfinder_crypto::Felt;
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use pathfinder_storage::{JournalMode, Storage};
-use stark_hash::Felt;
 use starknet_gateway_types::reply::{Block, Status};
 
 /// Verify block hashes in a pathfinder database.

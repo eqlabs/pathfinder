@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::common::{Address, Hash};
 use crate::{ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::state::ContractStoredValue")]

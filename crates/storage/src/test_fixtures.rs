@@ -6,7 +6,7 @@ use pathfinder_common::{
     GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate, StorageAddress,
     StorageValue,
 };
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 /// Generate [`Felt`] from a sequence of bytes.
 macro_rules! hash {

@@ -26,8 +26,8 @@ use pathfinder_common::{
     ContractStateHash, SierraHash, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
     TransactionHash,
 };
+use pathfinder_crypto::Felt;
 use pathfinder_ethereum::EthereumStateUpdate;
-use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
 
 use crate::BlockId;

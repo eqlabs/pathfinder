@@ -1,10 +1,12 @@
 use crate::request::contract::EntryPointType;
 use anyhow::{Context, Error, Result};
 use pathfinder_common::{felt_bytes, ClassHash};
+use pathfinder_crypto::{
+    hash::{HashChain, PoseidonHasher},
+    Felt,
+};
 use serde::Serialize;
 use sha3::Digest;
-use stark_hash::{Felt, HashChain};
-use stark_poseidon::PoseidonHasher;
 
 #[derive(Debug, PartialEq)]
 pub enum ComputedClassHash {
@@ -481,7 +483,7 @@ mod json {
         pub abi: Cow<'a, str>,
 
         /// Main program definition.
-        pub sierra_program: Vec<stark_hash::Felt>,
+        pub sierra_program: Vec<pathfinder_crypto::Felt>,
 
         // Version
         #[serde(borrow)]

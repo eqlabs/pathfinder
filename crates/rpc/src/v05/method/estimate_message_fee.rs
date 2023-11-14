@@ -5,8 +5,8 @@ use pathfinder_common::{
     felt, BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress,
     TransactionHash, TransactionNonce, TransactionVersion,
 };
+use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, IntoStarkFelt};
-use stark_hash::Felt;
 use starknet_api::core::PatriciaKey;
 
 use crate::{context::RpcContext, error::ApplicationError, v05::method::estimate_fee::FeeEstimate};
@@ -182,7 +182,7 @@ fn calculate_transaction_hash(
     chain_id: ChainId,
 ) -> TransactionHash {
     let call_params_hash = {
-        let mut hh = stark_hash::HashChain::default();
+        let mut hh = pathfinder_crypto::hash::HashChain::default();
         hh = input.message.payload.iter().fold(hh, |mut hh, call_param| {
             hh.update(call_param.0);
             hh

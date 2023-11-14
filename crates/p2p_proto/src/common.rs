@@ -1,8 +1,8 @@
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use libp2p_identity::PeerId;
+use pathfinder_crypto::Felt;
 use rand::Rng;
-use stark_hash::Felt;
 use std::{fmt::Display, num::NonZeroU64};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash, Default)]

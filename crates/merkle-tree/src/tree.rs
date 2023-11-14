@@ -50,8 +50,8 @@ use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use pathfinder_common::hash::FeltHash;
 use pathfinder_common::trie::TrieNode;
+use pathfinder_crypto::Felt;
 use pathfinder_storage::{Node, StoredNode};
-use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
@@ -1659,7 +1659,7 @@ mod tests {
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
         use pathfinder_common::felt;
-        use stark_hash::Felt;
+        use pathfinder_crypto::Felt;
 
         #[derive(Debug, PartialEq, Eq)]
         pub enum Membership {

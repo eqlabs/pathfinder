@@ -384,7 +384,7 @@ mod tests {
     use crate::Storage;
 
     use pathfinder_common::macro_prelude::*;
-    use stark_hash::Felt;
+    use pathfinder_crypto::Felt;
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
         let hash = class_hash!("0x123");

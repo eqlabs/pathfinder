@@ -15,8 +15,8 @@ use pathfinder_common::{
     BlockNumber, ContractAddress, ContractRoot, ContractStateHash, StorageAddress,
     StorageCommitment, StorageValue,
 };
+use pathfinder_crypto::Felt;
 use pathfinder_storage::{Node, Transaction};
-use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 

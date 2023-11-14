@@ -27,7 +27,7 @@ use pathfinder_common::{
     StateCommitment, StorageAddress, StorageValue, TransactionHash, TransactionNonce,
     TransactionSignatureElem,
 };
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 /// An RPC specific wrapper around [Felt] which implements
 /// [serde::Serialize] in accordance with RPC specifications.
@@ -234,7 +234,7 @@ mod deserialization {
                     // Felt::from_hex_str currently does not enforce `0x` prefix, add it here to prevent
                     // breaking other serde related code.
                     match v.as_bytes() {
-                        &[b'0', b'x', ..] => stark_hash::Felt::from_hex_str(v)
+                        &[b'0', b'x', ..] => pathfinder_crypto::Felt::from_hex_str(v)
                             .map_err(|e| serde::de::Error::custom(e))
                             .map(RpcFelt),
                         _missing_prefix => Err(serde::de::Error::custom("Missing '0x' prefix")),

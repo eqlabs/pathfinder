@@ -6,7 +6,7 @@ use pathfinder_common::event::Event;
 use pathfinder_common::{
     BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
 };
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub const KEY_FILTER_LIMIT: usize = 256;

@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use fake::Dummy;
-use stark_curve::FieldElement;
-use stark_poseidon::{poseidon_hash_many, PoseidonHasher};
+use pathfinder_crypto::{
+    hash::{poseidon_hash_many, PoseidonHasher},
+    MontFelt,
+};
 
 use crate::{
     BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
@@ -218,21 +220,21 @@ impl StateUpdate {
         StateDiffCommitment(
             poseidon_hash_many(&[
                 // state_diff_version
-                FieldElement::ZERO,
+                MontFelt::ZERO,
                 self.compute_hash_of_deployed_contracts(),
                 self.compute_hash_of_declared_classes(),
                 self.compute_hash_of_old_declared_classes(),
                 // number_of_DA_modes
-                FieldElement::ONE,
+                MontFelt::ONE,
                 // DA_mode_0
-                FieldElement::ZERO,
+                MontFelt::ZERO,
                 self.compute_hash_of_storage_domain_state_diff(),
             ])
             .into(),
         )
     }
 
-    fn compute_hash_of_deployed_contracts(&self) -> FieldElement {
+    fn compute_hash_of_deployed_contracts(&self) -> MontFelt {
         let deployed_contracts: BTreeMap<ContractAddress, ClassHash> = self
             .contract_updates
             .iter()
@@ -263,7 +265,7 @@ impl StateUpdate {
             .finish()
     }
 
-    fn compute_hash_of_declared_classes(&self) -> FieldElement {
+    fn compute_hash_of_declared_classes(&self) -> MontFelt {
         let declared_classes: BTreeSet<(SierraHash, CasmHash)> = self
             .declared_sierra_classes
             .iter()
@@ -289,7 +291,7 @@ impl StateUpdate {
             .finish()
     }
 
-    fn compute_hash_of_old_declared_classes(&self) -> FieldElement {
+    fn compute_hash_of_old_declared_classes(&self) -> MontFelt {
         let declared_classes: BTreeSet<ClassHash> =
             self.declared_cairo_classes.iter().copied().collect();
 
@@ -311,7 +313,7 @@ impl StateUpdate {
             .finish()
     }
 
-    fn compute_hash_of_storage_domain_state_diff(&self) -> FieldElement {
+    fn compute_hash_of_storage_domain_state_diff(&self) -> MontFelt {
         let storage_diffs = self
             .contract_updates
             .iter()

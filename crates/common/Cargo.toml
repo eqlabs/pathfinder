@@ -16,6 +16,7 @@ fake = { workspace = true }
 metrics = { workspace = true }
 num-bigint = { workspace = true }
 paste = "1.0.14"
+pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
 semver = { workspace = true }
@@ -26,9 +27,6 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
-stark_curve = { path = "../stark_curve" }
-stark_hash = { path = "../stark_hash" }
-stark_poseidon = { path = "../stark_poseidon" }
 thiserror = { workspace = true }
 
 [build-dependencies]

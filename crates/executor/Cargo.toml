@@ -13,9 +13,9 @@ cached = "0.44.0"
 cairo-vm = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage" }
 primitive-types = { workspace = true, features = ["serde"] }
-stark_hash = { path = "../stark_hash" }
 starknet-gateway-types = { path = "../gateway-types" }
 starknet_api = { workspace = true }
 tracing = { workspace = true }

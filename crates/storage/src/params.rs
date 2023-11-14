@@ -8,9 +8,9 @@ use pathfinder_common::{
     SierraHash, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
     TransactionCommitment, TransactionHash, TransactionNonce, TransactionSignatureElem,
 };
+use pathfinder_crypto::Felt;
 use rusqlite::types::{FromSqlError, ToSqlOutput};
 use rusqlite::RowIndex;
-use stark_hash::Felt;
 
 pub trait ToSql {
     fn to_sql(&self) -> ToSqlOutput<'_>;
@@ -307,7 +307,7 @@ macro_rules! to_sql_felt {
 ///
 /// Same as [to_sql_felt!] except it compresses the [Felt] by skipping leading zeros.
 ///
-/// [Felt]: stark_hash::Felt
+/// [Felt]: pathfinder_crypto::Felt
 macro_rules! to_sql_compressed_felt {
     ($target:ty) => {
         impl ToSql for $target {

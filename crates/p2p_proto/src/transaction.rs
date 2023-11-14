@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crate::common::{Address, BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::ResourceLimits")]

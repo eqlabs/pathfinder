@@ -66,7 +66,7 @@ mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{EntryPoint, Fee, TransactionNonce};
-    use stark_hash::Felt;
+    use pathfinder_crypto::Felt;
 
     mod parsing {
         use super::*;

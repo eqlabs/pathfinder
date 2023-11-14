@@ -7,7 +7,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 use pathfinder_common::hash::FeltHash;
 

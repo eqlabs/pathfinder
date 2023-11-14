@@ -3,15 +3,15 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 # Limits workflow concurrency to only the latest commit in the PR.
 concurrency:
-  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
   cancel-in-progress: true
-    
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,13 +21,13 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-          root-reserve-mb: '2048'
-          temp-reserve-mb: '2048'
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+          remove-docker-images: "true"
+          root-reserve-mb: "2048"
+          temp-reserve-mb: "2048"
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
@@ -42,7 +42,7 @@ jobs:
         run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
       - name: Store timings
         uses: actions/upload-artifact@v3
-        with: 
+        with:
           name: timings
           path: target/cargo-timings/
           if-no-files-found: warn
@@ -93,19 +93,6 @@ jobs:
           version: "^1.0.9"
       - run: |
           cargo sort --check --workspace
-
-  fuzz_targets:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: nightly
-      - uses: rui314/setup-mold@v1
-      - run: cargo install cargo-fuzz
-      - name: stark_hash
-        run: cargo fuzz build
-        working-directory: crates/stark_hash
 
   load_test:
     runs-on: ubuntu-latest

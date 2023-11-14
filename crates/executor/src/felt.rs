@@ -1,4 +1,4 @@
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 use starknet_api::hash::StarkFelt;
 
 pub trait IntoFelt {

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use stark_hash::{stark_hash, Felt};
+use pathfinder_crypto::{hash::pedersen_hash, Felt};
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args();
@@ -36,7 +36,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 next.unwrap_or(Felt::ZERO)
             };
-            Ok::<_, anyhow::Error>(acc.map(|prev| stark_hash(prev, next)).or(Some(next)))
+            Ok::<_, anyhow::Error>(acc.map(|prev| pedersen_hash(prev, next)).or(Some(next)))
         })
         .with_context(|| {
             format!("USAGE: {myself} class_hash tree_root [nonce [contract_version]]")

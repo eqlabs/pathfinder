@@ -10,11 +10,9 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 bitvec = { workspace = true }
 pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage" }
 rand = { workspace = true }
-stark_curve = { path = "../stark_curve" }
-stark_hash = { path = "../stark_hash" }
-stark_poseidon = { path = "../stark_poseidon" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tracing = { workspace = true }

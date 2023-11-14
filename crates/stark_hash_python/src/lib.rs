@@ -2,8 +2,7 @@ use num_bigint::BigUint;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use stark_curve::FieldElement;
-use stark_hash::{stark_hash, Felt};
+use pathfinder_crypto::{algebra::field::MontFelt, hash, Felt};
 
 /// Computes the Pedersen hash.
 ///
@@ -13,7 +12,7 @@ fn pedersen_hash_func(a: &[u8], b: &[u8]) -> PyResult<Vec<u8>> {
     let a = Felt::from_be_slice(a).map_err(|e| PyValueError::new_err(e.to_string()))?;
     let b = Felt::from_be_slice(b).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-    let hash = stark_hash(a, b);
+    let hash = hash::pedersen_hash(a, b);
 
     Ok(hash.to_be_bytes().to_vec())
 }
@@ -28,7 +27,7 @@ fn pedersen_hash(a: BigUint, b: BigUint) -> PyResult<BigUint> {
     let b =
         Felt::from_be_slice(&b.to_bytes_be()).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-    let hash = stark_hash(a, b);
+    let hash = hash::pedersen_hash(a, b);
 
     Ok(BigUint::from_bytes_be(&hash.to_be_bytes()))
 }
@@ -41,7 +40,7 @@ fn poseidon_hash_func(a: &[u8], b: &[u8]) -> PyResult<Vec<u8>> {
     let a = Felt::from_be_slice(a).map_err(|e| PyValueError::new_err(e.to_string()))?;
     let b = Felt::from_be_slice(b).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-    let hash: Felt = stark_poseidon::poseidon_hash(a.into(), b.into()).into();
+    let hash: Felt = hash::poseidon_hash(a.into(), b.into()).into();
 
     Ok(hash.to_be_bytes().to_vec())
 }
@@ -61,7 +60,7 @@ fn poseidon_hash(a: BigUint, b: BigUint, poseidon_params: Option<PyObject>) -> P
     let b =
         Felt::from_be_slice(&b.to_bytes_be()).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-    let hash: Felt = stark_poseidon::poseidon_hash(a.into(), b.into()).into();
+    let hash: Felt = hash::poseidon_hash(a.into(), b.into()).into();
 
     Ok(BigUint::from_bytes_be(&hash.to_be_bytes()))
 }
@@ -83,9 +82,9 @@ fn poseidon_hash_many(array: Vec<BigUint>, poseidon_params: Option<PyObject>) ->
                 .map(Into::into)
                 .map_err(|e| PyValueError::new_err(e.to_string()))
         })
-        .collect::<Result<Vec<FieldElement>, PyErr>>()?;
+        .collect::<Result<Vec<MontFelt>, PyErr>>()?;
 
-    let hash: Felt = stark_poseidon::poseidon_hash_many(&array).into();
+    let hash: Felt = hash::poseidon_hash_many(&array).into();
 
     Ok(BigUint::from_bytes_be(&hash.to_be_bytes()))
 }
@@ -99,9 +98,9 @@ fn poseidon_perm(a: BigUint, b: BigUint, c: BigUint) -> PyResult<Vec<BigUint>> {
     let c =
         Felt::from_be_slice(&c.to_bytes_be()).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-    let mut state: stark_poseidon::PoseidonState = [a.into(), b.into(), c.into()];
+    let mut state: hash::poseidon::PoseidonState = [a.into(), b.into(), c.into()];
 
-    stark_poseidon::permute_comp(&mut state);
+    hash::poseidon::permute(&mut state);
 
     let output = state
         .into_iter()

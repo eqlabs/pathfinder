@@ -92,9 +92,9 @@ mod types {
     use pathfinder_common::{
         BlockHash, BlockHeader, BlockNumber, BlockTimestamp, SequencerAddress, StateCommitment,
     };
+    use pathfinder_crypto::Felt;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
-    use stark_hash::Felt;
 
     /// L2 Block as returned by the RPC API.
     #[serde_as]

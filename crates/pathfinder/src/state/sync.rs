@@ -9,6 +9,7 @@ use pathfinder_common::{
     ClassCommitment, ClassHash, EventCommitment, GasPrice, SequencerAddress, SierraHash,
     StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
 };
+use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
@@ -19,7 +20,6 @@ use pathfinder_rpc::{
 };
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
-use stark_hash::Felt;
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply::Block;
 use starknet_gateway_types::reply::PendingBlock;
@@ -1036,9 +1036,9 @@ mod tests {
         StateCommitment, StateUpdate, TransactionCommitment,
     };
     use pathfinder_common::{macro_prelude::*, BlockCommitmentSignature};
+    use pathfinder_crypto::Felt;
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
-    use stark_hash::Felt;
     use starknet_gateway_types::reply;
     use starknet_gateway_types::reply::Block;
     use std::sync::Arc;

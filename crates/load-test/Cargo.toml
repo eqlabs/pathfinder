@@ -9,11 +9,11 @@ rust-version = "1.73"
 
 [dependencies]
 goose = "0.17.0"
+pathfinder-crypto = { path = "../crypto" }
 rand = "0.8.5"
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = { version = "1.0.96", features = [
     "arbitrary_precision",
     "raw_value",
 ] }
-stark_hash = { path = "../stark_hash" }
 tokio = "1.24.2"

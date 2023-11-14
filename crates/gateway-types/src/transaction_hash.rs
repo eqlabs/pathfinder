@@ -12,8 +12,8 @@ use pathfinder_common::{
 
 use crate::class_hash::truncated_keccak;
 use pathfinder_common::ChainId;
+use pathfinder_crypto::{hash::HashChain, Felt};
 use sha3::{Digest, Keccak256};
-use stark_hash::{Felt, HashChain};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum VerifyResult {

@@ -4,8 +4,8 @@ use anyhow::Context;
 use pathfinder_common::{
     BlockNumber, ClassCommitment, ClassCommitmentLeafHash, ClassHash, SierraHash,
 };
+use pathfinder_crypto::Felt;
 use pathfinder_storage::{Node, Transaction};
-use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
 use pathfinder_common::hash::PoseidonHash;

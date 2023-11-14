@@ -120,13 +120,13 @@ macro_rules! felt_newtypes {
     (@define_felt $target:ident) => {
         paste::paste! {
             #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, PartialOrd, Ord, Dummy)]
-            pub struct $target(pub stark_hash::Felt);
+            pub struct $target(pub pathfinder_crypto::Felt);
 
             #[allow(unused)]
             impl $target {
-                pub const ZERO: Self = Self(stark_hash::Felt::ZERO);
+                pub const ZERO: Self = Self(pathfinder_crypto::Felt::ZERO);
 
-                pub fn as_inner(&self) -> &stark_hash::Felt {
+                pub fn as_inner(&self) -> &pathfinder_crypto::Felt {
                     &self.0
                 }
             }
@@ -144,15 +144,15 @@ macro_rules! felt_newtypes {
     (@define_felt251 $target:ident) => {
         paste::paste! {
             #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, PartialOrd, Ord, Dummy)]
-            pub struct $target(pub stark_hash::Felt);
+            pub struct $target(pub pathfinder_crypto::Felt);
 
             $crate::macros::fmt::thin_debug!($target);
             $crate::macros::fmt::thin_display!($target);
 
             impl $target {
-                pub const ZERO: Self = Self(stark_hash::Felt::ZERO);
+                pub const ZERO: Self = Self(pathfinder_crypto::Felt::ZERO);
 
-                pub fn as_inner(&self) -> &stark_hash::Felt {
+                pub fn as_inner(&self) -> &pathfinder_crypto::Felt {
                     &self.0
                 }
 
@@ -282,30 +282,30 @@ pub(super) mod fmt {
     pub(crate) use {thin_debug, thin_display};
 }
 
-/// Creates a [Felt](stark_hash::Felt) from a hex string literal verified at compile time.
+/// Creates a [Felt](pathfinder_crypto::Felt) from a hex string literal verified at compile time.
 #[macro_export]
 macro_rules! felt {
     ($hex:expr) => {{
         // This forces const evaluation of the macro call. Without this the invocation will only be evaluated
         // at runtime.
-        const CONST_FELT: stark_hash::Felt = match stark_hash::Felt::from_hex_str($hex) {
+        const CONST_FELT: pathfinder_crypto::Felt = match pathfinder_crypto::Felt::from_hex_str($hex) {
             Ok(f) => f,
-            Err(stark_hash::HexParseError::InvalidNibble(_)) => panic!("Invalid hex digit"),
-            Err(stark_hash::HexParseError::InvalidLength { .. }) => panic!("Too many hex digits"),
-            Err(stark_hash::HexParseError::Overflow) => panic!("Felt overflow"),
+            Err(pathfinder_crypto::HexParseError::InvalidNibble(_)) => panic!("Invalid hex digit"),
+            Err(pathfinder_crypto::HexParseError::InvalidLength { .. }) => panic!("Too many hex digits"),
+            Err(pathfinder_crypto::HexParseError::Overflow) => panic!("Felt overflow"),
         };
         CONST_FELT
     }};
 }
 
-/// Creates a [`stark_hash::Felt`] from a byte slice, resulting in compile-time error when
+/// Creates a [`pathfinder_crypto::Felt`] from a byte slice, resulting in compile-time error when
 /// invalid.
 #[macro_export]
 macro_rules! felt_bytes {
     ($bytes:expr) => {{
-        match stark_hash::Felt::from_be_slice($bytes) {
+        match pathfinder_crypto::Felt::from_be_slice($bytes) {
             Ok(sh) => sh,
-            Err(stark_hash::OverflowError) => panic!("Invalid constant: OverflowError"),
+            Err(pathfinder_crypto::OverflowError) => panic!("Invalid constant: OverflowError"),
         }
     }};
 }

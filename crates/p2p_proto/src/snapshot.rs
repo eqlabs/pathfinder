@@ -3,7 +3,7 @@ use crate::state::Classes;
 use crate::state::ContractStoredValue;
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub enum PatriciaNode {

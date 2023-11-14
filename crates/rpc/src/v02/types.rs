@@ -12,10 +12,10 @@ pub mod request {
         CallParam, CasmHash, ChainId, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_crypto::{hash::HashChain, Felt};
     use pathfinder_serde::TransactionVersionAsHexStr;
     use serde::Deserialize;
     use serde_with::serde_as;
-    use stark_hash::{Felt, HashChain};
     use starknet_gateway_types::transaction_hash::compute_txn_hash;
 
     /// "Broadcasted" L2 transaction in requests the RPC API.

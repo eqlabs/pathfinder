@@ -4,7 +4,7 @@ use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 
 use crate::prelude::*;
 

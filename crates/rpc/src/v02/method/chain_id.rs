@@ -16,7 +16,7 @@ pub async fn chain_id(context: RpcContext) -> Result<ChainIdOutput, ChainIdError
 #[cfg(test)]
 mod tests {
     use pathfinder_common::ChainId;
-    use stark_hash::Felt;
+    use pathfinder_crypto::Felt;
 
     #[tokio::test]
     async fn encoding() {

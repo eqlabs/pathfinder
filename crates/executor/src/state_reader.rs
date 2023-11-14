@@ -7,7 +7,7 @@ use blockifier::{
 };
 use cached::{Cached, SizedCache};
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 use starknet_api::{
     core::{ClassHash as StarknetClassHash, CompiledClassHash, ContractAddress, Nonce},
     hash::StarkFelt,

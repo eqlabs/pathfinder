@@ -640,9 +640,9 @@ mod tests {
             ContractAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
             StorageAddress, StorageValue,
         };
+        use pathfinder_crypto::Felt;
         use pathfinder_rpc::TopicBroadcasters;
         use pathfinder_storage::Storage;
-        use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::{
             error::{KnownStarknetErrorCode, SequencerError, StarknetError},

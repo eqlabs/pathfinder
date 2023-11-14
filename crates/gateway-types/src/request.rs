@@ -111,8 +111,8 @@ impl From<BlockNumberOrTag> for pathfinder_common::BlockId {
 
 pub mod contract {
     use pathfinder_common::{ByteCodeOffset, EntryPoint};
+    use pathfinder_crypto::Felt;
     use serde_with::serde_as;
-    use stark_hash::Felt;
     use std::fmt;
 
     #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Hash, Eq)]
@@ -323,7 +323,7 @@ pub mod add_transaction {
         mod byte_code_offset {
             use pathfinder_common::macro_prelude::*;
             use pathfinder_common::ByteCodeOffset;
-            use stark_hash::Felt;
+            use pathfinder_crypto::Felt;
 
             use crate::request::contract::SelectorAndOffset;
 

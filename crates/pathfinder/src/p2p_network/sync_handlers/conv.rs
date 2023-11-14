@@ -12,7 +12,7 @@ use pathfinder_common::{
     event::Event, state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
 };
 use pathfinder_common::{StateCommitment, TransactionHash};
-use stark_hash::Felt;
+use pathfinder_crypto::Felt;
 use starknet_gateway_types::reply::transaction as gw;
 use std::time::{Duration, SystemTime};
 
