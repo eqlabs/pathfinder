@@ -1,3 +1,7 @@
+// Equlibrium Labs: This work is an extension of libp2p's request-response protocol,
+// hence the original copyright notice is included below.
+//
+//
 // Copyright 2020 Parity Technologies (UK) Ltd.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,7 +27,7 @@ use futures::prelude::*;
 use std::io;
 
 /// A `Codec` defines the request and response types
-/// for a request-response [`Behaviour`](crate::Behaviour) protocol or
+/// for a request/streaming-response [`Behaviour`](crate::Behaviour) protocol or
 /// protocol family and how they are encoded / decoded on an I/O stream.
 #[async_trait]
 pub trait Codec {

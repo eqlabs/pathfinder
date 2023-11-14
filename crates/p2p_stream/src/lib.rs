@@ -1,3 +1,7 @@
+// Equlibrium Labs: This work is an extension of libp2p's request-response protocol,
+// hence the original copyright notice is included below.
+//
+//
 // Copyright 2020 Parity Technologies (UK) Ltd.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,34 +22,27 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-//! Generic request/response protocols.
+//! Generic single-request/response-stream protocols, later referred to as
+//! request/streaming-response.
 //!
 //! ## General Usage
 //!
 //! The [`Behaviour`] struct is a [`NetworkBehaviour`] that implements a generic
-//! request/response protocol or protocol family, whereby each request is
+//! request/streaming-response protocol or protocol family, whereby each request is
 //! sent over a new substream on a connection. `Behaviour` is generic
 //! over the actual messages being sent, which are defined in terms of a
-//! [`Codec`]. Creating a request/response protocol thus amounts
+//! [`Codec`]. Creating a request/streaming-response protocol thus amounts
 //! to providing an implementation of this trait which can then be
 //! given to [`Behaviour::with_codec`]. Further configuration options are
 //! available via the [`Config`].
 //!
-//! Requests are sent using [`Behaviour::send_request`] and the
+//! TODO Requests are sent using [`Behaviour::send_request`] and the
 //! responses received as [`Message::Response`] via
 //! [`Event::Message`].
 //!
-//! Responses are sent using [`Behaviour::send_response`] upon
+//! TODO Responses are sent using [`Behaviour::send_response`] upon
 //! receiving a [`Message::Request`] via
 //! [`Event::Message`].
-//!
-//! ## Predefined codecs
-//!
-//! In case your message types implement [`serde::Serialize`] and [`serde::Deserialize`],
-//! you can use two predefined behaviours:
-//!
-//! - [`cbor::Behaviour`] for CBOR-encoded messages
-//! - [`json::Behaviour`] for JSON-encoded messages
 //!
 //! ## Protocol Families
 //!
@@ -54,7 +51,7 @@
 //! For that purpose, [`Codec::Protocol`] is typically
 //! instantiated with a sum type.
 //!
-//! ## Limited Protocol Support
+//! ## TODO Limited Protocol Support
 //!
 //! It is possible to only support inbound or outbound requests for
 //! a particular protocol. This is achieved by instantiating `Behaviour`
@@ -64,14 +61,8 @@
 //! advertised during inbound respectively outbound protocol negotiation
 //! on the substreams.
 
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
-
-#[cfg(feature = "cbor")]
-pub mod cbor;
 mod codec;
 mod handler;
-#[cfg(feature = "json")]
-pub mod json;
 
 pub use codec::Codec;
 pub use handler::ProtocolSupport;
@@ -79,9 +70,9 @@ pub use handler::ProtocolSupport;
 use crate::handler::OutboundMessage;
 use futures::channel::oneshot;
 use handler::Handler;
-use libp2p_core::{ConnectedPoint, Endpoint, Multiaddr};
-use libp2p_identity::PeerId;
-use libp2p_swarm::{
+use libp2p::core::{ConnectedPoint, Endpoint, Multiaddr};
+use libp2p::identity::PeerId;
+use libp2p::swarm::{
     behaviour::{AddressChange, ConnectionClosed, DialFailure, FromSwarm},
     dial_opts::DialOpts,
     ConnectionDenied, ConnectionHandler, ConnectionId, NetworkBehaviour, NotifyHandler, THandler,

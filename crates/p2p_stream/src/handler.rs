@@ -1,3 +1,7 @@
+// Equlibrium Labs: This work is an extension of libp2p's request-response protocol,
+// hence the original copyright notice is included below.
+//
+//
 // Copyright 2020 Parity Technologies (UK) Ltd.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -28,11 +32,11 @@ use crate::{InboundRequestId, OutboundRequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
 
 use futures::channel::mpsc;
 use futures::{channel::oneshot, prelude::*};
-use libp2p_swarm::handler::{
+use libp2p::swarm::handler::{
     ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound, FullyNegotiatedOutbound,
     ListenUpgradeError,
 };
-use libp2p_swarm::{
+use libp2p::swarm::{
     handler::{ConnectionHandler, ConnectionHandlerEvent, StreamUpgradeError},
     SubstreamProtocol,
 };

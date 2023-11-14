@@ -1,3 +1,7 @@
+// Equlibrium Labs: This work is an extension of libp2p's request-response protocol,
+// hence the original copyright notice is included below.
+//
+//
 // Copyright 2020 Parity Technologies (UK) Ltd.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,8 +28,8 @@
 //! outbound upgrade send a request and receives a response.
 
 use futures::future::{ready, Ready};
-use libp2p_core::upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
-use libp2p_swarm::Stream;
+use libp2p::core::upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
+use libp2p::swarm::Stream;
 use smallvec::SmallVec;
 
 /// The level of support for a particular protocol.
