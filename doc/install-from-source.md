@@ -39,7 +39,7 @@ rustup update
 `pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
 
 ```bash
-sudo apt install build-essential libgmp-dev pkg-config libssl-dev libzstd-dev protobuf-compiler libzstd-dev
+sudo apt install build-essential pkg-config libssl-dev protobuf-compiler libzstd-dev
 ```
 
 Make sure `protoc` version is at least `3.15`
