@@ -202,7 +202,8 @@ pub struct ResourceBound {
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
 pub enum DataAvailabilityMode {
     #[default]
-    L1,
+    L1 = 0,
 }

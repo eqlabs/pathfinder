@@ -167,7 +167,7 @@ pub struct Tip(pub u64);
 
 /// Starknet resource bound: price per unit.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
-pub struct ResourcePricePerUnit(pub u64);
+pub struct ResourcePricePerUnit(pub u128);
 
 /// Starknet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]

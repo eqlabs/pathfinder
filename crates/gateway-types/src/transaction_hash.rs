@@ -1,18 +1,23 @@
 //! Calculate transaction hashes.
 
 use crate::reply::transaction::{
-    DeclareTransaction, DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
-    DeployAccountTransactionV0V1, DeployTransaction, InvokeTransaction, InvokeTransactionV0,
-    InvokeTransactionV1, L1HandlerTransaction, Transaction,
+    DeclareTransaction, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
+    DeployAccountTransaction, DeployAccountTransactionV0V1, DeployAccountTransactionV3,
+    DeployTransaction, InvokeTransaction, InvokeTransactionV0, InvokeTransactionV1,
+    InvokeTransactionV3, L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::{
-    BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, TransactionHash,
-    TransactionNonce, TransactionVersion,
+    transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds},
+    BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, PaymasterDataElem, Tip,
+    TransactionHash, TransactionNonce, TransactionVersion,
 };
 
 use crate::class_hash::truncated_keccak;
 use pathfinder_common::ChainId;
-use pathfinder_crypto::{hash::HashChain, Felt};
+use pathfinder_crypto::{
+    hash::{HashChain, PoseidonHasher},
+    Felt,
+};
 use sha3::{Digest, Keccak256};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -75,15 +80,17 @@ pub fn compute_transaction_hash(txn: &Transaction, chain_id: ChainId) -> Transac
         Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn, chain_id),
-        Transaction::Declare(DeclareTransaction::V3(_)) => todo!(),
+        Transaction::Declare(DeclareTransaction::V3(txn)) => compute_declare_v3_hash(txn, chain_id),
         Transaction::Deploy(txn) => compute_deploy_hash(txn, chain_id),
         Transaction::DeployAccount(DeployAccountTransaction::V0V1(txn)) => {
-            compute_deploy_account_hash_v0v1(txn, chain_id)
+            compute_deploy_account_v0v1_hash(txn, chain_id)
         }
-        Transaction::DeployAccount(DeployAccountTransaction::V3(_)) => todo!(),
+        Transaction::DeployAccount(DeployAccountTransaction::V3(txn)) => {
+            compute_deploy_account_v3_hash(txn, chain_id)
+        }
         Transaction::Invoke(InvokeTransaction::V0(txn)) => compute_invoke_v0_hash(txn, chain_id),
         Transaction::Invoke(InvokeTransaction::V1(txn)) => compute_invoke_v1_hash(txn, chain_id),
-        Transaction::Invoke(InvokeTransaction::V3(_)) => todo!(),
+        Transaction::Invoke(InvokeTransaction::V3(txn)) => compute_invoke_v3_hash(txn, chain_id),
         Transaction::L1Handler(txn) => compute_l1_handler_hash(txn, chain_id),
     }
 }
@@ -165,6 +172,34 @@ fn compute_declare_v2_hash(txn: &DeclareTransactionV2, chain_id: ChainId) -> Tra
     )
 }
 
+fn compute_declare_v3_hash(txn: &DeclareTransactionV3, chain_id: ChainId) -> TransactionHash {
+    let declare_specific_data = [
+        txn.account_deployment_data
+            .iter()
+            .fold(PoseidonHasher::new(), |mut hh, e| {
+                hh.write(e.0.into());
+                hh
+            })
+            .finish()
+            .into(),
+        txn.class_hash.0,
+        txn.compiled_class_hash.0,
+    ];
+    compute_v3_txn_hash(
+        b"declare",
+        TransactionVersion::THREE,
+        txn.sender_address,
+        chain_id,
+        txn.nonce,
+        &declare_specific_data,
+        txn.tip,
+        &txn.paymaster_data,
+        txn.nonce_data_availability_mode.into(),
+        txn.fee_data_availability_mode.into(),
+        txn.resource_bounds.into(),
+    )
+}
+
 /// Computes deploy transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_transaction):
 /// ```text=
 /// deploy_tx_hash = h(
@@ -228,7 +263,7 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> Transactio
 /// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_deploy_account_hash_v0v1(
+fn compute_deploy_account_v0v1_hash(
     txn: &DeployAccountTransactionV0V1,
     chain_id: ChainId,
 ) -> TransactionHash {
@@ -254,6 +289,38 @@ fn compute_deploy_account_hash_v0v1(
         chain_id,
         txn.nonce,
         None,
+    )
+}
+
+fn compute_deploy_account_v3_hash(
+    txn: &DeployAccountTransactionV3,
+    chain_id: ChainId,
+) -> TransactionHash {
+    let deploy_account_specific_data = [
+        txn.constructor_calldata
+            .iter()
+            .fold(PoseidonHasher::new(), |mut hh, e| {
+                hh.write(e.0.into());
+                hh
+            })
+            .finish()
+            .into(),
+        txn.class_hash.0,
+        txn.contract_address_salt.0,
+    ];
+
+    compute_v3_txn_hash(
+        b"deploy_account",
+        TransactionVersion::THREE,
+        txn.sender_address,
+        chain_id,
+        txn.nonce,
+        &deploy_account_specific_data,
+        txn.tip,
+        &txn.paymaster_data,
+        txn.nonce_data_availability_mode.into(),
+        txn.fee_data_availability_mode.into(),
+        txn.resource_bounds.into(),
     )
 }
 
@@ -326,6 +393,41 @@ fn compute_invoke_v1_hash(txn: &InvokeTransactionV1, chain_id: ChainId) -> Trans
         chain_id,
         txn.nonce,
         None,
+    )
+}
+
+fn compute_invoke_v3_hash(txn: &InvokeTransactionV3, chain_id: ChainId) -> TransactionHash {
+    let invoke_specific_data = [
+        txn.account_deployment_data
+            .iter()
+            .fold(PoseidonHasher::new(), |mut hh, e| {
+                hh.write(e.0.into());
+                hh
+            })
+            .finish()
+            .into(),
+        txn.calldata
+            .iter()
+            .fold(PoseidonHasher::new(), |mut hh, e| {
+                hh.write(e.0.into());
+                hh
+            })
+            .finish()
+            .into(),
+    ];
+
+    compute_v3_txn_hash(
+        b"invoke",
+        TransactionVersion::THREE,
+        txn.sender_address,
+        chain_id,
+        txn.nonce,
+        &invoke_specific_data,
+        txn.tip,
+        &txn.paymaster_data,
+        txn.nonce_data_availability_mode.into(),
+        txn.fee_data_availability_mode.into(),
+        txn.resource_bounds.into(),
     )
 }
 
@@ -423,7 +525,7 @@ fn legacy_compute_txn_hash(
     TransactionHash(h.finalize())
 }
 
-/// _Generic_ compute transaction hash for transactions
+/// _Generic_ compute transaction hash for v0-v2 transactions
 #[allow(clippy::too_many_arguments)]
 pub fn compute_txn_hash(
     prefix: &[u8],
@@ -456,6 +558,94 @@ pub fn compute_txn_hash(
     }
 
     TransactionHash(h.finalize())
+}
+
+const DA_AVAILABILITY_MODE_BITS: u8 = 32;
+
+/// _Generic_ compute transaction hash for v3 transactions
+#[allow(clippy::too_many_arguments)]
+fn compute_v3_txn_hash(
+    prefix: &[u8],
+    version: TransactionVersion,
+    sender_address: ContractAddress,
+    chain_id: ChainId,
+    nonce: TransactionNonce,
+    tx_type_specific_data: &[Felt],
+    tip: Tip,
+    paymaster_data: &[PaymasterDataElem],
+    nonce_data_availability_mode: DataAvailabilityMode,
+    fee_data_availability_mode: DataAvailabilityMode,
+    resource_bounds: ResourceBounds,
+) -> TransactionHash {
+    let fee_fields_hash = hash_fee_related_fields(&tip, &resource_bounds);
+    let da_mode_concatenation = ((nonce_data_availability_mode as u64)
+        << DA_AVAILABILITY_MODE_BITS)
+        + fee_data_availability_mode as u64;
+
+    let mut h: PoseidonHasher = PoseidonHasher::new();
+    h.write(
+        Felt::from_be_slice(prefix)
+            .expect("prefix is convertible")
+            .into(),
+    );
+    h.write(
+        Felt::from_be_slice(version.0.as_bytes())
+            .expect("version is convertible")
+            .into(),
+    );
+    h.write((*sender_address.get()).into());
+    h.write(fee_fields_hash.into());
+    h.write(
+        paymaster_data
+            .iter()
+            .fold(PoseidonHasher::new(), |mut hh, e| {
+                hh.write(e.0.into());
+                hh
+            })
+            .finish(),
+    );
+    h.write(chain_id.0.into());
+    h.write(nonce.0.into());
+    h.write(da_mode_concatenation.into());
+    tx_type_specific_data
+        .iter()
+        .for_each(|e| h.write((*e).into()));
+
+    TransactionHash(h.finish().into())
+}
+
+const MAX_AMOUNT_BITS: usize = 64;
+const MAX_AMOUNT_BYTES: usize = MAX_AMOUNT_BITS / 8;
+const MAX_PRICE_PER_UNIT_BITS: usize = 128;
+const MAX_PRICE_PER_UNIT_BYTES: usize = MAX_PRICE_PER_UNIT_BITS / 8;
+const RESOURCE_VALUE_OFFSET_BYTES: usize = MAX_AMOUNT_BYTES + MAX_PRICE_PER_UNIT_BYTES;
+const L1_GAS_RESOURCE_NAME: &[u8] = b"L1_GAS";
+const L2_GAS_RESOURCE_NAME: &[u8] = b"L2_GAS";
+
+/// Calculates the hash of the fee related fields of a transaction.
+///
+/// - `tip`
+/// - the resource bounds for L1 and L2
+///   - concatenates the resource type, amount and max price per unit into a single felt
+fn hash_fee_related_fields(tip: &Tip, resource_bounds: &ResourceBounds) -> Felt {
+    let mut h = PoseidonHasher::new();
+    h.write(tip.0.into());
+    h.write(flattened_bounds(L1_GAS_RESOURCE_NAME, resource_bounds.l1_gas).into());
+    h.write(flattened_bounds(L2_GAS_RESOURCE_NAME, resource_bounds.l2_gas).into());
+    h.finish().into()
+}
+
+fn flattened_bounds(resource_name: &[u8], resource_bound: ResourceBound) -> Felt {
+    let mut b: [u8; 32] = Default::default();
+    b[(32 - MAX_PRICE_PER_UNIT_BYTES)..]
+        .copy_from_slice(&resource_bound.max_price_per_unit.0.to_be_bytes());
+    b[(32 - RESOURCE_VALUE_OFFSET_BYTES)..(32 - MAX_PRICE_PER_UNIT_BYTES)]
+        .copy_from_slice(&resource_bound.max_amount.0.to_be_bytes());
+
+    let padding_length = 8 - resource_name.len();
+    b[padding_length..(32 - RESOURCE_VALUE_OFFSET_BYTES)].copy_from_slice(resource_name);
+
+    Felt::from_be_bytes(b).expect("Resource names should fit within a felt")
 }
 
 #[cfg(test)]

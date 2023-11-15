@@ -243,7 +243,7 @@ serde_with::serde_conv!(
     pub ResourcePricePerUnitAsHexStr,
     ResourcePricePerUnit,
     |serialize_me: &ResourcePricePerUnit| { let b = serialize_me.0.to_be_bytes(); bytes_to_hex_str(&b) },
-    |s: &str| bytes_from_hex_str::<8>(s).map(|b| ResourcePricePerUnit(u64::from_be_bytes(b)))
+    |s: &str| bytes_from_hex_str::<16>(s).map(|b| ResourcePricePerUnit(u128::from_be_bytes(b)))
 );
 
 serde_with::serde_conv!(
