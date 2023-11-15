@@ -26,9 +26,9 @@ impl From<TransactionExecutionError> for CallError {
                 EntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
                 ) => Self::ContractNotFound,
-                _ => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
+                _ => Self::Custom(anyhow::anyhow!("Execution error: {}", e)),
             },
-            e => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
+            e => Self::Custom(anyhow::anyhow!("Execution error: {}", e)),
         }
     }
 }
@@ -42,20 +42,23 @@ impl From<EntryPointExecutionError> for CallError {
             EntryPointExecutionError::PreExecutionError(
                 PreExecutionError::UninitializedStorageAddress(_),
             ) => Self::ContractNotFound,
-            _ => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
+            _ => Self::Custom(anyhow::anyhow!("Execution error: {}", e)),
         }
     }
 }
 
 impl From<StateError> for CallError {
     fn from(e: StateError) -> Self {
-        Self::Internal(anyhow::anyhow!("Internal state error: {}", e))
+        match e {
+            StateError::StateReadError(_) => Self::Internal(e.into()),
+            _ => Self::Custom(anyhow::anyhow!("State error: {}", e)),
+        }
     }
 }
 
 impl From<starknet_api::StarknetApiError> for CallError {
     fn from(value: starknet_api::StarknetApiError) -> Self {
-        Self::Internal(value.into())
+        Self::Custom(value.into())
     }
 }
 
