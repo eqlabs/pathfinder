@@ -50,14 +50,14 @@ use std::{
     time::Duration,
 };
 
-/// A connection handler for a request response [`Behaviour`](super::Behaviour) protocol.
+/// A connection handler for a request/streaming-response [`Behaviour`](super::Behaviour) protocol.
 pub struct Handler<TCodec>
 where
     TCodec: Codec,
 {
     /// The supported inbound protocols.
     inbound_protocols: SmallVec<[TCodec::Protocol; 2]>,
-    /// The request/response message codec.
+    /// The request/streaming-response message codec.
     codec: TCodec,
     /// Queue of events to emit in `poll()`.
     pending_events: VecDeque<Event<TCodec>>,
@@ -154,10 +154,12 @@ where
                 write.await?;
 
                 stream.close().await?;
-                Ok(Event::ResponseSent(request_id))
+
+                todo!();
             } else {
                 stream.close().await?;
-                Ok(Event::ResponseOmission(request_id))
+
+                todo!();
             }
         };
 
@@ -192,13 +194,13 @@ where
             let write = codec.write_request(&protocol, &mut stream, message.request);
             write.await?;
             stream.close().await?;
+
+            // TODO return the responding stream
+            // TODO add read response wrapper per message in the stream
             let read = codec.read_response(&protocol, &mut stream);
             let response = read.await?;
 
-            Ok(Event::Response {
-                request_id,
-                response,
-            })
+            todo!();
         };
 
         if self
@@ -263,21 +265,24 @@ where
     TCodec: Codec,
 {
     /// A request has been received.
-    Request {
+    InboundRequest {
+        /// The ID of the request.
         request_id: InboundRequestId,
+        /// The request message.
         request: TCodec::Request,
-        sender: oneshot::Sender<TCodec::Response>,
+        /// The channel through which we are expected to send responses.
+        ///
+        /// TODO handle the channel related errors
+        channel: mpsc::Sender<TCodec::Response>,
     },
-    /// A response has been received.
-    Response {
+    OutboundRequestAcceptedAwaitingResponses {
+        /// The ID of the outbound request.
         request_id: OutboundRequestId,
-        response: TCodec::Response,
+        /// The channel through which we can receive the responses.
+        ///
+        /// TODO handle the channel related errors
+        channel: mpsc::Receiver<TCodec::Response>,
     },
-    /// A response to an inbound request has been sent.
-    ResponseSent(InboundRequestId),
-    /// A response to an inbound request was omitted as a result
-    /// of dropping the response `sender` of an inbound `Request`.
-    ResponseOmission(InboundRequestId),
     /// An outbound request timed out while sending the request
     /// or waiting for the response.
     OutboundTimeout(OutboundRequestId),
@@ -299,28 +304,20 @@ where
 impl<TCodec: Codec> fmt::Debug for Event<TCodec> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request {
+            Event::InboundRequest {
                 request_id,
                 request: _,
-                sender: _,
+                channel: _,
             } => f
-                .debug_struct("Event::Request")
+                .debug_struct("Event::InboundRequest")
                 .field("request_id", request_id)
                 .finish(),
-            Event::Response {
+            Event::OutboundRequestAcceptedAwaitingResponses {
                 request_id,
-                response: _,
+                channel: _,
             } => f
-                .debug_struct("Event::Response")
+                .debug_struct("Event::OutboundRequestAcceptedAwaitingResponses")
                 .field("request_id", request_id)
-                .finish(),
-            Event::ResponseSent(request_id) => f
-                .debug_tuple("Event::ResponseSent")
-                .field(request_id)
-                .finish(),
-            Event::ResponseOmission(request_id) => f
-                .debug_tuple("Event::ResponseOmission")
-                .field(request_id)
                 .finish(),
             Event::OutboundTimeout(request_id) => f
                 .debug_tuple("Event::OutboundTimeout")
@@ -436,11 +433,13 @@ where
         if let Poll::Ready(Some((id, rq, rs_sender))) = self.inbound_receiver.poll_next_unpin(cx) {
             // We received an inbound request.
 
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Event::Request {
-                request_id: id,
-                request: rq,
-                sender: rs_sender,
-            }));
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                Event::InboundRequest {
+                    request_id: id,
+                    request: rq,
+                    channel: todo!("rs_sender"),
+                },
+            ));
         }
 
         // Emit outbound requests.
