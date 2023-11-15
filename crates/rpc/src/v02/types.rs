@@ -1215,6 +1215,12 @@ pub mod reply {
         Rejected,
     }
 
+    impl BlockStatus {
+        pub fn is_pending(&self) -> bool {
+            self == &Self::Pending
+        }
+    }
+
     impl From<starknet_gateway_types::reply::Status> for BlockStatus {
         fn from(status: starknet_gateway_types::reply::Status) -> Self {
             use starknet_gateway_types::reply::Status::*;

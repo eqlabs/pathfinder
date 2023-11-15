@@ -97,6 +97,7 @@ mod types {
     pub struct Block {
         #[serde(flatten)]
         pub header: crate::v05::types::BlockHeader,
+        #[serde(skip_serializing_if = "BlockStatus::is_pending")]
         pub status: BlockStatus,
         pub transactions: Vec<TransactionWithHash>,
     }
@@ -252,5 +253,37 @@ mod tests {
         .await;
 
         assert_matches::assert_matches!(result, Err(GetBlockError::BlockNotFound));
+    }
+
+    #[tokio::test]
+    async fn status_serialization() {
+        // PENDING status should be skipped.
+
+        let context = RpcContext::for_tests_with_pending().await;
+        let pending = get_block_with_txs(
+            context.clone(),
+            GetBlockInput {
+                block_id: BlockId::Pending,
+            },
+        )
+        .await
+        .unwrap();
+        let latest = get_block_with_txs(
+            context,
+            GetBlockInput {
+                block_id: BlockId::Latest,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(pending.status.is_pending());
+        assert!(!latest.status.is_pending());
+
+        let pending = serde_json::to_value(pending).unwrap();
+        let latest = serde_json::to_value(latest).unwrap();
+
+        assert!(pending.get("status").is_none());
+        assert!(latest.get("status").is_some());
     }
 }
