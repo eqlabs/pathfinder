@@ -86,7 +86,7 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The request message.
         request: TRequest,
         /// The channel through which we are expected to send responses.
-        channel: ResponseChannel<TChannelResponse>,
+        channel: mpsc::Sender<TChannelResponse>,
     },
     /// Outbound request to another peer was accepted and we can now await responses.
     OutboundRequestAcceptedAwaitingResponses {
@@ -212,23 +212,23 @@ impl std::error::Error for InboundFailure {}
 /// A channel for sending a response to an inbound request.
 ///
 /// See [`Behaviour::send_response`].
-#[derive(Debug)]
-pub struct ResponseChannel<TResponse> {
-    sender: mpsc::Sender<TResponse>,
-}
+// #[derive(Debug)]
+// pub struct ResponseChannel<TResponse> {
+//     sender: oneshot::Sender<TResponse>,
+// }
 
-impl<TResponse> ResponseChannel<TResponse> {
-    /// Checks whether the response channel is still open, i.e.
-    /// the `Behaviour` is still waiting for a
-    /// a response to be sent via [`Behaviour::send_response`]
-    /// and this response channel.
-    ///
-    /// If the response channel is no longer open then the inbound
-    /// request timed out waiting for the response.
-    pub fn is_open(&self) -> bool {
-        !self.sender.is_closed()
-    }
-}
+// impl<TResponse> ResponseChannel<TResponse> {
+//     /// Checks whether the response channel is still open, i.e.
+//     /// the `Behaviour` is still waiting for a
+//     /// a response to be sent via [`Behaviour::send_response`]
+//     /// and this response channel.
+//     ///
+//     /// If the response channel is no longer open then the inbound
+//     /// request timed out waiting for the response.
+//     pub fn is_open(&self) -> bool {
+//         !self.sender.is_closed()
+//     }
+// }
 
 /// The ID of an inbound request.
 ///
@@ -770,13 +770,12 @@ where
                     let inserted = connection.pending_inbound_responses.insert(request_id);
                     debug_assert!(inserted, "Expect id of new request to be unknown.");
 
-                    let channel = ResponseChannel { sender };
                     self.pending_events
                         .push_back(ToSwarm::GenerateEvent(Event::InboundRequest {
                             peer,
                             request_id,
                             request,
-                            channel,
+                            channel: sender,
                         }))
                 }
                 None => {
