@@ -782,7 +782,7 @@ where
                     tracing::debug!("Connection ({connection}) closed after `Event::Request` ({request_id}) has been emitted.");
                 }
             },
-            handler::Event::ResponseStreamClosed(request_id) => {
+            handler::Event::OutboundResponseStreamClosed(request_id) => {
                 let removed = self.remove_pending_inbound_response(&peer, connection, request_id);
                 debug_assert!(
                     removed,
@@ -792,6 +792,9 @@ where
                 self.pending_events.push_back(ToSwarm::GenerateEvent(
                     Event::ResponseStreamClosed { peer, request_id },
                 ));
+            }
+            handler::Event::InboundResponseStreamClosed(_) => {
+                todo!();
             }
             handler::Event::OutboundTimeout(request_id) => {
                 let removed = self.remove_pending_outbound_response(&peer, connection, request_id);

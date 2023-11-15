@@ -159,7 +159,7 @@ where
 
             stream.close().await?;
 
-            Ok(Event::ResponseStreamClosed(request_id))
+            Ok(Event::OutboundResponseStreamClosed(request_id))
         };
 
         if self
@@ -187,7 +187,10 @@ where
             .expect("negotiated a stream without a pending message");
 
         let mut codec = self.codec.clone();
+        let mut codec2 = self.codec.clone();
         let request_id = message.request_id;
+
+        let (mut rs_send, rs_recv) = mpsc::channel(1);
 
         let send = async move {
             let write = codec.write_request(&protocol, &mut stream, message.request);
@@ -199,18 +202,9 @@ where
             // let read = codec.read_response(&protocol, &mut stream);
             // let response = read.await?;
 
-            let (mut rs_send, rs_recv) = mpsc::channel(1);
-
             // Keep on reading from the stream until it is closed
-            while let Ok(response) = codec.read_response(&protocol, &mut stream).await {
-                rs_send
-                    .send(response)
-                    .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-            }
 
-            stream.close().await?;
-
+            // FIXME
             Ok(Event::OutboundRequestAcceptedAwaitingResponses {
                 request_id,
                 receiver: rs_recv,
@@ -220,6 +214,28 @@ where
         if self
             .worker_streams
             .try_push(RequestId::Outbound(request_id), send.boxed())
+            .is_err()
+        {
+            tracing::warn!("Dropping outbound stream because we are at capacity")
+        }
+
+        let read = async move {
+            // Keep on forwarding until the channel is closed
+            while let Ok(response) = codec2.read_response(&protocol, &mut stream).await {
+                rs_send
+                    .send(response)
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            }
+
+            stream.close().await?;
+
+            Ok(Event::InboundResponseStreamClosed(request_id))
+        };
+
+        if self
+            .worker_streams
+            .try_push(RequestId::Outbound(request_id), read.boxed())
             .is_err()
         {
             tracing::warn!("Dropping outbound stream because we are at capacity")
@@ -298,7 +314,9 @@ where
         receiver: mpsc::Receiver<TCodec::Response>,
     },
     /// A response stream to an outbound request was closed.
-    ResponseStreamClosed(InboundRequestId),
+    OutboundResponseStreamClosed(InboundRequestId),
+    /// A response stream to an inbound request was closed.
+    InboundResponseStreamClosed(OutboundRequestId),
     /// An outbound request timed out while sending the request
     /// or waiting for the response.
     OutboundTimeout(OutboundRequestId),
@@ -335,8 +353,12 @@ impl<TCodec: Codec> fmt::Debug for Event<TCodec> {
                 .debug_struct("Event::OutboundRequestAcceptedAwaitingResponses")
                 .field("request_id", request_id)
                 .finish(),
-            Event::ResponseStreamClosed(request_id) => f
-                .debug_struct("Event::ResponseStreamClosed")
+            Event::InboundResponseStreamClosed(request_id) => f
+                .debug_struct("Event::InboundResponseStreamClosed")
+                .field("request_id", request_id)
+                .finish(),
+            Event::OutboundResponseStreamClosed(request_id) => f
+                .debug_struct("Event::OutboundResponseStreamClosed")
                 .field("request_id", request_id)
                 .finish(),
             Event::OutboundTimeout(request_id) => f
