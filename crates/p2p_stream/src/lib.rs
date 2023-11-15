@@ -36,13 +36,11 @@
 //! given to [`Behaviour::with_codec`]. Further configuration options are
 //! available via the [`Config`].
 //!
-//! Requests are sent using [`Behaviour::send_request`] and the
-//! responses received as [`Message::OutboundRequestAcceptedAwaitingResponses`] via
-//! [`Message::OutboundRequestAcceptedAwaitingResponses::channel`].
+//! Outbound requests are sent using [`Behaviour::send_request`] and the
+//! responses received via [`Event::OutboundRequestAcceptedAwaitingResponses::channel`].
 //!
-//! TODO Responses are sent using [`Behaviour::send_response`] upon
-//! receiving a [`Message::Request`] via
-//! [`Event::Message`].
+//! Inbound requests are received via [`Event::InboundRequest`] and responses are sent
+//! via [`Event::InboundRequest::channel`].
 //!
 //! ## Protocol Families
 //!
@@ -57,7 +55,7 @@ mod handler;
 pub use codec::Codec;
 
 use crate::handler::OutboundMessage;
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
 use handler::Handler;
 use libp2p::core::{ConnectedPoint, Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
@@ -88,9 +86,7 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The request message.
         request: TRequest,
         /// The channel through which we are expected to send responses.
-        ///
-        /// TODO handle the channel related errors
-        channel: mpsc::Sender<TChannelResponse>,
+        channel: ResponseChannel<TChannelResponse>,
     },
     /// Outbound request to another peer was accepted and we can now await responses.
     OutboundRequestAcceptedAwaitingResponses {
@@ -99,8 +95,6 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The ID of the outbound request.
         request_id: OutboundRequestId,
         /// The channel through which we can receive the responses.
-        ///
-        /// TODO handle the channel related errors
         channel: mpsc::Receiver<TResponse>,
     },
     /// An outbound request failed.
@@ -121,12 +115,8 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The error that occurred.
         error: InboundFailure,
     },
-    /// A response to an inbound request has been sent.
-    ///
-    /// When this event is received, the response has been flushed on
-    /// the underlying transport connection.
-    ResponseSent {
-        /// The peer to whom the response was sent.
+    ResponseStreamClosed {
+        /// The peer to whom the responses were sent.
         peer: PeerId,
         /// The ID of the inbound request whose response was sent.
         request_id: InboundRequestId,
@@ -224,7 +214,7 @@ impl std::error::Error for InboundFailure {}
 /// See [`Behaviour::send_response`].
 #[derive(Debug)]
 pub struct ResponseChannel<TResponse> {
-    sender: oneshot::Sender<TResponse>,
+    sender: mpsc::Sender<TResponse>,
 }
 
 impl<TResponse> ResponseChannel<TResponse> {
@@ -236,7 +226,7 @@ impl<TResponse> ResponseChannel<TResponse> {
     /// If the response channel is no longer open then the inbound
     /// request timed out waiting for the response.
     pub fn is_open(&self) -> bool {
-        !self.sender.is_canceled()
+        !self.sender.is_closed()
     }
 }
 
@@ -398,25 +388,6 @@ where
         }
 
         request_id
-    }
-
-    /// Initiates sending a response to an inbound request.
-    ///
-    /// If the [`ResponseChannel`] is already closed due to a timeout or the
-    /// connection being closed, the response is returned as an `Err` for
-    /// further handling. Once the response has been successfully sent on the
-    /// corresponding connection, [`Event::ResponseSent`] is
-    /// emitted. In all other cases [`Event::InboundFailure`]
-    /// will be or has been emitted.
-    ///
-    /// The provided `ResponseChannel` is obtained from an inbound
-    /// [`Message::Request`].
-    pub fn send_response(
-        &mut self,
-        ch: ResponseChannel<TCodec::Response>,
-        rs: TCodec::Response,
-    ) -> Result<(), TCodec::Response> {
-        ch.sender.send(rs)
     }
 
     /// Adds a known address for a peer that can be used for
@@ -772,7 +743,57 @@ where
         event: THandlerOutEvent<Self>,
     ) {
         match event {
-            _ => todo!(),
+            handler::Event::OutboundRequestAcceptedAwaitingResponses {
+                request_id,
+                receiver,
+            } => {
+                let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
+                debug_assert!(
+                    removed,
+                    "Expect request_id to be pending before receiving response.",
+                );
+
+                self.pending_events.push_back(ToSwarm::GenerateEvent(
+                    Event::OutboundRequestAcceptedAwaitingResponses {
+                        peer,
+                        request_id,
+                        channel: receiver,
+                    },
+                ));
+            }
+            handler::Event::InboundRequest {
+                request_id,
+                request,
+                sender,
+            } => match self.get_connection_mut(&peer, connection) {
+                Some(connection) => {
+                    let inserted = connection.pending_inbound_responses.insert(request_id);
+                    debug_assert!(inserted, "Expect id of new request to be unknown.");
+
+                    let channel = ResponseChannel { sender };
+                    self.pending_events
+                        .push_back(ToSwarm::GenerateEvent(Event::InboundRequest {
+                            peer,
+                            request_id,
+                            request,
+                            channel,
+                        }))
+                }
+                None => {
+                    tracing::debug!("Connection ({connection}) closed after `Event::Request` ({request_id}) has been emitted.");
+                }
+            },
+            handler::Event::ResponseStreamClosed(request_id) => {
+                let removed = self.remove_pending_inbound_response(&peer, connection, request_id);
+                debug_assert!(
+                    removed,
+                    "Expect request_id to be pending before response is sent."
+                );
+
+                self.pending_events.push_back(ToSwarm::GenerateEvent(
+                    Event::ResponseStreamClosed { peer, request_id },
+                ));
+            }
             handler::Event::OutboundTimeout(request_id) => {
                 let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
                 debug_assert!(

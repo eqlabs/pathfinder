@@ -28,8 +28,7 @@ use crate::codec::Codec;
 use crate::handler::protocol::Protocol;
 use crate::{InboundRequestId, OutboundRequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
 
-use futures::channel::mpsc;
-use futures::{channel::oneshot, prelude::*};
+use futures::{channel::mpsc, prelude::*};
 use libp2p::swarm::handler::{
     ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound, FullyNegotiatedOutbound,
     ListenUpgradeError,
@@ -69,13 +68,13 @@ where
     inbound_receiver: mpsc::Receiver<(
         InboundRequestId,
         TCodec::Request,
-        oneshot::Sender<TCodec::Response>,
+        mpsc::Sender<TCodec::Response>,
     )>,
     /// The [`mpsc::Sender`] for the above receiver. Cloned for each inbound request.
     inbound_sender: mpsc::Sender<(
         InboundRequestId,
         TCodec::Request,
-        oneshot::Sender<TCodec::Response>,
+        mpsc::Sender<TCodec::Response>,
     )>,
 
     inbound_request_id: Arc<AtomicU64>,
@@ -139,7 +138,10 @@ where
         let recv = async move {
             // A channel for notifying the inbound upgrade when the
             // response is sent.
-            let (rs_send, rs_recv) = oneshot::channel();
+
+            // Capacity 1 means provide back pressure to the sender,
+            // TODO do we need it, do we want it
+            let (rs_send, mut rs_recv) = mpsc::channel(1);
 
             let read = codec.read_request(&protocol, &mut stream);
             let request = read.await?;
@@ -149,18 +151,15 @@ where
                 .expect("`ConnectionHandler` owns both ends of the channel");
             drop(sender);
 
-            if let Ok(response) = rs_recv.await {
+            // Keep on forwarding until the channel is closed
+            while let Some(response) = rs_recv.next().await {
                 let write = codec.write_response(&protocol, &mut stream, response);
                 write.await?;
-
-                stream.close().await?;
-
-                todo!();
-            } else {
-                stream.close().await?;
-
-                todo!();
             }
+
+            stream.close().await?;
+
+            Ok(Event::ResponseStreamClosed(request_id))
         };
 
         if self
@@ -197,10 +196,25 @@ where
 
             // TODO return the responding stream
             // TODO add read response wrapper per message in the stream
-            let read = codec.read_response(&protocol, &mut stream);
-            let response = read.await?;
+            // let read = codec.read_response(&protocol, &mut stream);
+            // let response = read.await?;
 
-            todo!();
+            let (mut rs_send, rs_recv) = mpsc::channel(1);
+
+            // Keep on reading from the stream until it is closed
+            while let Ok(response) = codec.read_response(&protocol, &mut stream).await {
+                rs_send
+                    .send(response)
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            }
+
+            stream.close().await?;
+
+            Ok(Event::OutboundRequestAcceptedAwaitingResponses {
+                request_id,
+                receiver: rs_recv,
+            })
         };
 
         if self
@@ -273,7 +287,7 @@ where
         /// The channel through which we are expected to send responses.
         ///
         /// TODO handle the channel related errors
-        channel: mpsc::Sender<TCodec::Response>,
+        sender: mpsc::Sender<TCodec::Response>,
     },
     OutboundRequestAcceptedAwaitingResponses {
         /// The ID of the outbound request.
@@ -281,8 +295,10 @@ where
         /// The channel through which we can receive the responses.
         ///
         /// TODO handle the channel related errors
-        channel: mpsc::Receiver<TCodec::Response>,
+        receiver: mpsc::Receiver<TCodec::Response>,
     },
+    /// A response stream to an outbound request was closed.
+    ResponseStreamClosed(InboundRequestId),
     /// An outbound request timed out while sending the request
     /// or waiting for the response.
     OutboundTimeout(OutboundRequestId),
@@ -307,16 +323,20 @@ impl<TCodec: Codec> fmt::Debug for Event<TCodec> {
             Event::InboundRequest {
                 request_id,
                 request: _,
-                channel: _,
+                sender: _,
             } => f
                 .debug_struct("Event::InboundRequest")
                 .field("request_id", request_id)
                 .finish(),
             Event::OutboundRequestAcceptedAwaitingResponses {
                 request_id,
-                channel: _,
+                receiver: _,
             } => f
                 .debug_struct("Event::OutboundRequestAcceptedAwaitingResponses")
+                .field("request_id", request_id)
+                .finish(),
+            Event::ResponseStreamClosed(request_id) => f
+                .debug_struct("Event::ResponseStreamClosed")
                 .field("request_id", request_id)
                 .finish(),
             Event::OutboundTimeout(request_id) => f
@@ -432,12 +452,11 @@ where
         // Check for inbound requests.
         if let Poll::Ready(Some((id, rq, rs_sender))) = self.inbound_receiver.poll_next_unpin(cx) {
             // We received an inbound request.
-
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                 Event::InboundRequest {
                     request_id: id,
                     request: rq,
-                    channel: todo!("rs_sender"),
+                    sender: rs_sender,
                 },
             ));
         }
