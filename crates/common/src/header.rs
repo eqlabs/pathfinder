@@ -11,7 +11,8 @@ pub struct BlockHeader {
     pub parent_hash: BlockHash,
     pub number: BlockNumber,
     pub timestamp: BlockTimestamp,
-    pub gas_price: GasPrice,
+    pub eth_l1_gas_price: GasPrice,
+    pub strk_l1_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub class_commitment: ClassCommitment,
@@ -76,8 +77,13 @@ impl BlockHeaderBuilder {
         self
     }
 
-    pub fn with_gas_price(mut self, gas_price: GasPrice) -> Self {
-        self.0.gas_price = gas_price;
+    pub fn with_eth_l1_gas_price(mut self, eth_l1_gas_price: GasPrice) -> Self {
+        self.0.eth_l1_gas_price = eth_l1_gas_price;
+        self
+    }
+
+    pub fn with_strk_l1_gas_price(mut self, strk_l1_gas_price: GasPrice) -> Self {
+        self.0.strk_l1_gas_price = strk_l1_gas_price;
         self
     }
 

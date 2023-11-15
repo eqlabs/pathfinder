@@ -33,7 +33,7 @@ pub fn simulate(
     skip_validate: bool,
     skip_fee_charge: bool,
 ) -> Result<Vec<TransactionSimulation>, CallError> {
-    let gas_price: U256 = execution_state.header.gas_price.0.into();
+    let gas_price: U256 = execution_state.header.eth_l1_gas_price.0.into();
     let block_number = execution_state.header.number;
 
     let (mut state, block_context) = execution_state.starknet_state()?;

@@ -47,7 +47,7 @@ impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
             receipts: ZERO_MERKLE,
             // FIXME extra fields added to make sync work
             hash: Hash(self.hash.0),
-            gas_price: self.gas_price.0.to_be_bytes().into(),
+            gas_price: self.eth_l1_gas_price.0.to_be_bytes().into(),
             starknet_version: self.starknet_version.take_inner(),
             state_commitment: (self.state_commitment != StateCommitment::ZERO)
                 .then_some(Hash(self.state_commitment.0)),

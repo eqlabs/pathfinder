@@ -324,7 +324,7 @@ pub(crate) mod tests {
 
             let next_block_header = BlockHeader::builder()
                 .with_number(last_block_header.number + 1)
-                .with_gas_price(GasPrice(1))
+                .with_eth_l1_gas_price(GasPrice(1))
                 .with_parent_hash(last_block_header.hash)
                 .with_starknet_version(last_block_header.starknet_version)
                 .with_sequencer_address(last_block_header.sequencer_address)

@@ -74,10 +74,10 @@ impl Cached {
         {
             Ok(block) => match block {
                 MaybePendingBlock::Pending(block) => {
-                    return Some(U256::from(block.gas_price.0));
+                    return Some(U256::from(block.eth_l1_gas_price.0));
                 }
                 MaybePendingBlock::Block(block) => {
-                    return block.gas_price.map(|gp| U256::from(gp.0));
+                    return block.eth_l1_gas_price.map(|gp| U256::from(gp.0));
                 }
             },
             Err(reason) => {

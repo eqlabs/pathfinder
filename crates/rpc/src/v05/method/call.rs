@@ -217,7 +217,7 @@ mod tests {
             let header = BlockHeader::builder()
                 .with_number(block1_number)
                 .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_gas_price(GasPrice(1))
+                .with_eth_l1_gas_price(GasPrice(1))
                 .finalize_with_hash(block1_hash);
             tx.insert_block_header(&header).unwrap();
 
@@ -396,7 +396,8 @@ mod tests {
         ) -> PendingData {
             PendingData {
                 block: PendingBlock {
-                    gas_price: last_block_header.gas_price,
+                    eth_l1_gas_price: last_block_header.eth_l1_gas_price,
+                    strk_l1_gas_price: None,
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,

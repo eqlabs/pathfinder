@@ -33,7 +33,7 @@ pub struct BlockHeader {
     pub parent_hash: BlockHash,
     pub number: BlockNumber,
     pub timestamp: BlockTimestamp,
-    pub gas_price: GasPrice,
+    pub eth_l1_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub state_commitment: StateCommitment,
@@ -112,7 +112,7 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
             parent_hash: value.parent_hash,
             number: value.number,
             timestamp: value.timestamp,
-            gas_price: value.gas_price,
+            eth_l1_gas_price: value.eth_l1_gas_price,
             sequencer_address: value.sequencer_address,
             starknet_version: value.starknet_version,
             state_commitment: value.state_commitment,
@@ -135,7 +135,7 @@ impl TryFrom<p2p_proto::block::BlockHeader> for BlockHeader {
             .ok_or(anyhow::anyhow!("Invalid block timestamp"))?,
             sequencer_address: SequencerAddress(dto.sequencer_address.0),
             // TODO imo missing in the spec
-            gas_price: GasPrice::from_be_slice(dto.gas_price.as_slice())?,
+            eth_l1_gas_price: GasPrice::from_be_slice(dto.gas_price.as_slice())?,
             // TODO not sure if should be in the spec
             starknet_version: StarknetVersion::from(dto.starknet_version),
             // TODO remove this field when signature verification is done

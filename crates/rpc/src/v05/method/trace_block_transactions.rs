@@ -307,7 +307,7 @@ pub(crate) mod tests {
 
             let next_block_header = BlockHeader::builder()
                 .with_number(last_block_header.number + 1)
-                .with_gas_price(GasPrice(1))
+                .with_eth_l1_gas_price(GasPrice(1))
                 .with_parent_hash(last_block_header.hash)
                 .with_starknet_version(last_block_header.starknet_version)
                 .with_sequencer_address(last_block_header.sequencer_address)
@@ -441,7 +441,8 @@ pub(crate) mod tests {
                 vec![dummy_receipt.clone(), dummy_receipt.clone(), dummy_receipt];
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
-                gas_price: GasPrice(1),
+                eth_l1_gas_price: GasPrice(1),
+                strk_l1_gas_price: Some(GasPrice(1)),
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,

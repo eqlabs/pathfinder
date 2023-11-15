@@ -16,9 +16,13 @@ pub struct Block {
     pub block_hash: BlockHash,
     pub block_number: BlockNumber,
     /// Excluded in blocks prior to Starknet 0.9
+    /// TODO: remove alias after Starknet 0.13.0 is deployed on all networks
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default)]
-    pub gas_price: Option<GasPrice>,
+    #[serde(default, alias = "gas_price")]
+    pub eth_l1_gas_price: Option<GasPrice>,
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strk_l1_gas_price: Option<GasPrice>,
     pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to Starknet 0.8
     #[serde(default)]
@@ -39,8 +43,14 @@ pub struct Block {
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct PendingBlock {
+    /// TODO: remove alias after Starknet 0.13.0 is deployed on all networks
     #[serde_as(as = "GasPriceAsHexStr")]
-    pub gas_price: GasPrice,
+    #[serde(alias = "gas_price")]
+    pub eth_l1_gas_price: GasPrice,
+    // Excluded in blocks prior to Starknet 0.13.0
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default)]
+    pub strk_l1_gas_price: Option<GasPrice>,
     #[serde(rename = "parent_block_hash")]
     pub parent_hash: BlockHash,
     pub sequencer_address: SequencerAddress,
@@ -1922,6 +1932,9 @@ mod tests {
             serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216171).unwrap();
             // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
             serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_228457).unwrap();
+            // This is from integration starknet_version 0.13.0 and contains new v3 invoke transactions.
+            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319106).unwrap();
+            serde_json::from_str::<MaybePendingBlock>(v0_13_0::block::PENDING).unwrap();
         }
 
         #[test]

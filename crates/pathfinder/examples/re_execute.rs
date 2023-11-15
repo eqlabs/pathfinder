@@ -169,7 +169,7 @@ fn execute(storage: Storage, chain_id: ChainId, rx: crossbeam_channel::Receiver<
                             continue;
                         }
 
-                        let gas_price = work.header.gas_price.0;
+                        let gas_price = work.header.eth_l1_gas_price.0;
                         let actual_gas_consumed = actual_fee / gas_price.max(1);
 
                         let estimated_gas_consumed = estimate.gas_consumed.as_u128();

@@ -205,7 +205,7 @@ impl From<&Block> for BlockHeader {
         Self {
             block_hash: b.block_hash,
             block_number: b.block_number,
-            gas_price: b.gas_price,
+            gas_price: b.eth_l1_gas_price,
             parent_block_hash: b.parent_block_hash,
             sequencer_address: b.sequencer_address,
             state_commitment: b.state_commitment,

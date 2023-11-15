@@ -49,7 +49,7 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
             new_root: Some(header.state_commitment),
             timestamp: header.timestamp,
             sequencer_address: header.sequencer_address,
-            l1_gas_price: header.gas_price.into(),
+            l1_gas_price: header.eth_l1_gas_price.into(),
             starknet_version: header.starknet_version,
         }
     }
@@ -70,7 +70,7 @@ impl BlockHeader {
                     .sequencer_address
                     // Default value for cairo <0.8.0 is 0
                     .unwrap_or(SequencerAddress(Felt::ZERO)),
-                l1_gas_price: block.gas_price.unwrap_or_default().into(),
+                l1_gas_price: block.eth_l1_gas_price.unwrap_or_default().into(),
                 starknet_version: block.starknet_version,
             },
             MaybePendingBlock::Pending(pending) => Self {
@@ -80,7 +80,7 @@ impl BlockHeader {
                 new_root: None,
                 timestamp: pending.timestamp,
                 sequencer_address: pending.sequencer_address,
-                l1_gas_price: pending.gas_price.into(),
+                l1_gas_price: pending.eth_l1_gas_price.into(),
                 starknet_version: pending.starknet_version,
             },
         }

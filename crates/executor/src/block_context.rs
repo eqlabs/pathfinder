@@ -41,7 +41,7 @@ pub(super) fn construct_block_context(
         ),
         fee_token_address,
         vm_resource_fee_cost: Arc::new(default_resource_fee_costs()),
-        gas_price: execution_state.header.gas_price.0,
+        gas_price: execution_state.header.eth_l1_gas_price.0,
         invoke_tx_max_n_steps: 3_000_000,
         validate_max_n_steps: 1_000_000,
         max_recursion_depth: 50,
