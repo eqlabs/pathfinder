@@ -153,6 +153,15 @@ pub mod v0_13_0 {
     pub mod block {
         pub const PENDING: &str = str_fixture!("0.13.0/block/pending.json");
     }
+
+    pub mod transaction {
+        pub mod invoke {
+            pub mod v3 {
+                pub const BLOCK_319106: &str =
+                    str_fixture!("0.13.0/transaction/invoke_v3_block_319106.json");
+            }
+        }
+    }
 }
 
 pub mod add_transaction {

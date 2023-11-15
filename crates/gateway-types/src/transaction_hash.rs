@@ -652,7 +652,7 @@ fn flattened_bounds(resource_name: &[u8], resource_bound: ResourceBound) -> Felt
 mod tests {
     use super::compute_transaction_hash;
     use pathfinder_common::ChainId;
-    use starknet_gateway_test_fixtures::{v0_11_0, v0_8_2, v0_9_0};
+    use starknet_gateway_test_fixtures::{v0_11_0, v0_13_0, v0_8_2, v0_9_0};
 
     #[derive(serde::Deserialize)]
     struct TxWrapper {
@@ -701,6 +701,7 @@ mod tests {
             case!(v0_9_0::transaction::INVOKE),
             case!(v0_11_0::transaction::invoke::v1::BLOCK_420K),
             case!(v0_11_0::transaction::invoke::v1::BLOCK_790K),
+            case!(v0_13_0::transaction::invoke::v3::BLOCK_319106),
             // L1 Handler
             case!(v0_11_0::transaction::l1_handler::v0::BLOCK_1564),
             case!(v0_11_0::transaction::l1_handler::v0::BLOCK_272866),
