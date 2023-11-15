@@ -174,6 +174,18 @@ pub trait RowExt {
         Ok(gas_price)
     }
 
+    fn get_optional_gas_price<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<GasPrice>> {
+        let Some(blob) = self.get_optional_blob(index)? else {
+            return Ok(None);
+        };
+
+        let gas_price = GasPrice::from_be_slice(blob).map_err(|e| FromSqlError::Other(e.into()))?;
+        Ok(Some(gas_price))
+    }
+
     fn get_timestamp<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockTimestamp> {
         let num = self.get_i64(index)?;
         // Always safe since we are fetching an i64
