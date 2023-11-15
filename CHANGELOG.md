@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - RPC v0.5 incorrectly has a status field in pending `starknet_getBlockWithXXX` responses.
+- Error details for many execution-related issues were not properly sent back to the JSON client and were logged on WARN level instead.
 
 ## [0.9.5] - 2023-11-09
 
