@@ -71,7 +71,7 @@ pub fn simulate(
         match tx_info {
             Ok(tx_info) => {
                 if let Some(revert_error) = tx_info.revert_error {
-                    tracing::info!(%revert_error, "Transaction reverted");
+                    tracing::trace!(%revert_error, "Transaction reverted");
                     return Err(CallError::Reverted(revert_error));
                 }
 
