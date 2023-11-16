@@ -76,6 +76,10 @@ where
         TCodec::Request,
         mpsc::Sender<TCodec::Response>,
     )>,
+    /// A channel for signalling that an outbound request has been sent. Cloned for each outbound request.
+    outbound_sender: mpsc::Sender<(OutboundRequestId, mpsc::Receiver<TCodec::Response>)>,
+    /// The [`mpsc::Receiver`] for the above sender.
+    outbound_receiver: mpsc::Receiver<(OutboundRequestId, mpsc::Receiver<TCodec::Response>)>,
 
     inbound_request_id: Arc<AtomicU64>,
 
@@ -100,6 +104,7 @@ where
         max_concurrent_streams: usize,
     ) -> Self {
         let (inbound_sender, inbound_receiver) = mpsc::channel(0);
+        let (outbound_sender, outbound_receiver) = mpsc::channel(0);
         Self {
             inbound_protocols,
             codec,
@@ -107,6 +112,8 @@ where
             requested_outbound: Default::default(),
             inbound_receiver,
             inbound_sender,
+            outbound_sender,
+            outbound_receiver,
             pending_events: VecDeque::new(),
             inbound_request_id,
             worker_streams: futures_bounded::FuturesMap::new(
@@ -135,16 +142,14 @@ where
         let request_id = self.next_inbound_request_id();
         let mut sender = self.inbound_sender.clone();
 
-        let recv = async move {
-            // A channel for notifying the inbound upgrade when the
-            // response is sent.
-
+        let recv_request_then_fwd_outgoing_responses = async move {
             // Capacity 1 means provide back pressure to the sender,
             // TODO do we need it, do we want it
             let (rs_send, mut rs_recv) = mpsc::channel(1);
 
             let read = codec.read_request(&protocol, &mut stream);
             let request = read.await?;
+
             sender
                 .send((request_id, request, rs_send))
                 .await
@@ -164,7 +169,10 @@ where
 
         if self
             .worker_streams
-            .try_push(RequestId::Inbound(request_id), recv.boxed())
+            .try_push(
+                RequestId::Inbound(request_id),
+                recv_request_then_fwd_outgoing_responses.boxed(),
+            )
             .is_err()
         {
             tracing::warn!("Dropping inbound stream because we are at capacity")
@@ -189,53 +197,43 @@ where
         let mut codec = self.codec.clone();
         let mut codec2 = self.codec.clone();
         let request_id = message.request_id;
+        let protocol = protocol.clone();
+        let protocol2 = protocol.clone();
 
+        // TODO consider 0
         let (mut rs_send, rs_recv) = mpsc::channel(1);
 
-        let send = async move {
+        let mut sender = self.outbound_sender.clone();
+
+        let send_req_then_fwd_incoming_responses = async move {
             let write = codec.write_request(&protocol, &mut stream, message.request);
             write.await?;
+
             stream.close().await?;
 
-            // TODO return the responding stream
-            // TODO add read response wrapper per message in the stream
-            // let read = codec.read_response(&protocol, &mut stream);
-            // let response = read.await?;
+            sender
+                .send((request_id, rs_recv))
+                .await
+                .expect("`ConnectionHandler` owns both ends of the channel");
+            drop(sender);
 
-            // Keep on reading from the stream until it is closed
-
-            // FIXME
-            Ok(Event::OutboundRequestAcceptedAwaitingResponses {
-                request_id,
-                receiver: rs_recv,
-            })
-        };
-
-        if self
-            .worker_streams
-            .try_push(RequestId::Outbound(request_id), send.boxed())
-            .is_err()
-        {
-            tracing::warn!("Dropping outbound stream because we are at capacity")
-        }
-
-        let read = async move {
             // Keep on forwarding until the channel is closed
-            while let Ok(response) = codec2.read_response(&protocol, &mut stream).await {
+            while let Ok(response) = codec2.read_response(&protocol2, &mut stream).await {
                 rs_send
                     .send(response)
                     .await
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             }
 
-            stream.close().await?;
-
             Ok(Event::InboundResponseStreamClosed(request_id))
         };
 
         if self
             .worker_streams
-            .try_push(RequestId::Outbound(request_id), read.boxed())
+            .try_push(
+                RequestId::Outbound(request_id),
+                send_req_then_fwd_incoming_responses.boxed(),
+            )
             .is_err()
         {
             tracing::warn!("Dropping outbound stream because we are at capacity")
@@ -313,9 +311,9 @@ where
         /// TODO handle the channel related errors
         receiver: mpsc::Receiver<TCodec::Response>,
     },
-    /// A response stream to an outbound request was closed.
+    /// An outbound response stream to an inbound request was closed.
     OutboundResponseStreamClosed(InboundRequestId),
-    /// A response stream to an inbound request was closed.
+    /// An inbound response stream to an outbound request was closed.
     InboundResponseStreamClosed(OutboundRequestId),
     /// An outbound request timed out while sending the request
     /// or waiting for the response.
@@ -491,6 +489,16 @@ where
             return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
                 protocol: SubstreamProtocol::new(Protocol { protocols }, ()),
             });
+        }
+
+        // Check for readiness to receive inbound responses.
+        if let Poll::Ready(Some((id, rs_receiver))) = self.outbound_receiver.poll_next_unpin(cx) {
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                Event::OutboundRequestAcceptedAwaitingResponses {
+                    request_id: id,
+                    receiver: rs_receiver,
+                },
+            ));
         }
 
         debug_assert!(self.pending_outbound.is_empty());

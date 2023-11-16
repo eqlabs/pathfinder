@@ -115,11 +115,17 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The error that occurred.
         error: InboundFailure,
     },
-    ResponseStreamClosed {
+    OutboundResponseStreamClosed {
         /// The peer to whom the responses were sent.
         peer: PeerId,
-        /// The ID of the inbound request whose response was sent.
+        /// The ID of the inbound request to which responses were sent.
         request_id: InboundRequestId,
+    },
+    InboundResponseStreamClosed {
+        /// The peer from whom the responses were received.
+        peer: PeerId,
+        /// The ID of the outbound request to which responses were received.
+        request_id: OutboundRequestId,
     },
 }
 
@@ -370,22 +376,38 @@ where
     /// > managed via [`Behaviour::add_address`] and
     /// > [`Behaviour::remove_address`].
     pub fn send_request(&mut self, peer: &PeerId, request: TCodec::Request) -> OutboundRequestId {
+        eprintln!("send_request 0");
+
         let request_id = self.next_outbound_request_id();
+
+        eprintln!("send_request 1");
+
         let request = OutboundMessage {
             request_id,
             request,
             protocols: self.protocols.clone(),
         };
 
+        eprintln!("send_request 2");
+
         if let Some(request) = self.try_send_request(peer, request) {
+            eprintln!("send_request 3");
+
             self.pending_events.push_back(ToSwarm::Dial {
                 opts: DialOpts::peer_id(*peer).build(),
             });
+
             self.pending_outbound_requests
                 .entry(*peer)
                 .or_default()
                 .push(request);
+
+            eprintln!("send_request 4");
+        } else {
+            eprintln!("send_request 3-4 ok");
         }
+
+        eprintln!("send_request 5");
 
         request_id
     }
@@ -790,11 +812,19 @@ where
                 );
 
                 self.pending_events.push_back(ToSwarm::GenerateEvent(
-                    Event::ResponseStreamClosed { peer, request_id },
+                    Event::OutboundResponseStreamClosed { peer, request_id },
                 ));
             }
-            handler::Event::InboundResponseStreamClosed(_) => {
-                todo!();
+            handler::Event::InboundResponseStreamClosed(request_id) => {
+                let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
+                debug_assert!(
+                    removed,
+                    "Expect request_id to be pending before response is sent."
+                );
+
+                self.pending_events.push_back(ToSwarm::GenerateEvent(
+                    Event::InboundResponseStreamClosed { peer, request_id },
+                ));
             }
             handler::Event::OutboundTimeout(request_id) => {
                 let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
