@@ -24,6 +24,8 @@ async fn sanity() {
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
 
+    let (tx, rx) = futures::channel::oneshot::channel();
+
     // Expects Action::SanityRequest, replies with 3x Action::SanityResponse
     let server_task = async move {
         let (peer, req_id, action, mut resp_channel) =
@@ -32,9 +34,9 @@ async fn sanity() {
         assert_eq!(peer, peer2_id);
         assert_eq!(action, Action::SanityRequest);
 
-        resp_channel.send(Action::SanityResponse).await.unwrap();
-        resp_channel.send(Action::SanityResponse).await.unwrap();
-        resp_channel.send(Action::SanityResponse).await.unwrap();
+        resp_channel.send(Action::SanityResponse(0)).await.unwrap();
+        resp_channel.send(Action::SanityResponse(1)).await.unwrap();
+        resp_channel.send(Action::SanityResponse(2)).await.unwrap();
 
         // Force close the stream
         drop(resp_channel);
@@ -45,6 +47,9 @@ async fn sanity() {
 
         assert_eq!(peer, peer2_id);
         assert_eq!(req_id_done, req_id);
+
+        // wait for client to finish
+        rx.await.unwrap();
     };
 
     // Starts with Action::SanityRequest, expects 3x Action::SanityResponse
@@ -61,12 +66,20 @@ async fn sanity() {
         assert_eq!(peer, peer1_id);
         assert_eq!(req_id_done, req_id);
 
-        assert_eq!(resp_channel.next().await.unwrap(), Action::SanityResponse);
-        assert_eq!(resp_channel.next().await.unwrap(), Action::SanityResponse);
-        assert_eq!(resp_channel.next().await.unwrap(), Action::SanityResponse);
-
-        // Keep alive the task, so only `server_task` can finish
-        wait_no_events(&mut swarm2).await;
+        assert_eq!(
+            resp_channel.next().await.unwrap(),
+            Action::SanityResponse(0)
+        );
+        assert_eq!(
+            resp_channel.next().await.unwrap(),
+            Action::SanityResponse(1)
+        );
+        assert_eq!(
+            resp_channel.next().await.unwrap(),
+            Action::SanityResponse(2)
+        );
+        // tell the server that the client is done
+        tx.send(()).unwrap();
     };
 
     let server_task = server_task.fuse();
@@ -101,7 +114,7 @@ enum Action {
     FailOnWriteResponse,
     TimeoutOnWriteResponse,
     SanityRequest,
-    SanityResponse,
+    SanityResponse(u8), // Only the lower nibble is used
 }
 
 impl From<Action> for u8 {
@@ -114,7 +127,7 @@ impl From<Action> for u8 {
             Action::FailOnWriteResponse => 4,
             Action::TimeoutOnWriteResponse => 5,
             Action::SanityRequest => 6,
-            Action::SanityResponse => 7,
+            Action::SanityResponse(id) => 7 | ((id & 0x0F) << 4),
         }
     }
 }
@@ -123,7 +136,7 @@ impl TryFrom<u8> for Action {
     type Error = io::Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
+        match value & 0x0F {
             0 => Ok(Action::FailOnReadRequest),
             1 => Ok(Action::FailOnReadResponse),
             2 => Ok(Action::TimeoutOnReadResponse),
@@ -131,7 +144,7 @@ impl TryFrom<u8> for Action {
             4 => Ok(Action::FailOnWriteResponse),
             5 => Ok(Action::TimeoutOnWriteResponse),
             6 => Ok(Action::SanityRequest),
-            7 => Ok(Action::SanityResponse),
+            7 => Ok(Action::SanityResponse((value & 0xF0) >> 4)),
             _ => Err(io::Error::new(io::ErrorKind::Other, "invalid action")),
         }
     }
@@ -261,14 +274,6 @@ fn new_swarm_with_timeout(timeout: Duration) -> (PeerId, Swarm<rrs::Behaviour<Te
     let peed_id = *swarm.local_peer_id();
 
     (peed_id, swarm)
-}
-
-async fn wait_no_events(swarm: &mut Swarm<rrs::Behaviour<TestCodec>>) {
-    loop {
-        if let Ok(ev) = swarm.select_next_some().await.try_into_behaviour_event() {
-            panic!("Unexpected event: {ev:?}")
-        }
-    }
 }
 
 async fn wait_inbound_request(
