@@ -49,6 +49,8 @@
 //! For that purpose, [`Codec::Protocol`] is typically
 //! instantiated with a sum type.
 
+// TODO remove dead code, update & fix the comments
+
 mod codec;
 mod handler;
 
@@ -470,6 +472,8 @@ where
     /// Returns `true` if the provided connection to the given peer is still
     /// alive and the [`OutboundRequestId`] was previously present and is now removed.
     /// Returns `false` otherwise.
+    ///
+    /// TODO rename to remove_pending_outbound_request_stream
     fn remove_pending_outbound_response(
         &mut self,
         peer: &PeerId,
@@ -486,6 +490,8 @@ where
     /// Returns `true` if the provided connection to the given peer is still
     /// alive and the [`InboundRequestId`] was previously present and is now removed.
     /// Returns `false` otherwise.
+    ///
+    /// TODO rename to remove_pending_inbound_request_stream
     fn remove_pending_inbound_response(
         &mut self,
         peer: &PeerId,
@@ -723,7 +729,7 @@ where
                 let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
                 debug_assert!(
                     removed,
-                    "Expect request_id to be pending before receiving response.",
+                    "Expect request_id to be pending before getting the response channel.",
                 );
 
                 self.pending_events.push_back(ToSwarm::GenerateEvent(
@@ -768,9 +774,11 @@ where
             }
             handler::Event::InboundResponseStreamClosed(request_id) => {
                 let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
+
+                // TODO
                 debug_assert!(
-                    removed,
-                    "Expect request_id to be pending before response is sent."
+                    !removed,
+                    "Expect request_id to have been removed from pending because the response channel has already been available."
                 );
 
                 self.pending_events.push_back(ToSwarm::GenerateEvent(
@@ -875,9 +883,13 @@ struct Connection {
     /// Pending outbound responses where corresponding inbound requests have
     /// been received on this connection and emitted via `poll` but have not yet
     /// been answered.
+    ///
+    /// TODO rename to pending_outbound_response_streams
     pending_outbound_responses: HashSet<OutboundRequestId>,
     /// Pending inbound responses for previously sent requests on this
     /// connection.
+    ///
+    /// TODO rename to pending_inbound_response_streams
     pending_inbound_responses: HashSet<InboundRequestId>,
 }
 

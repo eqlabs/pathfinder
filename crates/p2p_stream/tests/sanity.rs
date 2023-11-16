@@ -17,14 +17,11 @@ async fn sanity() {
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
 
-    // `swarm2` needs to have a bigger timeout to avoid racing
-    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(1000));
-    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(1000));
+    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(100));
+    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
-
-    let (tx, rx) = futures::channel::oneshot::channel();
 
     // Expects Action::SanityRequest, replies with 3x Action::SanityResponse
     let server_task = async move {
@@ -47,9 +44,6 @@ async fn sanity() {
 
         assert_eq!(peer, peer2_id);
         assert_eq!(req_id_done, req_id);
-
-        // wait for client to finish
-        rx.await.unwrap();
     };
 
     // Starts with Action::SanityRequest, expects 3x Action::SanityResponse
@@ -78,8 +72,13 @@ async fn sanity() {
             resp_channel.next().await.unwrap(),
             Action::SanityResponse(2)
         );
-        // tell the server that the client is done
-        tx.send(()).unwrap();
+
+        let (peer, req_id_done) = wait_inbound_response_stream_closed(&mut swarm2)
+            .await
+            .unwrap();
+
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
     };
 
     let server_task = server_task.fuse();
@@ -91,11 +90,9 @@ async fn sanity() {
     loop {
         futures::select! {
             _ = server_task => {
-                eprintln!("server_task done");
                 break;
             },
             _ = client_task => {
-                eprintln!("client_task done");
                 break;
             },
         }
@@ -165,12 +162,8 @@ impl Codec for TestCodec {
         T: AsyncRead + Unpin + Send,
     {
         let mut buf = [0u8];
-        // Message is 1 byte long
-        loop {
-            if io.read(&mut buf).await? == 1 {
-                break;
-            }
-        }
+
+        io.read_exact(&mut buf).await?;
 
         if buf.is_empty() {
             return Err(io::ErrorKind::UnexpectedEof.into());
@@ -196,12 +189,7 @@ impl Codec for TestCodec {
     {
         let mut buf = [0u8];
 
-        // Message is 1 byte long
-        loop {
-            if io.read(&mut buf).await? == 1 {
-                break;
-            }
-        }
+        io.read_exact(&mut buf).await?;
 
         if buf.is_empty() {
             return Err(io::ErrorKind::UnexpectedEof.into());
@@ -319,6 +307,22 @@ async fn wait_outbound_response_stream_closed(
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
             Ok(rrs::Event::OutboundResponseStreamClosed {
+                peer, request_id, ..
+            }) => {
+                return Ok((peer, request_id));
+            }
+            Ok(ev) => bail!("Unexpected event: {ev:?}"),
+            Err(..) => {}
+        }
+    }
+}
+
+async fn wait_inbound_response_stream_closed(
+    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+) -> Result<(PeerId, OutboundRequestId)> {
+    loop {
+        match swarm.select_next_some().await.try_into_behaviour_event() {
+            Ok(rrs::Event::InboundResponseStreamClosed {
                 peer, request_id, ..
             }) => {
                 return Ok((peer, request_id));
