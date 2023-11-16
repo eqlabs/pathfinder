@@ -10,7 +10,7 @@ pub mod protocol {
             pub struct $type_name;
 
             impl $type_name {
-                pub const NAME: &str = $name;
+                pub const NAME: &'static str = $name;
             }
 
             impl AsRef<str> for $type_name {
