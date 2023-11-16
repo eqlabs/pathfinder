@@ -5789,10 +5789,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "fake",
  "futures",
  "futures-bounded",
  "libp2p",
  "libp2p-swarm-test",
+ "rstest",
  "smallvec",
  "tokio",
  "tracing",

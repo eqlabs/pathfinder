@@ -23,6 +23,8 @@ void = "1.0.2"
 
 [dev-dependencies]
 anyhow = { workspace = true }
+fake = { workspace = true }
 libp2p-swarm-test = "0.3.0"
+rstest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }
 tracing-subscriber = { workspace = true }

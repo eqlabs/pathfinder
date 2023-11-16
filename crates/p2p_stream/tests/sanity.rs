@@ -1,18 +1,20 @@
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use fake::Fake;
 use futures::channel::mpsc;
 use futures::{pin_mut, prelude::*};
 use libp2p::identity::PeerId;
 use libp2p::swarm::{StreamProtocol, Swarm};
 use libp2p_swarm_test::SwarmExt;
-use p2p_stream as rrs;
-use rrs::{Codec, InboundRequestId, OutboundRequestId};
+use p2p_stream::{Codec, InboundRequestId, OutboundRequestId};
+use rstest::rstest;
 use std::time::Duration;
 use std::{io, iter};
 use tracing_subscriber::EnvFilter;
 
+#[rstest]
 #[tokio::test]
-async fn sanity() {
+async fn sanity(#[values(0, 1, (2..100000).fake())] num_responses: usize) {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -31,9 +33,12 @@ async fn sanity() {
         assert_eq!(peer, peer2_id);
         assert_eq!(action, Action::SanityRequest);
 
-        resp_channel.send(Action::SanityResponse(0)).await.unwrap();
-        resp_channel.send(Action::SanityResponse(1)).await.unwrap();
-        resp_channel.send(Action::SanityResponse(2)).await.unwrap();
+        for i in 0..num_responses {
+            resp_channel
+                .send(Action::SanityResponse(i as u32))
+                .await
+                .unwrap();
+        }
 
         // Force close the stream
         drop(resp_channel);
@@ -60,18 +65,12 @@ async fn sanity() {
         assert_eq!(peer, peer1_id);
         assert_eq!(req_id_done, req_id);
 
-        assert_eq!(
-            resp_channel.next().await.unwrap(),
-            Action::SanityResponse(0)
-        );
-        assert_eq!(
-            resp_channel.next().await.unwrap(),
-            Action::SanityResponse(1)
-        );
-        assert_eq!(
-            resp_channel.next().await.unwrap(),
-            Action::SanityResponse(2)
-        );
+        for i in 0..num_responses {
+            assert_eq!(
+                resp_channel.next().await.unwrap(),
+                Action::SanityResponse(i as u32)
+            );
+        }
 
         let (peer, req_id_done) = wait_inbound_response_stream_closed(&mut swarm2)
             .await
@@ -111,10 +110,10 @@ enum Action {
     FailOnWriteResponse,
     TimeoutOnWriteResponse,
     SanityRequest,
-    SanityResponse(u8), // Only the lower nibble is used
+    SanityResponse(u32), // The highest byte is ignored
 }
 
-impl From<Action> for u8 {
+impl From<Action> for u32 {
     fn from(value: Action) -> Self {
         match value {
             Action::FailOnReadRequest => 0,
@@ -124,16 +123,16 @@ impl From<Action> for u8 {
             Action::FailOnWriteResponse => 4,
             Action::TimeoutOnWriteResponse => 5,
             Action::SanityRequest => 6,
-            Action::SanityResponse(id) => 7 | ((id & 0x0F) << 4),
+            Action::SanityResponse(id) => 7 | ((id & 0x00FFFFFF) << 8),
         }
     }
 }
 
-impl TryFrom<u8> for Action {
+impl TryFrom<u32> for Action {
     type Error = io::Error;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value & 0x0F {
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value & 0x000000FF {
             0 => Ok(Action::FailOnReadRequest),
             1 => Ok(Action::FailOnReadResponse),
             2 => Ok(Action::TimeoutOnReadResponse),
@@ -141,7 +140,7 @@ impl TryFrom<u8> for Action {
             4 => Ok(Action::FailOnWriteResponse),
             5 => Ok(Action::TimeoutOnWriteResponse),
             6 => Ok(Action::SanityRequest),
-            7 => Ok(Action::SanityResponse((value & 0xF0) >> 4)),
+            7 => Ok(Action::SanityResponse((value & 0xFFFFFF00) >> 8)),
             _ => Err(io::Error::new(io::ErrorKind::Other, "invalid action")),
         }
     }
@@ -161,7 +160,7 @@ impl Codec for TestCodec {
     where
         T: AsyncRead + Unpin + Send,
     {
-        let mut buf = [0u8];
+        let mut buf = [0u8; std::mem::size_of::<u32>()];
 
         io.read_exact(&mut buf).await?;
 
@@ -169,9 +168,9 @@ impl Codec for TestCodec {
             return Err(io::ErrorKind::UnexpectedEof.into());
         }
 
-        assert_eq!(buf.len(), 1);
+        assert_eq!(buf.len(), 4);
 
-        match buf[0].try_into()? {
+        match u32::from_be_bytes(buf).try_into()? {
             Action::FailOnReadRequest => {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnReadRequest"))
             }
@@ -187,7 +186,7 @@ impl Codec for TestCodec {
     where
         T: AsyncRead + Unpin + Send,
     {
-        let mut buf = [0u8];
+        let mut buf = [0u8; std::mem::size_of::<u32>()];
 
         io.read_exact(&mut buf).await?;
 
@@ -195,9 +194,9 @@ impl Codec for TestCodec {
             return Err(io::ErrorKind::UnexpectedEof.into());
         }
 
-        assert_eq!(buf.len(), 1);
+        assert_eq!(buf.len(), 4);
 
-        match buf[0].try_into()? {
+        match u32::from_be_bytes(buf).try_into()? {
             Action::FailOnReadResponse => {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnReadResponse"))
             }
@@ -222,7 +221,7 @@ impl Codec for TestCodec {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteRequest"))
             }
             action => {
-                let bytes = [action.into()];
+                let bytes = u32::from(action).to_be_bytes();
                 io.write_all(&bytes).await?;
                 Ok(())
             }
@@ -246,7 +245,7 @@ impl Codec for TestCodec {
                 tokio::time::sleep(Duration::MAX).await;
             },
             action => {
-                let bytes = [action.into()];
+                let bytes = u32::from(action).to_be_bytes();
                 io.write_all(&bytes).await?;
                 Ok(())
             }
@@ -254,22 +253,22 @@ impl Codec for TestCodec {
     }
 }
 
-fn new_swarm_with_timeout(timeout: Duration) -> (PeerId, Swarm<rrs::Behaviour<TestCodec>>) {
+fn new_swarm_with_timeout(timeout: Duration) -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     let protocols = iter::once(StreamProtocol::new("/test/1"));
-    let cfg = rrs::Config::default().with_request_timeout(timeout);
+    let cfg = p2p_stream::Config::default().with_request_timeout(timeout);
 
-    let swarm = Swarm::new_ephemeral(|_| rrs::Behaviour::<TestCodec>::new(protocols, cfg));
+    let swarm = Swarm::new_ephemeral(|_| p2p_stream::Behaviour::<TestCodec>::new(protocols, cfg));
     let peed_id = *swarm.local_peer_id();
 
     (peed_id, swarm)
 }
 
 async fn wait_inbound_request(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, InboundRequestId, Action, mpsc::Sender<Action>)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::InboundRequest {
+            Ok(p2p_stream::Event::InboundRequest {
                 peer,
                 request_id,
                 request,
@@ -284,11 +283,11 @@ async fn wait_inbound_request(
 }
 
 async fn wait_outbound_request_accepted_awaiting_responses(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId, mpsc::Receiver<Action>)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::OutboundRequestAcceptedAwaitingResponses {
+            Ok(p2p_stream::Event::OutboundRequestAcceptedAwaitingResponses {
                 peer,
                 request_id,
                 channel,
@@ -302,11 +301,11 @@ async fn wait_outbound_request_accepted_awaiting_responses(
 }
 
 async fn wait_outbound_response_stream_closed(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, InboundRequestId)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::OutboundResponseStreamClosed {
+            Ok(p2p_stream::Event::OutboundResponseStreamClosed {
                 peer, request_id, ..
             }) => {
                 return Ok((peer, request_id));
@@ -318,11 +317,11 @@ async fn wait_outbound_response_stream_closed(
 }
 
 async fn wait_inbound_response_stream_closed(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::InboundResponseStreamClosed {
+            Ok(p2p_stream::Event::InboundResponseStreamClosed {
                 peer, request_id, ..
             }) => {
                 return Ok((peer, request_id));
