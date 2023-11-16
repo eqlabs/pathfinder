@@ -788,7 +788,7 @@ where
             handler::Event::OutboundTimeout(request_id) => {
                 let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
                 debug_assert!(
-                    removed,
+                    !removed,
                     "Expect request_id to be pending before request times out."
                 );
 
@@ -815,7 +815,11 @@ where
             }
             handler::Event::OutboundStreamFailed { request_id, error } => {
                 let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
-                debug_assert!(removed, "Expect request_id to be pending upon failure");
+                // TODO
+                debug_assert!(
+                    !removed,
+                    "Expect request_id to have been removed from pending because the response channel has already been available."
+                );
 
                 self.pending_events
                     .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
