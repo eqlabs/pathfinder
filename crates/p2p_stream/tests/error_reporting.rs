@@ -1,14 +1,14 @@
 use futures::prelude::*;
 use libp2p_swarm_test::SwarmExt;
-use p2p_stream::OutboundFailure;
-use std::{io, pin::pin};
+use p2p_stream::{InboundFailure, OutboundFailure};
+use std::{io, pin::pin, time::Duration};
 use tracing_subscriber::EnvFilter;
 
 mod utils;
 
 use utils::{
-    new_swarm, wait_inbound_request, wait_no_events, wait_outbound_failure,
-    wait_outbound_request_accepted_awaiting_responses, Action,
+    new_swarm, new_swarm_with_timeout, wait_inbound_failure, wait_inbound_request, wait_no_events,
+    wait_outbound_failure, wait_outbound_request_accepted_awaiting_responses, Action,
 };
 
 #[tokio::test]
@@ -107,6 +107,59 @@ async fn report_outbound_failure_on_write_request() {
             error.into_inner().unwrap().to_string(),
             "FailOnWriteRequest"
         );
+    };
+
+    let server_task = pin!(server_task);
+    let client_task = pin!(client_task);
+    futures::future::select(server_task, client_task).await;
+}
+
+#[tokio::test]
+async fn report_outbound_timeout_on_read_response() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .try_init();
+
+    // `swarm1` needs to have a bigger timeout to avoid racing
+    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
+    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
+
+    swarm1.listen().with_memory_addr_external().await;
+    swarm2.connect(&mut swarm1).await;
+
+    let server_task = async move {
+        let (peer, req_id, action, mut resp_tx) = wait_inbound_request(&mut swarm1).await.unwrap();
+        assert_eq!(peer, peer2_id);
+        assert_eq!(action, Action::TimeoutOnReadResponse);
+
+        resp_tx.send(Action::TimeoutOnReadResponse).await.unwrap();
+
+        let (peer, req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
+        assert_eq!(peer, peer2_id);
+        assert_eq!(req_id_done, req_id);
+        assert!(matches!(error, InboundFailure::Timeout));
+
+        // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead
+        wait_no_events(&mut swarm1).await;
+    };
+
+    // Expects OutboundFailure::Timeout
+    let client_task = async move {
+        let req_id = swarm2
+            .behaviour_mut()
+            .send_request(&peer1_id, Action::TimeoutOnReadResponse);
+
+        let (peer, req_id_done, mut _resp_rx) =
+            wait_outbound_request_accepted_awaiting_responses(&mut swarm2)
+                .await
+                .unwrap();
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+
+        let (peer, req_id_done, error) = wait_outbound_failure(&mut swarm2).await.unwrap();
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+        assert!(matches!(error, OutboundFailure::Timeout));
     };
 
     let server_task = pin!(server_task);
