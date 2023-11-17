@@ -148,7 +148,10 @@ where
             let (rs_send, mut rs_recv) = mpsc::channel(1);
 
             let read = codec.read_request(&protocol, &mut stream);
-            let request = read.await?;
+            let request = read.await.map_err(|e| {
+                eprintln!("on_fully_negotiated_inbound recv 0 read request error: {e}");
+                e
+            })?;
 
             sender
                 .send((request_id, request, rs_send))
@@ -214,7 +217,6 @@ where
                 .expect("`ConnectionHandler` owns both ends of the channel");
             drop(sender);
 
-            // Keep on forwarding until the channel is closed
             loop {
                 match codec.read_response(&protocol, &mut stream).await {
                     Ok(response) => {
@@ -223,9 +225,9 @@ where
                             .await
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                     }
-                    // There's nothing more to receive
+                    // There's nothing more to receive or the stream was interrupted
                     Err(error) if error.kind() == ErrorKind::UnexpectedEof => break,
-                    // An error occurred, propagate it
+                    // Some other error occurred, propagate it
                     Err(error) => return Err(error),
                 }
             }
@@ -306,7 +308,7 @@ where
         /// The channel through which we are expected to send responses.
         sender: mpsc::Sender<TCodec::Response>,
     },
-    OutboundRequestAcceptedAwaitingResponses {
+    OutboundRequestSentAwaitingResponses {
         /// The ID of the outbound request.
         request_id: OutboundRequestId,
         /// The channel through which we can receive the responses.
@@ -345,11 +347,11 @@ impl<TCodec: Codec> fmt::Debug for Event<TCodec> {
                 .debug_struct("Event::InboundRequest")
                 .field("request_id", request_id)
                 .finish(),
-            Event::OutboundRequestAcceptedAwaitingResponses {
+            Event::OutboundRequestSentAwaitingResponses {
                 request_id,
                 receiver: _,
             } => f
-                .debug_struct("Event::OutboundRequestAcceptedAwaitingResponses")
+                .debug_struct("Event::OutboundRequestSentAwaitingResponses")
                 .field("request_id", request_id)
                 .finish(),
             Event::InboundResponseStreamClosed(request_id) => f
@@ -495,7 +497,7 @@ where
         // Check for readiness to receive inbound responses.
         if let Poll::Ready(Some((id, rs_receiver))) = self.outbound_receiver.poll_next_unpin(cx) {
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                Event::OutboundRequestAcceptedAwaitingResponses {
+                Event::OutboundRequestSentAwaitingResponses {
                     request_id: id,
                     receiver: rs_receiver,
                 },

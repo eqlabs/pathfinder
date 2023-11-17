@@ -29,6 +29,8 @@ pub enum Action {
     TimeoutOnWriteResponse,
     SanityRequest,
     SanityResponse(u32), // The highest byte is ignored
+    TimeoutOnWriteRequest,
+    TimeoutOnReadRequest,
 }
 
 impl From<Action> for u32 {
@@ -42,6 +44,8 @@ impl From<Action> for u32 {
             Action::TimeoutOnWriteResponse => 5,
             Action::SanityRequest => 6,
             Action::SanityResponse(id) => 7 | ((id & 0x00FFFFFF) << 8),
+            Action::TimeoutOnWriteRequest => 8,
+            Action::TimeoutOnReadRequest => 9,
         }
     }
 }
@@ -59,6 +63,8 @@ impl TryFrom<u32> for Action {
             5 => Ok(Action::TimeoutOnWriteResponse),
             6 => Ok(Action::SanityRequest),
             7 => Ok(Action::SanityResponse((value & 0xFFFFFF00) >> 8)),
+            8 => Ok(Action::TimeoutOnWriteRequest),
+            9 => Ok(Action::TimeoutOnReadRequest),
             _ => Err(io::Error::new(io::ErrorKind::Other, "invalid action")),
         }
     }
@@ -90,6 +96,9 @@ impl Codec for TestCodec {
             Action::FailOnReadRequest => {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnReadRequest"))
             }
+            Action::TimeoutOnReadRequest => loop {
+                tokio::time::sleep(Duration::MAX).await;
+            },
             action => Ok(action),
         }
     }
@@ -134,6 +143,11 @@ impl Codec for TestCodec {
             Action::FailOnWriteRequest => {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteRequest"))
             }
+            Action::TimeoutOnWriteRequest => loop {
+                eprintln!("write_request 1 sleep ==");
+
+                tokio::time::sleep(Duration::MAX).await;
+            },
             action => {
                 let bytes = u32::from(action).to_be_bytes();
                 io.write_all(&bytes).await?;
@@ -252,12 +266,12 @@ pub async fn wait_inbound_request(
     }
 }
 
-pub async fn wait_outbound_request_accepted_awaiting_responses(
+pub async fn wait_outbound_request_sent_awaiting_responses(
     swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId, mpsc::Receiver<Action>)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(p2p_stream::Event::OutboundRequestAcceptedAwaitingResponses {
+            Ok(p2p_stream::Event::OutboundRequestSentAwaitingResponses {
                 peer,
                 request_id,
                 channel,

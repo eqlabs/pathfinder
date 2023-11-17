@@ -10,8 +10,8 @@ mod utils;
 
 use utils::{
     new_swarm_with_timeout, wait_inbound_request, wait_inbound_response_stream_closed,
-    wait_outbound_request_accepted_awaiting_responses, wait_outbound_response_stream_closed,
-    Action, TestSwarm,
+    wait_outbound_request_sent_awaiting_responses, wait_outbound_response_stream_closed, Action,
+    TestSwarm,
 };
 
 struct Requestor {
@@ -125,7 +125,7 @@ async fn sanity(
             .send_request(&responder.peer_id, Action::SanityRequest);
 
         let (peer, req_id_done, mut resp_rx) =
-            wait_outbound_request_accepted_awaiting_responses(&mut requestor.swarm)
+            wait_outbound_request_sent_awaiting_responses(&mut requestor.swarm)
                 .await
                 .unwrap();
 
