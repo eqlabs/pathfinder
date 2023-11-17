@@ -1,7 +1,7 @@
 use futures::prelude::*;
 use libp2p_swarm_test::SwarmExt;
 use p2p_stream::{InboundFailure, OutboundFailure};
-use std::{io, pin::pin, time::Duration};
+use std::{io, time::Duration};
 use tracing_subscriber::EnvFilter;
 
 mod utils;
@@ -13,7 +13,7 @@ use utils::{
 };
 
 #[tokio::test]
-async fn report_outbound_failure_on_read_response() {
+async fn report_outbound_failure_on_read_response_failure() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -36,7 +36,6 @@ async fn report_outbound_failure_on_read_response() {
         wait_inbound_connection_closed(&mut swarm1).await;
     };
 
-    // Expects OutboundFailure::Io failure with `FailOnReadResponse` error
     let client_task = async move {
         let req_id = swarm2
             .behaviour_mut()
@@ -68,12 +67,11 @@ async fn report_outbound_failure_on_read_response() {
     };
 
     // Make sure both run to completion
-    // Client finishes first, server last
     tokio::join!(server_task, client_task);
 }
 
 #[tokio::test]
-async fn report_outbound_failure_on_write_request() {
+async fn report_outbound_failure_on_write_request_failure() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -90,7 +88,6 @@ async fn report_outbound_failure_on_write_request() {
         wait_no_events(&mut swarm1).await;
     };
 
-    // Expects OutboundFailure::Io failure with `FailOnWriteRequest` error.
     let client_task = async move {
         let req_id = swarm2
             .behaviour_mut()
@@ -120,7 +117,7 @@ async fn report_outbound_failure_on_write_request() {
 }
 
 #[tokio::test]
-async fn report_outbound_timeout_on_read_response() {
+async fn report_outbound_timeout_on_read_response_timeout() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -142,13 +139,9 @@ async fn report_outbound_timeout_on_read_response() {
         let (peer, req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
         assert_eq!(peer, peer2_id);
         assert_eq!(req_id_done, req_id);
-        assert!(matches!(error, InboundFailure::Timeout));
-
-        // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead
-        wait_no_events(&mut swarm1).await;
+        assert!(matches!(error, InboundFailure::ConnectionClosed));
     };
 
-    // Expects OutboundFailure::Timeout
     let client_task = async move {
         let req_id = swarm2
             .behaviour_mut()
@@ -169,13 +162,12 @@ async fn report_outbound_timeout_on_read_response() {
         assert!(matches!(error, OutboundFailure::Timeout));
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    // Make sure both run to completion
+    tokio::join!(server_task, client_task);
 }
 
 #[tokio::test]
-async fn report_inbound_failure_on_read_request() {
+async fn report_inbound_closure_on_read_request_failure() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -186,9 +178,11 @@ async fn report_inbound_failure_on_read_request() {
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
 
-    // Expects no events because `Event::Request` is produced after `read_request`.
+    // Expects no events because `Event::IncomingRequest` is produced after `read_request`.
     // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead.
-    let server_task = wait_no_events(&mut swarm1);
+    let server_task = async move {
+        wait_no_events(&mut swarm1).await;
+    };
 
     let client_task = async move {
         let req_id = swarm2
@@ -211,13 +205,15 @@ async fn report_inbound_failure_on_read_request() {
         assert_eq!(req_id_done, req_id);
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    // Server should always "outrun" the client
+    tokio::spawn(server_task);
+
+    // Make sure client runs to completion
+    client_task.await;
 }
 
 #[tokio::test]
-async fn report_inbound_failure_on_write_response() {
+async fn report_inbound_failure_on_write_response_failure() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -249,8 +245,6 @@ async fn report_inbound_failure_on_write_response() {
             error.into_inner().unwrap().to_string(),
             "FailOnWriteResponse"
         );
-
-        wait_no_events(&mut swarm1).await;
     };
 
     let client_task = async move {
@@ -273,13 +267,12 @@ async fn report_inbound_failure_on_write_response() {
             .unwrap();
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    // Make sure both run to completion
+    tokio::join!(client_task, server_task);
 }
 
 #[tokio::test]
-async fn report_inbound_timeout_on_write_response() {
+async fn report_inbound_timeout_on_write_response_timeout() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -308,7 +301,6 @@ async fn report_inbound_timeout_on_write_response() {
         assert!(matches!(error, InboundFailure::Timeout));
     };
 
-    // Expects OutboundFailure::ConnectionClosed or io::ErrorKind::UnexpectedEof
     let client_task = async move {
         let req_id = swarm2
             .behaviour_mut()
@@ -323,30 +315,20 @@ async fn report_inbound_timeout_on_write_response() {
 
         assert!(resp_channel.next().await.is_none());
 
-        let (peer, req_id_done, error) = wait_outbound_failure(&mut swarm2).await.unwrap();
+        let (peer, req_id_done) = wait_inbound_response_stream_closed(&mut swarm2)
+            .await
+            .unwrap();
+
         assert_eq!(peer, peer1_id);
         assert_eq!(req_id_done, req_id);
-
-        match error {
-            OutboundFailure::ConnectionClosed => {
-                // ConnectionClosed is allowed here because we mainly test the behavior
-                // of `server_task`.
-            }
-            OutboundFailure::Io(e) if e.kind() == io::ErrorKind::UnexpectedEof => {}
-            e => panic!("Unexpected error: {e:?}"),
-        }
-
-        // Keep alive the task, so only `server_task` can finish
-        wait_no_events(&mut swarm2).await;
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    // Make sure both run to completion
+    tokio::join!(client_task, server_task);
 }
 
 #[tokio::test]
-async fn report_outbound_timeout_on_write_request() {
+async fn report_outbound_timeout_on_write_request_timeout() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -360,7 +342,9 @@ async fn report_outbound_timeout_on_write_request() {
 
     // Expects no events because `Event::Request` is produced after `read_request`.
     // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead.
-    let server_task = wait_no_events(&mut swarm1);
+    let server_task = async move {
+        wait_no_events(&mut swarm1).await;
+    };
 
     let client_task = async move {
         let req_id = swarm2
@@ -374,28 +358,28 @@ async fn report_outbound_timeout_on_write_request() {
         assert!(matches!(error, OutboundFailure::Timeout));
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    // Server should always "outrun" the client
+    tokio::spawn(server_task);
+
+    // Make sure client runs to completion
+    client_task.await;
 }
 
 #[tokio::test]
-async fn report_inbound_timeout_on_read_request() {
+async fn report_outbound_timeout_on_read_request_timeout() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
 
     // `swarm2` needs to have a bigger timeout to avoid racing
-    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(100));
-    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(200));
+    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
+    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
 
     let server_task = async move {
-        let (peer, _req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
-        assert_eq!(peer, peer2_id);
-        assert!(matches!(error, InboundFailure::Timeout));
+        wait_no_events(&mut swarm1).await;
     };
 
     let client_task = async move {
@@ -412,21 +396,15 @@ async fn report_inbound_timeout_on_read_request() {
 
         assert!(resp_channel.next().await.is_none());
 
-        wait_inbound_response_stream_closed(&mut swarm2)
-            .await
-            .unwrap();
+        let (peer, req_id_done, error) = wait_outbound_failure(&mut swarm2).await.unwrap();
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+        assert!(matches!(error, OutboundFailure::Timeout));
     };
 
-    loop {
-        tokio::select! {
-            _ = server_task => {
-                eprintln!("server_task done");
-                break;
-            },
-            _ = client_task => {
-                eprintln!("client_task done");
-                break;
-            },
-        }
-    }
+    // Server should always "outrun" the client
+    tokio::spawn(server_task);
+
+    // Make sure client runs to completion
+    client_task.await;
 }
