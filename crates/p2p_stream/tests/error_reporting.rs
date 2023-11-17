@@ -70,3 +70,46 @@ async fn report_outbound_failure_on_read_response() {
     let client_task = pin!(client_task);
     futures::future::select(server_task, client_task).await;
 }
+
+#[tokio::test]
+async fn report_outbound_failure_on_write_request() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .try_init();
+
+    let (peer1_id, mut swarm1) = new_swarm();
+    let (_peer2_id, mut swarm2) = new_swarm();
+
+    swarm1.listen().with_memory_addr_external().await;
+    swarm2.connect(&mut swarm1).await;
+
+    // Expects no events because `Event::Request` is produced after `read_request`.
+    // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead.
+    let server_task = wait_no_events(&mut swarm1);
+
+    // Expects OutboundFailure::Io failure with `FailOnWriteRequest` error.
+    let client_task = async move {
+        let req_id = swarm2
+            .behaviour_mut()
+            .send_request(&peer1_id, Action::FailOnWriteRequest);
+
+        let (peer, req_id_done, error) = wait_outbound_failure(&mut swarm2).await.unwrap();
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+
+        let error = match error {
+            OutboundFailure::Io(e) => e,
+            e => panic!("Unexpected error: {e:?}"),
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(
+            error.into_inner().unwrap().to_string(),
+            "FailOnWriteRequest"
+        );
+    };
+
+    let server_task = pin!(server_task);
+    let client_task = pin!(client_task);
+    futures::future::select(server_task, client_task).await;
+}
