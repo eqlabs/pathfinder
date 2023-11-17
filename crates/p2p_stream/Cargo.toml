@@ -24,6 +24,14 @@ void = "1.0.2"
 [dev-dependencies]
 anyhow = { workspace = true }
 fake = { workspace = true }
+libp2p = { version = "0.53.0", default-features = false, features = [
+    "identify",
+    "noise",
+    "tcp",
+    "tokio",
+    "yamux",
+] }
+libp2p-plaintext = "0.41.0"
 libp2p-swarm-test = "0.3.0"
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }

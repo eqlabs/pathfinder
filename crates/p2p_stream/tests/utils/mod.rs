@@ -3,10 +3,14 @@ use anyhow::{bail, Result};
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::prelude::*;
-use libp2p::identity::PeerId;
-use libp2p::swarm::{StreamProtocol, Swarm};
+use libp2p::core::transport::MemoryTransport;
+use libp2p::core::upgrade::Version;
+use libp2p::identity::{Keypair, PeerId};
+use libp2p::swarm::{self, NetworkBehaviour, StreamProtocol, Swarm};
+use libp2p::{yamux, Transport};
 use libp2p_swarm_test::SwarmExt;
 use p2p_stream::{Codec, InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId};
+use std::fmt::Debug;
 use std::time::Duration;
 use std::{io, iter};
 
@@ -163,7 +167,49 @@ impl Codec for TestCodec {
     }
 }
 
-pub fn new_swarm_with_timeout(
+pub(crate) fn new_ephemeral_with_tokio_executor<B>(
+    behaviour_fn: impl FnOnce(Keypair) -> B,
+) -> Swarm<B>
+where
+    B: NetworkBehaviour + Send,
+    <B as NetworkBehaviour>::ToSwarm: Debug,
+{
+    let identity = Keypair::generate_ed25519();
+    let peer_id = PeerId::from(identity.public());
+
+    let transport = MemoryTransport::default()
+        .or_transport(libp2p::tcp::tokio::Transport::default())
+        .upgrade(Version::V1)
+        .authenticate(libp2p_plaintext::Config::new(&identity))
+        .multiplex(yamux::Config::default())
+        .timeout(Duration::from_secs(20))
+        .boxed();
+
+    Swarm::new(
+        transport,
+        behaviour_fn(identity),
+        peer_id,
+        swarm::Config::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(5)), // Some tests need connections to be kept alive beyond what the individual behaviour configures.,
+    )
+}
+
+pub(crate) fn new_swarm_with_timeout(
+    timeout: Duration,
+) -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
+    let protocols = iter::once(StreamProtocol::new("/test/1"));
+    let cfg = p2p_stream::Config::default().with_request_timeout(timeout);
+
+    // SwarmExt::new_ephemeral uses async::std
+    let swarm = new_ephemeral_with_tokio_executor(|_| {
+        p2p_stream::Behaviour::<TestCodec>::new(protocols, cfg)
+    });
+
+    let peed_id = *swarm.local_peer_id();
+
+    (peed_id, swarm)
+}
+
+pub(crate) fn new_swarm_with_timeout_async_std(
     timeout: Duration,
 ) -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     let protocols = iter::once(StreamProtocol::new("/test/1"));

@@ -5793,6 +5793,7 @@ dependencies = [
  "futures",
  "futures-bounded",
  "libp2p",
+ "libp2p-plaintext",
  "libp2p-swarm-test",
  "rstest",
  "smallvec",
