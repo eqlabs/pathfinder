@@ -6,16 +6,17 @@ use futures::prelude::*;
 use libp2p::identity::PeerId;
 use libp2p::swarm::{StreamProtocol, Swarm};
 use libp2p_swarm_test::SwarmExt;
-use p2p_stream as rrs;
-use rrs::{Codec, InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId};
+use p2p_stream::{Codec, InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId};
 use std::time::Duration;
 use std::{io, iter};
 
 #[derive(Clone, Default)]
-pub(crate) struct TestCodec;
+pub struct TestCodec;
+
+pub type TestSwarm = Swarm<p2p_stream::Behaviour<TestCodec>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Action {
+pub enum Action {
     FailOnReadRequest,
     FailOnReadResponse,
     TimeoutOnReadResponse,
@@ -162,23 +163,23 @@ impl Codec for TestCodec {
     }
 }
 
-pub(crate) fn new_swarm_with_timeout(
+pub fn new_swarm_with_timeout(
     timeout: Duration,
-) -> (PeerId, Swarm<rrs::Behaviour<TestCodec>>) {
+) -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     let protocols = iter::once(StreamProtocol::new("/test/1"));
-    let cfg = rrs::Config::default().with_request_timeout(timeout);
+    let cfg = p2p_stream::Config::default().with_request_timeout(timeout);
 
-    let swarm = Swarm::new_ephemeral(|_| rrs::Behaviour::<TestCodec>::new(protocols, cfg));
+    let swarm = Swarm::new_ephemeral(|_| p2p_stream::Behaviour::<TestCodec>::new(protocols, cfg));
     let peed_id = *swarm.local_peer_id();
 
     (peed_id, swarm)
 }
 
-pub(crate) fn new_swarm() -> (PeerId, Swarm<rrs::Behaviour<TestCodec>>) {
+pub fn new_swarm() -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     new_swarm_with_timeout(Duration::from_millis(100))
 }
 
-pub(crate) async fn wait_no_events(swarm: &mut Swarm<rrs::Behaviour<TestCodec>>) {
+pub async fn wait_no_events(swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>) {
     loop {
         if let Ok(ev) = swarm.select_next_some().await.try_into_behaviour_event() {
             panic!("Unexpected event: {ev:?}")
@@ -186,20 +187,12 @@ pub(crate) async fn wait_no_events(swarm: &mut Swarm<rrs::Behaviour<TestCodec>>)
     }
 }
 
-pub(crate) async fn wait_forever(swarm: &mut Swarm<rrs::Behaviour<TestCodec>>) {
-    loop {
-        match swarm.select_next_some().await.try_into_behaviour_event() {
-            _ => {}
-        }
-    }
-}
-
-pub(crate) async fn wait_inbound_request(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+pub async fn wait_inbound_request(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, InboundRequestId, Action, mpsc::Sender<Action>)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::InboundRequest {
+            Ok(p2p_stream::Event::InboundRequest {
                 peer,
                 request_id,
                 request,
@@ -213,12 +206,12 @@ pub(crate) async fn wait_inbound_request(
     }
 }
 
-pub(crate) async fn wait_outbound_request_accepted_awaiting_responses(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+pub async fn wait_outbound_request_accepted_awaiting_responses(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId, mpsc::Receiver<Action>)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::OutboundRequestAcceptedAwaitingResponses {
+            Ok(p2p_stream::Event::OutboundRequestAcceptedAwaitingResponses {
                 peer,
                 request_id,
                 channel,
@@ -231,12 +224,12 @@ pub(crate) async fn wait_outbound_request_accepted_awaiting_responses(
     }
 }
 
-pub(crate) async fn wait_outbound_response_stream_closed(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+pub async fn wait_outbound_response_stream_closed(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, InboundRequestId)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::OutboundResponseStreamClosed {
+            Ok(p2p_stream::Event::OutboundResponseStreamClosed {
                 peer, request_id, ..
             }) => {
                 return Ok((peer, request_id));
@@ -247,12 +240,12 @@ pub(crate) async fn wait_outbound_response_stream_closed(
     }
 }
 
-pub(crate) async fn wait_inbound_response_stream_closed(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+pub async fn wait_inbound_response_stream_closed(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::InboundResponseStreamClosed {
+            Ok(p2p_stream::Event::InboundResponseStreamClosed {
                 peer, request_id, ..
             }) => {
                 return Ok((peer, request_id));
@@ -263,12 +256,12 @@ pub(crate) async fn wait_inbound_response_stream_closed(
     }
 }
 
-pub(crate) async fn wait_inbound_failure(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+pub async fn wait_inbound_failure(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, InboundRequestId, InboundFailure)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::InboundFailure {
+            Ok(p2p_stream::Event::InboundFailure {
                 peer,
                 request_id,
                 error,
@@ -281,12 +274,12 @@ pub(crate) async fn wait_inbound_failure(
     }
 }
 
-pub(crate) async fn wait_outbound_failure(
-    swarm: &mut Swarm<rrs::Behaviour<TestCodec>>,
+pub async fn wait_outbound_failure(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId, OutboundFailure)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(rrs::Event::OutboundFailure {
+            Ok(p2p_stream::Event::OutboundFailure {
                 peer,
                 request_id,
                 error,
