@@ -7,9 +7,9 @@ use tracing_subscriber::EnvFilter;
 mod utils;
 
 use utils::{
-    new_swarm, new_swarm_with_timeout, wait_inbound_failure, wait_inbound_request,
-    wait_inbound_response_stream_closed, wait_no_events, wait_outbound_failure,
-    wait_outbound_request_sent_awaiting_responses, Action,
+    new_swarm, new_swarm_with_timeout, wait_inbound_connection_closed, wait_inbound_failure,
+    wait_inbound_request, wait_inbound_response_stream_closed, wait_no_events,
+    wait_outbound_failure, wait_outbound_request_sent_awaiting_responses, Action,
 };
 
 #[tokio::test]
@@ -33,7 +33,7 @@ async fn report_outbound_failure_on_read_response() {
         resp_channel.send(Action::FailOnReadResponse).await.unwrap();
 
         // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead
-        wait_no_events(&mut swarm1).await;
+        wait_inbound_connection_closed(&mut swarm1).await;
     };
 
     // Expects OutboundFailure::Io failure with `FailOnReadResponse` error
@@ -67,9 +67,9 @@ async fn report_outbound_failure_on_read_response() {
         );
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    // Make sure both run to completion
+    // Client finishes first, server last
+    tokio::join!(server_task, client_task);
 }
 
 #[tokio::test]
@@ -86,7 +86,9 @@ async fn report_outbound_failure_on_write_request() {
 
     // Expects no events because `Event::Request` is produced after `read_request`.
     // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead.
-    let server_task = wait_no_events(&mut swarm1);
+    let server_task = async move {
+        wait_no_events(&mut swarm1).await;
+    };
 
     // Expects OutboundFailure::Io failure with `FailOnWriteRequest` error.
     let client_task = async move {
@@ -110,9 +112,11 @@ async fn report_outbound_failure_on_write_request() {
         );
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    // Server should always "outrun" the client
+    tokio::spawn(server_task);
+
+    // Make sure client runs to completion
+    client_task.await;
 }
 
 #[tokio::test]
@@ -177,7 +181,7 @@ async fn report_inbound_failure_on_read_request() {
         .try_init();
 
     let (peer1_id, mut swarm1) = new_swarm();
-    let (peer2_id, mut swarm2) = new_swarm();
+    let (_peer2_id, mut swarm2) = new_swarm();
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;

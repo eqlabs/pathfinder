@@ -334,7 +334,21 @@ pub async fn wait_inbound_failure(
     }
 }
 
-pub async fn wait_outbound_failure(
+pub(crate) async fn wait_inbound_connection_closed(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
+) {
+    let (_, _, failure) = wait_inbound_failure(swarm).await.unwrap();
+    assert!(matches!(failure, InboundFailure::ConnectionClosed));
+}
+
+pub(crate) async fn wait_outbound_connection_closed(
+    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
+) {
+    let (_, _, failure) = wait_outbound_failure(swarm).await.unwrap();
+    assert!(matches!(failure, OutboundFailure::ConnectionClosed));
+}
+
+pub(crate) async fn wait_outbound_failure(
     swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId, OutboundFailure)> {
     loop {
