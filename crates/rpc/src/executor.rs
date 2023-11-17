@@ -409,7 +409,65 @@ pub fn compose_executor_transaction(
 
                 Ok(tx)
             }
-            starknet_gateway_types::reply::transaction::DeclareTransaction::V3(_) => todo!(),
+            starknet_gateway_types::reply::transaction::DeclareTransaction::V3(tx) => {
+                let casm_definition = db_transaction
+                    .casm_definition(tx.class_hash)?
+                    .context("Fetching class definition")?;
+
+                let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+
+                let resource_bounds = map_resource_bounds(tx.resource_bounds)?;
+
+                let tx = starknet_api::transaction::DeclareTransactionV3 {
+                    resource_bounds,
+                    tip: starknet_api::transaction::Tip(tx.tip.0),
+                    signature: starknet_api::transaction::TransactionSignature(
+                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                    ),
+                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                    class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+                    compiled_class_hash: starknet_api::core::CompiledClassHash(
+                        tx.compiled_class_hash.0.into_starkfelt(),
+                    ),
+                    sender_address: starknet_api::core::ContractAddress(
+                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                            .expect("No sender address overflow expected"),
+                    ),
+                    nonce_data_availability_mode: tx
+                        .nonce_data_availability_mode
+                        .into_starkfelt()
+                        .try_into()?,
+                    fee_data_availability_mode: tx
+                        .fee_data_availability_mode
+                        .into_starkfelt()
+                        .try_into()?,
+                    paymaster_data: starknet_api::transaction::PaymasterData(
+                        tx.paymaster_data
+                            .iter()
+                            .map(|p| p.0.into_starkfelt())
+                            .collect(),
+                    ),
+                    account_deployment_data: starknet_api::transaction::AccountDeploymentData(
+                        tx.account_deployment_data
+                            .iter()
+                            .map(|a| a.0.into_starkfelt())
+                            .collect(),
+                    ),
+                };
+
+                let tx = pathfinder_executor::Transaction::from_api(
+                    starknet_api::transaction::Transaction::Declare(
+                        starknet_api::transaction::DeclareTransaction::V3(tx),
+                    ),
+                    tx_hash,
+                    Some(contract_class),
+                    None,
+                    None,
+                    false,
+                )?;
+
+                Ok(tx)
+            }
         },
         starknet_gateway_types::reply::transaction::Transaction::Deploy(_) => Err(anyhow::anyhow!(
             "Deploy transactions are not yet supported in blockifier"
@@ -457,7 +515,62 @@ pub fn compose_executor_transaction(
 
                 Ok(tx)
             }
-            starknet_gateway_types::reply::transaction::DeployAccountTransaction::V3(_) => todo!(),
+            starknet_gateway_types::reply::transaction::DeployAccountTransaction::V3(tx) => {
+                let contract_address = starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No contract address overflow expected"),
+                );
+
+                let resource_bounds = map_resource_bounds(tx.resource_bounds)?;
+
+                let tx = starknet_api::transaction::DeployAccountTransaction::V3(
+                    starknet_api::transaction::DeployAccountTransactionV3 {
+                        resource_bounds,
+                        tip: starknet_api::transaction::Tip(tx.tip.0),
+                        signature: starknet_api::transaction::TransactionSignature(
+                            tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                        ),
+                        nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                        class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+                        contract_address_salt: starknet_api::transaction::ContractAddressSalt(
+                            tx.contract_address_salt.0.into_starkfelt(),
+                        ),
+                        constructor_calldata: starknet_api::transaction::Calldata(
+                            std::sync::Arc::new(
+                                tx.constructor_calldata
+                                    .iter()
+                                    .map(|c| c.0.into_starkfelt())
+                                    .collect(),
+                            ),
+                        ),
+                        nonce_data_availability_mode: tx
+                            .nonce_data_availability_mode
+                            .into_starkfelt()
+                            .try_into()?,
+                        fee_data_availability_mode: tx
+                            .fee_data_availability_mode
+                            .into_starkfelt()
+                            .try_into()?,
+                        paymaster_data: starknet_api::transaction::PaymasterData(
+                            tx.paymaster_data
+                                .iter()
+                                .map(|p| p.0.into_starkfelt())
+                                .collect(),
+                        ),
+                    },
+                );
+
+                let tx = pathfinder_executor::Transaction::from_api(
+                    starknet_api::transaction::Transaction::DeployAccount(tx),
+                    tx_hash,
+                    None,
+                    None,
+                    Some(contract_address),
+                    false,
+                )?;
+
+                Ok(tx)
+            }
         },
 
         starknet_gateway_types::reply::transaction::Transaction::Invoke(tx) => match tx {
@@ -527,7 +640,58 @@ pub fn compose_executor_transaction(
 
                 Ok(tx)
             }
-            starknet_gateway_types::reply::transaction::InvokeTransaction::V3(_) => todo!(),
+            starknet_gateway_types::reply::transaction::InvokeTransaction::V3(tx) => {
+                let resource_bounds = map_resource_bounds(tx.resource_bounds)?;
+
+                let tx = starknet_api::transaction::InvokeTransactionV3 {
+                    resource_bounds,
+                    tip: starknet_api::transaction::Tip(tx.tip.0),
+                    signature: starknet_api::transaction::TransactionSignature(
+                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                    ),
+                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                    sender_address: starknet_api::core::ContractAddress(
+                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                            .expect("No sender address overflow expected"),
+                    ),
+                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
+                    )),
+                    nonce_data_availability_mode: tx
+                        .nonce_data_availability_mode
+                        .into_starkfelt()
+                        .try_into()?,
+                    fee_data_availability_mode: tx
+                        .fee_data_availability_mode
+                        .into_starkfelt()
+                        .try_into()?,
+                    paymaster_data: starknet_api::transaction::PaymasterData(
+                        tx.paymaster_data
+                            .iter()
+                            .map(|p| p.0.into_starkfelt())
+                            .collect(),
+                    ),
+                    account_deployment_data: starknet_api::transaction::AccountDeploymentData(
+                        tx.account_deployment_data
+                            .iter()
+                            .map(|a| a.0.into_starkfelt())
+                            .collect(),
+                    ),
+                };
+
+                let tx = pathfinder_executor::Transaction::from_api(
+                    starknet_api::transaction::Transaction::Invoke(
+                        starknet_api::transaction::InvokeTransaction::V3(tx),
+                    ),
+                    tx_hash,
+                    None,
+                    None,
+                    None,
+                    false,
+                )?;
+
+                Ok(tx)
+            }
         },
         starknet_gateway_types::reply::transaction::Transaction::L1Handler(tx) => {
             let tx = starknet_api::transaction::L1HandlerTransaction {
@@ -560,4 +724,29 @@ pub fn compose_executor_transaction(
             Ok(tx)
         }
     }
+}
+
+fn map_resource_bounds(
+    r: starknet_gateway_types::reply::transaction::ResourceBounds,
+) -> Result<starknet_api::transaction::ResourceBoundsMapping, starknet_api::StarknetApiError> {
+    use starknet_api::transaction::{Resource, ResourceBounds};
+
+    let bounds = vec![
+        (
+            Resource::L1Gas,
+            ResourceBounds {
+                max_amount: r.l1_gas.max_amount.0,
+                max_price_per_unit: r.l1_gas.max_price_per_unit.0,
+            },
+        ),
+        (
+            Resource::L2Gas,
+            ResourceBounds {
+                max_amount: r.l2_gas.max_amount.0,
+                max_price_per_unit: r.l2_gas.max_price_per_unit.0,
+            },
+        ),
+    ];
+
+    bounds.try_into()
 }
