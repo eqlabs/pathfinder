@@ -19,6 +19,8 @@ pub fn estimate(
     for (transaction_idx, transaction) in transactions.into_iter().enumerate() {
         let _span = tracing::debug_span!("estimate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
 
+        let fee_type = &super::transaction::fee_type(&transaction);
+
         let tx_info = transaction
             .execute(&mut state, &block_context, false, true)
             .and_then(|mut tx_info| {
@@ -27,6 +29,7 @@ pub fn estimate(
                     tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
                         &tx_info.actual_resources,
                         &block_context,
+                        fee_type,
                     )?;
                 }
 

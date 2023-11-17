@@ -39,9 +39,16 @@ pub(super) fn construct_block_context(
             PatriciaKey::try_from(execution_state.header.sequencer_address.0.into_starkfelt())
                 .expect("Sequencer address overflow"),
         ),
-        fee_token_address,
+        fee_token_addresses: blockifier::block_context::FeeTokenAddresses {
+            // FIXME: what is the STRK token address?
+            strk_fee_token_address: fee_token_address,
+            eth_fee_token_address: fee_token_address,
+        },
         vm_resource_fee_cost: Arc::new(default_resource_fee_costs()),
-        gas_price: execution_state.header.eth_l1_gas_price.0,
+        gas_prices: blockifier::block_context::GasPrices {
+            eth_l1_gas_price: execution_state.header.eth_l1_gas_price.0,
+            strk_l1_gas_price: execution_state.header.strk_l1_gas_price.0,
+        },
         invoke_tx_max_n_steps: 3_000_000,
         validate_max_n_steps: 1_000_000,
         max_recursion_depth: 50,

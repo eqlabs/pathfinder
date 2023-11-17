@@ -52,7 +52,7 @@ starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 tempfile = "3.8"
 thiserror = "1.0.48"
-time = { version = "0.3.26", features = ["macros"] }
+time = { version = "0.3.28", features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.14"
 tracing = { workspace = true }

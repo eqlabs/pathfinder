@@ -163,15 +163,14 @@ fn create_executor_transaction(
             input.message.entry_point_selector.0.into_starkfelt(),
         ),
         calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
-        transaction_hash: starknet_api::transaction::TransactionHash(
-            transaction_hash.0.into_starkfelt(),
-        ),
     };
 
     let transaction = pathfinder_executor::Transaction::from_api(
         starknet_api::transaction::Transaction::L1Handler(tx),
+        starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
         None,
         Some(starknet_api::transaction::Fee(1)),
+        None,
         false,
     )?;
     Ok(transaction)
