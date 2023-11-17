@@ -7,9 +7,9 @@ use tracing_subscriber::EnvFilter;
 mod utils;
 
 use utils::{
-    new_swarm, new_swarm_with_timeout, wait_inbound_connection_closed, wait_inbound_failure,
-    wait_inbound_request, wait_inbound_response_stream_closed, wait_no_events,
-    wait_outbound_failure, wait_outbound_request_sent_awaiting_responses, Action,
+    new_swarm, new_swarm_with_timeout, wait_inbound_failure, wait_inbound_request,
+    wait_inbound_response_stream_closed, wait_no_events, wait_outbound_failure,
+    wait_outbound_request_sent_awaiting_responses, Action,
 };
 
 #[tokio::test]
@@ -25,7 +25,7 @@ async fn report_outbound_failure_on_read_response_failure() {
     swarm2.connect(&mut swarm1).await;
 
     let server_task = async move {
-        let (peer, _req_id, action, mut resp_channel) =
+        let (peer, req_id, action, mut resp_channel) =
             wait_inbound_request(&mut swarm1).await.unwrap();
         assert_eq!(peer, peer2_id);
         assert_eq!(action, Action::FailOnReadResponse);
@@ -33,7 +33,11 @@ async fn report_outbound_failure_on_read_response_failure() {
         resp_channel.send(Action::FailOnReadResponse).await.unwrap();
 
         // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead
-        wait_inbound_connection_closed(&mut swarm1).await;
+        // Wait for swarm2 disconnecting
+        let (peer, req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
+        assert_eq!(peer, peer2_id);
+        assert_eq!(req_id_done, req_id);
+        assert!(matches!(error, InboundFailure::ConnectionClosed));
     };
 
     let client_task = async move {
@@ -373,7 +377,7 @@ async fn report_outbound_timeout_on_read_request_timeout() {
 
     // `swarm2` needs to have a bigger timeout to avoid racing
     let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
-    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
+    let (_peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;

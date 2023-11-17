@@ -147,20 +147,5 @@ async fn sanity(
         assert_eq!(req_id_done, req_id);
     };
 
-    let server_task = responder_task.fuse();
-    let client_task = requestor_task.fuse();
-
-    pin_mut!(server_task);
-    pin_mut!(client_task);
-
-    loop {
-        futures::select! {
-            _ = server_task => {
-                break;
-            },
-            _ = client_task => {
-                break;
-            },
-        }
-    }
+    tokio::join!(responder_task, requestor_task);
 }

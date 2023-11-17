@@ -50,13 +50,13 @@ pub trait Codec {
 
     /// Reads a response from the given I/O stream according to the
     /// negotiated protocol.
-    /// __Must return Ok(None) if the stream is closed.__
+    /// __Must return Ok(None) if the stream is closed gracefully, i.e. when there are 0 bytes left to read
+    /// at the beginning of `read_response`.__
     async fn read_response<T>(
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
-        // ) -> io::Result<Option<Self::Response>>
-    ) -> io::Result<Self::Response>
+    ) -> io::Result<Option<Self::Response>>
     where
         T: AsyncRead + Unpin + Send;
 

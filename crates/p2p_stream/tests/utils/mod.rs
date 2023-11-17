@@ -8,7 +8,6 @@ use libp2p::core::upgrade::Version;
 use libp2p::identity::{Keypair, PeerId};
 use libp2p::swarm::{self, NetworkBehaviour, StreamProtocol, Swarm};
 use libp2p::{yamux, Transport};
-use libp2p_swarm_test::SwarmExt;
 use p2p_stream::{Codec, InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId};
 use std::fmt::Debug;
 use std::time::Duration;
@@ -107,13 +106,20 @@ impl Codec for TestCodec {
         &mut self,
         _protocol: &Self::Protocol,
         io: &mut T,
-    ) -> io::Result<Self::Response>
+    ) -> io::Result<Option<Self::Response>>
     where
         T: AsyncRead + Unpin + Send,
     {
         let mut buf = [0u8; std::mem::size_of::<u32>()];
 
-        io.read_exact(&mut buf).await?;
+        let n = io.read(&mut buf[..1]).await?;
+
+        if n == 0 {
+            return Ok(None);
+        }
+
+        // Read the rest of the response
+        io.read_exact(&mut buf[1..]).await?;
 
         if buf.is_empty() {
             return Err(io::ErrorKind::UnexpectedEof.into());
@@ -126,7 +132,7 @@ impl Codec for TestCodec {
             Action::TimeoutOnReadResponse => loop {
                 tokio::time::sleep(Duration::MAX).await;
             },
-            action => Ok(action),
+            action => Ok(Some(action)),
         }
     }
 
@@ -181,6 +187,7 @@ impl Codec for TestCodec {
     }
 }
 
+/// [`SwarmExt::new_ephemeral`] uses `async_std` executor, but we're using `tokio`
 pub(crate) fn new_ephemeral_with_tokio_executor<B>(
     behaviour_fn: impl FnOnce(Keypair) -> B,
 ) -> Swarm<B>
@@ -223,19 +230,7 @@ pub(crate) fn new_swarm_with_timeout(
     (peed_id, swarm)
 }
 
-pub(crate) fn new_swarm_with_timeout_async_std(
-    timeout: Duration,
-) -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
-    let protocols = iter::once(StreamProtocol::new("/test/1"));
-    let cfg = p2p_stream::Config::default().with_request_timeout(timeout);
-
-    let swarm = Swarm::new_ephemeral(|_| p2p_stream::Behaviour::<TestCodec>::new(protocols, cfg));
-    let peed_id = *swarm.local_peer_id();
-
-    (peed_id, swarm)
-}
-
-pub fn new_swarm() -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
+pub(crate) fn new_swarm() -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     new_swarm_with_timeout(Duration::from_millis(100))
 }
 

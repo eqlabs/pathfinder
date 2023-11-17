@@ -38,7 +38,6 @@ use libp2p::swarm::{
     SubstreamProtocol,
 };
 use smallvec::SmallVec;
-use std::io::ErrorKind;
 use std::{
     collections::VecDeque,
     fmt, io,
@@ -217,17 +216,18 @@ where
                 .expect("`ConnectionHandler` owns both ends of the channel");
             drop(sender);
 
+            // Keep on forwarding until the channel is closed or error occurs
             loop {
                 match codec.read_response(&protocol, &mut stream).await {
-                    Ok(response) => {
+                    Ok(Some(response)) => {
                         rs_send
                             .send(response)
                             .await
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                     }
-                    // There's nothing more to receive or the stream was interrupted
-                    Err(error) if error.kind() == ErrorKind::UnexpectedEof => break,
-                    // Some other error occurred, propagate it
+                    // The stream is closed, there's nothing more to receive
+                    Ok(None) => break,
+                    // An error occurred, propagate it
                     Err(error) => return Err(error),
                 }
             }
