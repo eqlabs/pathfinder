@@ -1,18 +1,15 @@
 //! Common utilities for p2p_stream integration tests.
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use fake::Fake;
 use futures::channel::mpsc;
-use futures::{pin_mut, prelude::*};
+use futures::prelude::*;
 use libp2p::identity::PeerId;
 use libp2p::swarm::{StreamProtocol, Swarm};
 use libp2p_swarm_test::SwarmExt;
 use p2p_stream as rrs;
 use rrs::{Codec, InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId};
-use rstest::rstest;
 use std::time::Duration;
 use std::{io, iter};
-use tracing_subscriber::EnvFilter;
 
 #[derive(Clone, Default)]
 pub(crate) struct TestCodec;
@@ -192,8 +189,7 @@ pub(crate) async fn wait_no_events(swarm: &mut Swarm<rrs::Behaviour<TestCodec>>)
 pub(crate) async fn wait_forever(swarm: &mut Swarm<rrs::Behaviour<TestCodec>>) {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
-            Ok(ev) => {}
-            Err(..) => {}
+            _ => {}
         }
     }
 }
