@@ -1393,7 +1393,7 @@
                     },
                     "l1_gas_price": {
                         "title": "L1 gas price",
-                        "descritpion": "The price of l1 gas in the block",
+                        "description": "The price of l1 gas in the block",
                         "$ref": "#/components/schemas/RESOURCE_PRICE"
                     },
                     "starknet_version": {
