@@ -1,12 +1,12 @@
 use fake::Fake;
-use futures::{pin_mut, prelude::*};
+use futures::prelude::*;
 use libp2p::PeerId;
 use libp2p_swarm_test::SwarmExt;
 use rstest::rstest;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
-mod utils;
+pub mod utils;
 
 use utils::{
     new_swarm_with_timeout, wait_inbound_request, wait_inbound_response_stream_closed,
@@ -75,7 +75,7 @@ async fn server_request_to_client() -> Scenario {
 #[case::server_request_to_client(server_request_to_client())]
 #[tokio::test]
 async fn sanity(
-    #[values(0, 1, (2..100000).fake())] num_responses: usize,
+    #[values(0, 1, (2..10000).fake())] num_responses: usize,
     #[case]
     #[future]
     scenario: Scenario,

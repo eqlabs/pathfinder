@@ -214,7 +214,7 @@ where
     )
 }
 
-pub(crate) fn new_swarm_with_timeout(
+pub fn new_swarm_with_timeout(
     timeout: Duration,
 ) -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     let protocols = iter::once(StreamProtocol::new("/test/1"));
@@ -230,7 +230,7 @@ pub(crate) fn new_swarm_with_timeout(
     (peed_id, swarm)
 }
 
-pub(crate) fn new_swarm() -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
+pub fn new_swarm() -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     new_swarm_with_timeout(Duration::from_millis(100))
 }
 
@@ -329,21 +329,7 @@ pub async fn wait_inbound_failure(
     }
 }
 
-pub(crate) async fn wait_inbound_connection_closed(
-    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
-) {
-    let (_, _, failure) = wait_inbound_failure(swarm).await.unwrap();
-    assert!(matches!(failure, InboundFailure::ConnectionClosed));
-}
-
-pub(crate) async fn wait_outbound_connection_closed(
-    swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
-) {
-    let (_, _, failure) = wait_outbound_failure(swarm).await.unwrap();
-    assert!(matches!(failure, OutboundFailure::ConnectionClosed));
-}
-
-pub(crate) async fn wait_outbound_failure(
+pub async fn wait_outbound_failure(
     swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
 ) -> Result<(PeerId, OutboundRequestId, OutboundFailure)> {
     loop {

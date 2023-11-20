@@ -4,7 +4,7 @@ use p2p_stream::{InboundFailure, OutboundFailure};
 use std::{io, time::Duration};
 use tracing_subscriber::EnvFilter;
 
-mod utils;
+pub mod utils;
 
 use utils::{
     new_swarm, new_swarm_with_timeout, wait_inbound_failure, wait_inbound_request,
