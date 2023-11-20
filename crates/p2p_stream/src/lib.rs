@@ -175,7 +175,7 @@ impl std::error::Error for OutboundFailure {}
 pub enum InboundFailure {
     /// The inbound request timed out, either while reading the
     /// incoming request or before a response is sent, e.g. if
-    /// [`InboundRequest::channel::send`] is not called in a
+    /// `Event::InboundRequest::channel::send` is not called in a
     /// timely manner.
     Timeout,
     /// The connection closed before a response could be send.
@@ -325,11 +325,9 @@ where
     /// connection is established.
     ///
     /// > **Note**: In order for such a dialing attempt to succeed,
-    /// > the `RequestResonse` protocol must either be embedded
+    /// > the `RequestResponse` protocol must be embedded
     /// > in another `NetworkBehaviour` that provides peer and
-    /// > address discovery, or known addresses of peers must be
-    /// > managed via [`Behaviour::add_address`] and
-    /// > [`Behaviour::remove_address`].
+    /// > address discovery.
     pub fn send_request(&mut self, peer: &PeerId, request: TCodec::Request) -> OutboundRequestId {
         let request_id = self.next_outbound_request_id();
 

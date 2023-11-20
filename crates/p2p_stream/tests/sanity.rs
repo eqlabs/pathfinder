@@ -14,7 +14,7 @@ use utils::{
     TestSwarm,
 };
 
-struct Requestor {
+struct Requester {
     peer_id: PeerId,
     swarm: TestSwarm,
 }
@@ -25,7 +25,7 @@ struct Responder {
 }
 
 struct Scenario {
-    requestor: Requestor,
+    requester: Requester,
     responder: Responder,
 }
 
@@ -44,7 +44,7 @@ async fn client_request_to_server() -> Scenario {
     let (srv_peer_id, srv_swarm, cli_peer_id, cli_swarm) = setup().await;
 
     Scenario {
-        requestor: Requestor {
+        requester: Requester {
             peer_id: cli_peer_id,
             swarm: cli_swarm,
         },
@@ -59,7 +59,7 @@ async fn server_request_to_client() -> Scenario {
     let (srv_peer_id, srv_swarm, cli_peer_id, cli_swarm) = setup().await;
 
     Scenario {
-        requestor: Requestor {
+        requester: Requester {
             peer_id: srv_peer_id,
             swarm: srv_swarm,
         },
@@ -85,7 +85,7 @@ async fn sanity(
         .try_init();
 
     let Scenario {
-        mut requestor,
+        mut requester,
         mut responder,
     } = scenario.await;
 
@@ -97,7 +97,7 @@ async fn sanity(
         let (peer, req_id, action, mut resp_tx) =
             wait_inbound_request(&mut responder.swarm).await.unwrap();
 
-        assert_eq!(peer, requestor.peer_id);
+        assert_eq!(peer, requester.peer_id);
         assert_eq!(action, Action::SanityRequest);
 
         for i in 0..num_responses {
@@ -114,18 +114,18 @@ async fn sanity(
             .await
             .unwrap();
 
-        assert_eq!(peer, requestor.peer_id);
+        assert_eq!(peer, requester.peer_id);
         assert_eq!(req_id_done, req_id);
     };
 
-    let requestor_task = async move {
-        let req_id = requestor
+    let requester_task = async move {
+        let req_id = requester
             .swarm
             .behaviour_mut()
             .send_request(&responder.peer_id, Action::SanityRequest);
 
         let (peer, req_id_done, mut resp_rx) =
-            wait_outbound_request_sent_awaiting_responses(&mut requestor.swarm)
+            wait_outbound_request_sent_awaiting_responses(&mut requester.swarm)
                 .await
                 .unwrap();
 
@@ -139,7 +139,7 @@ async fn sanity(
             );
         }
 
-        let (peer, req_id_done) = wait_inbound_response_stream_closed(&mut requestor.swarm)
+        let (peer, req_id_done) = wait_inbound_response_stream_closed(&mut requester.swarm)
             .await
             .unwrap();
 
@@ -147,5 +147,5 @@ async fn sanity(
         assert_eq!(req_id_done, req_id);
     };
 
-    tokio::join!(responder_task, requestor_task);
+    tokio::join!(responder_task, requester_task);
 }

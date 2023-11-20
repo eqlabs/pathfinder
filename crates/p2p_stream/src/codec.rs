@@ -52,7 +52,7 @@ pub trait Codec {
     /// negotiated protocol.
     /// __Must return Ok(None) if the stream is closed gracefully,
     /// i.e. when there are 0 bytes left to read at the beginning of
-    /// [`read_response`].__
+    /// [`Codec::read_response`].__
     async fn read_response<T>(
         &mut self,
         protocol: &Self::Protocol,
