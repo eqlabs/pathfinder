@@ -515,6 +515,7 @@ where
     fn on_connection_event(
         &mut self,
         event: ConnectionEvent<
+            '_,
             Self::InboundProtocol,
             Self::OutboundProtocol,
             Self::InboundOpenInfo,

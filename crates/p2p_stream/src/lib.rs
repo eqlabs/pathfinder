@@ -208,7 +208,7 @@ impl std::error::Error for InboundFailure {}
 pub struct InboundRequestId(u64);
 
 impl fmt::Display for InboundRequestId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -221,7 +221,7 @@ impl fmt::Display for InboundRequestId {
 pub struct OutboundRequestId(u64);
 
 impl fmt::Display for OutboundRequestId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -257,6 +257,7 @@ impl Config {
 }
 
 /// A request/streaming-response protocol for some message codec.
+#[allow(clippy::type_complexity)]
 pub struct Behaviour<TCodec>
 where
     TCodec: Codec + Clone + Send + 'static,
@@ -446,7 +447,7 @@ where
             connection_id,
             new,
             ..
-        }: AddressChange,
+        }: AddressChange<'_>,
     ) {
         let new_address = match new {
             ConnectedPoint::Dialer { address, .. } => Some(address.clone()),
@@ -471,7 +472,7 @@ where
             connection_id,
             remaining_established,
             ..
-        }: ConnectionClosed,
+        }: ConnectionClosed<'_>,
     ) {
         let connections = self
             .connected
@@ -508,7 +509,7 @@ where
         }
     }
 
-    fn on_dial_failure(&mut self, DialFailure { peer_id, .. }: DialFailure) {
+    fn on_dial_failure(&mut self, DialFailure { peer_id, .. }: DialFailure<'_>) {
         if let Some(peer) = peer_id {
             // If there are pending outgoing requests when a dial failure occurs,
             // it is implied that we are not connected to the peer, since pending
@@ -624,7 +625,7 @@ where
         Ok(handler)
     }
 
-    fn on_swarm_event(&mut self, event: FromSwarm) {
+    fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
         match event {
             FromSwarm::ConnectionEstablished(_) => {}
             FromSwarm::ConnectionClosed(connection_closed) => {
