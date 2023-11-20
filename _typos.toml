@@ -1,0 +1,2 @@
+[files]
+extend-exclude = ["crates/gateway-test-fixtures/fixtures/contracts/*.json"]

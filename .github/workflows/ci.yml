@@ -94,6 +94,14 @@ jobs:
       - run: |
           cargo sort --check --workspace
 
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: crate-ci/typos@v1.16.23
+        with:
+          files: .
+
   load_test:
     runs-on: ubuntu-latest
     steps:
