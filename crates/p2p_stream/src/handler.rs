@@ -306,6 +306,7 @@ where
         /// The channel through which we are expected to send responses.
         sender: mpsc::Sender<TCodec::Response>,
     },
+    /// A request has been sent and we are awaiting responses.
     OutboundRequestSentAwaitingResponses {
         /// The ID of the outbound request.
         request_id: OutboundRequestId,

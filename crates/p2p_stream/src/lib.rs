@@ -37,7 +37,7 @@
 //! available via the [`Config`].
 //!
 //! Outbound requests are sent using [`Behaviour::send_request`] and the
-//! responses received via [`Event::OutboundRequestAcceptedAwaitingResponses::channel`].
+//! responses received via [`Event::OutboundRequestSentAwaitingResponses::channel`].
 //!
 //! Inbound requests are received via [`Event::InboundRequest`] and responses are sent
 //! via [`Event::InboundRequest::channel`].
@@ -48,8 +48,6 @@
 //! protocol family that share the same request and response types.
 //! For that purpose, [`Codec::Protocol`] is typically
 //! instantiated with a sum type.
-
-// TODO remove dead code, update & fix the comments
 
 mod codec;
 mod handler;
@@ -76,7 +74,7 @@ use std::{
     time::Duration,
 };
 
-/// The events emitted by a request-response [`Behaviour`].
+/// The events emitted by a request/streaming-response [`Behaviour`].
 #[derive(Debug)]
 pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
     /// An incoming request from another peer.
@@ -175,10 +173,9 @@ impl std::error::Error for OutboundFailure {}
 /// inbound request and sending a response.
 #[derive(Debug)]
 pub enum InboundFailure {
-    /// TODO
     /// The inbound request timed out, either while reading the
     /// incoming request or before a response is sent, e.g. if
-    /// [`Behaviour::send_response`] is not called in a
+    /// [`InboundRequest::channel::send`] is not called in a
     /// timely manner.
     Timeout,
     /// The connection closed before a response could be send.
@@ -247,13 +244,6 @@ impl Default for Config {
 
 impl Config {
     /// Sets the timeout for inbound and outbound requests.
-    #[deprecated(note = "Use `Config::with_request_timeout` for one-liner constructions.")]
-    pub fn set_request_timeout(&mut self, v: Duration) -> &mut Self {
-        self.request_timeout = v;
-        self
-    }
-
-    /// Sets the timeout for inbound and outbound requests.
     pub fn with_request_timeout(mut self, v: Duration) -> Self {
         self.request_timeout = v;
         self
@@ -266,7 +256,7 @@ impl Config {
     }
 }
 
-/// A request/response protocol for some message codec.
+/// A request/streaming-response protocol for some message codec.
 pub struct Behaviour<TCodec>
 where
     TCodec: Codec + Clone + Send + 'static,
@@ -398,42 +388,6 @@ where
         }
     }
 
-    /// Checks whether an outbound request to the peer with the provided
-    /// [`PeerId`] initiated by [`Behaviour::send_request`] is still
-    /// pending, i.e. waiting for a response.
-    pub fn is_pending_outbound(&self, peer: &PeerId, request_id: &OutboundRequestId) -> bool {
-        // Check if request is already sent on established connection.
-        let est_conn = self
-            .connected
-            .get(peer)
-            .map(|cs| {
-                cs.iter()
-                    .any(|c| c.pending_outbound_responses.contains(request_id))
-            })
-            .unwrap_or(false);
-        // Check if request is still pending to be sent.
-        let pen_conn = self
-            .pending_outbound_requests
-            .get(peer)
-            .map(|rps| rps.iter().any(|rp| rp.request_id == *request_id))
-            .unwrap_or(false);
-
-        est_conn || pen_conn
-    }
-
-    /// Checks whether an inbound request from the peer with the provided
-    /// [`PeerId`] is still pending, i.e. waiting for a response by the local
-    /// node through [`Behaviour::send_response`].
-    pub fn is_pending_inbound(&self, peer: &PeerId, request_id: &InboundRequestId) -> bool {
-        self.connected
-            .get(peer)
-            .map(|cs| {
-                cs.iter()
-                    .any(|c| c.pending_inbound_responses.contains(request_id))
-            })
-            .unwrap_or(false)
-    }
-
     /// Returns the next outbound request ID.
     fn next_outbound_request_id(&mut self) -> OutboundRequestId {
         let request_id = self.next_outbound_request_id;
@@ -455,7 +409,8 @@ where
             }
             let ix = (request.request_id.0 as usize) % connections.len();
             let conn = &mut connections[ix];
-            conn.pending_outbound_responses.insert(request.request_id);
+            conn.pending_outbound_response_streams
+                .insert(request.request_id);
             self.pending_events.push_back(ToSwarm::NotifyHandler {
                 peer_id: *peer,
                 handler: NotifyHandler::One(conn.id),
@@ -467,39 +422,35 @@ where
         }
     }
 
-    /// Remove pending outbound response for the given peer and connection.
+    /// Remove pending outbound response stream for the given peer and connection.
     ///
     /// Returns `true` if the provided connection to the given peer is still
     /// alive and the [`OutboundRequestId`] was previously present and is now removed.
     /// Returns `false` otherwise.
-    ///
-    /// TODO rename to remove_pending_outbound_request_stream
-    fn remove_pending_outbound_response(
+    fn remove_pending_outbound_response_stream(
         &mut self,
         peer: &PeerId,
         connection: ConnectionId,
         request: OutboundRequestId,
     ) -> bool {
         self.get_connection_mut(peer, connection)
-            .map(|c| c.pending_outbound_responses.remove(&request))
+            .map(|c| c.pending_outbound_response_streams.remove(&request))
             .unwrap_or(false)
     }
 
-    /// Remove pending inbound response for the given peer and connection.
+    /// Remove pending inbound response stream for the given peer and connection.
     ///
     /// Returns `true` if the provided connection to the given peer is still
     /// alive and the [`InboundRequestId`] was previously present and is now removed.
     /// Returns `false` otherwise.
-    ///
-    /// TODO rename to remove_pending_inbound_request_stream
-    fn remove_pending_inbound_response(
+    fn remove_pending_inbound_response_stream(
         &mut self,
         peer: &PeerId,
         connection: ConnectionId,
         request: InboundRequestId,
     ) -> bool {
         self.get_connection_mut(peer, connection)
-            .map(|c| c.pending_inbound_responses.remove(&request))
+            .map(|c| c.pending_inbound_response_streams.remove(&request))
             .unwrap_or(false)
     }
 
@@ -565,7 +516,7 @@ where
             self.connected.remove(&peer_id);
         }
 
-        for request_id in connection.pending_inbound_responses {
+        for request_id in connection.pending_inbound_response_streams {
             self.pending_events
                 .push_back(ToSwarm::GenerateEvent(Event::InboundFailure {
                     peer: peer_id,
@@ -574,7 +525,7 @@ where
                 }));
         }
 
-        for request_id in connection.pending_outbound_responses {
+        for request_id in connection.pending_outbound_response_streams {
             self.pending_events
                 .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
                     peer: peer_id,
@@ -618,7 +569,7 @@ where
         if let Some(pending_requests) = self.pending_outbound_requests.remove(&peer) {
             for request in pending_requests {
                 connection
-                    .pending_outbound_responses
+                    .pending_outbound_response_streams
                     .insert(request.request_id);
                 handler.on_behaviour_event(request);
             }
@@ -726,7 +677,8 @@ where
                 request_id,
                 receiver,
             } => {
-                let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
+                let removed =
+                    self.remove_pending_outbound_response_stream(&peer, connection, request_id);
                 debug_assert!(
                     removed,
                     "Expect request_id to be pending before getting the response channel.",
@@ -746,7 +698,9 @@ where
                 sender,
             } => match self.get_connection_mut(&peer, connection) {
                 Some(connection) => {
-                    let inserted = connection.pending_inbound_responses.insert(request_id);
+                    let inserted = connection
+                        .pending_inbound_response_streams
+                        .insert(request_id);
                     debug_assert!(inserted, "Expect id of new request to be unknown.");
 
                     self.pending_events
@@ -762,7 +716,8 @@ where
                 }
             },
             handler::Event::OutboundResponseStreamClosed(request_id) => {
-                let removed = self.remove_pending_inbound_response(&peer, connection, request_id);
+                let removed =
+                    self.remove_pending_inbound_response_stream(&peer, connection, request_id);
 
                 debug_assert!(
                     removed,
@@ -774,7 +729,8 @@ where
                 ));
             }
             handler::Event::InboundResponseStreamClosed(request_id) => {
-                let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
+                let removed =
+                    self.remove_pending_outbound_response_stream(&peer, connection, request_id);
 
                 debug_assert!(
                     !removed,
@@ -786,7 +742,7 @@ where
                 ));
             }
             handler::Event::OutboundTimeout(request_id) => {
-                self.remove_pending_outbound_response(&peer, connection, request_id);
+                self.remove_pending_outbound_response_stream(&peer, connection, request_id);
 
                 self.pending_events
                     .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
@@ -796,7 +752,8 @@ where
                     }));
             }
             handler::Event::OutboundUnsupportedProtocols(request_id) => {
-                let removed = self.remove_pending_outbound_response(&peer, connection, request_id);
+                let removed =
+                    self.remove_pending_outbound_response_stream(&peer, connection, request_id);
                 debug_assert!(
                     removed,
                     "Expect request_id to be pending before failing to connect.",
@@ -810,7 +767,7 @@ where
                     }));
             }
             handler::Event::OutboundStreamFailed { request_id, error } => {
-                self.remove_pending_outbound_response(&peer, connection, request_id);
+                self.remove_pending_outbound_response_stream(&peer, connection, request_id);
 
                 self.pending_events
                     .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
@@ -820,7 +777,8 @@ where
                     }))
             }
             handler::Event::InboundTimeout(request_id) => {
-                let removed = self.remove_pending_inbound_response(&peer, connection, request_id);
+                let removed =
+                    self.remove_pending_inbound_response_stream(&peer, connection, request_id);
 
                 if removed {
                     self.pending_events
@@ -837,7 +795,8 @@ where
                 }
             }
             handler::Event::InboundStreamFailed { request_id, error } => {
-                let removed = self.remove_pending_inbound_response(&peer, connection, request_id);
+                let removed =
+                    self.remove_pending_inbound_response_stream(&peer, connection, request_id);
 
                 if removed {
                     self.pending_events
@@ -878,14 +837,10 @@ struct Connection {
     /// Pending outbound responses where corresponding inbound requests have
     /// been received on this connection and emitted via `poll` but have not yet
     /// been answered.
-    ///
-    /// TODO rename to pending_outbound_response_streams
-    pending_outbound_responses: HashSet<OutboundRequestId>,
+    pending_outbound_response_streams: HashSet<OutboundRequestId>,
     /// Pending inbound responses for previously sent requests on this
     /// connection.
-    ///
-    /// TODO rename to pending_inbound_response_streams
-    pending_inbound_responses: HashSet<InboundRequestId>,
+    pending_inbound_response_streams: HashSet<InboundRequestId>,
 }
 
 impl Connection {
@@ -893,8 +848,8 @@ impl Connection {
         Self {
             id,
             remote_address,
-            pending_outbound_responses: Default::default(),
-            pending_inbound_responses: Default::default(),
+            pending_outbound_response_streams: Default::default(),
+            pending_inbound_response_streams: Default::default(),
         }
     }
 }

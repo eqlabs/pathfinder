@@ -22,10 +22,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-//! The definition of a request/response protocol via inbound
-//! and outbound substream upgrades. The inbound upgrade
-//! receives a request and sends a response, whereas the
-//! outbound upgrade send a request and receives a response.
+//! The definition of a request/streaming-response protocol via inbound
+//! and outbound substream upgrades. The inbound upgrade receives a request
+//! and allows for sending a series of responses, whereas the outbound upgrade
+//! sends a request and allows for receivung several responses.
 
 use futures::future::{ready, Ready};
 use libp2p::core::upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
@@ -34,7 +34,7 @@ use smallvec::SmallVec;
 
 /// Response substream upgrade protocol.
 ///
-/// Receives a request and sends a response.
+/// Receives a request and sends responses.
 #[derive(Debug)]
 pub struct Protocol<P> {
     pub(crate) protocols: SmallVec<[P; 2]>,
