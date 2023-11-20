@@ -143,8 +143,7 @@ where
         let mut sender = self.inbound_sender.clone();
 
         let recv_request_then_fwd_outgoing_responses = async move {
-            // Capacity 1 means provide back pressure to the sender,
-            // TODO do we need it, do we want it
+            // TODO consider 0
             let (rs_send, mut rs_recv) = mpsc::channel(1);
 
             let read = codec.read_request(&protocol, &mut stream);
@@ -195,10 +194,7 @@ where
             .expect("negotiated a stream without a pending message");
 
         let mut codec = self.codec.clone();
-        let mut codec2 = self.codec.clone();
         let request_id = message.request_id;
-        let protocol = protocol.clone();
-        let protocol2 = protocol.clone();
 
         // TODO consider 0
         let (mut rs_send, rs_recv) = mpsc::channel(1);
@@ -217,8 +213,8 @@ where
                 .expect("`ConnectionHandler` owns both ends of the channel");
             drop(sender);
 
-            // Keep on forwarding until the channel is closed
-            while let Ok(response) = codec2.read_response(&protocol2, &mut stream).await {
+            // Keep on reading from the stream until it is closed
+            while let Ok(response) = codec.read_response(&protocol, &mut stream).await {
                 rs_send
                     .send(response)
                     .await
@@ -299,16 +295,12 @@ where
         /// The request message.
         request: TCodec::Request,
         /// The channel through which we are expected to send responses.
-        ///
-        /// TODO handle the channel related errors
         sender: mpsc::Sender<TCodec::Response>,
     },
     OutboundRequestAcceptedAwaitingResponses {
         /// The ID of the outbound request.
         request_id: OutboundRequestId,
         /// The channel through which we can receive the responses.
-        ///
-        /// TODO handle the channel related errors
         receiver: mpsc::Receiver<TCodec::Response>,
     },
     /// An outbound response stream to an inbound request was closed.

@@ -173,6 +173,7 @@ impl std::error::Error for OutboundFailure {}
 /// inbound request and sending a response.
 #[derive(Debug)]
 pub enum InboundFailure {
+    /// TODO
     /// The inbound request timed out, either while reading the
     /// incoming request or before a response is sent, e.g. if
     /// [`Behaviour::send_response`] is not called in a
@@ -180,13 +181,6 @@ pub enum InboundFailure {
     Timeout,
     /// The connection closed before a response could be send.
     ConnectionClosed,
-    /// The local peer supports none of the protocols requested
-    /// by the remote.
-    UnsupportedProtocols,
-    /// The local peer failed to respond to an inbound request
-    /// due to the [`ResponseChannel`] being dropped instead of
-    /// being passed to [`Behaviour::send_response`].
-    ResponseOmission,
     /// An IO failure happened on an inbound stream.
     Io(io::Error),
 }
@@ -200,41 +194,12 @@ impl fmt::Display for InboundFailure {
             InboundFailure::ConnectionClosed => {
                 write!(f, "Connection was closed before a response could be sent")
             }
-            InboundFailure::UnsupportedProtocols => write!(
-                f,
-                "The local peer supports none of the protocols requested by the remote"
-            ),
-            InboundFailure::ResponseOmission => write!(
-                f,
-                "The response channel was dropped without sending a response to the remote"
-            ),
             InboundFailure::Io(e) => write!(f, "IO error on inbound stream: {e}"),
         }
     }
 }
 
 impl std::error::Error for InboundFailure {}
-
-/// A channel for sending a response to an inbound request.
-///
-/// See [`Behaviour::send_response`].
-// #[derive(Debug)]
-// pub struct ResponseChannel<TResponse> {
-//     sender: oneshot::Sender<TResponse>,
-// }
-
-// impl<TResponse> ResponseChannel<TResponse> {
-//     /// Checks whether the response channel is still open, i.e.
-//     /// the `Behaviour` is still waiting for a
-//     /// a response to be sent via [`Behaviour::send_response`]
-//     /// and this response channel.
-//     ///
-//     /// If the response channel is no longer open then the inbound
-//     /// request timed out waiting for the response.
-//     pub fn is_open(&self) -> bool {
-//         !self.sender.is_closed()
-//     }
-// }
 
 /// The ID of an inbound request.
 ///
@@ -376,11 +341,7 @@ where
     /// > managed via [`Behaviour::add_address`] and
     /// > [`Behaviour::remove_address`].
     pub fn send_request(&mut self, peer: &PeerId, request: TCodec::Request) -> OutboundRequestId {
-        eprintln!("send_request 0");
-
         let request_id = self.next_outbound_request_id();
-
-        eprintln!("send_request 1");
 
         let request = OutboundMessage {
             request_id,
@@ -388,11 +349,7 @@ where
             protocols: self.protocols.clone(),
         };
 
-        eprintln!("send_request 2");
-
         if let Some(request) = self.try_send_request(peer, request) {
-            eprintln!("send_request 3");
-
             self.pending_events.push_back(ToSwarm::Dial {
                 opts: DialOpts::peer_id(*peer).build(),
             });
@@ -401,13 +358,7 @@ where
                 .entry(*peer)
                 .or_default()
                 .push(request);
-
-            eprintln!("send_request 4");
-        } else {
-            eprintln!("send_request 3-4 ok");
         }
-
-        eprintln!("send_request 5");
 
         request_id
     }
