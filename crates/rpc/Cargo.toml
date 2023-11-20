@@ -67,5 +67,5 @@ tempfile = "3.6"
 test-log = { version = "0.2.12", default-features = false, features = [
     "trace",
 ] }
-tokio-tungstenite = "0.20"
+tokio-tungstenite = "0.20.1"
 tracing-subscriber = { workspace = true }
