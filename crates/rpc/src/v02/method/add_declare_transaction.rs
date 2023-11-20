@@ -136,6 +136,14 @@ pub async fn add_declare_transaction(
                 class_hash: response.class_hash,
             })
         }
+        Transaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
+            let _contract_definition: SierraContractDefinition = tx
+                .contract_class
+                .try_into()
+                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
+
+            todo!();
+        }
     }
 }
 

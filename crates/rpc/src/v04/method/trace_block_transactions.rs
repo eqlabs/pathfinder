@@ -214,6 +214,34 @@ pub(crate) mod tests {
                         ),
                     )
                 }
+                crate::v02::types::request::BroadcastedTransaction::Declare(
+                    crate::v02::types::request::BroadcastedDeclareTransaction::V3(declare),
+                ) => {
+                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
+                    starknet_gateway_types::reply::transaction::Transaction::Declare(
+                        gateway::transaction::DeclareTransaction::V3(
+                            gateway::transaction::DeclareTransactionV3 {
+                                class_hash,
+                                nonce: TransactionNonce::default(),
+                                sender_address: declare.sender_address,
+                                signature: declare.signature,
+                                transaction_hash,
+                                compiled_class_hash: declare.compiled_class_hash,
+                                nonce_data_availability_mode: declare
+                                    .nonce_data_availability_mode
+                                    .into(),
+                                fee_data_availability_mode: declare
+                                    .fee_data_availability_mode
+                                    .into(),
+                                resource_bounds: declare.resource_bounds.into(),
+                                tip: declare.tip,
+                                paymaster_data: declare.paymaster_data,
+                                account_deployment_data: declare.account_deployment_data,
+                            },
+                        ),
+                    )
+                }
                 crate::v02::types::request::BroadcastedTransaction::DeployAccount(deploy) => {
                     starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
                         gateway::transaction::DeployAccountTransaction::V0V1(
