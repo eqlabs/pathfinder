@@ -81,7 +81,7 @@ pub fn extract_abi_code_hash(
             Ok((abi, code, hash))
         }
         json::ContractDefinition::Cairo(contract_definition) => {
-            // just in case we'd accidentially modify these in the compute_class_hash0
+            // just in case we'd accidentally modify these in the compute_class_hash0
             let abi = serde_json::to_vec(&contract_definition.abi)
                 .context("Serialize contract_definition.abi")?;
             let code = serde_json::to_vec(&contract_definition.program.data)
@@ -721,7 +721,7 @@ mod json {
 
         #[test]
         fn serde_json_has_raw_value() {
-            // raw value is needed for others but here for completness; this shouldn't compile if
+            // raw value is needed for others but here for completeness; this shouldn't compile if
             // you the feature wasn't enabled.
 
             #[derive(serde::Deserialize, serde::Serialize)]

@@ -209,7 +209,7 @@ pub enum Color {
 
 impl Color {
     /// Returns true if color should be enabled, either because the setting is [Color::Always],
-    /// or because it is [Color::Auto] and stdout is targetting a terminal.
+    /// or because it is [Color::Auto] and stdout is targeting a terminal.
     pub fn is_color_enabled(&self) -> bool {
         use std::io::IsTerminal;
         match self {

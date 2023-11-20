@@ -68,7 +68,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
                 p2p::libp2p::multiaddr::Protocol::P2p(peer_id) => Some(peer_id),
                 _ => None,
             })
-            .ok_or_else(|| anyhow::anyhow!("Boostrap addresses must inlcude peer ID"))?;
+            .ok_or_else(|| anyhow::anyhow!("Bootstrap addresses must include peer ID"))?;
         p2p_client.dial(peer_id, bootstrap_address.clone()).await?;
         p2p_client
             .start_listening(

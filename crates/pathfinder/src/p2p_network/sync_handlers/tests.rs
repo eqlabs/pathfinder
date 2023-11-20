@@ -716,9 +716,9 @@ mod prop {
                     limit in rarely_outside(1..num_blocks),
                     // step is always >= 1
                     step in rarely_outside(1..num_blocks / 4),
-                    directon in prop_oneof![Just(Direction::Forward), Just(Direction::Backward)],
+                    direction in prop_oneof![Just(Direction::Forward), Just(Direction::Backward)],
                 ) -> (u64, u64, u64, u64, Step, Direction) {
-                (num_blocks, storage_seed, start, limit, step.into(), directon)
+                (num_blocks, storage_seed, start, limit, step.into(), direction)
             }
         }
     }

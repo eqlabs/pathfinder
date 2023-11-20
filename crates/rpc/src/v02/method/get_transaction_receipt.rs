@@ -73,7 +73,7 @@ pub async fn get_transaction_receipt(
 
         let l1_accepted = db_tx
             .block_is_l1_accepted(block_number.into())
-            .context("Quering block status")?;
+            .context("Querying block status")?;
 
         let block_status = if l1_accepted {
             BlockStatus::AcceptedOnL1

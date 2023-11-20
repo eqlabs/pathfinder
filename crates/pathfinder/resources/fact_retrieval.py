@@ -95,7 +95,7 @@ class MemoryPagesFetcher:
         """
         Creates an initialized instance by reading contract logs from the given web3 provider.
         If is_verifier_proxied is true, then gps_statement_verifier_contract is the proxy contract
-        rather than the statement verifier implemantation.
+        rather than the statement verifier implementation.
         """
         #last_block = web3.eth.block_number
         last_block = from_block + 10000
@@ -221,7 +221,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Note that Registration of memory pages happens before the state update transaction, hence
-    # make sure to use from_block which preceeds (~500 blocks) the block of the state transition fact
+    # make sure to use from_block which precedes (~500 blocks) the block of the state transition fact
     parser.add_argument('--from_block', dest='from_block', default=5742000,
                         help='find memory pages written after this block')
     parser.add_argument('--web3_node', dest='web3_node', default=GOERLI_NODE,
@@ -251,7 +251,7 @@ def main():
     )
     pages = memory_pages_fetcher.get_memory_pages_from_fact(
         bytes.fromhex(args.fact))
-    # Interpetation of pages
+    # Interpretation of pages
     state_diff = pages[1:]  # ignore first page
     diffs = [item for page in state_diff for item in page]  # flatten
     len_deployments = diffs.pop(0)

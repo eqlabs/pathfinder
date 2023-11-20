@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct SimulateTrasactionInput {
+pub struct SimulateTransactionInput {
     block_id: BlockId,
     // `transactions` used to be called `transaction` in the JSON-RPC 0.3.0 specification.
     #[serde(alias = "transaction")]
@@ -52,7 +52,7 @@ impl From<crate::executor::ExecutionStateError> for SimulateTransactionError {
 
 pub async fn simulate_transaction(
     context: RpcContext,
-    input: SimulateTrasactionInput,
+    input: SimulateTransactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
     let span = tracing::Span::current();
 
@@ -459,7 +459,7 @@ mod tests {
             ],
             "simulation_flags": []
         });
-        let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
+        let input = SimulateTransactionInput::deserialize(&input_json).unwrap();
 
         let expected: Vec<dto::SimulatedTransaction> = {
             use dto::*;

@@ -252,7 +252,7 @@ pub(crate) mod state_update {
         impl_take_parsed_and_should_stop!(state_updates);
     }
 
-    /// Merges partitoned classes if necessary
+    /// Merges partitioned classes if necessary
     fn classes_from_dto(classes: Vec<p2p_proto::state::Class>) -> anyhow::Result<Vec<Class>> {
         #[derive(Copy, Clone, Debug, Default, PartialEq)]
         struct Ctx {

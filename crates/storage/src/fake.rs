@@ -96,7 +96,7 @@ pub mod init {
     ///     - old roots wrt previous state update, genesis' old root is `0`
     ///     - replaced classes for block N point to some deployed contracts from block N-1
     ///     - each storage diff has its respective nonce update
-    ///     - storage entries contrain at least 1 element
+    ///     - storage entries constrain at least 1 element
     /// - declared cairo|sierra definitions
     ///     - each declared class has random bytes inserted as its definition
     ///     - all those definitions are **very short and fall far below the soft limit in protobuf

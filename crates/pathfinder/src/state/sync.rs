@@ -277,7 +277,7 @@ where
                         tracing::error!(reason=?e, "Sync consumer task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
-                        tracing::debug!("Sync consumer task cancelled succesfully");
+                        tracing::debug!("Sync consumer task cancelled successfully");
                     },
                     Err(panic) => {
                         tracing::error!(%panic, "Sync consumer task panic'd");
@@ -297,7 +297,7 @@ where
                         tracing::error!(reason=?e, "L1 sync task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
-                        tracing::debug!("L1 sync task cancelled succesfully");
+                        tracing::debug!("L1 sync task cancelled successfully");
                     },
                     Err(panic) => {
                         tracing::error!(%panic, "L1 sync task panic'd");
@@ -312,7 +312,7 @@ where
                         tracing::error!(reason=?e, "L2 sync task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
-                        tracing::debug!("L2 sync task cancelled succesfully");
+                        tracing::debug!("L2 sync task cancelled successfully");
                     },
                     Err(panic) => {
                         tracing::error!(%panic, "L2 sync task panic'd");
@@ -834,7 +834,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
 
         let mut head = transaction
             .block_id(pathfinder_storage::BlockId::Latest)
-            .context("Quering latest block number")?
+            .context("Querying latest block number")?
             .context("Latest block number is none during reorg")?
             .0;
 

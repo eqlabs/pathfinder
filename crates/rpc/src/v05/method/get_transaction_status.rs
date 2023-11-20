@@ -111,7 +111,7 @@ pub async fn get_transaction_status(
 
         let l1_accepted = db_tx
             .block_is_l1_accepted(block_hash.into())
-            .context("Quering block's status")?;
+            .context("Querying block's status")?;
 
         Ok(Some(if l1_accepted {
             GetTransactionStatusOutput::AcceptedOnL1(receipt.execution_status.into())
