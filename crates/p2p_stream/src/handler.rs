@@ -143,8 +143,7 @@ where
         let mut sender = self.inbound_sender.clone();
 
         let recv_request_then_fwd_outgoing_responses = async move {
-            // TODO consider 0
-            let (rs_send, mut rs_recv) = mpsc::channel(1);
+            let (rs_send, mut rs_recv) = mpsc::channel(0);
 
             let read = codec.read_request(&protocol, &mut stream);
             let request = read.await.map_err(|e| {
@@ -199,8 +198,7 @@ where
         let mut codec = self.codec.clone();
         let request_id = message.request_id;
 
-        // TODO consider 0
-        let (mut rs_send, rs_recv) = mpsc::channel(1);
+        let (mut rs_send, rs_recv) = mpsc::channel(0);
 
         let mut sender = self.outbound_sender.clone();
 
