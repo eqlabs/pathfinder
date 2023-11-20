@@ -289,7 +289,7 @@
             },
             "UNEXPECTED_ERROR": {
                 "code": 63,
-                "message": "An unexpected error occured",
+                "message": "An unexpected error occurred",
                 "data": "string"
             }
         }

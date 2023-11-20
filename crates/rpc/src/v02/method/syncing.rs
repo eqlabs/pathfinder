@@ -6,13 +6,13 @@ use serde::Serialize;
 
 crate::error::generate_rpc_error_subset!(SyncingError);
 
-pub async fn syncing(context: RpcContext) -> Result<SyncingOuput, SyncingError> {
+pub async fn syncing(context: RpcContext) -> Result<SyncingOutput, SyncingError> {
     // Scoped so I don't have to think too hard about mutex guard drop semantics.
     let value = { context.sync_status.status.read().await.clone() };
 
     use crate::v02::types::syncing::Syncing;
     let value = match value {
-        Syncing::False(_) => SyncingOuput::False,
+        Syncing::False(_) => SyncingOutput::False,
         Syncing::Status(status) => {
             let status = SyncingStatus {
                 starting_block_num: status.starting.number,
@@ -22,7 +22,7 @@ pub async fn syncing(context: RpcContext) -> Result<SyncingOuput, SyncingError> 
                 current_block_hash: status.current.hash,
                 highest_block_hash: status.highest.hash,
             };
-            SyncingOuput::Status(status)
+            SyncingOutput::Status(status)
         }
     };
 
@@ -31,19 +31,19 @@ pub async fn syncing(context: RpcContext) -> Result<SyncingOuput, SyncingError> 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-pub enum SyncingOuput {
+pub enum SyncingOutput {
     False,
     Status(SyncingStatus),
 }
 
-impl Serialize for SyncingOuput {
+impl Serialize for SyncingOutput {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         match self {
-            SyncingOuput::False => serializer.serialize_str("false"),
-            SyncingOuput::Status(inner) => serializer.serialize_newtype_struct("status", &inner),
+            SyncingOutput::False => serializer.serialize_str("false"),
+            SyncingOutput::Status(inner) => serializer.serialize_newtype_struct("status", &inner),
         }
     }
 }
@@ -68,15 +68,15 @@ pub struct SyncingStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::SyncingOuput;
+    use super::SyncingOutput;
     use crate::context::RpcContext;
     use pathfinder_common::macro_prelude::*;
     mod serde {
-        use super::super::{SyncingOuput, SyncingStatus};
+        use super::super::{SyncingOutput, SyncingStatus};
 
         #[test]
         fn not_syncing() {
-            let json = serde_json::to_string(&SyncingOuput::False).unwrap();
+            let json = serde_json::to_string(&SyncingOutput::False).unwrap();
             assert_eq!(json, r#""false""#);
         }
 
@@ -93,7 +93,7 @@ mod tests {
                 current_block_hash: block_hash!("0x12345677"),
                 highest_block_hash: block_hash!("0x1144ffaacc"),
             };
-            let value = SyncingOuput::Status(status);
+            let value = SyncingOutput::Status(status);
             let json = serde_json::to_value(value).unwrap();
 
             let expected = serde_json::json!( {
@@ -130,7 +130,7 @@ mod tests {
             current_block_hash: block_hash!("0xccddee"),
             highest_block_hash: block_hash!("0xeeffaacc"),
         };
-        let expected = SyncingOuput::Status(expected);
+        let expected = SyncingOutput::Status(expected);
 
         let context = RpcContext::for_tests();
         *context.sync_status.status.write().await = status;
@@ -149,6 +149,6 @@ mod tests {
 
         let result = super::syncing(context).await.unwrap();
 
-        assert_eq!(result, SyncingOuput::False);
+        assert_eq!(result, SyncingOutput::False);
     }
 }

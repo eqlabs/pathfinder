@@ -569,7 +569,7 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct GetEventsResult {
         pub events: Vec<EmittedEvent>,
-        /// Offset, measured in events, which points to the chunk that follows currenty requested chunk (`events`)
+        /// Offset, measured in events, which points to the chunk that follows currently requested chunk (`events`)
         pub continuation_token: Option<String>,
     }
 }

@@ -42,7 +42,7 @@ impl ContractStateUpdateResult {
 
         transaction
             .insert_contract_state_hash(block, self.contract_address, self.state_hash)
-            .context("Inserting constract state hash")
+            .context("Inserting contract state hash")
     }
 }
 

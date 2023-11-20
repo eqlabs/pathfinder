@@ -39,7 +39,7 @@ impl BlockHeader {
             .with_parent_hash(self.hash)
     }
 
-    /// Creates a [StateUpdate] with the block hash and state commitment fields intialized
+    /// Creates a [StateUpdate] with the block hash and state commitment fields initialized
     /// to match this header.
     pub fn init_state_update(&self) -> StateUpdate {
         StateUpdate::default()

@@ -72,7 +72,7 @@ pub(super) fn insert_state_update(
         .map(|sierra| ClassHash(sierra.0));
     let cairo = state_update.declared_cairo_classes.iter().copied();
     // Older cairo 0 classes were never declared, but instead got implicitly declared on first deployment.
-    // Until such classes dissappear we need to cater for them here. This works because the sql only
+    // Until such classes disappear we need to cater for them here. This works because the sql only
     // updates the row if it is null.
     let deployed = state_update
         .contract_updates
@@ -593,13 +593,13 @@ mod tests {
             let tx = db.transaction().unwrap();
 
             let header = BlockHeader::builder().finalize_with_hash(block_hash_bytes!(b"hash"));
-            let contract_adress = contract_address_bytes!(b"contract address");
-            let contract_adress2 = contract_address_bytes!(b"contract address 2");
+            let contract_address = contract_address_bytes!(b"contract address");
+            let contract_address2 = contract_address_bytes!(b"contract address 2");
             let state_update = StateUpdate::default()
-                .with_contract_nonce(contract_adress, contract_nonce_bytes!(b"nonce value"))
-                .with_contract_nonce(contract_adress2, contract_nonce_bytes!(b"nonce value 2"))
+                .with_contract_nonce(contract_address, contract_nonce_bytes!(b"nonce value"))
+                .with_contract_nonce(contract_address2, contract_nonce_bytes!(b"nonce value 2"))
                 .with_storage_update(
-                    contract_adress,
+                    contract_address,
                     storage_address_bytes!(b"storage address"),
                     storage_value_bytes!(b"storage value"),
                 );

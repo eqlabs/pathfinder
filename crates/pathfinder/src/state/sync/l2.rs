@@ -1039,7 +1039,7 @@ mod tests {
                 let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
-                // Downlad the genesis block with respective state update and contracts
+                // Download the genesis block with respective state update and contracts
                 expect_block(
                     &mut mock,
                     &mut seq,
@@ -1064,7 +1064,7 @@ mod tests {
                     BLOCK0_HASH.into(),
                     Ok(BLOCK0_SIGNATURE.clone()),
                 );
-                // Downlad block #1 with respective state update and contracts
+                // Download block #1 with respective state update and contracts
                 expect_block(
                     &mut mock,
                     &mut seq,

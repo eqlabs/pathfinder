@@ -225,7 +225,7 @@ pub trait RpcMethod: Send + Sync {
 /// async fn context_only(ctx: RpcContext) -> Result<impl Serialize, Into<RpcError>>;
 /// ```
 ///
-/// The generics allow us to achieve a form of variadic specilization and can be ignored by callers.
+/// The generics allow us to achieve a form of variadic specialization and can be ignored by callers.
 /// See [sealed::Sealed] to add more method signatures or more information on how this works.
 pub trait IntoRpcMethod<'a, I, O, S>: sealed::Sealed<I, O, S> {
     fn into_method(self) -> Box<dyn RpcMethod>;
@@ -252,12 +252,12 @@ mod sealed {
     /// The generics allow for a form of specialization over a methods Input, Output and State
     /// by treating each as a tuple. Varying the tuple length allows us to target a specific method
     /// signature. This same could be achieved with a single generic but it becomes less clear as
-    /// each permuation would require a different tuple length.
+    /// each permutation would require a different tuple length.
     ///
     /// By convention, the lack of a type is equivalent to the unit tuple (). So if we want to target functions
     /// with no input params, no input state and an output:
     /// ```
-    /// Sealed<I = (), S = (), O = ((), Ouput)>
+    /// Sealed<I = (), S = (), O = ((), Output)>
     /// ```
     pub trait Sealed<I, O, S> {
         fn into_method(self) -> Box<dyn RpcMethod>;

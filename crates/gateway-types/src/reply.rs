@@ -1684,7 +1684,7 @@ mod tests {
 
     #[test]
     fn eth_contract_addresses_ignores_extra_fields() {
-        // Some gateway mocks include extra addesses, check that we can still parse these.
+        // Some gateway mocks include extra addresses, check that we can still parse these.
         let json = serde_json::json!({
             "Starknet": "0x12345abcd",
             "GpsStatementVerifier": "0xaabdde",

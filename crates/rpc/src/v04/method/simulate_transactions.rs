@@ -12,7 +12,7 @@ use starknet_gateway_types::trace as gateway_trace;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct SimulateTrasactionInput {
+pub struct SimulateTransactionInput {
     block_id: BlockId,
     transactions: Vec<BroadcastedTransaction>,
     simulation_flags: dto::SimulationFlags,
@@ -53,7 +53,7 @@ impl From<ExecutionStateError> for SimulateTransactionError {
 
 pub async fn simulate_transactions(
     context: RpcContext,
-    input: SimulateTrasactionInput,
+    input: SimulateTransactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
     let span = tracing::Span::current();
     tokio::task::spawn_blocking(move || {
@@ -563,7 +563,7 @@ pub(crate) mod tests {
             ],
             "simulation_flags": ["SKIP_FEE_CHARGE"]
         });
-        let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
+        let input = SimulateTransactionInput::deserialize(&input_json).unwrap();
 
         let expected: Vec<dto::SimulatedTransaction> = {
             use dto::*;
@@ -1297,7 +1297,7 @@ pub(crate) mod tests {
         ) = setup_storage().await;
         let context = RpcContext::for_tests().with_storage(storage);
 
-        let input = SimulateTrasactionInput {
+        let input = SimulateTransactionInput {
             transactions: vec![
                 fixtures::input::declare(account_contract_address),
                 fixtures::input::universal_deployer(
@@ -1340,7 +1340,7 @@ pub(crate) mod tests {
         ) = setup_storage().await;
         let context = RpcContext::for_tests().with_storage(storage);
 
-        let input = SimulateTrasactionInput {
+        let input = SimulateTransactionInput {
             transactions: vec![
                 fixtures::input::declare(account_contract_address),
                 fixtures::input::universal_deployer(
@@ -1381,7 +1381,7 @@ pub(crate) mod tests {
         ) = setup_storage().await;
         let context = RpcContext::for_tests().with_storage(storage);
 
-        let input = SimulateTrasactionInput {
+        let input = SimulateTransactionInput {
             transactions: vec![
                 fixtures::input::declare(account_contract_address),
                 fixtures::input::universal_deployer(

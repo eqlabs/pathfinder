@@ -167,7 +167,7 @@ impl TransactionVersion {
         self.without_query_version() == 0
     }
 
-    /// Returns the transaction versin without QUERY_VERSION_BASE.
+    /// Returns the transaction version without QUERY_VERSION_BASE.
     ///
     /// QUERY_VERSION_BASE (2**128) is a large constant that gets
     /// added to the real version to make sure transactions constructed for

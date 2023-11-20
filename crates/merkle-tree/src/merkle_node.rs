@@ -92,7 +92,7 @@ impl From<Direction> for bool {
 impl BinaryNode {
     /// Maps the key's bit at the binary node's height to a [Direction].
     ///
-    /// This can be used to check which direction the key descibes in the context
+    /// This can be used to check which direction the key describes in the context
     /// of this binary node i.e. which direction the child along the key's path would
     /// take.
     pub fn direction(&self, key: &BitSlice<u8, Msb0>) -> Direction {

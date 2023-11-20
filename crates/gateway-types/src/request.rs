@@ -253,7 +253,7 @@ pub mod add_transaction {
     #[serde_as]
     #[derive(Debug, serde::Deserialize, serde::Serialize)]
     pub struct InvokeFunction {
-        // Transacion properties
+        // Transaction properties
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
 
@@ -277,7 +277,7 @@ pub mod add_transaction {
     #[serde_as]
     #[derive(Debug, serde::Deserialize, serde::Serialize)]
     pub struct Declare {
-        // Transacion properties
+        // Transaction properties
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
 

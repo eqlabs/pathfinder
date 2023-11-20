@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn transaction_wtih_receipt() {
+    fn transaction_with_receipt() {
         let (mut db, header, body) = setup();
         let tx = db.transaction().unwrap();
 
