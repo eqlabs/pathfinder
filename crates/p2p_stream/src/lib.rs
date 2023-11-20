@@ -277,8 +277,6 @@ where
     /// The currently connected peers, their pending outbound and inbound responses and their known,
     /// reachable addresses, if any.
     connected: HashMap<PeerId, SmallVec<[Connection; 2]>>,
-    /// Externally managed addresses via `add_address` and `remove_address`.
-    addresses: HashMap<PeerId, HashSet<Multiaddr>>,
     /// Requests that have not yet been sent and are waiting for a connection
     /// to be established.
     pending_outbound_requests: HashMap<PeerId, SmallVec<[OutboundMessage<TCodec>; 10]>>,
@@ -316,7 +314,6 @@ where
             pending_events: VecDeque::new(),
             connected: HashMap::new(),
             pending_outbound_requests: HashMap::new(),
-            addresses: HashMap::new(),
         }
     }
 
@@ -353,30 +350,6 @@ where
         }
 
         request_id
-    }
-
-    /// Adds a known address for a peer that can be used for
-    /// dialing attempts by the `Swarm`, i.e. is returned
-    /// by [`NetworkBehaviour::handle_pending_outbound_connection`].
-    ///
-    /// Addresses added in this way are only removed by `remove_address`.
-    ///
-    /// Returns true if the address was added, false otherwise (i.e. if the
-    /// address is already in the list).
-    pub fn add_address(&mut self, peer: &PeerId, address: Multiaddr) -> bool {
-        self.addresses.entry(*peer).or_default().insert(address)
-    }
-
-    /// Removes an address of a peer previously added via `add_address`.
-    pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
-        let mut last = false;
-        if let Some(addresses) = self.addresses.get_mut(peer) {
-            addresses.retain(|a| a != address);
-            last = addresses.is_empty();
-        }
-        if last {
-            self.addresses.remove(peer);
-        }
     }
 
     /// Checks whether a peer is currently connected.
@@ -621,9 +594,6 @@ where
         let mut addresses = Vec::new();
         if let Some(connections) = self.connected.get(&peer) {
             addresses.extend(connections.iter().filter_map(|c| c.remote_address.clone()))
-        }
-        if let Some(more) = self.addresses.get(&peer) {
-            addresses.extend(more.iter().cloned());
         }
 
         Ok(addresses)
