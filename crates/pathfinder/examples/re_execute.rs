@@ -105,7 +105,7 @@ fn main() -> anyhow::Result<()> {
 
 fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<ChainId> {
     use pathfinder_common::consts::{
-        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
+        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
     };
 
     let (_, genesis_hash) = tx
@@ -116,7 +116,6 @@ fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chai
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => ChainId::MAINNET,
         TESTNET_GENESIS_HASH => ChainId::TESTNET,
-        TESTNET2_GENESIS_HASH => ChainId::TESTNET2,
         INTEGRATION_GENESIS_HASH => ChainId::INTEGRATION,
         _ => anyhow::bail!("Unknown chain"),
     };

@@ -17,9 +17,8 @@ fn main() -> anyhow::Result<()> {
     let chain_id = match chain_name.as_str() {
         "mainnet" => ChainId::MAINNET,
         "goerli" => ChainId::TESTNET,
-        "testnet2" => ChainId::TESTNET2,
         "integration" => ChainId::INTEGRATION,
-        _ => panic!("Expected chain name: mainnet/goerli/testnet2/integration"),
+        _ => panic!("Expected chain name: mainnet/goerli/integration"),
     };
     let database_path = std::env::args().nth(2).unwrap();
     let start_block = std::env::args().nth(3).unwrap_or("0".into());

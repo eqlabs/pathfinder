@@ -79,7 +79,6 @@ async fn async_main() -> anyhow::Result<()> {
         let network_label = match &network {
             NetworkConfig::Mainnet => "mainnet",
             NetworkConfig::Testnet => "testnet",
-            NetworkConfig::Testnet2 => "testnet2",
             NetworkConfig::Integration => "integration",
             NetworkConfig::Custom { .. } => "custom",
         };
@@ -492,13 +491,6 @@ mod pathfinder_context {
                     database: data_directory.join("goerli.sqlite"),
                     l1_core_address: H160::from(core_addr::TESTNET),
                 },
-                NetworkConfig::Testnet2 => Self {
-                    network: Chain::Testnet2,
-                    network_id: ChainId::TESTNET2,
-                    gateway: GatewayClient::testnet2(),
-                    database: data_directory.join("testnet2.sqlite"),
-                    l1_core_address: H160::from(core_addr::TESTNET2),
-                },
                 NetworkConfig::Integration => Self {
                     network: Chain::Integration,
                     network_id: ChainId::INTEGRATION,
@@ -547,7 +539,6 @@ mod pathfinder_context {
             let network = match l1_core_address.as_bytes() {
                 x if x == core_addr::MAINNET => Chain::Mainnet,
                 x if x == core_addr::TESTNET => Chain::Testnet,
-                x if x == core_addr::TESTNET2 => Chain::Testnet2,
                 x if x == core_addr::INTEGRATION => Chain::Integration,
                 _ => Chain::Custom,
             };
@@ -576,7 +567,6 @@ fn verify_networks(starknet: Chain, ethereum: EthereumChain) -> anyhow::Result<(
             Chain::Mainnet => EthereumChain::Mainnet,
             Chain::Testnet => EthereumChain::Goerli,
             Chain::Integration => EthereumChain::Goerli,
-            Chain::Testnet2 => EthereumChain::Goerli,
             Chain::Custom => unreachable!("Already checked against"),
         };
 
@@ -605,14 +595,12 @@ async fn verify_database(
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{
-            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
-            TESTNET_GENESIS_HASH,
+            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
         };
 
         let db_network = match database_genesis {
             MAINNET_GENESIS_HASH => Chain::Mainnet,
             TESTNET_GENESIS_HASH => Chain::Testnet,
-            TESTNET2_GENESIS_HASH => Chain::Testnet2,
             INTEGRATION_GENESIS_HASH => Chain::Integration,
             _other => Chain::Custom,
         };

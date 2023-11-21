@@ -43,14 +43,6 @@ pub fn verify(txn: &Transaction, chain_id: ChainId, block_number: BlockNumber) -
                 chain_id
             }
         }
-        // Earlier blocks on testnet2 used the same chain id as testnet (ie. goerli)
-        ChainId::TESTNET2 => {
-            if block_number.get() <= 21086 {
-                ChainId::TESTNET
-            } else {
-                chain_id
-            }
-        }
         _ => chain_id,
     };
 

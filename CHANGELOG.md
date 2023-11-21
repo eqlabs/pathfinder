@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Removed
+
+- Removed support for `--network testnet2`
+
 ## [0.9.7] - 2023-11-21
 
 ### Fixed
