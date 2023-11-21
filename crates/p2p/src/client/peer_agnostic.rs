@@ -131,10 +131,8 @@ impl Client {
             match response_receiver {
                 Ok(mut receiver) => {
                     // Limits on max message size and our internal limit of maximum blocks per response
-                    // imply that we can't receive more than 1 response.
-                    //
-                    // TODO link the consts here
-                    //
+                    // imply that we can't receive more than 1 response. See static asserts in
+                    // [`pathfinder_lib::p2p_network::sync_handlers`].
                     let Some(BlockHeadersResponse { parts }) = receiver.next().await else {
                         // Try the next peer
                         break;
