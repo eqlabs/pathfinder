@@ -54,33 +54,33 @@ pub(crate) mod codec {
     pub type Bodies = SyncCodec<
         protocol::Bodies,
         block::BlockBodiesRequest,
-        block::BlockBodiesResponseList,
+        block::BlockBodiesResponse,
         proto::block::BlockBodiesRequest,
-        proto::block::BlockBodiesResponseList,
+        proto::block::BlockBodiesResponse,
     >;
 
     pub type Transactions = SyncCodec<
         protocol::Transactions,
         transaction::TransactionsRequest,
-        transaction::TransactionsResponseList,
+        transaction::TransactionsResponse,
         proto::transaction::TransactionsRequest,
-        proto::transaction::TransactionsResponseList,
+        proto::transaction::TransactionsResponse,
     >;
 
     pub type Receipts = SyncCodec<
         protocol::Receipts,
         receipt::ReceiptsRequest,
-        receipt::ReceiptsResponseList,
+        receipt::ReceiptsResponse,
         proto::receipt::ReceiptsRequest,
-        proto::receipt::ReceiptsResponseList,
+        proto::receipt::ReceiptsResponse,
     >;
 
     pub type Events = SyncCodec<
         protocol::Events,
         event::EventsRequest,
-        event::EventsResponseList,
+        event::EventsResponse,
         proto::event::EventsRequest,
-        proto::event::EventsResponseList,
+        proto::event::EventsResponse,
     >;
 
     #[derive(Clone, Debug)]

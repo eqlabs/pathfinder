@@ -189,12 +189,13 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let responses = self.inner.send_bodies_sync_request(peer, request).await;
+            let response_receiver = self.inner.send_bodies_sync_request(peer, request).await;
 
-            match responses {
-                Ok(BlockBodiesResponseList { items }) => {
+            match response_receiver {
+                Ok(mut receiver) => {
                     let mut state = parse::state_update::State::Uninitialized;
-                    for response in items {
+
+                    while let Some(response) = receiver.next().await {
                         if let Err(error) = state.advance(response) {
                             tracing::debug!(from=%peer, %error, "body responses parsing");
                             break;
