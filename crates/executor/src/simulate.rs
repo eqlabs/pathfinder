@@ -104,7 +104,9 @@ pub fn trace_one(
 ) -> Result<TransactionTrace, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    for tx in transactions {
+    for (transaction_idx, tx) in transactions.into_iter().enumerate() {
+        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
+
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
@@ -135,7 +137,9 @@ pub fn trace_all(
     let (mut state, block_context) = execution_state.starknet_state()?;
 
     let mut ret = Vec::with_capacity(transactions.len());
-    for tx in transactions {
+    for (transaction_idx, tx) in transactions.into_iter().enumerate() {
+        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
+
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
