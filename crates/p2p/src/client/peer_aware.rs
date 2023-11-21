@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use anyhow::Context;
+use futures::channel::mpsc::Receiver as ResponseReceiver;
 use libp2p::{gossipsub::IdentTopic, request_response::ResponseChannel, Multiaddr, PeerId};
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
@@ -24,6 +25,27 @@ pub struct Client {
 }
 
 macro_rules! impl_send {
+    ($fn_name_req: ident, $req_command: ident, $res_command: ident, $req_type: ty, $res_type: ty) => {
+        pub async fn $fn_name_req(
+            &self,
+            peer_id: PeerId,
+            request: $req_type,
+        ) -> anyhow::Result<ResponseReceiver<$res_type>> {
+            let (sender, receiver) = oneshot::channel();
+            self.sender
+                .send(Command::$req_command {
+                    peer_id,
+                    request,
+                    sender,
+                })
+                .await
+                .expect("Command receiver not to be dropped");
+            receiver.await.expect("Sender not to be dropped")
+        }
+    };
+}
+
+macro_rules! impl_send_old {
     ($fn_name_req: ident, $fn_name_res: ident, $req_command: ident, $res_command: ident, $req_type: ty, $res_type: ty) => {
         pub async fn $fn_name_req(
             &self,
@@ -43,10 +65,11 @@ macro_rules! impl_send {
         }
 
         pub async fn $fn_name_res(&self, channel: ResponseChannel<$res_type>, response: $res_type) {
-            self.sender
-                .send(Command::$res_command { channel, response })
-                .await
-                .expect("Command receiver not to be dropped");
+            todo!("FIXME");
+            // self.sender
+            //     .send(Command::$res_command { channel, response })
+            //     .await
+            //     .expect("Command receiver not to be dropped");
         }
     };
 }
@@ -130,14 +153,13 @@ impl Client {
 
     impl_send!(
         send_headers_sync_request,
-        send_headers_sync_response,
         SendHeadersSyncRequest,
         SendHeadersSyncResponse,
         BlockHeadersRequest,
         BlockHeadersResponse
     );
 
-    impl_send!(
+    impl_send_old!(
         send_bodies_sync_request,
         send_bodies_sync_response,
         SendBodiesSyncRequest,
@@ -146,7 +168,7 @@ impl Client {
         BlockBodiesResponseList
     );
 
-    impl_send!(
+    impl_send_old!(
         send_transactions_sync_request,
         send_transactions_sync_response,
         SendTransactionsSyncRequest,
@@ -155,7 +177,7 @@ impl Client {
         TransactionsResponseList
     );
 
-    impl_send!(
+    impl_send_old!(
         send_receipts_sync_request,
         send_receipts_sync_response,
         SendReceiptsSyncRequest,
@@ -164,7 +186,7 @@ impl Client {
         ReceiptsResponseList
     );
 
-    impl_send!(
+    impl_send_old!(
         send_events_sync_request,
         send_events_sync_response,
         SendEventsSyncRequest,

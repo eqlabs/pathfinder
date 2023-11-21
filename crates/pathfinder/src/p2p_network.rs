@@ -139,15 +139,10 @@ async fn handle_p2p_event(
         p2p::Event::InboundHeadersSyncRequest {
             request, channel, ..
         } => {
-            let (rep_tx, mut rep_rx) = mpsc::channel(1);
-            sync_handlers::get_headers(storage, request, rep_tx).await?;
-            p2p_client
-                .send_headers_sync_response(
-                    channel,
-                    rep_rx.recv().await.expect("sender is not dropped"),
-                )
-                .await;
+            sync_handlers::get_headers(storage, request, channel).await?;
         }
+        _ => todo!(),
+        /*
         p2p::Event::InboundBodiesSyncRequest {
             request, channel, ..
         } => {
@@ -253,6 +248,7 @@ async fn handle_p2p_event(
                 }
             }
         }
+        */
         p2p::Event::SyncPeerConnected { .. } | p2p::Event::Test(_) => { /* Ignore me */ }
     }
 

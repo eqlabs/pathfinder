@@ -1,4 +1,6 @@
 use anyhow::Context;
+use futures::channel::mpsc;
+use futures::SinkExt;
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
     BlockHeadersResponse, BlockHeadersResponsePart,
@@ -16,7 +18,7 @@ use p2p_proto::transaction::{
 use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc as tokio_mpsc;
 
 pub mod conv;
 #[cfg(test)]
@@ -45,7 +47,7 @@ const _: () = assert!(
 pub async fn get_headers(
     storage: Storage,
     request: BlockHeadersRequest,
-    tx: mpsc::Sender<BlockHeadersResponse>,
+    mut tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
     let response = spawn_blocking_get(request, storage, blocking::get_headers).await?;
     tx.send(response).await.context("Sending response")
@@ -55,7 +57,7 @@ pub async fn get_headers(
 pub async fn get_bodies(
     storage: Storage,
     request: BlockBodiesRequest,
-    tx: mpsc::Sender<BlockBodiesResponse>,
+    tx: tokio_mpsc::Sender<BlockBodiesResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_bodies).await?;
     send(tx, responses).await
@@ -64,7 +66,7 @@ pub async fn get_bodies(
 pub async fn get_transactions(
     storage: Storage,
     request: TransactionsRequest,
-    tx: mpsc::Sender<TransactionsResponse>,
+    tx: tokio_mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_transactions).await?;
     send(tx, responses).await
@@ -73,7 +75,7 @@ pub async fn get_transactions(
 pub async fn get_receipts(
     storage: Storage,
     request: ReceiptsRequest,
-    tx: mpsc::Sender<ReceiptsResponse>,
+    tx: tokio_mpsc::Sender<ReceiptsResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_receipts).await?;
     send(tx, responses).await
@@ -82,7 +84,7 @@ pub async fn get_receipts(
 pub async fn get_events(
     storage: Storage,
     request: EventsRequest,
-    tx: mpsc::Sender<EventsResponse>,
+    tx: tokio_mpsc::Sender<EventsResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_events).await?;
     send(tx, responses).await
@@ -615,7 +617,7 @@ where
     .context("Database read panic or shutting down")?
 }
 
-async fn send<T>(tx: mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
+async fn send<T>(tx: tokio_mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
 where
     T: Send + 'static,
     tokio::sync::mpsc::error::SendError<T>: Sync,

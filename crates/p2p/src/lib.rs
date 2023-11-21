@@ -4,10 +4,10 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
-use libp2p::request_response::ResponseChannel;
 use libp2p::swarm::Config;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use p2p_proto::block::{
@@ -126,7 +126,7 @@ enum Command {
     SendHeadersSyncRequest {
         peer_id: PeerId,
         request: BlockHeadersRequest,
-        sender: oneshot::Sender<anyhow::Result<BlockHeadersResponse>>,
+        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
     },
     SendBodiesSyncRequest {
         peer_id: PeerId,
@@ -149,23 +149,23 @@ enum Command {
         sender: oneshot::Sender<anyhow::Result<EventsResponseList>>,
     },
     SendHeadersSyncResponse {
-        channel: ResponseChannel<BlockHeadersResponse>,
+        channel: ResponseSender<BlockHeadersResponse>,
         response: BlockHeadersResponse,
     },
     SendBodiesSyncResponse {
-        channel: ResponseChannel<BlockBodiesResponseList>,
+        channel: ResponseSender<BlockBodiesResponseList>,
         response: BlockBodiesResponseList,
     },
     SendTransactionsSyncResponse {
-        channel: ResponseChannel<TransactionsResponseList>,
+        channel: ResponseSender<TransactionsResponseList>,
         response: TransactionsResponseList,
     },
     SendReceiptsSyncResponse {
-        channel: ResponseChannel<ReceiptsResponseList>,
+        channel: ResponseSender<ReceiptsResponseList>,
         response: ReceiptsResponseList,
     },
     SendEventsSyncResponse {
-        channel: ResponseChannel<EventsResponseList>,
+        channel: ResponseSender<EventsResponseList>,
         response: EventsResponseList,
     },
     PublishPropagationMessage {
@@ -190,27 +190,27 @@ pub enum Event {
     InboundHeadersSyncRequest {
         from: PeerId,
         request: BlockHeadersRequest,
-        channel: ResponseChannel<BlockHeadersResponse>,
+        channel: ResponseSender<BlockHeadersResponse>,
     },
     InboundBodiesSyncRequest {
         from: PeerId,
         request: BlockBodiesRequest,
-        channel: ResponseChannel<BlockBodiesResponseList>,
+        channel: ResponseSender<BlockBodiesResponseList>,
     },
     InboundTransactionsSyncRequest {
         from: PeerId,
         request: TransactionsRequest,
-        channel: ResponseChannel<TransactionsResponseList>,
+        channel: ResponseSender<TransactionsResponseList>,
     },
     InboundReceiptsSyncRequest {
         from: PeerId,
         request: ReceiptsRequest,
-        channel: ResponseChannel<ReceiptsResponseList>,
+        channel: ResponseSender<ReceiptsResponseList>,
     },
     InboundEventsSyncRequest {
         from: PeerId,
         request: EventsRequest,
-        channel: ResponseChannel<EventsResponseList>,
+        channel: ResponseSender<EventsResponseList>,
     },
     BlockPropagation {
         from: PeerId,

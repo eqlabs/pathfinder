@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use futures::StreamExt;
+use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identify;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
@@ -45,7 +45,11 @@ pub struct MainLoop {
 
 #[derive(Debug, Default)]
 struct PendingRequests {
-    pub headers: HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<BlockHeadersResponse>>>,
+    // pub headers: HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<BlockHeadersResponse>>>,
+    pub headers: HashMap<
+        OutboundRequestId,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
+    >,
     pub bodies:
         HashMap<OutboundRequestId, oneshot::Sender<anyhow::Result<BlockBodiesResponseList>>>,
     pub transactions:
@@ -398,36 +402,42 @@ impl MainLoop {
             // ===========================
             // Block sync
             // ===========================
-            /*
             SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
-                request_response::Event::Message { message, peer },
-            )) => match message {
-                request_response::Message::Request {
-                    request, channel, ..
-                } => {
-                    tracing::debug!(?request, %peer, "Received sync request");
-
-                    self.event_sender
-                        .send(Event::InboundHeadersSyncRequest {
-                            from: peer,
-                            request,
-                            channel,
-                        })
-                        .await
-                        .expect("Event receiver not to be dropped");
-                }
-                request_response::Message::Response {
+                p2p_stream::Event::InboundRequest {
                     request_id,
-                    response,
-                } => {
-                    let _ = self
-                        .pending_sync_requests
-                        .headers
-                        .remove(&request_id)
-                        .expect("Block sync request still to be pending")
-                        .send(Ok(response));
-                }
-            },
+                    request,
+                    peer,
+                    channel,
+                },
+            )) => {
+                tracing::debug!(?request, %peer, %request_id, "Received sync request");
+
+                self.event_sender
+                    .send(Event::InboundHeadersSyncRequest {
+                        from: peer,
+                        request,
+                        channel,
+                    })
+                    .await
+                    .expect("Event receiver not to be dropped");
+            }
+            SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
+                p2p_stream::Event::OutboundRequestSentAwaitingResponses {
+                    request_id,
+                    peer,
+                    channel,
+                },
+            )) => {
+                tracing::debug!(%peer, %request_id, "Sync request sent");
+
+                let _ = self
+                    .pending_sync_requests
+                    .headers
+                    .remove(&request_id)
+                    .expect("Block sync request still to be pending")
+                    .send(Ok(channel));
+            }
+            /*
             SwarmEvent::Behaviour(behaviour::Event::BodiesSync(
                 request_response::Event::Message { message, peer },
             )) => match message {

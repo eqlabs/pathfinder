@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use futures::StreamExt;
 use libp2p::PeerId;
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
@@ -125,10 +126,20 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response = self.inner.send_headers_sync_request(peer, request).await;
+            let response_receiver = self.inner.send_headers_sync_request(peer, request).await;
 
-            match response {
-                Ok(BlockHeadersResponse { parts }) => {
+            match response_receiver {
+                Ok(mut receiver) => {
+                    // Limits on max message size and our internal limit of maximum blocks per response
+                    // imply that we can't receive more than 1 response.
+                    //
+                    // TODO link the consts here
+                    //
+                    let Some(BlockHeadersResponse { parts }) = receiver.next().await else {
+                        // Try the next peer
+                        break;
+                    };
+
                     let mut state = parse::block_header::State::Uninitialized;
                     for part in parts {
                         if let Err(error) = state.advance(part) {
