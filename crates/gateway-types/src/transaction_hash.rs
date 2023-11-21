@@ -688,6 +688,7 @@ mod tests {
             case!(v0_11_0::transaction::declare::v1::BLOCK_463319),
             case!(v0_11_0::transaction::declare::v1::BLOCK_797215),
             case!(v0_11_0::transaction::declare::v2::BLOCK_797220),
+            case!(v0_13_0::transaction::declare::v3::BLOCK_319709),
             // Deploy
             case!(v0_11_0::transaction::deploy::v0::GENESIS),
             case!(v0_9_0::transaction::DEPLOY), // v0
@@ -695,6 +696,7 @@ mod tests {
             // Deploy account
             case!(v0_11_0::transaction::deploy_account::v1::BLOCK_375919),
             case!(v0_11_0::transaction::deploy_account::v1::BLOCK_797K),
+            case!(v0_13_0::transaction::deploy_account::v3::BLOCK_319693),
             // Invoke
             case!(v0_11_0::transaction::invoke::v0::GENESIS),
             case!(v0_8_2::transaction::INVOKE),

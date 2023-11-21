@@ -1932,8 +1932,10 @@ mod tests {
             serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216171).unwrap();
             // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
             serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_228457).unwrap();
-            // This is from integration starknet_version 0.13.0 and contains new v3 invoke transactions.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319106).unwrap();
+            // This is from integration starknet_version 0.13.0 and contains new v3 invoke and deploy account transactions.
+            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319693).unwrap();
+            // This is from integration starknet_version 0.13.0 and contains a new v3 declare transaction.
+            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319709).unwrap();
             serde_json::from_str::<MaybePendingBlock>(v0_13_0::block::PENDING).unwrap();
         }
 
