@@ -132,13 +132,6 @@ pub struct ReceiptsResponse {
     pub kind: ReceiptsResponseKind,
 }
 
-// TODO remove when streaming response implemented
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[protobuf(name = "crate::proto::receipt::ReceiptsResponseList")]
-pub struct ReceiptsResponseList {
-    pub items: Vec<ReceiptsResponse>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum ReceiptsResponseKind {
     Receipts(Receipts),
@@ -284,11 +277,5 @@ impl TryFromProtobuf<proto::receipt::receipts_response::Responses> for ReceiptsR
                 TryFromProtobuf::try_from_protobuf(f, field_name)?,
             )),
         }
-    }
-}
-
-impl Display for ReceiptsResponseList {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ReceiptsResponseList[len={}]", self.items.len())
     }
 }

@@ -40,13 +40,6 @@ pub struct EventsResponse {
     pub kind: EventsResponseKind,
 }
 
-// TODO remove when streaming response implemented
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[protobuf(name = "crate::proto::event::EventsResponseList")]
-pub struct EventsResponseList {
-    pub items: Vec<EventsResponse>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventsResponseKind {
     Events(Events),
@@ -108,11 +101,5 @@ impl TryFromProtobuf<proto::event::events_response::Responses> for EventsRespons
                 fin, field_name,
             )?)),
         }
-    }
-}
-
-impl Display for EventsResponseList {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "EventsResponseList[len={}]", self.items.len())
     }
 }

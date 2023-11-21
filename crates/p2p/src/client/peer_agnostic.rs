@@ -8,13 +8,11 @@ use std::{
 
 use futures::StreamExt;
 use libp2p::PeerId;
-use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
-};
+use p2p_proto::block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::common::{Direction, Iteration};
-use p2p_proto::event::{EventsRequest, EventsResponseList};
-use p2p_proto::receipt::{Receipt, ReceiptsRequest, ReceiptsResponseList};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseList};
+use p2p_proto::event::EventsRequest;
+use p2p_proto::receipt::{Receipt, ReceiptsRequest};
+use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::{
     event::Event, transaction::TransactionVariant, BlockHash, BlockNumber, TransactionHash,
 };

@@ -180,6 +180,3 @@ message TransactionsResponse {
     starknet.common.Fin fin = 3;
   }
 }
-
-// TODO remove when streaming response implemented
-message TransactionsResponseList { repeated TransactionsResponse items = 1; }

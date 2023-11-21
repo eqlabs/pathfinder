@@ -81,13 +81,6 @@ pub struct BlockBodiesResponse {
     pub body_message: BlockBodyMessage,
 }
 
-// TODO remove when streaming response implemented
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[protobuf(name = "crate::proto::block::BlockBodiesResponseList")]
-pub struct BlockBodiesResponseList {
-    pub items: Vec<BlockBodiesResponse>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum BlockBodyMessage {
     Diff(StateDiff),
@@ -370,29 +363,5 @@ impl TryFromProtobuf<proto::block::block_bodies_response::BodyMessage> for Block
             Proof(proof) => Self::Proof(BlockProof::try_from_protobuf(proof, field_name)?),
             Fin(fin) => Self::Fin(self::Fin::try_from_protobuf(fin, field_name)?),
         })
-    }
-}
-
-impl Display for BlockBodiesResponseList {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BlockBodiesResponseList[")?;
-        match self.items.len().cmp(&1) {
-            std::cmp::Ordering::Less => {}
-            std::cmp::Ordering::Equal => {
-                if let Some(id) = self.items[0].id {
-                    id.fmt(f)?
-                } else {
-                    write!(f, "...")?
-                }
-            }
-            std::cmp::Ordering::Greater => match (
-                self.items.first().unwrap().id,
-                self.items.last().unwrap().id,
-            ) {
-                (Some(a), Some(b)) => write!(f, "{a},..,{b}")?,
-                _ => write!(f, "...")?,
-            },
-        }
-        write!(f, "]")
     }
 }
