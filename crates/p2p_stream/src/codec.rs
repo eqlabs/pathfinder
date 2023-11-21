@@ -32,7 +32,7 @@ use std::io;
 #[async_trait]
 pub trait Codec {
     /// The type of protocol(s) or protocol versions being negotiated.
-    type Protocol: AsRef<str> + Send + Sync + Clone;
+    type Protocol: AsRef<str> + Send + Clone;
     /// The type of inbound and outbound requests.
     type Request: Send;
     /// The type of inbound and outbound responses.

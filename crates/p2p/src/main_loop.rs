@@ -7,7 +7,6 @@ use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identify;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
-use libp2p::request_response::{self, OutboundRequestId};
 use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
 use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
@@ -16,6 +15,7 @@ use p2p_proto::event::EventsResponseList;
 use p2p_proto::receipt::ReceiptsResponseList;
 use p2p_proto::transaction::TransactionsResponseList;
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
+use p2p_stream::{self, OutboundRequestId};
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::time::Duration;
 
@@ -398,6 +398,7 @@ impl MainLoop {
             // ===========================
             // Block sync
             // ===========================
+            /*
             SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
                 request_response::Event::Message { message, peer },
             )) => match message {
@@ -608,6 +609,7 @@ impl MainLoop {
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
             }
+            */
             // ===========================
             // NAT hole punching
             // ===========================
@@ -633,6 +635,7 @@ impl MainLoop {
         }
     }
 
+    #[rustfmt::skip]
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::StarListening { addr, sender } => {
@@ -778,6 +781,8 @@ impl MainLoop {
                     .send_request(&peer_id, request);
                 self.pending_sync_requests.events.insert(request_id, sender);
             }
+            _ => todo!(),
+            /*
             // All Send*SyncResponse: In case of failure a RequestResponseEvent::InboundFailure will or has been be emitted.
             Command::SendHeadersSyncResponse { channel, response } => {
                 tracing::debug!(%response, "Sending sync response");
@@ -835,6 +840,7 @@ impl MainLoop {
                 let _ = sender.send(result);
             }
             Command::_Test(command) => self.handle_test_command(command).await,
+            */
         };
     }
 
