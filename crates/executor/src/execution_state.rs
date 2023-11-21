@@ -37,7 +37,8 @@ impl<'tx> ExecutionState<'tx> {
         );
         let mut cached_state = LruCachedReader::new_cached_state(raw_reader)?;
 
-        // if we're running on parent state we have to set the block hash for block_number - 10 in the state
+        // Perform system contract updates if we are executing ontop of a parent block.
+        // Currently this is only the block hash from 10 blocks ago.
         if self.execute_on_parent_state && self.header.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
                 pathfinder_common::BlockNumber::new_or_panic(self.header.number.get() - 10);
