@@ -177,6 +177,7 @@ pub mod request {
                 BroadcastedTransaction::Invoke(tx) => match tx {
                     BroadcastedInvokeTransaction::V0(tx) => tx.transaction_hash(chain_id),
                     BroadcastedInvokeTransaction::V1(tx) => tx.transaction_hash(chain_id),
+                    BroadcastedInvokeTransaction::V3(tx) => tx.transaction_hash(chain_id),
                 },
                 BroadcastedTransaction::DeployAccount(tx) => tx.transaction_hash(chain_id),
             }
@@ -506,6 +507,7 @@ pub mod request {
     pub enum BroadcastedInvokeTransaction {
         V0(BroadcastedInvokeTransactionV0),
         V1(BroadcastedInvokeTransactionV1),
+        V3(BroadcastedInvokeTransactionV3),
     }
 
     impl BroadcastedInvokeTransaction {
@@ -547,7 +549,10 @@ pub mod request {
                 1 => Ok(Self::V1(
                     BroadcastedInvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _ => Err(de::Error::custom("version must be 0 or 1")),
+                3 => Ok(Self::V3(
+                    BroadcastedInvokeTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _ => Err(de::Error::custom("version must be 0, 1 or 3")),
             }
         }
     }
@@ -634,6 +639,63 @@ pub mod request {
                 chain_id,
                 self.nonce,
                 None,
+            )
+        }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedInvokeTransactionV3 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub resource_bounds: super::ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
+        pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+        pub nonce_data_availability_mode: super::DataAvailabilityMode,
+        pub fee_data_availability_mode: super::DataAvailabilityMode,
+
+        pub sender_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+    }
+
+    impl BroadcastedInvokeTransactionV3 {
+        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
+            let invoke_specific_data = [
+                self.account_deployment_data
+                    .iter()
+                    .fold(PoseidonHasher::new(), |mut hh, e| {
+                        hh.write(e.0.into());
+                        hh
+                    })
+                    .finish()
+                    .into(),
+                self.calldata
+                    .iter()
+                    .fold(PoseidonHasher::new(), |mut hh, e| {
+                        hh.write(e.0.into());
+                        hh
+                    })
+                    .finish()
+                    .into(),
+            ];
+            starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
+                b"invoke",
+                TransactionVersion::THREE,
+                self.sender_address,
+                chain_id,
+                self.nonce,
+                &invoke_specific_data,
+                self.tip,
+                &self.paymaster_data,
+                self.nonce_data_availability_mode.into(),
+                self.fee_data_availability_mode.into(),
+                self.resource_bounds.into(),
             )
         }
     }
@@ -788,6 +850,36 @@ pub mod request {
                             max_fee: fee!("0x6"),
                             signature: vec![transaction_signature_elem!("0x7")],
                             nonce: transaction_nonce!("0x8"),
+                            sender_address: contract_address!("0xaaa"),
+                            calldata: vec![call_param!("0xff")],
+                        },
+                    )),
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+                        BroadcastedInvokeTransactionV3 {
+                            version: TransactionVersion::THREE_WITH_QUERY_VERSION,
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
+                            resource_bounds: ResourceBounds {
+                                l1_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0x1111),
+                                    max_price_per_unit: ResourcePricePerUnit(0x2222),
+                                },
+                                l2_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                },
+                            },
+                            tip: Tip(0x1234),
+                            paymaster_data: vec![
+                                paymaster_data_elem!("0x1"),
+                                paymaster_data_elem!("0x2"),
+                            ],
+                            account_deployment_data: vec![
+                                account_deployment_data_elem!("0x3"),
+                                account_deployment_data_elem!("0x4"),
+                            ],
+                            nonce_data_availability_mode: DataAvailabilityMode::L1,
+                            fee_data_availability_mode: DataAvailabilityMode::L2,
                             sender_address: contract_address!("0xaaa"),
                             calldata: vec![call_param!("0xff")],
                         },

@@ -294,6 +294,32 @@ pub(crate) mod tests {
                         ),
                     )
                 }
+                crate::v02::types::request::BroadcastedTransaction::Invoke(
+                    crate::v02::types::request::BroadcastedInvokeTransaction::V3(invoke),
+                ) => {
+                    let transaction_hash = invoke.transaction_hash(ChainId::TESTNET);
+                    starknet_gateway_types::reply::transaction::Transaction::Invoke(
+                        gateway::transaction::InvokeTransaction::V3(
+                            gateway::transaction::InvokeTransactionV3 {
+                                nonce: TransactionNonce::default(),
+                                sender_address: invoke.sender_address,
+                                signature: invoke.signature,
+                                transaction_hash,
+                                nonce_data_availability_mode: invoke
+                                    .nonce_data_availability_mode
+                                    .into(),
+                                fee_data_availability_mode: invoke
+                                    .fee_data_availability_mode
+                                    .into(),
+                                resource_bounds: invoke.resource_bounds.into(),
+                                tip: invoke.tip,
+                                paymaster_data: invoke.paymaster_data,
+                                calldata: invoke.calldata,
+                                account_deployment_data: invoke.account_deployment_data,
+                            },
+                        ),
+                    )
+                }
             }
         }
     }

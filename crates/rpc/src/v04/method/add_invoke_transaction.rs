@@ -122,6 +122,9 @@ pub async fn add_invoke_transaction(
                 )
                 .await?
         }
+        BroadcastedInvokeTransaction::V3(_) => {
+            todo!()
+        }
     };
 
     Ok(AddInvokeTransactionOutput {
