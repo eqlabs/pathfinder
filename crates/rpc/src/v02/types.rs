@@ -181,6 +181,7 @@ pub mod request {
                 },
                 BroadcastedTransaction::DeployAccount(tx) => match tx {
                     BroadcastedDeployAccountTransaction::V0V1(tx) => tx.transaction_hash(chain_id),
+                    BroadcastedDeployAccountTransaction::V3(tx) => tx.transaction_hash(chain_id),
                 },
             }
         }
@@ -419,6 +420,7 @@ pub mod request {
     )]
     pub enum BroadcastedDeployAccountTransaction {
         V0V1(BroadcastedDeployAccountTransactionV0V1),
+        V3(BroadcastedDeployAccountTransactionV3),
     }
 
     impl<'de> serde::Deserialize<'de> for BroadcastedDeployAccountTransaction {
@@ -440,6 +442,10 @@ pub mod request {
             match version.version.without_query_version() {
                 0 | 1 => Ok(Self::V0V1(
                     BroadcastedDeployAccountTransactionV0V1::deserialize(&v)
+                        .map_err(de::Error::custom)?,
+                )),
+                3 => Ok(Self::V3(
+                    BroadcastedDeployAccountTransactionV3::deserialize(&v)
                         .map_err(de::Error::custom)?,
                 )),
                 _v => Err(de::Error::custom("version must be 0 or 1")),
@@ -465,46 +471,57 @@ pub mod request {
         pub class_hash: ClassHash,
     }
 
-    impl BroadcastedDeployAccountTransactionV0V1 {
-        pub fn deployed_contract_address(&self) -> ContractAddress {
-            let constructor_calldata_hash = self
-                .constructor_calldata
-                .iter()
-                .fold(HashChain::default(), |mut h, param| {
-                    h.update(param.0);
-                    h
-                })
-                .finalize();
-
-            let contract_address = [
-                Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
-                Felt::ZERO,
-                self.contract_address_salt.0,
-                self.class_hash.0,
-                constructor_calldata_hash,
-            ]
-            .into_iter()
-            .fold(HashChain::default(), |mut h, e| {
-                h.update(e);
+    fn deployed_contract_address(
+        constructor_calldata: &[CallParam],
+        contract_address_salt: &ContractAddressSalt,
+        class_hash: &ClassHash,
+    ) -> ContractAddress {
+        let constructor_calldata_hash = constructor_calldata
+            .iter()
+            .fold(HashChain::default(), |mut h, param| {
+                h.update(param.0);
                 h
             })
             .finalize();
 
-            // Contract addresses are _less than_ 2**251 - 256
-            let contract_address =
-                primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
-            let max_address = primitive_types::U256::from_str_radix(
-                "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
-                16,
+        let contract_address = [
+            Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
+            Felt::ZERO,
+            contract_address_salt.0,
+            class_hash.0,
+            constructor_calldata_hash,
+        ]
+        .into_iter()
+        .fold(HashChain::default(), |mut h, e| {
+            h.update(e);
+            h
+        })
+        .finalize();
+
+        // Contract addresses are _less than_ 2**251 - 256
+        let contract_address =
+            primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
+        let max_address = primitive_types::U256::from_str_radix(
+            "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
+            16,
+        )
+        .unwrap();
+
+        let contract_address = contract_address.rem(max_address);
+        let mut b = [0u8; 32];
+        contract_address.to_big_endian(&mut b);
+        let contract_address = Felt::from_be_slice(&b).unwrap();
+
+        ContractAddress::new_or_panic(contract_address)
+    }
+
+    impl BroadcastedDeployAccountTransactionV0V1 {
+        pub fn deployed_contract_address(&self) -> ContractAddress {
+            deployed_contract_address(
+                self.constructor_calldata.as_slice(),
+                &self.contract_address_salt,
+                &self.class_hash,
             )
-            .unwrap();
-
-            let contract_address = contract_address.rem(max_address);
-            let mut b = [0u8; 32];
-            contract_address.to_big_endian(&mut b);
-            let contract_address = Felt::from_be_slice(&b).unwrap();
-
-            ContractAddress::new_or_panic(contract_address)
         }
 
         pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
@@ -532,6 +549,67 @@ pub mod request {
                 chain_id,
                 self.nonce,
                 None,
+            )
+        }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeployAccountTransactionV3 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub resource_bounds: super::ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
+        pub nonce_data_availability_mode: super::DataAvailabilityMode,
+        pub fee_data_availability_mode: super::DataAvailabilityMode,
+
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
+    }
+
+    impl BroadcastedDeployAccountTransactionV3 {
+        pub fn deployed_contract_address(&self) -> ContractAddress {
+            deployed_contract_address(
+                self.constructor_calldata.as_slice(),
+                &self.contract_address_salt,
+                &self.class_hash,
+            )
+        }
+
+        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
+            let sender_address = self.deployed_contract_address();
+
+            let deploy_account_specific_data = [
+                self.constructor_calldata
+                    .iter()
+                    .fold(PoseidonHasher::new(), |mut hh, e| {
+                        hh.write(e.0.into());
+                        hh
+                    })
+                    .finish()
+                    .into(),
+                self.class_hash.0,
+                self.contract_address_salt.0,
+            ];
+            starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
+                b"deploy_account",
+                TransactionVersion::THREE,
+                sender_address,
+                chain_id,
+                self.nonce,
+                &deploy_account_specific_data,
+                self.tip,
+                &self.paymaster_data,
+                self.nonce_data_availability_mode.into(),
+                self.fee_data_availability_mode.into(),
+                self.resource_bounds.into(),
             )
         }
     }
@@ -920,6 +998,33 @@ pub mod request {
                             fee_data_availability_mode: DataAvailabilityMode::L2,
                             sender_address: contract_address!("0xaaa"),
                             calldata: vec![call_param!("0xff")],
+                        },
+                    )),
+                    BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(
+                        BroadcastedDeployAccountTransactionV3 {
+                            version: TransactionVersion::THREE_WITH_QUERY_VERSION,
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
+                            resource_bounds: ResourceBounds {
+                                l1_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0x1111),
+                                    max_price_per_unit: ResourcePricePerUnit(0x2222),
+                                },
+                                l2_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                },
+                            },
+                            tip: Tip(0x1234),
+                            paymaster_data: vec![
+                                paymaster_data_elem!("0x1"),
+                                paymaster_data_elem!("0x2"),
+                            ],
+                            nonce_data_availability_mode: DataAvailabilityMode::L1,
+                            fee_data_availability_mode: DataAvailabilityMode::L2,
+                            contract_address_salt: contract_address_salt!("0x99999"),
+                            class_hash: class_hash!("0xddde"),
+                            constructor_calldata: vec![call_param!("0xfe")],
                         },
                     )),
                 ];

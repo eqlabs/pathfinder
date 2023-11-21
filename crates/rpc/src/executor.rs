@@ -402,6 +402,53 @@ pub(crate) fn map_broadcasted_transaction(
 
                 Ok(tx)
             }
+            BroadcastedDeployAccountTransaction::V3(tx) => {
+                let transaction_hash = transaction.transaction_hash(chain_id, None);
+
+                let version = tx.version;
+                let resource_bounds = map_broadcasted_resource_bounds(tx.resource_bounds)?;
+
+                let tx = starknet_api::transaction::DeployAccountTransactionV3 {
+                    resource_bounds,
+                    tip: starknet_api::transaction::Tip(tx.tip.0),
+                    signature: starknet_api::transaction::TransactionSignature(
+                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                    ),
+                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                    nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                    fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                    paymaster_data: starknet_api::transaction::PaymasterData(
+                        tx.paymaster_data
+                            .iter()
+                            .map(|p| p.0.into_starkfelt())
+                            .collect(),
+                    ),
+                    class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+
+                    contract_address_salt: starknet_api::transaction::ContractAddressSalt(
+                        tx.contract_address_salt.0.into_starkfelt(),
+                    ),
+                    constructor_calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                        tx.constructor_calldata
+                            .iter()
+                            .map(|c| c.0.into_starkfelt())
+                            .collect(),
+                    )),
+                };
+
+                let tx = pathfinder_executor::Transaction::from_api(
+                    starknet_api::transaction::Transaction::DeployAccount(
+                        starknet_api::transaction::DeployAccountTransaction::V3(tx),
+                    ),
+                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
+                    None,
+                    None,
+                    None,
+                    version.has_query_version(),
+                )?;
+
+                Ok(tx)
+            }
         },
     }
 }

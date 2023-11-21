@@ -261,6 +261,35 @@ pub(crate) mod tests {
                         },
                     ),
                 ),
+                crate::v02::types::request::BroadcastedTransaction::DeployAccount(
+                    BroadcastedDeployAccountTransaction::V3(deploy),
+                ) => {
+                    let transaction_hash = deploy.transaction_hash(ChainId::TESTNET);
+
+                    starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
+                        gateway::transaction::DeployAccountTransaction::V3(
+                            gateway::transaction::DeployAccountTransactionV3 {
+                                version: deploy.version,
+                                class_hash: deploy.class_hash,
+                                nonce: deploy.nonce,
+                                sender_address: deploy.deployed_contract_address(),
+                                contract_address_salt: deploy.contract_address_salt,
+                                constructor_calldata: deploy.constructor_calldata,
+                                signature: deploy.signature,
+                                transaction_hash,
+                                nonce_data_availability_mode: deploy
+                                    .nonce_data_availability_mode
+                                    .into(),
+                                fee_data_availability_mode: deploy
+                                    .fee_data_availability_mode
+                                    .into(),
+                                resource_bounds: deploy.resource_bounds.into(),
+                                tip: deploy.tip,
+                                paymaster_data: deploy.paymaster_data,
+                            },
+                        ),
+                    )
+                }
                 crate::v02::types::request::BroadcastedTransaction::Invoke(
                     crate::v02::types::request::BroadcastedInvokeTransaction::V0(invoke),
                 ) => {
