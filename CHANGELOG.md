@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `get_block_hash` syscall always returns `0x0` when calling `starknet_trace*` methods
+- `get_block_hash` syscall returns `0x0` for the latest available block (current - 10) when executing `starknet_trace*` methods
 
 ## [0.9.6] - 2023-11-20
 
