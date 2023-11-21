@@ -1,6 +1,10 @@
 use super::state_reader::PathfinderStateReader;
-use crate::state_reader::LruCachedReader;
-use blockifier::{block_context::BlockContext, state::cached_state::CachedState};
+use crate::{state_reader::LruCachedReader, IntoStarkFelt};
+use anyhow::Context;
+use blockifier::{
+    block_context::BlockContext,
+    state::{cached_state::CachedState, state_api::State},
+};
 use pathfinder_common::{BlockHeader, ChainId, StateUpdate};
 
 pub struct ExecutionState<'tx> {
@@ -32,6 +36,30 @@ impl<'tx> ExecutionState<'tx> {
             self.pending_state.is_some(),
         );
         let mut cached_state = LruCachedReader::new_cached_state(raw_reader)?;
+
+        // if we're running on parent state we have to set the block hash for block_number - 10 in the state
+        if self.execute_on_parent_state && self.header.number.get() >= 10 {
+            let block_number_whose_hash_becomes_available =
+                pathfinder_common::BlockNumber::new_or_panic(self.header.number.get() - 10);
+            let (_, block_hash) = self
+                .transaction
+                .block_id(block_number_whose_hash_becomes_available.into())?
+                .context("Getting historical block hash")?;
+
+            tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");
+
+            cached_state.set_storage_at(
+                starknet_api::core::ContractAddress(starknet_api::core::PatriciaKey::try_from(
+                    starknet_api::hash::StarkFelt::from(1u8),
+                )?),
+                starknet_api::state::StorageKey(starknet_api::core::PatriciaKey::try_from(
+                    starknet_api::hash::StarkFelt::from(
+                        block_number_whose_hash_becomes_available.get(),
+                    ),
+                )?),
+                block_hash.0.into_starkfelt(),
+            )
+        }
 
         self.pending_state.as_ref().map(|pending_state| {
             super::pending::apply_pending_update(&mut cached_state, pending_state)
