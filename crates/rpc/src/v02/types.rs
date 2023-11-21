@@ -179,7 +179,9 @@ pub mod request {
                     BroadcastedInvokeTransaction::V1(tx) => tx.transaction_hash(chain_id),
                     BroadcastedInvokeTransaction::V3(tx) => tx.transaction_hash(chain_id),
                 },
-                BroadcastedTransaction::DeployAccount(tx) => tx.transaction_hash(chain_id),
+                BroadcastedTransaction::DeployAccount(tx) => match tx {
+                    BroadcastedDeployAccountTransaction::V0V1(tx) => tx.transaction_hash(chain_id),
+                },
             }
         }
     }
@@ -409,11 +411,47 @@ pub mod request {
         }
     }
 
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(
+        any(test, feature = "rpc-full-serde"),
+        derive(serde::Serialize),
+        serde(untagged)
+    )]
+    pub enum BroadcastedDeployAccountTransaction {
+        V0V1(BroadcastedDeployAccountTransactionV0V1),
+    }
+
+    impl<'de> serde::Deserialize<'de> for BroadcastedDeployAccountTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use serde::de;
+
+            #[serde_as]
+            #[derive(serde::Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                pub version: TransactionVersion,
+            }
+
+            let v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            match version.version.without_query_version() {
+                0 | 1 => Ok(Self::V0V1(
+                    BroadcastedDeployAccountTransactionV0V1::deserialize(&v)
+                        .map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 0 or 1")),
+            }
+        }
+    }
+
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
-    pub struct BroadcastedDeployAccountTransaction {
+    pub struct BroadcastedDeployAccountTransactionV0V1 {
         // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -427,7 +465,7 @@ pub mod request {
         pub class_hash: ClassHash,
     }
 
-    impl BroadcastedDeployAccountTransaction {
+    impl BroadcastedDeployAccountTransactionV0V1 {
         pub fn deployed_contract_address(&self) -> ContractAddress {
             let constructor_calldata_hash = self
                 .constructor_calldata
@@ -1028,7 +1066,7 @@ pub mod request {
                 let class_hash = class_hash!(
                     "0x25ec026985a3bf9d0cc1fe17326b245dfdc3ff89b8fde106542a3ea56c5a918"
                 );
-                let tx = BroadcastedDeployAccountTransaction {
+                let tx = BroadcastedDeployAccountTransactionV0V1 {
                     version: TransactionVersion::ONE,
                     max_fee: fee!("0x15e1e7c9a7a0"),
                     signature: vec![
@@ -1073,7 +1111,9 @@ pub mod request {
                     )
                 );
 
-                let transaction = BroadcastedTransaction::DeployAccount(tx);
+                let transaction = BroadcastedTransaction::DeployAccount(
+                    BroadcastedDeployAccountTransaction::V0V1(tx),
+                );
                 assert_eq!(
                     transaction.transaction_hash(ChainId::TESTNET, Some(class_hash)),
                     transaction_hash!(

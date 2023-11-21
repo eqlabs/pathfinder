@@ -1,6 +1,6 @@
 use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
-use crate::v02::types::request::BroadcastedDeployAccountTransaction;
+use crate::v02::types::request::BroadcastedDeployAccountTransactionV0V1;
 use pathfinder_common::{ContractAddress, TransactionHash};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
@@ -9,7 +9,7 @@ use starknet_gateway_types::error::SequencerError;
 #[serde(tag = "type")]
 pub enum Transaction {
     #[serde(rename = "DEPLOY_ACCOUNT")]
-    DeployAccount(BroadcastedDeployAccountTransaction),
+    DeployAccount(BroadcastedDeployAccountTransactionV0V1),
 }
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
@@ -161,7 +161,7 @@ mod tests {
     fn get_input() -> AddDeployAccountTransactionInput {
         AddDeployAccountTransactionInput {
             deploy_account_transaction: Transaction::DeployAccount(
-                BroadcastedDeployAccountTransaction {
+                BroadcastedDeployAccountTransactionV0V1 {
                     version: TransactionVersion::ONE,
                     max_fee: fee!("0xbf391377813"),
                     signature: vec![

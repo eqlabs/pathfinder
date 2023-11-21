@@ -152,6 +152,8 @@ pub(crate) mod tests {
         transaction::{EntryPointType, ExecutionStatus, Receipt},
     };
 
+    use crate::v02::types::request::BroadcastedDeployAccountTransaction;
+
     use super::*;
 
     impl From<crate::v02::types::request::BroadcastedTransaction>
@@ -242,23 +244,23 @@ pub(crate) mod tests {
                         ),
                     )
                 }
-                crate::v02::types::request::BroadcastedTransaction::DeployAccount(deploy) => {
-                    starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
-                        gateway::transaction::DeployAccountTransaction::V0V1(
-                            gateway::transaction::DeployAccountTransactionV0V1 {
-                                contract_address: deploy.deployed_contract_address(),
-                                transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
-                                max_fee: deploy.max_fee,
-                                version: deploy.version,
-                                signature: deploy.signature,
-                                nonce: deploy.nonce,
-                                contract_address_salt: deploy.contract_address_salt,
-                                constructor_calldata: deploy.constructor_calldata,
-                                class_hash: deploy.class_hash,
-                            },
-                        ),
-                    )
-                }
+                crate::v02::types::request::BroadcastedTransaction::DeployAccount(
+                    BroadcastedDeployAccountTransaction::V0V1(deploy),
+                ) => starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
+                    gateway::transaction::DeployAccountTransaction::V0V1(
+                        gateway::transaction::DeployAccountTransactionV0V1 {
+                            contract_address: deploy.deployed_contract_address(),
+                            transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
+                            max_fee: deploy.max_fee,
+                            version: deploy.version,
+                            signature: deploy.signature,
+                            nonce: deploy.nonce,
+                            contract_address_salt: deploy.contract_address_salt,
+                            constructor_calldata: deploy.constructor_calldata,
+                            class_hash: deploy.class_hash,
+                        },
+                    ),
+                ),
                 crate::v02::types::request::BroadcastedTransaction::Invoke(
                     crate::v02::types::request::BroadcastedInvokeTransaction::V0(invoke),
                 ) => {
