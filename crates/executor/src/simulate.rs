@@ -276,8 +276,6 @@ fn to_trace(
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,
 ) -> Result<TransactionTrace, TransactionExecutionError> {
-    tracing::trace!(?execution_info, "Transforming trace");
-
     let validate_invocation = execution_info
         .validate_call_info
         .map(TryInto::try_into)
