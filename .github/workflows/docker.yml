@@ -1,3 +1,6 @@
+# Builds and uploads docker images whenever a version tag is pushed. When a release is created,
+# the associated image is then tagged with the version number and latest.
+
 name: Docker
 
 on:
@@ -5,12 +8,17 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
+
+env:
+  # Workaround for https://github.com/rust-lang/cargo/issues/8719#issuecomment-1516492970
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
-  update-docker-images:
-    env:
-      # Workaround for https://github.com/rust-lang/cargo/issues/8719#issuecomment-1516492970
-      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  # Build a docker image unless this was triggered by a release.
+  build-image:
+    if: github.event_name != 'release'
     runs-on: pathfinder-large-ubuntu
     steps:
       - name: Determine Docker image metadata
@@ -18,12 +26,6 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: eqlabs/pathfinder
-          tags: |
-            type=semver,pattern={{raw}}
-            # NOTE: pre-release builds don't update `latest` tag, so we force-update that for pushed tags
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            # snapshot tag for manually triggered builds
-            type=raw,value=snapshot-{{branch}}-{{sha}},enable=${{ github.event_name == 'workflow_dispatch' }}
       - name: Checkout sources
         uses: actions/checkout@v3
         with:
@@ -67,7 +69,26 @@ jobs:
             PATHFINDER_FORCE_VERSION=${{ steps.generate_version.outputs.pathfinder_version }}
           builder: ${{ steps.buildx.outputs.name }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          tags: eqlabs/pathfinder:snapshot-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Add the release labels to the associated docker image.
+  tag-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Pull image
+        run: docker pull eqlabs/pathfinder:snapshot-${{ github.sha }}
+      - name: Tag image
+        run: |
+          docker tag eqlabs/pathfinder:snapshot-${{ github.sha }} eqlabs/pathfinder:latest
+          docker tag eqlabs/pathfinder:snapshot-${{ github.sha }} eqlabs/pathfinder:${{ github.event.release.tag_name }}
+      - name: Push image tags
+        run: docker push --all-tags eqlabs/pathfinder
