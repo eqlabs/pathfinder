@@ -2,6 +2,7 @@
 name = "load-test"
 version = "0.1.0"
 description = "Load test for pathfinder JSON-RPC endpoints"
+authors = ["Equilibrium Labs <info@equilibrium.co>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.73"

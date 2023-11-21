@@ -13,6 +13,7 @@ members = [
     "crates/p2p_bootstrap",
     "crates/p2p_proto",
     "crates/p2p_proto_derive",
+    "crates/p2p_stream",
     "crates/pathfinder",
     "crates/retry",
     "crates/rpc",
@@ -35,6 +36,7 @@ lto = true
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.73"
+authors = ["Equilibrium Labs <info@equilibrium.co>"]
 
 [workspace.dependencies]
 anyhow = "1.0.75"

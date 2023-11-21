@@ -2,6 +2,7 @@
 name = "p2p"
 version = "0.1.0"
 description = "Pathfinder P2P"
+authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }

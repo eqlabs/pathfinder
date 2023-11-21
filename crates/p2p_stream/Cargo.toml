@@ -1,0 +1,38 @@
+[package]
+name = "p2p_stream"
+description = "Extension of libp2p-request-response that allows for streaming responses to a single request."
+authors = ["Parity Technologies <admin@parity.io>", "Equilibrium Labs <info@equilibrium.co>"]
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+async-trait = { workspace = true }
+futures = { workspace = true }
+futures-bounded = "0.2.1"
+libp2p = { version = "0.53.0", default-features = false, features = [
+    "identify",
+    "noise",
+    "tcp",
+    "tokio",
+] }
+smallvec = "1.11.1"
+tracing = { workspace = true }
+void = "1.0.2"
+
+[dev-dependencies]
+anyhow = { workspace = true }
+fake = { workspace = true }
+libp2p = { version = "0.53.0", default-features = false, features = [
+    "identify",
+    "noise",
+    "tcp",
+    "tokio",
+    "yamux",
+] }
+libp2p-plaintext = "0.41.0"
+libp2p-swarm-test = "0.3.0"
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["macros", "time"] }
+tracing-subscriber = { workspace = true }
