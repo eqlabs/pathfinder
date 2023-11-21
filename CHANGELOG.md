@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- `get_block_hash` syscall returns `0x0` for the latest available block (current - 10) when executing `starknet_trace*` methods
+
 ## [0.9.6] - 2023-11-20
 
 ### Fixed
