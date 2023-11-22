@@ -1,11 +1,12 @@
 use pathfinder_common::transaction::{
-    DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
+    DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
     DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
     InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
-    ResourceBounds,
+    ResourceBound, ResourceBounds,
 };
-use pathfinder_common::{Fee, TransactionHash, TransactionVersion};
-use pathfinder_crypto::Felt;
+use pathfinder_common::{
+    ResourceAmount, ResourcePricePerUnit, Tip, TransactionHash, TransactionVersion,
+};
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 
@@ -48,17 +49,17 @@ impl Serialize for Transaction {
             TransactionVariant::DeclareV0(x) => DeclareV0Helper(x).serialize(serializer),
             TransactionVariant::DeclareV1(x) => DeclareV1Helper(x).serialize(serializer),
             TransactionVariant::DeclareV2(x) => DeclareV2Helper(x).serialize(serializer),
-            TransactionVariant::DeclareV3(x) => DeclareV3MapToV2Helper(x).serialize(serializer),
+            TransactionVariant::DeclareV3(x) => DeclareV3Helper(x).serialize(serializer),
             TransactionVariant::Deploy(x) => DeployHelper(x).serialize(serializer),
             TransactionVariant::DeployAccountV0V1(x) => {
                 DeployAccountV0V1Helper(x).serialize(serializer)
             }
             TransactionVariant::DeployAccountV3(x) => {
-                DeployAccountV3MapToV1Helper(x).serialize(serializer)
+                DeployAccountV3Helper(x).serialize(serializer)
             }
             TransactionVariant::InvokeV0(x) => InvokeV0Helper(x).serialize(serializer),
             TransactionVariant::InvokeV1(x) => InvokeV1Helper(x).serialize(serializer),
-            TransactionVariant::InvokeV3(x) => InvokeV3MapToV1Helper(x).serialize(serializer),
+            TransactionVariant::InvokeV3(x) => InvokeV3Helper(x).serialize(serializer),
             TransactionVariant::L1Handler(x) => L1HandlerHelper(x).serialize(serializer),
         }
     }
@@ -67,15 +68,21 @@ impl Serialize for Transaction {
 struct DeclareV0Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV1Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV2Helper<'a>(&'a DeclareTransactionV2);
-struct DeclareV3MapToV2Helper<'a>(&'a DeclareTransactionV3);
+struct DeclareV3Helper<'a>(&'a DeclareTransactionV3);
 struct DeployHelper<'a>(&'a DeployTransaction);
 struct DeployAccountV0V1Helper<'a>(&'a DeployAccountTransactionV0V1);
-struct DeployAccountV3MapToV1Helper<'a>(&'a DeployAccountTransactionV3);
+struct DeployAccountV3Helper<'a>(&'a DeployAccountTransactionV3);
 struct InvokeV0Helper<'a>(&'a InvokeTransactionV0);
 struct InvokeV1Helper<'a>(&'a InvokeTransactionV1);
-struct InvokeV3MapToV1Helper<'a>(&'a InvokeTransactionV3);
+struct InvokeV3Helper<'a>(&'a InvokeTransactionV3);
 struct L1HandlerHelper<'a>(&'a L1HandlerTransaction);
 struct TransactionVersionHelper<'a>(&'a TransactionVersion);
+struct ResourceBoundsHelper<'a>(&'a ResourceBounds);
+struct ResourceBoundHelper<'a>(&'a ResourceBound);
+struct ResourceAmountHelper<'a>(&'a ResourceAmount);
+struct ResourcePricePerUnitHelper<'a>(&'a ResourcePricePerUnit);
+struct DataAvailabilityModeHelper<'a>(&'a DataAvailabilityMode);
+struct TipHelper<'a>(&'a Tip);
 
 impl Serialize for DeclareV0Helper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -128,22 +135,34 @@ impl Serialize for DeclareV2Helper<'_> {
     }
 }
 
-impl Serialize for DeclareV3MapToV2Helper<'_> {
+impl Serialize for DeclareV3Helper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let max_fee = max_fee_from_resource_bounds(&self.0.resource_bounds);
-
-        let mut s = serializer.serialize_struct("DeclareV3", 8)?;
+        let mut s = serializer.serialize_struct("DeclareV3", 13)?;
         s.serialize_field("type", "DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
         s.serialize_field("compiled_class_hash", &self.0.compiled_class_hash)?;
-        s.serialize_field("max_fee", &max_fee)?;
-        s.serialize_field("version", "0x2")?;
+        s.serialize_field("version", "0x3")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("class_hash", &self.0.class_hash)?;
+        s.serialize_field(
+            "resource_bounds",
+            &ResourceBoundsHelper(&self.0.resource_bounds),
+        )?;
+        s.serialize_field("tip", &TipHelper(&self.0.tip))?;
+        s.serialize_field("paymaster_data", &self.0.paymaster_data)?;
+        s.serialize_field("account_deployment_data", &self.0.account_deployment_data)?;
+        s.serialize_field(
+            "nonce_data_availability_mode",
+            &DataAvailabilityModeHelper(&self.0.nonce_data_availability_mode),
+        )?;
+        s.serialize_field(
+            "fee_data_availability_mode",
+            &DataAvailabilityModeHelper(&self.0.fee_data_availability_mode),
+        )?;
         s.end()
     }
 }
@@ -181,22 +200,33 @@ impl Serialize for DeployAccountV0V1Helper<'_> {
     }
 }
 
-impl Serialize for DeployAccountV3MapToV1Helper<'_> {
+impl Serialize for DeployAccountV3Helper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let max_fee = max_fee_from_resource_bounds(&self.0.resource_bounds);
-
-        let mut s = serializer.serialize_struct("DeployAccount", 8)?;
+        let mut s = serializer.serialize_struct("DeployAccount", 12)?;
         s.serialize_field("type", "DEPLOY_ACCOUNT")?;
-        s.serialize_field("max_fee", &max_fee)?;
-        s.serialize_field("version", "0x1")?;
+        s.serialize_field("version", "0x3")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
         s.serialize_field("constructor_calldata", &self.0.constructor_calldata)?;
         s.serialize_field("class_hash", &self.0.class_hash)?;
+        s.serialize_field(
+            "resource_bounds",
+            &ResourceBoundsHelper(&self.0.resource_bounds),
+        )?;
+        s.serialize_field("tip", &TipHelper(&self.0.tip))?;
+        s.serialize_field("paymaster_data", &self.0.paymaster_data)?;
+        s.serialize_field(
+            "nonce_data_availability_mode",
+            &DataAvailabilityModeHelper(&self.0.nonce_data_availability_mode),
+        )?;
+        s.serialize_field(
+            "fee_data_availability_mode",
+            &DataAvailabilityModeHelper(&self.0.fee_data_availability_mode),
+        )?;
         s.end()
     }
 }
@@ -235,21 +265,33 @@ impl Serialize for InvokeV1Helper<'_> {
     }
 }
 
-impl Serialize for InvokeV3MapToV1Helper<'_> {
+impl Serialize for InvokeV3Helper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let max_fee = max_fee_from_resource_bounds(&self.0.resource_bounds);
-
-        let mut s = serializer.serialize_struct("InvokeV1", 7)?;
+        let mut s = serializer.serialize_struct("InvokeV3", 12)?;
         s.serialize_field("type", "INVOKE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
         s.serialize_field("calldata", &self.0.calldata)?;
-        s.serialize_field("max_fee", &max_fee)?;
-        s.serialize_field("version", "0x1")?;
+        s.serialize_field("version", "0x3")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
+        s.serialize_field(
+            "resource_bounds",
+            &ResourceBoundsHelper(&self.0.resource_bounds),
+        )?;
+        s.serialize_field("tip", &TipHelper(&self.0.tip))?;
+        s.serialize_field("paymaster_data", &self.0.paymaster_data)?;
+        s.serialize_field("account_deployment_data", &self.0.account_deployment_data)?;
+        s.serialize_field(
+            "nonce_data_availability_mode",
+            &DataAvailabilityModeHelper(&self.0.nonce_data_availability_mode),
+        )?;
+        s.serialize_field(
+            "fee_data_availability_mode",
+            &DataAvailabilityModeHelper(&self.0.fee_data_availability_mode),
+        )?;
         s.end()
     }
 }
@@ -280,14 +322,73 @@ impl Serialize for TransactionVersionHelper<'_> {
     }
 }
 
-fn max_fee_from_resource_bounds(r: &ResourceBounds) -> Fee {
-    let max_fee = r
-        .l1_gas
-        .max_price_per_unit
-        .0
-        .saturating_mul(r.l1_gas.max_amount.0 as u128);
+impl Serialize for ResourceBoundsHelper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut s = serializer.serialize_struct("ResourceBounds", 2)?;
+        s.serialize_field("l1_gas", &ResourceBoundHelper(&self.0.l1_gas))?;
+        s.serialize_field("l2_gas", &ResourceBoundHelper(&self.0.l2_gas))?;
+        s.end()
+    }
+}
 
-    Fee(Felt::from(max_fee))
+impl Serialize for ResourceBoundHelper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut s = serializer.serialize_struct("ResourceBound", 2)?;
+        s.serialize_field("max_amount", &ResourceAmountHelper(&self.0.max_amount))?;
+        s.serialize_field(
+            "max_price_per_unit",
+            &ResourcePricePerUnitHelper(&self.0.max_price_per_unit),
+        )?;
+        s.end()
+    }
+}
+
+impl Serialize for ResourceAmountHelper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use pathfinder_serde::bytes_to_hex_str;
+        serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
+    }
+}
+
+impl Serialize for ResourcePricePerUnitHelper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use pathfinder_serde::bytes_to_hex_str;
+        serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
+    }
+}
+
+impl Serialize for DataAvailabilityModeHelper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.0 {
+            DataAvailabilityMode::L1 => serializer.serialize_str("L1"),
+            DataAvailabilityMode::L2 => serializer.serialize_str("L2"),
+        }
+    }
+}
+
+impl Serialize for TipHelper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use pathfinder_serde::bytes_to_hex_str;
+        serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
+    }
 }
 
 #[cfg(test)]
@@ -417,13 +518,27 @@ mod tests {
 
             let expected = json!({
                 "type": "DECLARE",
-                "version": "0x2",
+                "version": "0x3",
                 "sender_address": "0xabc",
-                "max_fee": "0xa00",
                 "signature": ["0xa1b1", "0x1a1b"],
                 "class_hash": "0x123",
                 "nonce": "0xaabbcc",
                 "compiled_class_hash": "0xbbbbb",
+                "nonce_data_availability_mode": "L1",
+                "fee_data_availability_mode": "L1",
+                "resource_bounds": {
+                    "l1_gas": {
+                        "max_amount": "0x100",
+                        "max_price_per_unit": "0xa",
+                    },
+                    "l2_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0",
+                    }
+                },
+                "tip": "0x5",
+                "paymaster_data": [],
+                "account_deployment_data": [],
             });
             let uut = Transaction(original);
             let result = serde_json::to_value(uut).unwrap();
@@ -519,13 +634,26 @@ mod tests {
 
             let expected = json!({
                 "type": "DEPLOY_ACCOUNT",
-                "max_fee": "0xa00",
-                "version": "0x1",
+                "version": "0x3",
                 "signature": ["0xa1b1", "0x1a1b"],
                 "nonce": "0xaabbcc",
                 "contract_address_salt": "0xeeee",
                 "constructor_calldata": ["0xbbb0","0xbbb1"],
                 "class_hash": "0x123",
+                "nonce_data_availability_mode": "L1",
+                "fee_data_availability_mode": "L1",
+                "resource_bounds": {
+                    "l1_gas": {
+                        "max_amount": "0x100",
+                        "max_price_per_unit": "0xa",
+                    },
+                    "l2_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0",
+                    }
+                },
+                "tip": "0x5",
+                "paymaster_data": [],
             });
             let uut = Transaction(original);
             let result = serde_json::to_value(uut).unwrap();
@@ -619,12 +747,26 @@ mod tests {
 
             let expected = json!({
                 "type": "INVOKE",
-                "version": "0x1",
+                "version": "0x3",
                 "calldata": ["0xfff1","0xfff0"],
                 "sender_address": "0xabc",
-                "max_fee": "0xa00",
                 "signature": ["0xa1b1", "0x1a1b"],
                 "nonce": "0xaabbcc",
+                "nonce_data_availability_mode": "L1",
+                "fee_data_availability_mode": "L1",
+                "resource_bounds": {
+                    "l1_gas": {
+                        "max_amount": "0x100",
+                        "max_price_per_unit": "0xa",
+                    },
+                    "l2_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0",
+                    }
+                },
+                "tip": "0x5",
+                "paymaster_data": [],
+                "account_deployment_data": [],
             });
             let uut = Transaction(original);
             let result = serde_json::to_value(uut).unwrap();
