@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Support for RPC v0.6.0-rc1 via the `/rpc/v0_6` endpoint. Note that this does not include the `/rpc/v0.6` endpoint as the underscore is now the standard across node implementations.
 
+### Changed
+
+- Default RPC version is now v0.5 (was v0.4). This can be manually configured to any version.
+
 ### Removed
 
 - Support for `testnet2`
