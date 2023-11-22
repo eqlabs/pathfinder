@@ -14,6 +14,7 @@ pub mod v02;
 pub mod v03;
 pub mod v04;
 pub mod v05;
+pub mod v06;
 
 pub use executor::compose_executor_transaction;
 pub use pending::PendingData;
@@ -39,9 +40,9 @@ use tower_http::cors::CorsLayer;
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
 pub enum DefaultVersion {
-    V03,
     V04,
     V05,
+    V06,
 }
 
 pub struct RpcServer {
@@ -137,15 +138,15 @@ impl RpcServer {
             }
         }
 
-        let v03_routes = v03::register_routes().build(self.context.clone());
         let v04_routes = v04::register_routes().build(self.context.clone());
         let v05_routes = v05::register_routes().build(self.context.clone());
+        let v06_routes = v06::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
-            DefaultVersion::V03 => v03_routes.clone(),
             DefaultVersion::V04 => v04_routes.clone(),
             DefaultVersion::V05 => v05_routes.clone(),
+            DefaultVersion::V06 => v06_routes.clone(),
         };
 
         let router = axum::Router::new()
@@ -153,15 +154,14 @@ impl RpcServer {
             // used by monitoring bots to check service health.
             .route("/", get(empty_body).post(rpc_handler))
             .with_state(default_router)
-            .route("/rpc/v0.3", post(rpc_handler))
-            .route("/rpc/v0_3", post(rpc_handler))
-            .with_state(v03_routes)
             .route("/rpc/v0.4", post(rpc_handler))
             .route("/rpc/v0_4", post(rpc_handler))
             .with_state(v04_routes)
             .route("/rpc/v0.5", post(rpc_handler))
             .route("/rpc/v0_5", post(rpc_handler))
             .with_state(v05_routes)
+            .route("/rpc/v0_6", post(rpc_handler))
+            .with_state(v06_routes)
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
             .with_state(pathfinder_routes);
 
@@ -830,6 +830,34 @@ mod tests {
     #[case::root_write("/", "v04/starknet_write_api.json",         &[])]
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
+    #[case::v0_6_api  ("/rpc/v0_6", "v06/starknet_api_openrpc.json", 
+        &[
+            "starknet_call",
+            "starknet_estimateFee",
+            "starknet_estimateMessageFee",
+            "starknet_getBlockWithTxHashes",
+            "starknet_getBlockWithTxs",
+            "starknet_getTransactionStatus",
+            "starknet_getTransactionReceipt",
+        ]
+    )]
+    #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", 
+        &[
+            "starknet_simulateTransactions", 
+            "starknet_traceBlockTransactions", 
+            "starknet_traceTransaction"
+        ]
+    )]
+    #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", 
+        &[
+            "starknet_addDeclareTransaction", 
+            "starknet_addDeployAccountTransaction", 
+            "starknet_addInvokeTransaction"
+        ]
+    )]
+    // get_transaction_status is now part of the official spec, so we are phasing it out.
+    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
+
     #[case::v05_api  ("/rpc/v0.5", "v05/starknet_api_openrpc.json", &[])]
     #[case::v05_trace("/rpc/v0.5", "v05/starknet_trace_api_openrpc.json", &[])]
     #[case::v05_write("/rpc/v0.5", "v05/starknet_write_api.json",         &[])]
@@ -847,18 +875,6 @@ mod tests {
     #[case::v0_4_trace("/rpc/v0_4", "v04/starknet_trace_api_openrpc.json", &[])]
     #[case::v0_4_write("/rpc/v0_4", "v04/starknet_write_api.json",         &[])]
     #[case::v0_4_pathfinder("/rpc/v0_4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-
-    #[case::v03_api  ("/rpc/v0.3", "v03/starknet_api_openrpc.json",       &[])]
-    #[case::v03_trace("/rpc/v0.3", "v03/starknet_trace_api_openrpc.json", 
-        &["starknet_traceTransaction", "starknet_traceBlockTransactions"])]
-    #[case::v03_write ("/rpc/v0.3", "v03/starknet_write_api.json",         &[])]
-    #[case::v03_pathfinder("/rpc/v0.3", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-    #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
-    #[case::v0_3_api  ("/rpc/v0_3", "v03/starknet_api_openrpc.json",       &[])]
-    #[case::v0_3_trace("/rpc/v0_3", "v03/starknet_trace_api_openrpc.json", 
-        &["starknet_traceTransaction", "starknet_traceBlockTransactions"])]
-    #[case::v0_3_write ("/rpc/v0_3", "v03/starknet_write_api.json",         &[])]
-    #[case::v0_3_pathfinder("/rpc/v0_3", "pathfinder_rpc_api.json", &["pathfinder_version"])]
     
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
 

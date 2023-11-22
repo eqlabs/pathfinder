@@ -1,5 +1,4 @@
 use crate::context::RpcContext;
-use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
 
@@ -51,22 +50,10 @@ pub async fn get_transaction_by_hash_impl(
     jh.await.context("Database read panic or shutting down")?
 }
 
-pub async fn get_transaction_by_hash(
-    context: RpcContext,
-    input: GetTransactionByHashInput,
-) -> Result<Transaction, GetTransactionByHashError> {
-    get_transaction_by_hash_impl(context, input)
-        .await?
-        .map(Into::into)
-        .ok_or(GetTransactionByHashError::TxnHashNotFoundV03)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{EntryPoint, Fee, TransactionNonce};
-    use pathfinder_crypto::Felt;
 
     mod parsing {
         use super::*;
@@ -98,75 +85,5 @@ mod tests {
                 }
             )
         }
-    }
-
-    mod errors {
-        use super::*;
-
-        #[tokio::test]
-        async fn hash_not_found() {
-            let context = RpcContext::for_tests();
-            let input = GetTransactionByHashInput {
-                transaction_hash: transaction_hash_bytes!(b"non_existent"),
-            };
-
-            let result = get_transaction_by_hash(context, input).await;
-
-            assert_matches::assert_matches!(
-                result,
-                Err(GetTransactionByHashError::TxnHashNotFoundV03)
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn success() {
-        let context = RpcContext::for_tests();
-        let input = GetTransactionByHashInput {
-            transaction_hash: transaction_hash_bytes!(b"txn 0"),
-        };
-
-        let result = get_transaction_by_hash(context, input).await.unwrap();
-        use crate::v02::types::reply;
-        assert_eq!(
-            result,
-            Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
-                common: reply::CommonDeclareInvokeTransactionProperties {
-                    hash: transaction_hash_bytes!(b"txn 0"),
-                    max_fee: Fee::ZERO,
-                    signature: vec![],
-                    nonce: TransactionNonce(Felt::ZERO),
-                },
-                contract_address: contract_address_bytes!(b"contract 0"),
-                entry_point_selector: EntryPoint(Felt::ZERO),
-                calldata: vec![],
-            }))
-        )
-    }
-
-    #[tokio::test]
-    async fn pending() {
-        let context = RpcContext::for_tests_with_pending().await;
-
-        let input = GetTransactionByHashInput {
-            transaction_hash: transaction_hash_bytes!(b"pending tx hash 0"),
-        };
-
-        let result = get_transaction_by_hash(context, input).await.unwrap();
-        use crate::v02::types::reply;
-        assert_eq!(
-            result,
-            Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
-                common: reply::CommonDeclareInvokeTransactionProperties {
-                    hash: transaction_hash_bytes!(b"pending tx hash 0"),
-                    max_fee: Fee::ZERO,
-                    signature: vec![],
-                    nonce: TransactionNonce(Felt::ZERO),
-                },
-                contract_address: contract_address_bytes!(b"pending contract addr 0"),
-                entry_point_selector: entry_point_bytes!(b"entry point 0"),
-                calldata: vec![],
-            }))
-        )
     }
 }

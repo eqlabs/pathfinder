@@ -1,5 +1,4 @@
 use crate::context::RpcContext;
-use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionIndex};
 use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
@@ -77,21 +76,10 @@ pub async fn get_transaction_by_block_id_and_index_impl(
     jh.await.context("Database read panic or shutting down")?
 }
 
-pub async fn get_transaction_by_block_id_and_index(
-    context: RpcContext,
-    input: GetTransactionByBlockIdAndIndexInput,
-) -> Result<Transaction, GetTransactionByBlockIdAndIndexError> {
-    get_transaction_by_block_id_and_index_impl(context, input)
-        .await
-        .map(Into::into)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockHash, BlockNumber};
-    use pathfinder_crypto::Felt;
 
     mod parsing {
         use super::*;
@@ -132,104 +120,5 @@ mod tests {
                 }
             )
         }
-    }
-
-    mod errors {
-        use super::*;
-
-        #[tokio::test]
-        async fn block_not_found() {
-            let context = RpcContext::for_tests();
-            let input = GetTransactionByBlockIdAndIndexInput {
-                block_id: BlockId::Hash(BlockHash(Felt::ZERO)),
-                index: TransactionIndex::new_or_panic(0),
-            };
-
-            let result = get_transaction_by_block_id_and_index(context, input).await;
-
-            assert_matches::assert_matches!(
-                result,
-                Err(GetTransactionByBlockIdAndIndexError::BlockNotFound)
-            );
-        }
-
-        #[tokio::test]
-        async fn invalid_index() {
-            let context = RpcContext::for_tests();
-            let input = GetTransactionByBlockIdAndIndexInput {
-                block_id: BlockId::Hash(block_hash_bytes!(b"genesis")),
-                index: TransactionIndex::new_or_panic(123),
-            };
-
-            let result = get_transaction_by_block_id_and_index(context, input).await;
-
-            assert_matches::assert_matches!(
-                result,
-                Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex)
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn by_block_number() {
-        let context = RpcContext::for_tests();
-        let input = GetTransactionByBlockIdAndIndexInput {
-            block_id: BlockId::Number(BlockNumber::new_or_panic(0)),
-            index: TransactionIndex::new_or_panic(0),
-        };
-
-        let result = get_transaction_by_block_id_and_index(context, input)
-            .await
-            .unwrap();
-        assert_eq!(result.hash(), transaction_hash_bytes!(b"txn 0"));
-    }
-
-    #[tokio::test]
-    async fn by_block_hash() {
-        let context = RpcContext::for_tests();
-        let input = GetTransactionByBlockIdAndIndexInput {
-            block_id: BlockId::Hash(block_hash_bytes!(b"genesis")),
-            index: TransactionIndex::new_or_panic(0),
-        };
-
-        let result = get_transaction_by_block_id_and_index(context, input)
-            .await
-            .unwrap();
-        assert_eq!(result.hash(), transaction_hash_bytes!(b"txn 0"));
-    }
-
-    #[tokio::test]
-    async fn by_latest() {
-        let context = RpcContext::for_tests();
-        let input = GetTransactionByBlockIdAndIndexInput {
-            block_id: BlockId::Latest,
-            index: TransactionIndex::new_or_panic(0),
-        };
-
-        let result = get_transaction_by_block_id_and_index(context, input)
-            .await
-            .unwrap();
-        assert_eq!(result.hash(), transaction_hash_bytes!(b"txn 3"));
-    }
-
-    #[tokio::test]
-    async fn by_pending() {
-        let context = RpcContext::for_tests_with_pending().await;
-
-        const TX_IDX: usize = 1;
-        let expected = context.pending_data.get_unchecked();
-
-        assert!(TX_IDX <= expected.block.transactions.len());
-        let expected: Transaction = expected.block.transactions.get(TX_IDX).unwrap().into();
-
-        let input = GetTransactionByBlockIdAndIndexInput {
-            block_id: BlockId::Pending,
-            index: TransactionIndex::new_or_panic(TX_IDX.try_into().unwrap()),
-        };
-
-        let result = get_transaction_by_block_id_and_index(context, input)
-            .await
-            .unwrap();
-        assert_eq!(result, expected);
     }
 }
