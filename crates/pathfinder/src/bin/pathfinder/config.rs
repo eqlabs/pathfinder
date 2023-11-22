@@ -198,6 +198,22 @@ This should only be enabled for debugging purposes as it adds substantial proces
         default_value = "1"
     )]
     rpc_batch_concurrency_limit: NonZeroUsize,
+
+    #[arg(
+        long = "sync.enabled",
+        long_help = "Enable syncing the chain",
+        env = "PATHFINDER_SYNC_ENABLED",
+        default_value = "true"
+    )]
+    is_sync_enabled: bool,
+
+    #[arg(
+        long = "rcp.enabled",
+        long_help = "Enable serving RPC API",
+        env = "PATHFINDER_RPC_ENABLED",
+        default_value = "true"
+    )]
+    is_rpc_enabled: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -433,6 +449,8 @@ pub struct Config {
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
     pub rpc_batch_concurrency_limit: NonZeroUsize,
+    pub is_sync_enabled: bool,
+    pub is_rpc_enabled: bool,
 }
 
 pub struct Ethereum {
@@ -606,6 +624,8 @@ impl Config {
             debug: DebugConfig::parse(cli.debug),
             verify_tree_hashes: cli.verify_tree_node_data,
             rpc_batch_concurrency_limit: cli.rpc_batch_concurrency_limit,
+            is_sync_enabled: cli.is_sync_enabled,
+            is_rpc_enabled: cli.is_rpc_enabled,
         }
     }
 }

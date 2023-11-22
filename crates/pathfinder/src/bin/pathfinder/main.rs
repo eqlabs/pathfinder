@@ -14,7 +14,7 @@ use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc};
@@ -215,12 +215,25 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         verify_tree_hashes: config.verify_tree_hashes,
     };
 
-    let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));
+    let is_sync_enabled = config.is_sync_enabled;
+    let sync_handle = tokio::spawn(async move {
+        if is_sync_enabled {
+            state::sync(sync_context, state::l1::sync, state::l2::sync).await
+        } else {
+            Ok(())
+        }
+    });
 
-    let (rpc_handle, local_addr) = rpc_server
-        .with_max_connections(config.max_rpc_connections.get())
-        .spawn()
-        .context("Starting the RPC server")?;
+    let (rpc_handle, local_addr) = if config.is_rpc_enabled {
+        rpc_server
+            .with_max_connections(config.max_rpc_connections.get())
+            .spawn()
+            .context("Starting the RPC server")?
+    } else {
+        let rpc_handle = tokio::spawn(async { Ok(()) });
+        let local_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+        (rpc_handle, local_addr)
+    };
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
@@ -233,12 +246,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     tokio::select! {
         result = sync_handle => {
             match result {
+                _ if !config.is_sync_enabled => (),
                 Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
                 Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
             }
         }
         result = rpc_handle => {
             match result {
+                _ if !config.is_rpc_enabled => (),
                 Ok(_) => tracing::error!("RPC server process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "RPC server process ended unexpectedly"),
             }
