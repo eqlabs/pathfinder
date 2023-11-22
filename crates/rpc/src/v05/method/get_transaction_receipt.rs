@@ -5,7 +5,7 @@ use pathfinder_common::TransactionHash;
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct GetTransactionReceiptInput {
-    transaction_hash: TransactionHash,
+    pub transaction_hash: TransactionHash,
 }
 
 crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
