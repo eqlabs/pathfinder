@@ -889,7 +889,7 @@ pub fn compose_executor_transaction(
         starknet_gateway_types::reply::transaction::Transaction::L1Handler(tx) => {
             let tx = starknet_api::transaction::L1HandlerTransaction {
                 version: starknet_api::transaction::TransactionVersion(
-                    StarkFelt::new(tx.version.0.as_fixed_bytes().to_owned())
+                    StarkFelt::new(tx.version.0.to_be_bytes())
                         .expect("No transaction version overflow expected"),
                 ),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),

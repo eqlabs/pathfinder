@@ -318,7 +318,7 @@ impl Serialize for TransactionVersionHelper<'_> {
         S: serde::Serializer,
     {
         use pathfinder_serde::bytes_to_hex_str;
-        serializer.serialize_str(&bytes_to_hex_str(self.0 .0.as_bytes()))
+        serializer.serialize_str(&bytes_to_hex_str(self.0 .0.as_be_bytes()))
     }
 }
 

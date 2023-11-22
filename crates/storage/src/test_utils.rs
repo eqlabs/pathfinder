@@ -10,7 +10,6 @@ use pathfinder_common::{
     TransactionVersion,
 };
 use pathfinder_crypto::Felt;
-use primitive_types::H256;
 use starknet_gateway_types::reply::transaction::{
     self, DeclareTransaction, DeclareTransactionV0V1, DeployTransaction, EntryPointType,
     InvokeTransaction, InvokeTransactionV0, Receipt,
@@ -92,7 +91,7 @@ pub(crate) fn create_transactions_and_receipts(
                     Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
                 )],
                 transaction_hash: TransactionHash(Felt::from_hex_str(&"9".repeat(i + 3)).unwrap()),
-                version: TransactionVersion(H256::zero()),
+                version: TransactionVersion::ZERO,
             })
         }
         _ => transaction::Transaction::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {

@@ -216,7 +216,7 @@ pub mod test_utils {
     use pathfinder_crypto::Felt;
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
-    use primitive_types::{H160, H256};
+    use primitive_types::H160;
     use starknet_gateway_types::reply::transaction::{
         DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
         InvokeTransactionV0, Receipt, Transaction,
@@ -599,7 +599,7 @@ pub mod test_utils {
                 class_hash: class_hash_bytes!(b"pending class hash 1"),
                 constructor_calldata: vec![],
                 transaction_hash: transaction_hash_bytes!(b"pending tx hash 1"),
-                version: TransactionVersion(H256::zero()),
+                version: TransactionVersion::ZERO,
             }
             .into(),
             // Will be a reverted txn.

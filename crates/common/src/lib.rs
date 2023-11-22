@@ -5,7 +5,7 @@
 use anyhow::Context;
 use fake::Dummy;
 use pathfinder_crypto::Felt;
-use primitive_types::{H160, H256};
+use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 
 pub mod consts;
@@ -171,7 +171,7 @@ pub struct ResourcePricePerUnit(pub u128);
 
 /// Starknet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
-pub struct TransactionVersion(pub H256);
+pub struct TransactionVersion(pub Felt);
 
 impl TransactionVersion {
     /// Checks if version is zero, handling QUERY_VERSION_BASE.
@@ -185,32 +185,29 @@ impl TransactionVersion {
     /// added to the real version to make sure transactions constructed for
     /// call or estimateFee cannot be submitted for inclusion on the chain.
     pub fn without_query_version(&self) -> u128 {
-        let lower = &self.0.as_bytes()[16..];
+        let lower = &self.0.as_be_bytes()[16..];
         u128::from_be_bytes(lower.try_into().expect("slice should be the right length"))
     }
 
-    pub const fn with_query_version(mut self) -> Self {
-        self.0 .0[15] |= 0b0000_0001;
-        self
+    pub const fn with_query_version(self) -> Self {
+        let mut bytes = self.0.to_be_bytes();
+        bytes[15] |= 0b0000_0001;
+
+        let felt = match Felt::from_be_bytes(bytes) {
+            Ok(x) => x,
+            Err(_) => panic!("Adding query bit to transaction version failed."),
+        };
+        Self(felt)
     }
 
     pub const fn has_query_version(&self) -> bool {
-        self.0 .0[15] & 0b0000_0001 != 0
+        self.0.as_be_bytes()[15] & 0b0000_0001 != 0
     }
 
-    pub const ZERO: Self = Self(H256::zero());
-    pub const ONE: Self = Self(H256([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 1,
-    ]));
-    pub const TWO: Self = Self(H256([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 2,
-    ]));
-    pub const THREE: Self = Self(H256([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 3,
-    ]));
+    pub const ZERO: Self = Self(Felt::ZERO);
+    pub const ONE: Self = Self(Felt::from_u64(1));
+    pub const TWO: Self = Self(Felt::from_u64(2));
+    pub const THREE: Self = Self(Felt::from_u64(3));
     pub const ZERO_WITH_QUERY_VERSION: Self = Self::ZERO.with_query_version();
     pub const ONE_WITH_QUERY_VERSION: Self = Self::ONE.with_query_version();
     pub const TWO_WITH_QUERY_VERSION: Self = Self::TWO.with_query_version();

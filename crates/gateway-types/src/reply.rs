@@ -217,11 +217,12 @@ pub mod transaction {
         ResourcePricePerUnit, Tip, TransactionHash, TransactionIndex, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_crypto::Felt;
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
         L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
         ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr, TipAsHexStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        TransactionSignatureElemAsDecimalStr,
     };
     use primitive_types::H256;
     use serde::{Deserialize, Serialize};
@@ -1121,7 +1122,6 @@ pub mod transaction {
             #[serde_as]
             #[derive(Deserialize)]
             struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
                 #[serde(default = "transaction_version_zero")]
                 pub version: TransactionVersion,
             }
@@ -1133,16 +1133,16 @@ pub mod transaction {
                 .expect("must be an object because deserializing version succeeded")
                 .remove("version");
             match version.version {
-                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
+                TransactionVersion::ZERO => Ok(Self::V0(
                     DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                TransactionVersion::ONE => Ok(Self::V1(
                     DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
+                TransactionVersion::TWO => Ok(Self::V2(
                     DeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(3) => Ok(Self::V3(
+                TransactionVersion::THREE => Ok(Self::V3(
                     DeclareTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 _v => Err(de::Error::custom("version must be 0, 1, 2 or 3")),
@@ -1217,8 +1217,8 @@ pub mod transaction {
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
     }
 
-    fn transaction_version_zero() -> TransactionVersion {
-        TransactionVersion(primitive_types::H256::zero())
+    const fn transaction_version_zero() -> TransactionVersion {
+        TransactionVersion::ZERO
     }
 
     /// Represents deserialized L2 deploy transaction data.
@@ -1232,7 +1232,6 @@ pub mod transaction {
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
         pub transaction_hash: TransactionHash,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         #[serde(default = "transaction_version_zero")]
         pub version: TransactionVersion,
     }
@@ -1240,7 +1239,7 @@ pub mod transaction {
     impl<T> Dummy<T> for DeployTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
-                version: TransactionVersion(H256::from_low_u64_be(rng.gen_range(0..=1))),
+                version: TransactionVersion(Felt::from_u64(rng.gen_range(0..=1))),
                 contract_address: Faker.fake_with_rng(rng),
                 contract_address_salt: Faker.fake_with_rng(rng),
                 class_hash: Faker.fake_with_rng(rng),
@@ -1268,7 +1267,6 @@ pub mod transaction {
             #[serde_as]
             #[derive(Deserialize)]
             struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
                 #[serde(default = "transaction_version_zero")]
                 pub version: TransactionVersion,
             }
@@ -1277,13 +1275,13 @@ pub mod transaction {
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
 
             match version.version {
-                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0V1(
+                TransactionVersion::ZERO => Ok(Self::V0V1(
                     DeployAccountTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V0V1(
+                TransactionVersion::ONE => Ok(Self::V0V1(
                     DeployAccountTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(3) => Ok(Self::V3(
+                TransactionVersion::THREE => Ok(Self::V3(
                     DeployAccountTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 _v => Err(de::Error::custom("version must be 0, 1 or 3")),
@@ -1314,7 +1312,6 @@ pub mod transaction {
         pub contract_address: ContractAddress,
         pub transaction_hash: TransactionHash,
         pub max_fee: Fee,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -1359,7 +1356,6 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub contract_address_salt: ContractAddressSalt,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
@@ -1408,7 +1404,6 @@ pub mod transaction {
             #[serde_as]
             #[derive(Deserialize)]
             struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
                 #[serde(default = "transaction_version_zero")]
                 pub version: TransactionVersion,
             }
@@ -1420,13 +1415,13 @@ pub mod transaction {
                 .expect("must be an object because deserializing version succeeded")
                 .remove("version");
             match version.version {
-                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
+                TransactionVersion::ZERO => Ok(Self::V0(
                     InvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                TransactionVersion::ONE => Ok(Self::V1(
                     InvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(3) => Ok(Self::V3(
+                TransactionVersion::THREE => Ok(Self::V3(
                     InvokeTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 _v => Err(de::Error::custom("version must be 0, 1 or 3")),
@@ -1521,7 +1516,6 @@ pub mod transaction {
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,
         pub transaction_hash: TransactionHash,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
     }
 

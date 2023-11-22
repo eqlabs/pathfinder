@@ -532,7 +532,7 @@ pub fn compute_txn_hash(
 ) -> TransactionHash {
     let mut h = HashChain::default();
     h.update(Felt::from_be_slice(prefix).expect("prefix is convertible"));
-    h.update(Felt::from_be_slice(version.0.as_bytes()).expect("version is convertible"));
+    h.update(Felt::from_be_slice(version.0.as_be_bytes()).expect("version is convertible"));
     h.update(*address.get());
     h.update(entry_point_selector.map(|e| e.0).unwrap_or(Felt::ZERO));
     h.update(list_hash);
@@ -581,7 +581,7 @@ pub fn compute_v3_txn_hash(
             .into(),
     );
     h.write(
-        Felt::from_be_slice(version.0.as_bytes())
+        Felt::from_be_slice(version.0.as_be_bytes())
             .expect("version is convertible")
             .into(),
     );
