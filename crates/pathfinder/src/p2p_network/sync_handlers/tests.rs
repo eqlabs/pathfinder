@@ -311,7 +311,7 @@ mod boundary_conditions {
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
     use crate::p2p_network::client::types as simplified;
-    use crate::p2p_network::sync_handlers::{self, blocking};
+    use crate::p2p_network::sync_handlers;
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::types::{self as p2p_types, TryFromDto};
@@ -344,7 +344,6 @@ mod prop {
             // Reusing the runtime does not yield any performance gains
             let parts = Runtime::new().unwrap().block_on(async {
                 let (tx, mut rx) = mpsc::channel(0);
-
                 let getter_fut = sync_handlers::get_headers(storage, request, tx);
 
                 // Waiting for both futures to run to completion is faster than spawning the getter
@@ -354,7 +353,6 @@ mod prop {
                 let (_, ret) = tokio::join!(getter_fut, rx.next());
 
                 let BlockHeadersResponse { parts } = ret.unwrap();
-
                 parts
             });
             // Empty reply in the test is only possible if the request does not overlap with storage
@@ -381,8 +379,6 @@ mod prop {
         fn get_bodies((num_blocks, db_seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(db_seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Get the overlapping set between the db and the request
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(header, _, state_update, cairo_defs, sierra_defs)|
@@ -394,7 +390,12 @@ mod prop {
             ).collect::<HashMap<_, (p2p_types::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_bodies(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_bodies(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
@@ -471,8 +472,6 @@ mod prop {
         fn get_transactions((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the transactions that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
@@ -485,7 +484,12 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_transactions(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_transactions(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
@@ -518,8 +522,6 @@ mod prop {
         fn get_receipts((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the receipts that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
@@ -532,7 +534,12 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_receipts(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_receipts(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
@@ -565,8 +572,6 @@ mod prop {
         fn get_events((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the events that we expect to be read from the db
             // Extract tuples (block_number, block_hash, [events{txn#1}, events{txn#2}, ...])
@@ -580,7 +585,12 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_events(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_events(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
