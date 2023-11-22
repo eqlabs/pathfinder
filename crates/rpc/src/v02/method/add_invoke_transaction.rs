@@ -79,6 +79,7 @@ pub async fn add_invoke_transaction(
                 SequencerError::StarknetError(e) => AddInvokeTransactionError::GatewayError(e),
                 other => AddInvokeTransactionError::Internal(other.into()),
             })?,
+        BroadcastedInvokeTransaction::V3(_) => todo!(),
     };
 
     Ok(AddInvokeTransactionOutput {

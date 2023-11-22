@@ -418,14 +418,16 @@ mod tests {
     use pathfinder_common::{macro_prelude::*, StorageAddress};
     use starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
 
-    use crate::v02::types::request::BroadcastedDeployAccountTransaction;
+    use crate::v02::types::request::{
+        BroadcastedDeployAccountTransaction, BroadcastedDeployAccountTransactionV0V1,
+    };
     use crate::v05::method::call::FunctionCall;
 
     use super::*;
 
     #[tokio::test]
     async fn test_simulate_transaction() {
-        let transaction = BroadcastedDeployAccountTransaction {
+        let transaction = BroadcastedDeployAccountTransactionV0V1 {
             contract_address_salt: contract_address_salt!(
                 "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971"
             ),
@@ -455,7 +457,7 @@ mod tests {
         let input_json = serde_json::json!({
             "block_id": {"block_number": 1},
             "transaction": [
-                BroadcastedTransaction::DeployAccount(transaction),
+                BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V0V1(transaction)),
             ],
             "simulation_flags": []
         });

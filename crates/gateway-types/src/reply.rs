@@ -405,6 +405,7 @@ pub mod transaction {
     pub enum DataAvailabilityMode {
         #[default]
         L1,
+        L2,
     }
 
     impl Serialize for DataAvailabilityMode {
@@ -412,7 +413,10 @@ pub mod transaction {
         where
             S: serde::Serializer,
         {
-            serializer.serialize_u8(0)
+            match self {
+                DataAvailabilityMode::L1 => serializer.serialize_u8(0),
+                DataAvailabilityMode::L2 => serializer.serialize_u8(1),
+            }
         }
     }
 
@@ -423,6 +427,7 @@ pub mod transaction {
         {
             match <u8 as Deserialize>::deserialize(deserializer)? {
                 0 => Ok(Self::L1),
+                1 => Ok(Self::L2),
                 _ => Err(serde::de::Error::custom("invalid data availability mode")),
             }
         }
@@ -432,6 +437,7 @@ pub mod transaction {
         fn from(value: DataAvailabilityMode) -> Self {
             match value {
                 DataAvailabilityMode::L1 => Self::L1,
+                DataAvailabilityMode::L2 => Self::L2,
             }
         }
     }
@@ -440,6 +446,7 @@ pub mod transaction {
         fn from(value: pathfinder_common::transaction::DataAvailabilityMode) -> Self {
             match value {
                 pathfinder_common::transaction::DataAvailabilityMode::L1 => Self::L1,
+                pathfinder_common::transaction::DataAvailabilityMode::L2 => Self::L2,
             }
         }
     }
@@ -1364,8 +1371,8 @@ pub mod transaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
                 nonce: Faker.fake_with_rng(rng),
-                nonce_data_availability_mode: DataAvailabilityMode::L1,
-                fee_data_availability_mode: DataAvailabilityMode::L1,
+                nonce_data_availability_mode: Faker.fake_with_rng(rng),
+                fee_data_availability_mode: Faker.fake_with_rng(rng),
                 resource_bounds: Faker.fake_with_rng(rng),
                 tip: Faker.fake_with_rng(rng),
                 paymaster_data: Faker.fake_with_rng(rng),

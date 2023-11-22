@@ -2,17 +2,110 @@
 
 pub(crate) mod class;
 pub use class::*;
+use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
+use serde_with::serde_as;
 pub mod syncing;
+
+#[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+pub struct ResourceBounds {
+    pub l1_gas: ResourceBound,
+    pub l2_gas: ResourceBound,
+}
+
+impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
+    fn from(resource_bounds: ResourceBounds) -> Self {
+        Self {
+            l1_gas: resource_bounds.l1_gas.into(),
+            l2_gas: resource_bounds.l2_gas.into(),
+        }
+    }
+}
+
+impl From<ResourceBounds> for starknet_gateway_types::reply::transaction::ResourceBounds {
+    fn from(resource_bounds: ResourceBounds) -> Self {
+        Self {
+            l1_gas: resource_bounds.l1_gas.into(),
+            l2_gas: resource_bounds.l2_gas.into(),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+pub struct ResourceBound {
+    #[serde_as(as = "pathfinder_serde::ResourceAmountAsHexStr")]
+    pub max_amount: ResourceAmount,
+    #[serde_as(as = "pathfinder_serde::ResourcePricePerUnitAsHexStr")]
+    pub max_price_per_unit: ResourcePricePerUnit,
+}
+
+impl From<ResourceBound> for pathfinder_common::transaction::ResourceBound {
+    fn from(resource_bound: ResourceBound) -> Self {
+        Self {
+            max_amount: resource_bound.max_amount,
+            max_price_per_unit: resource_bound.max_price_per_unit,
+        }
+    }
+}
+
+impl From<ResourceBound> for starknet_gateway_types::reply::transaction::ResourceBound {
+    fn from(resource_bound: ResourceBound) -> Self {
+        Self {
+            max_amount: resource_bound.max_amount,
+            max_price_per_unit: resource_bound.max_price_per_unit,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+pub enum DataAvailabilityMode {
+    #[default]
+    L1,
+    L2,
+}
+
+impl From<DataAvailabilityMode> for pathfinder_common::transaction::DataAvailabilityMode {
+    fn from(data_availability_mode: DataAvailabilityMode) -> Self {
+        match data_availability_mode {
+            DataAvailabilityMode::L1 => Self::L1,
+            DataAvailabilityMode::L2 => Self::L2,
+        }
+    }
+}
+
+impl From<DataAvailabilityMode>
+    for starknet_gateway_types::reply::transaction::DataAvailabilityMode
+{
+    fn from(data_availability_mode: DataAvailabilityMode) -> Self {
+        match data_availability_mode {
+            DataAvailabilityMode::L1 => Self::L1,
+            DataAvailabilityMode::L2 => Self::L2,
+        }
+    }
+}
+
+impl From<DataAvailabilityMode> for starknet_api::data_availability::DataAvailabilityMode {
+    fn from(value: DataAvailabilityMode) -> Self {
+        match value {
+            DataAvailabilityMode::L1 => Self::L1,
+            DataAvailabilityMode::L2 => Self::L2,
+        }
+    }
+}
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use std::ops::Rem;
 
     use pathfinder_common::{
-        CallParam, CasmHash, ChainId, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
-        Fee, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        AccountDeploymentDataElem, CallParam, CasmHash, ChainId, ClassHash, ContractAddress,
+        ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip, TransactionHash,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
-    use pathfinder_crypto::{hash::HashChain, Felt};
+    use pathfinder_crypto::{
+        hash::{HashChain, PoseidonHasher},
+        Felt,
+    };
     use pathfinder_serde::TransactionVersionAsHexStr;
     use serde::Deserialize;
     use serde_with::serde_as;
@@ -76,13 +169,20 @@ pub mod request {
                         BroadcastedDeclareTransaction::V2(tx) => {
                             tx.transaction_hash(chain_id, class_hash)
                         }
+                        BroadcastedDeclareTransaction::V3(tx) => {
+                            tx.transaction_hash(chain_id, class_hash)
+                        }
                     }
                 }
                 BroadcastedTransaction::Invoke(tx) => match tx {
                     BroadcastedInvokeTransaction::V0(tx) => tx.transaction_hash(chain_id),
                     BroadcastedInvokeTransaction::V1(tx) => tx.transaction_hash(chain_id),
+                    BroadcastedInvokeTransaction::V3(tx) => tx.transaction_hash(chain_id),
                 },
-                BroadcastedTransaction::DeployAccount(tx) => tx.transaction_hash(chain_id),
+                BroadcastedTransaction::DeployAccount(tx) => match tx {
+                    BroadcastedDeployAccountTransaction::V0V1(tx) => tx.transaction_hash(chain_id),
+                    BroadcastedDeployAccountTransaction::V3(tx) => tx.transaction_hash(chain_id),
+                },
             }
         }
     }
@@ -97,6 +197,7 @@ pub mod request {
         V0(BroadcastedDeclareTransactionV0),
         V1(BroadcastedDeclareTransactionV1),
         V2(BroadcastedDeclareTransactionV2),
+        V3(BroadcastedDeclareTransactionV3),
     }
 
     impl<'de> serde::Deserialize<'de> for BroadcastedDeclareTransaction {
@@ -124,6 +225,9 @@ pub mod request {
                 )),
                 2 => Ok(Self::V2(
                     BroadcastedDeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                3 => Ok(Self::V3(
+                    BroadcastedDeclareTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 _v => Err(de::Error::custom("version must be 0, 1 or 2")),
             }
@@ -256,7 +360,104 @@ pub mod request {
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
-    pub struct BroadcastedDeployAccountTransaction {
+    pub struct BroadcastedDeclareTransactionV3 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub resource_bounds: super::ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
+        pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+        pub nonce_data_availability_mode: super::DataAvailabilityMode,
+        pub fee_data_availability_mode: super::DataAvailabilityMode,
+
+        pub compiled_class_hash: CasmHash,
+        pub contract_class: super::SierraContractClass,
+        pub sender_address: ContractAddress,
+    }
+
+    impl BroadcastedDeclareTransactionV3 {
+        pub fn transaction_hash(
+            &self,
+            chain_id: ChainId,
+            class_hash: ClassHash,
+        ) -> TransactionHash {
+            let declare_specific_data = [
+                self.account_deployment_data
+                    .iter()
+                    .fold(PoseidonHasher::new(), |mut hh, e| {
+                        hh.write(e.0.into());
+                        hh
+                    })
+                    .finish()
+                    .into(),
+                class_hash.0,
+                self.compiled_class_hash.0,
+            ];
+            starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
+                b"declare",
+                TransactionVersion::THREE,
+                self.sender_address,
+                chain_id,
+                self.nonce,
+                &declare_specific_data,
+                self.tip,
+                &self.paymaster_data,
+                self.nonce_data_availability_mode.into(),
+                self.fee_data_availability_mode.into(),
+                self.resource_bounds.into(),
+            )
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(
+        any(test, feature = "rpc-full-serde"),
+        derive(serde::Serialize),
+        serde(untagged)
+    )]
+    pub enum BroadcastedDeployAccountTransaction {
+        V0V1(BroadcastedDeployAccountTransactionV0V1),
+        V3(BroadcastedDeployAccountTransactionV3),
+    }
+
+    impl<'de> serde::Deserialize<'de> for BroadcastedDeployAccountTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use serde::de;
+
+            #[serde_as]
+            #[derive(serde::Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                pub version: TransactionVersion,
+            }
+
+            let v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            match version.version.without_query_version() {
+                0 | 1 => Ok(Self::V0V1(
+                    BroadcastedDeployAccountTransactionV0V1::deserialize(&v)
+                        .map_err(de::Error::custom)?,
+                )),
+                3 => Ok(Self::V3(
+                    BroadcastedDeployAccountTransactionV3::deserialize(&v)
+                        .map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 0 or 1")),
+            }
+        }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeployAccountTransactionV0V1 {
         // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -270,46 +471,57 @@ pub mod request {
         pub class_hash: ClassHash,
     }
 
-    impl BroadcastedDeployAccountTransaction {
-        pub fn deployed_contract_address(&self) -> ContractAddress {
-            let constructor_calldata_hash = self
-                .constructor_calldata
-                .iter()
-                .fold(HashChain::default(), |mut h, param| {
-                    h.update(param.0);
-                    h
-                })
-                .finalize();
-
-            let contract_address = [
-                Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
-                Felt::ZERO,
-                self.contract_address_salt.0,
-                self.class_hash.0,
-                constructor_calldata_hash,
-            ]
-            .into_iter()
-            .fold(HashChain::default(), |mut h, e| {
-                h.update(e);
+    fn deployed_contract_address(
+        constructor_calldata: &[CallParam],
+        contract_address_salt: &ContractAddressSalt,
+        class_hash: &ClassHash,
+    ) -> ContractAddress {
+        let constructor_calldata_hash = constructor_calldata
+            .iter()
+            .fold(HashChain::default(), |mut h, param| {
+                h.update(param.0);
                 h
             })
             .finalize();
 
-            // Contract addresses are _less than_ 2**251 - 256
-            let contract_address =
-                primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
-            let max_address = primitive_types::U256::from_str_radix(
-                "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
-                16,
+        let contract_address = [
+            Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
+            Felt::ZERO,
+            contract_address_salt.0,
+            class_hash.0,
+            constructor_calldata_hash,
+        ]
+        .into_iter()
+        .fold(HashChain::default(), |mut h, e| {
+            h.update(e);
+            h
+        })
+        .finalize();
+
+        // Contract addresses are _less than_ 2**251 - 256
+        let contract_address =
+            primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
+        let max_address = primitive_types::U256::from_str_radix(
+            "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
+            16,
+        )
+        .unwrap();
+
+        let contract_address = contract_address.rem(max_address);
+        let mut b = [0u8; 32];
+        contract_address.to_big_endian(&mut b);
+        let contract_address = Felt::from_be_slice(&b).unwrap();
+
+        ContractAddress::new_or_panic(contract_address)
+    }
+
+    impl BroadcastedDeployAccountTransactionV0V1 {
+        pub fn deployed_contract_address(&self) -> ContractAddress {
+            deployed_contract_address(
+                self.constructor_calldata.as_slice(),
+                &self.contract_address_salt,
+                &self.class_hash,
             )
-            .unwrap();
-
-            let contract_address = contract_address.rem(max_address);
-            let mut b = [0u8; 32];
-            contract_address.to_big_endian(&mut b);
-            let contract_address = Felt::from_be_slice(&b).unwrap();
-
-            ContractAddress::new_or_panic(contract_address)
         }
 
         pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
@@ -341,6 +553,67 @@ pub mod request {
         }
     }
 
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeployAccountTransactionV3 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub resource_bounds: super::ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
+        pub nonce_data_availability_mode: super::DataAvailabilityMode,
+        pub fee_data_availability_mode: super::DataAvailabilityMode,
+
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
+    }
+
+    impl BroadcastedDeployAccountTransactionV3 {
+        pub fn deployed_contract_address(&self) -> ContractAddress {
+            deployed_contract_address(
+                self.constructor_calldata.as_slice(),
+                &self.contract_address_salt,
+                &self.class_hash,
+            )
+        }
+
+        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
+            let sender_address = self.deployed_contract_address();
+
+            let deploy_account_specific_data = [
+                self.constructor_calldata
+                    .iter()
+                    .fold(PoseidonHasher::new(), |mut hh, e| {
+                        hh.write(e.0.into());
+                        hh
+                    })
+                    .finish()
+                    .into(),
+                self.class_hash.0,
+                self.contract_address_salt.0,
+            ];
+            starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
+                b"deploy_account",
+                TransactionVersion::THREE,
+                sender_address,
+                chain_id,
+                self.nonce,
+                &deploy_account_specific_data,
+                self.tip,
+                &self.paymaster_data,
+                self.nonce_data_availability_mode.into(),
+                self.fee_data_availability_mode.into(),
+                self.resource_bounds.into(),
+            )
+        }
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[cfg_attr(
         any(test, feature = "rpc-full-serde"),
@@ -350,6 +623,7 @@ pub mod request {
     pub enum BroadcastedInvokeTransaction {
         V0(BroadcastedInvokeTransactionV0),
         V1(BroadcastedInvokeTransactionV1),
+        V3(BroadcastedInvokeTransactionV3),
     }
 
     impl BroadcastedInvokeTransaction {
@@ -391,7 +665,10 @@ pub mod request {
                 1 => Ok(Self::V1(
                     BroadcastedInvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _ => Err(de::Error::custom("version must be 0 or 1")),
+                3 => Ok(Self::V3(
+                    BroadcastedInvokeTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _ => Err(de::Error::custom("version must be 0, 1 or 3")),
             }
         }
     }
@@ -482,12 +759,68 @@ pub mod request {
         }
     }
 
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedInvokeTransactionV3 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub resource_bounds: super::ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
+        pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+        pub nonce_data_availability_mode: super::DataAvailabilityMode,
+        pub fee_data_availability_mode: super::DataAvailabilityMode,
+
+        pub sender_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+    }
+
+    impl BroadcastedInvokeTransactionV3 {
+        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
+            let invoke_specific_data = [
+                self.account_deployment_data
+                    .iter()
+                    .fold(PoseidonHasher::new(), |mut hh, e| {
+                        hh.write(e.0.into());
+                        hh
+                    })
+                    .finish()
+                    .into(),
+                self.calldata
+                    .iter()
+                    .fold(PoseidonHasher::new(), |mut hh, e| {
+                        hh.write(e.0.into());
+                        hh
+                    })
+                    .finish()
+                    .into(),
+            ];
+            starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
+                b"invoke",
+                TransactionVersion::THREE,
+                self.sender_address,
+                chain_id,
+                self.nonce,
+                &invoke_specific_data,
+                self.tip,
+                &self.paymaster_data,
+                self.nonce_data_availability_mode.into(),
+                self.fee_data_availability_mode.into(),
+                self.resource_bounds.into(),
+            )
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/0.50.0/", $file_name))
-                    .replace(&[' ', '\n'], "")
+                include_str!(concat!("../../fixtures/0.6.0/", $file_name)).replace(&[' ', '\n'], "")
             };
         }
 
@@ -503,11 +836,12 @@ pub mod request {
         mod serde {
             use super::super::*;
             use crate::v02::types::{
-                CairoContractClass, ContractEntryPoints, SierraContractClass, SierraEntryPoint,
-                SierraEntryPoints,
+                CairoContractClass, ContractEntryPoints, DataAvailabilityMode, SierraContractClass,
+                SierraEntryPoint, SierraEntryPoints,
             };
-            use pathfinder_common::felt;
-            use pathfinder_common::macro_prelude::*;
+            use crate::v02::types::{ResourceBound, ResourceBounds};
+            use pathfinder_common::{felt, ResourcePricePerUnit};
+            use pathfinder_common::{macro_prelude::*, ResourceAmount};
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -565,6 +899,57 @@ pub mod request {
                             sender_address: contract_address!("0xa1"),
                         },
                     )),
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(
+                        BroadcastedDeclareTransactionV3 {
+                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(
+                                0x3,
+                            )),
+                            signature: vec![transaction_signature_elem!("0x71")],
+                            nonce: transaction_nonce!("0x81"),
+                            resource_bounds: ResourceBounds {
+                                l1_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0x1111),
+                                    max_price_per_unit: ResourcePricePerUnit(0x2222),
+                                },
+                                l2_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                },
+                            },
+                            tip: Tip(0x1234),
+                            paymaster_data: vec![
+                                paymaster_data_elem!("0x1"),
+                                paymaster_data_elem!("0x2"),
+                            ],
+                            account_deployment_data: vec![
+                                account_deployment_data_elem!("0x3"),
+                                account_deployment_data_elem!("0x4"),
+                            ],
+                            nonce_data_availability_mode: DataAvailabilityMode::L1,
+                            fee_data_availability_mode: DataAvailabilityMode::L2,
+                            compiled_class_hash: casm_hash!("0x91"),
+                            contract_class: SierraContractClass {
+                                sierra_program: vec![felt!("0x4"), felt!("0x5")],
+                                contract_class_version: "0.1.0".into(),
+                                entry_points_by_type: SierraEntryPoints {
+                                    constructor: vec![SierraEntryPoint {
+                                        function_idx: 1,
+                                        selector: felt!("0x1"),
+                                    }],
+                                    external: vec![SierraEntryPoint {
+                                        function_idx: 2,
+                                        selector: felt!("0x2"),
+                                    }],
+                                    l1_handler: vec![SierraEntryPoint {
+                                        function_idx: 3,
+                                        selector: felt!("0x3"),
+                                    }],
+                                },
+                                abi: r#"[{"type":"function","name":"foo"}]"#.into(),
+                            },
+                            sender_address: contract_address!("0xa1"),
+                        },
+                    )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
                             version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
@@ -583,6 +968,63 @@ pub mod request {
                             nonce: transaction_nonce!("0x8"),
                             sender_address: contract_address!("0xaaa"),
                             calldata: vec![call_param!("0xff")],
+                        },
+                    )),
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+                        BroadcastedInvokeTransactionV3 {
+                            version: TransactionVersion::THREE_WITH_QUERY_VERSION,
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
+                            resource_bounds: ResourceBounds {
+                                l1_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0x1111),
+                                    max_price_per_unit: ResourcePricePerUnit(0x2222),
+                                },
+                                l2_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                },
+                            },
+                            tip: Tip(0x1234),
+                            paymaster_data: vec![
+                                paymaster_data_elem!("0x1"),
+                                paymaster_data_elem!("0x2"),
+                            ],
+                            account_deployment_data: vec![
+                                account_deployment_data_elem!("0x3"),
+                                account_deployment_data_elem!("0x4"),
+                            ],
+                            nonce_data_availability_mode: DataAvailabilityMode::L1,
+                            fee_data_availability_mode: DataAvailabilityMode::L2,
+                            sender_address: contract_address!("0xaaa"),
+                            calldata: vec![call_param!("0xff")],
+                        },
+                    )),
+                    BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(
+                        BroadcastedDeployAccountTransactionV3 {
+                            version: TransactionVersion::THREE_WITH_QUERY_VERSION,
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
+                            resource_bounds: ResourceBounds {
+                                l1_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0x1111),
+                                    max_price_per_unit: ResourcePricePerUnit(0x2222),
+                                },
+                                l2_gas: ResourceBound {
+                                    max_amount: ResourceAmount(0),
+                                    max_price_per_unit: ResourcePricePerUnit(0),
+                                },
+                            },
+                            tip: Tip(0x1234),
+                            paymaster_data: vec![
+                                paymaster_data_elem!("0x1"),
+                                paymaster_data_elem!("0x2"),
+                            ],
+                            nonce_data_availability_mode: DataAvailabilityMode::L1,
+                            fee_data_availability_mode: DataAvailabilityMode::L2,
+                            contract_address_salt: contract_address_salt!("0x99999"),
+                            class_hash: class_hash!("0xddde"),
+                            constructor_calldata: vec![call_param!("0xfe")],
                         },
                     )),
                 ];
@@ -729,7 +1171,7 @@ pub mod request {
                 let class_hash = class_hash!(
                     "0x25ec026985a3bf9d0cc1fe17326b245dfdc3ff89b8fde106542a3ea56c5a918"
                 );
-                let tx = BroadcastedDeployAccountTransaction {
+                let tx = BroadcastedDeployAccountTransactionV0V1 {
                     version: TransactionVersion::ONE,
                     max_fee: fee!("0x15e1e7c9a7a0"),
                     signature: vec![
@@ -774,7 +1216,9 @@ pub mod request {
                     )
                 );
 
-                let transaction = BroadcastedTransaction::DeployAccount(tx);
+                let transaction = BroadcastedTransaction::DeployAccount(
+                    BroadcastedDeployAccountTransaction::V0V1(tx),
+                );
                 assert_eq!(
                     transaction.transaction_hash(ChainId::TESTNET, Some(class_hash)),
                     transaction_hash!(

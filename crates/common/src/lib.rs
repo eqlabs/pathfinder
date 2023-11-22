@@ -214,6 +214,7 @@ impl TransactionVersion {
     pub const ZERO_WITH_QUERY_VERSION: Self = Self::ZERO.with_query_version();
     pub const ONE_WITH_QUERY_VERSION: Self = Self::ONE.with_query_version();
     pub const TWO_WITH_QUERY_VERSION: Self = Self::TWO.with_query_version();
+    pub const THREE_WITH_QUERY_VERSION: Self = Self::THREE.with_query_version();
 }
 
 /// A way of identifying a specific block.

@@ -31,6 +31,7 @@ impl IntoStarkFelt for starknet_gateway_types::reply::transaction::DataAvailabil
     fn into_starkfelt(self) -> StarkFelt {
         match self {
             starknet_gateway_types::reply::transaction::DataAvailabilityMode::L1 => StarkFelt::ZERO,
+            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L2 => StarkFelt::ONE,
         }
     }
 }

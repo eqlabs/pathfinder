@@ -336,10 +336,8 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                     .map(TransactionSignatureElem)
                     .collect(),
                 nonce: TransactionNonce(x.nonce),
-                nonce_data_availability_mode:
-                    pathfinder_common::transaction::DataAvailabilityMode::L1,
-                fee_data_availability_mode:
-                    pathfinder_common::transaction::DataAvailabilityMode::L1,
+                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
+                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
                 resource_bounds: ResourceBounds {
                     l1_gas: ResourceBound {
                         max_amount: pathfinder_common::ResourceAmount(
@@ -407,10 +405,8 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                     .map(TransactionSignatureElem)
                     .collect(),
                 nonce: TransactionNonce(x.nonce),
-                nonce_data_availability_mode:
-                    pathfinder_common::transaction::DataAvailabilityMode::L1,
-                fee_data_availability_mode:
-                    pathfinder_common::transaction::DataAvailabilityMode::L1,
+                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
+                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
                 resource_bounds: ResourceBounds {
                     l1_gas: ResourceBound {
                         max_amount: pathfinder_common::ResourceAmount(
@@ -481,6 +477,7 @@ impl TryFromDto<String> for DataAvailabilityMode {
     {
         match dto.as_str() {
             "L1" => Ok(Self::L1),
+            "L2" => Ok(Self::L2),
             _ => anyhow::bail!("Invalid data availability mode"),
         }
     }

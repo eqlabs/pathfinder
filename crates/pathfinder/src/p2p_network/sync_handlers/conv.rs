@@ -8,6 +8,7 @@ use p2p_proto::receipt::{
 };
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
 use p2p_proto::transaction::AccountSignature;
+use pathfinder_common::transaction::DataAvailabilityMode;
 use pathfinder_common::{
     event::Event, state_update::ContractUpdate, transaction::ResourceBound,
     transaction::Transaction, BlockHeader, StateUpdate,
@@ -152,8 +153,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 l2_gas: x.resource_bounds.l2_gas.to_proto(),
                 tip: x.tip.0.into(),
                 paymaster: Address::default(), // TODO: this should probably be removed?
-                nonce_domain: "L1".to_owned(),
-                fee_domain: "L1".to_owned(),
+                nonce_domain: x.nonce_data_availability_mode.to_proto(),
+                fee_domain: x.fee_data_availability_mode.to_proto(),
                 paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
                 account_deployment_data: x
                     .account_deployment_data
@@ -193,8 +194,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 l2_gas: x.resource_bounds.l2_gas.to_proto(),
                 tip: x.tip.0.into(),
                 paymaster: Address::default(), // TODO: this should probably be removed?
-                nonce_domain: "L1".to_owned(),
-                fee_domain: "L1".to_owned(),
+                nonce_domain: x.nonce_data_availability_mode.to_proto(),
+                fee_domain: x.fee_data_availability_mode.to_proto(),
                 paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
                 address: Address(x.contract_address.0),
             }),
@@ -234,8 +235,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 l2_gas: x.resource_bounds.l2_gas.to_proto(),
                 tip: x.tip.0.into(),
                 paymaster: Address::default(), // TODO: this should probably be removed?
-                nonce_domain: "L1".to_owned(),
-                fee_domain: "L1".to_owned(),
+                nonce_domain: x.nonce_data_availability_mode.to_proto(),
+                fee_domain: x.fee_data_availability_mode.to_proto(),
                 nonce: x.nonce.0,
                 paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
                 account_deployment_data: x
@@ -371,6 +372,15 @@ impl ToProto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
         p2p_proto::transaction::ResourceLimits {
             max_amount: self.max_amount.0.into(),
             max_price_per_unit: self.max_price_per_unit.0.into(),
+        }
+    }
+}
+
+impl ToProto<String> for DataAvailabilityMode {
+    fn to_proto(self) -> String {
+        match self {
+            DataAvailabilityMode::L1 => "L1".to_owned(),
+            DataAvailabilityMode::L2 => "L2".to_owned(),
         }
     }
 }

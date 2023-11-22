@@ -556,7 +556,7 @@ const DA_AVAILABILITY_MODE_BITS: u8 = 32;
 
 /// _Generic_ compute transaction hash for v3 transactions
 #[allow(clippy::too_many_arguments)]
-fn compute_v3_txn_hash(
+pub fn compute_v3_txn_hash(
     prefix: &[u8],
     version: TransactionVersion,
     sender_address: ContractAddress,

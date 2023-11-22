@@ -152,6 +152,8 @@ pub(crate) mod tests {
         transaction::{EntryPointType, ExecutionStatus, Receipt},
     };
 
+    use crate::v02::types::request::BroadcastedDeployAccountTransaction;
+
     use super::*;
 
     impl From<crate::v02::types::request::BroadcastedTransaction>
@@ -214,19 +216,76 @@ pub(crate) mod tests {
                         ),
                     )
                 }
-                crate::v02::types::request::BroadcastedTransaction::DeployAccount(deploy) => {
+                crate::v02::types::request::BroadcastedTransaction::Declare(
+                    crate::v02::types::request::BroadcastedDeclareTransaction::V3(declare),
+                ) => {
+                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
+                    starknet_gateway_types::reply::transaction::Transaction::Declare(
+                        gateway::transaction::DeclareTransaction::V3(
+                            gateway::transaction::DeclareTransactionV3 {
+                                class_hash,
+                                nonce: TransactionNonce::default(),
+                                sender_address: declare.sender_address,
+                                signature: declare.signature,
+                                transaction_hash,
+                                compiled_class_hash: declare.compiled_class_hash,
+                                nonce_data_availability_mode: declare
+                                    .nonce_data_availability_mode
+                                    .into(),
+                                fee_data_availability_mode: declare
+                                    .fee_data_availability_mode
+                                    .into(),
+                                resource_bounds: declare.resource_bounds.into(),
+                                tip: declare.tip,
+                                paymaster_data: declare.paymaster_data,
+                                account_deployment_data: declare.account_deployment_data,
+                            },
+                        ),
+                    )
+                }
+                crate::v02::types::request::BroadcastedTransaction::DeployAccount(
+                    BroadcastedDeployAccountTransaction::V0V1(deploy),
+                ) => starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
+                    gateway::transaction::DeployAccountTransaction::V0V1(
+                        gateway::transaction::DeployAccountTransactionV0V1 {
+                            contract_address: deploy.deployed_contract_address(),
+                            transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
+                            max_fee: deploy.max_fee,
+                            version: deploy.version,
+                            signature: deploy.signature,
+                            nonce: deploy.nonce,
+                            contract_address_salt: deploy.contract_address_salt,
+                            constructor_calldata: deploy.constructor_calldata,
+                            class_hash: deploy.class_hash,
+                        },
+                    ),
+                ),
+                crate::v02::types::request::BroadcastedTransaction::DeployAccount(
+                    BroadcastedDeployAccountTransaction::V3(deploy),
+                ) => {
+                    let transaction_hash = deploy.transaction_hash(ChainId::TESTNET);
+
                     starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
-                        gateway::transaction::DeployAccountTransaction::V0V1(
-                            gateway::transaction::DeployAccountTransactionV0V1 {
-                                contract_address: deploy.deployed_contract_address(),
-                                transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
-                                max_fee: deploy.max_fee,
+                        gateway::transaction::DeployAccountTransaction::V3(
+                            gateway::transaction::DeployAccountTransactionV3 {
                                 version: deploy.version,
-                                signature: deploy.signature,
+                                class_hash: deploy.class_hash,
                                 nonce: deploy.nonce,
+                                sender_address: deploy.deployed_contract_address(),
                                 contract_address_salt: deploy.contract_address_salt,
                                 constructor_calldata: deploy.constructor_calldata,
-                                class_hash: deploy.class_hash,
+                                signature: deploy.signature,
+                                transaction_hash,
+                                nonce_data_availability_mode: deploy
+                                    .nonce_data_availability_mode
+                                    .into(),
+                                fee_data_availability_mode: deploy
+                                    .fee_data_availability_mode
+                                    .into(),
+                                resource_bounds: deploy.resource_bounds.into(),
+                                tip: deploy.tip,
+                                paymaster_data: deploy.paymaster_data,
                             },
                         ),
                     )
@@ -262,6 +321,32 @@ pub(crate) mod tests {
                                 signature: invoke.signature,
                                 nonce: invoke.nonce,
                                 transaction_hash,
+                            },
+                        ),
+                    )
+                }
+                crate::v02::types::request::BroadcastedTransaction::Invoke(
+                    crate::v02::types::request::BroadcastedInvokeTransaction::V3(invoke),
+                ) => {
+                    let transaction_hash = invoke.transaction_hash(ChainId::TESTNET);
+                    starknet_gateway_types::reply::transaction::Transaction::Invoke(
+                        gateway::transaction::InvokeTransaction::V3(
+                            gateway::transaction::InvokeTransactionV3 {
+                                nonce: TransactionNonce::default(),
+                                sender_address: invoke.sender_address,
+                                signature: invoke.signature,
+                                transaction_hash,
+                                nonce_data_availability_mode: invoke
+                                    .nonce_data_availability_mode
+                                    .into(),
+                                fee_data_availability_mode: invoke
+                                    .fee_data_availability_mode
+                                    .into(),
+                                resource_bounds: invoke.resource_bounds.into(),
+                                tip: invoke.tip,
+                                paymaster_data: invoke.paymaster_data,
+                                calldata: invoke.calldata,
+                                account_deployment_data: invoke.account_deployment_data,
                             },
                         ),
                     )
