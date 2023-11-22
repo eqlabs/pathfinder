@@ -91,7 +91,7 @@ pub mod types {
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
         BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
-        L2ToL1MessagePayloadElem, TransactionHash,
+        L2ToL1MessagePayloadElem, TransactionHash, TransactionVersion,
     };
     use pathfinder_serde::{u64_as_hex_str, EthereumAddressAsHexStr, H256AsNoLeadingZerosHexStr};
     use primitive_types::H256;
@@ -220,13 +220,21 @@ pub mod types {
     pub enum FeePayment {
         // TODO: remove once RPC v0.5 is removed.
         V05(Fee),
-        V06 { wei: Fee, strk: Fee },
+        V06 { amount: Fee, unit: FeeToken },
+    }
+
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    pub enum FeeToken {
+        Wei,
+        Strk,
     }
 
     impl FeePayment {
         fn into_v05_format(&mut self) {
-            if let FeePayment::V06 { wei, .. } = self {
-                *self = FeePayment::V05(*wei);
+            if let FeePayment::V06 { amount, .. } = self {
+                *self = FeePayment::V05(*amount);
             }
         }
     }
@@ -366,9 +374,17 @@ pub mod types {
             block_number: BlockNumber,
             transaction: starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
+            let fee_amount = receipt.actual_fee.unwrap_or_default();
+            let fee_unit = match transaction.version() {
+                TransactionVersion::ZERO | TransactionVersion::ONE | TransactionVersion::TWO => {
+                    FeeToken::Wei
+                }
+                _ => FeeToken::Strk,
+            };
+
             let actual_fee = FeePayment::V06 {
-                wei: receipt.actual_fee.unwrap_or_default(),
-                strk: Fee::default(),
+                amount: fee_amount,
+                unit: fee_unit,
             };
 
             let common = CommonTransactionReceiptProperties {
@@ -477,9 +493,17 @@ pub mod types {
             receipt: starknet_gateway_types::reply::transaction::Receipt,
             transaction: &starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
+            let fee_amount = receipt.actual_fee.unwrap_or_default();
+            let fee_unit = match transaction.version() {
+                TransactionVersion::ZERO | TransactionVersion::ONE | TransactionVersion::TWO => {
+                    FeeToken::Wei
+                }
+                _ => FeeToken::Strk,
+            };
+
             let actual_fee = FeePayment::V06 {
-                wei: receipt.actual_fee.unwrap_or_default(),
-                strk: Fee::default(),
+                amount: fee_amount,
+                unit: fee_unit,
             };
 
             let common = CommonPendingTransactionReceiptProperties {
