@@ -1,5 +1,6 @@
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
+mod method;
 pub(crate) mod types;
 
 use crate::v02::method as v02_method;
@@ -26,6 +27,8 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getTransactionByHash"            , v04_method::get_transaction_by_hash)
         .register("starknet_syncing"                         , v04_method::syncing)
 
+        .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
+
         // .register("starknet_addDeclareTransaction"           , method::add_declare_transaction)
         // .register("starknet_addDeployAccountTransaction"     , method::add_deploy_account_transaction)
         // .register("starknet_addInvokeTransaction"            , method::add_invoke_transaction)
@@ -33,7 +36,6 @@ pub fn register_routes() -> RpcRouterBuilder {
         // .register("starknet_estimateFee"                     , method::estimate_fee)
         // .register("starknet_estimateMessageFee"              , method::estimate_message_fee)
         // .register("starknet_getBlockWithTxHashes"            , method::get_block_with_tx_hashes)
-        // .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
         // .register("starknet_getTransactionStatus"            , method::get_transaction_status)
         // .register("starknet_getTransactionReceipt"           , method::get_transaction_receipt)
         // .register("starknet_simulateTransactions"            , method::simulate_transactions)
