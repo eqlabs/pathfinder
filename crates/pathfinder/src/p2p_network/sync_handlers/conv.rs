@@ -9,7 +9,8 @@ use p2p_proto::receipt::{
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
 use p2p_proto::transaction::AccountSignature;
 use pathfinder_common::{
-    event::Event, state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
+    event::Event, state_update::ContractUpdate, transaction::ResourceBound,
+    transaction::Transaction, BlockHeader, StateUpdate,
 };
 use pathfinder_common::{StateCommitment, TransactionHash};
 use pathfinder_crypto::Felt;
@@ -46,7 +47,7 @@ impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
             receipts: ZERO_MERKLE,
             // FIXME extra fields added to make sync work
             hash: Hash(self.hash.0),
-            gas_price: self.gas_price.0.to_be_bytes().into(),
+            gas_price: self.eth_l1_gas_price.0.to_be_bytes().into(),
             starknet_version: self.starknet_version.take_inner(),
             state_commitment: (self.state_commitment != StateCommitment::ZERO)
                 .then_some(Hash(self.state_commitment.0)),
@@ -107,9 +108,8 @@ impl ToProto<p2p_proto::state::StateDiff> for StateUpdate {
 impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
     fn to_proto(self) -> p2p_proto::transaction::Transaction {
         use p2p_proto::transaction as proto;
-        use pathfinder_common::transaction::TransactionVariant::{
-            DeclareV0, DeclareV1, DeclareV2, Deploy, DeployAccount, InvokeV0, InvokeV1, L1Handler,
-        };
+        use pathfinder_common::transaction::TransactionVariant::*;
+
         match self.variant {
             DeclareV0(x) => proto::Transaction::DeclareV0(proto::DeclareV0 {
                 sender: Address(x.sender_address.0),
@@ -139,6 +139,28 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce: x.nonce.0,
                 compiled_class_hash: x.compiled_class_hash.0,
             }),
+            DeclareV3(x) => proto::Transaction::DeclareV3(proto::DeclareV3 {
+                sender: Address(x.sender_address.0),
+                max_fee: Felt::ZERO, // TODO: this should probably be removed?,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                compiled_class_hash: x.compiled_class_hash.0,
+                l1_gas: x.resource_bounds.l1_gas.to_proto(),
+                l2_gas: x.resource_bounds.l2_gas.to_proto(),
+                tip: x.tip.0.into(),
+                paymaster: Address::default(), // TODO: this should probably be removed?
+                nonce_domain: "L1".to_owned(),
+                fee_domain: "L1".to_owned(),
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(|a| a.0)
+                    .collect(),
+            }),
             Deploy(x) => proto::Transaction::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
                 address_salt: x.contract_address_salt.0,
@@ -147,7 +169,7 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 // Only these two values are allowed in storage
                 version: if x.version.is_zero() { 0 } else { 1 },
             }),
-            DeployAccount(x) => proto::Transaction::DeployAccountV1(proto::DeployAccountV1 {
+            DeployAccountV0V1(x) => proto::Transaction::DeployAccountV1(proto::DeployAccountV1 {
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -156,6 +178,24 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce: x.nonce.0,
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                address: Address(x.contract_address.0),
+            }),
+            DeployAccountV3(x) => proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
+                max_fee: Felt::ZERO, // TODO: this should probably be removed?,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                l1_gas: x.resource_bounds.l1_gas.to_proto(),
+                l2_gas: x.resource_bounds.l2_gas.to_proto(),
+                tip: x.tip.0.into(),
+                paymaster: Address::default(), // TODO: this should probably be removed?
+                nonce_domain: "L1".to_owned(),
+                fee_domain: "L1".to_owned(),
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
                 address: Address(x.contract_address.0),
             }),
             InvokeV0(x) => proto::Transaction::InvokeV0(proto::InvokeV0 {
@@ -182,6 +222,27 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 },
                 nonce: x.nonce.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
+            }),
+            InvokeV3(x) => proto::Transaction::InvokeV3(proto::InvokeV3 {
+                sender: Address(x.sender_address.0),
+                max_fee: Felt::ZERO, // TODO: this should probably be removed?,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                calldata: x.calldata.into_iter().map(|c| c.0).collect(),
+                l1_gas: x.resource_bounds.l1_gas.to_proto(),
+                l2_gas: x.resource_bounds.l2_gas.to_proto(),
+                tip: x.tip.0.into(),
+                paymaster: Address::default(), // TODO: this should probably be removed?
+                nonce_domain: "L1".to_owned(),
+                fee_domain: "L1".to_owned(),
+                nonce: x.nonce.0,
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(|a| a.0)
+                    .collect(),
             }),
             L1Handler(x) => proto::Transaction::L1HandlerV1(proto::L1HandlerV1 {
                 nonce: x.nonce.0,
@@ -275,7 +336,7 @@ impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
             }),
             gw::Transaction::DeployAccount(x) => DeployAccount(DeployAccountTransactionReceipt {
                 common,
-                contract_address: x.contract_address.0,
+                contract_address: x.contract_address().0,
             }),
             gw::Transaction::Invoke(_) => Invoke(InvokeTransactionReceipt { common }),
             gw::Transaction::L1Handler(_) => L1Handler(L1HandlerTransactionReceipt {
@@ -301,6 +362,15 @@ impl ToProto<p2p_proto::event::TxnEvents> for (TransactionHash, Vec<Event>) {
         p2p_proto::event::TxnEvents {
             transaction_hash: Hash(self.0 .0),
             events: self.1.into_iter().map(ToProto::to_proto).collect(),
+        }
+    }
+}
+
+impl ToProto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
+    fn to_proto(self) -> p2p_proto::transaction::ResourceLimits {
+        p2p_proto::transaction::ResourceLimits {
+            max_amount: self.max_amount.0.into(),
+            max_price_per_unit: self.max_price_per_unit.0.into(),
         }
     }
 }

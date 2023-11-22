@@ -376,7 +376,7 @@ pub mod test_utils {
             .with_storage_commitment(storage_commitment1)
             .with_class_commitment(class_commitment1)
             .with_calculated_state_commitment()
-            .with_gas_price(GasPrice::from(1))
+            .with_eth_l1_gas_price(GasPrice::from(1))
             .with_sequencer_address(sequencer_address_bytes!(&[1u8]))
             .finalize_with_hash(block_hash_bytes!(b"block 1"));
         db_txn.insert_block_header(&header1).unwrap();
@@ -435,7 +435,7 @@ pub mod test_utils {
             .with_storage_commitment(storage_commitment2)
             .with_class_commitment(class_commitment2)
             .with_calculated_state_commitment()
-            .with_gas_price(GasPrice::from(2))
+            .with_eth_l1_gas_price(GasPrice::from(2))
             .with_sequencer_address(sequencer_address_bytes!(&[2u8]))
             .finalize_with_hash(block_hash_bytes!(b"latest"));
 
@@ -682,7 +682,8 @@ pub mod test_utils {
         ];
 
         let block = starknet_gateway_types::reply::PendingBlock {
-            gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
+            eth_l1_gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
+            strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk gas price").unwrap()),
             parent_hash: latest.hash,
             sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
             status: starknet_gateway_types::reply::Status::Pending,

@@ -216,17 +216,19 @@ pub(crate) mod tests {
                 }
                 crate::v02::types::request::BroadcastedTransaction::DeployAccount(deploy) => {
                     starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
-                        gateway::transaction::DeployAccountTransaction {
-                            contract_address: deploy.deployed_contract_address(),
-                            transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
-                            max_fee: deploy.max_fee,
-                            version: deploy.version,
-                            signature: deploy.signature,
-                            nonce: deploy.nonce,
-                            contract_address_salt: deploy.contract_address_salt,
-                            constructor_calldata: deploy.constructor_calldata,
-                            class_hash: deploy.class_hash,
-                        },
+                        gateway::transaction::DeployAccountTransaction::V0V1(
+                            gateway::transaction::DeployAccountTransactionV0V1 {
+                                contract_address: deploy.deployed_contract_address(),
+                                transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
+                                max_fee: deploy.max_fee,
+                                version: deploy.version,
+                                signature: deploy.signature,
+                                nonce: deploy.nonce,
+                                contract_address_salt: deploy.contract_address_salt,
+                                constructor_calldata: deploy.constructor_calldata,
+                                class_hash: deploy.class_hash,
+                            },
+                        ),
                     )
                 }
                 crate::v02::types::request::BroadcastedTransaction::Invoke(
@@ -322,7 +324,7 @@ pub(crate) mod tests {
 
             let next_block_header = BlockHeader::builder()
                 .with_number(last_block_header.number + 1)
-                .with_gas_price(GasPrice(1))
+                .with_eth_l1_gas_price(GasPrice(1))
                 .with_parent_hash(last_block_header.hash)
                 .with_starknet_version(last_block_header.starknet_version)
                 .with_sequencer_address(last_block_header.sequencer_address)

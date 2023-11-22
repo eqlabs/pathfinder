@@ -225,6 +225,41 @@ impl From<u128> for Felt {
     }
 }
 
+impl TryInto<u128> for Felt {
+    type Error = OverflowError;
+
+    fn try_into(self) -> Result<u128, Self::Error> {
+        let initial_zeroes = self.0.iter().take_while(|b| **b == 0).count();
+        const EXPECTED_ZEROES: usize = (32 - u128::BITS / u8::BITS) as usize;
+
+        if initial_zeroes < EXPECTED_ZEROES {
+            return Err(OverflowError);
+        }
+
+        let bytes = self.0[EXPECTED_ZEROES..]
+            .try_into()
+            .expect("Should match u128 size");
+        Ok(u128::from_be_bytes(bytes))
+    }
+}
+
+impl TryInto<u64> for Felt {
+    type Error = OverflowError;
+
+    fn try_into(self) -> Result<u64, Self::Error> {
+        let initial_zeroes = self.0.iter().take_while(|b| **b == 0).count();
+        const EXPECTED_ZEROES: usize = (32 - u64::BITS / u8::BITS) as usize;
+
+        if initial_zeroes < EXPECTED_ZEROES {
+            return Err(OverflowError);
+        }
+        let bytes = self.0[EXPECTED_ZEROES..]
+            .try_into()
+            .expect("Should match u64 size");
+        Ok(u64::from_be_bytes(bytes))
+    }
+}
+
 impl std::ops::Add for Felt {
     type Output = Felt;
 

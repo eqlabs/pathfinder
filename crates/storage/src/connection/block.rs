@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StarknetVersion};
+use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice, StarknetVersion};
 
 use crate::{prelude::*, BlockId};
 
@@ -14,14 +14,15 @@ pub(super) fn insert_block_header(
     // Insert the header
     tx.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  storage_commitment,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count)
-            VALUES (:number, :hash, :storage_commitment, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count)",
+                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count)
+            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
             ":storage_commitment": &header.storage_commitment,
             ":timestamp": &header.timestamp,
-            ":gas_price": &header.gas_price.to_be_bytes().as_slice(),
+            ":eth_l1_gas_price": &header.eth_l1_gas_price.to_be_bytes().as_slice(),
+            ":strk_l1_gas_price": &header.strk_l1_gas_price.to_be_bytes().as_slice(),
             ":sequencer_address": &header.sequencer_address,
             ":version_id": &version_id,
             ":transaction_commitment": &header.transaction_commitment,
@@ -214,7 +215,10 @@ pub(super) fn block_header(
         let hash = row.get_block_hash("hash")?;
         let storage_commitment = row.get_storage_commitment("storage_commitment")?;
         let timestamp = row.get_timestamp("timestamp")?;
-        let gas_price = row.get_gas_price("gas_price")?;
+        let eth_l1_gas_price = row.get_gas_price("eth_l1_gas_price")?;
+        let strk_l1_gas_price = row
+            .get_optional_gas_price("strk_l1_gas_price")?
+            .unwrap_or(GasPrice::ZERO);
         let sequencer_address = row.get_sequencer_address("sequencer_address")?;
         let transaction_commitment = row.get_transaction_commitment("transaction_commitment")?;
         let event_commitment = row.get_event_commitment("event_commitment")?;
@@ -228,7 +232,8 @@ pub(super) fn block_header(
             hash,
             number,
             timestamp,
-            gas_price,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
             sequencer_address,
             class_commitment,
             event_commitment,
@@ -314,7 +319,8 @@ mod tests {
             parent_hash: BlockHash::ZERO,
             number: BlockNumber::GENESIS,
             timestamp: BlockTimestamp::new_or_panic(10),
-            gas_price: GasPrice(32),
+            eth_l1_gas_price: GasPrice(32),
+            strk_l1_gas_price: GasPrice(33),
             sequencer_address: sequencer_address_bytes!(b"sequencer address genesis"),
             starknet_version: StarknetVersion::default(),
             class_commitment,
@@ -328,7 +334,8 @@ mod tests {
         let header1 = genesis
             .child_builder()
             .with_timestamp(BlockTimestamp::new_or_panic(12))
-            .with_gas_price(GasPrice(34))
+            .with_eth_l1_gas_price(GasPrice(34))
+            .with_strk_l1_gas_price(GasPrice(35))
             .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 1"))
             .with_event_commitment(event_commitment_bytes!(b"event commitment 1"))
             .with_class_commitment(class_commitment_bytes!(b"class commitment 1"))
@@ -339,7 +346,8 @@ mod tests {
 
         let header2 = header1
             .child_builder()
-            .with_gas_price(GasPrice(38))
+            .with_eth_l1_gas_price(GasPrice(38))
+            .with_strk_l1_gas_price(GasPrice(39))
             .with_timestamp(BlockTimestamp::new_or_panic(15))
             .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
             .with_event_commitment(event_commitment_bytes!(b"event commitment 2"))

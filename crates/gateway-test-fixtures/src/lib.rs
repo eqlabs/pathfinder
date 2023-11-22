@@ -149,6 +149,35 @@ pub mod v0_12_2 {
     }
 }
 
+pub mod v0_13_0 {
+    pub mod block {
+        pub const PENDING: &str = str_fixture!("0.13.0/block/pending.json");
+    }
+
+    pub mod transaction {
+        pub mod invoke {
+            pub mod v3 {
+                pub const BLOCK_319106: &str =
+                    str_fixture!("0.13.0/transaction/invoke_v3_block_319106.json");
+            }
+        }
+
+        pub mod declare {
+            pub mod v3 {
+                pub const BLOCK_319709: &str =
+                    str_fixture!("0.13.0/transaction/declare_v3_block_319709.json");
+            }
+        }
+
+        pub mod deploy_account {
+            pub mod v3 {
+                pub const BLOCK_319693: &str =
+                    str_fixture!("0.13.0/transaction/deploy_account_v3_block_319693.json");
+            }
+        }
+    }
+}
+
 pub mod add_transaction {
     pub const INVOKE_CONTRACT_WITH_SIGNATURE: &str =
         str_fixture!("add-transaction/invoke-contract-with-signature.json");
@@ -162,6 +191,8 @@ pub mod integration {
         pub const NUMBER_216591: &str = str_fixture!("integration/block/216591.json");
         pub const NUMBER_228457: &str = str_fixture!("integration/block/228457.json");
         pub const NUMBER_285915: &str = str_fixture!("integration/block/285915.json");
+        pub const NUMBER_319693: &str = str_fixture!("integration/block/319693.json");
+        pub const NUMBER_319709: &str = str_fixture!("integration/block/319709.json");
         pub const PENDING: &str = str_fixture!("integration/block/pending.json");
     }
 

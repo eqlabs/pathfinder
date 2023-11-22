@@ -27,7 +27,8 @@ impl PendingData {
             parent_hash: self.block.parent_hash,
             number: self.number,
             timestamp: self.block.timestamp,
-            gas_price: self.block.gas_price,
+            eth_l1_gas_price: self.block.eth_l1_gas_price,
+            strk_l1_gas_price: self.block.strk_l1_gas_price.unwrap_or_default(),
             sequencer_address: self.block.sequencer_address,
             starknet_version: self.block.starknet_version.clone(),
             // Pending block does not know what these are yet.
@@ -65,7 +66,7 @@ impl PendingWatcher {
         } else {
             let data = PendingData {
                 block: PendingBlock {
-                    gas_price: latest.gas_price,
+                    eth_l1_gas_price: latest.eth_l1_gas_price,
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,
                     starknet_version: latest.starknet_version,
@@ -108,7 +109,7 @@ mod tests {
             .unwrap();
 
         let latest = BlockHeader::builder()
-            .with_gas_price(GasPrice(1234))
+            .with_eth_l1_gas_price(GasPrice(1234))
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
@@ -119,7 +120,7 @@ mod tests {
             block: PendingBlock {
                 parent_hash: latest.hash,
                 timestamp: BlockTimestamp::new_or_panic(112233),
-                gas_price: GasPrice(51123),
+                eth_l1_gas_price: GasPrice(51123),
                 ..Default::default()
             },
             state_update: StateUpdate::default().with_contract_nonce(
@@ -156,7 +157,7 @@ mod tests {
 
         let latest = parent
             .child_builder()
-            .with_gas_price(GasPrice(1234))
+            .with_eth_l1_gas_price(GasPrice(1234))
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
@@ -167,7 +168,7 @@ mod tests {
         let result = uut.get(&tx).unwrap();
 
         let mut expected = PendingData::default();
-        expected.block.gas_price = latest.gas_price;
+        expected.block.eth_l1_gas_price = latest.eth_l1_gas_price;
         expected.block.timestamp = latest.timestamp;
         expected.block.parent_hash = latest.hash;
         expected.block.starknet_version = latest.starknet_version;

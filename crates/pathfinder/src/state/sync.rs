@@ -756,7 +756,9 @@ async fn l2_update(
             number: block.block_number,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
-            gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
+            eth_l1_gas_price: block.eth_l1_gas_price.unwrap_or(GasPrice::ZERO),
+            // Default value for Starknet <0.13.0 is zero
+            strk_l1_gas_price: block.strk_l1_gas_price.unwrap_or(GasPrice::ZERO),
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
@@ -1081,7 +1083,8 @@ mod tests {
             let block = Box::new(reply::Block {
                 block_hash: header.hash,
                 block_number: header.number,
-                gas_price: Some(header.gas_price),
+                eth_l1_gas_price: Some(header.eth_l1_gas_price),
+                strk_l1_gas_price: Some(header.strk_l1_gas_price),
                 parent_block_hash: header.parent_hash,
                 sequencer_address: Some(header.sequencer_address),
                 state_commitment: header.state_commitment,

@@ -1,5 +1,5 @@
 use pathfinder_common::transaction::{
-    DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction, DeployTransaction,
+    DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransactionV0V1, DeployTransaction,
     InvokeTransactionV0, InvokeTransactionV1, L1HandlerTransaction,
 };
 use pathfinder_common::{TransactionHash, TransactionVersion};
@@ -45,10 +45,15 @@ impl Serialize for Transaction {
             TransactionVariant::DeclareV0(x) => DeclareV0Helper(x).serialize(serializer),
             TransactionVariant::DeclareV1(x) => DeclareV1Helper(x).serialize(serializer),
             TransactionVariant::DeclareV2(x) => DeclareV2Helper(x).serialize(serializer),
+            TransactionVariant::DeclareV3(_) => todo!(),
             TransactionVariant::Deploy(x) => DeployHelper(x).serialize(serializer),
-            TransactionVariant::DeployAccount(x) => DeployAccountHelper(x).serialize(serializer),
+            TransactionVariant::DeployAccountV0V1(x) => {
+                DeployAccountHelper(x).serialize(serializer)
+            }
+            TransactionVariant::DeployAccountV3(_) => todo!(),
             TransactionVariant::InvokeV0(x) => InvokeV0Helper(x).serialize(serializer),
             TransactionVariant::InvokeV1(x) => InvokeV1Helper(x).serialize(serializer),
+            TransactionVariant::InvokeV3(_) => todo!(),
             TransactionVariant::L1Handler(x) => L1HandlerHelper(x).serialize(serializer),
         }
     }
@@ -58,7 +63,7 @@ struct DeclareV0Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV1Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV2Helper<'a>(&'a DeclareTransactionV2);
 struct DeployHelper<'a>(&'a DeployTransaction);
-struct DeployAccountHelper<'a>(&'a DeployAccountTransaction);
+struct DeployAccountHelper<'a>(&'a DeployAccountTransactionV0V1);
 struct InvokeV0Helper<'a>(&'a InvokeTransactionV0);
 struct InvokeV1Helper<'a>(&'a InvokeTransactionV1);
 struct L1HandlerHelper<'a>(&'a L1HandlerTransaction);
@@ -334,7 +339,7 @@ mod tests {
 
         #[test]
         fn deploy_account() {
-            let original: TransactionVariant = DeployAccountTransaction {
+            let original: TransactionVariant = DeployAccountTransactionV0V1 {
                 contract_address: contract_address!("0xabc"),
                 max_fee: fee!("0x1111"),
                 version: TransactionVersion::TWO,

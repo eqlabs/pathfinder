@@ -5,14 +5,16 @@ use pathfinder_common::{
     event::Event,
     state_update::SystemContractUpdate,
     transaction::{
-        DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction, DeployTransaction,
-        EntryPointType, InvokeTransactionV0, InvokeTransactionV1, L1HandlerTransaction,
-        TransactionVariant,
+        DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
+        DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
+        EntryPointType, InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3,
+        L1HandlerTransaction, ResourceBound, ResourceBounds, TransactionVariant,
     },
-    BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam,
-    ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey, Fee,
-    GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateCommitment, StorageAddress,
-    StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    AccountDeploymentDataElem, BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash,
+    ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint,
+    EventData, EventKey, Fee, GasPrice, SequencerAddress, SierraHash, StarknetVersion,
+    StateCommitment, StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
+    TransactionVersion,
 };
 use std::{collections::HashMap, time::SystemTime};
 
@@ -31,7 +33,7 @@ pub struct BlockHeader {
     pub parent_hash: BlockHash,
     pub number: BlockNumber,
     pub timestamp: BlockTimestamp,
-    pub gas_price: GasPrice,
+    pub eth_l1_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub state_commitment: StateCommitment,
@@ -110,7 +112,7 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
             parent_hash: value.parent_hash,
             number: value.number,
             timestamp: value.timestamp,
-            gas_price: value.gas_price,
+            eth_l1_gas_price: value.eth_l1_gas_price,
             sequencer_address: value.sequencer_address,
             starknet_version: value.starknet_version,
             state_commitment: value.state_commitment,
@@ -133,7 +135,7 @@ impl TryFrom<p2p_proto::block::BlockHeader> for BlockHeader {
             .ok_or(anyhow::anyhow!("Invalid block timestamp"))?,
             sequencer_address: SequencerAddress(dto.sequencer_address.0),
             // TODO imo missing in the spec
-            gas_price: GasPrice::from_be_slice(dto.gas_price.as_slice())?,
+            eth_l1_gas_price: GasPrice::from_be_slice(dto.gas_price.as_slice())?,
             // TODO not sure if should be in the spec
             starknet_version: StarknetVersion::from(dto.starknet_version),
             // TODO remove this field when signature verification is done
@@ -254,7 +256,49 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                     .collect(),
                 compiled_class_hash: CasmHash(x.compiled_class_hash),
             }),
-            DeclareV3(_) => unimplemented!(),
+            DeclareV3(x) => TransactionVariant::DeclareV3(DeclareTransactionV3 {
+                class_hash: ClassHash(x.class_hash.0),
+                nonce: TransactionNonce(x.nonce),
+                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
+                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: pathfinder_common::ResourceAmount(
+                            x.l1_gas.max_amount.try_into()?,
+                        ),
+                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                            x.l1_gas.max_price_per_unit.try_into()?,
+                        ),
+                    },
+                    l2_gas: ResourceBound {
+                        max_amount: pathfinder_common::ResourceAmount(
+                            x.l2_gas.max_amount.try_into()?,
+                        ),
+                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                            x.l2_gas.max_price_per_unit.try_into()?,
+                        ),
+                    },
+                },
+                tip: pathfinder_common::Tip(x.tip.try_into()?),
+                paymaster_data: x
+                    .paymaster_data
+                    .into_iter()
+                    .map(pathfinder_common::PaymasterDataElem)
+                    .collect(),
+                signature: x
+                    .signature
+                    .parts
+                    .into_iter()
+                    .map(TransactionSignatureElem)
+                    .collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(AccountDeploymentDataElem)
+                    .collect(),
+                sender_address: ContractAddress(x.sender.0),
+                compiled_class_hash: CasmHash(x.compiled_class_hash),
+            }),
             Deploy(x) => TransactionVariant::Deploy(DeployTransaction {
                 contract_address: ContractAddress(x.address.0),
                 contract_address_salt: ContractAddressSalt(x.address_salt),
@@ -266,10 +310,25 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                     _ => anyhow::bail!("Invalid deploy transaction version"),
                 },
             }),
-            DeployAccountV1(x) => TransactionVariant::DeployAccount(DeployAccountTransaction {
+            DeployAccountV1(x) => {
+                TransactionVariant::DeployAccountV0V1(DeployAccountTransactionV0V1 {
+                    contract_address: ContractAddress(x.address.0),
+                    max_fee: Fee(x.max_fee),
+                    version: TransactionVersion::ONE,
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                    nonce: TransactionNonce(x.nonce),
+                    contract_address_salt: ContractAddressSalt(x.address_salt),
+                    constructor_calldata: x.calldata.into_iter().map(CallParam).collect(),
+                    class_hash: ClassHash(x.class_hash.0),
+                })
+            }
+            DeployAccountV3(x) => TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
                 contract_address: ContractAddress(x.address.0),
-                max_fee: Fee(x.max_fee),
-                version: TransactionVersion::ONE,
                 signature: x
                     .signature
                     .parts
@@ -277,11 +336,38 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                     .map(TransactionSignatureElem)
                     .collect(),
                 nonce: TransactionNonce(x.nonce),
+                nonce_data_availability_mode:
+                    pathfinder_common::transaction::DataAvailabilityMode::L1,
+                fee_data_availability_mode:
+                    pathfinder_common::transaction::DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: pathfinder_common::ResourceAmount(
+                            x.l1_gas.max_amount.try_into()?,
+                        ),
+                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                            x.l1_gas.max_price_per_unit.try_into()?,
+                        ),
+                    },
+                    l2_gas: ResourceBound {
+                        max_amount: pathfinder_common::ResourceAmount(
+                            x.l2_gas.max_amount.try_into()?,
+                        ),
+                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                            x.l2_gas.max_price_per_unit.try_into()?,
+                        ),
+                    },
+                },
+                tip: pathfinder_common::Tip(x.tip.try_into()?),
+                paymaster_data: x
+                    .paymaster_data
+                    .into_iter()
+                    .map(pathfinder_common::PaymasterDataElem)
+                    .collect(),
                 contract_address_salt: ContractAddressSalt(x.address_salt),
                 constructor_calldata: x.calldata.into_iter().map(CallParam).collect(),
                 class_hash: ClassHash(x.class_hash.0),
             }),
-            DeployAccountV3(_) => unimplemented!(),
             InvokeV0(x) => TransactionVariant::InvokeV0(InvokeTransactionV0 {
                 calldata: x.calldata.into_iter().map(CallParam).collect(),
                 sender_address: ContractAddress(x.address.0),
@@ -313,7 +399,50 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                     .collect(),
                 nonce: TransactionNonce(x.nonce),
             }),
-            InvokeV3(_) => unimplemented!(),
+            InvokeV3(x) => TransactionVariant::InvokeV3(InvokeTransactionV3 {
+                signature: x
+                    .signature
+                    .parts
+                    .into_iter()
+                    .map(TransactionSignatureElem)
+                    .collect(),
+                nonce: TransactionNonce(x.nonce),
+                nonce_data_availability_mode:
+                    pathfinder_common::transaction::DataAvailabilityMode::L1,
+                fee_data_availability_mode:
+                    pathfinder_common::transaction::DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: pathfinder_common::ResourceAmount(
+                            x.l1_gas.max_amount.try_into()?,
+                        ),
+                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                            x.l1_gas.max_price_per_unit.try_into()?,
+                        ),
+                    },
+                    l2_gas: ResourceBound {
+                        max_amount: pathfinder_common::ResourceAmount(
+                            x.l2_gas.max_amount.try_into()?,
+                        ),
+                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                            x.l2_gas.max_price_per_unit.try_into()?,
+                        ),
+                    },
+                },
+                tip: pathfinder_common::Tip(x.tip.try_into()?),
+                paymaster_data: x
+                    .paymaster_data
+                    .into_iter()
+                    .map(pathfinder_common::PaymasterDataElem)
+                    .collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(pathfinder_common::AccountDeploymentDataElem)
+                    .collect(),
+                calldata: x.calldata.into_iter().map(CallParam).collect(),
+                sender_address: ContractAddress(x.sender.0),
+            }),
             L1HandlerV1(x) => TransactionVariant::L1Handler(L1HandlerTransaction {
                 contract_address: ContractAddress(x.address.0),
                 entry_point_selector: EntryPoint(x.entry_point_selector),
@@ -342,5 +471,17 @@ impl TryFromDto<p2p_proto::event::Event> for Event {
             keys: proto.keys.into_iter().map(EventKey).collect(),
             data: proto.data.into_iter().map(EventData).collect(),
         })
+    }
+}
+
+impl TryFromDto<String> for DataAvailabilityMode {
+    fn try_from_dto(dto: String) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        match dto.as_str() {
+            "L1" => Ok(Self::L1),
+            _ => anyhow::bail!("Invalid data availability mode"),
+        }
     }
 }

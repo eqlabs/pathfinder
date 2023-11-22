@@ -383,7 +383,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
     let signature_hash = match tx {
         Transaction::Invoke(tx) => calculate_signature_hash(tx.signature()),
         Transaction::Declare(tx) => calculate_signature_hash(tx.signature()),
-        Transaction::DeployAccount(tx) => calculate_signature_hash(&tx.signature),
+        Transaction::DeployAccount(tx) => calculate_signature_hash(tx.signature()),
         Transaction::Deploy(_) | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 

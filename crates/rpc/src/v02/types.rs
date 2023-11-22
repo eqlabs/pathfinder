@@ -1099,6 +1099,7 @@ pub mod reply {
     impl From<&GatewayTransaction> for Transaction {
         fn from(txn: &GatewayTransaction) -> Self {
             use starknet_gateway_types::reply::transaction::DeclareTransaction as GatewayDeclare;
+
             match txn {
                 GatewayTransaction::Invoke(txn) => {
                     match txn {
@@ -1127,6 +1128,9 @@ pub mod reply {
                                 sender_address: txn.sender_address,
                                 calldata: txn.calldata.clone(),
                             }))
+                        }
+                        starknet_gateway_types::reply::transaction::InvokeTransaction::V3(_) => {
+                            todo!()
                         }
                     }
                 }
@@ -1167,6 +1171,9 @@ pub mod reply {
                         compiled_class_hash: txn.compiled_class_hash,
                     }))
                 }
+                GatewayTransaction::Declare(GatewayDeclare::V3(_)) => {
+                    todo!()
+                }
                 GatewayTransaction::Deploy(txn) => Self::Deploy(DeployTransaction {
                     hash: txn.transaction_hash,
                     class_hash: txn.class_hash,
@@ -1174,8 +1181,10 @@ pub mod reply {
                     contract_address_salt: txn.contract_address_salt,
                     constructor_calldata: txn.constructor_calldata.clone(),
                 }),
-                GatewayTransaction::DeployAccount(txn) => {
-                    Self::DeployAccount(DeployAccountTransaction {
+                GatewayTransaction::DeployAccount(txn) => match txn {
+                    starknet_gateway_types::reply::transaction::DeployAccountTransaction::V0V1(
+                        txn,
+                    ) => Self::DeployAccount(DeployAccountTransaction {
                         common: CommonTransactionProperties {
                             hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
@@ -1186,8 +1195,11 @@ pub mod reply {
                         contract_address_salt: txn.contract_address_salt,
                         constructor_calldata: txn.constructor_calldata.clone(),
                         class_hash: txn.class_hash,
-                    })
-                }
+                    }),
+                    starknet_gateway_types::reply::transaction::DeployAccountTransaction::V3(_) => {
+                        todo!()
+                    }
+                },
                 GatewayTransaction::L1Handler(txn) => Self::L1Handler(L1HandlerTransaction {
                     hash: txn.transaction_hash,
                     version: txn.version,

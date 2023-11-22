@@ -42,7 +42,7 @@ pub(crate) fn create_blocks() -> [BlockHeader; NUM_BLOCKS] {
                 .with_class_commitment(class_commitment)
                 .with_storage_commitment(storage_commitment)
                 .with_calculated_state_commitment()
-                .with_gas_price(GasPrice::from(i as u64))
+                .with_eth_l1_gas_price(GasPrice::from(i as u64))
                 .with_sequencer_address(SequencerAddress(index_as_felt))
                 .with_transaction_commitment(TransactionCommitment(index_as_felt))
                 .with_event_commitment(EventCommitment(index_as_felt))
