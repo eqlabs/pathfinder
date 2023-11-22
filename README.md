@@ -252,7 +252,7 @@ Note that the pathfinder extension is versioned separately from the Starknet spe
 
 ### pathfinder extension API
 
-You can find the API specification [here](doc/rpc/pathfinder_rpc_api.json).
+Here are links to our [API extensions](doc/rpc/pathfinder_rpc_api.json) and [websocket API](doc/rpc/pathfinder_ws.json).
 
 ## Monitoring API
 

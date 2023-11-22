@@ -267,61 +267,6 @@
                     "ABORTED"
                 ],
                 "description": "The status of a transaction"
-            },
-            "BLOCK_HEADER": {
-                "type": "object",
-                "properties": {
-                    "hash": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "parent_hash": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "number": {
-                        "type": "integer"
-                    },
-                    "timestamp": {
-                        "type": "integer"
-                    },
-                    "gas_price": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "sequencer_address": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "starknet_version": {
-                        "ref": "string"
-                    },
-                    "class_commitment": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "event_commitment": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "state_commitment": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "storage_commitment": {
-                        "ref": "#/components/schemas/FELT"
-                    },
-                    "transaction_commitment": {
-                        "ref": "#/components/schemas/FELT"
-                    }
-                },
-                "required": [
-                    "hash",
-                    "parent_hash",
-                    "number",
-                    "timestamp",
-                    "gas_price",
-                    "sequencer_address",
-                    "starknet_version",
-                    "class_commitment",
-                    "event_commitment",
-                    "state_commitment",
-                    "storage_commitment",
-                    "transaction_commitment"
-                ]
             }
         },
         "errors": {
