@@ -32,6 +32,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_estimateFee"                     , v05_method::estimate_fee)
         .register("starknet_estimateMessageFee"              , v05_method::estimate_message_fee)
         .register("starknet_getBlockWithTxHashes"            , v05_method::get_block_with_tx_hashes)
+        .register("starknet_getTransactionStatus"            , v05_method::get_transaction_status)
 
         .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
 
