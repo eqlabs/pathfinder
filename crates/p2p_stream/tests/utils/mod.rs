@@ -87,10 +87,6 @@ impl Codec for TestCodec {
 
         io.read_exact(&mut buf).await?;
 
-        if buf.is_empty() {
-            return Err(io::ErrorKind::UnexpectedEof.into());
-        }
-
         match u32::from_be_bytes(buf).try_into()? {
             Action::FailOnReadRequest => {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnReadRequest"))
@@ -106,24 +102,13 @@ impl Codec for TestCodec {
         &mut self,
         _protocol: &Self::Protocol,
         io: &mut T,
-    ) -> io::Result<Option<Self::Response>>
+    ) -> io::Result<Self::Response>
     where
         T: AsyncRead + Unpin + Send,
     {
         let mut buf = [0u8; std::mem::size_of::<u32>()];
 
-        let n = io.read(&mut buf[..1]).await?;
-
-        if n == 0 {
-            return Ok(None);
-        }
-
-        // Read the rest of the response
-        io.read_exact(&mut buf[1..]).await?;
-
-        if buf.is_empty() {
-            return Err(io::ErrorKind::UnexpectedEof.into());
-        }
+        io.read_exact(&mut buf).await?;
 
         match u32::from_be_bytes(buf).try_into()? {
             Action::FailOnReadResponse => {
@@ -132,7 +117,7 @@ impl Codec for TestCodec {
             Action::TimeoutOnReadResponse => loop {
                 tokio::time::sleep(Duration::MAX).await;
             },
-            action => Ok(Some(action)),
+            action => Ok(action),
         }
     }
 

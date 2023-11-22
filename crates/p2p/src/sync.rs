@@ -116,16 +116,14 @@ pub(crate) mod codec {
         where
             T: AsyncRead + Unpin + Send,
         {
-            decode::<T, ProstReq, Self::Request>(io, MESSAGE_SIZE_LIMIT)
-                .await
-                .and_then(|x| x.ok_or(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)))
+            decode(io, MESSAGE_SIZE_LIMIT).await
         }
 
         async fn read_response<T>(
             &mut self,
             _: &Self::Protocol,
             io: &mut T,
-        ) -> std::io::Result<Option<Self::Response>>
+        ) -> std::io::Result<Self::Response>
         where
             T: AsyncRead + Unpin + Send,
         {
@@ -160,20 +158,15 @@ pub(crate) mod codec {
     async fn decode<Reader, ProstDto, Dto>(
         mut io: &mut Reader,
         max_buf_size: usize,
-    ) -> std::io::Result<Option<Dto>>
+    ) -> std::io::Result<Dto>
     where
         Reader: AsyncRead + Unpin + Send,
         ProstDto: prost::Message + Default,
         Dto: TryFromProtobuf<ProstDto>,
     {
-        let encoded_len = varint::read_usize(&mut io)
+        let encoded_len: usize = unsigned_varint::aio::read_usize(&mut io)
             .await
             .map_err(Into::<std::io::Error>::into)?;
-
-        let encoded_len = match encoded_len {
-            Some(len) => len,
-            None => return Ok(None),
-        };
 
         if encoded_len > max_buf_size {
             return Err(std::io::Error::new(
@@ -190,7 +183,8 @@ pub(crate) mod codec {
 
         let prost_dto = ProstDto::decode(buf.as_ref())?;
         let dto = Dto::try_from_protobuf(prost_dto, std::any::type_name::<ProstDto>())?;
-        Ok(Some(dto))
+
+        Ok(dto)
     }
 
     async fn encode<Writer, ProstDto, Dto>(io: &mut Writer, dto: Dto) -> std::io::Result<()>
@@ -201,36 +195,6 @@ pub(crate) mod codec {
     {
         let data = dto.to_protobuf().encode_length_delimited_to_vec();
         io.write_all(&data).await?;
-        io.close().await?;
         Ok(())
-    }
-
-    mod varint {
-        use futures::io::{AsyncRead, AsyncReadExt};
-        use std::io;
-        use unsigned_varint::{decode, io::ReadError};
-
-        /// A version of `unsigned_varint::aio::read_usize` that returns `Ok(None)` if the reader is empty.
-        pub async fn read_usize<R: AsyncRead + Unpin>(
-            mut reader: R,
-        ) -> Result<Option<usize>, ReadError> {
-            let mut b = unsigned_varint::encode::usize_buffer();
-
-            let n = reader.read(&mut b[0..1]).await?;
-            if n == 0 {
-                return Ok(None);
-            }
-
-            for i in 1..b.len() {
-                let n = reader.read(&mut b[i..i + 1]).await?;
-                if n == 0 {
-                    return Err(ReadError::Io(io::ErrorKind::UnexpectedEof.into()));
-                }
-                if decode::is_last(b[i]) {
-                    return Ok(Some(decode::usize(&b[..=i])?.0));
-                }
-            }
-            Err(decode::Error::Overflow)?
-        }
     }
 }

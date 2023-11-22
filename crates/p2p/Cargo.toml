@@ -41,7 +41,7 @@ serde_json = { workspace = true }
 sha2 = "0.10.7"
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "sync"] }
 tracing = "0.1.37"
-unsigned-varint = { version = "0.8.0", features = ["std"] }
+unsigned-varint = { version = "0.8.0", features = ["futures"] }
 void = "1.0.2"
 zeroize = "1.6.0"
 
