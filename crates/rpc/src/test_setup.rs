@@ -70,9 +70,9 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .with_declared_cairo_class(erc20_class_hash)
         .with_deployed_contract(account_contract_address, DUMMY_ACCOUNT_CLASS_HASH)
         .with_deployed_contract(universal_deployer_address, universal_deployer_class_hash)
-        .with_deployed_contract(pathfinder_executor::FEE_TOKEN_ADDRESS, erc20_class_hash)
+        .with_deployed_contract(pathfinder_executor::ETH_FEE_TOKEN_ADDRESS, erc20_class_hash)
         .with_storage_update(
-            pathfinder_executor::FEE_TOKEN_ADDRESS,
+            pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
             account_balance_key,
             storage_value!("0x10000000000000000000000000000"),
         );
