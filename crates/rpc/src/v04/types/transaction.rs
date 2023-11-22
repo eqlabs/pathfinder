@@ -1,8 +1,11 @@
 use pathfinder_common::transaction::{
-    DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransactionV0V1, DeployTransaction,
-    InvokeTransactionV0, InvokeTransactionV1, L1HandlerTransaction,
+    DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
+    DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
+    InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
+    ResourceBounds,
 };
-use pathfinder_common::{TransactionHash, TransactionVersion};
+use pathfinder_common::{Fee, TransactionHash, TransactionVersion};
+use pathfinder_crypto::Felt;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 
@@ -45,15 +48,17 @@ impl Serialize for Transaction {
             TransactionVariant::DeclareV0(x) => DeclareV0Helper(x).serialize(serializer),
             TransactionVariant::DeclareV1(x) => DeclareV1Helper(x).serialize(serializer),
             TransactionVariant::DeclareV2(x) => DeclareV2Helper(x).serialize(serializer),
-            TransactionVariant::DeclareV3(_) => todo!(),
+            TransactionVariant::DeclareV3(x) => DeclareV3MapToV2Helper(x).serialize(serializer),
             TransactionVariant::Deploy(x) => DeployHelper(x).serialize(serializer),
             TransactionVariant::DeployAccountV0V1(x) => {
-                DeployAccountHelper(x).serialize(serializer)
+                DeployAccountV0V1Helper(x).serialize(serializer)
             }
-            TransactionVariant::DeployAccountV3(_) => todo!(),
+            TransactionVariant::DeployAccountV3(x) => {
+                DeployAccountV3MapToV1Helper(x).serialize(serializer)
+            }
             TransactionVariant::InvokeV0(x) => InvokeV0Helper(x).serialize(serializer),
             TransactionVariant::InvokeV1(x) => InvokeV1Helper(x).serialize(serializer),
-            TransactionVariant::InvokeV3(_) => todo!(),
+            TransactionVariant::InvokeV3(x) => InvokeV3MapToV1Helper(x).serialize(serializer),
             TransactionVariant::L1Handler(x) => L1HandlerHelper(x).serialize(serializer),
         }
     }
@@ -62,10 +67,13 @@ impl Serialize for Transaction {
 struct DeclareV0Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV1Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV2Helper<'a>(&'a DeclareTransactionV2);
+struct DeclareV3MapToV2Helper<'a>(&'a DeclareTransactionV3);
 struct DeployHelper<'a>(&'a DeployTransaction);
-struct DeployAccountHelper<'a>(&'a DeployAccountTransactionV0V1);
+struct DeployAccountV0V1Helper<'a>(&'a DeployAccountTransactionV0V1);
+struct DeployAccountV3MapToV1Helper<'a>(&'a DeployAccountTransactionV3);
 struct InvokeV0Helper<'a>(&'a InvokeTransactionV0);
 struct InvokeV1Helper<'a>(&'a InvokeTransactionV1);
+struct InvokeV3MapToV1Helper<'a>(&'a InvokeTransactionV3);
 struct L1HandlerHelper<'a>(&'a L1HandlerTransaction);
 struct TransactionVersionHelper<'a>(&'a TransactionVersion);
 
@@ -120,6 +128,26 @@ impl Serialize for DeclareV2Helper<'_> {
     }
 }
 
+impl Serialize for DeclareV3MapToV2Helper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let max_fee = max_fee_from_resource_bounds(&self.0.resource_bounds);
+
+        let mut s = serializer.serialize_struct("DeclareV3", 8)?;
+        s.serialize_field("type", "DECLARE")?;
+        s.serialize_field("sender_address", &self.0.sender_address)?;
+        s.serialize_field("compiled_class_hash", &self.0.compiled_class_hash)?;
+        s.serialize_field("max_fee", &max_fee)?;
+        s.serialize_field("version", "0x2")?;
+        s.serialize_field("signature", &self.0.signature)?;
+        s.serialize_field("nonce", &self.0.nonce)?;
+        s.serialize_field("class_hash", &self.0.class_hash)?;
+        s.end()
+    }
+}
+
 impl Serialize for DeployHelper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -135,7 +163,7 @@ impl Serialize for DeployHelper<'_> {
     }
 }
 
-impl Serialize for DeployAccountHelper<'_> {
+impl Serialize for DeployAccountV0V1Helper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -144,6 +172,26 @@ impl Serialize for DeployAccountHelper<'_> {
         s.serialize_field("type", "DEPLOY_ACCOUNT")?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
         s.serialize_field("version", &TransactionVersionHelper(&self.0.version))?;
+        s.serialize_field("signature", &self.0.signature)?;
+        s.serialize_field("nonce", &self.0.nonce)?;
+        s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
+        s.serialize_field("constructor_calldata", &self.0.constructor_calldata)?;
+        s.serialize_field("class_hash", &self.0.class_hash)?;
+        s.end()
+    }
+}
+
+impl Serialize for DeployAccountV3MapToV1Helper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let max_fee = max_fee_from_resource_bounds(&self.0.resource_bounds);
+
+        let mut s = serializer.serialize_struct("DeployAccount", 8)?;
+        s.serialize_field("type", "DEPLOY_ACCOUNT")?;
+        s.serialize_field("max_fee", &max_fee)?;
+        s.serialize_field("version", "0x1")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
@@ -187,6 +235,25 @@ impl Serialize for InvokeV1Helper<'_> {
     }
 }
 
+impl Serialize for InvokeV3MapToV1Helper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let max_fee = max_fee_from_resource_bounds(&self.0.resource_bounds);
+
+        let mut s = serializer.serialize_struct("InvokeV1", 7)?;
+        s.serialize_field("type", "INVOKE")?;
+        s.serialize_field("sender_address", &self.0.sender_address)?;
+        s.serialize_field("calldata", &self.0.calldata)?;
+        s.serialize_field("max_fee", &max_fee)?;
+        s.serialize_field("version", "0x1")?;
+        s.serialize_field("signature", &self.0.signature)?;
+        s.serialize_field("nonce", &self.0.nonce)?;
+        s.end()
+    }
+}
+
 impl Serialize for L1HandlerHelper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -213,6 +280,16 @@ impl Serialize for TransactionVersionHelper<'_> {
     }
 }
 
+fn max_fee_from_resource_bounds(r: &ResourceBounds) -> Fee {
+    let max_fee = r
+        .l1_gas
+        .max_price_per_unit
+        .0
+        .saturating_mul(r.l1_gas.max_amount.0 as u128);
+
+    Fee(Felt::from(max_fee))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,7 +297,9 @@ mod tests {
 
     mod serialization {
         use super::*;
-        use pathfinder_common::{transaction::*, TransactionVersion};
+        use pathfinder_common::{
+            transaction::*, ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion,
+        };
         use pretty_assertions::assert_eq;
         use serde_json::json;
 
@@ -311,6 +390,48 @@ mod tests {
         }
 
         #[test]
+        fn declare_v3() {
+            let original: TransactionVariant = DeclareTransactionV3 {
+                class_hash: class_hash!("0x123"),
+                nonce: transaction_nonce!("0xaabbcc"),
+                sender_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                compiled_class_hash: casm_hash!("0xbbbbb"),
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(256),
+                        max_price_per_unit: ResourcePricePerUnit(10),
+                    },
+                    l2_gas: Default::default(),
+                },
+                tip: Tip(5),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+            }
+            .into();
+
+            let expected = json!({
+                "type": "DECLARE",
+                "version": "0x2",
+                "sender_address": "0xabc",
+                "max_fee": "0xa00",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "class_hash": "0x123",
+                "nonce": "0xaabbcc",
+                "compiled_class_hash": "0xbbbbb",
+            });
+            let uut = Transaction(original);
+            let result = serde_json::to_value(uut).unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
         fn deploy() {
             let original: TransactionVariant = DeployTransaction {
                 contract_address: contract_address!("0xabc"),
@@ -338,11 +459,11 @@ mod tests {
         }
 
         #[test]
-        fn deploy_account() {
+        fn deploy_account_v1() {
             let original: TransactionVariant = DeployAccountTransactionV0V1 {
                 contract_address: contract_address!("0xabc"),
                 max_fee: fee!("0x1111"),
-                version: TransactionVersion::TWO,
+                version: TransactionVersion::ONE,
                 signature: vec![
                     transaction_signature_elem!("0xa1b1"),
                     transaction_signature_elem!("0x1a1b"),
@@ -357,7 +478,49 @@ mod tests {
             let expected = json!({
                 "type": "DEPLOY_ACCOUNT",
                 "max_fee": "0x1111",
-                "version": "0x2",
+                "version": "0x1",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "nonce": "0xaabbcc",
+                "contract_address_salt": "0xeeee",
+                "constructor_calldata": ["0xbbb0","0xbbb1"],
+                "class_hash": "0x123",
+            });
+            let uut = Transaction(original);
+            let result = serde_json::to_value(uut).unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn deploy_account_v3() {
+            let original: TransactionVariant = DeployAccountTransactionV3 {
+                contract_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                nonce: transaction_nonce!("0xaabbcc"),
+                contract_address_salt: contract_address_salt!("0xeeee"),
+                constructor_calldata: vec![call_param!("0xbbb0"), call_param!("0xbbb1")],
+                class_hash: class_hash!("0x123"),
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(256),
+                        max_price_per_unit: ResourcePricePerUnit(10),
+                    },
+                    l2_gas: Default::default(),
+                },
+                tip: Tip(5),
+                paymaster_data: vec![],
+            }
+            .into();
+
+            let expected = json!({
+                "type": "DEPLOY_ACCOUNT",
+                "max_fee": "0xa00",
+                "version": "0x1",
                 "signature": ["0xa1b1", "0x1a1b"],
                 "nonce": "0xaabbcc",
                 "contract_address_salt": "0xeeee",
@@ -420,6 +583,46 @@ mod tests {
                 "calldata": ["0xfff1","0xfff0"],
                 "sender_address": "0xabc",
                 "max_fee": "0x1111",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "nonce": "0xaabbcc",
+            });
+            let uut = Transaction(original);
+            let result = serde_json::to_value(uut).unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn invoke_v3() {
+            let original: TransactionVariant = InvokeTransactionV3 {
+                calldata: vec![call_param!("0xfff1"), call_param!("0xfff0")],
+                sender_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                nonce: transaction_nonce!("0xaabbcc"),
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(256),
+                        max_price_per_unit: ResourcePricePerUnit(10),
+                    },
+                    l2_gas: Default::default(),
+                },
+                tip: Tip(5),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+            }
+            .into();
+
+            let expected = json!({
+                "type": "INVOKE",
+                "version": "0x1",
+                "calldata": ["0xfff1","0xfff0"],
+                "sender_address": "0xabc",
+                "max_fee": "0xa00",
                 "signature": ["0xa1b1", "0x1a1b"],
                 "nonce": "0xaabbcc",
             });
