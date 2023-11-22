@@ -225,6 +225,7 @@ pub enum RpcVersion {
     V03,
     V04,
     V05,
+    V06,
 }
 
 #[derive(clap::Args)]

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Support for RPC v0.6.0-rc1 via the `/rpc/v0_6` endpoint. Note that this does not include the `/rpc/v0.6` endpoint as the underscore is now the standard across node implementations.
+
 ### Removed
 
 - Removed support for `--network testnet2`
