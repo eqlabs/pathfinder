@@ -201,8 +201,6 @@ sudo docker run --rm eqlabs/pathfinder:latest --help
 
 Block times on `mainnet` can be prohibitively long for certain applications. As a workaround, Starknet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
 
-Note that `pending` support is disabled by default and must be enabled by setting `poll-pending=true` in the configuration options.
-
 ### Logging
 
 Logging can be configured using the `RUST_LOG` environment variable.

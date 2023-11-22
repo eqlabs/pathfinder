@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Support for `testnet2`
 - Support for RPC v0.3
+- `--poll-pending` configuration option. This is now always enabled and set to 2s.
+- `--python-subprocesses` configuration option. This is superseded by `--rpc.execution-concurrency`.
 
 ## [0.9.7] - 2023-11-21
 

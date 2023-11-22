@@ -87,8 +87,6 @@ pub struct L2SyncContext<GatewayClient> {
     pub sequencer: GatewayClient,
     pub chain: Chain,
     pub chain_id: ChainId,
-    pub head_poll_interval: Duration,
-    pub pending_poll_interval: Option<Duration>,
     pub block_validation_mode: BlockValidationMode,
     pub storage: Storage,
 }
@@ -107,8 +105,6 @@ where
         sequencer,
         chain,
         chain_id,
-        head_poll_interval,
-        pending_poll_interval,
         block_validation_mode,
         storage,
     } = context;
@@ -140,26 +136,26 @@ where
             {
                 DownloadBlock::Block(block, commitments) => break (block, commitments),
                 DownloadBlock::AtHead => {
-                    // Poll pending if it is enabled, otherwise just wait to poll head again.
-                    match pending_poll_interval {
-                        Some(interval) => {
-                            tracing::trace!("Entering pending mode");
-                            let head = head_meta
-                                .expect("Head hash should exist when entering pending mode");
-                            (next_block, next_state_update) = pending::poll_pending(
-                                tx_event.clone(),
-                                &sequencer,
-                                (head.1, head.2),
-                                interval,
-                                storage.clone(),
-                            )
-                            .await
-                            .context("Polling pending block")?;
-                        }
-                        None => {
-                            tracing::info!(poll_interval=?head_poll_interval, "At head of chain");
-                            tokio::time::sleep(head_poll_interval).await;
-                        }
+                    const PENDING_POLL_INTERVAL: std::time::Duration =
+                        std::time::Duration::from_secs(2);
+
+                    if cfg!(feature = "p2p") {
+                        // Not implemented yet for P2P
+                        tracing::info!("Skipping the pending blocks polling");
+                        tokio::time::sleep(PENDING_POLL_INTERVAL).await;
+                    } else {
+                        tracing::trace!("Polling pending blocks");
+                        let head =
+                            head_meta.expect("Head hash should exist when entering pending mode");
+                        (next_block, next_state_update) = pending::poll_pending(
+                            tx_event.clone(),
+                            &sequencer,
+                            (head.1, head.2),
+                            PENDING_POLL_INTERVAL,
+                            storage.clone(),
+                        )
+                        .await
+                        .context("Polling pending block")?;
                     }
                 }
                 DownloadBlock::Reorg => {
@@ -648,7 +644,6 @@ mod tests {
             error::{KnownStarknetErrorCode, SequencerError, StarknetError},
             reply,
         };
-        use std::time::Duration;
         use tokio::{sync::mpsc, task::JoinHandle};
 
         const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;
@@ -821,8 +816,6 @@ mod tests {
                 sequencer,
                 chain: Chain::GoerliTestnet,
                 chain_id: ChainId::GOERLI_TESTNET,
-                head_poll_interval: Duration::ZERO,
-                pending_poll_interval: None,
                 block_validation_mode: MODE,
                 storage,
             };
@@ -1183,8 +1176,6 @@ mod tests {
                     sequencer: mock,
                     chain: Chain::GoerliTestnet,
                     chain_id: ChainId::GOERLI_TESTNET,
-                    head_poll_interval: Duration::ZERO,
-                    pending_poll_interval: None,
                     block_validation_mode: MODE,
                     storage: Storage::in_memory().unwrap(),
                 };
