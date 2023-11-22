@@ -210,7 +210,7 @@ pub(crate) mod codec {
         use std::io;
         use unsigned_varint::{decode, io::ReadError};
 
-        /// A version of [`unsigned_varint::aio::read_usize`] that returns `Ok(None)` if the reader is empty.
+        /// A version of `unsigned_varint::aio::read_usize` that returns `Ok(None)` if the reader is empty.
         pub async fn read_usize<R: AsyncRead + Unpin>(
             mut reader: R,
         ) -> Result<Option<usize>, ReadError> {

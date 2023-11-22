@@ -676,7 +676,6 @@ impl MainLoop {
         }
     }
 
-    #[rustfmt::skip]
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::StarListening { addr, sender } => {
