@@ -832,7 +832,6 @@ mod tests {
 
     #[case::v0_6_api  ("/rpc/v0_6", "v06/starknet_api_openrpc.json", 
         &[
-            "starknet_getBlockWithTxHashes",
             "starknet_getTransactionStatus",
             "starknet_getTransactionReceipt",
         ]
