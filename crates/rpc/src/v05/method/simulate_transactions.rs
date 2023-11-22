@@ -715,7 +715,7 @@ pub(crate) mod tests {
                                     CallParam(Felt::from_u64(DECLARE_GAS_CONSUMED)),
                                     call_param!("0x0"),
                                 ],
-                                contract_address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                                contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                                 entry_point_selector: EntryPoint::hashed(b"transfer"),
                             },
                             messages: vec![],
@@ -741,7 +741,7 @@ pub(crate) mod tests {
                     ),
                     state_diff: Some(StateDiff {
                         storage_diffs: vec![StorageDiff {
-                            address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                            address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                             storage_entries: vec![
                                 StorageEntry {
                                     key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
@@ -881,7 +881,7 @@ pub(crate) mod tests {
 
             fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
                 vec![StorageDiff {
-                    address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
@@ -923,7 +923,7 @@ pub(crate) mod tests {
                             CallParam(Felt::from_u64(DECLARE_GAS_CONSUMED)),
                             call_param!("0x0"),
                         ],
-                        contract_address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                        contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                         entry_point_selector: EntryPoint::hashed(b"transfer"),
                     },
                     messages: vec![],
@@ -1068,7 +1068,7 @@ pub(crate) mod tests {
 
             fn universal_deployer_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
                 vec![StorageDiff {
-                    address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
@@ -1238,7 +1238,7 @@ pub(crate) mod tests {
                             // calldata_len
                             call_param!("0x0"),
                         ],
-                        contract_address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                        contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                         entry_point_selector: EntryPoint::hashed(b"transfer"),
                     },
                     messages: vec![],
@@ -1347,7 +1347,7 @@ pub(crate) mod tests {
 
             fn invoke_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
                 vec![StorageDiff {
-                    address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
@@ -1452,7 +1452,7 @@ pub(crate) mod tests {
                             CallParam(Felt::from_u64(INVOKE_GAS_CONSUMED)),
                             call_param!("0x0"),
                         ],
-                        contract_address: pathfinder_executor::FEE_TOKEN_ADDRESS,
+                        contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
                         entry_point_selector: EntryPoint::hashed(b"transfer"),
                     },
                     messages: vec![],

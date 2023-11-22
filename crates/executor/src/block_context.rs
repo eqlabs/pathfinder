@@ -9,15 +9,21 @@ use super::execution_state::ExecutionState;
 use super::felt::IntoStarkFelt;
 
 // NOTE: this is currently the same for _all_ networks
-pub const FEE_TOKEN_ADDRESS: ContractAddress =
+pub const ETH_FEE_TOKEN_ADDRESS: ContractAddress =
     contract_address!("0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7");
+pub const STRK_FEE_TOKEN_ADDRESS: ContractAddress =
+    contract_address!("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 
 pub(super) fn construct_block_context(
     execution_state: &ExecutionState<'_>,
 ) -> anyhow::Result<BlockContext> {
-    let fee_token_address = starknet_api::core::ContractAddress(
-        PatriciaKey::try_from(FEE_TOKEN_ADDRESS.0.into_starkfelt())
-            .expect("Fee token address overflow"),
+    let eth_fee_token_address = starknet_api::core::ContractAddress(
+        PatriciaKey::try_from(ETH_FEE_TOKEN_ADDRESS.0.into_starkfelt())
+            .expect("ETH fee token address overflow"),
+    );
+    let strk_fee_token_address = starknet_api::core::ContractAddress(
+        PatriciaKey::try_from(STRK_FEE_TOKEN_ADDRESS.0.into_starkfelt())
+            .expect("STRK fee token address overflow"),
     );
 
     let chain_id: Vec<_> = execution_state
@@ -40,9 +46,8 @@ pub(super) fn construct_block_context(
                 .expect("Sequencer address overflow"),
         ),
         fee_token_addresses: blockifier::block_context::FeeTokenAddresses {
-            // FIXME: what is the STRK token address?
-            strk_fee_token_address: fee_token_address,
-            eth_fee_token_address: fee_token_address,
+            strk_fee_token_address,
+            eth_fee_token_address,
         },
         vm_resource_fee_cost: Arc::new(default_resource_fee_costs()),
         gas_prices: blockifier::block_context::GasPrices {

@@ -11,7 +11,7 @@ pub(crate) mod state_reader;
 pub(crate) mod transaction;
 pub mod types;
 
-pub use block_context::FEE_TOKEN_ADDRESS;
+pub use block_context::ETH_FEE_TOKEN_ADDRESS;
 pub use call::call;
 pub use class::{parse_casm_definition, parse_deprecated_class_definition};
 pub use error::CallError;
