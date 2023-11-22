@@ -72,9 +72,8 @@ pub fn simulate(
 
         match tx_info {
             Ok(tx_info) => {
-                if let Some(revert_error) = tx_info.revert_error {
+                if let Some(revert_error) = &tx_info.revert_error {
                     tracing::trace!(%revert_error, "Transaction reverted");
-                    return Err(CallError::Reverted(revert_error));
                 }
 
                 tracing::trace!(actual_fee=%tx_info.actual_fee.0, actual_resources=?tx_info.actual_resources, "Transaction simulation finished");
