@@ -147,7 +147,7 @@ pub mod types {
         }
 
         pub fn into_v5_form(mut self) -> Self {
-            self.actual_fee().into_v05_format();
+            self.actual_fee().format_as_v05();
 
             self
         }
@@ -232,7 +232,7 @@ pub mod types {
     }
 
     impl FeePayment {
-        fn into_v05_format(&mut self) {
+        fn format_as_v05(&mut self) {
             if let FeePayment::V06 { amount, .. } = self {
                 *self = FeePayment::V05(*amount);
             }
