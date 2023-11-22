@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::common::{BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use pathfinder_crypto::Felt;

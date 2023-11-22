@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::{
     common::{BlockId, Fin, Hash, Iteration},
     proto, ToProtobuf, TryFromProtobuf,

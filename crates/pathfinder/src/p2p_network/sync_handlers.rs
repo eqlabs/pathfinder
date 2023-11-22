@@ -18,7 +18,6 @@ use p2p_proto::transaction::{
 use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
-use tokio::sync::mpsc as tokio_mpsc;
 
 pub mod conv;
 #[cfg(test)]
@@ -57,7 +56,7 @@ pub async fn get_headers(
 pub async fn get_bodies(
     storage: Storage,
     request: BlockBodiesRequest,
-    tx: tokio_mpsc::Sender<BlockBodiesResponse>,
+    tx: mpsc::Sender<BlockBodiesResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_bodies).await?;
     send(tx, responses).await
@@ -66,7 +65,7 @@ pub async fn get_bodies(
 pub async fn get_transactions(
     storage: Storage,
     request: TransactionsRequest,
-    tx: tokio_mpsc::Sender<TransactionsResponse>,
+    tx: mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_transactions).await?;
     send(tx, responses).await
@@ -75,7 +74,7 @@ pub async fn get_transactions(
 pub async fn get_receipts(
     storage: Storage,
     request: ReceiptsRequest,
-    tx: tokio_mpsc::Sender<ReceiptsResponse>,
+    tx: mpsc::Sender<ReceiptsResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_receipts).await?;
     send(tx, responses).await
@@ -84,7 +83,7 @@ pub async fn get_receipts(
 pub async fn get_events(
     storage: Storage,
     request: EventsRequest,
-    tx: tokio_mpsc::Sender<EventsResponse>,
+    tx: mpsc::Sender<EventsResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, blocking::get_events).await?;
     send(tx, responses).await
@@ -617,7 +616,7 @@ where
     .context("Database read panic or shutting down")?
 }
 
-async fn send<T>(tx: tokio_mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
+async fn send<T>(mut tx: mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
 where
     T: Send + 'static,
     tokio::sync::mpsc::error::SendError<T>: Sync,

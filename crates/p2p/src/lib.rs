@@ -147,26 +147,6 @@ enum Command {
         request: EventsRequest,
         sender: oneshot::Sender<anyhow::Result<ResponseReceiver<EventsResponse>>>,
     },
-    SendHeadersSyncResponse {
-        channel: ResponseSender<BlockHeadersResponse>,
-        response: BlockHeadersResponse,
-    },
-    SendBodiesSyncResponse {
-        channel: ResponseSender<BlockBodiesResponse>,
-        response: BlockBodiesResponse,
-    },
-    SendTransactionsSyncResponse {
-        channel: ResponseSender<TransactionsResponse>,
-        response: TransactionsResponse,
-    },
-    SendReceiptsSyncResponse {
-        channel: ResponseSender<ReceiptsResponse>,
-        response: ReceiptsResponse,
-    },
-    SendEventsSyncResponse {
-        channel: ResponseSender<EventsResponse>,
-        response: EventsResponse,
-    },
     PublishPropagationMessage {
         topic: IdentTopic,
         new_block: NewBlock,

@@ -87,12 +87,10 @@ mod boundary_conditions {
         }
 
         define_test!(headers, get_headers, BlockHeadersRequest);
-        /*
         define_test!(bodies, get_bodies, BlockBodiesRequest);
         define_test!(transactions, get_transactions, TransactionsRequest);
         define_test!(receipts, get_receipts, ReceiptsRequest);
         define_test!(events, get_events, EventsRequest);
-         */
     }
 
     mod partially_successful_requests_end_with_additional_fin_unknown {
@@ -132,7 +130,6 @@ mod boundary_conditions {
             assert_eq!(parts.len(), 3);
         }
 
-        /*
         #[rstest]
         #[tokio::test]
         async fn test_get_bodies(
@@ -140,11 +137,11 @@ mod boundary_conditions {
         ) {
             let (storage, iteration, tx, mut rx) = init_test(direction);
             let _jh = tokio::spawn(get_bodies(storage, BlockBodiesRequest { iteration }, tx));
-            rx.recv().await.unwrap(); // Diff
-            match rx.recv().await.unwrap().body_message {
+            rx.next().await.unwrap(); // Diff
+            match rx.next().await.unwrap().body_message {
                 // New classes in block
                 BlockBodyMessage::Classes(_) => {
-                    rx.recv().await.unwrap(); // Classes, Fin::ok()
+                    rx.next().await.unwrap(); // Classes, Fin::ok()
                 }
                 // No new classes in block
                 BlockBodyMessage::Fin(_) => {} // Fin::ok()
@@ -152,7 +149,7 @@ mod boundary_conditions {
             }
 
             // Expect Fin::unknown() where the first unavailable item would be
-            assert_matches::assert_matches!(rx.recv().await.unwrap().body_message, BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::unknown()));
+            assert_matches::assert_matches!(rx.next().await.unwrap().body_message, BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::unknown()));
         }
 
         macro_rules! define_test {
@@ -166,11 +163,11 @@ mod boundary_conditions {
                         $request { iteration },
                         tx,
                     ));
-                    rx.recv().await.unwrap(); // Block data
-                    rx.recv().await.unwrap(); // Fin::ok()
+                    rx.next().await.unwrap(); // Block data
+                    rx.next().await.unwrap(); // Fin::ok()
                     // Expect Fin::unknown() where the first unavailable item would be
                     assert_matches::assert_matches!(
-                        rx.recv().await.unwrap().kind,
+                        rx.next().await.unwrap().kind,
                         $reply::Fin(f) => assert_eq!(f, Fin::unknown())
                     );
                 }
@@ -195,7 +192,6 @@ mod boundary_conditions {
             EventsRequest,
             EventsResponseKind
         );
-        */
     }
 
     mod internally_limited_requests_end_with_additional_fin_too_much {
@@ -240,7 +236,6 @@ mod boundary_conditions {
             assert_eq!(parts.len(), NUM_BLOCKS_IN_STORAGE as usize * 2 + 1);
         }
 
-        /*
         #[rstest]
         #[tokio::test]
         async fn test_get_bodies(
@@ -250,11 +245,11 @@ mod boundary_conditions {
             let _jh = tokio::spawn(get_bodies(storage, BlockBodiesRequest { iteration }, tx));
             // 10 x [Diff, Classes*, Fin::ok()]
             for _ in 0..NUM_BLOCKS_IN_STORAGE {
-                rx.recv().await.unwrap(); // Diff
-                match rx.recv().await.unwrap().body_message {
+                rx.next().await.unwrap(); // Diff
+                match rx.next().await.unwrap().body_message {
                     // New classes in block
                     BlockBodyMessage::Classes(_) => {
-                        rx.recv().await.unwrap(); // Classes, Fin::ok()
+                        rx.next().await.unwrap(); // Classes, Fin::ok()
                     }
                     // No new classes in block
                     BlockBodyMessage::Fin(_) => {} // Fin::ok()
@@ -263,7 +258,7 @@ mod boundary_conditions {
             }
             // Expect Fin::unknown() where the first unavailable item would be
             assert_matches::assert_matches!(
-                rx.recv().await.unwrap().body_message,
+                rx.next().await.unwrap().body_message,
                 BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::too_much())
             );
         }
@@ -280,12 +275,12 @@ mod boundary_conditions {
                         tx,
                     ));
                     for _ in 0..NUM_BLOCKS_IN_STORAGE {
-                        rx.recv().await.unwrap(); // Block data
-                        rx.recv().await.unwrap(); // Fin::ok()
+                        rx.next().await.unwrap(); // Block data
+                        rx.next().await.unwrap(); // Fin::ok()
                     }
                     // Expect Fin::unknown() where the first unavailable item would be
                     assert_matches::assert_matches!(
-                        rx.recv().await.unwrap().kind,
+                        rx.next().await.unwrap().kind,
                         $reply::Fin(f) => assert_eq!(f, Fin::too_much())
                     );
                 }
@@ -310,7 +305,6 @@ mod boundary_conditions {
             EventsRequest,
             EventsResponseKind
         );
-         */
     }
 }
 

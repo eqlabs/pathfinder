@@ -1,20 +1,18 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use p2p::client::{peer_agnostic, peer_aware};
+use p2p::client::peer_agnostic;
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr};
 use p2p::{HeadRx, HeadTx, Peers};
-use p2p_proto::block::BlockBodiesResponse;
-use p2p_proto::event::EventsResponse;
-use p2p_proto::receipt::ReceiptsResponse;
-use p2p_proto::transaction::TransactionsResponse;
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::RwLock;
 use tracing::Instrument;
 
 pub mod client;
 mod sync_handlers;
+
+use sync_handlers::{get_bodies, get_events, get_headers, get_receipts, get_transactions};
 
 // Silence clippy
 pub type P2PNetworkHandle = (
@@ -94,7 +92,6 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     let (mut tx, rx) = tokio::sync::watch::channel(None);
 
     let join_handle = {
-        let mut p2p_client = p2p_client.clone();
         tokio::task::spawn(
             async move {
                 loop {
@@ -104,7 +101,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
                             break;
                         }
                         Some(event) = p2p_events.recv() => {
-                            match handle_p2p_event(event, storage.clone(), &mut p2p_client, &mut tx).await {
+                            match handle_p2p_event(event, storage.clone(), &mut tx).await {
                                 Ok(()) => {},
                                 Err(e) => { tracing::error!("Failed to handle P2P event: {}", e) },
                             }
@@ -127,97 +124,33 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 async fn handle_p2p_event(
     event: p2p::Event,
     storage: Storage,
-    p2p_client: &mut peer_aware::Client,
     tx: &mut HeadTx,
 ) -> anyhow::Result<()> {
-    // FIXME
-    // This is because sync_handlers provide a channel while the p2p_client expects an entire collection
-    use futures::stream::StreamExt;
-    use tokio_stream::wrappers::ReceiverStream;
-
     match event {
         p2p::Event::InboundHeadersSyncRequest {
             request, channel, ..
         } => {
-            sync_handlers::get_headers(storage, request, channel).await?;
+            get_headers(storage, request, channel).await?;
         }
-        _ => todo!(),
-        /*
         p2p::Event::InboundBodiesSyncRequest {
             request, channel, ..
         } => {
-            let (resp_tx, resp_rx) = mpsc::channel(1);
-
-            let jh = tokio::spawn(sync_handlers::get_bodies(storage, request, resp_tx));
-            let resp_stream = ReceiverStream::new(resp_rx);
-            let items: Vec<_> = resp_stream.collect().await;
-
-            match jh.await {
-                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
-                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
-                _ => {}
-            }
-
-            p2p_client
-                .send_bodies_sync_response(channel, BlockBodiesResponseList { items })
-                .await;
+            get_bodies(storage, request, channel).await?;
         }
         p2p::Event::InboundTransactionsSyncRequest {
             request, channel, ..
         } => {
-            let (resp_tx, resp_rx) = mpsc::channel(1);
-
-            let jh = tokio::spawn(sync_handlers::get_transactions(storage, request, resp_tx));
-            let resp_stream = ReceiverStream::new(resp_rx);
-            let items: Vec<_> = resp_stream.collect().await;
-
-            match jh.await {
-                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
-                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
-                _ => {}
-            }
-
-            p2p_client
-                .send_transactions_sync_response(channel, TransactionsResponseList { items })
-                .await;
+            get_transactions(storage, request, channel).await?;
         }
         p2p::Event::InboundReceiptsSyncRequest {
             request, channel, ..
         } => {
-            let (resp_tx, resp_rx) = mpsc::channel(1);
-
-            let jh = tokio::spawn(sync_handlers::get_receipts(storage, request, resp_tx));
-            let resp_stream = ReceiverStream::new(resp_rx);
-            let items: Vec<_> = resp_stream.collect().await;
-
-            match jh.await {
-                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
-                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
-                _ => {}
-            }
-
-            p2p_client
-                .send_receipts_sync_response(channel, ReceiptsResponseList { items })
-                .await;
+            get_receipts(storage, request, channel).await?;
         }
         p2p::Event::InboundEventsSyncRequest {
             request, channel, ..
         } => {
-            let (resp_tx, resp_rx) = mpsc::channel(1);
-
-            let jh = tokio::spawn(sync_handlers::get_events(storage, request, resp_tx));
-            let resp_stream = ReceiverStream::new(resp_rx);
-            let items: Vec<_> = resp_stream.collect().await;
-
-            match jh.await {
-                Ok(Err(error)) => tracing::error!("Sync handler failed: {error}"),
-                Err(error) => tracing::error!("Sync handler task ended unexpectedly: {error}"),
-                _ => {}
-            }
-
-            p2p_client
-                .send_events_sync_response(channel, EventsResponseList { items })
-                .await;
+            get_events(storage, request, channel).await?;
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");
@@ -248,7 +181,6 @@ async fn handle_p2p_event(
                 }
             }
         }
-        */
         p2p::Event::SyncPeerConnected { .. } | p2p::Event::Test(_) => { /* Ignore me */ }
     }
 

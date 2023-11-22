@@ -24,7 +24,7 @@ pub struct Client {
 }
 
 macro_rules! impl_send {
-    ($fn_name_req: ident, $req_command: ident, $res_command: ident, $req_type: ty, $res_type: ty) => {
+    ($fn_name_req: ident, $req_command: ident, $req_type: ty, $res_type: ty) => {
         pub async fn $fn_name_req(
             &self,
             peer_id: PeerId,
@@ -124,7 +124,6 @@ impl Client {
     impl_send!(
         send_headers_sync_request,
         SendHeadersSyncRequest,
-        SendHeadersSyncResponse,
         BlockHeadersRequest,
         BlockHeadersResponse
     );
@@ -132,7 +131,6 @@ impl Client {
     impl_send!(
         send_bodies_sync_request,
         SendBodiesSyncRequest,
-        SendBodiesSyncResponse,
         BlockBodiesRequest,
         BlockBodiesResponse
     );
@@ -140,7 +138,6 @@ impl Client {
     impl_send!(
         send_transactions_sync_request,
         SendTransactionsSyncRequest,
-        SendTransactionsSyncResponse,
         TransactionsRequest,
         TransactionsResponse
     );
@@ -148,7 +145,6 @@ impl Client {
     impl_send!(
         send_receipts_sync_request,
         SendReceiptsSyncRequest,
-        SendReceiptsSyncResponse,
         ReceiptsRequest,
         ReceiptsResponse
     );
@@ -156,7 +152,6 @@ impl Client {
     impl_send!(
         send_events_sync_request,
         SendEventsSyncRequest,
-        SendEventsSyncResponse,
         EventsRequest,
         EventsResponse
     );

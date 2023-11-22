@@ -822,54 +822,6 @@ impl MainLoop {
                     .send_request(&peer_id, request);
                 self.pending_sync_requests.events.insert(request_id, sender);
             }
-            _ => todo!(),
-            /*
-            // All Send*SyncResponse: In case of failure a RequestResponseEvent::InboundFailure will or has been be emitted.
-            Command::SendHeadersSyncResponse { channel, response } => {
-                tracing::debug!(%response, "Sending sync response");
-
-                let _ = self
-                    .swarm
-                    .behaviour_mut()
-                    .headers_sync
-                    .send_response(channel, response);
-            }
-            Command::SendBodiesSyncResponse { channel, response } => {
-                tracing::debug!(%response, "Sending sync response");
-
-                let _ = self
-                    .swarm
-                    .behaviour_mut()
-                    .bodies_sync
-                    .send_response(channel, response);
-            }
-            Command::SendTransactionsSyncResponse { channel, response } => {
-                tracing::debug!(%response, "Sending sync response");
-
-                let _ = self
-                    .swarm
-                    .behaviour_mut()
-                    .transactions_sync
-                    .send_response(channel, response);
-            }
-            Command::SendReceiptsSyncResponse { channel, response } => {
-                tracing::debug!(%response, "Sending sync response");
-
-                let _ = self
-                    .swarm
-                    .behaviour_mut()
-                    .receipts_sync
-                    .send_response(channel, response);
-            }
-            Command::SendEventsSyncResponse { channel, response } => {
-                tracing::debug!(%response, "Sending sync response");
-
-                let _ = self
-                    .swarm
-                    .behaviour_mut()
-                    .events_sync
-                    .send_response(channel, response);
-            }
             Command::PublishPropagationMessage {
                 topic,
                 new_block,
@@ -881,7 +833,6 @@ impl MainLoop {
                 let _ = sender.send(result);
             }
             Command::_Test(command) => self.handle_test_command(command).await,
-            */
         };
     }
 
