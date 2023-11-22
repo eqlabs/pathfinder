@@ -837,7 +837,6 @@ mod tests {
     )]
     #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", 
         &[
-            "starknet_simulateTransactions", 
             "starknet_traceBlockTransactions", 
             "starknet_traceTransaction"
         ]
