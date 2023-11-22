@@ -28,12 +28,30 @@ pub struct TransactionSimulation {
     pub fee_estimation: FeeEstimate,
 }
 
+impl TransactionSimulation {
+    pub fn revert_reason(&self) -> Option<&str> {
+        self.trace.revert_reason()
+    }
+}
+
 #[derive(Debug)]
 pub enum TransactionTrace {
     Declare(DeclareTransactionTrace),
     DeployAccount(DeployAccountTransactionTrace),
     Invoke(InvokeTransactionTrace),
     L1Handler(L1HandlerTransactionTrace),
+}
+
+impl TransactionTrace {
+    fn revert_reason(&self) -> Option<&str> {
+        match self {
+            TransactionTrace::Invoke(InvokeTransactionTrace {
+                execute_invocation: ExecuteInvocation::RevertedReason(revert_reason),
+                ..
+            }) => Some(revert_reason.as_str()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
