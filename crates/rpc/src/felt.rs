@@ -21,11 +21,11 @@
 //! ```
 
 use pathfinder_common::{
-    BlockHash, CallParam, CallResultValue, CasmHash, ChainId, ClassHash, ConstructorParam,
-    ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress, SierraHash,
-    StateCommitment, StorageAddress, StorageValue, TransactionHash, TransactionNonce,
-    TransactionSignatureElem,
+    AccountDeploymentDataElem, BlockHash, CallParam, CallResultValue, CasmHash, ChainId, ClassHash,
+    ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData,
+    EventKey, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, PaymasterDataElem,
+    SequencerAddress, SierraHash, StateCommitment, StorageAddress, StorageValue, TransactionHash,
+    TransactionNonce, TransactionSignatureElem,
 };
 use pathfinder_crypto::Felt;
 
@@ -187,6 +187,8 @@ rpc_felt_serde!(
     StorageValue,
     TransactionNonce,
     TransactionSignatureElem,
+    PaymasterDataElem,
+    AccountDeploymentDataElem,
 );
 
 rpc_felt_251_serde!(ContractAddress, StorageAddress);

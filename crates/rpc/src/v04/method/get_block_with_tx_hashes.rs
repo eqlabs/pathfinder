@@ -1,7 +1,8 @@
 use crate::context::RpcContext;
 use crate::v02::types::reply::BlockStatus;
+
 use anyhow::Context;
-use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_common::BlockId;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -18,20 +19,6 @@ pub async fn get_block_with_tx_hashes(
     context: RpcContext,
     input: GetBlockInput,
 ) -> Result<types::Block, GetBlockError> {
-    get_block(
-        context,
-        input.block_id,
-        types::BlockResponseScope::TransactionHashes,
-    )
-    .await
-}
-
-/// Get block information given the block id
-async fn get_block(
-    context: RpcContext,
-    block_id: BlockId,
-    scope: types::BlockResponseScope,
-) -> Result<types::Block, GetBlockError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
@@ -45,7 +32,7 @@ async fn get_block(
             .transaction()
             .context("Creating database transaction")?;
 
-        let block_id = match block_id {
+        let block_id = match input.block_id {
             BlockId::Pending => {
                 let block = context
                     .pending_data
@@ -54,7 +41,7 @@ async fn get_block(
                     .block
                     .clone();
 
-                return Ok(types::Block::from_sequencer_scoped(block.into(), scope));
+                return Ok(types::Block::from_sequencer(block.into()));
             }
             other => other.try_into().expect("Only pending cast should fail"),
         };
@@ -71,7 +58,10 @@ async fn get_block(
             BlockStatus::AcceptedOnL2
         };
 
-        let transactions = get_block_transactions(&transaction, header.number, scope)?;
+        let transactions = transaction
+            .transaction_hashes_for_block(header.number.into())
+            .context("Reading transaction hashes")?
+            .context("Missing block")?;
 
         Ok(types::Block::from_parts(header, block_status, transactions))
     })
@@ -79,37 +69,9 @@ async fn get_block(
     .context("Database read panic or shutting down")?
 }
 
-/// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
-fn get_block_transactions(
-    db_tx: &pathfinder_storage::Transaction<'_>,
-    block_number: BlockNumber,
-    scope: types::BlockResponseScope,
-) -> Result<types::Transactions, GetBlockError> {
-    let transactions_receipts = db_tx
-        .transaction_data_for_block(block_number.into())
-        .context("Reading transactions from database")?
-        .context("Transaction data missing for block")?;
-
-    match scope {
-        types::BlockResponseScope::TransactionHashes => Ok(types::Transactions::HashesOnly(
-            transactions_receipts
-                .into_iter()
-                .map(|(t, _)| t.hash())
-                .collect::<Vec<_>>()
-                .into(),
-        )),
-        types::BlockResponseScope::_FullTransactions => Ok(types::Transactions::Full(
-            transactions_receipts
-                .into_iter()
-                .map(|(t, _)| t.into())
-                .collect(),
-        )),
-    }
-}
-
 mod types {
     use crate::felt::RpcFelt;
-    use crate::v02::types::reply::{BlockStatus, Transaction};
+    use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
         BlockHash, BlockHeader, BlockNumber, BlockTimestamp, SequencerAddress, StateCommitment,
         TransactionHash,
@@ -117,36 +79,6 @@ mod types {
     use pathfinder_crypto::Felt;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
-
-    /// Determines the type of response to block related queries.
-    #[derive(Copy, Clone, Debug)]
-    pub enum BlockResponseScope {
-        TransactionHashes,
-        // This impl is no longer used by other RPC versions, but was kept to
-        // minimize code changes induced by removing it.
-        _FullTransactions,
-    }
-
-    /// Wrapper for transaction data returned in block related queries,
-    /// chosen variant depends on [`BlockResponseScope`].
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    #[serde(untagged)]
-    pub enum Transactions {
-        Full(Vec<Transaction>),
-        HashesOnly(TransactionHashes),
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct TransactionHashes(#[serde_as(as = "Vec<RpcFelt>")] Vec<TransactionHash>);
-
-    impl From<Vec<TransactionHash>> for TransactionHashes {
-        fn from(value: Vec<TransactionHash>) -> Self {
-            Self(value)
-        }
-    }
 
     /// L2 Block as returned by the RPC API.
     #[serde_as]
@@ -165,14 +97,15 @@ mod types {
         pub timestamp: BlockTimestamp,
         #[serde_as(as = "RpcFelt")]
         pub sequencer_address: SequencerAddress,
-        pub transactions: Transactions,
+
+        pub transactions: Vec<TransactionHash>,
     }
 
     impl Block {
         pub fn from_parts(
             header: BlockHeader,
             status: BlockStatus,
-            transactions: Transactions,
+            transactions: Vec<TransactionHash>,
         ) -> Self {
             Self {
                 status,
@@ -187,27 +120,7 @@ mod types {
         }
 
         /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
-        pub fn from_sequencer_scoped(
-            block: starknet_gateway_types::reply::MaybePendingBlock,
-            scope: BlockResponseScope,
-        ) -> Self {
-            let transactions = match scope {
-                BlockResponseScope::TransactionHashes => {
-                    let hashes = block
-                        .transactions()
-                        .iter()
-                        .map(|t| t.hash())
-                        .collect::<Vec<_>>()
-                        .into();
-
-                    Transactions::HashesOnly(hashes)
-                }
-                BlockResponseScope::_FullTransactions => {
-                    let transactions = block.transactions().iter().map(|t| t.into()).collect();
-                    Transactions::Full(transactions)
-                }
-            };
-
+        pub fn from_sequencer(block: starknet_gateway_types::reply::MaybePendingBlock) -> Self {
             use starknet_gateway_types::reply::MaybePendingBlock;
             match block {
                 MaybePendingBlock::Block(block) => Self {
@@ -221,7 +134,7 @@ mod types {
                         .sequencer_address
                         // Default value for cairo <0.8.0 is 0
                         .unwrap_or(SequencerAddress(Felt::ZERO)),
-                    transactions,
+                    transactions: block.transactions.iter().map(|t| t.hash()).collect(),
                 },
                 MaybePendingBlock::Pending(pending) => Self {
                     status: pending.status.into(),
@@ -231,7 +144,7 @@ mod types {
                     new_root: None,
                     timestamp: pending.timestamp,
                     sequencer_address: pending.sequencer_address,
-                    transactions,
+                    transactions: pending.transactions.iter().map(|t| t.hash()).collect(),
                 },
             }
         }
@@ -241,24 +154,23 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
-
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
+    use serde_json::json;
 
     #[rstest::rstest]
-    #[case::positional_pending(json!(["pending"]), BlockId::Pending)]
-    #[case::positional_latest(json!(["latest"]), BlockId::Latest)]
-    #[case::positional_number(json!([{"block_number":123}]), BlockId::Number(BlockNumber::new_or_panic(123)))]
-    #[case::positional_hash(json!([{"block_hash": "0xbeef"}]), BlockId::Hash(block_hash!("0xbeef")))]
-    #[case::named_pending(json!({"block_id": "pending"}), BlockId::Pending)]
-    #[case::named_latest(json!({"block_id": "latest"}), BlockId::Latest)]
-    #[case::named_number(json!({"block_id": {"block_number":123}}), BlockId::Number(BlockNumber::new_or_panic(123)))]
-    #[case::named_hash(json!({"block_id": {"block_hash": "0xbeef"}}), BlockId::Hash(block_hash!("0xbeef")))]
-    fn parsing(#[case] input: Value, #[case] expected: BlockId) {
-        let expected = GetBlockInput { block_id: expected };
-
+    #[case::pending_by_position(json!(["pending"]), BlockId::Pending)]
+    #[case::pending_by_name(json!({"block_id": "pending"}), BlockId::Pending)]
+    #[case::latest_by_position(json!(["latest"]), BlockId::Latest)]
+    #[case::latest_by_name(json!({"block_id": "latest"}), BlockId::Latest)]
+    #[case::number_by_position(json!([{"block_number":123}]), BlockNumber::new_or_panic(123).into())]
+    #[case::number_by_name(json!({"block_id": {"block_number":123}}), BlockNumber::new_or_panic(123).into())]
+    #[case::hash_by_position(json!([{"block_hash": "0xbeef"}]), block_hash!("0xbeef").into())]
+    #[case::hash_by_name(json!({"block_id": {"block_hash": "0xbeef"}}), block_hash!("0xbeef").into())]
+    fn input_parsing(#[case] input: serde_json::Value, #[case] block_id: BlockId) {
         let input = serde_json::from_value::<GetBlockInput>(input).unwrap();
+
+        let expected = GetBlockInput { block_id };
 
         assert_eq!(input, expected);
     }
@@ -355,5 +267,28 @@ mod tests {
         .await;
 
         assert_matches::assert_matches!(result, Err(GetBlockError::BlockNotFound));
+    }
+
+    #[tokio::test]
+    async fn transaction_hashes_are_correct() {
+        let ctx: RpcContext = RpcContext::for_tests();
+
+        let tx_hashes = get_block_with_tx_hashes(
+            ctx,
+            GetBlockInput {
+                block_id: BlockNumber::new_or_panic(1).into(),
+            },
+        )
+        .await
+        .unwrap()
+        .transactions;
+
+        assert_eq!(
+            tx_hashes,
+            vec![
+                transaction_hash_bytes!(b"txn 1"),
+                transaction_hash_bytes!(b"txn 2")
+            ]
+        );
     }
 }

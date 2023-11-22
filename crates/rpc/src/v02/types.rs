@@ -30,6 +30,15 @@ impl From<ResourceBounds> for starknet_gateway_types::reply::transaction::Resour
     }
 }
 
+impl From<starknet_gateway_types::reply::transaction::ResourceBounds> for ResourceBounds {
+    fn from(resource_bounds: starknet_gateway_types::reply::transaction::ResourceBounds) -> Self {
+        Self {
+            l1_gas: resource_bounds.l1_gas.into(),
+            l2_gas: resource_bounds.l2_gas.into(),
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ResourceBound {
@@ -50,6 +59,15 @@ impl From<ResourceBound> for pathfinder_common::transaction::ResourceBound {
 
 impl From<ResourceBound> for starknet_gateway_types::reply::transaction::ResourceBound {
     fn from(resource_bound: ResourceBound) -> Self {
+        Self {
+            max_amount: resource_bound.max_amount,
+            max_price_per_unit: resource_bound.max_price_per_unit,
+        }
+    }
+}
+
+impl From<starknet_gateway_types::reply::transaction::ResourceBound> for ResourceBound {
+    fn from(resource_bound: starknet_gateway_types::reply::transaction::ResourceBound) -> Self {
         Self {
             max_amount: resource_bound.max_amount,
             max_price_per_unit: resource_bound.max_price_per_unit,
@@ -89,6 +107,19 @@ impl From<DataAvailabilityMode> for starknet_api::data_availability::DataAvailab
         match value {
             DataAvailabilityMode::L1 => Self::L1,
             DataAvailabilityMode::L2 => Self::L2,
+        }
+    }
+}
+
+impl From<starknet_gateway_types::reply::transaction::DataAvailabilityMode>
+    for DataAvailabilityMode
+{
+    fn from(
+        data_availability_mode: starknet_gateway_types::reply::transaction::DataAvailabilityMode,
+    ) -> Self {
+        match data_availability_mode {
+            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L1 => Self::L1,
+            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L2 => Self::L2,
         }
     }
 }
@@ -229,7 +260,7 @@ pub mod request {
                 3 => Ok(Self::V3(
                     BroadcastedDeclareTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
+                _v => Err(de::Error::custom("version must be 0, 1, 2 or 3")),
             }
         }
     }
@@ -1232,429 +1263,7 @@ pub mod request {
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
-    // At the moment both reply types are the same for get_code, hence the re-export
-    use crate::felt::{RpcFelt, RpcFelt251};
-    use pathfinder_common::{
-        CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-        EntryPoint, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
-    };
-    use pathfinder_serde::TransactionVersionAsHexStr;
-    use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
-    use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
-    use std::convert::From;
-
-    /// L2 transaction as returned by the RPC API.
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(tag = "type")]
-    pub enum Transaction {
-        #[serde(rename = "DECLARE")]
-        Declare(DeclareTransaction),
-        #[serde(rename = "INVOKE")]
-        Invoke(InvokeTransaction),
-        // FIXME regenesis: remove Deploy txn type after regenesis
-        // We are keeping this type of transaction until regenesis
-        // only to support older pre-0.11.0 blocks
-        #[serde(rename = "DEPLOY")]
-        Deploy(DeployTransaction),
-        #[serde(rename = "DEPLOY_ACCOUNT")]
-        DeployAccount(DeployAccountTransaction),
-        #[serde(rename = "L1_HANDLER")]
-        L1Handler(L1HandlerTransaction),
-    }
-
-    impl Transaction {
-        pub fn hash(&self) -> TransactionHash {
-            match self {
-                Transaction::Declare(DeclareTransaction::V0(declare)) => declare.common.hash,
-                Transaction::Declare(DeclareTransaction::V1(declare)) => declare.common.hash,
-                Transaction::Declare(DeclareTransaction::V2(declare)) => declare.common.hash,
-                Transaction::Invoke(InvokeTransaction::V0(invoke)) => invoke.common.hash,
-                Transaction::Invoke(InvokeTransaction::V1(invoke)) => invoke.common.hash,
-                Transaction::Deploy(deploy) => deploy.hash,
-                Transaction::DeployAccount(deploy_account) => deploy_account.common.hash,
-                Transaction::L1Handler(l1_handler) => l1_handler.hash,
-            }
-        }
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct CommonTransactionProperties {
-        #[serde(rename = "transaction_hash")]
-        #[serde_as(as = "RpcFelt")]
-        pub hash: TransactionHash,
-        pub max_fee: Fee,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub signature: Vec<TransactionSignatureElem>,
-        #[serde_as(as = "RpcFelt")]
-        pub nonce: TransactionNonce,
-    }
-
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(tag = "version")]
-    pub enum DeclareTransaction {
-        #[serde(rename = "0x0")]
-        V0(DeclareTransactionV0V1),
-        #[serde(rename = "0x1")]
-        V1(DeclareTransactionV0V1),
-        #[serde(rename = "0x2")]
-        V2(DeclareTransactionV2),
-    }
-
-    #[cfg(any(test, feature = "rpc-full-serde"))]
-    impl<'de> serde::Deserialize<'de> for DeclareTransaction {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            use primitive_types::H256;
-            use serde::de;
-
-            fn transaction_version_one() -> TransactionVersion {
-                TransactionVersion(H256::from_low_u64_be(1))
-            }
-
-            #[serde_as]
-            #[derive(serde::Deserialize)]
-            struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
-                #[serde(default = "transaction_version_one")]
-                pub version: TransactionVersion,
-            }
-
-            let mut v = serde_json::Value::deserialize(deserializer)?;
-            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            // remove "version", since v1 and v2 transactions use deny_unknown_fields
-            v.as_object_mut()
-                .expect("must be an object because deserializing version succeeded")
-                .remove("version");
-            match version.version {
-                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
-                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
-                )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
-                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
-                )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
-                    DeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
-                )),
-                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
-            }
-        }
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeclareTransactionV0V1 {
-        #[serde(flatten)]
-        pub common: CommonDeclareInvokeTransactionProperties,
-
-        // DECLARE_TXN_V0
-        // DECLARE_TXN_V1
-        #[serde_as(as = "RpcFelt")]
-        pub class_hash: ClassHash,
-        #[serde_as(as = "RpcFelt251")]
-        pub sender_address: ContractAddress,
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeclareTransactionV2 {
-        #[serde(flatten)]
-        pub common: CommonDeclareInvokeTransactionProperties,
-
-        // DECLARE_TXN_V2
-        #[serde_as(as = "RpcFelt")]
-        pub class_hash: ClassHash,
-        #[serde_as(as = "RpcFelt251")]
-        pub sender_address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
-        pub compiled_class_hash: CasmHash,
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeployAccountTransaction {
-        #[serde(flatten)]
-        pub common: CommonTransactionProperties,
-
-        // DEPLOY_ACCOUNT_TXN
-        #[serde_as(as = "RpcFelt")]
-        pub contract_address_salt: ContractAddressSalt,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub constructor_calldata: Vec<CallParam>,
-        #[serde_as(as = "RpcFelt")]
-        pub class_hash: ClassHash,
-    }
-
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(tag = "version")]
-    pub enum InvokeTransaction {
-        #[serde(rename = "0x0")]
-        V0(InvokeTransactionV0),
-        #[serde(rename = "0x1")]
-        V1(InvokeTransactionV1),
-    }
-
-    #[cfg(any(test, feature = "rpc-full-serde"))]
-    impl<'de> serde::Deserialize<'de> for InvokeTransaction {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            use primitive_types::H256;
-            use serde::de;
-
-            const VERSION_0: H256 = H256::zero();
-            const fn transaction_version_zero() -> TransactionVersion {
-                TransactionVersion(VERSION_0)
-            }
-
-            #[serde_as]
-            #[derive(serde::Deserialize)]
-            struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
-                #[serde(default = "transaction_version_zero")]
-                pub version: TransactionVersion,
-            }
-
-            let mut v = serde_json::Value::deserialize(deserializer)?;
-            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            // remove "version", since v0 and v1 transactions use deny_unknown_fields
-            v.as_object_mut()
-                .expect("must be an object because deserializing version succeeded")
-                .remove("version");
-            match version.version {
-                TransactionVersion(x) if x == VERSION_0 => Ok(Self::V0(
-                    InvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
-                )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
-                    InvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
-                )),
-                _v => Err(de::Error::custom("version must be 0 or 1")),
-            }
-        }
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct InvokeTransactionV0 {
-        #[serde(flatten)]
-        pub common: CommonDeclareInvokeTransactionProperties,
-
-        // INVOKE_TXN_V0
-        #[serde_as(as = "RpcFelt251")]
-        pub contract_address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
-        pub entry_point_selector: EntryPoint,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub calldata: Vec<CallParam>,
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct InvokeTransactionV1 {
-        #[serde(flatten)]
-        pub common: CommonDeclareInvokeTransactionProperties,
-
-        // INVOKE_TXN_V1
-        #[serde_as(as = "RpcFelt251")]
-        pub sender_address: ContractAddress,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub calldata: Vec<CallParam>,
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    // The same as `CommonTransactionProperties` except that it doesn't have version.
-    //
-    // Version is now a property of the type embedding common properties.
-    pub struct CommonDeclareInvokeTransactionProperties {
-        #[serde(rename = "transaction_hash")]
-        #[serde_as(as = "RpcFelt")]
-        pub hash: TransactionHash,
-        pub max_fee: Fee,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub signature: Vec<TransactionSignatureElem>,
-        #[serde_as(as = "RpcFelt")]
-        pub nonce: TransactionNonce,
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeployTransaction {
-        // DEPLOY_TXN
-        #[serde(rename = "transaction_hash")]
-        #[serde_as(as = "RpcFelt")]
-        pub hash: TransactionHash,
-        #[serde_as(as = "RpcFelt")]
-        pub class_hash: ClassHash,
-
-        // DEPLOY_TXN_PROPERTIES
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
-        #[serde_as(as = "RpcFelt")]
-        pub contract_address_salt: ContractAddressSalt,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub constructor_calldata: Vec<ConstructorParam>,
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct L1HandlerTransaction {
-        // This part is a subset of CommonTransactionProperties
-        #[serde(rename = "transaction_hash")]
-        #[serde_as(as = "RpcFelt")]
-        pub hash: TransactionHash,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
-        #[serde_as(as = "RpcFelt")]
-        pub nonce: TransactionNonce,
-
-        // FUNCTION_CALL
-        #[serde_as(as = "RpcFelt251")]
-        pub contract_address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
-        pub entry_point_selector: EntryPoint,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub calldata: Vec<CallParam>,
-    }
-
-    impl From<GatewayTransaction> for Transaction {
-        fn from(txn: GatewayTransaction) -> Self {
-            Self::from(&txn)
-        }
-    }
-
-    impl From<&GatewayTransaction> for Transaction {
-        fn from(txn: &GatewayTransaction) -> Self {
-            use starknet_gateway_types::reply::transaction::DeclareTransaction as GatewayDeclare;
-
-            match txn {
-                GatewayTransaction::Invoke(txn) => {
-                    match txn {
-                        starknet_gateway_types::reply::transaction::InvokeTransaction::V0(txn) => {
-                            Self::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
-                                common: CommonDeclareInvokeTransactionProperties {
-                                    hash: txn.transaction_hash,
-                                    max_fee: txn.max_fee,
-                                    signature: txn.signature.clone(),
-                                    // no `nonce` in v0 invoke transactions
-                                    nonce: TransactionNonce(Default::default()),
-                                },
-                                contract_address: txn.sender_address,
-                                entry_point_selector: txn.entry_point_selector,
-                                calldata: txn.calldata.clone(),
-                            }))
-                        }
-                        starknet_gateway_types::reply::transaction::InvokeTransaction::V1(txn) => {
-                            Self::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
-                                common: CommonDeclareInvokeTransactionProperties {
-                                    hash: txn.transaction_hash,
-                                    max_fee: txn.max_fee,
-                                    signature: txn.signature.clone(),
-                                    nonce: txn.nonce,
-                                },
-                                sender_address: txn.sender_address,
-                                calldata: txn.calldata.clone(),
-                            }))
-                        }
-                        starknet_gateway_types::reply::transaction::InvokeTransaction::V3(_) => {
-                            todo!()
-                        }
-                    }
-                }
-                GatewayTransaction::Declare(GatewayDeclare::V0(txn)) => {
-                    Self::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {
-                        common: CommonDeclareInvokeTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            signature: txn.signature.clone(),
-                            nonce: txn.nonce,
-                        },
-                        class_hash: txn.class_hash,
-                        sender_address: txn.sender_address,
-                    }))
-                }
-                GatewayTransaction::Declare(GatewayDeclare::V1(txn)) => {
-                    Self::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
-                        common: CommonDeclareInvokeTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            signature: txn.signature.clone(),
-                            nonce: txn.nonce,
-                        },
-                        class_hash: txn.class_hash,
-                        sender_address: txn.sender_address,
-                    }))
-                }
-                GatewayTransaction::Declare(GatewayDeclare::V2(txn)) => {
-                    Self::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
-                        common: CommonDeclareInvokeTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            signature: txn.signature.clone(),
-                            nonce: txn.nonce,
-                        },
-                        class_hash: txn.class_hash,
-                        sender_address: txn.sender_address,
-                        compiled_class_hash: txn.compiled_class_hash,
-                    }))
-                }
-                GatewayTransaction::Declare(GatewayDeclare::V3(_)) => {
-                    todo!()
-                }
-                GatewayTransaction::Deploy(txn) => Self::Deploy(DeployTransaction {
-                    hash: txn.transaction_hash,
-                    class_hash: txn.class_hash,
-                    version: txn.version,
-                    contract_address_salt: txn.contract_address_salt,
-                    constructor_calldata: txn.constructor_calldata.clone(),
-                }),
-                GatewayTransaction::DeployAccount(txn) => match txn {
-                    starknet_gateway_types::reply::transaction::DeployAccountTransaction::V0V1(
-                        txn,
-                    ) => Self::DeployAccount(DeployAccountTransaction {
-                        common: CommonTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            version: txn.version,
-                            signature: txn.signature.clone(),
-                            nonce: txn.nonce,
-                        },
-                        contract_address_salt: txn.contract_address_salt,
-                        constructor_calldata: txn.constructor_calldata.clone(),
-                        class_hash: txn.class_hash,
-                    }),
-                    starknet_gateway_types::reply::transaction::DeployAccountTransaction::V3(_) => {
-                        todo!()
-                    }
-                },
-                GatewayTransaction::L1Handler(txn) => Self::L1Handler(L1HandlerTransaction {
-                    hash: txn.transaction_hash,
-                    version: txn.version,
-                    nonce: txn.nonce,
-                    contract_address: txn.contract_address,
-                    entry_point_selector: txn.entry_point_selector,
-                    calldata: txn.calldata.clone(),
-                }),
-            }
-        }
-    }
+    use serde::Serialize;
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
@@ -1691,121 +1300,6 @@ pub mod reply {
                 Rejected => BlockStatus::Rejected,
                 Reverted => BlockStatus::Rejected,
                 Aborted => BlockStatus::Rejected,
-            }
-        }
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-    // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct FeeEstimate {
-        /// The Ethereum gas cost of the transaction
-        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
-        pub gas_consumed: primitive_types::U256,
-        /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
-        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
-        pub gas_price: primitive_types::U256,
-        /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
-        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
-        pub overall_fee: primitive_types::U256,
-    }
-
-    #[cfg(test)]
-    mod tests {
-        macro_rules! fixture {
-            ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/0.50.0/", $file_name))
-                    .replace(&[' ', '\n'], "")
-            };
-        }
-
-        /// The aim of these tests is to check if serialization works correctly
-        /// **without resorting to deserialization to prepare the test data**,
-        /// which in itself could contain an "opposite phase" bug that cancels out.
-        ///
-        /// Deserialization is tested btw, because the fixture and the data is already available.
-        ///
-        /// These tests were added due to recurring regressions stemming from, among others:
-        /// - `serde(flatten)` and it's side-effects (for example when used in conjunction with `skip_serializing_none`),
-        /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
-        mod serde {
-            use super::super::*;
-
-            use pathfinder_common::macro_prelude::*;
-            use pretty_assertions::assert_eq;
-
-            #[test]
-            fn transaction() {
-                let transactions = vec![
-                    Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
-                        common: CommonDeclareInvokeTransactionProperties {
-                            hash: transaction_hash!("0x4"),
-                            max_fee: fee!("0x5"),
-                            signature: vec![transaction_signature_elem!("0x7")],
-                            nonce: transaction_nonce!("0x8"),
-                        },
-                        class_hash: class_hash!("0x9"),
-                        sender_address: contract_address!("0xa"),
-                    })),
-                    Transaction::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
-                        common: CommonDeclareInvokeTransactionProperties {
-                            hash: transaction_hash!("0x44"),
-                            max_fee: fee!("0x55"),
-                            signature: vec![transaction_signature_elem!("0x77")],
-                            nonce: transaction_nonce!("0x88"),
-                        },
-                        class_hash: class_hash!("0x90"),
-                        sender_address: contract_address!("0xa0"),
-                        compiled_class_hash: casm_hash!("0xb0"),
-                    })),
-                    Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
-                        common: CommonDeclareInvokeTransactionProperties {
-                            hash: transaction_hash!("0xb"),
-                            max_fee: fee!("0x999"),
-                            signature: vec![transaction_signature_elem!("0x777")],
-                            nonce: transaction_nonce!("0xdd"),
-                        },
-                        contract_address: contract_address!("0xb"),
-                        entry_point_selector: entry_point!("0xc"),
-                        calldata: vec![call_param!("0xd")],
-                    })),
-                    Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
-                        common: CommonDeclareInvokeTransactionProperties {
-                            hash: transaction_hash!("0xbbb"),
-                            max_fee: fee!("0x9999"),
-                            signature: vec![transaction_signature_elem!("0xeee")],
-                            nonce: transaction_nonce!("0xde"),
-                        },
-                        sender_address: contract_address!("0xc"),
-                        calldata: vec![call_param!("0xddd")],
-                    })),
-                    Transaction::Deploy(DeployTransaction {
-                        hash: transaction_hash!("0xe"),
-                        class_hash: class_hash!("0x10"),
-                        version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
-                        contract_address_salt: contract_address_salt!("0xee"),
-                        constructor_calldata: vec![constructor_param!("0x11")],
-                    }),
-                    Transaction::L1Handler(L1HandlerTransaction {
-                        hash: transaction_hash!("0xf"),
-                        version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
-                        nonce: transaction_nonce!("0x8"),
-                        contract_address: contract_address!("0xfff"),
-                        entry_point_selector: entry_point!("0xf"),
-                        calldata: vec![call_param!("0xf")],
-                    }),
-                ];
-
-                assert_eq!(
-                    serde_json::to_string(&transactions).unwrap(),
-                    fixture!("transaction.json")
-                );
-                assert_eq!(
-                    serde_json::from_str::<Vec<Transaction>>(&fixture!("transaction.json"))
-                        .unwrap(),
-                    transactions
-                );
             }
         }
     }
