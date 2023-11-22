@@ -160,14 +160,6 @@ mod meta {
         )),
     };
 
-    const TESTNET2_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: BlockNumber::new_or_panic(0),
-        not_verifiable_range: None,
-        fallback_sequencer_address: Some(sequencer_address!(
-            "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
-    };
-
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(833),
         not_verifiable_range: None,
@@ -194,7 +186,6 @@ mod meta {
         match chain {
             Chain::Mainnet => &MAINNET_METAINFO,
             Chain::Testnet => &TESTNET_METAINFO,
-            Chain::Testnet2 => &TESTNET2_METAINFO,
             Chain::Integration => &INTEGRATION_METAINFO,
             Chain::Custom => &CUSTOM_METAINFO,
         }

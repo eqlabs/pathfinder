@@ -23,7 +23,7 @@ pub struct ContractAddresses {
 /// Serve feeder gateway REST endpoints required for pathfinder to sync.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example feeder_gateway ./testnet2.sqlite`
+/// `cargo run --release -p pathfinder --example feeder_gateway ./goerli.sqlite`
 ///
 /// Then pathfinder can be run with the following arguments to use this tool as a sync source:
 ///
@@ -209,7 +209,7 @@ async fn serve() -> anyhow::Result<()> {
 
 fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> {
     use pathfinder_common::consts::{
-        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
+        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
     };
 
     let genesis_hash = tx
@@ -221,7 +221,6 @@ fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> 
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => Chain::Mainnet,
         TESTNET_GENESIS_HASH => Chain::Testnet,
-        TESTNET2_GENESIS_HASH => Chain::Testnet2,
         INTEGRATION_GENESIS_HASH => Chain::Integration,
         _other => Chain::Custom,
     };
@@ -242,10 +241,6 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
         },
         Chain::Testnet => ContractAddresses {
             core: parse("de29d060D45901Fb19ED6C6e959EB22d8626708e"),
-            gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
-        },
-        Chain::Testnet2 => ContractAddresses {
-            core: parse("a4eD3aD27c294565cB0DCc993BDdCC75432D498c"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
         },
         Chain::Integration | Chain::Custom => ContractAddresses {

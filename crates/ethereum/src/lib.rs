@@ -7,7 +7,6 @@ pub mod core_addr {
 
     pub const MAINNET: [u8; 20] = Decoder::Hex.decode(b"c662c410C0ECf747543f5bA90660f6ABeBD9C8c4");
     pub const TESTNET: [u8; 20] = Decoder::Hex.decode(b"de29d060D45901Fb19ED6C6e959EB22d8626708e");
-    pub const TESTNET2: [u8; 20] = Decoder::Hex.decode(b"a4eD3aD27c294565cB0DCc993BDdCC75432D498c");
     pub const INTEGRATION: [u8; 20] =
         Decoder::Hex.decode(b"d5c325D183C592C94998000C5e0EED9e6655c020");
 }

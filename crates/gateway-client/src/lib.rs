@@ -334,11 +334,6 @@ impl Client {
         Self::with_base_url(Url::parse("https://alpha4.starknet.io/").unwrap()).unwrap()
     }
 
-    /// Creates a [Client] for [Chain::Testnet2].
-    pub fn testnet2() -> Self {
-        Self::with_base_url(Url::parse("https://alpha4-2.starknet.io/").unwrap()).unwrap()
-    }
-
     /// Creates a [Client] for [Chain::Integration].
     pub fn integration() -> Self {
         Self::with_base_url(Url::parse("https://external.integration.starknet.io").unwrap())
@@ -399,8 +394,7 @@ impl Client {
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
         use pathfinder_common::consts::{
-            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
-            TESTNET_GENESIS_HASH,
+            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
@@ -412,7 +406,6 @@ impl Client {
 
         match genesis_hash {
             testnet if testnet == TESTNET_GENESIS_HASH => Ok(Chain::Testnet),
-            testnet2 if testnet2 == TESTNET2_GENESIS_HASH => Ok(Chain::Testnet2),
             mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
             integration if integration == INTEGRATION_GENESIS_HASH => Ok(Chain::Integration),
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),

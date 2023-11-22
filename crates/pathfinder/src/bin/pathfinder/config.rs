@@ -329,7 +329,6 @@ struct DebugCli {
 enum Network {
     Mainnet,
     Testnet,
-    Testnet2,
     Integration,
     Custom,
 }
@@ -339,7 +338,6 @@ impl From<Network> for clap::builder::OsStr {
         match value {
             Network::Mainnet => "mainnet",
             Network::Testnet => "testnet",
-            Network::Testnet2 => "testnet2",
             Network::Integration => "integration",
             Network::Custom => "custom",
         }
@@ -445,7 +443,6 @@ pub struct Ethereum {
 pub enum NetworkConfig {
     Mainnet,
     Testnet,
-    Testnet2,
     Integration,
     Custom {
         gateway: Url,
@@ -496,7 +493,6 @@ impl NetworkConfig {
             (Some(non_custom), None, None, None) => match non_custom {
                 Mainnet => NetworkConfig::Mainnet,
                 Testnet => NetworkConfig::Testnet,
-                Testnet2 => NetworkConfig::Testnet2,
                 Integration => NetworkConfig::Integration,
                 Custom => unreachable!("Network::Custom handled in outer arm already"),
             },

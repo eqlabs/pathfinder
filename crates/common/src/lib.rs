@@ -341,7 +341,6 @@ pub enum Chain {
     Mainnet,
     Testnet,
     Integration,
-    Testnet2,
     Custom,
 }
 
@@ -363,7 +362,6 @@ impl ChainId {
 
     pub const MAINNET: Self = Self::from_slice_unwrap(b"SN_MAIN");
     pub const TESTNET: Self = Self::from_slice_unwrap(b"SN_GOERLI");
-    pub const TESTNET2: Self = Self::from_slice_unwrap(b"SN_GOERLI2");
     pub const INTEGRATION: Self = Self::from_slice_unwrap(b"SN_GOERLI");
 }
 
@@ -372,7 +370,6 @@ impl std::fmt::Display for Chain {
         match self {
             Chain::Mainnet => f.write_str("Mainnet"),
             Chain::Testnet => f.write_str("Görli"),
-            Chain::Testnet2 => f.write_str("Görli2"),
             Chain::Integration => f.write_str("Integration"),
             Chain::Custom => f.write_str("Custom"),
         }

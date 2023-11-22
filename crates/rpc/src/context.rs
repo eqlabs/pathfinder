@@ -58,7 +58,6 @@ impl RpcContext {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet()),
             Chain::Testnet => (ChainId::TESTNET, SequencerClient::testnet()),
             Chain::Integration => (ChainId::INTEGRATION, SequencerClient::integration()),
-            Chain::Testnet2 => (ChainId::TESTNET2, SequencerClient::testnet2()),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
         };
 
