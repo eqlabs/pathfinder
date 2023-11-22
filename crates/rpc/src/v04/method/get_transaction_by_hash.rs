@@ -3,7 +3,7 @@ use crate::v04::types::TransactionWithHash;
 
 use crate::v02::method::get_transaction_by_hash as v02_get_transaction_by_hash;
 
-crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFoundV04);
+crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
 
 pub async fn get_transaction_by_hash(
     context: RpcContext,
@@ -15,5 +15,5 @@ pub async fn get_transaction_by_hash(
             let common_tx = pathfinder_common::transaction::Transaction::from(x);
             common_tx.into()
         })
-        .ok_or(GetTransactionByHashError::TxnHashNotFoundV04)
+        .ok_or(GetTransactionByHashError::TxnHashNotFound)
 }
