@@ -3,7 +3,7 @@ pub(crate) mod estimate_fee;
 pub(crate) mod estimate_message_fee;
 mod get_block_with_tx_hashes;
 mod get_block_with_txs;
-mod get_transaction_receipt;
+pub(crate) mod get_transaction_receipt;
 mod get_transaction_status;
 mod simulate_transactions;
 mod trace_block_transactions;

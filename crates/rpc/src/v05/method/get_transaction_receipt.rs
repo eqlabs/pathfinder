@@ -14,6 +14,15 @@ pub async fn get_transaction_receipt(
     context: RpcContext,
     input: GetTransactionReceiptInput,
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
+    get_transaction_receipt_impl(context, input)
+        .await
+        .map(|x| x.into_v5_form())
+}
+
+pub async fn get_transaction_receipt_impl(
+    context: RpcContext,
+    input: GetTransactionReceiptInput,
+) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
@@ -77,7 +86,7 @@ pub async fn get_transaction_receipt(
     jh.await.context("Database read panic or shutting down")?
 }
 
-mod types {
+pub mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
@@ -99,6 +108,49 @@ mod types {
     pub enum MaybePendingTransactionReceipt {
         Normal(TransactionReceipt),
         Pending(PendingTransactionReceipt),
+    }
+
+    impl MaybePendingTransactionReceipt {
+        fn actual_fee(&mut self) -> &mut FeePayment {
+            match self {
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Declare(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::L1Handler(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Deploy(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::DeployAccount(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Invoke(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Declare(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Deploy(x)) => {
+                    &mut x.common.actual_fee
+                }
+                MaybePendingTransactionReceipt::Pending(
+                    PendingTransactionReceipt::DeployAccount(x),
+                ) => &mut x.common.actual_fee,
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::L1Handler(
+                    x,
+                )) => &mut x.common.actual_fee,
+            }
+        }
+
+        pub fn into_v5_form(mut self) -> Self {
+            self.actual_fee().into_v05_format();
+
+            self
+        }
     }
 
     /// Non-pending L2 transaction receipt as returned by the RPC API.
@@ -134,7 +186,7 @@ mod types {
     pub struct CommonTransactionReceiptProperties {
         #[serde_as(as = "RpcFelt")]
         pub transaction_hash: TransactionHash,
-        pub actual_fee: Fee,
+        pub actual_fee: FeePayment,
         #[serde_as(as = "RpcFelt")]
         pub block_hash: BlockHash,
         pub block_number: BlockNumber,
@@ -152,7 +204,7 @@ mod types {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonPendingTransactionReceiptProperties {
         pub transaction_hash: TransactionHash,
-        pub actual_fee: Fee,
+        pub actual_fee: FeePayment,
         pub messages_sent: Vec<MessageToL1>,
         pub events: Vec<Event>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -160,6 +212,23 @@ mod types {
         pub execution_status: ExecutionStatus,
         pub execution_resources: ExecutionResourcesProperties,
         pub finality_status: FinalityStatus,
+    }
+
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(untagged)]
+    pub enum FeePayment {
+        // TODO: remove once RPC v0.5 is removed.
+        V05(Fee),
+        V06 { wei: Fee, strk: Fee },
+    }
+
+    impl FeePayment {
+        fn into_v05_format(&mut self) {
+            if let FeePayment::V06 { wei, .. } = self {
+                *self = FeePayment::V05(*wei);
+            }
+        }
     }
 
     /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
@@ -297,11 +366,14 @@ mod types {
             block_number: BlockNumber,
             transaction: starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
+            let actual_fee = FeePayment::V06 {
+                wei: receipt.actual_fee.unwrap_or_default(),
+                strk: Fee::default(),
+            };
+
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
-                actual_fee: receipt
-                    .actual_fee
-                    .unwrap_or_else(|| Fee(Default::default())),
+                actual_fee,
                 block_hash,
                 block_number,
                 messages_sent: receipt
@@ -405,11 +477,14 @@ mod types {
             receipt: starknet_gateway_types::reply::transaction::Receipt,
             transaction: &starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
+            let actual_fee = FeePayment::V06 {
+                wei: receipt.actual_fee.unwrap_or_default(),
+                strk: Fee::default(),
+            };
+
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
-                actual_fee: receipt
-                    .actual_fee
-                    .unwrap_or_else(|| Fee(Default::default())),
+                actual_fee,
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
@@ -594,7 +669,7 @@ mod tests {
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
                         transaction_hash: transaction_hash_bytes!(b"txn 0"),
-                        actual_fee: Fee::ZERO,
+                        actual_fee: FeePayment::V05(Fee::ZERO),
                         block_hash: block_hash_bytes!(b"genesis"),
                         block_number: BlockNumber::new_or_panic(0),
                         messages_sent: vec![],
@@ -628,7 +703,7 @@ mod tests {
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
                         transaction_hash: transaction_hash_bytes!(b"txn 6"),
-                        actual_fee: Fee::ZERO,
+                        actual_fee: FeePayment::V05(Fee::ZERO),
                         block_hash: block_hash_bytes!(b"latest"),
                         block_number: BlockNumber::new_or_panic(2),
                         messages_sent: vec![MessageToL1 {
@@ -717,7 +792,7 @@ mod tests {
                 PendingInvokeTransactionReceipt {
                     common: CommonPendingTransactionReceiptProperties {
                         transaction_hash,
-                        actual_fee: Fee::ZERO,
+                        actual_fee: FeePayment::V05(Fee::ZERO),
                         messages_sent: vec![],
                         events: vec![
                             Event {
