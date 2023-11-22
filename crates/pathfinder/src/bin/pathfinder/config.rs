@@ -222,7 +222,6 @@ impl Color {
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
 pub enum RpcVersion {
-    V03,
     V04,
     V05,
     V06,

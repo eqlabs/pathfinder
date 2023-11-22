@@ -26,19 +26,6 @@ pub async fn get_block_with_tx_hashes(
     .await
 }
 
-/// Get block information with full transactions given the block id
-pub async fn get_block_with_txs(
-    context: RpcContext,
-    input: GetBlockInput,
-) -> Result<types::Block, GetBlockError> {
-    get_block(
-        context,
-        input.block_id,
-        types::BlockResponseScope::FullTransactions,
-    )
-    .await
-}
-
 /// Get block information given the block id
 async fn get_block(
     context: RpcContext,
@@ -111,7 +98,7 @@ fn get_block_transactions(
                 .collect::<Vec<_>>()
                 .into(),
         )),
-        types::BlockResponseScope::FullTransactions => Ok(types::Transactions::Full(
+        types::BlockResponseScope::_FullTransactions => Ok(types::Transactions::Full(
             transactions_receipts
                 .into_iter()
                 .map(|(t, _)| t.into())
@@ -135,7 +122,9 @@ mod types {
     #[derive(Copy, Clone, Debug)]
     pub enum BlockResponseScope {
         TransactionHashes,
-        FullTransactions,
+        // This impl is no longer used by other RPC versions, but was kept to
+        // minimize code changes induced by removing it.
+        _FullTransactions,
     }
 
     /// Wrapper for transaction data returned in block related queries,
@@ -213,7 +202,7 @@ mod types {
 
                     Transactions::HashesOnly(hashes)
                 }
-                BlockResponseScope::FullTransactions => {
+                BlockResponseScope::_FullTransactions => {
                     let transactions = block.transactions().iter().map(|t| t.into()).collect();
                     Transactions::Full(transactions)
                 }
