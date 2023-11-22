@@ -1,4 +1,7 @@
-use blockifier::transaction::transaction_execution::Transaction;
+use blockifier::transaction::{
+    objects::{FeeType, HasRelatedFeeType},
+    transaction_execution::Transaction,
+};
 
 use pathfinder_common::TransactionHash;
 
@@ -11,18 +14,25 @@ pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
         match transaction {
             Transaction::AccountTransaction(tx) => match tx {
                 blockifier::transaction::account_transaction::AccountTransaction::Declare(tx) => {
-                    tx.tx().transaction_hash()
+                    tx.tx_hash()
                 }
                 blockifier::transaction::account_transaction::AccountTransaction::DeployAccount(
                     tx,
-                ) => tx.transaction_hash(),
+                ) => tx.tx_hash,
                 blockifier::transaction::account_transaction::AccountTransaction::Invoke(tx) => {
-                    tx.transaction_hash()
+                    tx.tx_hash
                 }
             },
-            Transaction::L1HandlerTransaction(tx) => tx.tx.transaction_hash,
+            Transaction::L1HandlerTransaction(tx) => tx.tx_hash,
         }
         .0
         .into_felt(),
     )
+}
+
+pub fn fee_type(transaction: &Transaction) -> FeeType {
+    match transaction {
+        Transaction::AccountTransaction(tx) => tx.fee_type(),
+        Transaction::L1HandlerTransaction(tx) => tx.fee_type(),
+    }
 }

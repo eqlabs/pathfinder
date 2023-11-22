@@ -1,7 +1,9 @@
 use blockifier::{
     execution::contract_class::ContractClass,
     state::{
-        cached_state::CachedState, errors::StateError, state_api::StateReader,
+        cached_state::{CachedState, GlobalContractCache},
+        errors::StateError,
+        state_api::StateReader,
         state_api::StateResult,
     },
 };
@@ -18,11 +20,6 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tracing::warn;
 
 use super::felt::{IntoFelt, IntoStarkFelt};
-
-type ContractClassLRUCache = SizedCache<starknet_api::core::ClassHash, ContractClass>;
-
-#[derive(Clone)]
-struct GlobalContractCache(pub Arc<Mutex<ContractClassLRUCache>>);
 
 /// A `StateReader` wrapper designed to cache the compiled contract classes.
 /// Contract classes are immutable once deployed so caching should not cause any side effect.
@@ -47,7 +44,8 @@ where
         // the `State` trait as `blockifier` explicitly requires a `CachedReader` in the signature
         // of some methods we use.
         let reader = Self::new(inner_reader)?;
-        Ok(CachedState::new(reader))
+        let cache = reader.compiled_class_cache.clone();
+        Ok(CachedState::new(reader, cache))
     }
 
     fn new(inner_reader: R) -> anyhow::Result<Self> {

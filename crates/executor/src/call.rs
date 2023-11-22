@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use blockifier::{
     execution::entry_point::{CallEntryPoint, EntryPointExecutionContext, ExecutionResources},
-    transaction::objects::AccountTransactionContext,
+    transaction::objects::{AccountTransactionContext, DeprecatedAccountTransactionContext},
 };
 use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
 use starknet_api::core::PatriciaKey;
@@ -44,8 +44,9 @@ pub fn call(
     let mut resources = ExecutionResources::default();
     let mut context = EntryPointExecutionContext::new_invoke(
         &block_context,
-        &AccountTransactionContext::default(),
-    );
+        &AccountTransactionContext::Deprecated(DeprecatedAccountTransactionContext::default()),
+        false,
+    )?;
 
     let call_info = call_entry_point.execute(&mut state, &mut resources, &mut context)?;
 

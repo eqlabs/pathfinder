@@ -45,7 +45,7 @@ async-trait = "0.1.73"
 axum = { version = "0.6.19", features = ["macros"] }
 base64 = "0.13.1"
 bitvec = "1.0.1"
-blockifier = { git = "https://github.com/starkware-libs/blockifier", rev = "b5dfbd31ff879cb8309b1e5e21d8f8556c796b6a" }
+blockifier = "=0.4.0-rc8"
 bytes = "1.4.0"
 # This one needs to match the version used by blockifier
 cairo-vm = "=0.8.2"
@@ -66,12 +66,12 @@ rand = "0.8.5"
 reqwest = { version = "0.11.18", features = ["json"] }
 rstest = "0.18.2"
 semver = "1.0.18"
-serde = "=1.0.171"
+serde = "1.0.192"
 serde_json = "1.0.105"
 serde_with = "3.0.0"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
-starknet_api = { git = "https://github.com/starkware-libs/starknet-api", rev = "8f620bc" }
+starknet_api = "=0.6.0-rc2"
 thiserror = "1.0.48"
 tokio = "1.29.1"
 tracing = "0.1.37"

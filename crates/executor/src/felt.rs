@@ -26,3 +26,11 @@ impl IntoStarkFelt for Felt {
         StarkFelt::new(self.to_be_bytes()).expect("Felt should fit into StarkFelt")
     }
 }
+
+impl IntoStarkFelt for starknet_gateway_types::reply::transaction::DataAvailabilityMode {
+    fn into_starkfelt(self) -> StarkFelt {
+        match self {
+            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L1 => StarkFelt::ZERO,
+        }
+    }
+}
