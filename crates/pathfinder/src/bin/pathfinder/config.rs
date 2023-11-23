@@ -200,7 +200,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
     rpc_batch_concurrency_limit: NonZeroUsize,
 
     #[arg(
-        long = "sync.enabled",
+        long = "sync.enable",
         long_help = "Enable syncing the chain",
         env = "PATHFINDER_SYNC_ENABLED",
         default_value = "true"
@@ -208,7 +208,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
     is_sync_enabled: bool,
 
     #[arg(
-        long = "rcp.enabled",
+        long = "rcp.enable",
         long_help = "Enable serving RPC API",
         env = "PATHFINDER_RPC_ENABLED",
         default_value = "true"
