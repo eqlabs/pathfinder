@@ -341,7 +341,8 @@ struct DebugCli {
     restart_delay: u64,
 }
 
-#[derive(clap::ValueEnum, Clone)]
+#[derive(clap::ValueEnum, Clone, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 enum Network {
     Mainnet,
     GoerliTestnet,
