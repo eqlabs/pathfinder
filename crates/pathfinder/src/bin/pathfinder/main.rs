@@ -215,14 +215,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         verify_tree_hashes: config.verify_tree_hashes,
     };
 
-    let is_sync_enabled = config.is_sync_enabled;
-    let sync_handle = tokio::spawn(async move {
-        if is_sync_enabled {
-            state::sync(sync_context, state::l1::sync, state::l2::sync).await
-        } else {
-            Ok(())
-        }
-    });
+    let sync_handle = if config.is_sync_enabled {
+        tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
+    } else {
+        tokio::spawn(std::future::pending())
+    };
 
     let (rpc_handle, local_addr) = if config.is_rpc_enabled {
         rpc_server
@@ -230,8 +227,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             .spawn()
             .context("Starting the RPC server")?
     } else {
-        let rpc_handle = tokio::spawn(async { Ok(()) });
-        let local_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+        let rpc_handle = tokio::spawn(std::future::pending());
+        let local_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
         (rpc_handle, local_addr)
     };
 
@@ -246,14 +243,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     tokio::select! {
         result = sync_handle => {
             match result {
-                _ if !config.is_sync_enabled => (),
                 Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
                 Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
             }
         }
         result = rpc_handle => {
             match result {
-                _ if !config.is_rpc_enabled => (),
                 Ok(_) => tracing::error!("RPC server process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "RPC server process ended unexpectedly"),
             }
