@@ -97,6 +97,7 @@ pub struct FunctionInvocation {
     pub events: Vec<Event>,
     pub messages: Vec<MsgToL1>,
     pub result: Vec<Felt>,
+    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -139,6 +140,20 @@ pub struct DeclaredSierraClass {
 pub struct ReplacedClass {
     pub contract_address: ContractAddress,
     pub class_hash: ClassHash,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecutionResources {
+    pub steps: usize,
+    pub memory_holes: usize,
+    pub range_check_builtin_applications: usize,
+    pub pedersen_builtin_applications: usize,
+    pub poseidon_builtin_applications: usize,
+    pub ec_op_builtin_applications: usize,
+    pub ecdsa_builtin_applications: usize,
+    pub bitwise_builtin_applications: usize,
+    pub keccak_builtin_applications: usize,
+    pub segment_arena_builtin: usize,
 }
 
 impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
@@ -194,6 +209,7 @@ impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation 
             events,
             messages,
             result,
+            execution_resources: call_info.vm_resources.into(),
         })
     }
 }
@@ -261,4 +277,51 @@ fn ordered_l2_to_l1_messages(
     }
 
     messages.into_values().collect()
+}
+
+impl From<cairo_vm::vm::runners::cairo_runner::ExecutionResources> for ExecutionResources {
+    fn from(value: cairo_vm::vm::runners::cairo_runner::ExecutionResources) -> Self {
+        use cairo_vm::vm::runners::builtin_runner::{
+            BITWISE_BUILTIN_NAME, EC_OP_BUILTIN_NAME, HASH_BUILTIN_NAME, KECCAK_BUILTIN_NAME,
+            POSEIDON_BUILTIN_NAME, RANGE_CHECK_BUILTIN_NAME, SEGMENT_ARENA_BUILTIN_NAME,
+            SIGNATURE_BUILTIN_NAME,
+        };
+
+        Self {
+            steps: value.n_steps,
+            memory_holes: value.n_memory_holes,
+            range_check_builtin_applications: *value
+                .builtin_instance_counter
+                .get(RANGE_CHECK_BUILTIN_NAME)
+                .unwrap_or(&0),
+            pedersen_builtin_applications: *value
+                .builtin_instance_counter
+                .get(HASH_BUILTIN_NAME)
+                .unwrap_or(&0),
+            poseidon_builtin_applications: *value
+                .builtin_instance_counter
+                .get(POSEIDON_BUILTIN_NAME)
+                .unwrap_or(&0),
+            ec_op_builtin_applications: *value
+                .builtin_instance_counter
+                .get(EC_OP_BUILTIN_NAME)
+                .unwrap_or(&0),
+            ecdsa_builtin_applications: *value
+                .builtin_instance_counter
+                .get(SIGNATURE_BUILTIN_NAME)
+                .unwrap_or(&0),
+            bitwise_builtin_applications: *value
+                .builtin_instance_counter
+                .get(BITWISE_BUILTIN_NAME)
+                .unwrap_or(&0),
+            keccak_builtin_applications: *value
+                .builtin_instance_counter
+                .get(KECCAK_BUILTIN_NAME)
+                .unwrap_or(&0),
+            segment_arena_builtin: *value
+                .builtin_instance_counter
+                .get(SEGMENT_ARENA_BUILTIN_NAME)
+                .unwrap_or(&0),
+        }
+    }
 }
