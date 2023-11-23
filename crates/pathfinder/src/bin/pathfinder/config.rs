@@ -356,10 +356,10 @@ impl From<Network> for clap::builder::OsStr {
     fn from(value: Network) -> Self {
         match value {
             Network::Mainnet => "mainnet",
-            Network::GoerliTestnet => "testnet/goerli",
-            Network::GoerliIntegration => "integration/goerli",
-            Network::SepoliaTestnet => "testnet/sepolia",
-            Network::SepoliaIntegration => "integration/sepolia",
+            Network::GoerliTestnet => "goerli-testnet",
+            Network::GoerliIntegration => "goerli-integration",
+            Network::SepoliaTestnet => "sepolia-testnet",
+            Network::SepoliaIntegration => "sepolia-integration",
             Network::Custom => "custom",
         }
         .into()

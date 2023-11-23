@@ -566,6 +566,8 @@ mod pathfinder_context {
                 x if x == core_addr::MAINNET => Chain::Mainnet,
                 x if x == core_addr::GOERLI_TESTNET => Chain::GoerliTestnet,
                 x if x == core_addr::GOERLI_INTEGRATION => Chain::GoerliIntegration,
+                x if x == core_addr::SEPOLIA_TESTNET => Chain::SepoliaTestnet,
+                x if x == core_addr::GOERLI_INTEGRATION => Chain::SepoliaIntegration,
                 _ => Chain::Custom,
             };
 
@@ -621,14 +623,17 @@ async fn verify_database(
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{
-            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
+            GOERLI_INTEGRATION_GENESIS_HASH, GOERLI_TESTNET_GENESIS_HASH, MAINNET_GENESIS_HASH,
+            SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
         };
 
         let db_network = match database_genesis {
             MAINNET_GENESIS_HASH => Chain::Mainnet,
-            TESTNET_GENESIS_HASH => Chain::GoerliTestnet,
-            INTEGRATION_GENESIS_HASH => Chain::GoerliIntegration,
-            _other => Chain::Custom,
+            GOERLI_TESTNET_GENESIS_HASH => Chain::GoerliTestnet,
+            GOERLI_INTEGRATION_GENESIS_HASH => Chain::GoerliIntegration,
+            SEPOLIA_TESTNET_GENESIS_HASH => Chain::SepoliaTestnet,
+            SEPOLIA_INTEGRATION_GENESIS_HASH => Chain::SepoliaIntegration,
+            _ => Chain::Custom,
         };
 
         match (network, db_network) {

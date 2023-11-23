@@ -405,7 +405,7 @@ impl Client {
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
         use pathfinder_common::consts::{
-            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
+            GOERLI_INTEGRATION_GENESIS_HASH, GOERLI_TESTNET_GENESIS_HASH, MAINNET_GENESIS_HASH,
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
@@ -416,9 +416,11 @@ impl Client {
             .block_hash;
 
         match genesis_hash {
-            testnet if testnet == TESTNET_GENESIS_HASH => Ok(Chain::GoerliTestnet),
+            testnet if testnet == GOERLI_TESTNET_GENESIS_HASH => Ok(Chain::GoerliTestnet),
             mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
-            integration if integration == INTEGRATION_GENESIS_HASH => Ok(Chain::GoerliIntegration),
+            integration if integration == GOERLI_INTEGRATION_GENESIS_HASH => {
+                Ok(Chain::GoerliIntegration)
+            }
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
         }
     }
