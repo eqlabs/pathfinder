@@ -183,7 +183,7 @@ impl serde::Serialize for BlockHeader {
     {
         use serde::ser::SerializeMap;
 
-        let &pathfinder_common::BlockHeader {
+        let pathfinder_common::BlockHeader {
             hash,
             parent_hash,
             number,

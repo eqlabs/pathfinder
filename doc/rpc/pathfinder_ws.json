@@ -15,16 +15,20 @@
                     "name": "kind",
                     "summary": "The type of subscription",
                     "required": true,
-                    "type": "string",
-                    "enum": [
-                        "newHeads"
-                    ]
+                    "schema": {
+                        "type": "string",
+                        "enum": [
+                            "newHeads"
+                        ]
+                    }
                 }
             ],
             "result": {
                 "name": "subscription ID",
                 "description": "An identifier for this subscription stream used to associate events with this subscription.",
-                "type": "integer"
+                "schema": {
+                    "type": "integer"
+                }
             }
         },
         {
@@ -36,38 +40,45 @@
                     "name": "subscription ID",
                     "summary": "The subscription to close",
                     "required": true,
-                    "type": "integer"
+                    "schema": {
+                        "type": "integer"
+                    }
                 }
             ],
             "result": {
                 "name": "Unsubscription result",
                 "description": "True if the unsubscription was successful",
-                "type": "bool"
+                "schema": {
+                    "type": "boolean"
+                }
             }
         },
         {
             "name": "pathfinder_subscription",
             "summary": "A subscription event notification sent by the node.",
+            "params": [],
             "result": {
+                "name": "Subscription event",
                 "schema": {
-                    "subscription": {
-                        "name": "Subscription ID",
-                        "summary": "The subscription this event is for",
-                        "required": true,
-                        "type": "integer"
+                    "type": "object",
+                    "properties": {
+                        "subscription": {
+                            "name": "Subscription ID",
+                            "summary": "The subscription this event is for",
+                            "type": "integer"
+                        },
+                        "event": {
+                            "$ref": "#/components/schemas/BLOCK_HEADER"
+                        }  
                     },
-                    "result": {
-                        "summary": "The event data",
-                        "required": true,
-                        "oneOf": [
-                            {
-                                "summary": "Sent by 'newHeads' subscriptions",
-                                "$ref": "#/components/schemas/BLOCK_HEADER"
-                            }
-                        ]
-                    }
+                    "required": ["subscription", "event"]
                 }
-            }
+            },
+            "errors": [
+                {
+                    "$ref": "#/components/errors/WEBSOCKET_SUBSCRIPTION_CLOSED"
+                }
+            ]
         }
     ],
     "components": {
@@ -141,6 +152,28 @@
                 ]
             }
         },
-        "errors": {}
+        "errors": {
+            "WEBSOCKET_SUBSCRIPTION_CLOSED": {
+                "code": -32099,
+                "message": "Websocket subscription closed",
+                "data": {
+                    "type": "object",
+                    "description": "More data about the execution failure",
+                    "properties": {
+                        "id": {
+                            "title": "Subscription ID",
+                            "description": "The ID of the closed subscription",
+                            "type": "integer"
+                        },
+                        "reason": {
+                            "title": "Closing reason",
+                            "description": "The reason why the subscription was closed",
+                            "type": "string"
+                        }
+                    },
+                    "required": ["id", "reason"]
+                }
+            }
+        }
     }
 }
