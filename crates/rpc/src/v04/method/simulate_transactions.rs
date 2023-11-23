@@ -109,8 +109,21 @@ pub async fn simulate_transactions(
 
         let txs =
             pathfinder_executor::simulate(state, transactions, skip_validate, skip_fee_charge)?;
-        let txs = txs.into_iter().map(Into::into).collect();
-        Ok(SimulateTransactionOutput(txs))
+
+        match txs
+            .iter()
+            .filter_map(pathfinder_executor::types::TransactionSimulation::revert_reason)
+            .next()
+        {
+            Some(revert_reason) => Err(SimulateTransactionError::Custom(anyhow::anyhow!(
+                "Transaction reverted: {}",
+                revert_reason
+            ))),
+            None => {
+                let txs = txs.into_iter().map(Into::into).collect();
+                Ok(SimulateTransactionOutput(txs))
+            }
+        }
     })
     .await
     .context("Simulating transaction")?
