@@ -1,5 +1,5 @@
 mod get_block_with_txs;
-mod get_transaction_receipt;
+pub(crate) mod get_transaction_receipt;
 mod simulate_transactions;
 
 pub(crate) use get_block_with_txs::get_block_with_txs;
