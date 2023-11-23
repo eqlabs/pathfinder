@@ -4,6 +4,7 @@ use crate::v02::types::request::BroadcastedDeployAccountTransactionV0V1;
 use pathfinder_common::{ContractAddress, TransactionHash};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::request::add_transaction::DeployAccount;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -101,15 +102,15 @@ pub async fn add_deploy_account_transaction(
     let Transaction::DeployAccount(tx) = input.deploy_account_transaction;
     let response = context
         .sequencer
-        .add_deploy_account(
-            tx.version,
-            tx.max_fee,
-            tx.signature,
-            tx.nonce,
-            tx.contract_address_salt,
-            tx.class_hash,
-            tx.constructor_calldata,
-        )
+        .add_deploy_account(DeployAccount {
+            version: tx.version,
+            max_fee: tx.max_fee,
+            signature: tx.signature,
+            nonce: tx.nonce,
+            class_hash: tx.class_hash,
+            contract_address_salt: tx.contract_address_salt,
+            constructor_calldata: tx.constructor_calldata,
+        })
         .await?;
 
     Ok(AddDeployAccountTransactionOutput {
