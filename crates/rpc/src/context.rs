@@ -57,9 +57,15 @@ impl RpcContext {
         let (chain_id, sequencer) = match chain {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet()),
             Chain::GoerliTestnet => (ChainId::GOERLI_TESTNET, SequencerClient::goerli_testnet()),
-            Chain::GoerliIntegration => (ChainId::GOERLI_INTEGRATION, SequencerClient::goerli_integration()),
+            Chain::GoerliIntegration => (
+                ChainId::GOERLI_INTEGRATION,
+                SequencerClient::goerli_integration(),
+            ),
             Chain::SepoliaTestnet => (ChainId::SEPOLIA_TESTNET, SequencerClient::sepolia_testnet()),
-            Chain::SepoliaIntegration => (ChainId::SEPOLIA_INTEGRATION, SequencerClient::sepolia_integration()),
+            Chain::SepoliaIntegration => (
+                ChainId::SEPOLIA_INTEGRATION,
+                SequencerClient::sepolia_integration(),
+            ),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
         };
 

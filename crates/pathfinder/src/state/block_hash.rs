@@ -560,7 +560,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::GOERLI_TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -573,7 +579,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::GOERLI_TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -587,7 +599,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::GOERLI_TESTNET, block.block_hash,).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash,
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -617,7 +635,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::GOERLI_TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }

@@ -165,7 +165,8 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V0(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
+                    let transaction_hash =
+                        declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V0(
                             gateway::transaction::DeclareTransactionV0V1 {
@@ -183,7 +184,8 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V1(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
+                    let transaction_hash =
+                        declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V1(
                             gateway::transaction::DeclareTransactionV0V1 {
@@ -201,7 +203,8 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V2(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
+                    let transaction_hash =
+                        declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V2(
                             gateway::transaction::DeclareTransactionV2 {
@@ -220,7 +223,8 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V3(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
+                    let transaction_hash =
+                        declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V3(
                             gateway::transaction::DeclareTransactionV3 {

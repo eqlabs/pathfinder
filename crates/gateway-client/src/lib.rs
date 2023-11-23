@@ -350,7 +350,7 @@ impl Client {
         Self::with_base_url(Url::parse("https://integration-sepolia.starknet.io/").unwrap())
             .unwrap()
     }
-    
+
     /// Creates a [Client] with a shared feeder gateway and gateway base url.
     pub fn with_base_url(base: Url) -> anyhow::Result<Self> {
         let gateway = base.join("gateway")?;
@@ -1718,7 +1718,9 @@ mod tests {
             {
                 match target {
                     TargetChain::Mainnet => (None, Client::mainnet().disable_retry_for_tests()),
-                    TargetChain::Testnet => (None, Client::goerli_testnet().disable_retry_for_tests()),
+                    TargetChain::Testnet => {
+                        (None, Client::goerli_testnet().disable_retry_for_tests())
+                    }
                     // Escaped above already
                     TargetChain::Invalid => unreachable!(),
                 }

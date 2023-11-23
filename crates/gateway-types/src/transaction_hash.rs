@@ -755,7 +755,11 @@ mod tests {
             let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
 
             assert_eq!(
-                verify(&txn, ChainId::GOERLI_TESTNET, BlockNumber::new_or_panic(797220),),
+                verify(
+                    &txn,
+                    ChainId::GOERLI_TESTNET,
+                    BlockNumber::new_or_panic(797220),
+                ),
                 VerifyResult::Match
             );
         }

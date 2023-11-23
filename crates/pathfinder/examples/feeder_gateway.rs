@@ -15,7 +15,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use warp::Filter;
 
 /// Groups the Starknet contract addresses for a specific chain.
-/// 
+///
 /// Getting addresses: <SEQUENCER_URL>/feeder_gateway/get_contract_addresses
 pub struct ContractAddresses {
     pub core: H160,
@@ -249,14 +249,14 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
             core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
         },
-        Chain::SepoliaTestnet => ContractAddresses { 
-            core: parse("E2Bb56ee936fd6433DC0F6e7e3b8365C906AA057"), 
+        Chain::SepoliaTestnet => ContractAddresses {
+            core: parse("E2Bb56ee936fd6433DC0F6e7e3b8365C906AA057"),
             gps: parse("07ec0D28e50322Eb0C159B9090ecF3aeA8346DFe"),
         },
-        Chain::SepoliaIntegration => ContractAddresses { 
-            core: parse("4737c0c1B4D5b1A687B42610DdabEE781152359c"), 
+        Chain::SepoliaIntegration => ContractAddresses {
+            core: parse("4737c0c1B4D5b1A687B42610DdabEE781152359c"),
             gps: parse("07ec0D28e50322Eb0C159B9090ecF3aeA8346DFe"),
-        }
+        },
     })
 }
 
