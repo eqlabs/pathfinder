@@ -493,14 +493,14 @@ mod pathfinder_context {
                     l1_core_address: H160::from(core_addr::MAINNET),
                 },
                 NetworkConfig::Testnet => Self {
-                    network: Chain::Testnet,
+                    network: Chain::GoerliTestnet,
                     network_id: ChainId::TESTNET,
                     gateway: GatewayClient::testnet(),
                     database: data_directory.join("goerli.sqlite"),
                     l1_core_address: H160::from(core_addr::TESTNET),
                 },
                 NetworkConfig::Integration => Self {
-                    network: Chain::Integration,
+                    network: Chain::GoerliIntegration,
                     network_id: ChainId::INTEGRATION,
                     gateway: GatewayClient::integration(),
                     database: data_directory.join("integration.sqlite"),
@@ -546,8 +546,8 @@ mod pathfinder_context {
             // Check for proxies by comparing the core address against those of the known networks.
             let network = match l1_core_address.as_bytes() {
                 x if x == core_addr::MAINNET => Chain::Mainnet,
-                x if x == core_addr::TESTNET => Chain::Testnet,
-                x if x == core_addr::INTEGRATION => Chain::Integration,
+                x if x == core_addr::TESTNET => Chain::GoerliTestnet,
+                x if x == core_addr::INTEGRATION => Chain::GoerliIntegration,
                 _ => Chain::Custom,
             };
 
@@ -573,8 +573,8 @@ fn verify_networks(starknet: Chain, ethereum: EthereumChain) -> anyhow::Result<(
     if starknet != Chain::Custom {
         let expected = match starknet {
             Chain::Mainnet => EthereumChain::Mainnet,
-            Chain::Testnet => EthereumChain::Goerli,
-            Chain::Integration => EthereumChain::Goerli,
+            Chain::GoerliTestnet => EthereumChain::Goerli,
+            Chain::GoerliIntegration => EthereumChain::Goerli,
             Chain::Custom => unreachable!("Already checked against"),
         };
 
@@ -608,8 +608,8 @@ async fn verify_database(
 
         let db_network = match database_genesis {
             MAINNET_GENESIS_HASH => Chain::Mainnet,
-            TESTNET_GENESIS_HASH => Chain::Testnet,
-            INTEGRATION_GENESIS_HASH => Chain::Integration,
+            TESTNET_GENESIS_HASH => Chain::GoerliTestnet,
+            INTEGRATION_GENESIS_HASH => Chain::GoerliIntegration,
             _other => Chain::Custom,
         };
 

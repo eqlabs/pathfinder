@@ -353,8 +353,8 @@ pub enum EthereumChain {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chain {
     Mainnet,
-    Testnet,
-    Integration,
+    GoerliTestnet,
+    GoerliIntegration,
     Custom,
 }
 
@@ -383,8 +383,8 @@ impl std::fmt::Display for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Chain::Mainnet => f.write_str("Mainnet"),
-            Chain::Testnet => f.write_str("Görli"),
-            Chain::Integration => f.write_str("Integration"),
+            Chain::GoerliTestnet => f.write_str("Görli"),
+            Chain::GoerliIntegration => f.write_str("Integration"),
             Chain::Custom => f.write_str("Custom"),
         }
     }

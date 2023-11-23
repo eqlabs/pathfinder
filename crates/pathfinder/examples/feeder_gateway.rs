@@ -220,8 +220,8 @@ fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> 
 
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => Chain::Mainnet,
-        TESTNET_GENESIS_HASH => Chain::Testnet,
-        INTEGRATION_GENESIS_HASH => Chain::Integration,
+        TESTNET_GENESIS_HASH => Chain::GoerliTestnet,
+        INTEGRATION_GENESIS_HASH => Chain::GoerliIntegration,
         _other => Chain::Custom,
     };
 
@@ -239,11 +239,11 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
             core: parse("c662c410C0ECf747543f5bA90660f6ABeBD9C8c4"),
             gps: parse("47312450B3Ac8b5b8e247a6bB6d523e7605bDb60"),
         },
-        Chain::Testnet => ContractAddresses {
+        Chain::GoerliTestnet => ContractAddresses {
             core: parse("de29d060D45901Fb19ED6C6e959EB22d8626708e"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
         },
-        Chain::Integration | Chain::Custom => ContractAddresses {
+        Chain::GoerliIntegration | Chain::Custom => ContractAddresses {
             core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
         },

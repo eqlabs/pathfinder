@@ -405,9 +405,9 @@ impl Client {
             .block_hash;
 
         match genesis_hash {
-            testnet if testnet == TESTNET_GENESIS_HASH => Ok(Chain::Testnet),
+            testnet if testnet == TESTNET_GENESIS_HASH => Ok(Chain::GoerliTestnet),
             mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
-            integration if integration == INTEGRATION_GENESIS_HASH => Ok(Chain::Integration),
+            integration if integration == INTEGRATION_GENESIS_HASH => Ok(Chain::GoerliIntegration),
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
         }
     }
@@ -1763,7 +1763,7 @@ mod tests {
         async fn testnet() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Testnet);
             let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, Chain::Testnet);
+            assert_eq!(chain, Chain::GoerliTestnet);
         }
 
         #[tokio::test]

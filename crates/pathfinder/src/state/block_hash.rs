@@ -185,8 +185,8 @@ mod meta {
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
         match chain {
             Chain::Mainnet => &MAINNET_METAINFO,
-            Chain::Testnet => &TESTNET_METAINFO,
-            Chain::Integration => &INTEGRATION_METAINFO,
+            Chain::GoerliTestnet => &TESTNET_METAINFO,
+            Chain::GoerliIntegration => &INTEGRATION_METAINFO,
             Chain::Custom => &CUSTOM_METAINFO,
         }
     }
@@ -546,7 +546,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::TESTNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -559,7 +559,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::TESTNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -573,7 +573,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash,).unwrap(),
+            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::TESTNET, block.block_hash,).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -586,7 +586,7 @@ mod tests {
         assert_matches!(
             verify_block_hash(
                 &block,
-                Chain::Integration,
+                Chain::GoerliIntegration,
                 ChainId::INTEGRATION,
                 block.block_hash,
             )
@@ -603,7 +603,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::GoerliTestnet, ChainId::TESTNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }

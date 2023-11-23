@@ -819,7 +819,7 @@ mod tests {
             let context = L2SyncContext {
                 broadcasters: Some(TopicBroadcasters::default()),
                 sequencer,
-                chain: Chain::Testnet,
+                chain: Chain::GoerliTestnet,
                 chain_id: ChainId::TESTNET,
                 head_poll_interval: Duration::ZERO,
                 pending_poll_interval: None,
@@ -1181,7 +1181,7 @@ mod tests {
                 let context = L2SyncContext {
                     broadcasters: Some(TopicBroadcasters::default()),
                     sequencer: mock,
-                    chain: Chain::Testnet,
+                    chain: Chain::GoerliTestnet,
                     chain_id: ChainId::TESTNET,
                     head_poll_interval: Duration::ZERO,
                     pending_poll_interval: None,
