@@ -189,18 +189,16 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response_receiver = self
-                .inner
-                .send_bodies_sync_request(peer, request)
-                .await
-                .map_err(|error| tracing::debug!(from=%peer, %error, "bodies request failed"));
+            let response_receiver = self.inner.send_bodies_sync_request(peer, request).await;
 
-            if let Ok(rx) = response_receiver {
-                if let Some(parsed) = parse::<parse::state_update::State>(&peer, rx).await {
-                    return Ok(parsed);
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::state_update::State>(&peer, rx).await {
+                        return Ok(parsed);
+                    }
                 }
+                Err(error) => tracing::debug!(from=%peer, %error, "bodies request failed"),
             }
-            // Try the next peer
         }
 
         anyhow::bail!(
@@ -235,17 +233,16 @@ impl Client {
             let response_receiver = self
                 .inner
                 .send_transactions_sync_request(peer, request)
-                .await
-                .map_err(
-                    |error| tracing::debug!(from=%peer, %error, "transactions request failed"),
-                );
+                .await;
 
-            if let Ok(rx) = response_receiver {
-                if let Some(parsed) = parse::<parse::transactions::State>(&peer, rx).await {
-                    return Ok(parsed);
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::transactions::State>(&peer, rx).await {
+                        return Ok(parsed);
+                    }
                 }
+                Err(error) => tracing::debug!(from=%peer, %error, "transactions request failed"),
             }
-            // Try the next peer
         }
 
         anyhow::bail!(
@@ -277,18 +274,16 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response_receiver = self
-                .inner
-                .send_receipts_sync_request(peer, request)
-                .await
-                .map_err(|error| tracing::debug!(from=%peer, %error, "receipts request failed"));
+            let response_receiver = self.inner.send_receipts_sync_request(peer, request).await;
 
-            if let Ok(rx) = response_receiver {
-                if let Some(parsed) = parse::<parse::receipts::State>(&peer, rx).await {
-                    return Ok(parsed);
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::receipts::State>(&peer, rx).await {
+                        return Ok(parsed);
+                    }
                 }
+                Err(error) => tracing::debug!(from=%peer, %error, "receipts request failed"),
             }
-            // Try the next peer
         }
 
         anyhow::bail!(
@@ -320,18 +315,16 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response_receiver = self
-                .inner
-                .send_events_sync_request(peer, request)
-                .await
-                .map_err(|error| tracing::debug!(from=%peer, %error, "receipts request failed"));
+            let response_receiver = self.inner.send_events_sync_request(peer, request).await;
 
-            if let Ok(rx) = response_receiver {
-                if let Some(parsed) = parse::<parse::events::State>(&peer, rx).await {
-                    return Ok(parsed);
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::events::State>(&peer, rx).await {
+                        return Ok(parsed);
+                    }
                 }
+                Err(error) => tracing::debug!(from=%peer, %error, "events request failed"),
             }
-            // Try the next peer
         }
 
         anyhow::bail!(
