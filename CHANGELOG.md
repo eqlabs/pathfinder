@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `rpc.enable` configuration option to enable/disable the RPC server. Defaults to enabled.
   - `sync.enable` configuration option to enable/disable the sync process. Defaults to enabled. 
 
+- Support for Testnet and Integration chains (running against Ethereum Sepolia testnet).
+
 ### Changed
 
 - Default RPC version is now v0.5 (was v0.4). This can be manually configured to any version.
