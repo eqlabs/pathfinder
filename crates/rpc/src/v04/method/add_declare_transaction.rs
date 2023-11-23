@@ -143,6 +143,8 @@ pub async fn add_declare_transaction(
     context: RpcContext,
     input: AddDeclareTransactionInput,
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
+    use starknet_gateway_types::request::add_transaction::Declare;
+
     match input.declare_transaction {
         Transaction::Declare(BroadcastedDeclareTransaction::V0(_)) => {
             Err(AddDeclareTransactionError::UnsupportedTransactionVersion)
@@ -156,13 +158,15 @@ pub async fn add_declare_transaction(
             let response = context
                 .sequencer
                 .add_declare_transaction(
-                    tx.version,
-                    tx.max_fee,
-                    tx.signature,
-                    tx.nonce,
-                    ContractDefinition::Cairo(contract_definition),
-                    tx.sender_address,
-                    None,
+                    Declare {
+                        version: tx.version,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        contract_class: ContractDefinition::Cairo(contract_definition),
+                        sender_address: tx.sender_address,
+                        nonce: tx.nonce,
+                        compiled_class_hash: None,
+                    },
                     input.token,
                 )
                 .await?;
@@ -181,13 +185,15 @@ pub async fn add_declare_transaction(
             let response = context
                 .sequencer
                 .add_declare_transaction(
-                    tx.version,
-                    tx.max_fee,
-                    tx.signature,
-                    tx.nonce,
-                    ContractDefinition::Sierra(contract_definition),
-                    tx.sender_address,
-                    Some(tx.compiled_class_hash),
+                    Declare {
+                        version: tx.version,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        contract_class: ContractDefinition::Sierra(contract_definition),
+                        sender_address: tx.sender_address,
+                        nonce: tx.nonce,
+                        compiled_class_hash: Some(tx.compiled_class_hash),
+                    },
                     input.token,
                 )
                 .await?;

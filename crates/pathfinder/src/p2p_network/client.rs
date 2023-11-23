@@ -14,13 +14,12 @@ use pathfinder_common::{
     TransactionIndex,
 };
 use pathfinder_common::{
-    transaction::Transaction, BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash,
-    ContractAddress, ContractAddressSalt, EntryPoint, Fee, StateCommitment, StateUpdate,
-    TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    transaction::Transaction, BlockHash, BlockId, BlockNumber, ClassHash, StateCommitment,
+    StateUpdate, TransactionHash,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply as gw;
-use starknet_gateway_types::request::add_transaction::ContractDefinition;
+use starknet_gateway_types::request::add_transaction::{Declare, DeployAccount, InvokeFunction};
 use starknet_gateway_types::trace;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
 use std::collections::{HashMap, HashSet};
@@ -495,75 +494,30 @@ impl GatewayApi for HybridClient {
     #[allow(clippy::too_many_arguments)]
     async fn add_invoke_transaction(
         &self,
-        version: TransactionVersion,
-        max_fee: Fee,
-        signature: Vec<TransactionSignatureElem>,
-        nonce: Option<TransactionNonce>,
-        contract_address: ContractAddress,
-        entry_point_selector: Option<EntryPoint>,
-        calldata: Vec<CallParam>,
+        invoke_function: InvokeFunction,
     ) -> Result<gw::add_transaction::InvokeResponse, SequencerError> {
         self.as_sequencer()
-            .add_invoke_transaction(
-                version,
-                max_fee,
-                signature,
-                nonce,
-                contract_address,
-                entry_point_selector,
-                calldata,
-            )
+            .add_invoke_transaction(invoke_function)
             .await
     }
 
     #[allow(clippy::too_many_arguments)]
     async fn add_declare_transaction(
         &self,
-        version: TransactionVersion,
-        max_fee: Fee,
-        signature: Vec<TransactionSignatureElem>,
-        nonce: TransactionNonce,
-        contract_definition: ContractDefinition,
-        sender_address: ContractAddress,
-        compiled_class_hash: Option<CasmHash>,
+        declare: Declare,
         token: Option<String>,
     ) -> Result<gw::add_transaction::DeclareResponse, SequencerError> {
         self.as_sequencer()
-            .add_declare_transaction(
-                version,
-                max_fee,
-                signature,
-                nonce,
-                contract_definition,
-                sender_address,
-                compiled_class_hash,
-                token,
-            )
+            .add_declare_transaction(declare, token)
             .await
     }
 
     #[allow(clippy::too_many_arguments)]
     async fn add_deploy_account(
         &self,
-        version: TransactionVersion,
-        max_fee: Fee,
-        signature: Vec<TransactionSignatureElem>,
-        nonce: TransactionNonce,
-        contract_address_salt: ContractAddressSalt,
-        class_hash: ClassHash,
-        calldata: Vec<CallParam>,
+        deploy_account: DeployAccount,
     ) -> Result<gw::add_transaction::DeployAccountResponse, SequencerError> {
-        self.as_sequencer()
-            .add_deploy_account(
-                version,
-                max_fee,
-                signature,
-                nonce,
-                contract_address_salt,
-                class_hash,
-                calldata,
-            )
-            .await
+        self.as_sequencer().add_deploy_account(deploy_account).await
     }
 
     /// This is a **temporary** measure to keep the sync logic unchanged

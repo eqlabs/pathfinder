@@ -4,6 +4,7 @@ use crate::v02::types::request::BroadcastedInvokeTransaction;
 use pathfinder_common::TransactionHash;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::request::add_transaction::InvokeFunction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -97,29 +98,29 @@ pub async fn add_invoke_transaction(
         BroadcastedInvokeTransaction::V0(v0) => {
             context
                 .sequencer
-                .add_invoke_transaction(
-                    v0.version,
-                    v0.max_fee,
-                    v0.signature,
-                    None,
-                    v0.contract_address,
-                    Some(v0.entry_point_selector),
-                    v0.calldata,
-                )
+                .add_invoke_transaction(InvokeFunction {
+                    version: v0.version,
+                    max_fee: v0.max_fee,
+                    signature: v0.signature,
+                    nonce: None,
+                    sender_address: v0.contract_address,
+                    entry_point_selector: Some(v0.entry_point_selector),
+                    calldata: v0.calldata,
+                })
                 .await?
         }
         BroadcastedInvokeTransaction::V1(v1) => {
             context
                 .sequencer
-                .add_invoke_transaction(
-                    v1.version,
-                    v1.max_fee,
-                    v1.signature,
-                    Some(v1.nonce),
-                    v1.sender_address,
-                    None,
-                    v1.calldata,
-                )
+                .add_invoke_transaction(InvokeFunction {
+                    version: v1.version,
+                    max_fee: v1.max_fee,
+                    signature: v1.signature,
+                    nonce: Some(v1.nonce),
+                    sender_address: v1.sender_address,
+                    entry_point_selector: None,
+                    calldata: v1.calldata,
+                })
                 .await?
         }
         BroadcastedInvokeTransaction::V3(_) => {

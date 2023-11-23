@@ -116,7 +116,6 @@ where
 }
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
-#[allow(clippy::too_many_arguments)]
 pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     context: SyncContext<SequencerClient, Ethereum>,
     mut l1_sync: L1Sync,
