@@ -10,8 +10,6 @@ pub struct GetTransactionByHashInput {
     transaction_hash: TransactionHash,
 }
 
-crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFoundV03);
-
 pub async fn get_transaction_by_hash_impl(
     context: RpcContext,
     input: GetTransactionByHashInput,

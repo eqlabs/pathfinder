@@ -4,7 +4,6 @@ use num_bigint::BigUint;
 use pathfinder_common::{
     BlockNumber, CallParam, ConstructorParam, EthereumAddress, GasPrice, L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem, ResourceAmount, ResourcePricePerUnit, Tip, TransactionSignatureElem,
-    TransactionVersion,
 };
 use pathfinder_crypto::{Felt, HexParseError, OverflowError};
 use primitive_types::{H160, H256, U256};
@@ -217,13 +216,6 @@ impl<'de> DeserializeAs<'de, BlockNumber> for StarknetBlockNumberAsHexStr {
         deserializer.deserialize_str(StarknetBlockNumberVisitor)
     }
 }
-
-serde_with::serde_conv!(
-    pub TransactionVersionAsHexStr,
-    TransactionVersion,
-    |serialize_me: &TransactionVersion| bytes_to_hex_str(serialize_me.0.as_bytes()),
-    |s: Cow<'_, str>| bytes_from_hex_str::<{ H256::len_bytes() }>(&s).map(|b| TransactionVersion(H256::from(b)))
-);
 
 serde_with::serde_conv!(
     pub U256AsHexStr,

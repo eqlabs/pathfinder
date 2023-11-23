@@ -137,7 +137,6 @@ pub mod request {
         hash::{HashChain, PoseidonHasher},
         Felt,
     };
-    use pathfinder_serde::TransactionVersionAsHexStr;
     use serde::Deserialize;
     use serde_with::serde_as;
     use starknet_gateway_types::transaction_hash::compute_txn_hash;
@@ -241,7 +240,6 @@ pub mod request {
             #[serde_as]
             #[derive(serde::Deserialize)]
             struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
                 pub version: TransactionVersion,
             }
 
@@ -274,7 +272,6 @@ pub mod request {
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
         pub max_fee: Fee,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
 
@@ -311,7 +308,6 @@ pub mod request {
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
         pub max_fee: Fee,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -353,7 +349,6 @@ pub mod request {
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
         pub max_fee: Fee,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -392,7 +387,6 @@ pub mod request {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeclareTransactionV3 {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -464,7 +458,6 @@ pub mod request {
             #[serde_as]
             #[derive(serde::Deserialize)]
             struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
                 pub version: TransactionVersion,
             }
 
@@ -490,7 +483,6 @@ pub mod request {
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeployAccountTransactionV0V1 {
         // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub max_fee: Fee,
         pub signature: Vec<TransactionSignatureElem>,
@@ -589,7 +581,6 @@ pub mod request {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeployAccountTransactionV3 {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -683,7 +674,6 @@ pub mod request {
             #[serde_as]
             #[derive(Deserialize)]
             struct Version {
-                #[serde_as(as = "TransactionVersionAsHexStr")]
                 pub version: TransactionVersion,
             }
 
@@ -709,7 +699,6 @@ pub mod request {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV0 {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
 
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
@@ -752,7 +741,6 @@ pub mod request {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV1 {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
 
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
@@ -795,7 +783,6 @@ pub mod request {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV3 {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -890,9 +877,7 @@ pub mod request {
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
                         BroadcastedDeclareTransactionV1 {
                             max_fee: fee!("0x5"),
-                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(
-                                0x1,
-                            )),
+                            version: TransactionVersion::ONE,
                             signature: vec![transaction_signature_elem!("0x7")],
                             nonce: transaction_nonce!("0x8"),
                             contract_class,
@@ -902,9 +887,7 @@ pub mod request {
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(
                         BroadcastedDeclareTransactionV2 {
                             max_fee: fee!("0x51"),
-                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(
-                                0x2,
-                            )),
+                            version: TransactionVersion::TWO,
                             signature: vec![transaction_signature_elem!("0x71")],
                             nonce: transaction_nonce!("0x81"),
                             compiled_class_hash: casm_hash!("0x91"),
@@ -932,9 +915,7 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(
                         BroadcastedDeclareTransactionV3 {
-                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(
-                                0x3,
-                            )),
+                            version: TransactionVersion::THREE,
                             signature: vec![transaction_signature_elem!("0x71")],
                             nonce: transaction_nonce!("0x81"),
                             resource_bounds: ResourceBounds {
@@ -983,7 +964,7 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
-                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
+                            version: TransactionVersion::ONE,
                             max_fee: fee!("0x6"),
                             signature: vec![transaction_signature_elem!("0x7")],
                             nonce: transaction_nonce!("0x8"),

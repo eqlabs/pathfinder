@@ -20,8 +20,6 @@ pub enum ApplicationError {
     ContractNotFound,
     #[error("Block not found")]
     BlockNotFound,
-    #[error("Transaction hash not found")]
-    TxnHashNotFoundV03,
     #[error("Invalid transaction index in a block")]
     InvalidTxnIndex,
     #[error("Invalid transaction hash")]
@@ -31,7 +29,7 @@ pub enum ApplicationError {
     #[error("Class hash not found")]
     ClassHashNotFound,
     #[error("Transaction hash not found")]
-    TxnHashNotFoundV04,
+    TxnHashNotFound,
     #[error("Requested page size is too big")]
     PageSizeTooBig,
     #[error("There are no blocks")]
@@ -98,12 +96,11 @@ impl ApplicationError {
             ApplicationError::NoTraceAvailable(_) => 10,
             ApplicationError::ContractNotFound => 20,
             ApplicationError::BlockNotFound => 24,
-            ApplicationError::TxnHashNotFoundV03 => 25,
             ApplicationError::InvalidTxnHash => 25,
             ApplicationError::InvalidBlockHash => 26,
             ApplicationError::InvalidTxnIndex => 27,
             ApplicationError::ClassHashNotFound => 28,
-            ApplicationError::TxnHashNotFoundV04 => 29,
+            ApplicationError::TxnHashNotFound => 29,
             ApplicationError::PageSizeTooBig => 31,
             ApplicationError::NoBlocks => 32,
             ApplicationError::InvalidContinuationToken => 33,
@@ -141,12 +138,11 @@ impl ApplicationError {
             ApplicationError::FailedToReceiveTxn => None,
             ApplicationError::ContractNotFound => None,
             ApplicationError::BlockNotFound => None,
-            ApplicationError::TxnHashNotFoundV03 => None,
             ApplicationError::InvalidTxnIndex => None,
             ApplicationError::InvalidTxnHash => None,
             ApplicationError::InvalidBlockHash => None,
             ApplicationError::ClassHashNotFound => None,
-            ApplicationError::TxnHashNotFoundV04 => None,
+            ApplicationError::TxnHashNotFound => None,
             ApplicationError::PageSizeTooBig => None,
             ApplicationError::NoBlocks => None,
             ApplicationError::InvalidContinuationToken => None,

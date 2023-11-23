@@ -70,7 +70,7 @@ impl From<starknet_gateway_types::reply::transaction::ExecutionStatus> for Execu
     }
 }
 
-crate::error::generate_rpc_error_subset!(GetTransactionStatusError: TxnHashNotFoundV04);
+crate::error::generate_rpc_error_subset!(GetTransactionStatusError: TxnHashNotFound);
 
 pub async fn get_transaction_status(
     context: RpcContext,
@@ -147,7 +147,7 @@ pub async fn get_transaction_status(
                 (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => Ok(GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded)),
             }
         })
-        .map_err(|_| GetTransactionStatusError::TxnHashNotFoundV04)
+        .map_err(|_| GetTransactionStatusError::TxnHashNotFound)
 }
 
 #[cfg(test)]
