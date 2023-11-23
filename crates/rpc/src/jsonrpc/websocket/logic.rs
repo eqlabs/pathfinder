@@ -269,6 +269,7 @@ async fn header_subscription(
                     "Lagging header stream, missed some events, closing subscription"
                 );
 
+                // No explicit break here, the loop will be broken by the dropped receiver.
                 ResponseEvent::SubscriptionClosed {
                     subscription_id,
                     reason: "Lagging stream, some headers were skipped. Closing subscription."
