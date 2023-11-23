@@ -1,9 +1,8 @@
 use crate::context::RpcContext;
 use crate::v02::types::reply::BlockStatus;
-use crate::v06::types::TransactionWithHash;
 
 use anyhow::Context;
-use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_common::BlockId;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -15,8 +14,8 @@ pub struct GetBlockInput {
 
 crate::error::generate_rpc_error_subset!(GetBlockError: BlockNotFound);
 
-/// Get block information with full transactions given the block id
-pub async fn get_block_with_txs(
+/// Get block information with transaction hashes given the block id
+pub async fn get_block_with_tx_hashes(
     context: RpcContext,
     input: GetBlockInput,
 ) -> Result<types::Block, GetBlockError> {
@@ -59,7 +58,10 @@ pub async fn get_block_with_txs(
             BlockStatus::AcceptedOnL2
         };
 
-        let transactions = get_block_transactions(&transaction, header.number)?;
+        let transactions = transaction
+            .transaction_hashes_for_block(header.number.into())
+            .context("Reading transaction hashes")?
+            .context("Missing block")?;
 
         Ok(types::Block::from_parts(header, block_status, transactions))
     })
@@ -67,46 +69,25 @@ pub async fn get_block_with_txs(
     .context("Database read panic or shutting down")?
 }
 
-/// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
-fn get_block_transactions(
-    db_tx: &pathfinder_storage::Transaction<'_>,
-    block_number: BlockNumber,
-) -> Result<Vec<TransactionWithHash>, GetBlockError> {
-    let txs = db_tx
-        .transaction_data_for_block(block_number.into())
-        .context("Reading transactions from database")?
-        .context("Transaction data missing for block")?
-        .into_iter()
-        .map(|(tx, _rx)| tx.into())
-        .collect();
-
-    Ok(txs)
-}
-
 mod types {
     use crate::v02::types::reply::BlockStatus;
-    use crate::v06::types::TransactionWithHash;
-    use pathfinder_common::BlockHeader;
+    use pathfinder_common::{BlockHeader, TransactionHash};
     use serde::Serialize;
-    use serde_with::{serde_as, skip_serializing_none};
 
     /// L2 Block as returned by the RPC API.
-    #[serde_as]
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     pub struct Block {
         #[serde(flatten)]
         pub header: crate::v06::types::BlockHeader,
-        #[serde(skip_serializing_if = "BlockStatus::is_pending")]
         pub status: BlockStatus,
-        pub transactions: Vec<TransactionWithHash>,
+        pub transactions: Vec<TransactionHash>,
     }
 
     impl Block {
         pub fn from_parts(
             header: BlockHeader,
             status: BlockStatus,
-            transactions: Vec<TransactionWithHash>,
+            transactions: Vec<TransactionHash>,
         ) -> Self {
             Self {
                 header: header.into(),
@@ -119,12 +100,7 @@ mod types {
         pub fn from_sequencer(block: starknet_gateway_types::reply::MaybePendingBlock) -> Self {
             Self {
                 status: block.status().into(),
-                transactions: block
-                    .transactions()
-                    .iter()
-                    .cloned()
-                    .map(Into::into)
-                    .collect(),
+                transactions: block.transactions().iter().map(|t| t.hash()).collect(),
                 header: crate::v06::types::BlockHeader::from_sequencer(block),
             }
         }
@@ -159,7 +135,7 @@ mod tests {
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        let result = get_block_with_txs(
+        let result = get_block_with_tx_hashes(
             context,
             GetBlockInput {
                 block_id: BlockId::Pending,
@@ -175,7 +151,7 @@ mod tests {
     async fn latest() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        let result = get_block_with_txs(
+        let result = get_block_with_tx_hashes(
             context,
             GetBlockInput {
                 block_id: BlockId::Latest,
@@ -191,7 +167,7 @@ mod tests {
     async fn by_number() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        let result = get_block_with_txs(
+        let result = get_block_with_tx_hashes(
             context,
             GetBlockInput {
                 block_id: BlockId::Number(BlockNumber::GENESIS),
@@ -210,7 +186,7 @@ mod tests {
     async fn by_hash() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        let result = get_block_with_txs(
+        let result = get_block_with_tx_hashes(
             context,
             GetBlockInput {
                 block_id: BlockId::Hash(block_hash_bytes!(b"genesis")),
@@ -229,7 +205,7 @@ mod tests {
     async fn not_found_by_number() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        let result = get_block_with_txs(
+        let result = get_block_with_tx_hashes(
             context,
             GetBlockInput {
                 block_id: BlockId::Number(BlockNumber::MAX),
@@ -244,7 +220,7 @@ mod tests {
     async fn not_found_by_hash() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        let result = get_block_with_txs(
+        let result = get_block_with_tx_hashes(
             context,
             GetBlockInput {
                 block_id: BlockId::Hash(block_hash_bytes!(b"non-existent")),
@@ -256,34 +232,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn status_serialization() {
-        // PENDING status should be skipped.
+    async fn transaction_hashes_are_correct() {
+        let ctx: RpcContext = RpcContext::for_tests();
 
-        let context = RpcContext::for_tests_with_pending().await;
-        let pending = get_block_with_txs(
-            context.clone(),
+        let tx_hashes = get_block_with_tx_hashes(
+            ctx,
             GetBlockInput {
-                block_id: BlockId::Pending,
+                block_id: BlockNumber::new_or_panic(1).into(),
             },
         )
         .await
-        .unwrap();
-        let latest = get_block_with_txs(
-            context,
-            GetBlockInput {
-                block_id: BlockId::Latest,
-            },
-        )
-        .await
-        .unwrap();
+        .unwrap()
+        .transactions;
 
-        assert!(pending.status.is_pending());
-        assert!(!latest.status.is_pending());
-
-        let pending = serde_json::to_value(pending).unwrap();
-        let latest = serde_json::to_value(latest).unwrap();
-
-        assert!(pending.get("status").is_none());
-        assert!(latest.get("status").is_some());
+        assert_eq!(
+            tx_hashes,
+            vec![
+                transaction_hash_bytes!(b"txn 1"),
+                transaction_hash_bytes!(b"txn 2")
+            ]
+        );
     }
 }
