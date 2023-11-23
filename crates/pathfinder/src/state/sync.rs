@@ -826,7 +826,12 @@ async fn l2_update(
             .context("Commit database transaction")?;
 
         if let Some(sender) = websocket_txs {
-            _ = sender.new_head.send_if_receiving(header.into());
+            if let Err(e) = sender.new_head.send_if_receiving(header.into()) {
+                tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
+                // Disable websocket entirely so that the closed channel doesn't spam this error. It
+                // is unlikely that any error here wouldn't simply repeat indefinitely.
+                *websocket_txs = None;
+            }
         }
 
         Ok(())

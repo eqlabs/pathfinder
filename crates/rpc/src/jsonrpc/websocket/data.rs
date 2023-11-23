@@ -183,23 +183,41 @@ impl serde::Serialize for BlockHeader {
     {
         use serde::ser::SerializeMap;
 
+        let &pathfinder_common::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            sequencer_address,
+            starknet_version,
+            class_commitment,
+            event_commitment,
+            state_commitment,
+            storage_commitment,
+            transaction_commitment,
+            transaction_count,
+            event_count,
+        } = &self.0;
+
         let mut map = serializer.serialize_map(Some(15))?;
 
-        map.serialize_entry("hash", &self.0.hash)?;
-        map.serialize_entry("parent_hash", &self.0.parent_hash)?;
-        map.serialize_entry("number", &self.0.number)?;
-        map.serialize_entry("timestamp", &self.0.timestamp)?;
-        map.serialize_entry("eth_l1_gas_price", &self.0.eth_l1_gas_price)?;
-        map.serialize_entry("strk_l1_gas_price", &self.0.strk_l1_gas_price)?;
-        map.serialize_entry("sequencer_address", &self.0.sequencer_address)?;
-        map.serialize_entry("starknet_version", &self.0.starknet_version)?;
-        map.serialize_entry("class_commitment", &self.0.class_commitment)?;
-        map.serialize_entry("event_commitment", &self.0.event_commitment)?;
-        map.serialize_entry("state_commitment", &self.0.state_commitment)?;
-        map.serialize_entry("storage_commitment", &self.0.storage_commitment)?;
-        map.serialize_entry("transaction_commitment", &self.0.transaction_commitment)?;
-        map.serialize_entry("transaction_count", &self.0.transaction_count)?;
-        map.serialize_entry("event_count", &self.0.event_count)?;
+        map.serialize_entry("hash", &hash)?;
+        map.serialize_entry("parent_hash", &parent_hash)?;
+        map.serialize_entry("number", &number)?;
+        map.serialize_entry("timestamp", &timestamp)?;
+        map.serialize_entry("eth_l1_gas_price", &eth_l1_gas_price)?;
+        map.serialize_entry("strk_l1_gas_price", &strk_l1_gas_price)?;
+        map.serialize_entry("sequencer_address", &sequencer_address)?;
+        map.serialize_entry("starknet_version", &starknet_version)?;
+        map.serialize_entry("class_commitment", &class_commitment)?;
+        map.serialize_entry("event_commitment", &event_commitment)?;
+        map.serialize_entry("state_commitment", &state_commitment)?;
+        map.serialize_entry("storage_commitment", &storage_commitment)?;
+        map.serialize_entry("transaction_commitment", &transaction_commitment)?;
+        map.serialize_entry("transaction_count", &transaction_count)?;
+        map.serialize_entry("event_count", &event_count)?;
 
         map.end()
     }
