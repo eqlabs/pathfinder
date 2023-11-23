@@ -14,7 +14,7 @@ use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc};
@@ -221,18 +221,16 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         tokio::spawn(std::future::pending())
     };
 
-    let (rpc_handle, local_addr) = if config.is_rpc_enabled {
-        rpc_server
+    let rpc_handle = if config.is_rpc_enabled {
+        let (rpc_handle, local_addr) = rpc_server
             .with_max_connections(config.max_rpc_connections.get())
             .spawn()
-            .context("Starting the RPC server")?
+            .context("Starting the RPC server")?;
+        info!("📡 HTTP-RPC server started on: {}", local_addr);
+        rpc_handle
     } else {
-        let rpc_handle = tokio::spawn(std::future::pending());
-        let local_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
-        (rpc_handle, local_addr)
+        tokio::spawn(std::future::pending())
     };
-
-    info!("📡 HTTP-RPC server started on: {}", local_addr);
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
