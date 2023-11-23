@@ -115,8 +115,8 @@ fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chai
 
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => ChainId::MAINNET,
-        TESTNET_GENESIS_HASH => ChainId::TESTNET,
-        INTEGRATION_GENESIS_HASH => ChainId::INTEGRATION,
+        TESTNET_GENESIS_HASH => ChainId::GOERLI_TESTNET,
+        INTEGRATION_GENESIS_HASH => ChainId::GOERLI_INTEGRATION,
         _ => anyhow::bail!("Unknown chain"),
     };
 

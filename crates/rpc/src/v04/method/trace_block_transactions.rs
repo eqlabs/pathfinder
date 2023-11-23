@@ -165,7 +165,7 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V0(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
+                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V0(
                             gateway::transaction::DeclareTransactionV0V1 {
@@ -183,7 +183,7 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V1(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
+                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V1(
                             gateway::transaction::DeclareTransactionV0V1 {
@@ -201,7 +201,7 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V2(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
+                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V2(
                             gateway::transaction::DeclareTransactionV2 {
@@ -220,7 +220,7 @@ pub(crate) mod tests {
                     crate::v02::types::request::BroadcastedDeclareTransaction::V3(declare),
                 ) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
-                    let transaction_hash = declare.transaction_hash(ChainId::TESTNET, class_hash);
+                    let transaction_hash = declare.transaction_hash(ChainId::GOERLI_TESTNET, class_hash);
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V3(
                             gateway::transaction::DeclareTransactionV3 {
@@ -250,7 +250,7 @@ pub(crate) mod tests {
                     gateway::transaction::DeployAccountTransaction::V0V1(
                         gateway::transaction::DeployAccountTransactionV0V1 {
                             contract_address: deploy.deployed_contract_address(),
-                            transaction_hash: deploy.transaction_hash(ChainId::TESTNET),
+                            transaction_hash: deploy.transaction_hash(ChainId::GOERLI_TESTNET),
                             max_fee: deploy.max_fee,
                             version: deploy.version,
                             signature: deploy.signature,
@@ -264,7 +264,7 @@ pub(crate) mod tests {
                 crate::v02::types::request::BroadcastedTransaction::DeployAccount(
                     BroadcastedDeployAccountTransaction::V3(deploy),
                 ) => {
-                    let transaction_hash = deploy.transaction_hash(ChainId::TESTNET);
+                    let transaction_hash = deploy.transaction_hash(ChainId::GOERLI_TESTNET);
 
                     starknet_gateway_types::reply::transaction::Transaction::DeployAccount(
                         gateway::transaction::DeployAccountTransaction::V3(
@@ -293,7 +293,7 @@ pub(crate) mod tests {
                 crate::v02::types::request::BroadcastedTransaction::Invoke(
                     crate::v02::types::request::BroadcastedInvokeTransaction::V0(invoke),
                 ) => {
-                    let transaction_hash = invoke.transaction_hash(ChainId::TESTNET);
+                    let transaction_hash = invoke.transaction_hash(ChainId::GOERLI_TESTNET);
                     starknet_gateway_types::reply::transaction::Transaction::Invoke(
                         gateway::transaction::InvokeTransaction::V0(
                             gateway::transaction::InvokeTransactionV0 {
@@ -311,7 +311,7 @@ pub(crate) mod tests {
                 crate::v02::types::request::BroadcastedTransaction::Invoke(
                     crate::v02::types::request::BroadcastedInvokeTransaction::V1(invoke),
                 ) => {
-                    let transaction_hash = invoke.transaction_hash(ChainId::TESTNET);
+                    let transaction_hash = invoke.transaction_hash(ChainId::GOERLI_TESTNET);
                     starknet_gateway_types::reply::transaction::Transaction::Invoke(
                         gateway::transaction::InvokeTransaction::V1(
                             gateway::transaction::InvokeTransactionV1 {
@@ -328,7 +328,7 @@ pub(crate) mod tests {
                 crate::v02::types::request::BroadcastedTransaction::Invoke(
                     crate::v02::types::request::BroadcastedInvokeTransaction::V3(invoke),
                 ) => {
-                    let transaction_hash = invoke.transaction_hash(ChainId::TESTNET);
+                    let transaction_hash = invoke.transaction_hash(ChainId::GOERLI_TESTNET);
                     starknet_gateway_types::reply::transaction::Transaction::Invoke(
                         gateway::transaction::InvokeTransaction::V3(
                             gateway::transaction::InvokeTransactionV3 {
@@ -445,15 +445,15 @@ pub(crate) mod tests {
         let traces = vec![
             Trace {
                 transaction_hash: transactions[0]
-                    .transaction_hash(ChainId::TESTNET, Some(fixtures::SIERRA_HASH)),
+                    .transaction_hash(ChainId::GOERLI_TESTNET, Some(fixtures::SIERRA_HASH)),
                 trace_root: traces[0].clone(),
             },
             Trace {
-                transaction_hash: transactions[1].transaction_hash(ChainId::TESTNET, None),
+                transaction_hash: transactions[1].transaction_hash(ChainId::GOERLI_TESTNET, None),
                 trace_root: traces[1].clone(),
             },
             Trace {
-                transaction_hash: transactions[2].transaction_hash(ChainId::TESTNET, None),
+                transaction_hash: transactions[2].transaction_hash(ChainId::GOERLI_TESTNET, None),
                 trace_root: traces[2].clone(),
             },
         ];

@@ -40,7 +40,7 @@ pub fn verify(txn: &Transaction, chain_id: ChainId, block_number: BlockNumber) -
                 chain_id
             }
         }
-        ChainId::TESTNET => {
+        ChainId::GOERLI_TESTNET => {
             if block_number.get() <= 306007 && matches!(txn, Transaction::L1Handler(_)) {
                 // Unable to compute, skipping
                 return VerifyResult::NotVerifiable;
@@ -670,7 +670,7 @@ mod tests {
         let testnet2_with_wrong_chain_id =
             serde_json::from_str(v0_11_0::transaction::deploy::v1::GENESIS_TESTNET2).unwrap();
         assert_eq!(
-            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::TESTNET),
+            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::GOERLI_TESTNET),
             testnet2_with_wrong_chain_id.hash()
         );
 
@@ -703,7 +703,7 @@ mod tests {
         ]
         .iter()
         .for_each(|(txn, line)| {
-            let actual_hash = compute_transaction_hash(txn, ChainId::TESTNET);
+            let actual_hash = compute_transaction_hash(txn, ChainId::GOERLI_TESTNET);
             assert_eq!(actual_hash, txn.hash(), "line: {line}");
         });
     }
@@ -726,7 +726,7 @@ mod tests {
                 assert_eq!(
                     verify(
                         &block_854_idx_96,
-                        ChainId::TESTNET,
+                        ChainId::GOERLI_TESTNET,
                         BlockNumber::new_or_panic(854),
                     ),
                     VerifyResult::NotVerifiable
@@ -742,7 +742,7 @@ mod tests {
                 assert_eq!(
                     verify(
                         &block_854_idx_96,
-                        ChainId::TESTNET,
+                        ChainId::GOERLI_TESTNET,
                         BlockNumber::new_or_panic(854),
                     ),
                     VerifyResult::NotVerifiable
@@ -755,7 +755,7 @@ mod tests {
             let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
 
             assert_eq!(
-                verify(&txn, ChainId::TESTNET, BlockNumber::new_or_panic(797220),),
+                verify(&txn, ChainId::GOERLI_TESTNET, BlockNumber::new_or_panic(797220),),
                 VerifyResult::Match
             );
         }

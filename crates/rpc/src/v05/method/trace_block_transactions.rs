@@ -343,15 +343,15 @@ pub(crate) mod tests {
         let traces = vec![
             Trace {
                 transaction_hash: transactions[0]
-                    .transaction_hash(ChainId::TESTNET, Some(fixtures::SIERRA_HASH)),
+                    .transaction_hash(ChainId::GOERLI_TESTNET, Some(fixtures::SIERRA_HASH)),
                 trace_root: traces[0].clone(),
             },
             Trace {
-                transaction_hash: transactions[1].transaction_hash(ChainId::TESTNET, None),
+                transaction_hash: transactions[1].transaction_hash(ChainId::GOERLI_TESTNET, None),
                 trace_root: traces[1].clone(),
             },
             Trace {
-                transaction_hash: transactions[2].transaction_hash(ChainId::TESTNET, None),
+                transaction_hash: transactions[2].transaction_hash(ChainId::GOERLI_TESTNET, None),
                 trace_root: traces[2].clone(),
             },
         ];
@@ -471,15 +471,15 @@ pub(crate) mod tests {
         let traces = vec![
             Trace {
                 transaction_hash: transactions[0]
-                    .transaction_hash(ChainId::TESTNET, Some(fixtures::SIERRA_HASH)),
+                    .transaction_hash(ChainId::GOERLI_TESTNET, Some(fixtures::SIERRA_HASH)),
                 trace_root: traces[0].clone(),
             },
             Trace {
-                transaction_hash: transactions[1].transaction_hash(ChainId::TESTNET, None),
+                transaction_hash: transactions[1].transaction_hash(ChainId::GOERLI_TESTNET, None),
                 trace_root: traces[1].clone(),
             },
             Trace {
-                transaction_hash: transactions[2].transaction_hash(ChainId::TESTNET, None),
+                transaction_hash: transactions[2].transaction_hash(ChainId::GOERLI_TESTNET, None),
                 trace_root: traces[2].clone(),
             },
         ];
