@@ -146,10 +146,7 @@ where
             let (rs_send, mut rs_recv) = mpsc::channel(0);
 
             let read = codec.read_request(&protocol, &mut stream);
-            let request = read.await.map_err(|e| {
-                eprintln!("on_fully_negotiated_inbound recv 0 read request error: {e}");
-                e
-            })?;
+            let request = read.await?;
 
             sender
                 .send((request_id, request, rs_send))
@@ -217,14 +214,14 @@ where
             // Keep on forwarding until the channel is closed or error occurs
             loop {
                 match codec.read_response(&protocol, &mut stream).await {
-                    Ok(Some(response)) => {
+                    Ok(response) => {
                         rs_send
                             .send(response)
                             .await
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                     }
                     // The stream is closed, there's nothing more to receive
-                    Ok(None) => break,
+                    Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => break,
                     // An error occurred, propagate it
                     Err(error) => return Err(error),
                 }

@@ -11,15 +11,14 @@ use libp2p::identity;
 use libp2p::kad::{self, store::MemoryStore};
 use libp2p::ping;
 use libp2p::relay;
-use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::StreamProtocol;
 use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
+    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse,
 };
-use p2p_proto::event::{EventsRequest, EventsResponseList};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponseList};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseList};
+use p2p_proto::event::{EventsRequest, EventsResponse};
+use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "Event", event_process = false)]
@@ -31,11 +30,11 @@ pub struct Behaviour {
     identify: identify::Behaviour,
     pub kademlia: kad::Behaviour<MemoryStore>,
     pub gossipsub: gossipsub::Behaviour,
-    pub headers_sync: request_response::Behaviour<codec::Headers>,
-    pub bodies_sync: request_response::Behaviour<codec::Bodies>,
-    pub transactions_sync: request_response::Behaviour<codec::Transactions>,
-    pub receipts_sync: request_response::Behaviour<codec::Receipts>,
-    pub events_sync: request_response::Behaviour<codec::Events>,
+    pub headers_sync: p2p_stream::Behaviour<codec::Headers>,
+    pub bodies_sync: p2p_stream::Behaviour<codec::Bodies>,
+    pub transactions_sync: p2p_stream::Behaviour<codec::Transactions>,
+    pub receipts_sync: p2p_stream::Behaviour<codec::Receipts>,
+    pub events_sync: p2p_stream::Behaviour<codec::Events>,
 }
 
 pub const KADEMLIA_PROTOCOL_NAME: &str = "/pathfinder/kad/1.0.0";
@@ -124,15 +123,12 @@ impl Behaviour {
     }
 }
 
-fn request_response_behavior<C>() -> request_response::Behaviour<C>
+fn request_response_behavior<C>() -> p2p_stream::Behaviour<C>
 where
-    C: Default + request_response::Codec + Clone + Send,
+    C: Default + p2p_stream::Codec + Clone + Send,
     C::Protocol: Default,
 {
-    request_response::Behaviour::new(
-        std::iter::once((C::Protocol::default(), ProtocolSupport::Full)),
-        Default::default(),
-    )
+    p2p_stream::Behaviour::new(std::iter::once(C::Protocol::default()), Default::default())
 }
 
 #[derive(Debug)]
@@ -144,11 +140,11 @@ pub enum Event {
     Identify(Box<identify::Event>),
     Kademlia(kad::Event),
     Gossipsub(gossipsub::Event),
-    HeadersSync(request_response::Event<BlockHeadersRequest, BlockHeadersResponse>),
-    BodiesSync(request_response::Event<BlockBodiesRequest, BlockBodiesResponseList>),
-    TransactionsSync(request_response::Event<TransactionsRequest, TransactionsResponseList>),
-    ReceiptsSync(request_response::Event<ReceiptsRequest, ReceiptsResponseList>),
-    EventsSync(request_response::Event<EventsRequest, EventsResponseList>),
+    HeadersSync(p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>),
+    BodiesSync(p2p_stream::Event<BlockBodiesRequest, BlockBodiesResponse>),
+    TransactionsSync(p2p_stream::Event<TransactionsRequest, TransactionsResponse>),
+    ReceiptsSync(p2p_stream::Event<ReceiptsRequest, ReceiptsResponse>),
+    EventsSync(p2p_stream::Event<EventsRequest, EventsResponse>),
 }
 
 impl From<relay::client::Event> for Event {
@@ -193,32 +189,32 @@ impl From<gossipsub::Event> for Event {
     }
 }
 
-impl From<request_response::Event<BlockHeadersRequest, BlockHeadersResponse>> for Event {
-    fn from(event: request_response::Event<BlockHeadersRequest, BlockHeadersResponse>) -> Self {
+impl From<p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>> for Event {
+    fn from(event: p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>) -> Self {
         Event::HeadersSync(event)
     }
 }
 
-impl From<request_response::Event<BlockBodiesRequest, BlockBodiesResponseList>> for Event {
-    fn from(event: request_response::Event<BlockBodiesRequest, BlockBodiesResponseList>) -> Self {
+impl From<p2p_stream::Event<BlockBodiesRequest, BlockBodiesResponse>> for Event {
+    fn from(event: p2p_stream::Event<BlockBodiesRequest, BlockBodiesResponse>) -> Self {
         Event::BodiesSync(event)
     }
 }
 
-impl From<request_response::Event<TransactionsRequest, TransactionsResponseList>> for Event {
-    fn from(event: request_response::Event<TransactionsRequest, TransactionsResponseList>) -> Self {
+impl From<p2p_stream::Event<TransactionsRequest, TransactionsResponse>> for Event {
+    fn from(event: p2p_stream::Event<TransactionsRequest, TransactionsResponse>) -> Self {
         Event::TransactionsSync(event)
     }
 }
 
-impl From<request_response::Event<ReceiptsRequest, ReceiptsResponseList>> for Event {
-    fn from(event: request_response::Event<ReceiptsRequest, ReceiptsResponseList>) -> Self {
+impl From<p2p_stream::Event<ReceiptsRequest, ReceiptsResponse>> for Event {
+    fn from(event: p2p_stream::Event<ReceiptsRequest, ReceiptsResponse>) -> Self {
         Event::ReceiptsSync(event)
     }
 }
 
-impl From<request_response::Event<EventsRequest, EventsResponseList>> for Event {
-    fn from(event: request_response::Event<EventsRequest, EventsResponseList>) -> Self {
+impl From<p2p_stream::Event<EventsRequest, EventsResponse>> for Event {
+    fn from(event: p2p_stream::Event<EventsRequest, EventsResponse>) -> Self {
         Event::EventsSync(event)
     }
 }

@@ -37,6 +37,8 @@ mod boundary_conditions {
     };
     use assert_matches::assert_matches;
     use fake::{Fake, Faker};
+    use futures::channel::mpsc;
+    use futures::StreamExt;
     use p2p_proto::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
@@ -49,7 +51,6 @@ mod boundary_conditions {
     use pathfinder_storage::Storage;
     use rand::{thread_rng, Rng};
     use rstest::rstest;
-    use tokio::sync::mpsc;
 
     mod zero_limit_yields_fin_ok_invalid_start_yields_fin_unknown {
         use super::*;
@@ -78,9 +79,9 @@ mod boundary_conditions {
                 #[tokio::test]
                 async fn $name(#[case] iteration: Iteration, #[case] fin: Fin) {
                     let storage = Storage::in_memory().unwrap();
-                    let (tx, mut rx) = mpsc::channel(1);
+                    let (tx, mut rx) = mpsc::channel(0);
                     let _jh = tokio::spawn($uut_name(storage, $request { iteration }, tx));
-                    assert_eq!(rx.recv().await.unwrap().into_fin(), Some(fin));
+                    assert_eq!(rx.next().await.unwrap().into_fin(), Some(fin));
                 }
             };
         }
@@ -108,7 +109,7 @@ mod boundary_conditions {
                 direction,
                 ..Faker.fake()
             };
-            let (tx, rx) = mpsc::channel::<T>(1);
+            let (tx, rx) = mpsc::channel::<T>(0);
             (storage, iteration, tx, rx)
         }
 
@@ -118,10 +119,11 @@ mod boundary_conditions {
             #[values(Direction::Backward, Direction::Forward)] direction: Direction,
         ) {
             let (storage, iteration, tx, mut rx) = init_test(direction);
-            get_headers(storage, BlockHeadersRequest { iteration }, tx)
-                .await
-                .unwrap();
-            let BlockHeadersResponse { parts } = rx.recv().await.unwrap();
+            let getter_fut = get_headers(storage, BlockHeadersRequest { iteration }, tx);
+
+            let (_, ret) = tokio::join!(getter_fut, rx.next());
+
+            let BlockHeadersResponse { parts } = ret.unwrap();
             // parts[0] is the header, parts[1] is Fin::ok()
             // Expect Fin::unknown() where the first unavailable item would be
             assert_matches::assert_matches!(&parts[2], BlockHeadersResponsePart::Fin(f) => assert_eq!(f, &Fin::unknown()));
@@ -135,11 +137,11 @@ mod boundary_conditions {
         ) {
             let (storage, iteration, tx, mut rx) = init_test(direction);
             let _jh = tokio::spawn(get_bodies(storage, BlockBodiesRequest { iteration }, tx));
-            rx.recv().await.unwrap(); // Diff
-            match rx.recv().await.unwrap().body_message {
+            rx.next().await.unwrap(); // Diff
+            match rx.next().await.unwrap().body_message {
                 // New classes in block
                 BlockBodyMessage::Classes(_) => {
-                    rx.recv().await.unwrap(); // Classes, Fin::ok()
+                    rx.next().await.unwrap(); // Classes, Fin::ok()
                 }
                 // No new classes in block
                 BlockBodyMessage::Fin(_) => {} // Fin::ok()
@@ -147,7 +149,7 @@ mod boundary_conditions {
             }
 
             // Expect Fin::unknown() where the first unavailable item would be
-            assert_matches::assert_matches!(rx.recv().await.unwrap().body_message, BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::unknown()));
+            assert_matches::assert_matches!(rx.next().await.unwrap().body_message, BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::unknown()));
         }
 
         macro_rules! define_test {
@@ -161,11 +163,11 @@ mod boundary_conditions {
                         $request { iteration },
                         tx,
                     ));
-                    rx.recv().await.unwrap(); // Block data
-                    rx.recv().await.unwrap(); // Fin::ok()
+                    rx.next().await.unwrap(); // Block data
+                    rx.next().await.unwrap(); // Fin::ok()
                     // Expect Fin::unknown() where the first unavailable item would be
                     assert_matches::assert_matches!(
-                        rx.recv().await.unwrap().kind,
+                        rx.next().await.unwrap().kind,
                         $reply::Fin(f) => assert_eq!(f, Fin::unknown())
                     );
                 }
@@ -227,7 +229,7 @@ mod boundary_conditions {
                 .await
                 .unwrap();
 
-            let BlockHeadersResponse { parts } = rx.recv().await.unwrap();
+            let BlockHeadersResponse { parts } = rx.next().await.unwrap();
             // parts[0..20] are 10 x [header + Fin::ok()]
             // Expect Fin::too_much() if all requested items were found up to the internal limit
             assert_matches!(&parts[NUM_BLOCKS_IN_STORAGE as usize * 2], BlockHeadersResponsePart::Fin(f) => assert_eq!(f, &Fin::too_much()));
@@ -243,11 +245,11 @@ mod boundary_conditions {
             let _jh = tokio::spawn(get_bodies(storage, BlockBodiesRequest { iteration }, tx));
             // 10 x [Diff, Classes*, Fin::ok()]
             for _ in 0..NUM_BLOCKS_IN_STORAGE {
-                rx.recv().await.unwrap(); // Diff
-                match rx.recv().await.unwrap().body_message {
+                rx.next().await.unwrap(); // Diff
+                match rx.next().await.unwrap().body_message {
                     // New classes in block
                     BlockBodyMessage::Classes(_) => {
-                        rx.recv().await.unwrap(); // Classes, Fin::ok()
+                        rx.next().await.unwrap(); // Classes, Fin::ok()
                     }
                     // No new classes in block
                     BlockBodyMessage::Fin(_) => {} // Fin::ok()
@@ -256,7 +258,7 @@ mod boundary_conditions {
             }
             // Expect Fin::unknown() where the first unavailable item would be
             assert_matches::assert_matches!(
-                rx.recv().await.unwrap().body_message,
+                rx.next().await.unwrap().body_message,
                 BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::too_much())
             );
         }
@@ -273,12 +275,12 @@ mod boundary_conditions {
                         tx,
                     ));
                     for _ in 0..NUM_BLOCKS_IN_STORAGE {
-                        rx.recv().await.unwrap(); // Block data
-                        rx.recv().await.unwrap(); // Fin::ok()
+                        rx.next().await.unwrap(); // Block data
+                        rx.next().await.unwrap(); // Fin::ok()
                     }
                     // Expect Fin::unknown() where the first unavailable item would be
                     assert_matches::assert_matches!(
-                        rx.recv().await.unwrap().kind,
+                        rx.next().await.unwrap().kind,
                         $reply::Fin(f) => assert_eq!(f, Fin::too_much())
                     );
                 }
@@ -309,7 +311,9 @@ mod boundary_conditions {
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
     use crate::p2p_network::client::types as simplified;
-    use crate::p2p_network::sync_handlers::blocking;
+    use crate::p2p_network::sync_handlers;
+    use futures::channel::mpsc;
+    use futures::StreamExt;
     use p2p::client::types::{self as p2p_types, TryFromDto};
     use p2p_proto::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
@@ -324,21 +328,33 @@ mod prop {
     use pathfinder_common::{BlockHash, BlockNumber, ClassHash, TransactionHash};
     use proptest::prelude::*;
     use std::collections::HashMap;
+    use tokio::runtime::Runtime;
 
     proptest! {
         #[test]
         fn get_headers((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
                 .into_iter().map(|(h, _, _, _, _)| h.into()).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let BlockHeadersResponse { parts } = blocking::get_headers(tx, request).unwrap();
+            // Reusing the runtime does not yield any performance gains
+            let parts = Runtime::new().unwrap().block_on(async {
+                let (tx, mut rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_headers(storage, request, tx);
+
+                // Waiting for both futures to run to completion is faster than spawning the getter
+                // and awaiting the receiver (almost 1s for 100 iterations on Ryzen 3700X).
+                // BTW, we cannot just await the getter and then the receiver
+                // as there is backpressure (channel size 0) and we would deadlock.
+                let (_, ret) = tokio::join!(getter_fut, rx.next());
+
+                let BlockHeadersResponse { parts } = ret.unwrap();
+                parts
+            });
             // Empty reply in the test is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
@@ -363,8 +379,6 @@ mod prop {
         fn get_bodies((num_blocks, db_seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(db_seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Get the overlapping set between the db and the request
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(header, _, state_update, cairo_defs, sierra_defs)|
@@ -376,7 +390,12 @@ mod prop {
             ).collect::<HashMap<_, (p2p_types::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_bodies(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_bodies(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
@@ -453,8 +472,6 @@ mod prop {
         fn get_transactions((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the transactions that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
@@ -467,7 +484,12 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_transactions(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_transactions(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
@@ -500,8 +522,6 @@ mod prop {
         fn get_receipts((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the receipts that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
@@ -514,7 +534,12 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_receipts(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_receipts(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
@@ -547,8 +572,6 @@ mod prop {
         fn get_events((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the events that we expect to be read from the db
             // Extract tuples (block_number, block_hash, [events{txn#1}, events{txn#2}, ...])
@@ -562,7 +585,12 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = blocking::get_events(tx, request).unwrap();
+            let replies = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_events(storage, request, tx);
+                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                replies
+            });
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {

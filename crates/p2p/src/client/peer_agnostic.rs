@@ -6,14 +6,13 @@ use std::{
     time::Duration,
 };
 
+use futures::{channel::mpsc, StreamExt};
 use libp2p::PeerId;
-use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponseList, BlockHeadersRequest, BlockHeadersResponse,
-};
+use p2p_proto::block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::common::{Direction, Iteration};
-use p2p_proto::event::{EventsRequest, EventsResponseList};
-use p2p_proto::receipt::{Receipt, ReceiptsRequest, ReceiptsResponseList};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseList};
+use p2p_proto::event::EventsRequest;
+use p2p_proto::receipt::{Receipt, ReceiptsRequest};
+use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::{
     event::Event, transaction::TransactionVariant, BlockHash, BlockNumber, TransactionHash,
 };
@@ -125,10 +124,18 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let response = self.inner.send_headers_sync_request(peer, request).await;
+            let response_receiver = self.inner.send_headers_sync_request(peer, request).await;
 
-            match response {
-                Ok(BlockHeadersResponse { parts }) => {
+            match response_receiver {
+                Ok(mut receiver) => {
+                    // Limits on max message size and our internal limit of maximum blocks per response
+                    // imply that we can't receive more than 1 response. See static asserts in
+                    // [`pathfinder_lib::p2p_network::sync_handlers`].
+                    let Some(BlockHeadersResponse { parts }) = receiver.next().await else {
+                        // Try the next peer
+                        break;
+                    };
+
                     let mut state = parse::block_header::State::Uninitialized;
                     for part in parts {
                         if let Err(error) = state.advance(part) {
@@ -182,31 +189,15 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let responses = self.inner.send_bodies_sync_request(peer, request).await;
+            let response_receiver = self.inner.send_bodies_sync_request(peer, request).await;
 
-            match responses {
-                Ok(BlockBodiesResponseList { items }) => {
-                    let mut state = parse::state_update::State::Uninitialized;
-                    for response in items {
-                        if let Err(error) = state.advance(response) {
-                            tracing::debug!(from=%peer, %error, "body responses parsing");
-                            break;
-                        }
-                    }
-
-                    if let Some(headers) = state.take_parsed() {
-                        // Success
-                        return Ok(headers);
-                    } else {
-                        // Try the next peer
-                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
-                        break;
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::state_update::State>(&peer, rx).await {
+                        return Ok(parsed);
                     }
                 }
-                // Try the next peer instead
-                Err(error) => {
-                    tracing::debug!(from=%peer, %error, "bodies request failed");
-                }
+                Err(error) => tracing::debug!(from=%peer, %error, "bodies request failed"),
             }
         }
 
@@ -239,34 +230,18 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let responses = self
+            let response_receiver = self
                 .inner
                 .send_transactions_sync_request(peer, request)
                 .await;
 
-            match responses {
-                Ok(TransactionsResponseList { items }) => {
-                    let mut state = parse::transactions::State::Uninitialized;
-                    for response in items {
-                        if let Err(error) = state.advance(response) {
-                            tracing::debug!(from=%peer, %error, "transaction responses parsing");
-                            break;
-                        }
-                    }
-
-                    if let Some(transactions) = state.take_parsed() {
-                        // Success
-                        return Ok(transactions);
-                    } else {
-                        // Try the next peer
-                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
-                        break;
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::transactions::State>(&peer, rx).await {
+                        return Ok(parsed);
                     }
                 }
-                // Try the next peer
-                Err(error) => {
-                    tracing::debug!(from=%peer, %error, "transactions request failed");
-                }
+                Err(error) => tracing::debug!(from=%peer, %error, "transactions request failed"),
             }
         }
 
@@ -299,31 +274,15 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let responses = self.inner.send_receipts_sync_request(peer, request).await;
+            let response_receiver = self.inner.send_receipts_sync_request(peer, request).await;
 
-            match responses {
-                Ok(ReceiptsResponseList { items }) => {
-                    let mut state = parse::receipts::State::Uninitialized;
-                    for response in items {
-                        if let Err(error) = state.advance(response) {
-                            tracing::debug!(from=%peer, %error, "receipts responses parsing");
-                            break;
-                        }
-                    }
-
-                    if let Some(receipts) = state.take_parsed() {
-                        // Success
-                        return Ok(receipts);
-                    } else {
-                        // Try the next peer
-                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
-                        break;
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::receipts::State>(&peer, rx).await {
+                        return Ok(parsed);
                     }
                 }
-                // Try the next peer
-                Err(error) => {
-                    tracing::debug!(from=%peer, %error, "receipts request failed");
-                }
+                Err(error) => tracing::debug!(from=%peer, %error, "receipts request failed"),
             }
         }
 
@@ -356,38 +315,41 @@ impl Client {
                     step: 1.into(),
                 },
             };
-            let items = self.inner.send_events_sync_request(peer, request).await;
+            let response_receiver = self.inner.send_events_sync_request(peer, request).await;
 
-            match items {
-                Ok(EventsResponseList { items }) => {
-                    let mut state = parse::events::State::Uninitialized;
-                    for response in items {
-                        if let Err(error) = state.advance(response) {
-                            tracing::debug!(from=%peer, %error, "receipts responses parsing");
-                            break;
-                        }
-                    }
-
-                    if let Some(events) = state.take_parsed() {
-                        // Success
-                        return Ok(events);
-                    } else {
-                        // Try the next peer
-                        tracing::debug!(from=%peer, "empty response or unexpected end of response");
-                        break;
+            match response_receiver {
+                Ok(rx) => {
+                    if let Some(parsed) = parse::<parse::events::State>(&peer, rx).await {
+                        return Ok(parsed);
                     }
                 }
-                // Try the next peer
-                Err(error) => {
-                    tracing::debug!(from=%peer, %error, "receipts request failed");
-                }
+                Err(error) => tracing::debug!(from=%peer, %error, "events request failed"),
             }
         }
 
         anyhow::bail!(
-            "No valid responses to receipts request: start {start_block_hash}, n {num_blocks}"
+            "No valid responses to events request: start {start_block_hash}, n {num_blocks}"
         )
     }
+}
+
+async fn parse<P: Default + ParserState>(
+    peer: &PeerId,
+    mut receiver: mpsc::Receiver<P::Dto>,
+) -> Option<P::Out> {
+    let mut state = P::default();
+
+    while let Some(response) = receiver.next().await {
+        if let Err(error) = state.advance(response) {
+            tracing::debug!(from=%peer, %error, "{} response parsing", std::any::type_name::<P::Dto>());
+            break;
+        }
+    }
+
+    state.take_parsed().or_else(|| {
+        tracing::debug!(from=%peer, "empty response or unexpected end of response");
+        None
+    })
 }
 
 #[derive(Clone, Debug)]

@@ -1,7 +1,4 @@
-//! request-response protocol and codec definitions for sync
-//!
-//! FIXME: this is a temporary workaround until proper
-//! streaming response protocol is implemented
+//! request/streaming-response protocol and codec definitions for sync
 
 pub mod protocol {
     macro_rules! define_protocol {
@@ -40,12 +37,11 @@ pub(crate) mod codec {
     use super::protocol;
     use async_trait::async_trait;
     use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-    use libp2p::request_response::Codec;
     use p2p_proto::consts::MESSAGE_SIZE_LIMIT;
     use p2p_proto::{block, event, proto, receipt, transaction};
     use p2p_proto::{ToProtobuf, TryFromProtobuf};
+    use p2p_stream::Codec;
     use std::marker::PhantomData;
-    use unsigned_varint::aio::read_usize;
 
     pub type Headers = SyncCodec<
         protocol::Headers,
@@ -58,33 +54,33 @@ pub(crate) mod codec {
     pub type Bodies = SyncCodec<
         protocol::Bodies,
         block::BlockBodiesRequest,
-        block::BlockBodiesResponseList,
+        block::BlockBodiesResponse,
         proto::block::BlockBodiesRequest,
-        proto::block::BlockBodiesResponseList,
+        proto::block::BlockBodiesResponse,
     >;
 
     pub type Transactions = SyncCodec<
         protocol::Transactions,
         transaction::TransactionsRequest,
-        transaction::TransactionsResponseList,
+        transaction::TransactionsResponse,
         proto::transaction::TransactionsRequest,
-        proto::transaction::TransactionsResponseList,
+        proto::transaction::TransactionsResponse,
     >;
 
     pub type Receipts = SyncCodec<
         protocol::Receipts,
         receipt::ReceiptsRequest,
-        receipt::ReceiptsResponseList,
+        receipt::ReceiptsResponse,
         proto::receipt::ReceiptsRequest,
-        proto::receipt::ReceiptsResponseList,
+        proto::receipt::ReceiptsResponse,
     >;
 
     pub type Events = SyncCodec<
         protocol::Events,
         event::EventsRequest,
-        event::EventsResponseList,
+        event::EventsResponse,
         proto::event::EventsRequest,
-        proto::event::EventsResponseList,
+        proto::event::EventsResponse,
     >;
 
     #[derive(Clone, Debug)]
@@ -168,7 +164,7 @@ pub(crate) mod codec {
         ProstDto: prost::Message + Default,
         Dto: TryFromProtobuf<ProstDto>,
     {
-        let encoded_len = read_usize(&mut io)
+        let encoded_len: usize = unsigned_varint::aio::read_usize(&mut io)
             .await
             .map_err(Into::<std::io::Error>::into)?;
 
@@ -187,6 +183,7 @@ pub(crate) mod codec {
 
         let prost_dto = ProstDto::decode(buf.as_ref())?;
         let dto = Dto::try_from_protobuf(prost_dto, std::any::type_name::<ProstDto>())?;
+
         Ok(dto)
     }
 
@@ -198,7 +195,6 @@ pub(crate) mod codec {
     {
         let data = dto.to_protobuf().encode_length_delimited_to_vec();
         io.write_all(&data).await?;
-        io.close().await?;
         Ok(())
     }
 }

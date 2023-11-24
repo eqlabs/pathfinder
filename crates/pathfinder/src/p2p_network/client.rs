@@ -21,6 +21,7 @@ use pathfinder_common::{
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply as gw;
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
+use starknet_gateway_types::trace;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
@@ -579,6 +580,24 @@ impl GatewayApi for HybridClient {
                 ))
             }
         }
+    }
+
+    async fn block_traces(&self, block: BlockId) -> Result<trace::BlockTrace, SequencerError> {
+        // Not used in sync, so we can just always proxy
+        self.as_sequencer().block_traces(block).await
+    }
+
+    async fn transaction_trace(
+        &self,
+        transaction: TransactionHash,
+    ) -> Result<trace::TransactionTrace, SequencerError> {
+        // Not used in sync, so we can just always proxy
+        self.as_sequencer().transaction_trace(transaction).await
+    }
+
+    async fn signature(&self, block: BlockId) -> Result<gw::BlockSignature, SequencerError> {
+        // TODO non proxy should query those via p2p
+        self.as_sequencer().signature(block).await
     }
 }
 

@@ -31,6 +31,7 @@ libp2p = { version = "0.53.0", default-features = false, features = [
     "yamux",
 ] }
 p2p_proto = { path = "../p2p_proto" }
+p2p_stream = { path = "../p2p_stream" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 prost = "0.12.1"

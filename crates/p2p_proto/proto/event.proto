@@ -33,8 +33,3 @@ message EventsResponse {
         starknet.common.Fin fin    = 3;
     }
 }
-
-// TODO remove when streaming response implemented
-message EventsResponseList {
-    repeated EventsResponse items = 1;
-}

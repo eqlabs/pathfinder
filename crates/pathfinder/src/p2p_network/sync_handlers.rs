@@ -1,4 +1,6 @@
 use anyhow::Context;
+use futures::channel::mpsc;
+use futures::SinkExt;
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
     BlockHeadersResponse, BlockHeadersResponsePart,
@@ -16,7 +18,6 @@ use p2p_proto::transaction::{
 use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
-use tokio::sync::mpsc;
 
 pub mod conv;
 #[cfg(test)]
@@ -45,7 +46,7 @@ const _: () = assert!(
 pub async fn get_headers(
     storage: Storage,
     request: BlockHeadersRequest,
-    tx: mpsc::Sender<BlockHeadersResponse>,
+    mut tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
     let response = spawn_blocking_get(request, storage, blocking::get_headers).await?;
     tx.send(response).await.context("Sending response")
@@ -615,7 +616,7 @@ where
     .context("Database read panic or shutting down")?
 }
 
-async fn send<T>(tx: mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
+async fn send<T>(mut tx: mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
 where
     T: Send + 'static,
     tokio::sync::mpsc::error::SendError<T>: Sync,

@@ -93,8 +93,3 @@ message BlockBodiesResponse {
         starknet.common.Fin      fin     = 5;
     }
 }
-
-// TODO remove when streaming response implemented
-message BlockBodiesResponseList {
-  repeated BlockBodiesResponse items = 1;
-}
