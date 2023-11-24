@@ -4,14 +4,8 @@ use pathfinder_common::{
 };
 use reqwest::Url;
 use starknet_gateway_types::trace::{BlockTrace, TransactionTrace};
-use starknet_gateway_types::{
-    error::SequencerError, reply, request::add_transaction::AddTransaction,
-};
+use starknet_gateway_types::{error::SequencerError, reply, request};
 use std::{fmt::Debug, result::Result, time::Duration};
-
-use starknet_gateway_types::request::add_transaction::Declare as AddDeclare;
-use starknet_gateway_types::request::add_transaction::DeployAccount as AddDeployAccount;
-use starknet_gateway_types::request::add_transaction::InvokeFunction as AddInvoke;
 
 mod builder;
 mod metrics;
@@ -76,14 +70,14 @@ pub trait GatewayApi: Sync {
 
     async fn add_invoke_transaction(
         &self,
-        invoke: AddInvoke,
+        invoke: request::add_transaction::InvokeFunction,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         unimplemented!();
     }
 
     async fn add_declare_transaction(
         &self,
-        declare: AddDeclare,
+        declare: request::add_transaction::Declare,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         unimplemented!();
@@ -91,7 +85,7 @@ pub trait GatewayApi: Sync {
 
     async fn add_deploy_account(
         &self,
-        deploy: AddDeployAccount,
+        deploy: request::add_transaction::DeployAccount,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         unimplemented!();
     }
@@ -189,14 +183,14 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 
     async fn add_invoke_transaction(
         &self,
-        invoke: AddInvoke,
+        invoke: request::add_transaction::InvokeFunction,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         self.as_ref().add_invoke_transaction(invoke).await
     }
 
     async fn add_declare_transaction(
         &self,
-        declare: AddDeclare,
+        declare: request::add_transaction::Declare,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         self.as_ref().add_declare_transaction(declare, token).await
@@ -204,7 +198,7 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 
     async fn add_deploy_account(
         &self,
-        deploy: AddDeployAccount,
+        deploy: request::add_transaction::DeployAccount,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         self.as_ref().add_deploy_account(deploy).await
     }
@@ -482,7 +476,7 @@ impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn add_invoke_transaction(
         &self,
-        invoke: AddInvoke,
+        invoke: request::add_transaction::InvokeFunction,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -491,7 +485,7 @@ impl GatewayApi for Client {
         self.gateway_request()
             .add_transaction()
             .with_retry(false)
-            .post_with_json(&AddTransaction::Invoke(invoke))
+            .post_with_json(&request::add_transaction::AddTransaction::Invoke(invoke))
             .await
     }
 
@@ -499,7 +493,7 @@ impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn add_declare_transaction(
         &self,
-        declare: AddDeclare,
+        declare: request::add_transaction::Declare,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         // Note that we don't do retries here.
@@ -511,14 +505,14 @@ impl GatewayApi for Client {
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
             .with_retry(false)
-            .post_with_json(&AddTransaction::Declare(declare))
+            .post_with_json(&request::add_transaction::AddTransaction::Declare(declare))
             .await
     }
 
     #[tracing::instrument(skip(self))]
     async fn add_deploy_account(
         &self,
-        deploy: AddDeployAccount,
+        deploy: request::add_transaction::DeployAccount,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -527,7 +521,9 @@ impl GatewayApi for Client {
         self.gateway_request()
             .add_transaction()
             .with_retry(false)
-            .post_with_json(&AddTransaction::DeployAccount(deploy))
+            .post_with_json(&request::add_transaction::AddTransaction::DeployAccount(
+                deploy,
+            ))
             .await
     }
 
@@ -1216,20 +1212,21 @@ mod tests {
 
             #[tokio::test]
             async fn v0_is_deprecated() {
+                use request::add_transaction::{InvokeFunction, InvokeFunctionV0V1};
+
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
                     response_from(KnownStarknetErrorCode::DeprecatedTransaction),
                 )]);
                 let (_, fee, sig, nonce, addr, call) = inputs();
-                let invoke = AddInvoke {
-                    version: TransactionVersion::ZERO,
+                let invoke = InvokeFunction::V0(InvokeFunctionV0V1 {
                     max_fee: fee,
                     signature: sig,
                     nonce: Some(nonce),
                     sender_address: addr,
                     entry_point_selector: None,
                     calldata: call,
-                };
+                });
 
                 let error = client.add_invoke_transaction(invoke).await.unwrap_err();
                 assert_matches!(
@@ -1240,6 +1237,8 @@ mod tests {
 
             #[tokio::test]
             async fn successful() {
+                use request::add_transaction::{InvokeFunction, InvokeFunctionV0V1};
+
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
                     (
@@ -1248,16 +1247,15 @@ mod tests {
                     ),
                 )]);
                 // test with values dumped from `starknet invoke` for a test contract
-                let (ver, fee, sig, nonce, addr, call) = inputs();
-                let invoke = AddInvoke {
-                    version: ver,
+                let (_, fee, sig, nonce, addr, call) = inputs();
+                let invoke = InvokeFunction::V1(InvokeFunctionV0V1 {
                     max_fee: fee,
                     signature: sig,
                     nonce: Some(nonce),
                     sender_address: addr,
                     entry_point_selector: None,
                     calldata: call,
-                };
+                });
                 client.add_invoke_transaction(invoke).await.unwrap();
             }
         }
@@ -1271,12 +1269,14 @@ mod tests {
 
             #[tokio::test]
             async fn v0_is_deprecated() {
+                use request::add_transaction::{Declare, DeclareV0V1V2};
+
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
                     response_from(KnownStarknetErrorCode::DeprecatedTransaction),
                 )]);
 
-                let declare = AddDeclare {
+                let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
                     max_fee: Fee(Felt::ZERO),
                     signature: vec![],
@@ -1284,7 +1284,7 @@ mod tests {
                     sender_address: contract_address!("0x1"),
                     nonce: TransactionNonce::ZERO,
                     compiled_class_hash: None,
-                };
+                });
                 let error = client
                     .add_declare_transaction(declare, None)
                     .await
@@ -1297,6 +1297,8 @@ mod tests {
 
             #[tokio::test]
             async fn successful_v1() {
+                use request::add_transaction::{Declare, DeclareV0V1V2};
+
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
                     (
@@ -1307,7 +1309,7 @@ mod tests {
                     ),
                 )]);
 
-                let declare = AddDeclare {
+                let declare = Declare::V1(DeclareV0V1V2 {
                     version: TransactionVersion::ONE,
                     max_fee: fee!("0xFFFF"),
                     signature: vec![],
@@ -1315,7 +1317,7 @@ mod tests {
                     sender_address: contract_address!("0x1"),
                     nonce: TransactionNonce(Felt::ZERO),
                     compiled_class_hash: None,
-                };
+                });
 
                 client.add_declare_transaction(declare, None).await.unwrap();
             }
@@ -1371,6 +1373,8 @@ mod tests {
 
             #[tokio::test]
             async fn successful_v2() {
+                use request::add_transaction::{Declare, DeclareV0V1V2};
+
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
                     (
@@ -1381,7 +1385,7 @@ mod tests {
                     ),
                 )]);
 
-                let declare = AddDeclare {
+                let declare = Declare::V2(DeclareV0V1V2 {
                     version: TransactionVersion::TWO,
                     max_fee: fee!("0xffff"),
                     signature: vec![],
@@ -1391,7 +1395,7 @@ mod tests {
                     compiled_class_hash: Some(casm_hash!(
                         "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
                     )),
-                };
+                });
 
                 client.add_declare_transaction(declare, None).await.unwrap();
             }
@@ -1399,23 +1403,37 @@ mod tests {
 
         #[tokio::test]
         async fn test_deploy_account() {
-            use starknet_gateway_types::request::add_transaction::AddTransaction;
+            use request::add_transaction::{DeployAccount, DeployAccountV0V1};
+
             let (_jh, client) = setup([(
                 "/gateway/add_transaction",
                 (v0_10_1::add_transaction::DEPLOY_ACCOUNT_RESPONSE, 200),
             )]);
 
-            let json =
-                starknet_gateway_test_fixtures::v0_10_1::add_transaction::DEPLOY_ACCOUNT_REQUEST;
-            let req: AddTransaction = serde_json::from_str(json).expect("Request parsed from JSON");
-            let req = match req {
-                AddTransaction::DeployAccount(deploy_account) => Some(deploy_account),
-                _ => None,
-            };
-            let req = req.expect("Request matched as DEPLOY_ACCOUNT");
+            let request = DeployAccount::V1(DeployAccountV0V1 {
+                max_fee: fee!("0xbf391377813"),
+                signature: vec![
+                    transaction_signature_elem!(
+                        "0x70872c11ad15910fe3d0e9375c10d1794d77cd866aa6733e31a9736559ac92b"
+                    ),
+                    transaction_signature_elem!(
+                        "0x4c9140cb8afeebc0cde2a70d11b71ec764a4d0c6b2c33356bb7d5f7c734f5e1"
+                    ),
+                ],
+                nonce: transaction_nonce!("0x0"),
+                class_hash: class_hash!(
+                    "0x1fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
+                ),
+                contract_address_salt: contract_address_salt!(
+                    "0x6d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
+                ),
+                constructor_calldata: vec![call_param!(
+                    "0x7eda1c9b366a008b8697fe9d6bad040818ffb27f8615966c29de33e523e9e35"
+                )],
+            });
 
             let res = client
-                .add_deploy_account(req)
+                .add_deploy_account(request)
                 .await
                 .expect("DEPLOY_ACCOUNT response");
 
@@ -1504,12 +1522,14 @@ mod tests {
 
             #[test_log::test(tokio::test)]
             async fn test_token_is_passed_to_sequencer_api() {
+                use request::add_transaction::{Declare, DeclareV0V1V2};
+
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
                 let client = Client::with_base_url(url).unwrap();
 
-                let declare = AddDeclare {
+                let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
                     max_fee: Fee::ZERO,
                     signature: vec![],
@@ -1521,7 +1541,7 @@ mod tests {
                     sender_address: ContractAddress::ZERO,
                     nonce: TransactionNonce::ZERO,
                     compiled_class_hash: None,
-                };
+                });
 
                 client
                     .add_declare_transaction(declare, Some(EXPECTED_TOKEN.to_owned()))
@@ -1530,13 +1550,15 @@ mod tests {
             }
 
             #[test_log::test(tokio::test)]
-            async fn test_deploy_fails_with_no_token() {
+            async fn test_declare_fails_with_no_token() {
+                use request::add_transaction::{Declare, DeclareV0V1V2};
+
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
                 let client = Client::with_base_url(url).unwrap();
 
-                let declare = AddDeclare {
+                let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
                     max_fee: Fee::ZERO,
                     signature: vec![],
@@ -1548,7 +1570,7 @@ mod tests {
                     sender_address: ContractAddress::ZERO,
                     nonce: TransactionNonce::ZERO,
                     compiled_class_hash: None,
-                };
+                });
 
                 let err = client
                     .add_declare_transaction(declare, None)

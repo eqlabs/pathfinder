@@ -143,7 +143,7 @@ pub async fn add_declare_transaction(
     context: RpcContext,
     input: AddDeclareTransactionInput,
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
-    use starknet_gateway_types::request::add_transaction::Declare;
+    use starknet_gateway_types::request::add_transaction;
 
     match input.declare_transaction {
         Transaction::Declare(BroadcastedDeclareTransaction::V0(_)) => {
@@ -158,7 +158,7 @@ pub async fn add_declare_transaction(
             let response = context
                 .sequencer
                 .add_declare_transaction(
-                    Declare {
+                    add_transaction::Declare::V1(add_transaction::DeclareV0V1V2 {
                         version: tx.version,
                         max_fee: tx.max_fee,
                         signature: tx.signature,
@@ -166,7 +166,7 @@ pub async fn add_declare_transaction(
                         sender_address: tx.sender_address,
                         nonce: tx.nonce,
                         compiled_class_hash: None,
-                    },
+                    }),
                     input.token,
                 )
                 .await?;
@@ -185,7 +185,7 @@ pub async fn add_declare_transaction(
             let response = context
                 .sequencer
                 .add_declare_transaction(
-                    Declare {
+                    add_transaction::Declare::V2(add_transaction::DeclareV0V1V2 {
                         version: tx.version,
                         max_fee: tx.max_fee,
                         signature: tx.signature,
@@ -193,7 +193,7 @@ pub async fn add_declare_transaction(
                         sender_address: tx.sender_address,
                         nonce: tx.nonce,
                         compiled_class_hash: Some(tx.compiled_class_hash),
-                    },
+                    }),
                     input.token,
                 )
                 .await?;
@@ -204,12 +204,35 @@ pub async fn add_declare_transaction(
             })
         }
         Transaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
-            let _contract_definition: SierraContractDefinition = tx
+            let contract_definition: SierraContractDefinition = tx
                 .contract_class
                 .try_into()
                 .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
 
-            todo!();
+            let response = context
+                .sequencer
+                .add_declare_transaction(
+                    add_transaction::Declare::V3(add_transaction::DeclareV3 {
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
+                        tip: tx.tip,
+                        paymaster_data: tx.paymaster_data,
+                        contract_class: contract_definition,
+                        compiled_class_hash: tx.compiled_class_hash,
+                        sender_address: tx.sender_address,
+                        account_deployment_data: tx.account_deployment_data,
+                    }),
+                    input.token,
+                )
+                .await?;
+
+            Ok(AddDeclareTransactionOutput {
+                transaction_hash: response.transaction_hash,
+                class_hash: response.class_hash,
+            })
         }
     }
 }
@@ -219,10 +242,13 @@ mod tests {
     use super::*;
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
-        BroadcastedDeclareTransactionV2,
+        BroadcastedDeclareTransactionV2, BroadcastedDeclareTransactionV3,
     };
-    use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
-    use pathfinder_common::macro_prelude::*;
+    use crate::v02::types::{
+        CairoContractClass, ContractClass, DataAvailabilityMode, ResourceBound, ResourceBounds,
+        SierraContractClass,
+    };
+    use pathfinder_common::{macro_prelude::*, ResourceAmount, ResourcePricePerUnit, Tip};
     use pathfinder_common::{CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion};
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::class_definitions::{
@@ -252,6 +278,12 @@ mod tests {
 
         pub static ref SIERRA_CLASS: SierraContractClass = {
             ContractClass::from_definition_bytes(CAIRO_2_0_0_STACK_OVERFLOW).unwrap().as_sierra().unwrap()
+        };
+
+        pub static ref INTEGRATION_SIERRA_CLASS: SierraContractClass = {
+            ContractClass::from_definition_bytes(
+                include_bytes!("../../../fixtures/contracts/integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.json")
+            ).unwrap().as_sierra().unwrap()
         };
     }
 
@@ -548,6 +580,59 @@ mod tests {
             declare_transaction,
             token: None,
         };
+        let err = add_declare_transaction(context, input).await.unwrap_err();
+        assert_matches::assert_matches!(
+            err,
+            AddDeclareTransactionError::InsufficientAccountBalance
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "gateway 429"]
+    // https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41d1f5206ef58a443e7d3d1ca073171ec25fa75313394318fc83a074a6631c3
+    async fn duplicate_v3_transaction() {
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+
+        let input = BroadcastedDeclareTransactionV3 {
+            version: TransactionVersion::THREE,
+            signature: vec![
+                transaction_signature_elem!(
+                    "0x29a49dff154fede73dd7b5ca5a0beadf40b4b069f3a850cd8428e54dc809ccc"
+                ),
+                transaction_signature_elem!(
+                    "0x429d142a17223b4f2acde0f5ecb9ad453e188b245003c86fab5c109bad58fc3"
+                ),
+            ],
+            nonce: transaction_nonce!("0x1"),
+            resource_bounds: ResourceBounds {
+                l1_gas: ResourceBound {
+                    max_amount: ResourceAmount(0x186a0),
+                    max_price_per_unit: ResourcePricePerUnit(0x5af3107a4000),
+                },
+                l2_gas: ResourceBound {
+                    max_amount: ResourceAmount(0),
+                    max_price_per_unit: ResourcePricePerUnit(0),
+                },
+            },
+            tip: Tip(0),
+            paymaster_data: vec![],
+            account_deployment_data: vec![],
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            compiled_class_hash: casm_hash!(
+                "0x1add56d64bebf8140f3b8a38bdf102b7874437f0c861ab4ca7526ec33b4d0f8"
+            ),
+            contract_class: INTEGRATION_SIERRA_CLASS.clone(),
+            sender_address: contract_address!(
+                "0x2fab82e4aef1d8664874e1f194951856d48463c3e6bf9a8c68e234a629a6f50"
+            ),
+        };
+
+        let input = AddDeclareTransactionInput {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V3(input)),
+            token: None,
+        };
+
         let err = add_declare_transaction(context, input).await.unwrap_err();
         assert_matches::assert_matches!(
             err,

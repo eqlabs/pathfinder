@@ -4,7 +4,6 @@ use crate::v02::types::request::BroadcastedInvokeTransaction;
 use pathfinder_common::TransactionHash;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::request::add_transaction::InvokeFunction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -93,38 +92,58 @@ pub async fn add_invoke_transaction(
     context: RpcContext,
     input: AddInvokeTransactionInput,
 ) -> Result<AddInvokeTransactionOutput, AddInvokeTransactionError> {
+    use starknet_gateway_types::request::add_transaction;
+
     let Transaction::Invoke(tx) = input.invoke_transaction;
     let response = match tx {
-        BroadcastedInvokeTransaction::V0(v0) => {
+        BroadcastedInvokeTransaction::V0(tx) => {
             context
                 .sequencer
-                .add_invoke_transaction(InvokeFunction {
-                    version: v0.version,
-                    max_fee: v0.max_fee,
-                    signature: v0.signature,
-                    nonce: None,
-                    sender_address: v0.contract_address,
-                    entry_point_selector: Some(v0.entry_point_selector),
-                    calldata: v0.calldata,
-                })
+                .add_invoke_transaction(add_transaction::InvokeFunction::V0(
+                    add_transaction::InvokeFunctionV0V1 {
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: None,
+                        sender_address: tx.contract_address,
+                        entry_point_selector: Some(tx.entry_point_selector),
+                        calldata: tx.calldata,
+                    },
+                ))
                 .await?
         }
-        BroadcastedInvokeTransaction::V1(v1) => {
+        BroadcastedInvokeTransaction::V1(tx) => {
             context
                 .sequencer
-                .add_invoke_transaction(InvokeFunction {
-                    version: v1.version,
-                    max_fee: v1.max_fee,
-                    signature: v1.signature,
-                    nonce: Some(v1.nonce),
-                    sender_address: v1.sender_address,
-                    entry_point_selector: None,
-                    calldata: v1.calldata,
-                })
+                .add_invoke_transaction(add_transaction::InvokeFunction::V1(
+                    add_transaction::InvokeFunctionV0V1 {
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: Some(tx.nonce),
+                        sender_address: tx.sender_address,
+                        entry_point_selector: None,
+                        calldata: tx.calldata,
+                    },
+                ))
                 .await?
         }
-        BroadcastedInvokeTransaction::V3(_) => {
-            todo!()
+        BroadcastedInvokeTransaction::V3(tx) => {
+            context
+                .sequencer
+                .add_invoke_transaction(add_transaction::InvokeFunction::V3(
+                    add_transaction::InvokeFunctionV3 {
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
+                        tip: tx.tip,
+                        paymaster_data: tx.paymaster_data,
+                        sender_address: tx.sender_address,
+                        calldata: tx.calldata,
+                        account_deployment_data: tx.account_deployment_data,
+                    },
+                ))
+                .await?
         }
     };
 
@@ -137,7 +156,13 @@ pub async fn add_invoke_transaction(
 mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransactionV1;
+    use crate::v02::types::DataAvailabilityMode;
+    use crate::v02::types::ResourceBound;
+    use crate::v02::types::ResourceBounds;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::ResourceAmount;
+    use pathfinder_common::ResourcePricePerUnit;
+    use pathfinder_common::Tip;
     use pathfinder_common::TransactionVersion;
 
     fn test_invoke_txn() -> Transaction {
@@ -276,6 +301,70 @@ mod tests {
 
         let input = AddInvokeTransactionInput {
             invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V1(input)),
+        };
+
+        let error = add_invoke_transaction(context, input).await.unwrap_err();
+        assert_matches::assert_matches!(error, AddInvokeTransactionError::DuplicateTransaction);
+    }
+
+    #[tokio::test]
+    #[ignore = "gateway 429"]
+    // https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41906f1c314cca5f43170ea75d3b1904196a10101190d2b12a41cc61cfd17c
+    async fn duplicate_v3_transaction() {
+        use crate::v02::types::request::BroadcastedInvokeTransactionV3;
+
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+        let input = BroadcastedInvokeTransactionV3 {
+            version: TransactionVersion::THREE,
+            signature: vec![
+                transaction_signature_elem!(
+                    "0xef42616755b8a9b7c97d2deb1ba4a4176d3c838a20c367072f141af446ee7"
+                ),
+                transaction_signature_elem!(
+                    "0xc6514ea8a88bcb0f4b2a40ddc609461a35af802ba0b35586ade6d8a4be2934"
+                ),
+            ],
+            nonce: transaction_nonce!("0x8a9"),
+            resource_bounds: ResourceBounds {
+                l1_gas: ResourceBound {
+                    max_amount: ResourceAmount(0x186a0),
+                    max_price_per_unit: ResourcePricePerUnit(0x5af3107a4000),
+                },
+                l2_gas: ResourceBound {
+                    max_amount: ResourceAmount(0),
+                    max_price_per_unit: ResourcePricePerUnit(0),
+                },
+            },
+            tip: Tip(0),
+            paymaster_data: vec![],
+            account_deployment_data: vec![],
+            nonce_data_availability_mode: DataAvailabilityMode::L1,
+            fee_data_availability_mode: DataAvailabilityMode::L1,
+            sender_address: contract_address!(
+                "0x3f6f3bc663aedc5285d6013cc3ffcbc4341d86ab488b8b68d297f8258793c41"
+            ),
+            calldata: vec![
+                call_param!("0x2"),
+                call_param!("0x4c312760dfd17a954cdd09e76aa9f149f806d88ec3e402ffaf5c4926f568a42"),
+                call_param!("0x31aafc75f498fdfa7528880ad27246b4c15af4954f96228c9a132b328de1c92"),
+                call_param!("0x0"),
+                call_param!("0x6"),
+                call_param!("0x450703c32370cf7ffff540b9352e7ee4ad583af143a361155f2b485c0c39684"),
+                call_param!("0xb17d8a2731ba7ca1816631e6be14f0fc1b8390422d649fa27f0fbb0c91eea8"),
+                call_param!("0x6"),
+                call_param!("0x0"),
+                call_param!("0x6"),
+                call_param!("0x6333f10b24ed58cc33e9bac40b0d52e067e32a175a97ca9e2ce89fe2b002d82"),
+                call_param!("0x3"),
+                call_param!("0x602e89fe5703e5b093d13d0a81c9e6d213338dc15c59f4d3ff3542d1d7dfb7d"),
+                call_param!("0x20d621301bea11ffd9108af1d65847e9049412159294d0883585d4ad43ad61b"),
+                call_param!("0x276faadb842bfcbba834f3af948386a2eb694f7006e118ad6c80305791d3247"),
+                call_param!("0x613816405e6334ab420e53d4b38a0451cb2ebca2755171315958c87d303cf6"),
+            ],
+        };
+
+        let input = AddInvokeTransactionInput {
+            invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V3(input)),
         };
 
         let error = add_invoke_transaction(context, input).await.unwrap_err();

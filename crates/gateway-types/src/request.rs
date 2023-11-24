@@ -190,10 +190,13 @@ pub mod contract {
 }
 
 pub mod add_transaction {
+    use crate::reply::transaction::{DataAvailabilityMode, ResourceBounds};
+
     use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
     use super::{CallParam, ContractAddress, Fee, TransactionSignatureElem};
     use pathfinder_common::{
-        CasmHash, ClassHash, ContractAddressSalt, EntryPoint, TransactionNonce, TransactionVersion,
+        AccountDeploymentDataElem, CasmHash, ClassHash, ContractAddressSalt, EntryPoint,
+        PaymasterDataElem, Tip, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr};
     use serde_with::serde_as;
@@ -202,7 +205,7 @@ pub mod add_transaction {
     /// Both variants are somewhat different compared to the contract definition we're using
     /// for class hash calculation. The actual program contents are not relevant
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
-    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Clone, Debug, serde::Serialize)]
     #[serde(untagged)]
     pub enum ContractDefinition {
         Cairo(CairoContractDefinition),
@@ -210,7 +213,7 @@ pub mod add_transaction {
     }
 
     /// Definition of a Cairo 0.x contract.
-    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Clone, Debug, serde::Serialize)]
     pub struct CairoContractDefinition {
         // gzip + base64 encoded JSON of the compiled contract JSON
         pub program: String,
@@ -229,12 +232,20 @@ pub mod add_transaction {
     }
 
     /// Account deployment transaction details.
-    #[serde_as]
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
-    pub struct DeployAccount {
-        // Transaction properties
-        pub version: TransactionVersion,
+    #[derive(Debug, serde::Serialize)]
+    #[serde(tag = "version")]
+    pub enum DeployAccount {
+        #[serde(rename = "0x0")]
+        V0(DeployAccountV0V1),
+        #[serde(rename = "0x1")]
+        V1(DeployAccountV0V1),
+        #[serde(rename = "0x3")]
+        V3(DeployAccountV3),
+    }
 
+    #[serde_as]
+    #[derive(Debug, serde::Serialize)]
+    pub struct DeployAccountV0V1 {
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -246,16 +257,40 @@ pub mod add_transaction {
         pub constructor_calldata: Vec<CallParam>,
     }
 
-    /// Invoke contract transaction details.
     #[serde_as]
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
-    pub struct InvokeFunction {
-        // Transaction properties
-        pub version: TransactionVersion,
+    #[derive(Debug, serde::Serialize)]
+    pub struct DeployAccountV3 {
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub nonce_data_availability_mode: DataAvailabilityMode,
+        pub fee_data_availability_mode: DataAvailabilityMode,
+        pub resource_bounds: ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
 
+        pub class_hash: ClassHash,
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+    }
+
+    /// Invoke contract transaction details.
+    #[derive(Debug, serde::Serialize)]
+    #[serde(tag = "version")]
+    pub enum InvokeFunction {
+        #[serde(rename = "0x0")]
+        V0(InvokeFunctionV0V1),
+        #[serde(rename = "0x1")]
+        V1(InvokeFunctionV0V1),
+        #[serde(rename = "0x3")]
+        V3(InvokeFunctionV3),
+    }
+
+    #[serde_as]
+    #[derive(Debug, serde::Serialize)]
+    pub struct InvokeFunctionV0V1 {
         // AccountTransaction properties
         pub max_fee: Fee,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         // NOTE: this is optional because Invoke v0 transactions do not have a nonce
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -265,20 +300,49 @@ pub mod add_transaction {
         // NOTE: this is optional because only Invoke v0 transactions have an entry point selector
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub entry_point_selector: Option<EntryPoint>,
-        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
     }
 
-    /// Declare transaction details.
     #[serde_as]
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
-    pub struct Declare {
+    #[derive(Debug, serde::Serialize)]
+    pub struct InvokeFunctionV3 {
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub nonce_data_availability_mode: DataAvailabilityMode,
+        pub fee_data_availability_mode: DataAvailabilityMode,
+        pub resource_bounds: ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
+
+        pub sender_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+        pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+    }
+
+    /// Declare transaction details.
+    #[allow(clippy::large_enum_variant)]
+    #[derive(Debug, serde::Serialize)]
+    #[serde(tag = "version")]
+    pub enum Declare {
+        #[serde(rename = "0x0")]
+        V0(DeclareV0V1V2),
+        #[serde(rename = "0x1")]
+        V1(DeclareV0V1V2),
+        #[serde(rename = "0x2")]
+        V2(DeclareV0V1V2),
+        #[serde(rename = "0x3")]
+        V3(DeclareV3),
+    }
+
+    #[serde_as]
+    #[derive(Debug, serde::Serialize)]
+    pub struct DeclareV0V1V2 {
         // Transaction properties
         pub version: TransactionVersion,
 
         // AccountTransaction properties -- except for nonce which is non-optional here
         pub max_fee: Fee,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
 
         pub contract_class: ContractDefinition,
@@ -290,11 +354,29 @@ pub mod add_transaction {
         pub compiled_class_hash: Option<CasmHash>,
     }
 
+    #[serde_as]
+    #[derive(Debug, serde::Serialize)]
+    pub struct DeclareV3 {
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub nonce_data_availability_mode: DataAvailabilityMode,
+        pub fee_data_availability_mode: DataAvailabilityMode,
+        pub resource_bounds: ResourceBounds,
+        #[serde_as(as = "pathfinder_serde::TipAsHexStr")]
+        pub tip: Tip,
+        pub paymaster_data: Vec<PaymasterDataElem>,
+
+        pub contract_class: SierraContractDefinition,
+        pub compiled_class_hash: CasmHash,
+        pub sender_address: ContractAddress,
+        pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+    }
+
     /// Add transaction API operation.
     ///
     /// This adds the "type" attribute to the JSON request according the type of
     /// the transaction (invoke or deploy).
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Debug, serde::Serialize)]
     #[serde(tag = "type")]
     pub enum AddTransaction {
         #[serde(rename = "INVOKE_FUNCTION")]
@@ -308,11 +390,48 @@ pub mod add_transaction {
     #[cfg(test)]
     mod test {
         use super::*;
+
         use starknet_gateway_test_fixtures::add_transaction::INVOKE_CONTRACT_WITH_SIGNATURE;
 
         #[test]
         fn test_invoke_with_signature() {
-            serde_json::from_str::<AddTransaction>(INVOKE_CONTRACT_WITH_SIGNATURE).unwrap();
+            use pathfinder_common::macro_prelude::*;
+
+            let expected: serde_json::Value =
+                serde_json::from_str(INVOKE_CONTRACT_WITH_SIGNATURE).unwrap();
+
+            let input = AddTransaction::Invoke(InvokeFunction::V1(InvokeFunctionV0V1 {
+                signature: vec![
+                    transaction_signature_elem!(
+                        "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                    ),
+                    transaction_signature_elem!(
+                        "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                    ),
+                ],
+                nonce: Some(transaction_nonce!("0x1")),
+                sender_address: contract_address!(
+                    "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
+                ),
+                calldata: vec![
+                    call_param!("0x1"),
+                    call_param!(
+                        "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                    ),
+                    call_param!(
+                        "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                    ),
+                    call_param!("0x0"),
+                    call_param!("0x1"),
+                    call_param!("0x1"),
+                    call_param!("0x2b"),
+                    call_param!("0x0"),
+                ],
+                entry_point_selector: None,
+                max_fee: fee!("0x4f388496839"),
+            }));
+
+            assert_eq!(serde_json::to_value(input).unwrap(), expected);
         }
 
         mod byte_code_offset {
