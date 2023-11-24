@@ -78,10 +78,10 @@ async fn async_main() -> anyhow::Result<()> {
     if let Some(address) = config.monitor_address {
         let network_label = match &network {
             NetworkConfig::Mainnet => "mainnet",
-            NetworkConfig::GoerliTestnet => "testnet/goerli",
-            NetworkConfig::GoerliIntegration => "integration/goerli",
-            NetworkConfig::SepoliaTestnet => "testnet/sepolia",
-            NetworkConfig::SepoliaIntegration => "integration/sepolia",
+            NetworkConfig::GoerliTestnet => "testnet-goerli",
+            NetworkConfig::GoerliIntegration => "integration-goerli",
+            NetworkConfig::SepoliaTestnet => "testnet-sepolia",
+            NetworkConfig::SepoliaIntegration => "integration-sepolia",
             NetworkConfig::Custom { .. } => "custom",
         };
         spawn_monitoring(network_label, address, readiness.clone())
