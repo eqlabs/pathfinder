@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Default RPC version is now v0.5 (was v0.4). This can be manually configured to any version.
-- Goerli testnet network selection is now `--network testnet/goerli`, removed `--network testnet`
-- Goerli integration network selection is now `--network integration/goerli`, removed `--network testnet`
+- Goerli testnet network selection is now `--network testnet-goerli`, removed `--network testnet`
+- Goerli integration network selection is now `--network integration-goerli`, removed `--network testnet`
 
 ### Removed
 
