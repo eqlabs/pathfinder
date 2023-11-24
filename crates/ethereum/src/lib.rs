@@ -143,6 +143,7 @@ impl EthereumApi for EthereumClient {
         Ok(match id {
             x if x == U256::from(1u32) => EthereumChain::Mainnet,
             x if x == U256::from(5u32) => EthereumChain::Goerli,
+            x if x == U256::from(11155111u32) => EthereumChain::Sepolia,
             x => EthereumChain::Other(x),
         })
     }
