@@ -514,7 +514,7 @@ mod pathfinder_context {
                     network: Chain::SepoliaTestnet,
                     network_id: ChainId::SEPOLIA_TESTNET,
                     gateway: GatewayClient::sepolia_testnet(),
-                    database: data_directory.join("sepolia.sqlite"),
+                    database: data_directory.join("testnet-sepolia.sqlite"),
                     l1_core_address: H160::from(core_addr::SEPOLIA_TESTNET),
                 },
                 NetworkConfig::SepoliaIntegration => Self {
