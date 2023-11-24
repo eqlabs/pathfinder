@@ -831,12 +831,7 @@ mod tests {
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
     #[case::v0_6_api  ("/rpc/v0_6", "v06/starknet_api_openrpc.json", &[])]
-    #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", 
-        &[
-            "starknet_traceBlockTransactions", 
-            "starknet_traceTransaction"
-        ]
-    )]
+    #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[])]
     #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", 
         &[
             "starknet_addDeclareTransaction", 
