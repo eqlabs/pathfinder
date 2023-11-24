@@ -215,14 +215,22 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         verify_tree_hashes: config.verify_tree_hashes,
     };
 
-    let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));
+    let sync_handle = if config.is_sync_enabled {
+        tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
+    } else {
+        tokio::spawn(std::future::pending())
+    };
 
-    let (rpc_handle, local_addr) = rpc_server
-        .with_max_connections(config.max_rpc_connections.get())
-        .spawn()
-        .context("Starting the RPC server")?;
-
-    info!("📡 HTTP-RPC server started on: {}", local_addr);
+    let rpc_handle = if config.is_rpc_enabled {
+        let (rpc_handle, local_addr) = rpc_server
+            .with_max_connections(config.max_rpc_connections.get())
+            .spawn()
+            .context("Starting the RPC server")?;
+        info!("📡 HTTP-RPC server started on: {}", local_addr);
+        rpc_handle
+    } else {
+        tokio::spawn(std::future::pending())
+    };
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
