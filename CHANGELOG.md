@@ -11,13 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-```suggestion
 - Support for RPC v0.6.0-rc1 via the `/rpc/v0_6` endpoint. Note that this does not include the `/rpc/v0.6` endpoint as the underscore is now the standard across node implementations.
 - Configuration options to selectively enable/disable parts of the node. This can be useful to run tests or benchmarks with isolated components e.g. test RPC methods without the sync process updating the database.
   - `rpc.enable` configuration option to enable/disable the RPC server. Defaults to enabled.
   - `sync.enable` configuration option to enable/disable the sync process. Defaults to enabled. 
-- Support for Sepolia testnet via `--network testnet/sepolia`
-- Support for Sepolia integration via `--network integration/sepolia`
+- Support for Sepolia testnet via `--network testnet-sepolia`
+- Support for Sepolia integration via `--network integration-sepolia`
 
 ### Changed
 
