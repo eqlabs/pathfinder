@@ -5724,23 +5724,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "p2p_bootstrap"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.13.1",
- "clap",
- "futures",
- "libp2p",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "zeroize",
-]
-
-[[package]]
 name = "p2p_proto"
 version = "0.1.0"
 dependencies = [
