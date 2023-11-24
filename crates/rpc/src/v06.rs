@@ -24,6 +24,9 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getEvents"                       , v03_method::get_events)
         .register("starknet_getStateUpdate"                  , v03_method::get_state_update)
 
+        .register("starknet_addDeclareTransaction"           , v04_method::add_declare_transaction)
+        .register("starknet_addDeployAccountTransaction"     , v04_method::add_deploy_account_transaction)
+        .register("starknet_addInvokeTransaction"            , v04_method::add_invoke_transaction)
         .register("starknet_getTransactionByBlockIdAndIndex" , v04_method::get_transaction_by_block_id_and_index)
         .register("starknet_getTransactionByHash"            , v04_method::get_transaction_by_hash)
         .register("starknet_syncing"                         , v04_method::syncing)
@@ -40,10 +43,6 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_specVersion"                     , || "0.6.0-rc2")
         .register("starknet_traceBlockTransactions"          , method::trace_block_transactions)
         .register("starknet_traceTransaction"                , method::trace_transaction)
-
-        // .register("starknet_addDeclareTransaction"           , method::add_declare_transaction)
-        // .register("starknet_addDeployAccountTransaction"     , method::add_deploy_account_transaction)
-        // .register("starknet_addInvokeTransaction"            , method::add_invoke_transaction)
 
         .register("pathfinder_getProof"                      , crate::pathfinder::methods::get_proof)
 }
