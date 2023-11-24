@@ -150,7 +150,7 @@ mod meta {
         }
     }
 
-    const TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+    const GOERLI_TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(47028),
         not_verifiable_range: Some(
             BlockNumber::new_or_panic(119802)..BlockNumber::new_or_panic(148428),
@@ -168,12 +168,24 @@ mod meta {
         )),
     };
 
-    const INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+    const GOERLI_INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(110511),
         not_verifiable_range: Some(BlockNumber::new_or_panic(0)..BlockNumber::new_or_panic(110511)),
         fallback_sequencer_address: Some(sequencer_address!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         )),
+    };
+
+    const SEPOLIA_TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+        first_0_7_block: BlockNumber::new_or_panic(0),
+        not_verifiable_range: None,
+        fallback_sequencer_address: None,
+    };
+
+    const SEPOLIA_INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+        first_0_7_block: BlockNumber::new_or_panic(0),
+        not_verifiable_range: None,
+        fallback_sequencer_address: None,
     };
 
     const CUSTOM_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
@@ -185,8 +197,10 @@ mod meta {
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
         match chain {
             Chain::Mainnet => &MAINNET_METAINFO,
-            Chain::Testnet => &TESTNET_METAINFO,
-            Chain::Integration => &INTEGRATION_METAINFO,
+            Chain::GoerliTestnet => &GOERLI_TESTNET_METAINFO,
+            Chain::GoerliIntegration => &GOERLI_INTEGRATION_METAINFO,
+            Chain::SepoliaTestnet => &SEPOLIA_TESTNET_METAINFO,
+            Chain::SepoliaIntegration => &SEPOLIA_INTEGRATION_METAINFO,
             Chain::Custom => &CUSTOM_METAINFO,
         }
     }
@@ -546,7 +560,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -559,7 +579,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -573,7 +599,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash,).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash,
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -586,8 +618,8 @@ mod tests {
         assert_matches!(
             verify_block_hash(
                 &block,
-                Chain::Integration,
-                ChainId::INTEGRATION,
+                Chain::GoerliIntegration,
+                ChainId::GOERLI_INTEGRATION,
                 block.block_hash,
             )
             .unwrap(),
@@ -603,7 +635,13 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
+            verify_block_hash(
+                &block,
+                Chain::GoerliTestnet,
+                ChainId::GOERLI_TESTNET,
+                block.block_hash
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }

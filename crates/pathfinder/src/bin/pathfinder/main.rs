@@ -78,8 +78,10 @@ async fn async_main() -> anyhow::Result<()> {
     if let Some(address) = config.monitor_address {
         let network_label = match &network {
             NetworkConfig::Mainnet => "mainnet",
-            NetworkConfig::Testnet => "testnet",
-            NetworkConfig::Integration => "integration",
+            NetworkConfig::GoerliTestnet => "testnet-goerli",
+            NetworkConfig::GoerliIntegration => "integration-goerli",
+            NetworkConfig::SepoliaTestnet => "testnet-sepolia",
+            NetworkConfig::SepoliaIntegration => "integration-sepolia",
             NetworkConfig::Custom { .. } => "custom",
         };
         spawn_monitoring(network_label, address, readiness.clone())
@@ -441,11 +443,13 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     /// Maps the Ethereum network to its default Starknet network:
     ///     Mainnet => Mainnet
-    ///     Goerli  => Testnet
+    ///     Goerli  => Testnet/Goerli
+    ///     Sepolia => Testnet/Sepolia
     fn default_network(&self) -> anyhow::Result<NetworkConfig> {
         match self.chain {
             EthereumChain::Mainnet => Ok(NetworkConfig::Mainnet),
-            EthereumChain::Goerli => Ok(NetworkConfig::Testnet),
+            EthereumChain::Goerli => Ok(NetworkConfig::GoerliTestnet),
+            EthereumChain::Sepolia => Ok(NetworkConfig::SepoliaTestnet),
             EthereumChain::Other(id) => {
                 anyhow::bail!(
                     r"Implicit Starknet networks are only available for Ethereum mainnet and Goerli, but the provided Ethereum network has chain ID = {id}.
@@ -492,19 +496,33 @@ mod pathfinder_context {
                     database: data_directory.join("mainnet.sqlite"),
                     l1_core_address: H160::from(core_addr::MAINNET),
                 },
-                NetworkConfig::Testnet => Self {
-                    network: Chain::Testnet,
-                    network_id: ChainId::TESTNET,
-                    gateway: GatewayClient::testnet(),
+                NetworkConfig::GoerliTestnet => Self {
+                    network: Chain::GoerliTestnet,
+                    network_id: ChainId::GOERLI_TESTNET,
+                    gateway: GatewayClient::goerli_testnet(),
                     database: data_directory.join("goerli.sqlite"),
-                    l1_core_address: H160::from(core_addr::TESTNET),
+                    l1_core_address: H160::from(core_addr::GOERLI_TESTNET),
                 },
-                NetworkConfig::Integration => Self {
-                    network: Chain::Integration,
-                    network_id: ChainId::INTEGRATION,
-                    gateway: GatewayClient::integration(),
+                NetworkConfig::GoerliIntegration => Self {
+                    network: Chain::GoerliIntegration,
+                    network_id: ChainId::GOERLI_INTEGRATION,
+                    gateway: GatewayClient::goerli_integration(),
                     database: data_directory.join("integration.sqlite"),
-                    l1_core_address: H160::from(core_addr::INTEGRATION),
+                    l1_core_address: H160::from(core_addr::GOERLI_INTEGRATION),
+                },
+                NetworkConfig::SepoliaTestnet => Self {
+                    network: Chain::SepoliaTestnet,
+                    network_id: ChainId::SEPOLIA_TESTNET,
+                    gateway: GatewayClient::sepolia_testnet(),
+                    database: data_directory.join("testnet-sepolia.sqlite"),
+                    l1_core_address: H160::from(core_addr::SEPOLIA_TESTNET),
+                },
+                NetworkConfig::SepoliaIntegration => Self {
+                    network: Chain::SepoliaIntegration,
+                    network_id: ChainId::SEPOLIA_INTEGRATION,
+                    gateway: GatewayClient::sepolia_integration(),
+                    database: data_directory.join("integration-sepolia.sqlite"),
+                    l1_core_address: H160::from(core_addr::SEPOLIA_INTEGRATION),
                 },
                 NetworkConfig::Custom {
                     gateway,
@@ -546,8 +564,10 @@ mod pathfinder_context {
             // Check for proxies by comparing the core address against those of the known networks.
             let network = match l1_core_address.as_bytes() {
                 x if x == core_addr::MAINNET => Chain::Mainnet,
-                x if x == core_addr::TESTNET => Chain::Testnet,
-                x if x == core_addr::INTEGRATION => Chain::Integration,
+                x if x == core_addr::GOERLI_TESTNET => Chain::GoerliTestnet,
+                x if x == core_addr::GOERLI_INTEGRATION => Chain::GoerliIntegration,
+                x if x == core_addr::SEPOLIA_TESTNET => Chain::SepoliaTestnet,
+                x if x == core_addr::GOERLI_INTEGRATION => Chain::SepoliaIntegration,
                 _ => Chain::Custom,
             };
 
@@ -573,8 +593,8 @@ fn verify_networks(starknet: Chain, ethereum: EthereumChain) -> anyhow::Result<(
     if starknet != Chain::Custom {
         let expected = match starknet {
             Chain::Mainnet => EthereumChain::Mainnet,
-            Chain::Testnet => EthereumChain::Goerli,
-            Chain::Integration => EthereumChain::Goerli,
+            Chain::GoerliTestnet | Chain::GoerliIntegration => EthereumChain::Goerli,
+            Chain::SepoliaTestnet | Chain::SepoliaIntegration => EthereumChain::Sepolia,
             Chain::Custom => unreachable!("Already checked against"),
         };
 
@@ -603,14 +623,17 @@ async fn verify_database(
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{
-            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
+            GOERLI_INTEGRATION_GENESIS_HASH, GOERLI_TESTNET_GENESIS_HASH, MAINNET_GENESIS_HASH,
+            SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
         };
 
         let db_network = match database_genesis {
             MAINNET_GENESIS_HASH => Chain::Mainnet,
-            TESTNET_GENESIS_HASH => Chain::Testnet,
-            INTEGRATION_GENESIS_HASH => Chain::Integration,
-            _other => Chain::Custom,
+            GOERLI_TESTNET_GENESIS_HASH => Chain::GoerliTestnet,
+            GOERLI_INTEGRATION_GENESIS_HASH => Chain::GoerliIntegration,
+            SEPOLIA_TESTNET_GENESIS_HASH => Chain::SepoliaTestnet,
+            SEPOLIA_INTEGRATION_GENESIS_HASH => Chain::SepoliaIntegration,
+            _ => Chain::Custom,
         };
 
         match (network, db_network) {

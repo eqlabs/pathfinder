@@ -1084,7 +1084,7 @@ pub mod request {
                 let transaction =
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx));
                 assert_eq!(
-                    transaction.transaction_hash(ChainId::TESTNET, Some(starknet_gateway_test_fixtures::class_definitions::CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747_CLASS_HASH)),
+                    transaction.transaction_hash(ChainId::GOERLI_TESTNET, Some(starknet_gateway_test_fixtures::class_definitions::CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747_CLASS_HASH)),
                     transaction_hash!(
                         "0x05c72f6fdbbddde03a9921e520273b4ff940d01f118793e7f9ed56f5a74cbfc0"
                     )
@@ -1120,7 +1120,7 @@ pub mod request {
                 let transaction =
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx));
                 assert_eq!(
-                transaction.transaction_hash(ChainId::TESTNET, Some(starknet_gateway_test_fixtures::class_definitions::SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC_CLASS_HASH)),
+                transaction.transaction_hash(ChainId::GOERLI_TESTNET, Some(starknet_gateway_test_fixtures::class_definitions::SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC_CLASS_HASH)),
                 transaction_hash!(
                     "0x055ab647f4aee18d9981fbe251ccf57a553ec3841b57e2f74a434b2aa6ba0513"
                 )
@@ -1170,7 +1170,7 @@ pub mod request {
                 let transaction =
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx));
                 assert_eq!(
-                    transaction.transaction_hash(ChainId::TESTNET, None),
+                    transaction.transaction_hash(ChainId::GOERLI_TESTNET, None),
                     transaction_hash!(
                         "0x25d11606f1a73602099a359e4b5da03c45372a92eb0c9be2800c3123e7a26aa"
                     )
@@ -1232,7 +1232,7 @@ pub mod request {
                     BroadcastedDeployAccountTransaction::V0V1(tx),
                 );
                 assert_eq!(
-                    transaction.transaction_hash(ChainId::TESTNET, Some(class_hash)),
+                    transaction.transaction_hash(ChainId::GOERLI_TESTNET, Some(class_hash)),
                     transaction_hash!(
                         "0x0167486c4202020e510809ae1703111186de8d36a606ce948dcfab910cc18713"
                     )

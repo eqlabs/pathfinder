@@ -341,11 +341,14 @@ struct DebugCli {
     restart_delay: u64,
 }
 
-#[derive(clap::ValueEnum, Clone)]
+#[derive(clap::ValueEnum, Clone, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 enum Network {
     Mainnet,
-    Testnet,
-    Integration,
+    GoerliTestnet,
+    GoerliIntegration,
+    SepoliaTestnet,
+    SepoliaIntegration,
     Custom,
 }
 
@@ -353,8 +356,10 @@ impl From<Network> for clap::builder::OsStr {
     fn from(value: Network) -> Self {
         match value {
             Network::Mainnet => "mainnet",
-            Network::Testnet => "testnet",
-            Network::Integration => "integration",
+            Network::GoerliTestnet => "goerli-testnet",
+            Network::GoerliIntegration => "goerli-integration",
+            Network::SepoliaTestnet => "sepolia-testnet",
+            Network::SepoliaIntegration => "sepolia-integration",
             Network::Custom => "custom",
         }
         .into()
@@ -460,8 +465,10 @@ pub struct Ethereum {
 
 pub enum NetworkConfig {
     Mainnet,
-    Testnet,
-    Integration,
+    GoerliTestnet,
+    GoerliIntegration,
+    SepoliaTestnet,
+    SepoliaIntegration,
     Custom {
         gateway: Url,
         feeder_gateway: Url,
@@ -510,8 +517,10 @@ impl NetworkConfig {
             // catch-all arm that would swallow new variants silently.
             (Some(non_custom), None, None, None) => match non_custom {
                 Mainnet => NetworkConfig::Mainnet,
-                Testnet => NetworkConfig::Testnet,
-                Integration => NetworkConfig::Integration,
+                GoerliTestnet => NetworkConfig::GoerliTestnet,
+                GoerliIntegration => NetworkConfig::GoerliIntegration,
+                SepoliaTestnet => NetworkConfig::SepoliaTestnet,
+                SepoliaIntegration => NetworkConfig::SepoliaIntegration,
                 Custom => unreachable!("Network::Custom handled in outer arm already"),
             },
             // clap does not support disallowing args based on an enum value, so we have check for

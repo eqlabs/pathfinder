@@ -49,15 +49,23 @@ impl RpcContext {
     }
 
     pub fn for_tests() -> Self {
-        Self::for_tests_on(pathfinder_common::Chain::Testnet)
+        Self::for_tests_on(pathfinder_common::Chain::GoerliTestnet)
     }
 
     pub fn for_tests_on(chain: pathfinder_common::Chain) -> Self {
         use pathfinder_common::Chain;
         let (chain_id, sequencer) = match chain {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet()),
-            Chain::Testnet => (ChainId::TESTNET, SequencerClient::testnet()),
-            Chain::Integration => (ChainId::INTEGRATION, SequencerClient::integration()),
+            Chain::GoerliTestnet => (ChainId::GOERLI_TESTNET, SequencerClient::goerli_testnet()),
+            Chain::GoerliIntegration => (
+                ChainId::GOERLI_INTEGRATION,
+                SequencerClient::goerli_integration(),
+            ),
+            Chain::SepoliaTestnet => (ChainId::SEPOLIA_TESTNET, SequencerClient::sepolia_testnet()),
+            Chain::SepoliaIntegration => (
+                ChainId::SEPOLIA_INTEGRATION,
+                SequencerClient::sepolia_integration(),
+            ),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
         };
 

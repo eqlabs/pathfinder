@@ -18,8 +18,8 @@ fn main() -> anyhow::Result<()> {
     let chain_name = std::env::args().nth(1).unwrap();
     let (chain, chain_id) = match chain_name.as_str() {
         "mainnet" => (Chain::Mainnet, ChainId::MAINNET),
-        "goerli" => (Chain::Testnet, ChainId::TESTNET),
-        "integration" => (Chain::Integration, ChainId::INTEGRATION),
+        "goerli" => (Chain::GoerliTestnet, ChainId::GOERLI_TESTNET),
+        "integration" => (Chain::GoerliIntegration, ChainId::GOERLI_INTEGRATION),
         _ => panic!("Expected chain name: mainnet/goerli/integration"),
     };
 

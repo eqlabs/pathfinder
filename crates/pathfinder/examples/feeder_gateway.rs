@@ -15,6 +15,8 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use warp::Filter;
 
 /// Groups the Starknet contract addresses for a specific chain.
+///
+/// Getting addresses: <SEQUENCER_URL>/feeder_gateway/get_contract_addresses
 pub struct ContractAddresses {
     pub core: H160,
     pub gps: H160,
@@ -209,7 +211,8 @@ async fn serve() -> anyhow::Result<()> {
 
 fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> {
     use pathfinder_common::consts::{
-        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH,
+        GOERLI_INTEGRATION_GENESIS_HASH, GOERLI_TESTNET_GENESIS_HASH, MAINNET_GENESIS_HASH,
+        SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
     };
 
     let genesis_hash = tx
@@ -220,8 +223,10 @@ fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> 
 
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => Chain::Mainnet,
-        TESTNET_GENESIS_HASH => Chain::Testnet,
-        INTEGRATION_GENESIS_HASH => Chain::Integration,
+        GOERLI_TESTNET_GENESIS_HASH => Chain::GoerliTestnet,
+        GOERLI_INTEGRATION_GENESIS_HASH => Chain::GoerliIntegration,
+        SEPOLIA_TESTNET_GENESIS_HASH => Chain::SepoliaTestnet,
+        SEPOLIA_INTEGRATION_GENESIS_HASH => Chain::SepoliaIntegration,
         _other => Chain::Custom,
     };
 
@@ -239,13 +244,21 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
             core: parse("c662c410C0ECf747543f5bA90660f6ABeBD9C8c4"),
             gps: parse("47312450B3Ac8b5b8e247a6bB6d523e7605bDb60"),
         },
-        Chain::Testnet => ContractAddresses {
+        Chain::GoerliTestnet => ContractAddresses {
             core: parse("de29d060D45901Fb19ED6C6e959EB22d8626708e"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
         },
-        Chain::Integration | Chain::Custom => ContractAddresses {
+        Chain::GoerliIntegration | Chain::Custom => ContractAddresses {
             core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
+        },
+        Chain::SepoliaTestnet => ContractAddresses {
+            core: parse("E2Bb56ee936fd6433DC0F6e7e3b8365C906AA057"),
+            gps: parse("07ec0D28e50322Eb0C159B9090ecF3aeA8346DFe"),
+        },
+        Chain::SepoliaIntegration => ContractAddresses {
+            core: parse("4737c0c1B4D5b1A687B42610DdabEE781152359c"),
+            gps: parse("07ec0D28e50322Eb0C159B9090ecF3aeA8346DFe"),
         },
     })
 }

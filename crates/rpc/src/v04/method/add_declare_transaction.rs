@@ -410,7 +410,7 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
     async fn invalid_contract_definition_v2() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Integration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
 
         let invalid_contract_class = SierraContractClass {
             sierra_program: vec![],
@@ -492,7 +492,7 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
     async fn insufficient_max_fee() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Integration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
 
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V2(
             BroadcastedDeclareTransactionV2 {
@@ -522,7 +522,7 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
     async fn insufficient_account_balance() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Integration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
 
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V2(
             BroadcastedDeclareTransactionV2 {
