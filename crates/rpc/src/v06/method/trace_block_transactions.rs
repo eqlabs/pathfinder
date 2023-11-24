@@ -80,25 +80,43 @@ impl From<CallError> for TraceBlockTransactionsError {
     }
 }
 
+impl From<TraceConversionError> for TraceBlockTransactionsError {
+    fn from(value: TraceConversionError) -> Self {
+        Self::Custom(anyhow::anyhow!(value.0))
+    }
+}
+
+pub(super) struct TraceConversionError(pub &'static str);
+
 pub(crate) fn map_gateway_trace(
     transaction: GatewayTransaction,
     trace: GatewayTxTrace,
-) -> TransactionTrace {
-    match transaction {
+) -> Result<TransactionTrace, TraceConversionError> {
+    Ok(match transaction {
         GatewayTransaction::Declare(_) => TransactionTrace::Declare(DeclareTxnTrace {
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
         GatewayTransaction::Deploy(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
-            constructor_invocation: trace.function_invocation.map(Into::into),
+            constructor_invocation: trace
+                .function_invocation
+                .ok_or(TraceConversionError(
+                    "Constructor_invocation is missing from trace response",
+                ))?
+                .into(),
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
         GatewayTransaction::DeployAccount(_) => {
             TransactionTrace::DeployAccount(DeployAccountTxnTrace {
-                constructor_invocation: trace.function_invocation.map(Into::into),
+                constructor_invocation: trace
+                    .function_invocation
+                    .ok_or(TraceConversionError(
+                        "constructor_invocation is missing from trace response",
+                    ))?
+                    .into(),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
                 state_diff: None,
@@ -118,10 +136,15 @@ pub(crate) fn map_gateway_trace(
             state_diff: None,
         }),
         GatewayTransaction::L1Handler(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
-            function_invocation: trace.function_invocation.map(Into::into),
+            function_invocation: trace
+                .function_invocation
+                .ok_or(TraceConversionError(
+                    "function_invocation is missing from trace response",
+                ))?
+                .into(),
             state_diff: None,
         }),
-    }
+    })
 }
 
 pub async fn trace_block_transactions(
@@ -200,11 +223,13 @@ pub async fn trace_block_transactions(
 
         let result = traces
             .into_iter()
-            .map(|(hash, trace)| Trace {
-                transaction_hash: hash,
-                trace_root: trace.into(),
+            .map(|(hash, trace)| {
+                Ok(Trace {
+                    transaction_hash: hash,
+                    trace_root: trace.try_into()?,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?;
 
         Ok(LocalExecution::Success(result))
     })
@@ -221,25 +246,25 @@ pub async fn trace_block_transactions(
         .block_traces(input.block_id)
         .await
         .context("Forwarding to feeder gateway")
-        .map_err(Into::into)
+        .map_err(TraceBlockTransactionsError::from)
         .map(|trace| {
-            TraceBlockTransactionsOutput(
+            Ok(TraceBlockTransactionsOutput(
                 trace
                     .traces
                     .into_iter()
                     .zip(transactions.into_iter())
                     .map(|(trace, tx)| {
                         let transaction_hash = tx.hash();
-                        let trace_root = map_gateway_trace(tx, trace);
+                        let trace_root = map_gateway_trace(tx, trace)?;
 
-                        Trace {
+                        Ok(Trace {
                             transaction_hash,
                             trace_root,
-                        }
+                        })
                     })
-                    .collect(),
-            )
-        })
+                    .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?,
+            ))
+        })?
 }
 
 #[cfg(test)]

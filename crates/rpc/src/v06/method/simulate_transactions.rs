@@ -128,7 +128,10 @@ pub async fn simulate_transactions(
 
         let txs =
             pathfinder_executor::simulate(state, transactions, skip_validate, skip_fee_charge)?;
-        let txs = txs.into_iter().map(Into::into).collect();
+        let txs = txs
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(SimulateTransactionOutput(txs))
     })
     .await
@@ -373,15 +376,19 @@ pub mod dto {
         L1Handler(L1HandlerTxnTrace),
     }
 
-    impl From<pathfinder_executor::types::TransactionTrace> for TransactionTrace {
-        fn from(trace: pathfinder_executor::types::TransactionTrace) -> Self {
+    impl TryFrom<pathfinder_executor::types::TransactionTrace> for TransactionTrace {
+        type Error = pathfinder_executor::CallError;
+
+        fn try_from(
+            trace: pathfinder_executor::types::TransactionTrace,
+        ) -> Result<Self, Self::Error> {
             use pathfinder_executor::types::TransactionTrace::*;
-            match trace {
+            Ok(match trace {
                 Declare(t) => Self::Declare(t.into()),
-                DeployAccount(t) => Self::DeployAccount(t.into()),
+                DeployAccount(t) => Self::DeployAccount(t.try_into()?),
                 Invoke(t) => Self::Invoke(t.into()),
-                L1Handler(t) => Self::L1Handler(t.into()),
-            }
+                L1Handler(t) => Self::L1Handler(t.try_into()?),
+            })
         }
     }
 
@@ -409,7 +416,7 @@ pub mod dto {
     #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct DeployAccountTxnTrace {
         #[serde(default)]
-        pub constructor_invocation: Option<FunctionInvocation>,
+        pub constructor_invocation: FunctionInvocation,
         #[serde(default)]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
@@ -417,14 +424,25 @@ pub mod dto {
         pub state_diff: Option<StateDiff>,
     }
 
-    impl From<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
-        fn from(trace: pathfinder_executor::types::DeployAccountTransactionTrace) -> Self {
-            Self {
-                constructor_invocation: trace.constructor_invocation.map(Into::into),
+    impl TryFrom<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
+        type Error = pathfinder_executor::CallError;
+
+        fn try_from(
+            trace: pathfinder_executor::types::DeployAccountTransactionTrace,
+        ) -> Result<Self, Self::Error> {
+            Ok(Self {
+                constructor_invocation: trace
+                    .constructor_invocation
+                    .ok_or_else(|| {
+                        Self::Error::Custom(anyhow::anyhow!(
+                            "Missing constructor_invocation in trace"
+                        ))
+                    })?
+                    .into(),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
                 state_diff: Some(trace.state_diff.into()),
-            }
+            })
         }
     }
 
@@ -475,17 +493,25 @@ pub mod dto {
     #[serde_with::skip_serializing_none]
     #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct L1HandlerTxnTrace {
-        #[serde(default)]
-        pub function_invocation: Option<FunctionInvocation>,
+        pub function_invocation: FunctionInvocation,
         pub state_diff: Option<StateDiff>,
     }
 
-    impl From<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
-        fn from(trace: pathfinder_executor::types::L1HandlerTransactionTrace) -> Self {
-            Self {
-                function_invocation: trace.function_invocation.map(Into::into),
+    impl TryFrom<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
+        type Error = pathfinder_executor::CallError;
+
+        fn try_from(
+            trace: pathfinder_executor::types::L1HandlerTransactionTrace,
+        ) -> Result<Self, Self::Error> {
+            Ok(Self {
+                function_invocation: trace
+                    .function_invocation
+                    .ok_or_else(|| {
+                        Self::Error::Custom(anyhow::anyhow!("Missing function_invocation in trace"))
+                    })?
+                    .into(),
                 state_diff: Some(trace.state_diff.into()),
-            }
+            })
         }
     }
 
@@ -498,12 +524,14 @@ pub mod dto {
         pub transaction_trace: TransactionTrace,
     }
 
-    impl From<TransactionSimulation> for SimulatedTransaction {
-        fn from(tx: TransactionSimulation) -> Self {
-            dto::SimulatedTransaction {
+    impl TryFrom<TransactionSimulation> for SimulatedTransaction {
+        type Error = pathfinder_executor::CallError;
+
+        fn try_from(tx: TransactionSimulation) -> Result<Self, Self::Error> {
+            Ok(dto::SimulatedTransaction {
                 fee_estimation: tx.fee_estimation.into(),
-                transaction_trace: tx.trace.into(),
-            }
+                transaction_trace: tx.trace.try_into()?,
+            })
         }
     }
 
@@ -636,8 +664,7 @@ pub(crate) mod tests {
                 transaction_trace:
                     TransactionTrace::DeployAccount(
                         DeployAccountTxnTrace {
-                            constructor_invocation: Some(
-                                FunctionInvocation {
+                            constructor_invocation: FunctionInvocation {
                                     call_type: CallType::Call,
                                     caller_address: felt!("0x0"),
                                     calls: vec![],
@@ -653,7 +680,6 @@ pub(crate) mod tests {
                                     result: vec![],
                                     execution_resources: ExecutionResources::default(),
                                 },
-                            ),
                             validate_invocation: Some(
                                 FunctionInvocation {
                                     call_type: CallType::Call,
