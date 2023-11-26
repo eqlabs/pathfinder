@@ -129,12 +129,10 @@ fn consume_events(mut event_receiver: EventReceiver) {
 async fn dial() {
     let _ = env_logger::builder().is_test(true).try_init();
     // tokio::time::pause() does not make a difference
-    let mut peer1 = TestPeer::default();
+    let peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
-    let addr1 = peer1.start_listening().await.unwrap();
     let addr2 = peer2.start_listening().await.unwrap();
-    tracing::info!(%peer1.peer_id, %addr1);
     tracing::info!(%peer2.peer_id, %addr2);
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
@@ -213,13 +211,11 @@ async fn periodic_bootstrap() {
 async fn provide_capability() {
     let _ = env_logger::builder().is_test(true).try_init();
 
-    let mut peer1 = TestPeer::default();
+    let peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
-    let addr1 = peer1.start_listening().await.unwrap();
     let addr2 = peer2.start_listening().await.unwrap();
 
-    tracing::info!(%peer1.peer_id, %addr1);
     tracing::info!(%peer2.peer_id, %addr2);
 
     let mut peer1_started_providing = filter_events(peer1.event_receiver, |event| match event {
@@ -249,13 +245,11 @@ async fn subscription_and_propagation() {
     let _ = env_logger::builder().is_test(true).try_init();
 
     let mut peer1 = TestPeer::default();
-    let mut peer2 = TestPeer::default();
+    let peer2 = TestPeer::default();
 
     let addr1 = peer1.start_listening().await.unwrap();
-    let addr2 = peer2.start_listening().await.unwrap();
 
     tracing::info!(%peer1.peer_id, %addr1);
-    tracing::info!(%peer2.peer_id, %addr2);
 
     let mut peer2_subscribed_to_peer1 = filter_events(peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::Subscribed { .. }) => Some(()),
