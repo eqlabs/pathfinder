@@ -74,6 +74,12 @@ impl From<super::trace_block_transactions::TraceBlockTransactionsError> for Trac
     }
 }
 
+impl From<super::trace_block_transactions::TraceConversionError> for TraceTransactionError {
+    fn from(value: super::trace_block_transactions::TraceConversionError) -> Self {
+        Self::Custom(anyhow::anyhow!(value.0))
+    }
+}
+
 impl From<TraceTransactionError> for ApplicationError {
     fn from(value: TraceTransactionError) -> Self {
         match value {
@@ -198,7 +204,7 @@ pub async fn trace_transaction(
 
         pathfinder_executor::trace_one(state, transactions, input.transaction_hash, true, true)
             .map_err(TraceTransactionError::from)
-            .map(|x| LocalExecution::Success(x.into()))
+            .and_then(|x| Ok(LocalExecution::Success(x.try_into()?)))
     })
     .await
     .context("trace_transaction: execution")??;
@@ -214,7 +220,7 @@ pub async fn trace_transaction(
         .await
         .context("Proxying call to feeder gateway")?;
 
-    let trace = map_gateway_trace(transaction, trace);
+    let trace = map_gateway_trace(transaction, trace)?;
 
     Ok(TraceTransactionOutput(trace))
 }
