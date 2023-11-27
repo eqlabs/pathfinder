@@ -150,6 +150,9 @@
                     "transaction_count",
                     "event_count"
                 ]
+            },
+            "FELT": {
+                "$ref": "./pathfinder_rpc_api.json#/components/schemas/FELT"
             }
         },
         "errors": {
