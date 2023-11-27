@@ -101,25 +101,6 @@ Examples:
     #[clap(flatten)]
     network: NetworkCli,
 
-    /// poll_pending and p2p are mutually exclusive
-    #[cfg(not(feature = "p2p"))]
-    #[arg(
-        long = "poll-pending",
-        long_help = "Enable polling pending block",
-        action = clap::ArgAction::Set,
-        default_value = "false",
-        env = "PATHFINDER_POLL_PENDING"
-    )]
-    poll_pending: bool,
-
-    #[arg(
-        long = "python-subprocesses",
-        long_help = "This value is now unused and the argument was kept for compatibility reasons",
-        default_value = "2",
-        env = "PATHFINDER_PYTHON_SUBPROCESSES"
-    )]
-    python_subprocesses: std::num::NonZeroUsize,
-
     #[arg(
         long = "sqlite-wal",
         long_help = "Enable SQLite write-ahead logging",
@@ -444,7 +425,6 @@ pub struct Config {
     pub websocket: WebsocketConfig,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
-    pub poll_pending: bool,
     pub execution_concurrency: Option<std::num::NonZeroU32>,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroUsize,
@@ -617,10 +597,6 @@ impl Config {
             websocket: cli.websocket,
             monitor_address: cli.monitor_address,
             network,
-            #[cfg(feature = "p2p")]
-            poll_pending: false,
-            #[cfg(not(feature = "p2p"))]
-            poll_pending: cli.poll_pending,
             execution_concurrency: cli.execution_concurrency,
             sqlite_wal: match cli.sqlite_wal {
                 true => JournalMode::WAL,
