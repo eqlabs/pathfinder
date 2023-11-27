@@ -1,4 +1,4 @@
-// Equlibrium Labs: This work is an extension of libp2p's request-response protocol,
+// Equilibrium Labs: This work is an extension of libp2p's request-response protocol,
 // hence the original copyright notice is included below.
 //
 //
