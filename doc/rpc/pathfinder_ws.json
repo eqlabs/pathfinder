@@ -1,0 +1,182 @@
+{
+    "openrpc": "1.2.6",
+    "info": {
+        "title": "Pathfinder websocket RPC API",
+        "version": "0.1",
+        "description": "Provides additional (pathfinder specific) methods over and above the Starknet RPC API"
+    },
+    "methods": [
+        {
+            "name": "pathfinder_subscribe",
+            "summary": "Open a new websocket subscription",
+            "description": "Creates a websocket stream which will fire events of the requested subscription type. Only available for websocket connections.",
+            "params": [
+                {
+                    "name": "kind",
+                    "summary": "The type of subscription",
+                    "required": true,
+                    "schema": {
+                        "type": "string",
+                        "enum": [
+                            "newHeads"
+                        ]
+                    }
+                }
+            ],
+            "result": {
+                "name": "subscription ID",
+                "description": "An identifier for this subscription stream used to associate events with this subscription.",
+                "schema": {
+                    "type": "integer"
+                }
+            }
+        },
+        {
+            "name": "pathfinder_unsubscribe",
+            "summary": "Closes a websocket subscription",
+            "description": "Creates a websocket stream which will fire events of the requested subscription type. Only available for websocket connections.",
+            "params": [
+                {
+                    "name": "subscription ID",
+                    "summary": "The subscription to close",
+                    "required": true,
+                    "schema": {
+                        "type": "integer"
+                    }
+                }
+            ],
+            "result": {
+                "name": "Unsubscription result",
+                "description": "True if the unsubscription was successful",
+                "schema": {
+                    "type": "boolean"
+                }
+            }
+        },
+        {
+            "name": "pathfinder_subscription",
+            "summary": "A subscription event notification sent by the node.",
+            "params": [],
+            "result": {
+                "name": "Subscription event",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "subscription": {
+                            "name": "Subscription ID",
+                            "summary": "The subscription this event is for",
+                            "type": "integer"
+                        },
+                        "event": {
+                            "$ref": "#/components/schemas/BLOCK_HEADER"
+                        }  
+                    },
+                    "required": ["subscription", "event"]
+                }
+            },
+            "errors": [
+                {
+                    "$ref": "#/components/errors/WEBSOCKET_SUBSCRIPTION_CLOSED"
+                }
+            ]
+        }
+    ],
+    "components": {
+        "contentDescriptors": {},
+        "schemas": {
+            "BLOCK_HEADER": {
+                "type": "object",
+                "properties": {
+                    "hash": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "parent_hash": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "number": {
+                        "type": "integer"
+                    },
+                    "timestamp": {
+                        "type": "integer"
+                    },
+                    "eth_l1_gas_price": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "strk_l1_gas_price": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "sequencer_address": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "starknet_version": {
+                        "ref": "string"
+                    },
+                    "class_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "event_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "state_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "storage_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "transaction_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "transaction_count": {
+                        "type": "integer"
+                    },
+                    "event_count": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "hash",
+                    "parent_hash",
+                    "number",
+                    "timestamp",
+                    "eth_l1_gas_price",
+                    "strk_l1_gas_price",
+                    "sequencer_address",
+                    "starknet_version",
+                    "class_commitment",
+                    "event_commitment",
+                    "state_commitment",
+                    "storage_commitment",
+                    "transaction_commitment",
+                    "transaction_count",
+                    "event_count"
+                ]
+            },
+            "FELT": {
+                "$ref": "./pathfinder_rpc_api.json#/components/schemas/FELT"
+            }
+        },
+        "errors": {
+            "WEBSOCKET_SUBSCRIPTION_CLOSED": {
+                "code": -32099,
+                "message": "Websocket subscription closed",
+                "data": {
+                    "type": "object",
+                    "description": "More data about the execution failure",
+                    "properties": {
+                        "id": {
+                            "title": "Subscription ID",
+                            "description": "The ID of the closed subscription",
+                            "type": "integer"
+                        },
+                        "reason": {
+                            "title": "Closing reason",
+                            "description": "The reason why the subscription was closed",
+                            "type": "string"
+                        }
+                    },
+                    "required": ["id", "reason"]
+                }
+            }
+        }
+    }
+}

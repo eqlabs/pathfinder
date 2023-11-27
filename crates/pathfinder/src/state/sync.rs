@@ -102,7 +102,6 @@ where
 {
     fn from(value: &SyncContext<G, E>) -> Self {
         Self {
-            broadcasters: value.websocket_txs.clone(),
             sequencer: value.sequencer.clone(),
             chain: value.chain,
             chain_id: value.chain_id,
@@ -146,7 +145,7 @@ where
         head_poll_interval,
         pending_data,
         block_validation_mode: _,
-        websocket_txs: _,
+        websocket_txs,
         block_cache_size,
         restart_delay,
         verify_tree_hashes: _,
@@ -207,6 +206,7 @@ where
         state,
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
+        websocket_txs,
     };
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context));
 
@@ -325,6 +325,7 @@ struct ConsumerContext {
     pub state: Arc<SyncState>,
     pub pending_data: WatchSender<Arc<PendingData>>,
     pub verify_tree_hashes: bool,
+    pub websocket_txs: Option<TopicBroadcasters>,
 }
 
 async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> anyhow::Result<()> {
@@ -333,6 +334,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
         state,
         pending_data,
         verify_tree_hashes,
+        mut websocket_txs,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -388,6 +390,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     *signature,
                     verify_tree_hashes,
                     storage.clone(),
+                    &mut websocket_txs,
                 )
                 .await
                 .with_context(|| format!("Update L2 state to {block_number}"))?;
@@ -703,6 +706,7 @@ async fn l2_update(
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
     storage: Storage,
+    websocket_txs: &mut Option<TopicBroadcasters>,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -817,7 +821,20 @@ async fn l2_update(
             }
         }
 
-        transaction.commit().context("Commit database transaction")
+        transaction
+            .commit()
+            .context("Commit database transaction")?;
+
+        if let Some(sender) = websocket_txs {
+            if let Err(e) = sender.new_head.send_if_receiving(header.into()) {
+                tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
+                // Disable websocket entirely so that the closed channel doesn't spam this error. It
+                // is unlikely that any error here wouldn't simply repeat indefinitely.
+                *websocket_txs = None;
+            }
+        }
+
+        Ok(())
     })?;
 
     Ok(())
@@ -1134,6 +1151,7 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
+            websocket_txs: None,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1178,6 +1196,7 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
+            websocket_txs: None,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1234,6 +1253,7 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
+            websocket_txs: None,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1277,6 +1297,7 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
+            websocket_txs: None,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1312,6 +1333,7 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
+            websocket_txs: None,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1350,6 +1372,7 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
+            websocket_txs: None,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1385,6 +1408,7 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
+            websocket_txs: None,
         };
 
         consumer(event_rx, context).await.unwrap();

@@ -1,21 +1,11 @@
 //! See [the parent module documentation](super)
 
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
-use pathfinder_common::BlockHash;
-use pathfinder_common::BlockNumber;
-use pathfinder_common::BlockTimestamp;
-use pathfinder_common::GasPrice;
-use pathfinder_common::SequencerAddress;
-use pathfinder_common::StarknetVersion;
-use pathfinder_common::StateCommitment;
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::sync::Arc;
-
-use pathfinder_serde::GasPriceAsHexStr;
-use starknet_gateway_types::reply::{Block, Status};
 
 #[derive(serde::Deserialize, Serialize)]
 pub(super) struct Kind<'a> {
@@ -177,41 +167,58 @@ where
 }
 
 #[serde_with::serde_as]
-#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct BlockHeader {
-    pub block_hash: BlockHash,
-    pub block_number: BlockNumber,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockHeader(pub pathfinder_common::BlockHeader);
 
-    #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default)]
-    pub gas_price: Option<GasPrice>,
-    pub parent_block_hash: BlockHash,
-
-    #[serde(default)]
-    pub sequencer_address: Option<SequencerAddress>,
-
-    #[serde(alias = "state_root")]
-    pub state_commitment: StateCommitment,
-    pub status: Status,
-    pub timestamp: BlockTimestamp,
-
-    #[serde(default)]
-    pub starknet_version: StarknetVersion,
+impl From<pathfinder_common::BlockHeader> for BlockHeader {
+    fn from(value: pathfinder_common::BlockHeader) -> Self {
+        Self(value)
+    }
 }
 
-impl From<&Block> for BlockHeader {
-    fn from(b: &Block) -> Self {
-        Self {
-            block_hash: b.block_hash,
-            block_number: b.block_number,
-            gas_price: b.eth_l1_gas_price,
-            parent_block_hash: b.parent_block_hash,
-            sequencer_address: b.sequencer_address,
-            state_commitment: b.state_commitment,
-            status: b.status,
-            timestamp: b.timestamp,
-            starknet_version: b.starknet_version.clone(),
-        }
+impl serde::Serialize for BlockHeader {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        let pathfinder_common::BlockHeader {
+            hash,
+            parent_hash,
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            sequencer_address,
+            starknet_version,
+            class_commitment,
+            event_commitment,
+            state_commitment,
+            storage_commitment,
+            transaction_commitment,
+            transaction_count,
+            event_count,
+        } = &self.0;
+
+        let mut map = serializer.serialize_map(Some(15))?;
+
+        map.serialize_entry("hash", &hash)?;
+        map.serialize_entry("parent_hash", &parent_hash)?;
+        map.serialize_entry("number", &number)?;
+        map.serialize_entry("timestamp", &timestamp)?;
+        map.serialize_entry("eth_l1_gas_price", &eth_l1_gas_price)?;
+        map.serialize_entry("strk_l1_gas_price", &strk_l1_gas_price)?;
+        map.serialize_entry("sequencer_address", &sequencer_address)?;
+        map.serialize_entry("starknet_version", &starknet_version)?;
+        map.serialize_entry("class_commitment", &class_commitment)?;
+        map.serialize_entry("event_commitment", &event_commitment)?;
+        map.serialize_entry("state_commitment", &state_commitment)?;
+        map.serialize_entry("storage_commitment", &storage_commitment)?;
+        map.serialize_entry("transaction_commitment", &transaction_commitment)?;
+        map.serialize_entry("transaction_count", &transaction_count)?;
+        map.serialize_entry("event_count", &event_count)?;
+
+        map.end()
     }
 }

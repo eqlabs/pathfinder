@@ -7,7 +7,6 @@ use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, StateUpdate, TransactionCommitment,
 };
-use pathfinder_rpc::{BlockHeader, TopicBroadcasters};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
@@ -83,7 +82,6 @@ impl BlockChain {
 
 #[derive(Clone)]
 pub struct L2SyncContext<GatewayClient> {
-    pub broadcasters: Option<TopicBroadcasters>,
     pub sequencer: GatewayClient,
     pub chain: Chain,
     pub chain_id: ChainId,
@@ -101,7 +99,6 @@ where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
     let L2SyncContext {
-        broadcasters,
         sequencer,
         chain,
         chain_id,
@@ -277,8 +274,6 @@ where
             signature_download: t_signature,
         };
 
-        let block_header = BlockHeader::from(block.as_ref());
-
         tx_event
             .send(SyncEvent::Block(
                 (block, commitments),
@@ -288,13 +283,6 @@ where
             ))
             .await
             .context("Event channel closed")?;
-
-        if let Some(topics) = &broadcasters {
-            topics
-                .new_head
-                .send_if_receiving(block_header)
-                .context("Broadcasting failed")?;
-        }
     }
 }
 
@@ -637,7 +625,6 @@ mod tests {
             StorageAddress, StorageValue,
         };
         use pathfinder_crypto::Felt;
-        use pathfinder_rpc::TopicBroadcasters;
         use pathfinder_storage::Storage;
         use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::{
@@ -812,7 +799,6 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
-                broadcasters: Some(TopicBroadcasters::default()),
                 sequencer,
                 chain: Chain::GoerliTestnet,
                 chain_id: ChainId::GOERLI_TESTNET,
@@ -1172,7 +1158,6 @@ mod tests {
                 // Let's run the UUT
                 let mock = std::sync::Arc::new(mock);
                 let context = L2SyncContext {
-                    broadcasters: Some(TopicBroadcasters::default()),
                     sequencer: mock,
                     chain: Chain::GoerliTestnet,
                     chain_id: ChainId::GOERLI_TESTNET,

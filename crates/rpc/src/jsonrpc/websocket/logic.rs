@@ -269,6 +269,7 @@ async fn header_subscription(
                     "Lagging header stream, missed some events, closing subscription"
                 );
 
+                // No explicit break here, the loop will be broken by the dropped receiver.
                 ResponseEvent::SubscriptionClosed {
                     subscription_id,
                     reason: "Lagging stream, some headers were skipped. Closing subscription."
@@ -352,12 +353,9 @@ mod tests {
     use crate::jsonrpc::{RpcError, RpcResponse};
     use axum::routing::get;
     use futures::{SinkExt, StreamExt};
-    use pathfinder_common::BlockHash;
-    use pathfinder_common::StateCommitment;
     use serde::Serialize;
     use serde_json::value::RawValue;
     use serde_json::{json, Number, Value};
-    use starknet_gateway_types::reply::Status;
     use std::borrow::Cow;
     use std::time::Duration;
     use tokio::net::TcpStream;
@@ -461,17 +459,7 @@ mod tests {
     }
 
     fn header_sample() -> BlockHeader {
-        BlockHeader {
-            block_hash: BlockHash::default(),
-            block_number: Default::default(),
-            gas_price: None,
-            parent_block_hash: BlockHash::default(),
-            sequencer_address: None,
-            state_commitment: StateCommitment::default(),
-            status: Status::NotReceived,
-            timestamp: Default::default(),
-            starknet_version: Default::default(),
-        }
+        BlockHeader(Default::default())
     }
 
     struct Client {
