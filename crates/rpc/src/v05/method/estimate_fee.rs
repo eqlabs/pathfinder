@@ -29,13 +29,19 @@ impl From<anyhow::Error> for EstimateFeeError {
     }
 }
 
-impl From<pathfinder_executor::CallError> for EstimateFeeError {
-    fn from(value: pathfinder_executor::CallError) -> Self {
-        use pathfinder_executor::CallError::*;
+impl From<pathfinder_executor::TransactionExecutionError> for EstimateFeeError {
+    fn from(value: pathfinder_executor::TransactionExecutionError) -> Self {
+        use pathfinder_executor::TransactionExecutionError::*;
         match value {
-            ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
-            Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::ContractErrorV05 {
+                revert_error: format!(
+                    "Execution error at transaction index {}: {}",
+                    transaction_index, error
+                ),
+            },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
         }

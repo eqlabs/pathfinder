@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionHash};
-use pathfinder_executor::{CallError, ExecutionState};
+use pathfinder_executor::{ExecutionState, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
@@ -35,7 +35,6 @@ pub enum TraceBlockTransactionsError {
     Internal(anyhow::Error),
     Custom(anyhow::Error),
     BlockNotFound,
-    ContractErrorV05 { revert_error: String },
 }
 
 impl From<anyhow::Error> for TraceBlockTransactionsError {
@@ -49,9 +48,6 @@ impl From<TraceBlockTransactionsError> for crate::error::ApplicationError {
         match value {
             TraceBlockTransactionsError::Internal(e) => Self::Internal(e),
             TraceBlockTransactionsError::BlockNotFound => Self::BlockNotFound,
-            TraceBlockTransactionsError::ContractErrorV05 { revert_error } => {
-                Self::ContractErrorV05 { revert_error }
-            }
             TraceBlockTransactionsError::Custom(e) => Self::Custom(e),
         }
     }
@@ -66,16 +62,20 @@ impl From<ExecutionStateError> for TraceBlockTransactionsError {
     }
 }
 
-impl From<CallError> for TraceBlockTransactionsError {
-    fn from(value: CallError) -> Self {
+impl From<TransactionExecutionError> for TraceBlockTransactionsError {
+    fn from(value: TransactionExecutionError) -> Self {
+        use TransactionExecutionError::*;
         match value {
-            CallError::ContractNotFound => Self::Custom(anyhow::anyhow!("Contract not found")),
-            CallError::InvalidMessageSelector => {
-                Self::Custom(anyhow::anyhow!("Invalid message selector"))
-            }
-            CallError::Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
-            CallError::Internal(e) => Self::Internal(e),
-            CallError::Custom(e) => Self::Custom(e),
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::Custom(anyhow::anyhow!(
+                "Transaction execution failed at index {}: {}",
+                transaction_index,
+                error
+            )),
+            Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
         }
     }
 }

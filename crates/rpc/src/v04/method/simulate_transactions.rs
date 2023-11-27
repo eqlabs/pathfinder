@@ -5,7 +5,7 @@ use crate::{
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{types::TransactionSimulation, CallError};
+use pathfinder_executor::{types::TransactionSimulation, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 use starknet_gateway_types::trace as gateway_trace;
@@ -27,15 +27,18 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<CallError> for SimulateTransactionError {
-    fn from(value: CallError) -> Self {
-        use CallError::*;
+impl From<TransactionExecutionError> for SimulateTransactionError {
+    fn from(value: TransactionExecutionError) -> Self {
+        use TransactionExecutionError::*;
         match value {
-            ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::ContractError,
-            Reverted(revert_error) => {
-                Self::Custom(anyhow::anyhow!("Transaction reverted: {}", revert_error))
-            }
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::Custom(anyhow::anyhow!(
+                "Execution error at transaction index {}: {}",
+                transaction_index,
+                error
+            )),
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
         }

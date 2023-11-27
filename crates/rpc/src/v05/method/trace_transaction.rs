@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use pathfinder_executor::{CallError, ExecutionState};
+use pathfinder_executor::{ExecutionState, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 
@@ -42,16 +42,20 @@ impl From<ExecutionStateError> for TraceTransactionError {
     }
 }
 
-impl From<CallError> for TraceTransactionError {
-    fn from(value: CallError) -> Self {
+impl From<TransactionExecutionError> for TraceTransactionError {
+    fn from(value: TransactionExecutionError) -> Self {
+        use TransactionExecutionError::*;
         match value {
-            CallError::ContractNotFound => Self::Custom(anyhow::anyhow!("Contract not found")),
-            CallError::InvalidMessageSelector => {
-                Self::Custom(anyhow::anyhow!("Invalid message selector"))
-            }
-            CallError::Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
-            CallError::Internal(e) => Self::Internal(e),
-            CallError::Custom(e) => Self::Custom(e),
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::Custom(anyhow::anyhow!(
+                "Execution error at transaction index {}: {}",
+                transaction_index,
+                error
+            )),
+            Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
         }
     }
 }

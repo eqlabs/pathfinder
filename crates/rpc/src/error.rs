@@ -76,6 +76,11 @@ pub enum ApplicationError {
     ProofLimitExceeded { limit: u32, requested: u32 },
     #[error("Internal error")]
     GatewayError(starknet_gateway_types::error::StarknetError),
+    #[error("Transaction execution error")]
+    TransactionExecutionError {
+        transaction_index: usize,
+        error: String,
+    },
     /// Internal errors are errors whose details we don't want to show to the end user.
     /// These are logged, and a simple "internal error" message is shown to the end
     /// user.
@@ -107,6 +112,7 @@ impl ApplicationError {
             ApplicationError::TooManyKeysInFilter { .. } => 34,
             ApplicationError::ContractError => 40,
             ApplicationError::ContractErrorV05 { .. } => 40,
+            ApplicationError::TransactionExecutionError { .. } => 41,
             ApplicationError::InvalidContractClass => 50,
             ApplicationError::ClassAlreadyDeclared => 51,
             ApplicationError::InvalidTransactionNonce => 52,
@@ -162,6 +168,13 @@ impl ApplicationError {
             ApplicationError::UnsupportedContractClassVersion => None,
             ApplicationError::GatewayError(error) => Some(json!({
                 "error": error,
+            })),
+            ApplicationError::TransactionExecutionError {
+                transaction_index,
+                error,
+            } => Some(json!({
+                "transaction_index": transaction_index,
+                "execution_error": error,
             })),
             ApplicationError::Internal(_) => None,
             ApplicationError::Custom(cause) => {

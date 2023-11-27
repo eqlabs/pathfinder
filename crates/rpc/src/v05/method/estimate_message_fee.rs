@@ -26,13 +26,13 @@ impl From<anyhow::Error> for EstimateMessageFeeError {
     }
 }
 
-impl From<pathfinder_executor::CallError> for EstimateMessageFeeError {
-    fn from(c: pathfinder_executor::CallError) -> Self {
-        use pathfinder_executor::CallError::*;
+impl From<pathfinder_executor::TransactionExecutionError> for EstimateMessageFeeError {
+    fn from(c: pathfinder_executor::TransactionExecutionError) -> Self {
+        use pathfinder_executor::TransactionExecutionError::*;
         match c {
-            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
-            ContractNotFound => Self::ContractNotFound,
-            Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
+            ExecutionError { error, .. } => Self::ContractErrorV05 {
+                revert_error: format!("Execution error: {}", error),
+            },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
         }
@@ -111,6 +111,10 @@ pub async fn estimate_message_fee(
                 (header, None)
             }
         };
+
+        if !db.contract_exists(input.message.to_address, header.number.into())? {
+            return Err(EstimateMessageFeeError::ContractNotFound);
+        }
 
         let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
 
@@ -403,7 +407,7 @@ mod tests {
         let rpc = setup(Setup::Full).await.expect("RPC context");
         assert_matches::assert_matches!(
             estimate_message_fee(rpc, input).await,
-            Err(EstimateMessageFeeError::Custom(_))
+            Err(EstimateMessageFeeError::ContractErrorV05 { .. })
         );
     }
 }

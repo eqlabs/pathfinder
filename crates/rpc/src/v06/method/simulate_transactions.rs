@@ -5,7 +5,7 @@ use crate::{
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{types::TransactionSimulation, CallError};
+use pathfinder_executor::{types::TransactionSimulation, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -24,8 +24,10 @@ pub enum SimulateTransactionError {
     Internal(anyhow::Error),
     Custom(anyhow::Error),
     BlockNotFound,
-    ContractNotFound,
-    ContractErrorV05 { revert_error: String },
+    TransactionExecutionError {
+        transaction_index: usize,
+        error: String,
+    },
 }
 
 impl From<anyhow::Error> for SimulateTransactionError {
@@ -40,21 +42,28 @@ impl From<SimulateTransactionError> for crate::error::ApplicationError {
             SimulateTransactionError::Internal(internal) => Self::Internal(internal),
             SimulateTransactionError::Custom(internal) => Self::Custom(internal),
             SimulateTransactionError::BlockNotFound => Self::BlockNotFound,
-            SimulateTransactionError::ContractNotFound => Self::ContractNotFound,
-            SimulateTransactionError::ContractErrorV05 { revert_error } => {
-                Self::ContractErrorV05 { revert_error }
-            }
+            SimulateTransactionError::TransactionExecutionError {
+                transaction_index,
+                error,
+            } => Self::TransactionExecutionError {
+                transaction_index,
+                error,
+            },
         }
     }
 }
 
-impl From<CallError> for SimulateTransactionError {
-    fn from(value: CallError) -> Self {
-        use CallError::*;
+impl From<TransactionExecutionError> for SimulateTransactionError {
+    fn from(value: TransactionExecutionError) -> Self {
+        use TransactionExecutionError::*;
         match value {
-            ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
-            Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::TransactionExecutionError {
+                transaction_index,
+                error,
+            },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
         }
@@ -377,7 +386,7 @@ pub mod dto {
     }
 
     impl TryFrom<pathfinder_executor::types::TransactionTrace> for TransactionTrace {
-        type Error = pathfinder_executor::CallError;
+        type Error = pathfinder_executor::TransactionExecutionError;
 
         fn try_from(
             trace: pathfinder_executor::types::TransactionTrace,
@@ -425,7 +434,7 @@ pub mod dto {
     }
 
     impl TryFrom<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
-        type Error = pathfinder_executor::CallError;
+        type Error = pathfinder_executor::TransactionExecutionError;
 
         fn try_from(
             trace: pathfinder_executor::types::DeployAccountTransactionTrace,
@@ -498,7 +507,7 @@ pub mod dto {
     }
 
     impl TryFrom<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
-        type Error = pathfinder_executor::CallError;
+        type Error = pathfinder_executor::TransactionExecutionError;
 
         fn try_from(
             trace: pathfinder_executor::types::L1HandlerTransactionTrace,
@@ -525,7 +534,7 @@ pub mod dto {
     }
 
     impl TryFrom<TransactionSimulation> for SimulatedTransaction {
-        type Error = pathfinder_executor::CallError;
+        type Error = pathfinder_executor::TransactionExecutionError;
 
         fn try_from(tx: TransactionSimulation) -> Result<Self, Self::Error> {
             Ok(dto::SimulatedTransaction {

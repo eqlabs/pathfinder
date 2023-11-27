@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use blockifier::{
     state::{cached_state::CachedState, errors::StateError, state_api::State},
     transaction::transaction_execution::Transaction,
-    transaction::{errors::TransactionExecutionError, transactions::ExecutableTransaction},
+    transaction::transactions::ExecutableTransaction,
 };
 use pathfinder_common::{
     CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{
-    error::CallError,
+    error::TransactionExecutionError,
     execution_state::ExecutionState,
     types::{FeeEstimate, TransactionSimulation, TransactionTrace},
 };
@@ -32,7 +32,7 @@ pub fn simulate(
     transactions: Vec<Transaction>,
     skip_validate: bool,
     skip_fee_charge: bool,
-) -> Result<Vec<TransactionSimulation>, CallError> {
+) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
     let gas_price: U256 = execution_state.header.eth_l1_gas_price.0.into();
     let block_number = execution_state.header.number;
 
@@ -89,7 +89,10 @@ pub fn simulate(
             }
             Err(error) => {
                 tracing::debug!(%error, %transaction_idx, "Transaction simulation failed");
-                return Err(error.into());
+                return Err(TransactionExecutionError::ExecutionError {
+                    transaction_index: transaction_idx,
+                    error: error.to_string(),
+                });
             }
         }
     }
@@ -102,7 +105,7 @@ pub fn trace_one(
     target_transaction_hash: TransactionHash,
     charge_fee: bool,
     validate: bool,
-) -> Result<TransactionTrace, CallError> {
+) -> Result<TransactionTrace, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
     for (transaction_idx, tx) in transactions.into_iter().enumerate() {
@@ -113,7 +116,12 @@ pub fn trace_one(
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
+        let tx_info = tx
+            .execute(&mut tx_state, &block_context, charge_fee, validate)
+            .map_err(|e| TransactionExecutionError::ExecutionError {
+                transaction_index: transaction_idx,
+                error: e.to_string(),
+            })?;
         let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
         tx_state.commit();
 
@@ -123,7 +131,7 @@ pub fn trace_one(
         }
     }
 
-    Err(CallError::Internal(anyhow::anyhow!(
+    Err(TransactionExecutionError::Internal(anyhow::anyhow!(
         "Transaction hash not found: {}",
         target_transaction_hash
     )))
@@ -134,7 +142,7 @@ pub fn trace_all(
     transactions: Vec<Transaction>,
     charge_fee: bool,
     validate: bool,
-) -> Result<Vec<(TransactionHash, TransactionTrace)>, CallError> {
+) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
     let mut ret = Vec::with_capacity(transactions.len());
@@ -146,7 +154,12 @@ pub fn trace_all(
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = tx.execute(&mut tx_state, &block_context, charge_fee, validate)?;
+        let tx_info = tx
+            .execute(&mut tx_state, &block_context, charge_fee, validate)
+            .map_err(|e| TransactionExecutionError::ExecutionError {
+                transaction_index: transaction_idx,
+                error: e.to_string(),
+            })?;
         let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
         tx_state.commit();
 
@@ -277,7 +290,7 @@ fn to_trace(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,
-) -> Result<TransactionTrace, TransactionExecutionError> {
+) -> Result<TransactionTrace, blockifier::transaction::errors::TransactionExecutionError> {
     let validate_invocation = execution_info
         .validate_call_info
         .map(TryInto::try_into)

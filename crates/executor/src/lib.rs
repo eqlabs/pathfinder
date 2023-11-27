@@ -14,7 +14,7 @@ pub mod types;
 pub use block_context::ETH_FEE_TOKEN_ADDRESS;
 pub use call::call;
 pub use class::{parse_casm_definition, parse_deprecated_class_definition};
-pub use error::CallError;
+pub use error::{CallError, TransactionExecutionError};
 pub use estimate::estimate;
 pub use execution_state::ExecutionState;
 pub use felt::{IntoFelt, IntoStarkFelt};
