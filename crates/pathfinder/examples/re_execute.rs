@@ -155,7 +155,7 @@ fn execute(storage: Storage, chain_id: ChainId, rx: crossbeam_channel::Receiver<
             }
         };
 
-        match pathfinder_executor::estimate(execution_state, transactions) {
+        match pathfinder_executor::estimate(execution_state, transactions, false) {
             Ok(fee_estimates) => {
                 for (estimate, receipt) in fee_estimates.iter().zip(work.receipts.iter()) {
                     if let Some(actual_fee) = receipt.actual_fee {

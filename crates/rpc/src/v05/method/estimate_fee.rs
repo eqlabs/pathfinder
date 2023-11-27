@@ -135,7 +135,7 @@ pub async fn estimate_fee(
             .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let result = pathfinder_executor::estimate(state, transactions)?;
+        let result = pathfinder_executor::estimate(state, transactions, false)?;
 
         Ok::<_, EstimateFeeError>(result)
     })
