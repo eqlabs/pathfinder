@@ -28,7 +28,7 @@ pub struct TraceTransactionOutput(pub TransactionTrace);
 pub enum TraceTransactionError {
     Internal(anyhow::Error),
     Custom(anyhow::Error),
-    InvalidTxnHash,
+    TxnHashNotFound,
     NoTraceAvailable(TraceError),
     ContractErrorV05 { revert_error: String },
 }
@@ -83,7 +83,7 @@ impl From<super::trace_block_transactions::TraceConversionError> for TraceTransa
 impl From<TraceTransactionError> for ApplicationError {
     fn from(value: TraceTransactionError) -> Self {
         match value {
-            TraceTransactionError::InvalidTxnHash => ApplicationError::InvalidTxnHash,
+            TraceTransactionError::TxnHashNotFound => ApplicationError::TxnHashNotFound,
             TraceTransactionError::NoTraceAvailable(status) => {
                 ApplicationError::NoTraceAvailable(status)
             }
@@ -156,7 +156,7 @@ pub async fn trace_transaction(
         } else {
             let block_hash = db
                 .transaction_block_hash(input.transaction_hash)?
-                .ok_or(TraceTransactionError::InvalidTxnHash)?;
+                .ok_or(TraceTransactionError::TxnHashNotFound)?;
 
             let header = db
                 .block_header(block_hash.into())
