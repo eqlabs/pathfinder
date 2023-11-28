@@ -44,7 +44,7 @@ async-trait = "0.1.73"
 axum = { version = "0.6.19", features = ["macros"] }
 base64 = "0.13.1"
 bitvec = "1.0.1"
-blockifier = "=0.4.0-rc8"
+blockifier = "=0.4.0-rc9.1"
 bytes = "1.4.0"
 # This one needs to match the version used by blockifier
 cairo-vm = "=0.8.2"
@@ -70,7 +70,7 @@ serde_json = "1.0.105"
 serde_with = "3.0.0"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
-starknet_api = "=0.6.0-rc2"
+starknet_api = "=0.6.0-rc3"
 thiserror = "1.0.48"
 tokio = "1.29.1"
 tracing = "0.1.37"
