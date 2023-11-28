@@ -26,7 +26,9 @@ impl From<pathfinder_executor::CallError> for CallError {
         match value {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
-            Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
+            ContractError(error) => Self::ContractErrorV05 {
+                revert_error: format!("Execution error: {}", error),
+            },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
         }

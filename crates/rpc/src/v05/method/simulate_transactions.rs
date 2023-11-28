@@ -5,7 +5,7 @@ use crate::{
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{types::TransactionSimulation, CallError};
+use pathfinder_executor::{types::TransactionSimulation, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -48,13 +48,19 @@ impl From<SimulateTransactionError> for crate::error::ApplicationError {
     }
 }
 
-impl From<CallError> for SimulateTransactionError {
-    fn from(value: CallError) -> Self {
-        use CallError::*;
+impl From<TransactionExecutionError> for SimulateTransactionError {
+    fn from(value: TransactionExecutionError) -> Self {
+        use TransactionExecutionError::*;
         match value {
-            ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
-            Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::ContractErrorV05 {
+                revert_error: format!(
+                    "Execution error at transaction index {}: {}",
+                    transaction_index, error
+                ),
+            },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
         }

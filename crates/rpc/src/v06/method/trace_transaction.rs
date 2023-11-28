@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use pathfinder_executor::{CallError, ExecutionState};
+use pathfinder_executor::{ExecutionState, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 
@@ -28,7 +28,7 @@ pub struct TraceTransactionOutput(pub TransactionTrace);
 pub enum TraceTransactionError {
     Internal(anyhow::Error),
     Custom(anyhow::Error),
-    InvalidTxnHash,
+    TxnHashNotFound,
     NoTraceAvailable(TraceError),
     ContractErrorV05 { revert_error: String },
 }
@@ -42,16 +42,20 @@ impl From<ExecutionStateError> for TraceTransactionError {
     }
 }
 
-impl From<CallError> for TraceTransactionError {
-    fn from(value: CallError) -> Self {
+impl From<TransactionExecutionError> for TraceTransactionError {
+    fn from(value: TransactionExecutionError) -> Self {
+        use TransactionExecutionError::*;
         match value {
-            CallError::ContractNotFound => Self::Custom(anyhow::anyhow!("Contract not found")),
-            CallError::InvalidMessageSelector => {
-                Self::Custom(anyhow::anyhow!("Invalid message selector"))
-            }
-            CallError::Reverted(revert_error) => Self::ContractErrorV05 { revert_error },
-            CallError::Internal(e) => Self::Internal(e),
-            CallError::Custom(e) => Self::Custom(e),
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::Custom(anyhow::anyhow!(
+                "Transaction execution failed at index {}: {}",
+                transaction_index,
+                error
+            )),
+            Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
         }
     }
 }
@@ -68,7 +72,6 @@ impl From<super::trace_block_transactions::TraceBlockTransactionsError> for Trac
         match e {
             Internal(e) => Self::Internal(e),
             BlockNotFound => Self::Custom(anyhow::anyhow!("Block not found")),
-            ContractErrorV05 { revert_error } => Self::ContractErrorV05 { revert_error },
             Custom(e) => Self::Custom(e),
         }
     }
@@ -83,7 +86,7 @@ impl From<super::trace_block_transactions::TraceConversionError> for TraceTransa
 impl From<TraceTransactionError> for ApplicationError {
     fn from(value: TraceTransactionError) -> Self {
         match value {
-            TraceTransactionError::InvalidTxnHash => ApplicationError::InvalidTxnHash,
+            TraceTransactionError::TxnHashNotFound => ApplicationError::TxnHashNotFound,
             TraceTransactionError::NoTraceAvailable(status) => {
                 ApplicationError::NoTraceAvailable(status)
             }
@@ -156,7 +159,7 @@ pub async fn trace_transaction(
         } else {
             let block_hash = db
                 .transaction_block_hash(input.transaction_hash)?
-                .ok_or(TraceTransactionError::InvalidTxnHash)?;
+                .ok_or(TraceTransactionError::TxnHashNotFound)?;
 
             let header = db
                 .block_header(block_hash.into())
