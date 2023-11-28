@@ -11,6 +11,7 @@ use primitive_types::U256;
 pub fn estimate(
     mut execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
+    skip_validate: bool,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let gas_price: U256 = execution_state.header.eth_l1_gas_price.0.into();
     let block_number = execution_state.header.number;
@@ -24,7 +25,7 @@ pub fn estimate(
         let fee_type = &super::transaction::fee_type(&transaction);
 
         let tx_info = transaction
-            .execute(&mut state, &block_context, false, true)
+            .execute(&mut state, &block_context, false, !skip_validate)
             .and_then(|mut tx_info| {
                 if tx_info.actual_fee.0 == 0 {
                     // fee is not calculated by default for L1 handler transactions and if max_fee is zero, we have to do that explicitly

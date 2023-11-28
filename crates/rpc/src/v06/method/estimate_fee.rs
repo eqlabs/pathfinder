@@ -11,7 +11,17 @@ use pathfinder_common::BlockId;
 #[serde(deny_unknown_fields)]
 pub struct EstimateFeeInput {
     pub request: Vec<BroadcastedTransaction>,
+    pub simulation_flags: SimulationFlags,
     pub block_id: BlockId,
+}
+
+#[derive(Debug, serde::Deserialize, Eq, PartialEq)]
+pub struct SimulationFlags(pub Vec<SimulationFlag>);
+
+#[derive(Debug, serde::Deserialize, Eq, PartialEq)]
+pub enum SimulationFlag {
+    #[serde(rename = "SKIP_VALIDATE")]
+    SkipValidate,
 }
 
 #[derive(Debug)]
@@ -132,13 +142,19 @@ pub async fn estimate_fee(
 
         let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
 
+        let skip_validate = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &SimulationFlag::SkipValidate);
+
         let transactions = input
             .request
             .iter()
             .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let result = pathfinder_executor::estimate(state, transactions)?;
+        let result = pathfinder_executor::estimate(state, transactions, skip_validate)?;
 
         Ok::<_, EstimateFeeError>(result)
     })
@@ -192,12 +208,14 @@ pub(crate) mod tests {
                         ]
                     }
                 ],
+                ["SKIP_VALIDATE"],
                 { "block_hash": "0xabcde" }
             ]);
 
             let input = serde_json::from_value::<EstimateFeeInput>(positional).unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
+                simulation_flags: SimulationFlags(vec![SimulationFlag::SkipValidate]),
                 block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
@@ -221,11 +239,13 @@ pub(crate) mod tests {
                         ]
                     }
                 ],
+                "simulation_flags": ["SKIP_VALIDATE"],
                 "block_id": { "block_hash": "0xabcde" }
             });
             let input = serde_json::from_value::<EstimateFeeInput>(named_args).unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
+                simulation_flags: SimulationFlags(vec![SimulationFlag::SkipValidate]),
                 block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
@@ -347,6 +367,7 @@ pub(crate) mod tests {
                     invoke_transaction,
                     invoke_v0_transaction,
                 ],
+                simulation_flags: SimulationFlags(vec![]),
                 block_id: BlockId::Number(last_block_header.number),
             };
             let result = estimate_fee(context, input).await.unwrap();
