@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `sync.enable` configuration option to enable/disable the sync process. Defaults to enabled. 
 - Support for Sepolia testnet via `--network testnet-sepolia`
 - Support for Sepolia integration via `--network integration-sepolia`
+- Support for Starknet 0.13.0.
 
 ### Changed
 
