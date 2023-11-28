@@ -30,7 +30,7 @@
             },
             "errors": [
                 {
-                    "$ref": "#/components/errors/INVALID_TXN_HASH"
+                    "$ref": "#/components/errors/TXN_HASH_NOT_FOUND"
                 },
                 {
                     "$ref": "#/components/errors/NO_TRACE_AVAILABLE"
@@ -39,7 +39,7 @@
         },
         {
             "name": "starknet_simulateTransactions",
-            "summary": "simulate a given sequence of transactions on the requested state, and generate the execution traces. If one of the transactions is reverted, raises CONTRACT_ERROR.",
+            "summary": "Simulate a given sequence of transactions on the requested state, and generate the execution traces. Note that some of the transactions may revert, in which case no error is thrown, but revert details can be seen on the returned trace object. . Note that some of the transactions may revert, this will be reflected by the revert_error property in the trace. Other types of failures (e.g. unexpected error or failure in the validation phase) will result in TRANSACTION_EXECUTION_ERROR.",
             "params": [
                 {
                     "name": "block_id",
@@ -97,13 +97,10 @@
             },
             "errors": [
                 {
-                    "$ref": "#/components/errors/CONTRACT_NOT_FOUND"
-                },
-                {
-                    "$ref": "#/components/errors/CONTRACT_ERROR"
-                },
-                {
                     "$ref": "#/components/errors/BLOCK_NOT_FOUND"
+                },
+                {
+                    "$ref": "#/components/errors/TRANSACTION_EXECUTION_ERROR"
                 }
             ]
         },
@@ -195,11 +192,8 @@
                             }
                         },
                         "required": [
-                            "validate_invocation",
-                            "execute_invocation",
-                            "fee_transfer_invocation",
-                            "state_diff",
-                            "type"
+                            "type",
+                            "execute_invocation"
                         ]
                     },
                     {
@@ -227,9 +221,6 @@
                             }
                         },
                         "required": [
-                            "validate_invocation",
-                            "fee_transfer_invocation",
-                            "state_diff",
                             "type"
                         ]
                     },
@@ -262,11 +253,8 @@
                             }
                         },
                         "required": [
-                            "validate_invocation",
-                            "constructor_invocation",
-                            "fee_transfer_invocation",
-                            "state_diff",
-                            "type"
+                            "type",
+                            "constructor_invocation"
                         ]
                     },
                     {
@@ -292,9 +280,8 @@
                             }
                         },
                         "required": [
-                            "function_invocation",
-                            "state_diff",
-                            "type"
+                            "type",
+                            "function_invocation"
                         ]
                     }
                 ]
@@ -488,21 +475,14 @@
                     }
                 }
             },
-            "CONTRACT_NOT_FOUND": {
-                "code": 20,
-                "message": "Contract not found"
-            },
-            "INVALID_TXN_HASH": {
-                "code": 25,
-                "message": "Invalid transaction hash"
+            "TXN_HASH_NOT_FOUND": {
+                "$ref": "./api/starknet_api_openrpc.json#/components/errors/TXN_HASH_NOT_FOUND"
             },
             "BLOCK_NOT_FOUND": {
-                "code": 24,
-                "message": "Block not found"
+                "$ref": "./api/starknet_api_openrpc.json#/components/errors/BLOCK_NOT_FOUND"
             },
-            "CONTRACT_ERROR": {
-                "code": 40,
-                "message": "Contract error"
+            "TRANSACTION_EXECUTION_ERROR": {
+                "$ref": "./api/starknet_api_openrpc.json#/components/errors/TRANSACTION_EXECUTION_ERROR"
             }
         }
     }
