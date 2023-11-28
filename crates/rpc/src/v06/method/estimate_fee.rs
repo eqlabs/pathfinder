@@ -11,11 +11,12 @@ use pathfinder_common::BlockId;
 #[serde(deny_unknown_fields)]
 pub struct EstimateFeeInput {
     pub request: Vec<BroadcastedTransaction>,
+    #[serde(default)]
     pub simulation_flags: SimulationFlags,
     pub block_id: BlockId,
 }
 
-#[derive(Debug, serde::Deserialize, Eq, PartialEq)]
+#[derive(Debug, Default, serde::Deserialize, Eq, PartialEq)]
 pub struct SimulationFlags(pub Vec<SimulationFlag>);
 
 #[derive(Debug, serde::Deserialize, Eq, PartialEq)]
@@ -246,6 +247,35 @@ pub(crate) mod tests {
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
                 simulation_flags: SimulationFlags(vec![SimulationFlag::SkipValidate]),
+                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+            };
+            assert_eq!(input, expected);
+        }
+
+        #[test]
+        fn named_args_with_no_simulation_flags() {
+            let named_args = json!({
+                "request": [
+                    {
+                        "type": "INVOKE",
+                        "version": "0x100000000000000000000000000000001",
+                        "max_fee": "0x6",
+                        "signature": [
+                            "0x7"
+                        ],
+                        "nonce": "0x8",
+                        "sender_address": "0xaaa",
+                        "calldata": [
+                            "0xff"
+                        ]
+                    }
+                ],
+                "block_id": { "block_hash": "0xabcde" }
+            });
+            let input = serde_json::from_value::<EstimateFeeInput>(named_args).unwrap();
+            let expected = EstimateFeeInput {
+                request: vec![test_invoke_txn()],
+                simulation_flags: SimulationFlags(vec![]),
                 block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
