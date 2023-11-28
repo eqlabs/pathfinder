@@ -15,7 +15,7 @@ use serde_with::{serde_as, skip_serializing_none};
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct ResourcePrice {
     #[serde_as(as = "pathfinder_serde::GasPriceAsHexStr")]
-    pub price_in_strk: GasPrice,
+    pub price_in_fri: GasPrice,
     #[serde_as(as = "pathfinder_serde::GasPriceAsHexStr")]
     pub price_in_wei: GasPrice,
 }
@@ -48,7 +48,7 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
             timestamp: header.timestamp,
             sequencer_address: header.sequencer_address,
             l1_gas_price: ResourcePrice {
-                price_in_strk: header.strk_l1_gas_price,
+                price_in_fri: header.strk_l1_gas_price,
                 price_in_wei: header.eth_l1_gas_price,
             },
             starknet_version: header.starknet_version,
@@ -72,7 +72,7 @@ impl BlockHeader {
                     // Default value for cairo <0.8.0 is 0
                     .unwrap_or(SequencerAddress(Felt::ZERO)),
                 l1_gas_price: ResourcePrice {
-                    price_in_strk: block.strk_l1_gas_price.unwrap_or_default(),
+                    price_in_fri: block.strk_l1_gas_price.unwrap_or_default(),
                     price_in_wei: block.eth_l1_gas_price.unwrap_or_default(),
                 },
                 starknet_version: block.starknet_version,
@@ -85,7 +85,7 @@ impl BlockHeader {
                 timestamp: pending.timestamp,
                 sequencer_address: pending.sequencer_address,
                 l1_gas_price: ResourcePrice {
-                    price_in_strk: pending.strk_l1_gas_price.unwrap_or_default(),
+                    price_in_fri: pending.strk_l1_gas_price.unwrap_or_default(),
                     price_in_wei: pending.eth_l1_gas_price,
                 },
                 starknet_version: pending.starknet_version,
