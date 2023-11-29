@@ -582,7 +582,7 @@
         {
             "name": "starknet_estimateFee",
             "summary": "estimate the fee for of StarkNet transactions",
-            "description": "estimates the resources required by transactions when applied on a given state",
+            "description": "Estimates the resources required by a given sequence of transactions when applied on a given state. If one of the transactions reverts or fails due to any reason (e.g. validation failure or an internal error), a TRANSACTION_EXECUTION_ERROR is returned. For v0-2 transactions the estimate is given in wei, and for v3 transactions it is given in fri.",
             "params": [
                 {
                     "name": "request",
@@ -596,6 +596,17 @@
                         }
                     },
                     "required": true
+                },
+                {
+                    "name": "simulation_flags",
+                    "description": "describes what parts of the transaction should be executed",
+                    "required": false,
+                    "schema": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SIMULATION_FLAG_FOR_ESTIMATE_FEE"
+                        }
+                    }
                 },
                 {
                     "name": "block_id",
@@ -621,10 +632,7 @@
             },
             "errors": [
                 {
-                    "$ref": "#/components/errors/CONTRACT_NOT_FOUND"
-                },
-                {
-                    "$ref": "#/components/errors/CONTRACT_ERROR"
+                    "$ref": "#/components/errors/TRANSACTION_EXECUTION_ERROR"
                 },
                 {
                     "$ref": "#/components/errors/BLOCK_NOT_FOUND"
@@ -662,9 +670,6 @@
                 }
             },
             "errors": [
-                {
-                    "$ref": "#/components/errors/CONTRACT_NOT_FOUND"
-                },
                 {
                     "$ref": "#/components/errors/CONTRACT_ERROR"
                 },
@@ -1103,6 +1108,18 @@
                 "description": "An integer number in hex format (0x...)",
                 "type": "string",
                 "pattern": "^0x[a-fA-F0-9]+$"
+            },
+            "u64": {
+                "type": "string",
+                "title": "u64",
+                "description": "64 bit integers, represented by hex string of length at most 16",
+                "pattern": "^0x(0|[a-fA-F1-9]{1}[a-fA-F0-9]{0,15})$"
+            },
+            "u128": {
+                "type": "string",
+                "title": "u128",
+                "description": "64 bit integers, represented by hex string of length at most 32",
+                "pattern": "^0x(0|[a-fA-F1-9]{1}[a-fA-F0-9]{0,31})$"
             },
             "CHAIN_ID": {
                 "title": "Chain id",
@@ -1735,7 +1752,7 @@
                                 "description": "Version of the transaction scheme",
                                 "type": "string",
                                 "enum": [
-                                    "0x0",
+                                    "0x1",
                                     "0x100000000000000000000000000000001"
                                 ]
                             },
@@ -1885,7 +1902,7 @@
                             },
                             "tip": {
                                 "title": "Tip",
-                                "$ref": "#/components/schemas/FELT",
+                                "$ref": "#/components/schemas/u64",
                                 "description": "the tip for the transaction"
                             },
                             "paymaster_data": {
@@ -2150,7 +2167,7 @@
                             },
                             "tip": {
                                 "title": "Tip",
-                                "$ref": "#/components/schemas/FELT",
+                                "$ref": "#/components/schemas/u64",
                                 "description": "the tip for the transaction"
                             },
                             "paymaster_data": {
@@ -2328,7 +2345,7 @@
                     },
                     "tip": {
                         "title": "Tip",
-                        "$ref": "#/components/schemas/FELT",
+                        "$ref": "#/components/schemas/u64",
                         "description": "the tip for the transaction"
                     },
                     "paymaster_data": {
@@ -2581,7 +2598,7 @@
                             },
                             "tip": {
                                 "title": "Tip",
-                                "$ref": "#/components/schemas/FELT",
+                                "$ref": "#/components/schemas/u64",
                                 "description": "the tip for the transaction"
                             },
                             "paymaster_data": {
@@ -3614,6 +3631,21 @@
                     "type"
                 ]
             },
+            "SIMULATION_FLAG_FOR_ESTIMATE_FEE": {
+                "type": "string",
+                "enum": [
+                    "SKIP_VALIDATE"
+                ],
+                "description": "Flags that indicate how to simulate a given transaction. By default, the sequencer behavior is replicated locally"
+            },
+            "PRICE_UNIT": {
+                "title": "price unit",
+                "type": "string",
+                "enum": [
+                    "WEI",
+                    "FRI"
+                ]
+            },
             "FEE_ESTIMATE": {
                 "title": "Fee estimation",
                 "type": "object",
@@ -3625,19 +3657,25 @@
                     },
                     "gas_price": {
                         "title": "Gas price",
-                        "description": "The gas price (in gwei) that was used in the cost estimation",
+                        "description": "The gas price (in gwei or fri, depending on the tx version) that was used in the cost estimation",
                         "$ref": "#/components/schemas/FELT"
                     },
                     "overall_fee": {
                         "title": "Overall fee",
-                        "description": "The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price",
+                        "description": "The estimated fee for the transaction (in gwei or fri, depending on the tx version), product of gas_consumed and gas_price",
                         "$ref": "#/components/schemas/FELT"
+                    },
+                    "unit": {
+                        "title": "Fee unit",
+                        "description": "units in which the fee is given",
+                        "$ref": "#/components/schemas/PRICE_UNIT"
                     }
                 },
                 "required": [
                     "gas_consumed",
                     "gas_price",
-                    "overall_fee"
+                    "overall_fee",
+                    "unit"
                 ]
             },
             "FEE_PAYMENT": {
@@ -3651,12 +3689,9 @@
                         "$ref": "#/components/schemas/FELT"
                     },
                     "unit": {
-                        "title": "fee unit",
-                        "type": "string",
-                        "enum": [
-                            "WEI",
-                            "STRK"
-                        ]
+                        "title": "Fee unit",
+                        "description": "units in which the fee is given",
+                        "$ref": "#/components/schemas/PRICE_UNIT"
                     }
                 },
                 "required": [
@@ -3698,12 +3733,12 @@
                     "max_amount": {
                         "title": "max amount",
                         "description": "the max amount of the resource that can be used in the tx",
-                        "$ref": "#/components/schemas/FELT"
+                        "$ref": "#/components/schemas/u64"
                     },
                     "max_price_per_unit": {
                         "title": "max price",
                         "description": "the max price per unit of this resource for this tx",
-                        "$ref": "#/components/schemas/FELT"
+                        "$ref": "#/components/schemas/u128"
                     }
                 },
                 "required": [
@@ -3714,9 +3749,9 @@
             "RESOURCE_PRICE": {
                 "type": "object",
                 "properties": {
-                    "price_in_strk": {
-                        "title": "price in strk",
-                        "description": "the price of one unit of the given resource, denominated in strk",
+                    "price_in_fri": {
+                        "title": "price in fri",
+                        "description": "the price of one unit of the given resource, denominated in fri (10^-18 strk)",
                         "$ref": "#/components/schemas/FELT"
                     },
                     "price_in_wei": {
@@ -3727,7 +3762,7 @@
                 },
                 "required": [
                     "price_in_wei",
-                    "price_in_strk"
+                    "price_in_fri"
                 ]
             },
             "EXECUTION_RESOURCES": {
@@ -3876,6 +3911,30 @@
                         }
                     },
                     "required": "revert_error"
+                }
+            },
+            "TRANSACTION_EXECUTION_ERROR": {
+                "code": 41,
+                "message": "Transaction execution error",
+                "data": {
+                    "type": "object",
+                    "description": "More data about the execution failure",
+                    "properties": {
+                        "transaction_index": {
+                            "title": "Transaction index",
+                            "description": "The index of the first transaction failing in a sequence of given transactions",
+                            "type": "integer"
+                        },
+                        "execution_error": {
+                            "title": "revert error",
+                            "description": "a string encoding the execution trace up to the point of failure",
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "transaction_index",
+                        "execution_error"
+                    ]
                 }
             }
         }
