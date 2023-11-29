@@ -1876,14 +1876,14 @@ pub mod add_transaction {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
 pub struct BlockSignature {
     pub block_number: BlockNumber,
     pub signature: [BlockCommitmentSignatureElem; 2],
     pub signature_input: BlockSignatureInput,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
 pub struct BlockSignatureInput {
     pub block_hash: BlockHash,
     pub state_diff_commitment: StateDiffCommitment,
