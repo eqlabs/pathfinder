@@ -36,19 +36,19 @@ where
     R: StateReader,
 {
     /// Build a `CachedState` on top of an `LruCachedReader`, sharing the same underlying cache.
-    pub fn new_cached_state(inner_reader: R) -> anyhow::Result<CachedState<LruCachedReader<R>>> {
+    pub fn _new_cached_state(inner_reader: R) -> anyhow::Result<CachedState<LruCachedReader<R>>> {
         // `CachedState` already has a [move_classes_to_global_cache](https://docs.rs/blockifier/0.3.0-rc0/blockifier/state/cached_state/struct.CachedState.html#method.move_classes_to_global_cache)
         // method that we might want to use instead, but relying on it would make this cache much
         // less self-contained as these calls would have to be made in various places.
         // One of the reasons for this is that we can't wrap the `CachedReader` in another layer of
         // the `State` trait as `blockifier` explicitly requires a `CachedReader` in the signature
         // of some methods we use.
-        let reader = Self::new(inner_reader)?;
+        let reader = Self::_new(inner_reader)?;
         let cache = reader.compiled_class_cache.clone();
         Ok(CachedState::new(reader, cache))
     }
 
-    fn new(inner_reader: R) -> anyhow::Result<Self> {
+    fn _new(inner_reader: R) -> anyhow::Result<Self> {
         lazy_static::lazy_static!(
             static ref CONTRACT_CACHE: GlobalContractCache = {
                 let inner = SizedCache::with_size(128);

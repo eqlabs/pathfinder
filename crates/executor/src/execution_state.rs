@@ -1,9 +1,12 @@
 use super::state_reader::PathfinderStateReader;
-use crate::{state_reader::LruCachedReader, IntoStarkFelt};
+use crate::IntoStarkFelt;
 use anyhow::Context;
 use blockifier::{
     block_context::BlockContext,
-    state::{cached_state::CachedState, state_api::State},
+    state::{
+        cached_state::{CachedState, GlobalContractCache},
+        state_api::State,
+    },
 };
 use pathfinder_common::{BlockHeader, ChainId, StateUpdate};
 
@@ -18,10 +21,7 @@ pub struct ExecutionState<'tx> {
 impl<'tx> ExecutionState<'tx> {
     pub(super) fn starknet_state(
         &mut self,
-    ) -> anyhow::Result<(
-        CachedState<LruCachedReader<PathfinderStateReader<'_>>>,
-        BlockContext,
-    )> {
+    ) -> anyhow::Result<(CachedState<PathfinderStateReader<'_>>, BlockContext)> {
         let block_context = super::block_context::construct_block_context(self)?;
 
         let block_number = if self.execute_on_parent_state {
@@ -35,7 +35,7 @@ impl<'tx> ExecutionState<'tx> {
             block_number,
             self.pending_state.is_some(),
         );
-        let mut cached_state = LruCachedReader::new_cached_state(raw_reader)?;
+        let mut cached_state = CachedState::new(raw_reader, GlobalContractCache::default());
 
         // Perform system contract updates if we are executing ontop of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
