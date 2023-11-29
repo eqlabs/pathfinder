@@ -463,6 +463,10 @@ impl<'inner> Transaction<'inner> {
         signature::insert_signature(self, block_number, signature)
     }
 
+    pub fn signature(&self, block: BlockId) -> anyhow::Result<Option<BlockCommitmentSignature>> {
+        signature::signature(self, block)
+    }
+
     pub(self) fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.0
     }
