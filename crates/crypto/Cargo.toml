@@ -14,7 +14,6 @@ path = "src/lib.rs"
 [build-dependencies]
 
 [dependencies]
-ark-ec = { version = "0.4.2" }
 ark-ff = { version = "0.4.2", default-features = false }
 bitvec = { workspace = true }
 fake = { workspace = true }
@@ -25,7 +24,6 @@ serde = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 criterion = { workspace = true }
-hex = { workspace = true }
 num-bigint = { workspace = true }
 pretty_assertions = { workspace = true }
 serde_json = { workspace = true }

@@ -5697,7 +5697,6 @@ name = "p2p"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "assert_matches",
  "async-trait",
  "base64 0.13.1",
  "clap",
@@ -5974,13 +5973,11 @@ dependencies = [
 name = "pathfinder-crypto"
 version = "0.1.0"
 dependencies = [
- "ark-ec",
  "ark-ff",
  "assert_matches",
  "bitvec",
  "criterion",
  "fake",
- "hex",
  "num-bigint",
  "pretty_assertions",
  "rand",
@@ -6092,7 +6089,6 @@ dependencies = [
  "test-log",
  "thiserror",
  "tokio",
- "tokio-stream",
  "tokio-tungstenite 0.20.1",
  "tower",
  "tower-http",
@@ -8157,7 +8153,6 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
- "tokio-util",
 ]
 
 [[package]]
