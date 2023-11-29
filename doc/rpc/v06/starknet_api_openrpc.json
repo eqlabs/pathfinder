@@ -600,7 +600,7 @@
                 {
                     "name": "simulation_flags",
                     "description": "describes what parts of the transaction should be executed",
-                    "required": false,
+                    "required": true,
                     "schema": {
                         "type": "array",
                         "items": {
@@ -2232,6 +2232,7 @@
             "DEPLOY_ACCOUNT_TXN_V1": {
                 "title": "Deploy account transaction",
                 "description": "Deploys an account contract, charges fee from the pre-funded account addresses",
+                "type": "object",
                 "properties": {
                     "type": {
                         "title": "Deploy account",
@@ -2295,6 +2296,7 @@
             "DEPLOY_ACCOUNT_TXN_V3": {
                 "title": "Deploy account transaction",
                 "description": "Deploys an account contract, charges fee from the pre-funded account addresses",
+                "type": "object",
                 "properties": {
                     "type": {
                         "title": "Deploy account",
@@ -2434,6 +2436,7 @@
             "INVOKE_TXN_V0": {
                 "title": "Invoke transaction V0",
                 "description": "invokes a specific function in the desired contract (not necessarily an account)",
+                "type": "object",
                 "properties": {
                     "type": {
                         "title": "Type",
