@@ -8,7 +8,7 @@
 # Note that we're explicitly using the Debian bookworm image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.62-rust-1.73-slim-bookworm AS cargo-chef
+FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.62-rust-1.74.0-slim-bookworm AS cargo-chef
 WORKDIR /usr/src/pathfinder
 
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-planner
