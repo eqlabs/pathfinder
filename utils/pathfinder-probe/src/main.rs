@@ -34,6 +34,17 @@ async fn main() -> anyhow::Result<()> {
             setup.poll_delay,
         ))
         .for_each(|(gw, pf)| {
+            tracing::info!(
+                block = gw.block_number,
+                time = gw.block_timestamp,
+                "gateway"
+            );
+            tracing::info!(
+                block = pf.block_number,
+                time = pf.block_timestamp,
+                "pathfinder"
+            );
+
             let blocks_missing = gw.block_number - pf.block_number;
             metrics::gauge!("blocks_missing", blocks_missing as f64);
 
@@ -97,7 +108,13 @@ where
     T: Clone + Debug + Default + 'a,
 {
     futures::stream::unfold(T::default(), move |old| async move {
-        let new = f(url).await.unwrap_or(old);
+        let new = match f(url).await {
+            Ok(new) => new,
+            Err(e) => {
+                tracing::error!(tag, "error: {e}");
+                old
+            }
+        };
         tracing::debug!(%tag, ?new, "stream");
         tokio::time::sleep(delay).await;
         Some((new.clone(), new))
@@ -129,10 +146,10 @@ async fn get_gateway_latest(gateway_url: &Url) -> anyhow::Result<Head> {
     })
 }
 
-// curl -H 'Content-type: application/json' -d '{"jsonrpc":"2.0","method":"starknet_getBlockWithTxHashes","params":["latest"],"id":1}' http://127.0.0.1:9000/rpc/v0.3
+// curl -H 'Content-type: application/json' -d '{"jsonrpc":"2.0","method":"starknet_getBlockWithTxHashes","params":["latest"],"id":1}' http://127.0.0.1:9000/rpc/v0.5
 async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<Head> {
     let json: serde_json::Value = reqwest::ClientBuilder::new().build()?
-        .post(pathfinder_url.join("rpc/v0.3")?)
+        .post(pathfinder_url.to_owned())
         .header("Content-type", "application/json")
         .json(&serde_json::json!({"jsonrpc":"2.0","method":"starknet_getBlockWithTxHashes","params":["latest"],"id":1}))
         .timeout(REQUEST_TIMEOUT)

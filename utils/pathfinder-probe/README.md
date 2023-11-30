@@ -18,7 +18,7 @@ Environment="RUST_LOG=info"
 ExecStart=/var/lib/pathfinder/pathfinder-probe \
 0.0.0.0:19999 \
 https://alpha-mainnet.starknet.io \
-http://127.0.0.1:9545 \
+http://127.0.0.1:9545/rpc/v0.5 \
 5
 SyslogIdentifier=pathfinder-probe
 Restart=always
