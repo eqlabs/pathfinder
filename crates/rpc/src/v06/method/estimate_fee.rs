@@ -256,15 +256,18 @@ pub(crate) mod tests {
 
         use super::*;
 
-        use pathfinder_common::{macro_prelude::*, EntryPoint};
+        use pathfinder_common::{macro_prelude::*, EntryPoint, Tip};
 
         use pathfinder_common::felt;
 
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
             BroadcastedInvokeTransactionV0, BroadcastedInvokeTransactionV1,
+            BroadcastedInvokeTransactionV3,
         };
-        use crate::v02::types::{ContractClass, SierraContractClass};
+        use crate::v02::types::{
+            ContractClass, DataAvailabilityMode, ResourceBounds, SierraContractClass,
+        };
 
         #[test_log::test(tokio::test)]
         async fn declare_deploy_and_invoke_sierra_class() {
@@ -360,12 +363,39 @@ pub(crate) mod tests {
                 }),
             );
 
+            // do the same invoke with a v3 transaction
+            let invoke_v3_transaction = BroadcastedTransaction::Invoke(
+                BroadcastedInvokeTransaction::V3(BroadcastedInvokeTransactionV3 {
+                    version: TransactionVersion::THREE,
+                    signature: vec![],
+                    sender_address: account_contract_address,
+                    calldata: vec![
+                        // address of the deployed test contract
+                        CallParam(felt!(
+                            "0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7"
+                        )),
+                        // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                        CallParam(EntryPoint::hashed(b"get_data").0),
+                        // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                        call_param!("0"),
+                    ],
+                    nonce: transaction_nonce!("0x3"),
+                    resource_bounds: ResourceBounds::default(),
+                    tip: Tip(0),
+                    paymaster_data: vec![],
+                    account_deployment_data: vec![],
+                    nonce_data_availability_mode: DataAvailabilityMode::L1,
+                    fee_data_availability_mode: DataAvailabilityMode::L1,
+                }),
+            );
+
             let input = EstimateFeeInput {
                 request: vec![
                     declare_transaction,
                     deploy_transaction,
                     invoke_transaction,
                     invoke_v0_transaction,
+                    invoke_v3_transaction,
                 ],
                 simulation_flags: SimulationFlags(vec![]),
                 block_id: BlockId::Number(last_block_header.number),
@@ -391,13 +421,20 @@ pub(crate) mod tests {
                 gas_price: 1.into(),
                 overall_fee: 1260.into(),
             };
+            let invoke_v3_expected = FeeEstimate {
+                gas_consumed: 2491.into(),
+                // STRK gas price is 2
+                gas_price: 2.into(),
+                overall_fee: 4982.into(),
+            };
             assert_eq!(
                 result,
                 vec![
                     declare_expected,
                     deploy_expected,
                     invoke_expected,
-                    invoke_v0_expected
+                    invoke_v0_expected,
+                    invoke_v3_expected,
                 ]
             );
         }

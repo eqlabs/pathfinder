@@ -13,7 +13,6 @@ pub fn estimate(
     transactions: Vec<Transaction>,
     skip_validate: bool,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
-    let gas_price: U256 = execution_state.header.eth_l1_gas_price.0.into();
     let block_number = execution_state.header.number;
 
     let (mut state, block_context) = execution_state.starknet_state()?;
@@ -23,6 +22,7 @@ pub fn estimate(
         let _span = tracing::debug_span!("estimate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
 
         let fee_type = &super::transaction::fee_type(&transaction);
+        let gas_price: U256 = block_context.gas_prices.get_by_fee_type(fee_type).into();
 
         let tx_info = transaction
             .execute(&mut state, &block_context, false, !skip_validate)

@@ -33,7 +33,6 @@ pub fn simulate(
     skip_validate: bool,
     skip_fee_charge: bool,
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
-    let gas_price: U256 = execution_state.header.eth_l1_gas_price.0.into();
     let block_number = execution_state.header.number;
 
     let (mut state, block_context) = execution_state.starknet_state()?;
@@ -45,7 +44,8 @@ pub fn simulate(
         let transaction_type = transaction_type(&transaction);
         let transaction_declared_deprecated_class_hash =
             transaction_declared_deprecated_class(&transaction);
-        let fee_type = super::transaction::fee_type(&transaction);
+        let fee_type = &super::transaction::fee_type(&transaction);
+        let gas_price: U256 = block_context.gas_prices.get_by_fee_type(fee_type).into();
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = transaction
@@ -62,7 +62,7 @@ pub fn simulate(
                     tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
                         &tx_info.actual_resources,
                         &block_context,
-                        &fee_type,
+                        fee_type,
                     )?
                 };
                 Ok(tx_info)
