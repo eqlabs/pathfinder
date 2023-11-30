@@ -114,7 +114,7 @@ impl Felt {
         Felt::from_be_bytes(buf)
     }
 
-    pub fn random<R: rand_core::RngCore>(rng: &mut R) -> Self {
+    pub fn random<R: rand::Rng>(rng: &mut R) -> Self {
         let r = MontFelt::random(rng);
         Felt::from(r)
     }
