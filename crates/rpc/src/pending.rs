@@ -67,6 +67,7 @@ impl PendingWatcher {
             let data = PendingData {
                 block: PendingBlock {
                     eth_l1_gas_price: latest.eth_l1_gas_price,
+                    strk_l1_gas_price: Some(latest.strk_l1_gas_price),
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,
                     starknet_version: latest.starknet_version,
@@ -110,6 +111,7 @@ mod tests {
 
         let latest = BlockHeader::builder()
             .with_eth_l1_gas_price(GasPrice(1234))
+            .with_strk_l1_gas_price(GasPrice(3377))
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
@@ -121,6 +123,7 @@ mod tests {
                 parent_hash: latest.hash,
                 timestamp: BlockTimestamp::new_or_panic(112233),
                 eth_l1_gas_price: GasPrice(51123),
+                strk_l1_gas_price: Some(GasPrice(44411)),
                 ..Default::default()
             },
             state_update: StateUpdate::default().with_contract_nonce(
@@ -158,6 +161,7 @@ mod tests {
         let latest = parent
             .child_builder()
             .with_eth_l1_gas_price(GasPrice(1234))
+            .with_strk_l1_gas_price(GasPrice(3377))
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
@@ -169,6 +173,7 @@ mod tests {
 
         let mut expected = PendingData::default();
         expected.block.eth_l1_gas_price = latest.eth_l1_gas_price;
+        expected.block.strk_l1_gas_price = Some(latest.strk_l1_gas_price);
         expected.block.timestamp = latest.timestamp;
         expected.block.parent_hash = latest.hash;
         expected.block.starknet_version = latest.starknet_version;
