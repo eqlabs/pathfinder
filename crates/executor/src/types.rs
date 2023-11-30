@@ -180,7 +180,6 @@ impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation 
     fn try_from(
         call_info: blockifier::execution::call_info::CallInfo,
     ) -> Result<Self, Self::Error> {
-        call_info.get_sorted_l2_to_l1_payloads_length()?;
         let messages = ordered_l2_to_l1_messages(&call_info);
 
         let internal_calls = call_info
