@@ -273,6 +273,10 @@ pub trait RowExt {
     row_felt_wrapper!(get_transaction_hash, TransactionHash);
     row_felt_wrapper!(get_contract_state_hash, ContractStateHash);
     row_felt_wrapper!(get_class_commitment_leaf, ClassCommitmentLeafHash);
+    row_felt_wrapper!(
+        get_block_commitment_signature_elem,
+        BlockCommitmentSignatureElem
+    );
 }
 
 impl<'a> RowExt for &rusqlite::Row<'a> {

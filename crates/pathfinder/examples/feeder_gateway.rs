@@ -3,10 +3,13 @@ use std::num::NonZeroU32;
 
 use anyhow::Context;
 use pathfinder_common::state_update::ContractClassUpdate;
-use pathfinder_common::{BlockHash, BlockNumber, Chain, ClassHash};
+use pathfinder_common::{
+    state_diff_commitment_bytes, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
+    BlockNumber, Chain, ClassHash,
+};
 use pathfinder_storage::BlockId;
 use primitive_types::H160;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::{
     state_update::{DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff},
     Status,
@@ -73,6 +76,10 @@ async fn serve() -> anyhow::Result<()> {
         block_number: Option<String>,
         #[serde(default, rename = "blockHash")]
         block_hash: Option<BlockHash>,
+        #[serde(default, rename = "includeBlock")]
+        include_block: Option<bool>,
+        #[serde(default, rename = "headerOnly")]
+        header_only: Option<bool>,
     }
 
     impl TryInto<BlockId> for BlockIdParam {
@@ -102,6 +109,8 @@ async fn serve() -> anyhow::Result<()> {
             move |block_id: BlockIdParam| {
                 let storage = storage.clone();
                 async move {
+                    let header_only = block_id.header_only.unwrap_or(false);
+
                     match block_id.try_into() {
                         Ok(block_id) => {
                             let block = tokio::task::spawn_blocking(move || {
@@ -113,9 +122,58 @@ async fn serve() -> anyhow::Result<()> {
 
                             match block {
                                 Ok(block) => {
-                                    Ok(warp::reply::json(&block))
+                                    if header_only {
+                                        #[derive(Serialize)]
+                                        struct HashAndNumber {
+                                            block_hash: BlockHash,
+                                            block_number: BlockNumber,
+                                        }
+
+                                        let reply = HashAndNumber {
+                                            block_hash: block.block_hash,
+                                            block_number: block.block_number,
+                                        };
+
+                                        Ok(warp::reply::json(&reply))
+                                    } else {
+                                        Ok(warp::reply::json(&block))
+                                    }
                                 },
-                                Err(_) => {
+                                Err(e) => {
+                                    tracing::error!("Error fetching block: {:?}", e);
+                                    let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
+                                    Ok(warp::reply::json(&error))
+                                }
+                            }
+                        },
+                        Err(_) => Err(warp::reject::reject()),
+                    }
+                }
+            }
+        });
+
+    let get_signature = warp::path("get_signature")
+        .and(warp::query::<BlockIdParam>())
+        .and_then({
+            let storage = storage.clone();
+            move |block_id: BlockIdParam| {
+                let storage = storage.clone();
+                async move {
+                    match block_id.try_into() {
+                        Ok(block_id) => {
+                            let signature = tokio::task::spawn_blocking(move || {
+                                let mut connection = storage.connection().unwrap();
+                                let tx = connection.transaction().unwrap();
+
+                                resolve_signature(&tx, block_id)
+                            }).await.unwrap();
+
+                            match signature {
+                                Ok(signature) => {
+                                        Ok(warp::reply::json(&signature))
+                                },
+                                Err(e) => {
+                                    tracing::error!("Error fetching signature: {:?}", e);
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
                                     Ok(warp::reply::json(&error))
                                 }
@@ -134,20 +192,40 @@ async fn serve() -> anyhow::Result<()> {
             move |block_id: BlockIdParam| {
                 let storage = storage.clone();
                 async move {
+                    let include_block = block_id.include_block.unwrap_or(false);
+
                     match block_id.try_into() {
                         Ok(block_id) => {
-                            let state_update = tokio::task::spawn_blocking(move || {
+                            let (state_update, block) = tokio::task::spawn_blocking(move || {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
-                                resolve_state_update(&tx, block_id)
+                                let state_update = resolve_state_update(&tx, block_id);
+                                let block = resolve_block(&tx, block_id);
+
+                                (state_update, block)
                             }).await.unwrap();
 
-                            match state_update {
-                                Ok(state_update) => {
-                                    Ok(warp::reply::json(&state_update))
+                            match (state_update, block) {
+                                (Ok(state_update), Ok(block)) => {
+                                    if include_block {
+                                        #[derive(Serialize)]
+                                        struct StateUpdateWithBlock {
+                                            state_update: starknet_gateway_types::reply::StateUpdate,
+                                            block: starknet_gateway_types::reply::Block,
+                                        }
+
+                                        let reply = StateUpdateWithBlock {
+                                            state_update,
+                                            block,
+                                        };
+
+                                        Ok(warp::reply::json(&reply))
+                                    } else {
+                                        Ok(warp::reply::json(&state_update))
+                                    }
                                 },
-                                Err(_) => {
+                                _ => {
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
                                     Ok(warp::reply::json(&error))
                                 }
@@ -200,7 +278,8 @@ async fn serve() -> anyhow::Result<()> {
             get_block
                 .or(get_state_update)
                 .or(get_contract_addresses)
-                .or(get_class_by_hash),
+                .or(get_class_by_hash)
+                .or(get_signature),
         )
         .with(warp::filters::trace::request());
 
@@ -263,6 +342,7 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
     })
 }
 
+#[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_block(
     tx: &pathfinder_storage::Transaction<'_>,
     block_id: BlockId,
@@ -305,6 +385,36 @@ fn resolve_block(
     })
 }
 
+#[tracing::instrument(level = "trace", skip(tx))]
+fn resolve_signature(
+    tx: &pathfinder_storage::Transaction<'_>,
+    block_id: BlockId,
+) -> anyhow::Result<starknet_gateway_types::reply::BlockSignature> {
+    let header = tx
+        .block_header(block_id)
+        .context("Fetching block header")?
+        .context("Block header missing")?;
+
+    let signature = tx
+        .signature(block_id)
+        .context("Fetching signature")?
+        // fall back to zero since we might have missing signatures in old DBs
+        .unwrap_or(BlockCommitmentSignature {
+            r: BlockCommitmentSignatureElem::ZERO,
+            s: BlockCommitmentSignatureElem::ZERO,
+        });
+
+    Ok(starknet_gateway_types::reply::BlockSignature {
+        block_number: header.number,
+        signature: [signature.r, signature.s],
+        signature_input: starknet_gateway_types::reply::BlockSignatureInput {
+            block_hash: header.hash,
+            state_diff_commitment: state_diff_commitment_bytes!(b"fake commitment"),
+        },
+    })
+}
+
+#[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_state_update(
     tx: &pathfinder_storage::Transaction<'_>,
     block: BlockId,
@@ -315,12 +425,11 @@ fn resolve_state_update(
         .map(storage_to_gateway)
 }
 
+#[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_class(
     tx: &pathfinder_storage::Transaction<'_>,
     class_hash: ClassHash,
 ) -> anyhow::Result<Vec<u8>> {
-    tracing::info!(%class_hash, "Resolving class hash");
-
     let definition = tx
         .class_definition(class_hash)
         .context("Reading class definition from database")?
