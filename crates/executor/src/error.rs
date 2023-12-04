@@ -81,12 +81,6 @@ pub enum TransactionExecutionError {
     Custom(anyhow::Error),
 }
 
-impl From<BlockifierTransactionExecutionError> for TransactionExecutionError {
-    fn from(e: BlockifierTransactionExecutionError) -> Self {
-        Self::Custom(e.into())
-    }
-}
-
 impl From<StateError> for TransactionExecutionError {
     fn from(e: StateError) -> Self {
         match e {
