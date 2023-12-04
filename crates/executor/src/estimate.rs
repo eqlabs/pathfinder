@@ -59,10 +59,7 @@ pub fn estimate(
             }
             Err(error) => {
                 tracing::debug!(%error, %transaction_idx, "Transaction estimation failed");
-                return Err(TransactionExecutionError::ExecutionError {
-                    transaction_index: transaction_idx,
-                    error: error.to_string(),
-                });
+                return Err(TransactionExecutionError::new(transaction_idx, error));
             }
         }
     }

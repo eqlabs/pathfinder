@@ -174,19 +174,11 @@ pub struct ExecutionResources {
     pub segment_arena_builtin: usize,
 }
 
-impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
-    type Error = blockifier::transaction::errors::TransactionExecutionError;
-
-    fn try_from(
-        call_info: blockifier::execution::call_info::CallInfo,
-    ) -> Result<Self, Self::Error> {
+impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
+    fn from(call_info: blockifier::execution::call_info::CallInfo) -> Self {
         let messages = ordered_l2_to_l1_messages(&call_info);
 
-        let internal_calls = call_info
-            .inner_calls
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<_>, _>>()?;
+        let internal_calls = call_info.inner_calls.into_iter().map(Into::into).collect();
 
         let events = call_info
             .execution
@@ -203,7 +195,7 @@ impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation 
             .map(IntoFelt::into_felt)
             .collect();
 
-        Ok(Self {
+        Self {
             calldata: call_info
                 .call
                 .calldata
@@ -227,7 +219,7 @@ impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation 
             messages,
             result,
             execution_resources: call_info.vm_resources.into(),
-        })
+        }
     }
 }
 

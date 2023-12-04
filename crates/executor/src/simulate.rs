@@ -84,15 +84,12 @@ pub fn simulate(
                         gas_price,
                         overall_fee: tx_info.actual_fee.0.into(),
                     },
-                    trace: to_trace(transaction_type, tx_info, state_diff)?,
+                    trace: to_trace(transaction_type, tx_info, state_diff),
                 });
             }
             Err(error) => {
                 tracing::debug!(%error, %transaction_idx, "Transaction simulation failed");
-                return Err(TransactionExecutionError::ExecutionError {
-                    transaction_index: transaction_idx,
-                    error: error.to_string(),
-                });
+                return Err(TransactionExecutionError::new(transaction_idx, error));
             }
         }
     }
@@ -125,7 +122,7 @@ pub fn trace_one(
         let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
         tx_state.commit();
 
-        let trace = to_trace(tx_type, tx_info, state_diff)?;
+        let trace = to_trace(tx_type, tx_info, state_diff);
         if hash == target_transaction_hash {
             return Ok(trace);
         }
@@ -163,7 +160,7 @@ pub fn trace_all(
         let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
         tx_state.commit();
 
-        let trace = to_trace(tx_type, tx_info, state_diff)?;
+        let trace = to_trace(tx_type, tx_info, state_diff);
         ret.push((hash, trace));
     }
 
@@ -290,21 +287,12 @@ fn to_trace(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,
-) -> Result<TransactionTrace, blockifier::transaction::errors::TransactionExecutionError> {
-    let validate_invocation = execution_info
-        .validate_call_info
-        .map(TryInto::try_into)
-        .transpose()?;
-    let maybe_function_invocation = execution_info
-        .execute_call_info
-        .map(TryInto::try_into)
-        .transpose();
-    let fee_transfer_invocation = execution_info
-        .fee_transfer_call_info
-        .map(TryInto::try_into)
-        .transpose()?;
+) -> TransactionTrace {
+    let validate_invocation = execution_info.validate_call_info.map(Into::into);
+    let maybe_function_invocation = execution_info.execute_call_info.map(Into::into);
+    let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(Into::into);
 
-    let trace = match transaction_type {
+    match transaction_type {
         TransactionType::Declare => TransactionTrace::Declare(DeclareTransactionTrace {
             validate_invocation,
             fee_transfer_invocation,
@@ -313,7 +301,7 @@ fn to_trace(
         TransactionType::DeployAccount => {
             TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
                 validate_invocation,
-                constructor_invocation: maybe_function_invocation?,
+                constructor_invocation: maybe_function_invocation,
                 fee_transfer_invocation,
                 state_diff,
             })
@@ -323,16 +311,14 @@ fn to_trace(
             execute_invocation: if let Some(reason) = execution_info.revert_error {
                 ExecuteInvocation::RevertedReason(reason)
             } else {
-                ExecuteInvocation::FunctionInvocation(maybe_function_invocation?)
+                ExecuteInvocation::FunctionInvocation(maybe_function_invocation)
             },
             fee_transfer_invocation,
             state_diff,
         }),
         TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
-            function_invocation: maybe_function_invocation?,
+            function_invocation: maybe_function_invocation,
             state_diff,
         }),
-    };
-
-    Ok(trace)
+    }
 }
