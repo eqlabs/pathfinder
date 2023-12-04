@@ -56,6 +56,8 @@ pub enum ApplicationError {
     InsufficientAccountBalance,
     #[error("Account validation failed")]
     ValidationFailure,
+    #[error("Account validation failed")]
+    ValidationFailureV06(String),
     #[error("Compilation failed")]
     CompilationFailed,
     #[error("Contract class size it too large")]
@@ -118,7 +120,7 @@ impl ApplicationError {
             ApplicationError::InvalidTransactionNonce => 52,
             ApplicationError::InsufficientMaxFee => 53,
             ApplicationError::InsufficientAccountBalance => 54,
-            ApplicationError::ValidationFailure => 55,
+            ApplicationError::ValidationFailure | ApplicationError::ValidationFailureV06(_) => 55,
             ApplicationError::CompilationFailed => 56,
             ApplicationError::ContractClassSizeIsTooLarge => 57,
             ApplicationError::NonAccount => 58,
@@ -204,6 +206,7 @@ impl ApplicationError {
                 "limit": limit,
                 "requested": requested,
             })),
+            ApplicationError::ValidationFailureV06(error) => Some(json!(error)),
         }
     }
 }

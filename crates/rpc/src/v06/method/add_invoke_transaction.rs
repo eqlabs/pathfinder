@@ -1,8 +1,8 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedInvokeTransaction;
-use crate::v06::method::add_invoke_transaction::add_invoke_transaction_impl;
 use pathfinder_common::TransactionHash;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -30,7 +30,7 @@ pub enum AddInvokeTransactionError {
     InvalidTransactionNonce,
     InsufficientMaxFee,
     InsufficientAccountBalance,
-    ValidationFailure,
+    ValidationFailure(String),
     DuplicateTransaction,
     NonAccount,
     UnsupportedTransactionVersion,
@@ -45,7 +45,9 @@ impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
             AddInvokeTransactionError::InsufficientAccountBalance => {
                 Self::InsufficientAccountBalance
             }
-            AddInvokeTransactionError::ValidationFailure => Self::ValidationFailure,
+            AddInvokeTransactionError::ValidationFailure(error) => {
+                Self::ValidationFailureV06(error)
+            }
             AddInvokeTransactionError::DuplicateTransaction => Self::DuplicateTransaction,
             AddInvokeTransactionError::NonAccount => Self::NonAccount,
             AddInvokeTransactionError::UnsupportedTransactionVersion => Self::UnsupportedTxVersion,
@@ -75,7 +77,7 @@ impl From<SequencerError> for AddInvokeTransactionError {
                 AddInvokeTransactionError::InvalidTransactionNonce
             }
             SequencerError::StarknetError(e) if e.code == ValidateFailure.into() => {
-                AddInvokeTransactionError::ValidationFailure
+                AddInvokeTransactionError::ValidationFailure(e.message)
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionVersion.into() => {
                 AddInvokeTransactionError::UnsupportedTransactionVersion
@@ -98,6 +100,65 @@ pub async fn add_invoke_transaction(
     Ok(AddInvokeTransactionOutput {
         transaction_hash: response.transaction_hash,
     })
+}
+
+pub(crate) async fn add_invoke_transaction_impl(
+    context: &RpcContext,
+    tx: BroadcastedInvokeTransaction,
+) -> Result<starknet_gateway_types::reply::add_transaction::InvokeResponse, SequencerError> {
+    use starknet_gateway_types::request::add_transaction;
+
+    match tx {
+        BroadcastedInvokeTransaction::V0(tx) => {
+            context
+                .sequencer
+                .add_invoke_transaction(add_transaction::InvokeFunction::V0(
+                    add_transaction::InvokeFunctionV0V1 {
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: None,
+                        sender_address: tx.contract_address,
+                        entry_point_selector: Some(tx.entry_point_selector),
+                        calldata: tx.calldata,
+                    },
+                ))
+                .await
+        }
+        BroadcastedInvokeTransaction::V1(tx) => {
+            context
+                .sequencer
+                .add_invoke_transaction(add_transaction::InvokeFunction::V1(
+                    add_transaction::InvokeFunctionV0V1 {
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: Some(tx.nonce),
+                        sender_address: tx.sender_address,
+                        entry_point_selector: None,
+                        calldata: tx.calldata,
+                    },
+                ))
+                .await
+        }
+        BroadcastedInvokeTransaction::V3(tx) => {
+            context
+                .sequencer
+                .add_invoke_transaction(add_transaction::InvokeFunction::V3(
+                    add_transaction::InvokeFunctionV3 {
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
+                        tip: tx.tip,
+                        paymaster_data: tx.paymaster_data,
+                        sender_address: tx.sender_address,
+                        calldata: tx.calldata,
+                        account_deployment_data: tx.account_deployment_data,
+                    },
+                ))
+                .await
+        }
+    }
 }
 
 #[cfg(test)]
