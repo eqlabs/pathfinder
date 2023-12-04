@@ -178,11 +178,7 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
     fn from(call_info: blockifier::execution::call_info::CallInfo) -> Self {
         let messages = ordered_l2_to_l1_messages(&call_info);
 
-        let internal_calls = call_info
-            .inner_calls
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        let internal_calls = call_info.inner_calls.into_iter().map(Into::into).collect();
 
         let events = call_info
             .execution

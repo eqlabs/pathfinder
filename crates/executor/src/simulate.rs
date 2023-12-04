@@ -89,10 +89,7 @@ pub fn simulate(
             }
             Err(error) => {
                 tracing::debug!(%error, %transaction_idx, "Transaction simulation failed");
-                return Err(TransactionExecutionError::ExecutionError {
-                    transaction_index: transaction_idx,
-                    error: error.to_string(),
-                });
+                return Err(TransactionExecutionError::new(transaction_idx, error));
             }
         }
     }
@@ -295,7 +292,7 @@ fn to_trace(
     let maybe_function_invocation = execution_info.execute_call_info.map(Into::into);
     let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(Into::into);
 
-    let trace = match transaction_type {
+    match transaction_type {
         TransactionType::Declare => TransactionTrace::Declare(DeclareTransactionTrace {
             validate_invocation,
             fee_transfer_invocation,
@@ -323,7 +320,5 @@ fn to_trace(
             function_invocation: maybe_function_invocation,
             state_diff,
         }),
-    };
-
-    trace
+    }
 }
