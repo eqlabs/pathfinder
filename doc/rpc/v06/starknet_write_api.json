@@ -225,8 +225,8 @@
             "BROADCASTED_INVOKE_TXN": {
                 "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BROADCASTED_INVOKE_TXN"
             },
-            "DECLARE_TXN": {
-                "$ref": "./starknet_api_openrpc.json#/components/schemas/DECLARE_TXN"
+            "BROADCASTED_DECLARE_TXN": {
+                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BROADCASTED_DECLARE_TXN"
             },
             "BROADCASTED_DEPLOY_ACCOUNT_TXN": {
                 "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BROADCASTED_DEPLOY_ACCOUNT_TXN"
@@ -258,7 +258,8 @@
             },
             "VALIDATION_FAILURE": {
                 "code": 55,
-                "message": "Account validation failed"
+                "message": "Account validation failed",
+                "data": "string"
             },
             "COMPILATION_FAILED": {
                 "code": 56,
