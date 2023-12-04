@@ -5974,6 +5974,7 @@ name = "pathfinder-crypto"
 version = "0.1.0"
 dependencies = [
  "ark-ff",
+ "ark-std",
  "assert_matches",
  "bitvec",
  "criterion",
