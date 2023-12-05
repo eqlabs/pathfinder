@@ -12,6 +12,10 @@ pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub const KEY_FILTER_LIMIT: usize = 256;
 
 const KEY_FILTER_COST_LIMIT: usize = 1_000_000;
+const KEY_FILTER_WEIGHT: usize = 50;
+
+const KEY_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT / KEY_FILTER_WEIGHT;
+const RANGE_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT;
 
 pub struct EventFilter<K: KeyFilter> {
     pub from_block: Option<BlockNumber>,
@@ -347,8 +351,8 @@ impl KeyFilter for V03KeyFilter {
             None => Ok(None),
             Some(key_fts_expression) => {
                 let count: usize = tx.inner().query_row(
-                    "SELECT COUNT(1) FROM starknet_events_keys_03 WHERE keys MATCH :events_match",
-                    [&key_fts_expression],
+                    "SELECT COUNT(1) FROM (SELECT 1 FROM starknet_events_keys_03 WHERE keys MATCH :events_match LIMIT :limit)",
+                    params!(key_fts_expression, &(KEY_FILTER_UPPER_BOUND as u64)),
                     |row| row.get(0),
                 )?;
                 Ok(Some(count))
@@ -472,7 +476,8 @@ fn select_query_strategy(
     let events_by_key_filter = number_of_events_by_key_filter(tx, keys)?;
     if let Some(events_by_key_filter) = events_by_key_filter {
         // shortcut if the key filter is specific enough
-        if events_by_key_filter < 100_000 {
+        // KEY_FILTER_UPPER_BOUND really means >= KEY_FILTER_UPPER_BOUND
+        if events_by_key_filter < KEY_FILTER_UPPER_BOUND {
             tracing::trace!(
                 %events_by_key_filter,
                 "Partial queries for number of events done"
@@ -493,7 +498,6 @@ fn select_query_strategy(
         "Partial queries for number of events done"
     );
 
-    const KEY_FILTER_WEIGHT: usize = 50;
     let weighted_events_by_key_filter =
         events_by_key_filter.map(|n| n.saturating_mul(KEY_FILTER_WEIGHT));
 
@@ -536,7 +540,7 @@ fn number_of_events_in_block_range(
     to_block: Option<&BlockNumber>,
     contract_address: Option<&ContractAddress>,
 ) -> anyhow::Result<Option<usize>> {
-    let mut query = "SELECT COUNT(1) FROM starknet_events WHERE ".to_owned();
+    let mut query = "SELECT COUNT(1) FROM (SELECT 1 FROM starknet_events WHERE ".to_owned();
     let mut params: Vec<(&str, rusqlite::types::ToSqlOutput<'_>)> = Vec::new();
 
     match (from_block, to_block) {
@@ -565,6 +569,9 @@ fn number_of_events_in_block_range(
         }
         params.push((":contract_address", contract_address.to_sql()));
     }
+
+    query.push_str(" LIMIT :limit)");
+    params.push((":limit", (RANGE_FILTER_UPPER_BOUND as u64).to_sql()));
 
     let params = params
         .iter()
