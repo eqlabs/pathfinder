@@ -5711,6 +5711,7 @@ dependencies = [
  "pathfinder-crypto",
  "prost 0.12.1",
  "rand",
+ "rstest",
  "serde",
  "serde_json",
  "sha2",

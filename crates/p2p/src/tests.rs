@@ -1,18 +1,21 @@
-use crate::{
-    self as p2p, BootstrapConfig, Event, EventReceiver, Peers, PeriodicTaskConfig, TestEvent,
-};
-use anyhow::{Context, Result};
-use core::panic;
-use libp2p::identity::Keypair;
-use libp2p::multiaddr::Protocol;
-use libp2p::{Multiaddr, PeerId};
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+
+use anyhow::{Context, Result};
+use fake::{Fake, Faker};
+use futures::{SinkExt, StreamExt};
+use libp2p::identity::Keypair;
+use libp2p::multiaddr::Protocol;
+use libp2p::{Multiaddr, PeerId};
+use p2p_proto::block::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
+use rstest::rstest;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+
+use crate::{BootstrapConfig, Event, EventReceiver, Peers, PeriodicTaskConfig, TestEvent};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -20,8 +23,8 @@ struct TestPeer {
     pub keypair: Keypair,
     pub peer_id: PeerId,
     pub peers: Arc<RwLock<Peers>>,
-    pub client: p2p::Client,
-    pub event_receiver: p2p::EventReceiver,
+    pub client: crate::Client,
+    pub event_receiver: crate::EventReceiver,
     pub main_loop_jh: JoinHandle<()>,
 }
 
@@ -32,7 +35,7 @@ impl TestPeer {
         let peer_id = keypair.public().to_peer_id();
         let peers: Arc<RwLock<Peers>> = Default::default();
         let (client, event_receiver, main_loop) =
-            p2p::new(keypair.clone(), peers.clone(), periodic_cfg);
+            crate::new(keypair.clone(), peers.clone(), periodic_cfg);
         let main_loop_jh = tokio::spawn(main_loop.run());
         Self {
             keypair,
@@ -99,13 +102,9 @@ fn filter_events<T: Debug + Send + 'static>(
     let (tx, rx) = tokio::sync::mpsc::channel(100);
 
     tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                event = event_receiver.recv() => if let Some(event) = event {
-                    if let Some(data) = f(event) {
-                        tx.send(data).await.unwrap()
-                    }
-                }
+        while let Some(event) = event_receiver.recv().await {
+            if let Some(data) = f(event) {
+                tx.try_send(data).unwrap();
             }
         }
     });
@@ -116,13 +115,34 @@ fn filter_events<T: Debug + Send + 'static>(
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall
 fn consume_events(mut event_receiver: EventReceiver) {
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = event_receiver.recv() => {}
-            }
-        }
-    });
+    tokio::spawn(async move { while let Some(_) = event_receiver.recv().await {} });
+}
+
+async fn create_peers() -> (TestPeer, TestPeer) {
+    let mut server = TestPeer::default();
+    let client = TestPeer::default();
+
+    let server_addr = server.start_listening().await.unwrap();
+
+    tracing::info!(%server.peer_id, %server_addr, "Server");
+    tracing::info!(%client.peer_id, "Client");
+
+    client
+        .client
+        .dial(server.peer_id, server_addr)
+        .await
+        .unwrap();
+
+    (server, client)
+}
+
+async fn server_to_client() -> (TestPeer, TestPeer) {
+    create_peers().await
+}
+
+async fn client_to_server() -> (TestPeer, TestPeer) {
+    let (s, c) = create_peers().await;
+    (c, s)
 }
 
 #[test_log::test(tokio::test)]
@@ -207,16 +227,13 @@ async fn periodic_bootstrap() {
     assert_eq!(dht2, [boot.peer_id, peer1.peer_id].into());
 }
 
+#[rstest]
+#[case::server_to_client(server_to_client().await)]
+#[case::client_to_server(client_to_server().await)]
 #[test_log::test(tokio::test)]
-async fn provide_capability() {
+async fn provide_capability(#[case] peers: (TestPeer, TestPeer)) {
     let _ = env_logger::builder().is_test(true).try_init();
-
-    let peer1 = TestPeer::default();
-    let mut peer2 = TestPeer::default();
-
-    let addr2 = peer2.start_listening().await.unwrap();
-
-    tracing::info!(%peer2.peer_id, %addr2);
+    let (peer1, peer2) = peers;
 
     let mut peer1_started_providing = filter_events(peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::StartProvidingCompleted(_)) => Some(()),
@@ -224,7 +241,6 @@ async fn provide_capability() {
     });
     consume_events(peer2.event_receiver);
 
-    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
     peer1.client.provide_capability("blah").await.unwrap();
     peer1_started_providing.recv().await;
 
@@ -237,19 +253,13 @@ async fn provide_capability() {
     assert_eq!(providers, [peer1.peer_id].into());
 }
 
+#[rstest]
+#[case::server_to_client(server_to_client().await)]
+#[case::client_to_server(client_to_server().await)]
 #[test_log::test(tokio::test)]
-async fn subscription_and_propagation() {
-    use fake::{Fake, Faker};
-    use p2p_proto::block::NewBlock;
-
+async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
     let _ = env_logger::builder().is_test(true).try_init();
-
-    let mut peer1 = TestPeer::default();
-    let peer2 = TestPeer::default();
-
-    let addr1 = peer1.start_listening().await.unwrap();
-
-    tracing::info!(%peer1.peer_id, %addr1);
+    let (peer1, peer2) = peers;
 
     let mut peer2_subscribed_to_peer1 = filter_events(peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::Subscribed { .. }) => Some(()),
@@ -263,7 +273,6 @@ async fn subscription_and_propagation() {
 
     const TOPIC: &str = "TOPIC";
 
-    peer2.client.dial(peer1.peer_id, addr1).await.unwrap();
     peer2.client.subscribe_topic(TOPIC).await.unwrap();
     peer2_subscribed_to_peer1.recv().await;
 
@@ -276,8 +285,47 @@ async fn subscription_and_propagation() {
     assert_eq!(msg, expected);
 }
 
-#[ignore = "implement once streaming response supported"]
+#[rstest]
+#[case::server_to_client(server_to_client().await)]
+#[case::client_to_server(client_to_server().await)]
 #[test_log::test(tokio::test)]
-async fn sync_request_stream_response() {
-    // TODO
+async fn sync_request_stream_response(#[case] peers: (TestPeer, TestPeer)) {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let (peer1, peer2) = peers;
+
+    let expected_request = Faker.fake::<BlockHeadersRequest>();
+
+    let mut tx_ready = filter_events(peer1.event_receiver, move |event| match event {
+        Event::InboundHeadersSyncRequest {
+            from,
+            channel,
+            request: actual_request,
+        } => {
+            assert_eq!(from, peer2.peer_id);
+            assert_eq!(expected_request, actual_request);
+            Some(channel)
+        }
+        _ => None,
+    });
+
+    consume_events(peer2.event_receiver);
+
+    // Send the request, wait for the response receiver
+    let mut rx = peer2
+        .client
+        .send_headers_sync_request(peer1.peer_id, expected_request)
+        .await
+        .unwrap();
+
+    // Wait for response channel to be ready
+    let mut tx = tx_ready.recv().await.unwrap();
+
+    for _ in 0usize..(1..100).fake() {
+        let expected_response: BlockHeadersResponse = Faker.fake();
+        // Send the response
+        tx.send(expected_response.clone()).await.unwrap();
+        // Wait for the response
+        let actual_response = rx.next().await.unwrap();
+        assert_eq!(expected_response, actual_response);
+    }
 }
