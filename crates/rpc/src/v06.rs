@@ -24,15 +24,15 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getEvents"                       , v03_method::get_events)
         .register("starknet_getStateUpdate"                  , v03_method::get_state_update)
 
-        .register("starknet_addDeclareTransaction"           , v04_method::add_declare_transaction)
-        .register("starknet_addDeployAccountTransaction"     , v04_method::add_deploy_account_transaction)
-        .register("starknet_addInvokeTransaction"            , v04_method::add_invoke_transaction)
         .register("starknet_syncing"                         , v04_method::syncing)
 
         .register("starknet_call"                            , v05_method::call)
         .register("starknet_estimateMessageFee"              , v05_method::estimate_message_fee)
         .register("starknet_getTransactionStatus"            , v05_method::get_transaction_status)
 
+        .register("starknet_addDeclareTransaction"           , method::add_declare_transaction)
+        .register("starknet_addDeployAccountTransaction"     , method::add_deploy_account_transaction)
+        .register("starknet_addInvokeTransaction"            , method::add_invoke_transaction)
         .register("starknet_estimateFee"                     , method::estimate_fee)
         .register("starknet_getBlockWithTxHashes"            , method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
@@ -40,7 +40,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getTransactionByHash"            , method::get_transaction_by_hash)
         .register("starknet_getTransactionReceipt"           , method::get_transaction_receipt)
         .register("starknet_simulateTransactions"            , method::simulate_transactions)
-        .register("starknet_specVersion"                     , || "0.6.0-rc4")
+        .register("starknet_specVersion"                     , || "0.6.0-rc5")
         .register("starknet_traceBlockTransactions"          , method::trace_block_transactions)
         .register("starknet_traceTransaction"                , method::trace_transaction)
 

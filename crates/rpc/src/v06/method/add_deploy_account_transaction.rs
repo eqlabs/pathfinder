@@ -1,9 +1,11 @@
 use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
-use crate::v02::types::request::BroadcastedDeployAccountTransaction;
-use crate::v06::method::add_deploy_account_transaction::add_deploy_account_transaction_impl;
+use crate::v02::types::request::{
+    BroadcastedDeployAccountTransaction, BroadcastedDeployAccountTransactionV0V1,
+};
 use pathfinder_common::{ContractAddress, TransactionHash};
-use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -33,7 +35,7 @@ pub enum AddDeployAccountTransactionError {
     InvalidTransactionNonce,
     InsufficientMaxFee,
     InsufficientAccountBalance,
-    ValidationFailure,
+    ValidationFailure(String),
     DuplicateTransaction,
     NonAccount,
     UnsupportedTransactionVersion,
@@ -48,7 +50,7 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
             InvalidTransactionNonce => Self::InvalidTransactionNonce,
             InsufficientMaxFee => Self::InsufficientMaxFee,
             InsufficientAccountBalance => Self::InsufficientAccountBalance,
-            ValidationFailure => Self::ValidationFailure,
+            ValidationFailure(message) => Self::ValidationFailureV06(message),
             DuplicateTransaction => Self::DuplicateTransaction,
             NonAccount => Self::NonAccount,
             UnsupportedTransactionVersion => Self::UnsupportedTxVersion,
@@ -81,7 +83,7 @@ impl From<SequencerError> for AddDeployAccountTransactionError {
                 AddDeployAccountTransactionError::InvalidTransactionNonce
             }
             SequencerError::StarknetError(e) if e.code == ValidateFailure.into() => {
-                AddDeployAccountTransactionError::ValidationFailure
+                AddDeployAccountTransactionError::ValidationFailure(e.message)
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionVersion.into() => {
                 AddDeployAccountTransactionError::UnsupportedTransactionVersion
@@ -107,11 +109,78 @@ pub async fn add_deploy_account_transaction(
     })
 }
 
+pub(crate) async fn add_deploy_account_transaction_impl(
+    context: &RpcContext,
+    tx: BroadcastedDeployAccountTransaction,
+) -> Result<starknet_gateway_types::reply::add_transaction::DeployAccountResponse, SequencerError> {
+    use starknet_gateway_types::request::add_transaction;
+
+    match tx {
+        BroadcastedDeployAccountTransaction::V0V1(
+            tx @ BroadcastedDeployAccountTransactionV0V1 { version, .. },
+        ) if version.without_query_version() == 0 => {
+            context
+                .sequencer
+                .add_deploy_account(add_transaction::DeployAccount::V0(
+                    add_transaction::DeployAccountV0V1 {
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        class_hash: tx.class_hash,
+                        contract_address_salt: tx.contract_address_salt,
+                        constructor_calldata: tx.constructor_calldata,
+                    },
+                ))
+                .await
+        }
+        BroadcastedDeployAccountTransaction::V0V1(
+            tx @ BroadcastedDeployAccountTransactionV0V1 { version, .. },
+        ) if version.without_query_version() == 1 => {
+            context
+                .sequencer
+                .add_deploy_account(add_transaction::DeployAccount::V1(
+                    add_transaction::DeployAccountV0V1 {
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        class_hash: tx.class_hash,
+                        contract_address_salt: tx.contract_address_salt,
+                        constructor_calldata: tx.constructor_calldata,
+                    },
+                ))
+                .await
+        }
+        BroadcastedDeployAccountTransaction::V0V1(_) => Err(SequencerError::StarknetError(
+            starknet_gateway_types::error::StarknetError {
+                code: KnownStarknetErrorCode::InvalidTransactionVersion.into(),
+                message: "".to_string(),
+            },
+        )),
+        BroadcastedDeployAccountTransaction::V3(tx) => {
+            context
+                .sequencer
+                .add_deploy_account(add_transaction::DeployAccount::V3(
+                    add_transaction::DeployAccountV3 {
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
+                        tip: tx.tip,
+                        paymaster_data: tx.paymaster_data,
+                        class_hash: tx.class_hash,
+                        contract_address_salt: tx.contract_address_salt,
+                        constructor_calldata: tx.constructor_calldata,
+                    },
+                ))
+                .await
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::v02::types::request::{
-        BroadcastedDeployAccountTransactionV0V1, BroadcastedDeployAccountTransactionV3,
-    };
+    use crate::v02::types::request::BroadcastedDeployAccountTransactionV3;
     use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     use super::*;

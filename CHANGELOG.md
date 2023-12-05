@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Execution errors are opaque and don't always include the root cause.
 
+### Changed
+
+- JSON-RPC v0.6 support has been updated to v0.6.0-rc5 of the specification.
+
 ## [0.10.0] - 2023-11-29
 
 ### Added
