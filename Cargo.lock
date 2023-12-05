@@ -7750,6 +7750,7 @@ dependencies = [
  "primitive-types",
  "rand",
  "reqwest",
+ "rstest",
  "serde",
  "serde_json",
  "serde_with",

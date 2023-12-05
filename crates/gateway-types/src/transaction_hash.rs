@@ -644,6 +644,7 @@ fn flattened_bounds(resource_name: &[u8], resource_bound: ResourceBound) -> Felt
 mod tests {
     use super::compute_transaction_hash;
     use pathfinder_common::ChainId;
+    use rstest::rstest;
     use starknet_gateway_test_fixtures::{v0_11_0, v0_13_0, v0_8_2, v0_9_0};
 
     #[derive(serde::Deserialize)]
@@ -651,108 +652,87 @@ mod tests {
         transaction: crate::reply::transaction::Transaction,
     }
 
-    macro_rules! case {
-        ($target:expr) => {{
-            let line = line!();
-
-            (
-                serde_json::from_str::<crate::transaction_hash::tests::TxWrapper>($target)
-                    .expect(&format!("deserialization is Ok, line: {line}"))
-                    .transaction,
-                line,
-            )
-        }};
-    }
-
+    #[rstest]
     #[test]
-    fn computation() {
-        // At the beginning testnet2 used chain id of testnet for hash calculation
-        let testnet2_with_wrong_chain_id =
-            serde_json::from_str(v0_11_0::transaction::deploy::v1::GENESIS_TESTNET2).unwrap();
-        assert_eq!(
-            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::GOERLI_TESTNET),
-            testnet2_with_wrong_chain_id.hash()
-        );
+    // Declare
+    #[case(v0_9_0::transaction::DECLARE)] // v0
+    #[case(v0_11_0::transaction::declare::v1::BLOCK_463319)]
+    #[case(v0_11_0::transaction::declare::v1::BLOCK_797215)]
+    #[case(v0_11_0::transaction::declare::v2::BLOCK_797220)]
+    #[case(v0_13_0::transaction::declare::v3::BLOCK_319709)]
+    // Deploy
+    #[case(v0_11_0::transaction::deploy::v0::GENESIS)]
+    #[case(v0_9_0::transaction::DEPLOY)] // v0
+    #[case(v0_11_0::transaction::deploy::v1::BLOCK_485004)]
+    // Deploy account
+    #[case(v0_11_0::transaction::deploy_account::v1::BLOCK_375919)]
+    #[case(v0_11_0::transaction::deploy_account::v1::BLOCK_797K)]
+    #[case(v0_13_0::transaction::deploy_account::v3::BLOCK_319693)]
+    // Invoke
+    #[case(v0_11_0::transaction::invoke::v0::GENESIS)]
+    #[case(v0_8_2::transaction::INVOKE)]
+    #[case(v0_9_0::transaction::INVOKE)]
+    #[case(v0_11_0::transaction::invoke::v1::BLOCK_420K)]
+    #[case(v0_11_0::transaction::invoke::v1::BLOCK_790K)]
+    #[case(v0_13_0::transaction::invoke::v3::BLOCK_319106)]
+    // L1 Handler
+    #[case(v0_11_0::transaction::l1_handler::v0::BLOCK_1564)]
+    #[case(v0_11_0::transaction::l1_handler::v0::BLOCK_272866)]
+    #[case(v0_11_0::transaction::l1_handler::v0::BLOCK_790K)]
 
-        [
-            // Declare
-            case!(v0_9_0::transaction::DECLARE), // v0
-            case!(v0_11_0::transaction::declare::v1::BLOCK_463319),
-            case!(v0_11_0::transaction::declare::v1::BLOCK_797215),
-            case!(v0_11_0::transaction::declare::v2::BLOCK_797220),
-            case!(v0_13_0::transaction::declare::v3::BLOCK_319709),
-            // Deploy
-            case!(v0_11_0::transaction::deploy::v0::GENESIS),
-            case!(v0_9_0::transaction::DEPLOY), // v0
-            case!(v0_11_0::transaction::deploy::v1::BLOCK_485004),
-            // Deploy account
-            case!(v0_11_0::transaction::deploy_account::v1::BLOCK_375919),
-            case!(v0_11_0::transaction::deploy_account::v1::BLOCK_797K),
-            case!(v0_13_0::transaction::deploy_account::v3::BLOCK_319693),
-            // Invoke
-            case!(v0_11_0::transaction::invoke::v0::GENESIS),
-            case!(v0_8_2::transaction::INVOKE),
-            case!(v0_9_0::transaction::INVOKE),
-            case!(v0_11_0::transaction::invoke::v1::BLOCK_420K),
-            case!(v0_11_0::transaction::invoke::v1::BLOCK_790K),
-            case!(v0_13_0::transaction::invoke::v3::BLOCK_319106),
-            // L1 Handler
-            case!(v0_11_0::transaction::l1_handler::v0::BLOCK_1564),
-            case!(v0_11_0::transaction::l1_handler::v0::BLOCK_272866),
-            case!(v0_11_0::transaction::l1_handler::v0::BLOCK_790K),
-        ]
-        .iter()
-        .for_each(|(txn, line)| {
-            let actual_hash = compute_transaction_hash(txn, ChainId::GOERLI_TESTNET);
-            assert_eq!(actual_hash, txn.hash(), "line: {line}");
-        });
+    fn computation(#[case] fixture: &str) {
+        let txn = serde_json::from_str::<TxWrapper>(fixture)
+            .unwrap()
+            .transaction;
+
+        let actual_hash = compute_transaction_hash(&txn, ChainId::GOERLI_TESTNET);
+        assert_eq!(actual_hash, txn.hash());
     }
 
     mod verification {
+        use super::TxWrapper;
         use crate::transaction_hash::{verify, VerifyResult};
         use pathfinder_common::{BlockNumber, ChainId};
+        use starknet_gateway_test_fixtures::v0_11_0;
 
-        mod skipped {
-            use crate::transaction_hash::{verify, VerifyResult};
-            use pathfinder_common::{BlockNumber, ChainId};
-            use starknet_gateway_test_fixtures::v0_11_0;
+        #[test]
+        fn skip_rewritten_old_l1_handler() {
+            let block_854_idx_96 =
+                serde_json::from_str(v0_11_0::transaction::l1_handler::v0::BLOCK_854_IDX_96)
+                    .unwrap();
 
-            #[test]
-            fn rewritten_old_l1_handler() {
-                let block_854_idx_96 =
-                    serde_json::from_str(v0_11_0::transaction::l1_handler::v0::BLOCK_854_IDX_96)
-                        .unwrap();
+            assert_eq!(
+                verify(
+                    &block_854_idx_96,
+                    ChainId::GOERLI_TESTNET,
+                    BlockNumber::new_or_panic(854),
+                ),
+                VerifyResult::NotVerifiable
+            );
+        }
 
-                assert_eq!(
-                    verify(
-                        &block_854_idx_96,
-                        ChainId::GOERLI_TESTNET,
-                        BlockNumber::new_or_panic(854),
-                    ),
-                    VerifyResult::NotVerifiable
-                );
-            }
+        #[test]
+        fn skip_old_l1_handler_in_invoke_v0() {
+            let block_854_idx_96 =
+                serde_json::from_str(v0_11_0::transaction::invoke::v0::BLOCK_854_IDX_96).unwrap();
 
-            #[test]
-            fn old_l1_handler_in_invoke_v0() {
-                let block_854_idx_96 =
-                    serde_json::from_str(v0_11_0::transaction::invoke::v0::BLOCK_854_IDX_96)
-                        .unwrap();
-
-                assert_eq!(
-                    verify(
-                        &block_854_idx_96,
-                        ChainId::GOERLI_TESTNET,
-                        BlockNumber::new_or_panic(854),
-                    ),
-                    VerifyResult::NotVerifiable
-                );
-            }
+            assert_eq!(
+                verify(
+                    &block_854_idx_96,
+                    ChainId::GOERLI_TESTNET,
+                    BlockNumber::new_or_panic(854),
+                ),
+                VerifyResult::NotVerifiable
+            );
         }
 
         #[test]
         fn ok() {
-            let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
+            let txn = serde_json::from_str::<TxWrapper>(
+                super::v0_11_0::transaction::declare::v2::BLOCK_797220,
+            )
+            .unwrap()
+            .transaction;
 
             assert_eq!(
                 verify(
@@ -766,7 +746,11 @@ mod tests {
 
         #[test]
         fn failed() {
-            let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
+            let txn = serde_json::from_str::<TxWrapper>(
+                super::v0_11_0::transaction::declare::v2::BLOCK_797220,
+            )
+            .unwrap()
+            .transaction;
             // Wrong chain id to force failure
             assert!(matches!(
                 verify(&txn, ChainId::MAINNET, BlockNumber::new_or_panic(797220),),

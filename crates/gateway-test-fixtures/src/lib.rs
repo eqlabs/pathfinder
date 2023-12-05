@@ -85,10 +85,6 @@ pub mod v0_11_0 {
             }
 
             pub mod v1 {
-                /// First deploy on testnet2, hash was calculated using chain id of testnet (goerli)
-                pub const GENESIS_TESTNET2: &str =
-                    str_fixture!("0.11.0/transaction/deploy_v1_genesis_testnet2.json");
-
                 /// Last deploy on testnet
                 pub const BLOCK_485004: &str =
                     str_fixture!("0.11.0/transaction/deploy_v1_block_485004.json");
