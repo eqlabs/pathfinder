@@ -550,8 +550,12 @@ impl GatewayApi for HybridClient {
     }
 
     async fn signature(&self, block: BlockId) -> Result<gw::BlockSignature, SequencerError> {
-        // TODO non proxy should query those via p2p
-        self.as_sequencer().signature(block).await
+        match self {
+            HybridClient::GatewayProxy { sequencer, .. } => sequencer.signature(block).await,
+            HybridClient::NonPropagatingP2P { .. } => {
+                todo!()
+            }
+        }
     }
 }
 
