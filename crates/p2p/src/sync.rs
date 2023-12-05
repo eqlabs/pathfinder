@@ -116,18 +116,47 @@ pub(crate) mod codec {
         where
             T: AsyncRead + Unpin + Send,
         {
-            decode(io, MESSAGE_SIZE_LIMIT).await
+            let mut buf = Vec::new();
+
+            io.take(MESSAGE_SIZE_LIMIT as u64)
+                .read_to_end(&mut buf)
+                .await?;
+
+            let prost_dto = ProstReq::decode(buf.as_ref())?;
+            let dto = Req::try_from_protobuf(prost_dto, std::any::type_name::<ProstReq>())?;
+
+            Ok(dto)
         }
 
         async fn read_response<T>(
             &mut self,
             _: &Self::Protocol,
-            io: &mut T,
+            mut io: &mut T,
         ) -> std::io::Result<Self::Response>
         where
             T: AsyncRead + Unpin + Send,
         {
-            decode(io, MESSAGE_SIZE_LIMIT).await
+            let encoded_len: usize = unsigned_varint::aio::read_usize(&mut io)
+                .await
+                .map_err(Into::<std::io::Error>::into)?;
+
+            if encoded_len > MESSAGE_SIZE_LIMIT {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Encoded length {} exceeds the maximum buffer size {}",
+                        encoded_len, MESSAGE_SIZE_LIMIT
+                    ),
+                ));
+            }
+
+            let mut buf = vec![0u8; encoded_len];
+            io.read_exact(&mut buf).await?;
+
+            let prost_dto = ProstResp::decode(buf.as_ref())?;
+            let dto = Resp::try_from_protobuf(prost_dto, std::any::type_name::<ProstResp>())?;
+
+            Ok(dto)
         }
 
         async fn write_request<T>(
@@ -139,7 +168,9 @@ pub(crate) mod codec {
         where
             T: AsyncWrite + Unpin + Send,
         {
-            encode(io, request).await
+            let data = request.to_protobuf().encode_to_vec();
+            io.write_all(&data).await?;
+            Ok(())
         }
 
         async fn write_response<T>(
@@ -151,50 +182,9 @@ pub(crate) mod codec {
         where
             T: AsyncWrite + Unpin + Send,
         {
-            encode(io, response).await
+            let data = response.to_protobuf().encode_length_delimited_to_vec();
+            io.write_all(&data).await?;
+            Ok(())
         }
-    }
-
-    async fn decode<Reader, ProstDto, Dto>(
-        mut io: &mut Reader,
-        max_buf_size: usize,
-    ) -> std::io::Result<Dto>
-    where
-        Reader: AsyncRead + Unpin + Send,
-        ProstDto: prost::Message + Default,
-        Dto: TryFromProtobuf<ProstDto>,
-    {
-        let encoded_len: usize = unsigned_varint::aio::read_usize(&mut io)
-            .await
-            .map_err(Into::<std::io::Error>::into)?;
-
-        if encoded_len > max_buf_size {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "Encoded length {} exceeds the maximum buffer size {}",
-                    encoded_len, max_buf_size
-                ),
-            ));
-        }
-
-        let mut buf = vec![0u8; encoded_len];
-        io.read_exact(&mut buf).await?;
-
-        let prost_dto = ProstDto::decode(buf.as_ref())?;
-        let dto = Dto::try_from_protobuf(prost_dto, std::any::type_name::<ProstDto>())?;
-
-        Ok(dto)
-    }
-
-    async fn encode<Writer, ProstDto, Dto>(io: &mut Writer, dto: Dto) -> std::io::Result<()>
-    where
-        Writer: AsyncWrite + Unpin + Send,
-        ProstDto: prost::Message,
-        Dto: ToProtobuf<ProstDto>,
-    {
-        let data = dto.to_protobuf().encode_length_delimited_to_vec();
-        io.write_all(&data).await?;
-        Ok(())
     }
 }
