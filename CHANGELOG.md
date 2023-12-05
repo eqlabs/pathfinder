@@ -7,11 +7,14 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.10.1] - 2023-12-05
 
 ### Fixed
 
 - Execution errors are opaque and don't always include the root cause.
+- Pathfinder uses incorrect fee token gas price for `gas_consumed` calculation for v3 transactions.
+- `starknet_traceTransaction` sometimes returns an "Invalid order number for L2-to-L1 message" error.
+- `starknet_getTransactionByHash` and `starknet_getTransactionByBlockIdAndIndex` return v3 transactions mapped to v1.
 
 ### Changed
 
