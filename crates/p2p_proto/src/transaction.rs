@@ -183,7 +183,7 @@ pub enum Transaction {
     L1HandlerV1(L1HandlerV1),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::TransactionsRequest")]
 pub struct TransactionsRequest {
     pub iteration: Iteration,

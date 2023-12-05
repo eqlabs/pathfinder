@@ -10,7 +10,12 @@ use futures::{SinkExt, StreamExt};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
-use p2p_proto::block::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
+use p2p_proto::block::{
+    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse, NewBlock,
+};
+use p2p_proto::event::{EventsRequest, EventsResponse};
+use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use rstest::rstest;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -115,7 +120,7 @@ fn filter_events<T: Debug + Send + 'static>(
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall
 fn consume_events(mut event_receiver: EventReceiver) {
-    tokio::spawn(async move { while let Some(_) = event_receiver.recv().await {} });
+    tokio::spawn(async move { while (event_receiver.recv().await).is_some() {} });
 }
 
 async fn create_peers() -> (TestPeer, TestPeer) {
@@ -285,47 +290,91 @@ async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
     assert_eq!(msg, expected);
 }
 
-#[rstest]
-#[case::server_to_client(server_to_client().await)]
-#[case::client_to_server(client_to_server().await)]
-#[test_log::test(tokio::test)]
-async fn sync_request_stream_response(#[case] peers: (TestPeer, TestPeer)) {
-    let _ = env_logger::builder().is_test(true).try_init();
-    let (peer1, peer2) = peers;
+macro_rules! define_test {
+    ($test_name:ident, $req_type:ty, $res_type:ty, $event_variant:ident, $req_fn:ident) => {
+        #[rstest]
+        #[case::server_to_client(server_to_client().await)]
+        #[case::client_to_server(client_to_server().await)]
+        #[test_log::test(tokio::test)]
+        async fn $test_name(#[case] peers: (TestPeer, TestPeer)) {
+            let _ = env_logger::builder().is_test(true).try_init();
+            let (peer1, peer2) = peers;
 
-    let expected_request = Faker.fake::<BlockHeadersRequest>();
+            let expected_request = Faker.fake::<$req_type>();
 
-    let mut tx_ready = filter_events(peer1.event_receiver, move |event| match event {
-        Event::InboundHeadersSyncRequest {
-            from,
-            channel,
-            request: actual_request,
-        } => {
-            assert_eq!(from, peer2.peer_id);
-            assert_eq!(expected_request, actual_request);
-            Some(channel)
+            let mut tx_ready = filter_events(peer1.event_receiver, move |event| match event {
+                Event::$event_variant {
+                    from,
+                    channel,
+                    request: actual_request,
+                } => {
+                    assert_eq!(from, peer2.peer_id);
+                    assert_eq!(expected_request, actual_request);
+                    Some(channel)
+                }
+                _ => None,
+            });
+
+            consume_events(peer2.event_receiver);
+
+            // Send the request, wait for the response receiver
+            let mut rx = peer2
+                .client
+                .$req_fn(peer1.peer_id, expected_request)
+                .await
+                .unwrap();
+
+            // Wait for response channel to be ready
+            let mut tx = tx_ready.recv().await.unwrap();
+
+            for _ in 0usize..(1..100).fake() {
+                let expected_response = Faker.fake::<$res_type>();
+                // Send the response
+                tx.send(expected_response.clone()).await.unwrap();
+                // Wait for the response
+                let actual_response = rx.next().await.unwrap();
+                assert_eq!(expected_response, actual_response);
+            }
         }
-        _ => None,
-    });
-
-    consume_events(peer2.event_receiver);
-
-    // Send the request, wait for the response receiver
-    let mut rx = peer2
-        .client
-        .send_headers_sync_request(peer1.peer_id, expected_request)
-        .await
-        .unwrap();
-
-    // Wait for response channel to be ready
-    let mut tx = tx_ready.recv().await.unwrap();
-
-    for _ in 0usize..(1..100).fake() {
-        let expected_response: BlockHeadersResponse = Faker.fake();
-        // Send the response
-        tx.send(expected_response.clone()).await.unwrap();
-        // Wait for the response
-        let actual_response = rx.next().await.unwrap();
-        assert_eq!(expected_response, actual_response);
-    }
+    };
 }
+
+define_test!(
+    sync_headers,
+    BlockHeadersRequest,
+    BlockHeadersResponse,
+    InboundHeadersSyncRequest,
+    send_headers_sync_request
+);
+
+define_test!(
+    sync_bodies,
+    BlockBodiesRequest,
+    BlockBodiesResponse,
+    InboundBodiesSyncRequest,
+    send_bodies_sync_request
+);
+
+define_test!(
+    sync_transactions,
+    TransactionsRequest,
+    TransactionsResponse,
+    InboundTransactionsSyncRequest,
+    send_transactions_sync_request
+);
+
+define_test!(
+    sync_receipts,
+    ReceiptsRequest,
+    ReceiptsResponse,
+    InboundReceiptsSyncRequest,
+    send_receipts_sync_request
+);
+
+define_test!(
+    sync_events,
+    EventsRequest,
+    EventsResponse,
+    InboundEventsSyncRequest,
+    send_events_sync_request
+);
