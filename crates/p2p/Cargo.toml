@@ -53,6 +53,7 @@ env_logger = "0.10.0"
 fake = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
+rstest = { workspace = true }
 test-log = { version = "0.2.12", default-features = false, features = [
     "trace",
 ] }

@@ -1,8 +1,10 @@
-use crate::common::{BlockId, Fin, Hash, Iteration};
-use crate::{proto, ToProtobuf, TryFromProtobuf};
+use fake::Dummy;
 use pathfinder_crypto::Felt;
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+use crate::common::{BlockId, Fin, Hash, Iteration};
+use crate::{proto, ToProtobuf, TryFromProtobuf};
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::event::Event")]
 pub struct Event {
     pub from_address: Felt,
@@ -10,26 +12,26 @@ pub struct Event {
     pub data: Vec<Felt>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::event::TxnEvents")]
 pub struct TxnEvents {
     pub events: Vec<Event>,
     pub transaction_hash: Hash,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::event::EventsRequest")]
 pub struct EventsRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::event::Events")]
 pub struct Events {
     pub items: Vec<TxnEvents>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::event::EventsResponse")]
 pub struct EventsResponse {
     #[optional]
@@ -38,7 +40,7 @@ pub struct EventsResponse {
     pub kind: EventsResponseKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum EventsResponseKind {
     Events(Events),
     Fin(Fin),

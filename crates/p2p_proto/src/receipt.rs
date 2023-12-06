@@ -1,10 +1,9 @@
-use crate::{
-    common::{BlockId, Fin, Hash, Iteration},
-    proto, ToProtobuf, TryFromProtobuf,
-};
 use fake::Dummy;
 use pathfinder_crypto::Felt;
 use primitive_types::H160;
+
+use crate::common::{BlockId, Fin, Hash, Iteration};
+use crate::{proto, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::MessageToL1")]
@@ -109,7 +108,7 @@ pub enum Receipt {
     L1Handler(L1HandlerTransactionReceipt),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::ReceiptsRequest")]
 pub struct ReceiptsRequest {
     pub iteration: Iteration,
