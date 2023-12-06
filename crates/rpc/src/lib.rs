@@ -127,6 +127,7 @@ impl RpcServer {
             .concurrency_limit(self.max_connections)
             .layer(DefaultBodyLimit::max(REQUEST_MAX_SIZE))
             .timeout(REQUEST_TIMEOUT)
+            .layer(middleware::tracing::trace_layer())
             .option_layer(self.cors)
             .propagate_x_request_id();
 
