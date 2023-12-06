@@ -338,7 +338,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|(h, _, _, _, _)| h.into()).collect::<Vec<_>>();
+                .into_iter().map(|(h, _, _, _, _, _)| h.into()).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             // Reusing the runtime does not yield any performance gains
@@ -381,7 +381,7 @@ mod prop {
             let (storage, in_db) = fixtures::storage_with_seed(db_seed, num_blocks);
             // Get the overlapping set between the db and the request
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(header, _, state_update, cairo_defs, sierra_defs)|
+                .map(|(header, _, _, state_update, cairo_defs, sierra_defs)|
                     (
                         (header.number, header.hash),
                         (state_update.into(),
@@ -475,7 +475,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the transactions that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, tr, _, _, _)|
+                .map(|(h, _, tr, _, _, _)|
                     (
                         h.number,
                         h.hash,
@@ -525,7 +525,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the receipts that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, tr, _, _, _)|
+                .map(|(h, _, tr, _, _, _)|
                     (
                         h.number,
                         h.hash,
@@ -576,7 +576,7 @@ mod prop {
             // These are the events that we expect to be read from the db
             // Extract tuples (block_number, block_hash, [events{txn#1}, events{txn#2}, ...])
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, tr, _, _, _)|
+                .map(|(h, _, tr, _, _, _)|
                     (
                         h.number,
                         h.hash,

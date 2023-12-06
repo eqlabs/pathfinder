@@ -3,9 +3,11 @@ use futures::channel::mpsc;
 use futures::SinkExt;
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
-    BlockHeadersResponse, BlockHeadersResponsePart,
+    BlockHeadersResponse, BlockHeadersResponsePart, Signatures,
 };
-use p2p_proto::common::{BlockId, BlockNumberOrHash, Direction, Fin, Hash, Iteration, Step};
+use p2p_proto::common::{
+    BlockId, BlockNumberOrHash, ConsensusSignature, Direction, Fin, Hash, Iteration, Step,
+};
 use p2p_proto::consts::{
     CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MAX_PARTS_PER_CLASS, MESSAGE_SIZE_LIMIT,
     PER_CLASS_OVERHEAD,
@@ -135,9 +137,24 @@ fn get_header(
     parts: &mut Vec<BlockHeadersResponsePart>,
 ) -> anyhow::Result<bool> {
     if let Some(header) = tx.block_header(block_number.into())? {
+        let hash = Hash(header.hash.0);
         parts.push(BlockHeadersResponsePart::Header(Box::new(
             header.to_proto(),
         )));
+
+        if let Some(signature) = tx.signature(block_number.into())? {
+            parts.push(BlockHeadersResponsePart::Signatures(Signatures {
+                block: BlockId {
+                    number: block_number.get(),
+                    hash,
+                },
+                signatures: vec![ConsensusSignature {
+                    r: signature.r.0,
+                    s: signature.s.0,
+                }],
+            }));
+        }
+
         parts.push(BlockHeadersResponsePart::Fin(Fin::ok()));
 
         Ok(true)
