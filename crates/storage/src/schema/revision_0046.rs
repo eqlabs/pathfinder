@@ -3,6 +3,7 @@ use crate::params::{named_params, RowExt, ToSql};
 use anyhow::Context;
 use pathfinder_common::{ContractAddress, EventData, EventKey};
 use pathfinder_crypto::Felt;
+use rusqlite::OptionalExtension;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(
@@ -154,32 +155,75 @@ CREATE TABLE starknet_events_new (
     Ok(())
 }
 
-fn intern_key(tx: &rusqlite::Transaction<'_>, key: &EventKey) -> anyhow::Result<i64> {
-    let mut statement = tx.prepare_cached("INSERT INTO starknet_events_keys(key) VALUES (:key) ON CONFLICT (key) DO UPDATE set id=id RETURNING id")?;
-    let id = statement
-        .query_row([key.to_sql()], |row| row.get(0))
-        .context("Inserting event key")?;
+// fn intern_key(tx: &rusqlite::Transaction<'_>, key: &EventKey) -> anyhow::Result<i64> {
+//     let mut statement = tx.prepare_cached("INSERT INTO starknet_events_keys(key) VALUES (:key) ON CONFLICT (key) DO UPDATE set id=id RETURNING id")?;
+//     let id = statement
+//         .query_row([key.to_sql()], |row| row.get(0))
+//         .context("Inserting event key")?;
 
-    Ok(id)
+//     Ok(id)
+// }
+
+fn intern_key(tx: &rusqlite::Transaction<'_>, key: &EventKey) -> anyhow::Result<i64> {
+    let mut query = tx.prepare_cached("SELECT id FROM starknet_events_keys WHERE key = :key")?;
+    let id = query
+        .query_row([key.to_sql()], |row| row.get(0))
+        .optional()
+        .context("Fetching key id")?;
+
+    if let Some(id) = id {
+        Ok(id)
+    } else {
+        let mut statement =
+            tx.prepare_cached("INSERT INTO starknet_events_keys(key) VALUES (:key) RETURNING id")?;
+        let id = statement
+            .query_row([key.to_sql()], |row| row.get(0))
+            .context("Inserting event key")?;
+
+        Ok(id)
+    }
 }
 
 fn intern_data(tx: &rusqlite::Transaction<'_>, key: &EventData) -> anyhow::Result<i64> {
-    let mut statement = tx.prepare_cached("INSERT INTO starknet_events_data(data) VALUES (:data) ON CONFLICT (data) DO UPDATE set id=id RETURNING id")?;
-    let id = statement
+    let mut query = tx.prepare_cached("SELECT id FROM starknet_events_data WHERE data = :data")?;
+    let id = query
         .query_row([key.to_sql()], |row| row.get(0))
-        .context("Inserting event data")?;
+        .optional()
+        .context("Fetching data id")?;
 
-    Ok(id)
+    if let Some(id) = id {
+        Ok(id)
+    } else {
+        let mut statement = tx
+            .prepare_cached("INSERT INTO starknet_events_data(data) VALUES (:data) RETURNING id")?;
+        let id = statement
+            .query_row([key.to_sql()], |row| row.get(0))
+            .context("Inserting event data")?;
+        Ok(id)
+    }
 }
 
 fn intern_from_address(
     tx: &rusqlite::Transaction<'_>,
     address: &ContractAddress,
 ) -> anyhow::Result<i64> {
-    let mut statement = tx.prepare_cached("INSERT INTO starknet_events_from_addresses(address) VALUES (:address) ON CONFLICT (address) DO UPDATE set id=id RETURNING id")?;
-    let id = statement
+    let mut query = tx
+        .prepare_cached("SELECT id FROM starknet_events_from_addresses WHERE address = :address")?;
+    let id = query
         .query_row([address.to_sql()], |row| row.get(0))
-        .context("Inserting event from address")?;
+        .optional()
+        .context("Fetching from address id")?;
 
-    Ok(id)
+    if let Some(id) = id {
+        Ok(id)
+    } else {
+        let mut statement = tx.prepare_cached(
+            "INSERT INTO starknet_events_from_addresses(address) VALUES (:address) RETURNING id",
+        )?;
+        let id = statement
+            .query_row([address.to_sql()], |row| row.get(0))
+            .context("Inserting event from address")?;
+
+        Ok(id)
+    }
 }
