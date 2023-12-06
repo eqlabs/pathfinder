@@ -14,8 +14,8 @@ pub const KEY_FILTER_LIMIT: usize = 256;
 const KEY_FILTER_COST_LIMIT: usize = 1_000_000;
 const KEY_FILTER_WEIGHT: usize = 50;
 
-const KEY_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT / KEY_FILTER_WEIGHT;
-const RANGE_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT;
+const KEY_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT / KEY_FILTER_WEIGHT + 1;
+const RANGE_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT + 1;
 
 pub struct EventFilter<K: KeyFilter> {
     pub from_block: Option<BlockNumber>,
