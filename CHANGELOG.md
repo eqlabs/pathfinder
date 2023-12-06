@@ -7,6 +7,16 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Added `x-request-id` header to RPC responses. If the request does not have the header set then an ID is generated. This can be used to identify a specific caller's request/response within the node's logs. Duplicate IDs are possible since they can be set by the caller, so we recommend making your's identifiable with a prefix or using a GUID.
+- Improved tracing for RPC requests. These are all logged on `debug` level under the `pathfinder_rpc` module. Additional information can also be obtained from `tower_http` module. These can be enabled by appending `pathfinder_rpc=debug,tower_http=debug` to `RUST_LOG` environment variable.
+  - Request payload is now logged before execution begins.
+  - Logs now include `x-request-id` header value which can be used to correlate with client requests/responses.
+  - Batch logs also include the index within a batch.
+
 ## [0.10.1] - 2023-12-05
 
 ### Fixed
