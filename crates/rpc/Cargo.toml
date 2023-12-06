@@ -49,7 +49,9 @@ tower = { version = "0.4.13", default-features = false, features = [
 tower-http = { version = "0.4.0", default-features = false, features = [
     "cors",
     "limit",
+    "request-id",
     "trace",
+    "util",
 ] }
 tracing = { workspace = true }
 zstd = { workspace = true }
