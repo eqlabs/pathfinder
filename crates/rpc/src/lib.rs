@@ -36,6 +36,7 @@ use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
+use tower_http::ServiceBuilderExt;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
@@ -121,11 +122,14 @@ impl RpcServer {
             // This is required by axum -- axum doesn't deal with Result, errors
             // must be responses as well.
             .layer(HandleErrorLayer::new(handle_middleware_errors))
+            // make sure to set request ids before the request reaches `TraceLayer`
+            .set_x_request_id(middleware::request_id::RequestIdSource::default())
             .concurrency_limit(self.max_connections)
             .layer(DefaultBodyLimit::max(REQUEST_MAX_SIZE))
             .timeout(REQUEST_TIMEOUT)
-            .layer(tower_http::trace::TraceLayer::new_for_http())
-            .option_layer(self.cors);
+            .layer(middleware::tracing::trace_layer())
+            .option_layer(self.cors)
+            .propagate_x_request_id();
 
         /// Returns success for requests with an empty body without reading
         /// the entire body.

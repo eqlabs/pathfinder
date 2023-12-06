@@ -11,6 +11,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::value::RawValue;
 use serde_json::Value;
+use tracing::Instrument;
 
 use crate::context::RpcContext;
 use crate::jsonrpc::error::RpcError;
@@ -69,6 +70,8 @@ impl RpcRouter {
 
     /// Parses and executes a request. Returns [None] if its a notification.
     async fn run_request<'a>(&self, request: &'a str) -> Option<RpcResponse<'a>> {
+        tracing::debug!(%request, "Running request");
+
         let Ok(request) = serde_json::from_str::<RpcRequest<'_>>(request) else {
             return Some(RpcResponse::INVALID_REQUEST);
         };
@@ -181,8 +184,12 @@ pub async fn rpc_handler(
 
             let responses = run_concurrently(
                 state.context.batch_concurrency_limit,
-                requests.into_iter(),
-                |request| state.run_request(request.get()),
+                requests.into_iter().enumerate(),
+                |(idx, request)| {
+                    state
+                        .run_request(request.get())
+                        .instrument(tracing::debug_span!("batch", idx))
+                },
             )
             .await
             .flatten()
