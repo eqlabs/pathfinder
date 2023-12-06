@@ -46,7 +46,8 @@ jobs:
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
       - name: Compile unit tests
-        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings
+        # --build-jobs 1 as we are constantly OOMing during compilation.
+        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings --build-jobs 1
       - name: Run unit tests
         run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
       - name: Store timings
