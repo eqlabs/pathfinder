@@ -679,7 +679,6 @@ mod tests {
     #[case(v0_11_0::transaction::l1_handler::v0::BLOCK_1564)]
     #[case(v0_11_0::transaction::l1_handler::v0::BLOCK_272866)]
     #[case(v0_11_0::transaction::l1_handler::v0::BLOCK_790K)]
-
     fn computation(#[case] fixture: &str) {
         let txn = serde_json::from_str::<TxWrapper>(fixture)
             .unwrap()
@@ -695,35 +694,45 @@ mod tests {
         use pathfinder_common::{BlockNumber, ChainId};
         use starknet_gateway_test_fixtures::v0_11_0;
 
-        #[test]
-        fn skip_rewritten_old_l1_handler() {
-            let block_854_idx_96 =
-                serde_json::from_str(v0_11_0::transaction::l1_handler::v0::BLOCK_854_IDX_96)
-                    .unwrap();
+        // Historically L1 handler transactions were served as Invoke V0 because there was no explicit L1 transaction type.
+        // Later on the gateway retroactively changed these to the new L1 handler transaction type.
+        // We don't know how to properly compute hashes for those transactions, so we skip them.
+        mod unverifiable {
+            use super::*;
 
-            assert_eq!(
-                verify(
-                    &block_854_idx_96,
-                    ChainId::GOERLI_TESTNET,
-                    BlockNumber::new_or_panic(854),
-                ),
-                VerifyResult::NotVerifiable
-            );
-        }
+            // This is how L1 handler transactions were served later on.
+            #[test]
+            fn rewritten_l1_handler() {
+                let block_854_idx_96 =
+                    serde_json::from_str(v0_11_0::transaction::l1_handler::v0::BLOCK_854_IDX_96)
+                        .unwrap();
 
-        #[test]
-        fn skip_old_l1_handler_in_invoke_v0() {
-            let block_854_idx_96 =
-                serde_json::from_str(v0_11_0::transaction::invoke::v0::BLOCK_854_IDX_96).unwrap();
+                assert_eq!(
+                    verify(
+                        &block_854_idx_96,
+                        ChainId::GOERLI_TESTNET,
+                        BlockNumber::new_or_panic(854),
+                    ),
+                    VerifyResult::NotVerifiable
+                );
+            }
 
-            assert_eq!(
-                verify(
-                    &block_854_idx_96,
-                    ChainId::GOERLI_TESTNET,
-                    BlockNumber::new_or_panic(854),
-                ),
-                VerifyResult::NotVerifiable
-            );
+            // This is how L1 handler transactions were initially served.
+            #[test]
+            fn old_l1_handler_in_invoke_v0() {
+                let block_854_idx_96 =
+                    serde_json::from_str(v0_11_0::transaction::invoke::v0::BLOCK_854_IDX_96)
+                        .unwrap();
+
+                assert_eq!(
+                    verify(
+                        &block_854_idx_96,
+                        ChainId::GOERLI_TESTNET,
+                        BlockNumber::new_or_panic(854),
+                    ),
+                    VerifyResult::NotVerifiable
+                );
+            }
         }
 
         #[test]
