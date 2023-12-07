@@ -20,8 +20,18 @@ pub(super) fn insert_state_update(
         )
         .context("Preparing nonce insert statement")?;
 
+    let mut insert_storage_address = tx
+        .inner()
+        .prepare_cached("INSERT INTO storage_addresses (address) VALUES (?)")
+        .context("Preparing storage_address insert statement")?;
+
+    let mut get_storage_idx = tx
+        .inner()
+        .prepare_cached("SELECT idx FROM storage_addresses WHERE address = ?")
+        .context("Preparing storage_address read statement")?;
+
     let mut insert_storage = tx
-        .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_address, storage_address, storage_value) VALUES (?, ?, ?, ?)")
+        .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_idx, storage_address, storage_value) VALUES (?, ?, ?, ?)")
         .context("Preparing nonce insert statement")?;
 
     let mut insert_contract_address = tx
@@ -59,6 +69,16 @@ pub(super) fn insert_state_update(
         }
 
         for (key, value) in &update.storage {
+            // Insert storage address if it does not exist.
+            let address_exists = get_storage_idx
+                .exists(params![key])
+                .context("Querying storage address")?;
+            if !address_exists {
+                insert_storage_address
+                    .execute(params![key])
+                    .context("Inserting storage address")?;
+            }
+
             insert_storage
                 .execute(params![&block_number, address, key, value])
                 .context("Inserting storage update")?;
@@ -67,6 +87,16 @@ pub(super) fn insert_state_update(
 
     for (address, update) in &state_update.system_contract_updates {
         for (key, value) in &update.storage {
+            // Insert storage address if it does not exist.
+            let address_exists = get_storage_idx
+                .exists(params![key])
+                .context("Querying storage address")?;
+            if !address_exists {
+                insert_storage_address
+                    .execute(params![key])
+                    .context("Inserting storage address")?;
+            }
+            
             insert_storage
                 .execute(params![&block_number, address, key, value])
                 .context("Inserting system storage update")?;
