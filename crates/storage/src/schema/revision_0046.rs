@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::params::{named_params, RowExt, ToSql};
 
 use anyhow::Context;
@@ -69,8 +71,12 @@ CREATE TABLE starknet_events_new (
     let mut rows = query_statement.query([])?;
 
     let mut last_block_number: u64 = 0;
-    let mut keys_size: usize = 0;
-    let mut data_size: usize = 0;
+
+    let mut total_keys: usize = 0;
+    let mut total_data: usize = 0;
+
+    let mut all_keys = HashSet::new();
+    let mut all_data = HashSet::new();
 
     while let Some(row) = rows.next().context("Fetching next event")? {
         let block_number = row.get_block_number("block_number")?;
@@ -121,36 +127,50 @@ CREATE TABLE starknet_events_new (
             })
             .collect::<Result<_, anyhow::Error>>()?;
 
-        let keys = keys
-            .into_iter()
-            .map(|key| intern_key(tx, &key))
-            .collect::<Result<Vec<_>, _>>()?;
-        let data = data
-            .into_iter()
-            .map(|data| intern_data(tx, &data))
-            .collect::<Result<Vec<_>, _>>()?;
-        let from_address = intern_from_address(tx, &from_address)?;
+        total_keys += keys.len();
 
-        const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
-        let keys = bincode::encode_to_vec(keys, CODEC_CFG)?;
-        let data = bincode::encode_to_vec(data, CODEC_CFG)?;
+        for key in keys {
+            all_keys.insert(key);
+        }
 
-        keys_size += keys.len();
-        data_size += data.len();
+        total_data += data.len();
 
-        insert_statement
-            .execute(named_params![
-                ":block_number": &block_number,
-                ":idx": &idx,
-                ":transaction_idx": &transaction_idx,
-                ":from_address": &from_address,
-                ":data": &data,
-                ":keys": &keys,
-            ])
-            .context("Inserting event")?;
+        for d in data {
+            all_data.insert(d);
+        }
+
+        // let keys = keys
+        //     .into_iter()
+        //     .map(|key| intern_key(tx, &key))
+        //     .collect::<Result<Vec<_>, _>>()?;
+        // let data = data
+        //     .into_iter()
+        //     .map(|data| intern_data(tx, &data))
+        //     .collect::<Result<Vec<_>, _>>()?;
+        // let from_address = intern_from_address(tx, &from_address)?;
+
+        // const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
+        // let keys = bincode::encode_to_vec(keys, CODEC_CFG)?;
+        // let data = bincode::encode_to_vec(data, CODEC_CFG)?;
+
+        // total_keys += keys.len();
+        // total_data += data.len();
+
+        // insert_statement
+        //     .execute(named_params![
+        //         ":block_number": &block_number,
+        //         ":idx": &idx,
+        //         ":transaction_idx": &transaction_idx,
+        //         ":from_address": &from_address,
+        //         ":data": &data,
+        //         ":keys": &keys,
+        //     ])
+        //     .context("Inserting event")?;
     }
 
-    tracing::info!(%keys_size, %data_size, "Total size of keys and data");
+    let unique_keys = all_keys.len();
+    let unique_data = all_data.len();
+    tracing::info!(%total_keys, %unique_keys, %total_data, %unique_data, "Total size of keys and data");
 
     Ok(())
 }
