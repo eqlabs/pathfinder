@@ -620,6 +620,11 @@ mod tests {
             .finalize_with_hash(block_hash!("0xabcdef"));
         let state_update = StateUpdate::default()
             .with_block_hash(header.hash)
+            .with_deployed_contract(contract_address, class_hash_bytes!(b"class hash"))
+            .with_deployed_contract(
+                contract_address_bytes!(b"contract addr 2"),
+                ClassHash(sierra_hash.0),
+            )
             .with_storage_update(
                 contract_address,
                 storage_address_bytes!(b"storage key"),
@@ -629,10 +634,6 @@ mod tests {
                 ContractAddress::ONE,
                 storage_address_bytes!(b"key"),
                 storage_value_bytes!(b"value"),
-            )
-            .with_deployed_contract(
-                contract_address_bytes!(b"contract addr 2"),
-                ClassHash(sierra_hash.0),
             )
             .with_declared_cairo_class(cairo_hash2)
             .with_declared_sierra_class(sierra_hash, casm_hash)
@@ -677,6 +678,8 @@ mod tests {
             let contract_address = contract_address_bytes!(b"contract address");
             let contract_address2 = contract_address_bytes!(b"contract address 2");
             let state_update = StateUpdate::default()
+                .with_deployed_contract(contract_address, class_hash_bytes!(b"class"))
+                .with_deployed_contract(contract_address2, class_hash_bytes!(b"class"))
                 .with_contract_nonce(contract_address, contract_nonce_bytes!(b"nonce value"))
                 .with_contract_nonce(contract_address2, contract_nonce_bytes!(b"nonce value 2"))
                 .with_storage_update(
