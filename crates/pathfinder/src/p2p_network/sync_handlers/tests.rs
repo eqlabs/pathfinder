@@ -124,10 +124,12 @@ mod boundary_conditions {
             let (_, ret) = tokio::join!(getter_fut, rx.next());
 
             let BlockHeadersResponse { parts } = ret.unwrap();
-            // parts[0] is the header, parts[1] is Fin::ok()
+            assert_eq!(parts.len(), 4);
+            assert_matches!(&parts[0], BlockHeadersResponsePart::Header(h) => assert_eq!(h.number, 0));
+            assert_matches!(&parts[1], BlockHeadersResponsePart::Signatures(s) => assert_eq!(s.block.number, 0));
+            assert_eq!(parts[2], BlockHeadersResponsePart::Fin(Fin::ok()));
             // Expect Fin::unknown() where the first unavailable item would be
-            assert_matches::assert_matches!(&parts[2], BlockHeadersResponsePart::Fin(f) => assert_eq!(f, &Fin::unknown()));
-            assert_eq!(parts.len(), 3);
+            assert_eq!(parts[3], BlockHeadersResponsePart::Fin(Fin::unknown()));
         }
 
         #[rstest]
@@ -141,35 +143,38 @@ mod boundary_conditions {
             match rx.next().await.unwrap().body_message {
                 // New classes in block
                 BlockBodyMessage::Classes(_) => {
-                    rx.next().await.unwrap(); // Classes, Fin::ok()
+                    assert_eq!(
+                        rx.next().await.unwrap().body_message,
+                        BlockBodyMessage::Fin(Fin::ok())
+                    );
                 }
                 // No new classes in block
-                BlockBodyMessage::Fin(_) => {} // Fin::ok()
+                BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::ok()),
                 _ => panic!("unexpected message type"),
             }
 
             // Expect Fin::unknown() where the first unavailable item would be
-            assert_matches::assert_matches!(rx.next().await.unwrap().body_message, BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::unknown()));
+            assert_eq!(
+                rx.next().await.unwrap().body_message,
+                BlockBodyMessage::Fin(Fin::unknown())
+            );
         }
 
         macro_rules! define_test {
             ($name:ident, $uut_name:ident, $request:tt, $reply:tt) => {
                 #[rstest]
                 #[tokio::test]
-                async fn $name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
+                async fn $name(
+                    #[values(Direction::Backward, Direction::Forward)] direction: Direction,
+                ) {
                     let (storage, iteration, tx, mut rx) = init_test(direction);
-                    let _jh = tokio::spawn($uut_name(
-                        storage,
-                        $request { iteration },
-                        tx,
-                    ));
-                    rx.next().await.unwrap(); // Block data
-                    rx.next().await.unwrap(); // Fin::ok()
+                    let _jh = tokio::spawn($uut_name(storage, $request { iteration }, tx));
+                    // Block data
+                    rx.next().await.unwrap();
+                    // Properly delimited with Fin::ok()
+                    assert_eq!(rx.next().await.unwrap().kind, $reply::Fin(Fin::ok()));
                     // Expect Fin::unknown() where the first unavailable item would be
-                    assert_matches::assert_matches!(
-                        rx.next().await.unwrap().kind,
-                        $reply::Fin(f) => assert_eq!(f, Fin::unknown())
-                    );
+                    assert_eq!(rx.next().await.unwrap().kind, $reply::Fin(Fin::unknown()));
                 }
             };
         }
@@ -230,10 +235,18 @@ mod boundary_conditions {
                 .unwrap();
 
             let BlockHeadersResponse { parts } = rx.next().await.unwrap();
-            // parts[0..20] are 10 x [header + Fin::ok()]
+            assert_eq!(parts.len(), NUM_BLOCKS_IN_STORAGE as usize * 3 + 1);
+
+            let chunked = parts.chunks_exact(3);
+            let remainder = chunked.remainder();
+
+            chunked.for_each(|chunk| {
+                assert_matches!(&chunk[0], BlockHeadersResponsePart::Header(_));
+                assert_matches!(&chunk[1], BlockHeadersResponsePart::Signatures(_));
+                assert_eq!(chunk[2], BlockHeadersResponsePart::Fin(Fin::ok()));
+            });
             // Expect Fin::too_much() if all requested items were found up to the internal limit
-            assert_matches!(&parts[NUM_BLOCKS_IN_STORAGE as usize * 2], BlockHeadersResponsePart::Fin(f) => assert_eq!(f, &Fin::too_much()));
-            assert_eq!(parts.len(), NUM_BLOCKS_IN_STORAGE as usize * 2 + 1);
+            assert_eq!(remainder, &[BlockHeadersResponsePart::Fin(Fin::too_much())]);
         }
 
         #[rstest]
@@ -249,17 +262,22 @@ mod boundary_conditions {
                 match rx.next().await.unwrap().body_message {
                     // New classes in block
                     BlockBodyMessage::Classes(_) => {
-                        rx.next().await.unwrap(); // Classes, Fin::ok()
+                        assert_eq!(
+                            rx.next().await.unwrap().body_message,
+                            BlockBodyMessage::Fin(Fin::ok())
+                        );
                     }
                     // No new classes in block
-                    BlockBodyMessage::Fin(_) => {} // Fin::ok()
+                    BlockBodyMessage::Fin(f) => {
+                        assert_eq!(f, Fin::ok());
+                    }
                     _ => panic!("unexpected message type"),
                 }
             }
-            // Expect Fin::unknown() where the first unavailable item would be
-            assert_matches::assert_matches!(
+            // Expect Fin::too_much() where the first unavailable item would be
+            assert_eq!(
                 rx.next().await.unwrap().body_message,
-                BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::too_much())
+                BlockBodyMessage::Fin(Fin::too_much())
             );
         }
 
@@ -267,22 +285,17 @@ mod boundary_conditions {
             ($name:ident, $uut_name:ident, $request:tt, $reply:tt) => {
                 #[rstest]
                 #[tokio::test]
-                async fn $name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
+                async fn $name(
+                    #[values(Direction::Backward, Direction::Forward)] direction: Direction,
+                ) {
                     let (storage, iteration, tx, mut rx) = init_test(direction);
-                    let _jh = tokio::spawn($uut_name(
-                        storage,
-                        $request { iteration },
-                        tx,
-                    ));
+                    let _jh = tokio::spawn($uut_name(storage, $request { iteration }, tx));
                     for _ in 0..NUM_BLOCKS_IN_STORAGE {
                         rx.next().await.unwrap(); // Block data
                         rx.next().await.unwrap(); // Fin::ok()
                     }
-                    // Expect Fin::unknown() where the first unavailable item would be
-                    assert_matches::assert_matches!(
-                        rx.next().await.unwrap().kind,
-                        $reply::Fin(f) => assert_eq!(f, Fin::too_much())
-                    );
+                    // Expect Fin::too_much() where the first unavailable item would be
+                    assert_eq!(rx.next().await.unwrap().kind, $reply::Fin(Fin::too_much()));
                 }
             };
         }
@@ -325,7 +338,10 @@ mod prop {
     use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseKind};
     use pathfinder_common::event::Event;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
-    use pathfinder_common::{BlockHash, BlockNumber, ClassHash, TransactionHash};
+    use pathfinder_common::{
+        BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber, ClassHash,
+        TransactionHash,
+    };
     use proptest::prelude::*;
     use std::collections::HashMap;
     use tokio::runtime::Runtime;
@@ -338,7 +354,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|(h, _, _, _, _, _)| h.into()).collect::<Vec<_>>();
+                .into_iter().map(|(h, s, _, _, _, _)| (h.into(), s)).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             // Reusing the runtime does not yield any performance gains
@@ -362,11 +378,20 @@ mod prop {
                 prop_assert_eq!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group reply parts by block: [[hdr-0, fin-0], [hdr-1, fin-1], ...]
-                let actual = parts.chunks_exact(2).map(|parts| {
+                let actual = parts.chunks_exact(3).map(|chunk| {
                     // Make sure block data is delimited
-                    assert_eq!(parts[1], BlockHeadersResponsePart::Fin(Fin::ok()));
+                    assert_eq!(chunk[2], BlockHeadersResponsePart::Fin(Fin::ok()));
                     // Extract the header
-                    p2p_types::BlockHeader::try_from(parts[0].clone().into_header().unwrap()).unwrap()
+                    let h = p2p_types::BlockHeader::try_from(chunk[0].clone().into_header().unwrap()).unwrap();
+                    // Extract the signature
+                    let s = chunk[1].clone().into_signatures().unwrap();
+                    assert_eq!(s.signatures.len(), 1);
+                    let s = s.signatures.into_iter().next().unwrap();
+                    let s = BlockCommitmentSignature {
+                        r: BlockCommitmentSignatureElem(s.r),
+                        s: BlockCommitmentSignatureElem(s.s),
+                    };
+                    (h, s)
                 }).collect::<Vec<_>>();
 
                 prop_assert_eq!(actual, expected);
