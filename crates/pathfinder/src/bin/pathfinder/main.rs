@@ -3,7 +3,6 @@
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use mimalloc::MiMalloc;
-
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::state::SyncContext;

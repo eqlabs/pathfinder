@@ -9,6 +9,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+bincode = "2.0.0-rc.3"
 fake = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }

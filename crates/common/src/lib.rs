@@ -147,7 +147,7 @@ macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
 macros::i64_backed_u64::serdes!(BlockTimestamp);
 
 /// A Starknet transaction index.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, bincode::Encode)]
 pub struct TransactionIndex(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
@@ -158,19 +158,25 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 pub struct GasPrice(pub u128);
 
 /// Starknet resource bound: amount.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy, bincode::Encode,
+)]
 pub struct ResourceAmount(pub u64);
 
 // Transaction tip: the prioritization metric determines the sorting order of transactions in the mempool.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy, bincode::Encode,
+)]
 pub struct Tip(pub u64);
 
 /// Starknet resource bound: price per unit.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy, bincode::Encode,
+)]
 pub struct ResourcePricePerUnit(pub u128);
 
 /// Starknet transaction version.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, bincode::Encode)]
 pub struct TransactionVersion(pub Felt);
 
 impl TransactionVersion {
@@ -286,6 +292,15 @@ impl std::ops::SubAssign<u64> for BlockNumber {
 /// An Ethereum address.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EthereumAddress(pub H160);
+
+impl bincode::Encode for EthereumAddress {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(&self.0.as_bytes(), encoder)
+    }
+}
 
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {

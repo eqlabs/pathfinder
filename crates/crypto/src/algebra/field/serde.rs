@@ -39,6 +39,15 @@ impl<'de> Deserialize<'de> for Felt {
     }
 }
 
+impl bincode::Encode for Felt {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        bincode::Encode::encode(self.as_be_bytes(), encoder)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

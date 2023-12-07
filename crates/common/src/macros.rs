@@ -119,7 +119,7 @@ macro_rules! felt_newtypes {
 
     (@define_felt $target:ident) => {
         paste::paste! {
-            #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, PartialOrd, Ord, Dummy)]
+            #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, PartialOrd, Ord, Dummy, bincode::Encode)]
             pub struct $target(pub pathfinder_crypto::Felt);
 
             #[allow(unused)]
@@ -143,7 +143,7 @@ macro_rules! felt_newtypes {
 
     (@define_felt251 $target:ident) => {
         paste::paste! {
-            #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, PartialOrd, Ord, Dummy)]
+            #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, PartialOrd, Ord, Dummy, bincode::Encode)]
             pub struct $target(pub pathfinder_crypto::Felt);
 
             $crate::macros::fmt::thin_debug!($target);

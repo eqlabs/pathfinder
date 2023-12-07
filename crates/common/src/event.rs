@@ -8,7 +8,9 @@ use serde_with::serde_conv;
 use crate::{ContractAddress, EventData, EventKey};
 
 #[serde_with::serde_as]
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq, Dummy)]
+#[derive(
+    Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq, Dummy, bincode::Encode,
+)]
 #[serde(deny_unknown_fields)]
 pub struct Event {
     #[serde_as(as = "Vec<EventDataAsDecimalStr>")]

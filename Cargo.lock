@@ -5937,6 +5937,7 @@ name = "pathfinder-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "bitvec",
  "fake",
  "metrics",
@@ -5976,6 +5977,7 @@ version = "0.1.0"
 dependencies = [
  "ark-ff",
  "assert_matches",
+ "bincode",
  "bitvec",
  "criterion",
  "fake",
@@ -7743,6 +7745,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "bincode",
  "fake",
  "lazy_static",
  "pathfinder-common",

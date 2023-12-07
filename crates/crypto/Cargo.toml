@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 ark-ff = { version = "0.4.2", features = ["std", "asm"] }
+bincode = "2.0.0-rc.3"
 bitvec = { workspace = true }
 fake = { workspace = true }
 rand = { workspace = true }

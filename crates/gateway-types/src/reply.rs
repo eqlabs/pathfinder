@@ -258,7 +258,9 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(
+        Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, bincode::Encode,
+    )]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
         pub builtin_instance_counter: BuiltinCounters,
@@ -279,7 +281,9 @@ pub mod transaction {
     // This struct purposefully allows for unknown fields as it is not critical to
     // store these counters perfectly. Failure would be far more costly than simply
     // ignoring them.
-    #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(
+        Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, bincode::Encode,
+    )]
     #[serde(default)]
     pub struct BuiltinCounters {
         pub output_builtin: u64,
@@ -311,7 +315,7 @@ pub mod transaction {
 
     /// Represents deserialized L1 to L2 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, bincode::Encode)]
     #[serde(deny_unknown_fields)]
     pub struct L1ToL2Message {
         #[serde_as(as = "EthereumAddressAsHexStr")]
@@ -339,7 +343,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 to L1 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy, bincode::Encode)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
@@ -349,7 +353,9 @@ pub mod transaction {
         pub to_address: EthereumAddress,
     }
 
-    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(
+        Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy, bincode::Encode,
+    )]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum ExecutionStatus {
         // This must be the default as pre v0.12.1 receipts did not contain this value and
@@ -360,7 +366,7 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction receipt data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, bincode::Encode)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
         #[serde(default)]

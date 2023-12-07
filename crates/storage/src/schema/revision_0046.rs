@@ -40,6 +40,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         r"SELECT
         block_headers.number as block_number,
         idx,
+        tx,
         receipt
     FROM starknet_transactions
     INNER JOIN block_headers ON (starknet_transactions.block_hash = block_headers.hash)
@@ -50,11 +51,10 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 
     let mut last_block_number: u64 = 0;
 
-    let mut total_keys: usize = 0;
-    let mut total_data: usize = 0;
-
-    let mut all_keys = HashSet::new();
-    let mut all_data = HashSet::new();
+    let mut receipt_compressed_json_length: usize = 0;
+    let mut receipt_compressed_bincode_length: usize = 0;
+    let mut transaction_compressed_json_length: usize = 0;
+    let mut transaction_compressed_bincode_length: usize = 0;
 
     while let Some(row) = rows.next().context("Fetching next receipt")? {
         let block_number = row.get_block_number("block_number")?;
@@ -71,25 +71,32 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             .get_ref_unwrap("receipt")
             .as_blob()
             .map_err(anyhow::Error::from)?;
+        receipt_compressed_json_length += receipt.len();
         let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
         let receipt: starknet_gateway_types::reply::transaction::Receipt =
             serde_json::from_slice(&receipt).context("Deserializing transaction receipt")?;
 
-        for event in receipt.events {
-            total_keys += event.keys.len();
-            for key in event.keys {
-                all_keys.insert(key);
-            }
-            total_data += event.data.len();
-            for data in event.data {
-                all_data.insert(data);
-            }
-        }
+        let tx = row
+            .get_ref_unwrap("tx")
+            .as_blob()
+            .map_err(anyhow::Error::from)?;
+        transaction_compressed_json_length += tx.len();
+        let tx = zstd::decode_all(tx).context("Decompressing transaction")?;
+        let tx: starknet_gateway_types::reply::transaction::Transaction =
+            serde_json::from_slice(&tx).context("Deserializing transaction")?;
+        let tx: pathfinder_common::transaction::Transaction =
+            tx.try_into().context("Converting transaction to common")?;
+
+        let b = bincode::encode_to_vec(&receipt, bincode::config::standard())?;
+        let b = zstd::encode_all(b.as_slice(), 0)?;
+        receipt_compressed_bincode_length += b.len();
+
+        let b = bincode::encode_to_vec(&tx, bincode::config::standard())?;
+        let b = zstd::encode_all(b.as_slice(), 0)?;
+        transaction_compressed_bincode_length += b.len();
     }
 
-    let unique_keys = all_keys.len();
-    let unique_data = all_data.len();
-    tracing::info!(%total_keys, %unique_keys, %total_data, %unique_data, "Total size of keys and data");
+    tracing::info!(%receipt_compressed_json_length, %receipt_compressed_bincode_length, %transaction_compressed_json_length, %transaction_compressed_bincode_length, "Iteration over");
 
     Ok(())
 }

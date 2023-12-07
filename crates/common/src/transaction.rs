@@ -3,13 +3,13 @@ use crate::{
     Tip,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct Transaction {
     pub hash: TransactionHash,
     pub variant: TransactionVariant,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode)]
 pub enum TransactionVariant {
     DeclareV0(DeclareTransactionV0V1),
     DeclareV1(DeclareTransactionV0V1),
@@ -71,7 +71,7 @@ impl From<L1HandlerTransaction> for TransactionVariant {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct DeclareTransactionV0V1 {
     pub class_hash: ClassHash,
     pub max_fee: Fee,
@@ -80,7 +80,7 @@ pub struct DeclareTransactionV0V1 {
     pub sender_address: ContractAddress,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct DeclareTransactionV2 {
     pub class_hash: ClassHash,
     pub max_fee: Fee,
@@ -90,7 +90,7 @@ pub struct DeclareTransactionV2 {
     pub compiled_class_hash: CasmHash,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct DeclareTransactionV3 {
     pub class_hash: ClassHash,
     pub nonce: TransactionNonce,
@@ -105,7 +105,7 @@ pub struct DeclareTransactionV3 {
     pub compiled_class_hash: CasmHash,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct DeployTransaction {
     pub class_hash: ClassHash,
     pub contract_address: ContractAddress,
@@ -114,7 +114,7 @@ pub struct DeployTransaction {
     pub constructor_calldata: Vec<ConstructorParam>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct DeployAccountTransactionV0V1 {
     pub contract_address: ContractAddress,
     pub max_fee: Fee,
@@ -126,7 +126,7 @@ pub struct DeployAccountTransactionV0V1 {
     pub class_hash: ClassHash,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct DeployAccountTransactionV3 {
     pub contract_address: ContractAddress,
     pub signature: Vec<TransactionSignatureElem>,
@@ -141,7 +141,7 @@ pub struct DeployAccountTransactionV3 {
     pub class_hash: ClassHash,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct InvokeTransactionV0 {
     pub calldata: Vec<CallParam>,
     pub sender_address: ContractAddress,
@@ -151,7 +151,7 @@ pub struct InvokeTransactionV0 {
     pub signature: Vec<TransactionSignatureElem>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct InvokeTransactionV1 {
     pub calldata: Vec<CallParam>,
     pub sender_address: ContractAddress,
@@ -160,7 +160,7 @@ pub struct InvokeTransactionV1 {
     pub nonce: TransactionNonce,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct InvokeTransactionV3 {
     pub signature: Vec<TransactionSignatureElem>,
     pub nonce: TransactionNonce,
@@ -174,7 +174,7 @@ pub struct InvokeTransactionV3 {
     pub sender_address: ContractAddress,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, bincode::Encode)]
 pub struct L1HandlerTransaction {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,
@@ -183,25 +183,25 @@ pub struct L1HandlerTransaction {
     pub version: TransactionVersion,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, bincode::Encode)]
 pub enum EntryPointType {
     External,
     L1Handler,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bincode::Encode)]
 pub struct ResourceBounds {
     pub l1_gas: ResourceBound,
     pub l2_gas: ResourceBound,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bincode::Encode)]
 pub struct ResourceBound {
     pub max_amount: ResourceAmount,
     pub max_price_per_unit: ResourcePricePerUnit,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bincode::Encode)]
 pub enum DataAvailabilityMode {
     #[default]
     L1,

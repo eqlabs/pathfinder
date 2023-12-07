@@ -12,6 +12,7 @@ full-serde = []
 
 [dependencies]
 anyhow = { workspace = true }
+bincode = "2.0.0-rc.3"
 bitvec = { workspace = true }
 fake = { workspace = true }
 metrics = { workspace = true }
