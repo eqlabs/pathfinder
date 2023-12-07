@@ -24,6 +24,11 @@ pub(super) fn insert_state_update(
         .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_address, storage_address, storage_value) VALUES (?, ?, ?, ?)")
         .context("Preparing nonce insert statement")?;
 
+    let mut insert_contract_address = tx
+        .inner()
+        .prepare_cached("INSERT INTO contract_addresses(address) VALUES(?)")
+        .context("Preparing contract address insert statement")?;
+
     let mut insert_contract = tx
         .inner().prepare_cached("INSERT INTO contract_updates (block_number, contract_address, class_hash) VALUES (?, ?, ?)")
         .context("Preparing contract insert statement")?;
@@ -36,6 +41,11 @@ pub(super) fn insert_state_update(
         .context("Preparing class definition block number update statement")?;
 
     for (address, update) in &state_update.contract_updates {
+        if let Some(ContractClassUpdate::Deploy(_)) = update.class {
+            insert_contract_address
+                .execute(params![address])
+                .context("Inserting contract address")?;
+        }
         if let Some(class_update) = &update.class {
             insert_contract
                 .execute(params![&block_number, address, &class_update.class_hash()])
