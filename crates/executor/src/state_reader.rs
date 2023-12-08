@@ -143,8 +143,75 @@ impl<'tx> PathfinderStateReader<'tx> {
             ignore_block_number_for_classes,
         }
     }
+
     fn state_block_id(&self) -> Option<pathfinder_storage::BlockId> {
         self.block_number.map(Into::into)
+    }
+
+    fn non_cached_compiled_contract_class(&mut self, pathfinder_class_hash: ClassHash, class_hash: &StarknetClassHash) -> Result<ContractClass, StateError> {
+        tracing::trace!("Getting class");
+
+        let block_id = self.state_block_id().ok_or_else(|| {
+            StateError::UndeclaredClassHash(starknet_api::core::ClassHash(
+                pathfinder_class_hash.0.into_starkfelt(),
+            ))
+        })?;
+
+        let casm_definition = if self.ignore_block_number_for_classes {
+            self.transaction.casm_definition(pathfinder_class_hash)
+        } else {
+            self.transaction
+                .casm_definition_at(block_id, pathfinder_class_hash)
+        };
+
+        if let Some(casm_definition) = casm_definition.map_err(map_anyhow_to_state_err)? {
+            let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
+                StateError::StateReadError(format!(
+                    "Class definition is not valid UTF-8: {}",
+                    error
+                ))
+            })?;
+
+            let casm_class =
+                blockifier::execution::contract_class::ContractClassV1::try_from_json_string(
+                    &casm_definition,
+                )
+                .map_err(StateError::ProgramError)?;
+
+            return Ok(blockifier::execution::contract_class::ContractClass::V1(
+                casm_class,
+            ));
+        }
+
+        let definition = if self.ignore_block_number_for_classes {
+            self.transaction.class_definition(pathfinder_class_hash)
+        } else {
+            self.transaction
+                .class_definition_at(block_id, pathfinder_class_hash)
+        };
+
+        if let Some(definition) = definition.map_err(map_anyhow_to_state_err)? {
+            let definition = String::from_utf8(definition).map_err(|error| {
+                StateError::StateReadError(format!(
+                    "Class definition is not valid UTF-8: {}",
+                    error
+                ))
+            })?;
+
+            let class =
+                blockifier::execution::contract_class::ContractClassV0::try_from_json_string(
+                    &definition,
+                )
+                .map_err(StateError::ProgramError)?;
+
+            return Ok(blockifier::execution::contract_class::ContractClass::V0(
+                class,
+            ));
+        }
+
+        tracing::trace!("Class definition not found");
+
+        Err(StateError::UndeclaredClassHash(*class_hash))
     }
 }
 
@@ -256,69 +323,7 @@ impl StateReader for PathfinderStateReader<'_> {
             tracing::debug_span!("get_compiled_contract_class", class_hash=%pathfinder_class_hash)
                 .entered();
 
-        tracing::trace!("Getting class");
-
-        let block_id = self.state_block_id().ok_or_else(|| {
-            StateError::UndeclaredClassHash(starknet_api::core::ClassHash(
-                pathfinder_class_hash.0.into_starkfelt(),
-            ))
-        })?;
-
-        let casm_definition = if self.ignore_block_number_for_classes {
-            self.transaction.casm_definition(pathfinder_class_hash)
-        } else {
-            self.transaction
-                .casm_definition_at(block_id, pathfinder_class_hash)
-        };
-
-        if let Some(casm_definition) = casm_definition.map_err(map_anyhow_to_state_err)? {
-            let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
-                StateError::StateReadError(format!(
-                    "Class definition is not valid UTF-8: {}",
-                    error
-                ))
-            })?;
-
-            let casm_class =
-                blockifier::execution::contract_class::ContractClassV1::try_from_json_string(
-                    &casm_definition,
-                )
-                .map_err(StateError::ProgramError)?;
-
-            return Ok(blockifier::execution::contract_class::ContractClass::V1(
-                casm_class,
-            ));
-        }
-
-        let definition = if self.ignore_block_number_for_classes {
-            self.transaction.class_definition(pathfinder_class_hash)
-        } else {
-            self.transaction
-                .class_definition_at(block_id, pathfinder_class_hash)
-        };
-
-        if let Some(definition) = definition.map_err(map_anyhow_to_state_err)? {
-            let definition = String::from_utf8(definition).map_err(|error| {
-                StateError::StateReadError(format!(
-                    "Class definition is not valid UTF-8: {}",
-                    error
-                ))
-            })?;
-
-            let class =
-                blockifier::execution::contract_class::ContractClassV0::try_from_json_string(
-                    &definition,
-                )
-                .map_err(StateError::ProgramError)?;
-
-            return Ok(blockifier::execution::contract_class::ContractClass::V0(
-                class,
-            ));
-        }
-
-        tracing::trace!("Class definition not found");
-
-        Err(StateError::UndeclaredClassHash(*class_hash))
+        self.non_cached_compiled_contract_class(pathfinder_class_hash, class_hash)
     }
 
     fn get_compiled_class_hash(
