@@ -61,8 +61,6 @@ pub struct ReceiptCommon {
     pub messages_sent: Vec<MessageToL1>,
     pub execution_resources: ExecutionResources,
     pub revert_reason: String,
-    #[optional]
-    pub consumed_message: Option<MessageToL2>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

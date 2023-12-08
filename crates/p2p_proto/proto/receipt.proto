@@ -47,8 +47,6 @@ message Receipt {
     repeated MessageToL1    messages_sent       = 3;
     ExecutionResources      execution_resources = 4;
     string                  revert_reason       = 5;
-    // FIXME this was missing
-    optional MessageToL2    consumed_message    = 6;
   }
 
 
