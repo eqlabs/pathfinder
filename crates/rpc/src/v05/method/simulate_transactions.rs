@@ -140,10 +140,9 @@ pub async fn simulate_transactions(
             .filter_map(pathfinder_executor::types::TransactionSimulation::revert_reason)
             .next()
         {
-            Some(revert_reason) => Err(SimulateTransactionError::Custom(anyhow::anyhow!(
-                "Transaction reverted: {}",
-                revert_reason
-            ))),
+            Some(revert_reason) => Err(SimulateTransactionError::ContractErrorV05 {
+                revert_error: revert_reason.to_owned(),
+            }),
             None => {
                 let txs = txs.into_iter().map(Into::into).collect();
                 Ok(SimulateTransactionOutput(txs))
