@@ -40,28 +40,19 @@ pub fn with_n_blocks_and_rng(
                 .unwrap();
             tx.insert_signature(header.number, signature).unwrap();
 
-            state_update
-                .declared_cairo_classes
-                .iter()
-                .zip(cairo_defs.iter())
-                .for_each(|(&cairo_hash, (_, definition))| {
-                    tx.insert_cairo_class(cairo_hash, definition).unwrap()
-                });
+            // Insert class definitions.
+            for (hash, definition) in cairo_defs {
+                tx.insert_cairo_class(*hash, definition).unwrap()
+            }
 
-            state_update
-                .declared_sierra_classes
-                .iter()
-                .zip(sierra_defs.iter())
-                .for_each(|((sierra_hash, casm_hash), (_, sierra_definition))| {
-                    tx.insert_sierra_class(
-                        sierra_hash,
-                        sierra_definition,
-                        casm_hash,
-                        &[],
-                        "1.0.alpha6",
-                    )
+            for (sierra_hash, definition) in sierra_defs {
+                let casm_hash = state_update
+                    .declared_sierra_classes
+                    .get(sierra_hash)
+                    .unwrap();
+                tx.insert_sierra_class(sierra_hash, definition, casm_hash, &[], "1.0.alpha6")
                     .unwrap()
-                });
+            }
 
             tx.insert_state_update(header.number, state_update).unwrap();
         },
@@ -74,14 +65,15 @@ pub fn with_n_blocks_and_rng(
 pub mod init {
     use std::collections::{HashMap, HashSet};
 
+    use crate::fake::StorageInitializerItem;
+
     use super::StorageInitializer;
     use fake::{Fake, Faker};
-    use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
+    use pathfinder_common::state_update::SystemContractUpdate;
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
-    use pathfinder_common::ContractAddress;
+    use pathfinder_common::{BlockHeader, StateCommitment, StateUpdate, TransactionIndex};
     use pathfinder_common::{
-        state_update::ContractClassUpdate, BlockHash, BlockHeader, BlockNumber, StateCommitment,
-        StateUpdate, TransactionIndex,
+        ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
     };
     use rand::Rng;
     use starknet_gateway_types::reply::transaction as gw;
@@ -115,15 +107,14 @@ pub mod init {
 
     /// Same as [`with_n_blocks`] except caller can specify the rng used
     pub fn with_n_blocks_and_rng(n: usize, rng: &mut impl Rng) -> StorageInitializer {
-        let mut init = Vec::with_capacity(n);
+        use rand::seq::IteratorRandom;
 
-        for i in 0..n {
-            let mut header: BlockHeader = Faker.fake_with_rng(rng);
-            header.number =
-                BlockNumber::new_or_panic(i.try_into().expect("u64 is at least as wide as usize"));
-            header.state_commitment =
-                StateCommitment::calculate(header.storage_commitment, header.class_commitment);
+        let mut data: Vec<StorageInitializerItem> = Vec::with_capacity(n);
 
+        let mut declared = HashSet::new();
+        let mut deployed = HashSet::new();
+
+        for _ in 0..n {
             // There must be at least 1 transaction per block
             let transactions_and_receipts = fake_non_empty_with_rng::<Vec<_>, gw::Transaction>(rng)
                 .into_iter()
@@ -143,16 +134,26 @@ pub mod init {
                 })
                 .collect::<Vec<_>>();
 
+            let mut header: BlockHeader = Faker.fake_with_rng(rng);
+            let parent = data.last().map(|d| &d.0);
+            header.number = parent
+                .map(|d| d.number.clone().next().unwrap())
+                .unwrap_or_default();
+            header.parent_hash = parent.map(|d| d.hash).unwrap_or_default();
+            header.state_commitment =
+                StateCommitment::calculate(header.storage_commitment, header.class_commitment);
             header.transaction_count = transactions_and_receipts.len();
             header.event_count = transactions_and_receipts
                 .iter()
                 .map(|(_, r)| r.events.len())
                 .sum();
 
-            let block_hash = header.hash;
-            let state_commitment = header.state_commitment;
-            let declared_cairo_classes = Faker.fake_with_rng::<HashSet<_>, _>(rng);
-            let declared_sierra_classes = Faker.fake_with_rng::<HashMap<_, _>, _>(rng);
+            let mut declared_cairo_classes = fake_non_empty_with_rng::<HashSet<_>, _>(rng);
+            declared_cairo_classes.retain(|x| !declared.contains(x));
+
+            let mut declared_sierra_classes =
+                fake_non_empty_with_rng::<HashMap<SierraHash, _>, _>(rng);
+            declared_sierra_classes.retain(|x, _| !declared.contains(&ClassHash(x.0)));
 
             let cairo_definitions = declared_cairo_classes
                 .iter()
@@ -163,109 +164,77 @@ pub mod init {
                 .map(|(&sierra_hash, _)| (sierra_hash, Faker.fake_with_rng::<Vec<u8>, _>(rng)))
                 .collect::<Vec<_>>();
 
-            init.push((
+            let mut state_update = StateUpdate::default()
+                .with_block_hash(header.hash)
+                .with_state_commitment(header.state_commitment)
+                .with_parent_state_commitment(
+                    parent.map(|d| d.state_commitment).unwrap_or_default(),
+                );
+
+            // Declare the classes
+            for cairo in declared_cairo_classes {
+                state_update = state_update.with_declared_cairo_class(cairo);
+                declared.insert(cairo);
+            }
+            for (sierra, casm) in declared_sierra_classes {
+                state_update = state_update.with_declared_sierra_class(sierra, casm);
+                declared.insert(ClassHash(sierra.0));
+            }
+
+            // Replace some contracts classes. This must occur before deploying new contracts
+            // in this block. A contract cannot be both deployed and replaced within the same
+            // block.
+            if !deployed.is_empty() {
+                let replaced = deployed.iter().choose_multiple(rng, 3);
+
+                for contract in replaced {
+                    let class = declared.iter().choose(rng).unwrap();
+                    state_update = state_update.with_replaced_class(*contract, *class)
+                }
+            }
+
+            // Deploy some new contracts.
+            let contracts: HashSet<ContractAddress> = fake_non_empty_with_rng(rng);
+            for contract in contracts {
+                let class = declared.iter().choose(rng).unwrap();
+                state_update = state_update.with_deployed_contract(contract, *class);
+                deployed.insert(contract);
+            }
+
+            // Update some contract nonces. Technically these should be present
+            // for every contract update, but randomly should be okay as well.
+            let nonces: Vec<ContractNonce> = fake_non_empty_with_rng(rng);
+            for nonce in nonces {
+                let contract = deployed.iter().choose(rng).unwrap();
+                state_update = state_update.with_contract_nonce(*contract, nonce);
+            }
+
+            // Update some storage.
+            let updates: HashMap<StorageAddress, StorageValue> = Faker.fake_with_rng(rng);
+            for (key, value) in updates {
+                let contract = deployed.iter().choose(rng).unwrap();
+                state_update = state_update.with_storage_update(*contract, key, value);
+            }
+
+            // Generate some system contract updates.
+            let system_updates = SystemContractUpdate {
+                storage: fake_non_empty_with_rng(rng),
+            };
+            for (key, value) in system_updates.storage {
+                state_update =
+                    state_update.with_system_storage_update(ContractAddress::ONE, key, value);
+            }
+
+            data.push((
                 header,
                 Faker.fake_with_rng(rng),
                 transactions_and_receipts,
-                StateUpdate {
-                    block_hash,
-                    state_commitment,
-                    // Will be fixed in the next loop
-                    parent_state_commitment: StateCommitment::ZERO,
-                    declared_cairo_classes,
-                    declared_sierra_classes,
-                    system_contract_updates: HashMap::from([(
-                        ContractAddress::ONE,
-                        SystemContractUpdate {
-                            storage: fake_non_empty_with_rng(rng),
-                        },
-                    )]),
-                    contract_updates: {
-                        let mut x = Faker.fake_with_rng::<HashMap<_, ContractUpdate>, _>(rng);
-                        x.iter_mut().for_each(|(_, u)| {
-                            // Initially generate deploys only
-                            u.class = u
-                                .class
-                                .as_ref()
-                                .map(|x| ContractClassUpdate::Deploy(x.class_hash()));
-                            // Disallow empty storage entries
-                            if u.storage.is_empty() {
-                                u.storage = fake_non_empty_with_rng(rng);
-                            }
-                        });
-                        x
-                    },
-                },
+                state_update,
                 cairo_definitions,
                 sierra_definitions,
             ));
         }
 
-        //
-        // "Fix" block headers and state updates
-        //
-        if !init.is_empty() {
-            let (header, _, _, state_update, _, _) = init.get_mut(0).unwrap();
-            header.parent_hash = BlockHash::ZERO;
-            header.state_commitment =
-                StateCommitment::calculate(header.storage_commitment, header.class_commitment);
-            state_update.block_hash = header.hash;
-            state_update.parent_state_commitment = StateCommitment::ZERO;
-
-            for i in 1..n {
-                let (parent_hash, parent_state_commitment, deployed_in_parent) = init
-                    .get(i - 1)
-                    .map(|(h, _, _, state_update, _, _)| {
-                        (
-                            h.hash,
-                            h.state_commitment,
-                            state_update
-                                .contract_updates
-                                .iter()
-                                .filter_map(|(&address, update)| match update.class {
-                                    Some(ContractClassUpdate::Deploy(class_hash)) => {
-                                        Some((address, class_hash))
-                                    }
-                                    Some(_) | None => None,
-                                })
-                                .collect::<Vec<_>>(),
-                        )
-                    })
-                    .unwrap();
-                let (header, _, _, state_update, _, _) = init.get_mut(i).unwrap();
-
-                header.parent_hash = parent_hash;
-                header.state_commitment =
-                    StateCommitment::calculate(header.storage_commitment, header.class_commitment);
-                state_update.block_hash = header.hash;
-
-                //
-                // Fix state updates
-                //
-                state_update.parent_state_commitment = parent_state_commitment;
-
-                let num_deployed_in_parent = deployed_in_parent.len();
-
-                if num_deployed_in_parent > 0 {
-                    // Add some replaced classes
-                    let num_replaced = rng.gen_range(1..=num_deployed_in_parent);
-                    use rand::seq::SliceRandom;
-
-                    deployed_in_parent
-                        .choose_multiple(rng, num_replaced)
-                        .for_each(|(address, _)| {
-                            state_update
-                                .contract_updates
-                                .entry(*address)
-                                // It's ulikely rng has generated an update to the previously deployed class but it is still possible
-                                .or_default()
-                                .class =
-                                Some(ContractClassUpdate::Replace(Faker.fake_with_rng(rng)))
-                        })
-                }
-            }
-        }
-
-        init
+        data
     }
 }

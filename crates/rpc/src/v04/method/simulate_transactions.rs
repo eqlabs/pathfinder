@@ -1279,19 +1279,15 @@ pub(crate) mod tests {
         ContractAddress,
         StorageValue,
     ) {
-        let test_storage_key = StorageAddress::from_name(b"my_storage_var");
-        let test_storage_value = storage_value!("0x09");
+        let _test_storage_key = StorageAddress::from_name(b"my_storage_var");
+        // TODO: this value should become non-zero by actively writing it into
+        // storage as part of `set_data` perhaps. Currently we are not testing
+        // much by having it be zero.
+        let test_storage_value = storage_value!("0x0");
 
         // set test storage variable
         let (storage, last_block_header, account_contract_address, universal_deployer_address) =
-            crate::test_setup::test_storage(|state_update| {
-                state_update.with_storage_update(
-                    fixtures::DEPLOYED_CONTRACT_ADDRESS,
-                    test_storage_key,
-                    test_storage_value,
-                )
-            })
-            .await;
+            crate::test_setup::test_storage(|state_update| state_update).await;
 
         (
             storage,
