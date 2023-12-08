@@ -11,8 +11,6 @@ pub(crate) trait ParserState {
         let next_state = current_state.transition(item)?;
 
         *self = next_state;
-        // We need to stop parsing when a block is properly delimited and an error was signalled.
-        // TODO With streaming response we could then just close the stream.
 
         if self.should_stop() {
             anyhow::bail!("no data or premature end of response")
@@ -54,11 +52,13 @@ macro_rules! impl_take_parsed_and_should_stop {
 }
 
 pub(crate) mod block_header {
-    use crate::client::types::BlockHeader;
+    use crate::client::types::{BlockHeader, MaybeSignedBlockHeader};
     use anyhow::Context;
     use p2p_proto::block::BlockHeadersResponsePart;
     use p2p_proto::common::{Error, Fin};
-    use pathfinder_common::BlockHash;
+    use pathfinder_common::{
+        signature::BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
+    };
     use std::collections::HashMap;
 
     #[derive(Debug, Default)]
@@ -66,15 +66,18 @@ pub(crate) mod block_header {
         #[default]
         Uninitialized,
         Header {
-            headers: HashMap<BlockHash, BlockHeader>,
+            current: BlockHash,
+            headers: HashMap<BlockHash, MaybeSignedBlockHeader>,
         },
-        _Signatures, // TODO add signature support
+        Signatures {
+            headers: HashMap<BlockHash, MaybeSignedBlockHeader>,
+        },
         Delimited {
-            headers: HashMap<BlockHash, BlockHeader>,
+            headers: HashMap<BlockHash, MaybeSignedBlockHeader>,
         },
         DelimitedWithError {
             error: Error,
-            headers: HashMap<BlockHash, BlockHeader>,
+            headers: HashMap<BlockHash, MaybeSignedBlockHeader>,
         },
         Empty {
             error: Option<Error>,
@@ -83,34 +86,60 @@ pub(crate) mod block_header {
 
     impl super::ParserState for State {
         type Dto = BlockHeadersResponsePart;
-        type Inner = HashMap<BlockHash, BlockHeader>;
-        type Out = Vec<BlockHeader>;
+        type Inner = HashMap<BlockHash, MaybeSignedBlockHeader>;
+        type Out = Vec<MaybeSignedBlockHeader>;
 
         fn transition(self, next: Self::Dto) -> anyhow::Result<Self> {
             Ok(match (self, next) {
                 (State::Uninitialized, BlockHeadersResponsePart::Header(header)) => {
                     let header = BlockHeader::try_from(*header).context("parsing header")?;
                     Self::Header {
-                        headers: [(header.hash, header)].into(),
+                        current: header.hash,
+                        headers: [(header.hash, header.into())].into(),
                     }
                 }
                 (State::Uninitialized, BlockHeadersResponsePart::Fin(Fin { error })) => {
                     Self::Empty { error }
                 }
-                (State::Header { headers }, BlockHeadersResponsePart::Fin(Fin { error })) => {
-                    match error {
-                        Some(error) => State::DelimitedWithError { error, headers },
-                        None => State::Delimited { headers },
-                    }
-                }
-                (State::Delimited { mut headers }, BlockHeadersResponsePart::Header(header)) => {
-                    if headers.contains_key(&BlockHash(header.hash.0)) {
-                        anyhow::bail!("unexpected response");
+                (
+                    State::Header {
+                        current,
+                        mut headers,
+                    },
+                    BlockHeadersResponsePart::Signatures(signatures),
+                ) => {
+                    if current != BlockHash(signatures.block.hash.0) {
+                        anyhow::bail!("unexpected part");
                     }
 
+                    headers
+                        .get_mut(&current)
+                        .expect("header for this hash is present")
+                        .signatures
+                        .extend(signatures.signatures.into_iter().map(|signature| {
+                            BlockCommitmentSignature {
+                                r: BlockCommitmentSignatureElem(signature.r),
+                                s: BlockCommitmentSignatureElem(signature.s),
+                            }
+                        }));
+                    Self::Signatures { headers }
+                }
+                (
+                    State::Header { headers, .. } | State::Signatures { headers },
+                    BlockHeadersResponsePart::Fin(Fin { error }),
+                ) => match error {
+                    Some(error) => State::DelimitedWithError { error, headers },
+                    None => State::Delimited { headers },
+                },
+                (State::Delimited { mut headers }, BlockHeadersResponsePart::Header(header)) => {
+                    if headers.contains_key(&BlockHash(header.hash.0)) {
+                        anyhow::bail!("unexpected part");
+                    }
+
+                    let current = BlockHash(header.hash.0);
                     let header = BlockHeader::try_from(*header).context("parsing header")?;
-                    headers.insert(header.hash, header);
-                    Self::Header { headers }
+                    headers.insert(header.hash, header.into());
+                    Self::Header { current, headers }
                 }
                 (_, _) => anyhow::bail!("unexpected part"),
             })

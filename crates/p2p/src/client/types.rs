@@ -1,22 +1,24 @@
 //! Conversions between DTOs and common types.
 //!
 //! Also includes some "bridging" types which should eventually be removed
+use std::{collections::HashMap, time::SystemTime};
+
+use pathfinder_common::event::Event;
+use pathfinder_common::signature::BlockCommitmentSignature;
+use pathfinder_common::state_update::SystemContractUpdate;
+use pathfinder_common::transaction::{
+    DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
+    DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction, EntryPointType,
+    InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
+    ResourceBound, ResourceBounds, TransactionVariant,
+};
 use pathfinder_common::{
-    event::Event,
-    state_update::SystemContractUpdate,
-    transaction::{
-        DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
-        DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
-        EntryPointType, InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3,
-        L1HandlerTransaction, ResourceBound, ResourceBounds, TransactionVariant,
-    },
     AccountDeploymentDataElem, BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash,
     ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint,
     EventData, EventKey, Fee, GasPrice, SequencerAddress, SierraHash, StarknetVersion,
     StateCommitment, StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
     TransactionVersion,
 };
-use std::{collections::HashMap, time::SystemTime};
 
 /// We don't want to introduce circular dependencies between crates
 /// and we need to work around for the orphan rule - implement conversion fns for types ourside our crate.
@@ -37,6 +39,21 @@ pub struct BlockHeader {
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub state_commitment: StateCommitment,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MaybeSignedBlockHeader {
+    pub header: BlockHeader,
+    pub signatures: Vec<BlockCommitmentSignature>,
+}
+
+impl From<BlockHeader> for MaybeSignedBlockHeader {
+    fn from(header: BlockHeader) -> Self {
+        Self {
+            header,
+            signatures: Default::default(),
+        }
+    }
 }
 
 /// Simple state update meant for the temporary p2p client hidden behind

@@ -20,16 +20,15 @@ use tokio::sync::RwLock;
 
 use crate::sync::protocol;
 use crate::{
-    client::{
-        peer_aware,
-        types::{BlockHeader, StateUpdateWithDefs},
-    },
+    client::{peer_aware, types::StateUpdateWithDefs},
     peers,
 };
 
 mod parse;
 
 use parse::ParserState;
+
+use super::types::MaybeSignedBlockHeader;
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -107,7 +106,7 @@ impl Client {
         &self,
         start_block: BlockNumber,
         num_blocks: usize,
-    ) -> anyhow::Result<Vec<BlockHeader>> {
+    ) -> anyhow::Result<Vec<MaybeSignedBlockHeader>> {
         anyhow::ensure!(num_blocks > 0, "0 blocks requested");
 
         let limit: u64 = num_blocks.try_into()?;

@@ -1,6 +1,8 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
-use pathfinder_common::{BlockHeader, ClassHash, SierraHash, StateUpdate};
+use pathfinder_common::{
+    signature::BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
+};
 use rand::Rng;
 use starknet_gateway_types::reply::transaction as gw;
 
@@ -8,6 +10,7 @@ pub type StorageInitializer = Vec<StorageInitializerItem>;
 
 pub type StorageInitializerItem = (
     BlockHeader,
+    BlockCommitmentSignature,
     Vec<(gw::Transaction, gw::Receipt)>,
     StateUpdate,
     Vec<(ClassHash, Vec<u8>)>,  // Cairo 0 definitions
@@ -31,10 +34,11 @@ pub fn with_n_blocks_and_rng(
     let tx = connection.transaction().unwrap();
     let fake_data = init::with_n_blocks_and_rng(n, rng);
     fake_data.iter().for_each(
-        |(header, transaction_data, state_update, cairo_defs, sierra_defs)| {
+        |(header, signature, transaction_data, state_update, cairo_defs, sierra_defs)| {
             tx.insert_block_header(header).unwrap();
             tx.insert_transaction_data(header.hash, header.number, transaction_data)
                 .unwrap();
+            tx.insert_signature(header.number, signature).unwrap();
 
             state_update
                 .declared_cairo_classes
@@ -161,6 +165,7 @@ pub mod init {
 
             init.push((
                 header,
+                Faker.fake_with_rng(rng),
                 transactions_and_receipts,
                 StateUpdate {
                     block_hash,
@@ -200,7 +205,7 @@ pub mod init {
         // "Fix" block headers and state updates
         //
         if !init.is_empty() {
-            let (header, _, state_update, _, _) = init.get_mut(0).unwrap();
+            let (header, _, _, state_update, _, _) = init.get_mut(0).unwrap();
             header.parent_hash = BlockHash::ZERO;
             header.state_commitment =
                 StateCommitment::calculate(header.storage_commitment, header.class_commitment);
@@ -210,7 +215,7 @@ pub mod init {
             for i in 1..n {
                 let (parent_hash, parent_state_commitment, deployed_in_parent) = init
                     .get(i - 1)
-                    .map(|(h, _, state_update, _, _)| {
+                    .map(|(h, _, _, state_update, _, _)| {
                         (
                             h.hash,
                             h.state_commitment,
@@ -227,7 +232,7 @@ pub mod init {
                         )
                     })
                     .unwrap();
-                let (header, _, state_update, _, _) = init.get_mut(i).unwrap();
+                let (header, _, _, state_update, _, _) = init.get_mut(i).unwrap();
 
                 header.parent_hash = parent_hash;
                 header.state_commitment =

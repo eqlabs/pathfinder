@@ -7,21 +7,23 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::client::types::{BlockHeader, Class, StateUpdateWithDefs};
+use p2p::client::types::{BlockHeader, Class, MaybeSignedBlockHeader, StateUpdateWithDefs};
 use p2p::{client::peer_agnostic, HeadRx};
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
-    state_update::{ContractClassUpdate, ContractUpdate},
+    BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockId, BlockNumber,
+    ClassHash, StateCommitment, StateDiffCommitment, StateUpdate, TransactionHash,
     TransactionIndex,
-};
-use pathfinder_common::{
-    transaction::Transaction, BlockHash, BlockId, BlockNumber, ClassHash, StateCommitment,
-    StateUpdate, TransactionHash,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply as gw;
 use starknet_gateway_types::request::add_transaction::{Declare, DeployAccount, InvokeFunction};
 use starknet_gateway_types::trace;
-use starknet_gateway_types::{error::SequencerError, reply::Block};
+use starknet_gateway_types::{
+    error::SequencerError,
+    reply::{Block, BlockSignature},
+};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -57,6 +59,7 @@ pub struct Cache {
 #[derive(Clone, Debug)]
 pub struct CacheEntry {
     pub block: Block,
+    pub signature: BlockCommitmentSignature,
     pub definitions: HashMap<ClassHash, Vec<u8>>,
 }
 
@@ -75,6 +78,24 @@ impl Cache {
         locked
             .iter()
             .find_map(|(_, v)| (v.block.block_number == number).then_some(v.block.clone()))
+    }
+
+    fn get_signature(&self, block_hash: BlockHash) -> Option<BlockSignature> {
+        let locked = self.inner.lock().unwrap();
+        locked.peek(&block_hash).map(|entry| BlockSignature {
+            // Not used in sync
+            block_number: entry.block.block_number,
+            // Only this field is used in sync
+            signature: [
+                BlockCommitmentSignatureElem(entry.signature.r.0),
+                BlockCommitmentSignatureElem(entry.signature.s.0),
+            ],
+            // Not used in sync
+            signature_input: gw::BlockSignatureInput {
+                block_hash,
+                state_diff_commitment: StateDiffCommitment::default(), // This is fine
+            },
+        })
     }
 
     fn get_state_commitment(&self, block_hash: BlockHash) -> Option<StateCommitment> {
@@ -110,12 +131,13 @@ impl Cache {
         }
     }
 
-    fn insert_block(&self, block: Block) {
+    fn insert_block_and_signature(&self, block: Block, signature: BlockCommitmentSignature) {
         let mut locked_inner = self.inner.lock().unwrap();
         locked_inner.put(
             block.block_hash,
             CacheEntry {
                 block,
+                signature,
                 definitions: Default::default(),
             },
         );
@@ -198,12 +220,9 @@ impl GatewayApi for HybridClient {
                             return Ok(block.into());
                         }
 
-                        let mut headers =
-                            p2p_client.block_headers(n, 1).await.map_err(|error| {
-                                block_not_found(format!(
-                                    "getting headers failed: block {n}, {error}",
-                                ))
-                            })?;
+                        let headers = p2p_client.block_headers(n, 1).await.map_err(|error| {
+                            block_not_found(format!("getting headers failed: block {n}, {error}",))
+                        })?;
 
                         if headers.len() != 1 {
                             return Err(block_not_found(format!(
@@ -212,11 +231,18 @@ impl GatewayApi for HybridClient {
                             )));
                         }
 
-                        let header = headers.swap_remove(0);
+                        let MaybeSignedBlockHeader { header, signatures } =
+                            headers.into_iter().next().expect("len is 1");
 
                         if header.number != n {
                             return Err(block_not_found("block number mismatch"));
                         }
+
+                        if signatures.len() != 1 {
+                            return Err(block_not_found("expected 1 block header signature"));
+                        }
+
+                        let signature = signatures.into_iter().next().expect("len is 1");
 
                         cache.clear_if_reorg(&header);
 
@@ -330,7 +356,7 @@ impl GatewayApi for HybridClient {
                             starknet_version: header.starknet_version,
                         };
 
-                        cache.insert_block(block.clone());
+                        cache.insert_block_and_signature(block.clone(), signature);
 
                         Ok(block.into())
                     }
@@ -550,8 +576,17 @@ impl GatewayApi for HybridClient {
     }
 
     async fn signature(&self, block: BlockId) -> Result<gw::BlockSignature, SequencerError> {
-        // TODO non proxy should query those via p2p
-        self.as_sequencer().signature(block).await
+        match self {
+            HybridClient::GatewayProxy { sequencer, .. } => sequencer.signature(block).await,
+            HybridClient::NonPropagatingP2P { cache, .. } => cache
+                .get_signature(match block {
+                    BlockId::Hash(hash) => hash,
+                    _ => unreachable!("not used in sync"),
+                })
+                .ok_or_else(|| {
+                    error::block_not_found(format!("No peers with signature for block {block:?}"))
+                }),
+        }
     }
 }
 
