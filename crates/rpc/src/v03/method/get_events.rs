@@ -584,7 +584,7 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_storage::test_utils;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions_sorted::assert_eq;
 
     #[rstest::rstest]
     #[case::positional_with_optionals(json!([{
@@ -896,7 +896,7 @@ mod tests {
 
     mod pending {
         use super::*;
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         #[tokio::test]
         async fn backward_range() {

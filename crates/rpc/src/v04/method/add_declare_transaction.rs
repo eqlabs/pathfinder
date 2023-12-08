@@ -387,7 +387,7 @@ mod tests {
                     declare_transaction: test_declare_txn(),
                     token: None,
                 };
-                pretty_assertions::assert_eq!(input, expected);
+                pretty_assertions_sorted::assert_eq!(input, expected);
             }
 
             #[test]
@@ -411,7 +411,7 @@ mod tests {
                     declare_transaction: test_declare_txn(),
                     token: Some("token".to_owned()),
                 };
-                pretty_assertions::assert_eq!(input, expected);
+                pretty_assertions_sorted::assert_eq!(input, expected);
             }
         }
     }

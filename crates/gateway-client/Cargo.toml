@@ -35,7 +35,7 @@ base64 = { workspace = true }
 flate2 = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
-pretty_assertions = { workspace = true }
+pretty_assertions_sorted = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { version = "0.2.12", default-features = false, features = [
     "trace",

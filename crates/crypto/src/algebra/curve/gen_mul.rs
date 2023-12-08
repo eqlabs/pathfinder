@@ -43,7 +43,7 @@ mod tests {
     use super::*;
     use crate::algebra::curve::CURVE_G;
     use crate::algebra::field::CurveOrderMontFelt;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions_sorted::assert_eq;
 
     #[test]
     fn test_generator_mul() {

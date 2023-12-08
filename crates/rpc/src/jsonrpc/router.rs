@@ -599,7 +599,7 @@ mod tests {
     mod specification_tests {
         //! Test cases lifted directly from the [RPC specification](https://www.jsonrpc.org/specification).
         use super::*;
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
         use rstest::rstest;
         use serde_json::json;
 

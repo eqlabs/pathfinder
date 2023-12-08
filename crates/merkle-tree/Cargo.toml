@@ -19,4 +19,4 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions = { workspace = true }
+pretty_assertions_sorted = { workspace = true }

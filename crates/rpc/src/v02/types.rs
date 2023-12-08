@@ -869,7 +869,7 @@ pub mod request {
             use crate::v02::types::{ResourceBound, ResourceBounds};
             use pathfinder_common::{felt, ResourcePricePerUnit};
             use pathfinder_common::{macro_prelude::*, ResourceAmount};
-            use pretty_assertions::assert_eq;
+            use pretty_assertions_sorted::assert_eq;
 
             #[test]
             fn broadcasted_transaction() {

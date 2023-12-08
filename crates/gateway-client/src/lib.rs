@@ -863,7 +863,7 @@ mod tests {
     mod block {
         use super::*;
         use pathfinder_common::BlockId;
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         #[tokio::test]
         async fn latest() {
@@ -948,7 +948,7 @@ mod tests {
 
     mod transaction {
         use super::{reply::Status, *};
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         #[tokio::test]
         async fn declare() {
@@ -1026,7 +1026,7 @@ mod tests {
     mod state_update_matches_by_hash_on {
         use super::*;
 
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         #[tokio::test]
         async fn genesis() {

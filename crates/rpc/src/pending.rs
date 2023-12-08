@@ -138,7 +138,7 @@ mod tests {
         sender.send(pending.clone()).unwrap();
 
         let result = uut.get(&tx).unwrap();
-        pretty_assertions::assert_eq!(result, pending);
+        pretty_assertions_sorted::assert_eq_sorted!(result, pending);
     }
 
     #[test]
@@ -188,6 +188,6 @@ mod tests {
             ..Default::default()
         };
 
-        pretty_assertions::assert_eq!(result, expected);
+        pretty_assertions_sorted::assert_eq_sorted!(result, expected);
     }
 }

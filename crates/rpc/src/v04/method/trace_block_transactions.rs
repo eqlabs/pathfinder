@@ -479,7 +479,7 @@ pub(crate) mod tests {
         let output = trace_block_transactions(context, input).await.unwrap();
         let expected = TraceBlockTransactionsOutput(traces);
 
-        pretty_assertions::assert_eq!(output, expected);
+        pretty_assertions_sorted::assert_eq!(output, expected);
         Ok(())
     }
 }

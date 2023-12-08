@@ -49,7 +49,7 @@ mod tests {
     use pathfinder_common::transaction::InvokeTransactionV0;
     use pathfinder_common::transaction::TransactionVariant;
 
-    use pretty_assertions::assert_eq;
+    use pretty_assertions_sorted::assert_eq;
 
     #[tokio::test]
     async fn pending() {

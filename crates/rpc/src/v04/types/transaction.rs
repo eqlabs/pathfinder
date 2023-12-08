@@ -300,7 +300,7 @@ mod tests {
         use pathfinder_common::{
             transaction::*, ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion,
         };
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
         use serde_json::json;
 
         #[test]

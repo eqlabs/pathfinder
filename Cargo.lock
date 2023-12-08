@@ -3087,6 +3087,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "darrentsung_debug_parser"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf488eca7807ce3c8e64bee95c3fbf8f1935c905b3b73835e75db16fc458fdc4"
+dependencies = [
+ "anyhow",
+ "html-escape",
+ "nom",
+ "ordered-float",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3944,6 +3956,15 @@ dependencies = [
  "libc",
  "match_cfg",
  "winapi",
+]
+
+[[package]]
+name = "html-escape"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1ad449764d627e22bfd7cd5e8868264fc9236e07c752972b4080cd351cb476"
+dependencies = [
+ "utf8-width",
 ]
 
 [[package]]
@@ -5687,6 +5708,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
+dependencies = [
+ "num-traits 0.2.16",
+]
+
+[[package]]
 name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5903,7 +5933,7 @@ dependencies = [
  "pathfinder-rpc",
  "pathfinder-serde",
  "pathfinder-storage",
- "pretty_assertions",
+ "pretty_assertions_sorted",
  "primitive-types",
  "proptest",
  "rand",
@@ -5980,7 +6010,7 @@ dependencies = [
  "criterion",
  "fake",
  "num-bigint",
- "pretty_assertions",
+ "pretty_assertions_sorted",
  "rand",
  "serde",
  "serde_json",
@@ -6033,7 +6063,7 @@ dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-storage",
- "pretty_assertions",
+ "pretty_assertions_sorted",
  "rand",
  "starknet-gateway-types",
  "thiserror",
@@ -6073,7 +6103,7 @@ dependencies = [
  "pathfinder-merkle-tree",
  "pathfinder-serde",
  "pathfinder-storage",
- "pretty_assertions",
+ "pretty_assertions_sorted",
  "primitive-types",
  "reqwest",
  "rstest",
@@ -6105,7 +6135,7 @@ dependencies = [
  "num-bigint",
  "pathfinder-common",
  "pathfinder-crypto",
- "pretty_assertions",
+ "pretty_assertions_sorted",
  "primitive-types",
  "serde",
  "serde_json",
@@ -6423,6 +6453,16 @@ checksum = "af7cee1a6c8a5b9208b3cb1061f10c0cb689087b3d8ce85fb9d2dd7a29b6ba66"
 dependencies = [
  "diff",
  "yansi",
+]
+
+[[package]]
+name = "pretty_assertions_sorted"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa95d32882f2adbdfd30312733271b83c527ee8007bf78dc21afe510463ac6a0"
+dependencies = [
+ "darrentsung_debug_parser",
+ "pretty_assertions",
 ]
 
 [[package]]
@@ -7716,7 +7756,7 @@ dependencies = [
  "pathfinder-crypto",
  "pathfinder-retry",
  "pathfinder-serde",
- "pretty_assertions",
+ "pretty_assertions_sorted",
  "reqwest",
  "serde",
  "serde_json",
@@ -8605,6 +8645,12 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "utf8-width"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86bd8d4e895da8537e5315b8254664e6b769c4ff3db18321b297a1e7004392e3"
 
 [[package]]
 name = "utf8parse"
