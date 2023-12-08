@@ -1160,7 +1160,8 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use pathfinder_common::ContractAddress;
+        use pathfinder_common::{ContractAddress, ResourceAmount, ResourcePricePerUnit, Tip};
+        use starknet_gateway_types::reply::transaction::{DataAvailabilityMode, ResourceBound};
         use starknet_gateway_types::request::{
             add_transaction::CairoContractDefinition,
             contract::{EntryPointType, SelectorAndOffset},
@@ -1430,6 +1431,65 @@ mod tests {
                 constructor_calldata: vec![call_param!(
                     "0x7eda1c9b366a008b8697fe9d6bad040818ffb27f8615966c29de33e523e9e35"
                 )],
+            });
+
+            let res = client
+                .add_deploy_account(request)
+                .await
+                .expect("DEPLOY_ACCOUNT response");
+
+            let expected = reply::add_transaction::DeployAccountResponse {
+                code: "TRANSACTION_RECEIVED".to_string(),
+                transaction_hash: transaction_hash!(
+                    "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
+                ),
+                address: contract_address!(
+                    "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
+                ),
+            };
+
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn test_deploy_account_v3() {
+            use request::add_transaction::{DeployAccount, DeployAccountV3};
+
+            let client = Client::goerli_integration();
+
+            let request = DeployAccount::V3(DeployAccountV3 {
+                signature: vec![
+                    transaction_signature_elem!(
+                        "0xa814e168c37928a44f9a0914a81fb0f91c45152424dc9e4b45604135f38ec0"
+                    ),
+                    transaction_signature_elem!(
+                        "0x69be69344449a2cfb74a70c126e763ebf643e3ff287e38c734cdf429cdc840b"
+                    ),
+                ],
+                nonce: transaction_nonce!("0x0"),
+                class_hash: class_hash!(
+                    "0x28463df0e5e765507ae51f9e67d6ae36c7e5af793424eccc9bc22ad705fc09d"
+                ),
+                contract_address_salt: contract_address_salt!(
+                    "0x518fb69693349a3a08bd5b982e89deb163c6a68e73162d89e5cd12fd3fbc8c0"
+                ),
+                constructor_calldata: vec![
+                    call_param!(
+                        "0x518fb69693349a3a08bd5b982e89deb163c6a68e73162d89e5cd12fd3fbc8c0"
+                    ),
+                    call_param!("0x0"),
+                ],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: reply::transaction::ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(0x1296),
+                        max_price_per_unit: ResourcePricePerUnit(0x8f0d186),
+                    },
+                    l2_gas: ResourceBound::default(),
+                },
+                tip: Tip(0),
+                paymaster_data: vec![],
             });
 
             let res = client
