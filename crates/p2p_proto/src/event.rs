@@ -7,16 +7,10 @@ use crate::{proto, ToProtobuf, TryFromProtobuf};
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::event::Event")]
 pub struct Event {
+    pub transaction_hash: Hash,
     pub from_address: Felt,
     pub keys: Vec<Felt>,
     pub data: Vec<Felt>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::event::TxnEvents")]
-pub struct TxnEvents {
-    pub events: Vec<Event>,
-    pub transaction_hash: Hash,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -28,7 +22,7 @@ pub struct EventsRequest {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::event::Events")]
 pub struct Events {
-    pub items: Vec<TxnEvents>,
+    pub items: Vec<Event>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

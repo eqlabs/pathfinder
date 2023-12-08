@@ -5,15 +5,10 @@ package starknet.event;
 import "common.proto";
 
 message Event {
-    starknet.common.Felt252  from_address = 1;
-    repeated starknet.common.Felt252 keys = 2;
-    repeated starknet.common.Felt252 data = 3;
-}
-
-// FIXME added to know which transaction the events are for
-message TxnEvents {
-    repeated Event       events           = 1;
-    starknet.common.Hash transaction_hash = 2;
+    starknet.common.Hash transaction_hash = 1;
+    starknet.common.Felt252  from_address = 2;
+    repeated starknet.common.Felt252 keys = 3;
+    repeated starknet.common.Felt252 data = 4;
 }
 
 message EventsRequest {
@@ -21,7 +16,7 @@ message EventsRequest {
 }
 
 message Events {
-    repeated TxnEvents items = 1;
+    repeated Event items = 1;
 }
 
 // can be several in a single reply
