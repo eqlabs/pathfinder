@@ -1,11 +1,15 @@
 use tower_http::classify::{ServerErrorsAsFailures, SharedClassifier};
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultOnEos, DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 pub(crate) fn trace_layer(
 ) -> TraceLayer<SharedClassifier<ServerErrorsAsFailures>, RequestHeaderSpan> {
     tower_http::trace::TraceLayer::new_for_http()
         // Records request ID header value in the span.
         .make_span_with(RequestHeaderSpan)
+        .on_request(DefaultOnRequest::default().level(Level::TRACE))
+        .on_response(DefaultOnResponse::default().level(Level::TRACE))
+        .on_eos(DefaultOnEos::default().level(Level::TRACE))
 }
 
 #[derive(Copy, Clone)]
