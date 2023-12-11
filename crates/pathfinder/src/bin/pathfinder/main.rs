@@ -2,6 +2,8 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use mimalloc::MiMalloc;
+
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::state::SyncContext;
@@ -24,6 +26,9 @@ use crate::config::NetworkConfig;
 
 mod config;
 mod update;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() -> anyhow::Result<()> {
     tokio::runtime::Builder::new_multi_thread()
