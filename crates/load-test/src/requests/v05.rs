@@ -223,7 +223,6 @@ pub async fn call(
     contract_address: Felt,
     call_data: &[&str],
     entry_point_selector: &str,
-    at_block: Felt,
 ) -> MethodResult<Vec<String>> {
     post_jsonrpc_request(
         user,
@@ -234,7 +233,7 @@ pub async fn call(
                 "calldata": call_data,
                 "entry_point_selector": entry_point_selector,
             },
-            "block_id": {"block_hash": at_block},
+            "block_id": "pending",
         }),
     )
     .await
