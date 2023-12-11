@@ -146,8 +146,45 @@ pub mod types {
             }
         }
 
+        fn execution_resources(&mut self) -> &mut ExecutionResourcesProperties {
+            match self {
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Declare(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::L1Handler(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Deploy(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Normal(TransactionReceipt::DeployAccount(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Invoke(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Declare(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Deploy(x)) => {
+                    &mut x.common.execution_resources
+                }
+                MaybePendingTransactionReceipt::Pending(
+                    PendingTransactionReceipt::DeployAccount(x),
+                ) => &mut x.common.execution_resources,
+
+                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::L1Handler(
+                    x,
+                )) => &mut x.common.execution_resources,
+            }
+        }
+
         pub fn into_v5_form(mut self) -> Self {
             self.actual_fee().format_as_v05();
+            self.execution_resources().format_as_v05();
 
             self
         }
@@ -239,11 +276,27 @@ pub mod types {
         }
     }
 
-    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
-    #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct ExecutionResourcesProperties {
+    #[serde(untagged)]
+    pub enum ExecutionResourcesProperties {
+        V05(ExecutionResourcesPropertiesV05),
+        V06(ExecutionResourcesPropertiesV06),
+    }
+
+    impl ExecutionResourcesProperties {
+        pub fn format_as_v05(&mut self) {
+            if let ExecutionResourcesProperties::V06(properties) = self {
+                *self = ExecutionResourcesProperties::V05(properties.into());
+            }
+        }
+    }
+
+    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
+    #[serde_as]
+    #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct ExecutionResourcesPropertiesV05 {
         // All these properties are actually strings in the spec, hence the serde attributes.
         #[serde(with = "u64_as_hex_str")]
         pub steps: u64,
@@ -265,6 +318,51 @@ pub mod types {
         pub keccak_builtin_applications: u64,
     }
 
+    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
+    #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct ExecutionResourcesPropertiesV06 {
+        pub steps: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub memory_holes: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub range_check_builtin_applications: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub pedersen_builtin_applications: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub poseidon_builtin_applications: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub ec_op_builtin_applications: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub ecdsa_builtin_applications: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub bitwise_builtin_applications: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub keccak_builtin_applications: u64,
+        #[serde(skip_serializing_if = "is_zero")]
+        pub segment_arena_builtin: u64,
+    }
+
+    fn is_zero(value: &u64) -> bool {
+        *value == 0
+    }
+
+    impl From<&mut ExecutionResourcesPropertiesV06> for ExecutionResourcesPropertiesV05 {
+        fn from(value: &mut ExecutionResourcesPropertiesV06) -> Self {
+            Self {
+                steps: value.steps,
+                memory_holes: value.memory_holes,
+                range_check_builtin_applications: value.range_check_builtin_applications,
+                pedersen_builtin_applications: value.pedersen_builtin_applications,
+                poseidon_builtin_applications: value.poseidon_builtin_applications,
+                ec_op_builtin_applications: value.ec_op_builtin_applications,
+                ecdsa_builtin_applications: value.ecdsa_builtin_applications,
+                bitwise_builtin_applications: value.bitwise_builtin_applications,
+                keccak_builtin_applications: value.keccak_builtin_applications,
+            }
+        }
+    }
+
     impl From<ExecutionResources> for ExecutionResourcesProperties {
         fn from(value: ExecutionResources) -> Self {
             let ExecutionResources {
@@ -279,14 +377,13 @@ pub mod types {
                         ec_op_builtin,
                         keccak_builtin,
                         poseidon_builtin,
-                        // Absent from the OpenRPC spec
-                        segment_arena_builtin: _,
+                        segment_arena_builtin,
                     },
                 n_steps,
                 n_memory_holes,
             } = value;
 
-            Self {
+            Self::V06(ExecutionResourcesPropertiesV06 {
                 steps: n_steps,
                 memory_holes: n_memory_holes,
                 range_check_builtin_applications: range_check_builtin,
@@ -296,7 +393,8 @@ pub mod types {
                 ecdsa_builtin_applications: ecdsa_builtin,
                 bitwise_builtin_applications: bitwise_builtin,
                 keccak_builtin_applications: keccak_builtin,
-            }
+                segment_arena_builtin,
+            })
         }
     }
 
@@ -709,7 +807,16 @@ mod tests {
                         execution_status: ExecutionStatus::Succeeded,
                         finality_status: FinalityStatus::AcceptedOnL1,
                         revert_reason: None,
-                        execution_resources: ExecutionResources::default().into(),
+                        execution_resources: ExecutionResources {
+                            builtin_instance_counter: BuiltinCounters {
+                                output_builtin: 33,
+                                pedersen_builtin: 32,
+                                ..Default::default()
+                            },
+                            n_memory_holes: 5,
+                            n_steps: 10,
+                        }
+                        .into(),
                     }
                 }
             ))
@@ -750,7 +857,16 @@ mod tests {
                         execution_status: ExecutionStatus::Succeeded,
                         finality_status: FinalityStatus::AcceptedOnL2,
                         revert_reason: None,
-                        execution_resources: ExecutionResources::default().into(),
+                        execution_resources: ExecutionResources {
+                            builtin_instance_counter: BuiltinCounters {
+                                output_builtin: 33,
+                                pedersen_builtin: 32,
+                                ..Default::default()
+                            },
+                            n_memory_holes: 5,
+                            n_steps: 10,
+                        }
+                        .into(),
                     }
                 }
             ))
@@ -776,6 +892,10 @@ mod tests {
         };
 
         let into = ExecutionResourcesProperties::from(original);
+        let into = match into {
+            ExecutionResourcesProperties::V06(x) => x,
+            ExecutionResourcesProperties::V05(_) => panic!("Expected V06"),
+        };
 
         assert_eq!(into.steps, original.n_steps);
         assert_eq!(into.memory_holes, original.n_memory_holes);
@@ -918,15 +1038,9 @@ mod tests {
                 "unit": "WEI",
             },
             "execution_resources": {
-                "bitwise_builtin_applications": "0x0",
-                "ec_op_builtin_applications": "0x0",
-                "ecdsa_builtin_applications": "0x0",
-                "keccak_builtin_applications": "0x0",
-                "memory_holes": "0x0",
-                "steps": "0x0",
-                "pedersen_builtin_applications": "0x0",
-                "poseidon_builtin_applications": "0x0",
-                "range_check_builtin_applications": "0x0",
+                "steps": 10,
+                "memory_holes": 5,
+                "pedersen_builtin_applications": 32,
             },
             "execution_status": "REVERTED",
             "finality_status": "ACCEPTED_ON_L2",
