@@ -70,7 +70,7 @@ impl RpcRouter {
 
     /// Parses and executes a request. Returns [None] if its a notification.
     async fn run_request<'a>(&self, request: &'a str) -> Option<RpcResponse<'a>> {
-        tracing::debug!(%request, "Running request");
+        tracing::trace!(%request, "Running request");
 
         let Ok(request) = serde_json::from_str::<RpcRequest<'_>>(request) else {
             return Some(RpcResponse::INVALID_REQUEST);
