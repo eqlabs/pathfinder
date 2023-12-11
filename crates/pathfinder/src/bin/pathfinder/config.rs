@@ -1,4 +1,4 @@
-use clap::{CommandFactory, Parser};
+use clap::{ArgAction, CommandFactory, Parser};
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
 use pathfinder_common::AllowedOrigins;
@@ -184,7 +184,8 @@ This should only be enabled for debugging purposes as it adds substantial proces
         long = "sync.enable",
         long_help = "Enable syncing the chain",
         env = "PATHFINDER_SYNC_ENABLED",
-        default_value = "true"
+        default_value = "true",
+        action=ArgAction::Set
     )]
     is_sync_enabled: bool,
 
@@ -192,7 +193,8 @@ This should only be enabled for debugging purposes as it adds substantial proces
         long = "rpc.enable",
         long_help = "Enable serving RPC API",
         env = "PATHFINDER_RPC_ENABLED",
-        default_value = "true"
+        default_value = "true",
+        action=ArgAction::Set
     )]
     is_rpc_enabled: bool,
 }
