@@ -189,7 +189,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
     is_sync_enabled: bool,
 
     #[arg(
-        long = "rcp.enable",
+        long = "rpc.enable",
         long_help = "Enable serving RPC API",
         env = "PATHFINDER_RPC_ENABLED",
         default_value = "true"
