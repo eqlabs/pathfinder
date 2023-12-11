@@ -91,22 +91,22 @@ pub(super) enum ResponseEvent {
         subscription_id: u32,
         reason: String,
     },
-    InvalidRequest,
+    InvalidRequest(String),
     InvalidMethod(OwnedRequestId),
-    InvalidParams(OwnedRequestId),
+    InvalidParams(OwnedRequestId, String),
     Header(SubscriptionItem<Arc<Value>>),
 }
 
 impl ResponseEvent {
     pub(super) fn kind(&self) -> &'static str {
         match self {
-            ResponseEvent::InvalidRequest => "InvalidRequest",
+            ResponseEvent::InvalidRequest(_) => "InvalidRequest",
             ResponseEvent::InvalidMethod(_) => "InvalidMethod",
             ResponseEvent::Header(_) => "BlockHeader",
             ResponseEvent::Subscribed { .. } => "Subscribed",
             ResponseEvent::Unsubscribed { .. } => "Unsubscribed",
             ResponseEvent::SubscriptionClosed { .. } => "SubscriptionClosed",
-            ResponseEvent::InvalidParams(_) => "InvalidParams",
+            ResponseEvent::InvalidParams(..) => "InvalidParams",
         }
     }
 }
@@ -117,12 +117,14 @@ impl Serialize for ResponseEvent {
         S: serde::Serializer,
     {
         match self {
-            ResponseEvent::InvalidRequest => RpcResponse::INVALID_REQUEST.serialize(serializer),
+            ResponseEvent::InvalidRequest(e) => {
+                RpcResponse::invalid_request(e.clone()).serialize(serializer)
+            }
             ResponseEvent::InvalidMethod(id) => {
                 RpcResponse::method_not_found(id.into()).serialize(serializer)
             }
-            ResponseEvent::InvalidParams(id) => {
-                RpcResponse::invalid_params(id.into()).serialize(serializer)
+            ResponseEvent::InvalidParams(id, e) => {
+                RpcResponse::invalid_params(id.into(), e.clone()).serialize(serializer)
             }
             ResponseEvent::Header(header) => header.serialize(serializer),
             ResponseEvent::Subscribed {

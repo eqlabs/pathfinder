@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Request payload is now logged before execution begins.
   - Logs now include `x-request-id` header value which can be used to correlate with client requests/responses.
   - Batch logs also include the index within a batch.
+- RPC parsing errors now expose the failure reason as part of the errors `data` field.
 
 ### Fixed
 

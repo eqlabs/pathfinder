@@ -72,8 +72,11 @@ impl RpcRouter {
     async fn run_request<'a>(&self, request: &'a str) -> Option<RpcResponse<'a>> {
         tracing::trace!(%request, "Running request");
 
-        let Ok(request) = serde_json::from_str::<RpcRequest<'_>>(request) else {
-            return Some(RpcResponse::INVALID_REQUEST);
+        let request = match serde_json::from_str::<RpcRequest<'_>>(request) {
+            Ok(request) => request,
+            Err(e) => {
+                return Some(RpcResponse::invalid_request(e.to_string()));
+            }
         };
 
         // Ignore notification requests.
@@ -179,7 +182,10 @@ pub async fn rpc_handler(
             };
 
             if requests.is_empty() {
-                return RpcResponse::INVALID_REQUEST.into_response();
+                return RpcResponse::invalid_request(
+                    "A batch request must contain at least one request".to_owned(),
+                )
+                .into_response();
             }
 
             let responses = run_concurrently(
@@ -378,7 +384,9 @@ mod sealed {
             {
                 async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult {
                     if !input.is_empty() {
-                        return Err(RpcError::InvalidParams);
+                        return Err(RpcError::InvalidParams(
+                            "This method takes no inputs".to_owned(),
+                        ));
                     }
                     let output = (self.f)(state).await.map_err(Into::into)?;
                     serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
@@ -419,7 +427,9 @@ mod sealed {
             {
                 async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
                     if !input.is_empty() {
-                        return Err(RpcError::InvalidParams);
+                        return Err(RpcError::InvalidParams(
+                            "This method takes no inputs".to_owned(),
+                        ));
                     }
                     let output = (self.f)().await.map_err(Into::into)?;
                     serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
@@ -453,7 +463,9 @@ mod sealed {
             {
                 async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
                     if !input.is_empty() {
-                        return Err(RpcError::InvalidParams);
+                        return Err(RpcError::InvalidParams(
+                            "This method takes no inputs".to_owned(),
+                        ));
                     }
                     let output = (self.f)();
                     serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
@@ -642,22 +654,41 @@ mod tests {
         )]
         #[case::invalid_request_object(
             json!({"jsonrpc": "2.0", "method": 1, "params": "bar"}),
-            json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}),
+            json!({"jsonrpc": "2.0", "id": null, 
+                "error": {"code": -32600, "message": "Invalid request", "data": {
+                    "reason": "invalid type: integer `1`, expected a string at line 1 column 27"
+                }}}),
         )]
         #[case::empty_batch(
             json!([]),
-            json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}),
+            json!({"jsonrpc": "2.0", "id": null, 
+                "error": {"code": -32600, "message": "Invalid request", "data": {
+                    "reason": "A batch request must contain at least one request"
+                }}}),
         )]
         #[case::invalid_batch_single(
             json!([1]),
-            json!([{"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}]),
+            json!([{"jsonrpc": "2.0", "id": null, 
+                "error": {"code": -32600, "message": "Invalid request", "data": {
+                    "reason": "invalid type: integer `1`, expected struct Helper at line 1 column 1"
+                }}}
+            ]),
         )]
         #[case::invalid_batch_multiple(
             json!([1, 2, 3]),
             json!([
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
+                {"jsonrpc": "2.0", "id": null, 
+                    "error": {"code": -32600, "message": "Invalid request", "data": {
+                        "reason": "invalid type: integer `1`, expected struct Helper at line 1 column 1"
+                    }}},
+                {"jsonrpc": "2.0", "id": null, 
+                    "error": {"code": -32600, "message": "Invalid request", "data": {
+                        "reason": "invalid type: integer `2`, expected struct Helper at line 1 column 1"
+                    }}},
+                {"jsonrpc": "2.0", "id": null, 
+                    "error": {"code": -32600, "message": "Invalid request", "data": {
+                        "reason": "invalid type: integer `3`, expected struct Helper at line 1 column 1"
+                    }}},
             ]),
         )]
         #[case::batch(
@@ -672,7 +703,10 @@ mod tests {
             json!([
                 {"jsonrpc": "2.0", "result": 7, "id": "1"},
                 {"jsonrpc": "2.0", "result": 19, "id": "2"},
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
+                {"jsonrpc": "2.0", "id": null, "error": 
+                    {"code": -32600, "message": "Invalid request", "data": {
+                        "reason": "missing field `jsonrpc` at line 1 column 13"
+                    }}},
                 {"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "5"},
                 {"jsonrpc": "2.0", "result": ["hello", 5], "id": "9"}
             ]),

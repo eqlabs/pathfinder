@@ -6,9 +6,9 @@ use serde_json::{json, Value};
 #[derive(Debug)]
 pub enum RpcError {
     ParseError,
-    InvalidRequest,
+    InvalidRequest(String),
     MethodNotFound,
-    InvalidParams,
+    InvalidParams(String),
     InternalError(anyhow::Error),
     ApplicationError(crate::error::ApplicationError),
     WebsocketSubscriptionClosed {
@@ -31,9 +31,9 @@ impl RpcError {
         // From the json-rpc specification: https://www.jsonrpc.org/specification#error_object
         match self {
             RpcError::ParseError => -32700,
-            RpcError::InvalidRequest => -32600,
+            RpcError::InvalidRequest(..) => -32600,
             RpcError::MethodNotFound { .. } => -32601,
-            RpcError::InvalidParams => -32602,
+            RpcError::InvalidParams(..) => -32602,
             RpcError::InternalError(_) => -32603,
             RpcError::ApplicationError(err) => err.code(),
             RpcError::WebsocketSubscriptionClosed { .. } => -32099,
@@ -43,9 +43,9 @@ impl RpcError {
     pub fn message(&self) -> Cow<'_, str> {
         match self {
             RpcError::ParseError => "Parse error".into(),
-            RpcError::InvalidRequest => "Invalid Request".into(),
+            RpcError::InvalidRequest(..) => "Invalid request".into(),
             RpcError::MethodNotFound { .. } => "Method not found".into(),
-            RpcError::InvalidParams => "Invalid params".into(),
+            RpcError::InvalidParams(..) => "Invalid params".into(),
             RpcError::InternalError(_) => "Internal error".into(),
             RpcError::ApplicationError(e) => e.to_string().into(),
             RpcError::WebsocketSubscriptionClosed { .. } => "Websocket subscription closed".into(),
@@ -64,9 +64,13 @@ impl RpcError {
             RpcError::ApplicationError(e) => e.data(),
             RpcError::InternalError(_) => None,
             RpcError::ParseError => None,
-            RpcError::InvalidRequest => None,
+            RpcError::InvalidRequest(e) => Some(json!({
+                "reason": e
+            })),
             RpcError::MethodNotFound => None,
-            RpcError::InvalidParams => None,
+            RpcError::InvalidParams(e) => Some(json!({
+                "reason": e
+            })),
         }
     }
 }
