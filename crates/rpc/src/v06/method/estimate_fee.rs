@@ -94,6 +94,7 @@ pub struct FeeEstimate {
     pub gas_price: primitive_types::U256,
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
     pub overall_fee: primitive_types::U256,
+    pub unit: PriceUnit,
 }
 
 impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
@@ -102,6 +103,24 @@ impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
             gas_consumed: value.gas_consumed,
             gas_price: value.gas_price,
             overall_fee: value.overall_fee,
+            unit: value.unit.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+pub enum PriceUnit {
+    #[serde(rename = "WEI")]
+    Wei,
+    #[serde(rename = "FRI")]
+    Fri,
+}
+
+impl From<pathfinder_executor::types::PriceUnit> for PriceUnit {
+    fn from(value: pathfinder_executor::types::PriceUnit) -> Self {
+        match value {
+            pathfinder_executor::types::PriceUnit::Wei => Self::Wei,
+            pathfinder_executor::types::PriceUnit::Fri => Self::Fri,
         }
     }
 }
@@ -405,27 +424,32 @@ pub(crate) mod tests {
                 gas_consumed: 3700.into(),
                 gas_price: 1.into(),
                 overall_fee: 3700.into(),
+                unit: PriceUnit::Wei,
             };
             let deploy_expected = FeeEstimate {
                 gas_consumed: 4337.into(),
                 gas_price: 1.into(),
                 overall_fee: 4337.into(),
+                unit: PriceUnit::Wei,
             };
             let invoke_expected = FeeEstimate {
                 gas_consumed: 2491.into(),
                 gas_price: 1.into(),
                 overall_fee: 2491.into(),
+                unit: PriceUnit::Wei,
             };
             let invoke_v0_expected = FeeEstimate {
                 gas_consumed: 1260.into(),
                 gas_price: 1.into(),
                 overall_fee: 1260.into(),
+                unit: PriceUnit::Wei,
             };
             let invoke_v3_expected = FeeEstimate {
                 gas_consumed: 2491.into(),
                 // STRK gas price is 2
                 gas_price: 2.into(),
                 overall_fee: 4982.into(),
+                unit: PriceUnit::Fri,
             };
             assert_eq!(
                 result,

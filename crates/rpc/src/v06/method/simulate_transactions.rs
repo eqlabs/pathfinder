@@ -175,6 +175,7 @@ pub mod dto {
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub overall_fee: primitive_types::U256,
+        pub unit: PriceUnit,
     }
 
     impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
@@ -183,6 +184,24 @@ pub mod dto {
                 gas_consumed: value.gas_consumed,
                 gas_price: value.gas_price,
                 overall_fee: value.overall_fee,
+                unit: value.unit.into(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+    pub enum PriceUnit {
+        #[serde(rename = "WEI")]
+        Wei,
+        #[serde(rename = "FRI")]
+        Fri,
+    }
+
+    impl From<pathfinder_executor::types::PriceUnit> for PriceUnit {
+        fn from(value: pathfinder_executor::types::PriceUnit) -> Self {
+            match value {
+                pathfinder_executor::types::PriceUnit::Wei => Self::Wei,
+                pathfinder_executor::types::PriceUnit::Fri => Self::Fri,
             }
         }
     }
@@ -668,6 +687,7 @@ pub(crate) mod tests {
                         gas_consumed: 3097.into(),
                         gas_price: 1.into(),
                         overall_fee: 3097.into(),
+                        unit: PriceUnit::Wei,
                     }
                 ,
                 transaction_trace:
@@ -789,6 +809,7 @@ pub(crate) mod tests {
                     gas_consumed: DECLARE_GAS_CONSUMED.into(),
                     gas_price: 1.into(),
                     overall_fee: DECLARE_GAS_CONSUMED.into(),
+                    unit: PriceUnit::Wei,
                 },
                 transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
                     fee_transfer_invocation: Some(
@@ -915,6 +936,7 @@ pub(crate) mod tests {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
                         fee_transfer_invocation: Some(declare_fee_transfer(
@@ -938,6 +960,7 @@ pub(crate) mod tests {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
                         fee_transfer_invocation: None,
@@ -956,6 +979,7 @@ pub(crate) mod tests {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
                         fee_transfer_invocation: Some(declare_fee_transfer(
@@ -1084,6 +1108,7 @@ pub(crate) mod tests {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: Some(universal_deployer_validate(
@@ -1117,6 +1142,7 @@ pub(crate) mod tests {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: Some(universal_deployer_validate(
@@ -1148,6 +1174,7 @@ pub(crate) mod tests {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: None,
@@ -1406,6 +1433,7 @@ pub(crate) mod tests {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: Some(invoke_validate(account_contract_address)),
@@ -1434,6 +1462,7 @@ pub(crate) mod tests {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: Some(invoke_validate(account_contract_address)),
@@ -1457,6 +1486,7 @@ pub(crate) mod tests {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
+                        unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: None,

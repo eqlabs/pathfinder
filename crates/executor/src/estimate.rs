@@ -1,3 +1,5 @@
+use crate::types::PriceUnit;
+
 use super::{
     error::TransactionExecutionError, execution_state::ExecutionState, types::FeeEstimate,
 };
@@ -23,6 +25,10 @@ pub fn estimate(
 
         let fee_type = &super::transaction::fee_type(&transaction);
         let gas_price: U256 = block_context.gas_prices.get_by_fee_type(fee_type).into();
+        let unit = match fee_type {
+            blockifier::transaction::objects::FeeType::Strk => PriceUnit::Fri,
+            blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
+        };
 
         let tx_info = transaction
             .execute(&mut state, &block_context, false, !skip_validate)
@@ -55,6 +61,7 @@ pub fn estimate(
                     gas_consumed: U256::from(tx_info.actual_fee.0) / gas_price.max(1.into()),
                     gas_price,
                     overall_fee: tx_info.actual_fee.0.into(),
+                    unit,
                 });
             }
             Err(error) => {
