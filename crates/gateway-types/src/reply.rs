@@ -1834,11 +1834,9 @@ pub mod add_transaction {
 
     /// API response for a DEPLOY ACCOUNT transaction
     #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
     pub struct DeployAccountResponse {
         pub code: String, // TRANSACTION_RECEIVED
         pub transaction_hash: TransactionHash,
-        pub address: ContractAddress,
     }
 
     #[cfg(test)]
