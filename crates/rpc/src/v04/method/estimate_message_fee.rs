@@ -1,5 +1,5 @@
 use crate::context::RpcContext;
-use crate::v05::method::estimate_message_fee::EstimateMessageFeeInput;
+use crate::v06::method::estimate_message_fee::EstimateMessageFeeInput;
 
 crate::error::generate_rpc_error_subset!(
     EstimateMessageFeeError: BlockNotFound,
@@ -7,11 +7,11 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<crate::v05::method::estimate_message_fee::EstimateMessageFeeError>
+impl From<crate::v06::method::estimate_message_fee::EstimateMessageFeeError>
     for EstimateMessageFeeError
 {
-    fn from(value: crate::v05::method::estimate_message_fee::EstimateMessageFeeError) -> Self {
-        use crate::v05::method::estimate_message_fee::EstimateMessageFeeError::*;
+    fn from(value: crate::v06::method::estimate_message_fee::EstimateMessageFeeError) -> Self {
+        use crate::v06::method::estimate_message_fee::EstimateMessageFeeError::*;
 
         match value {
             Internal(e) => Self::Internal(e),
