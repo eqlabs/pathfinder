@@ -31,13 +31,21 @@ pub struct RpcRouterBuilder {
 }
 
 impl RpcRouterBuilder {
+    /// Registers an RPC method.
+    ///
+    /// Panics if the method was already registered.
     pub fn register<I, O, S, M: IntoRpcMethod<'static, I, O, S>>(
         mut self,
         method_name: &'static str,
         method: M,
     ) -> Self {
-        self.methods
-            .insert(method_name, IntoRpcMethod::into_method(method));
+        if self
+            .methods
+            .insert(method_name, IntoRpcMethod::into_method(method))
+            .is_some()
+        {
+            panic!("'{method_name}' is already registered");
+        }
         self
     }
 
