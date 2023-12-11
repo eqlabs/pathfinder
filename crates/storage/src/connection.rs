@@ -264,6 +264,14 @@ impl<'inner> Transaction<'inner> {
         class::class_definition(self, class_hash)
     }
 
+    /// Returns the uncompressed class definition as well as the block number at which it was declared.
+    pub fn class_definition_with_block_number(
+        &self,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+        class::class_definition_with_block_number(self, class_hash)
+    }
+
     /// Returns the compressed class definition if it has been declared at `block_id`.
     pub fn compressed_class_definition_at(
         &self,
@@ -282,9 +290,28 @@ impl<'inner> Transaction<'inner> {
         class::class_definition_at(self, block_id, class_hash)
     }
 
+    /// Returns the uncompressed class definition if it has been declared at `block_id`, as well as
+    /// the block number at which it was declared.
+    pub fn class_definition_at_with_block_number(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
+        class::class_definition_at_with_block_number(self, block_id, class_hash)
+    }
+
     /// Returns the uncompressed compiled class definition.
     pub fn casm_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
         class::casm_definition(self, class_hash)
+    }
+
+    /// Returns the uncompressed compiled class definition, as well as the block number at which it
+    ///  was declared.
+    pub fn casm_definition_with_block_number(
+        &self,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+        class::casm_definition_with_block_number(self, class_hash)
     }
 
     /// Returns the uncompressed compiled class definition if it has been declared at `block_id`.
@@ -294,6 +321,16 @@ impl<'inner> Transaction<'inner> {
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<Vec<u8>>> {
         class::casm_definition_at(self, block_id, class_hash)
+    }
+
+    /// Returns the uncompressed compiled class definition if it has been declared at `block_id`, as well
+    /// as the block number at which it was declared.
+    pub fn casm_definition_at_with_block_number(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+        class::casm_definition_at_with_block_number(self, block_id, class_hash)
     }
 
     pub fn contract_class_hash(

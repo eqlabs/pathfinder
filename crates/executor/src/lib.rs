@@ -5,6 +5,7 @@ pub(crate) mod error;
 pub(crate) mod estimate;
 pub(crate) mod execution_state;
 pub(crate) mod felt;
+pub(crate) mod lru_cache;
 pub(crate) mod pending;
 pub(crate) mod simulate;
 pub(crate) mod state_reader;

@@ -123,23 +123,37 @@ pub(super) fn class_definition(
     transaction: &Transaction<'_>,
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
-    let definition = transaction
+    self::class_definition_with_block_number(transaction, class_hash)
+        .map(|option| option.map(|(_block_number, definition)| definition))
+}
+
+pub(super) fn class_definition_with_block_number(
+    transaction: &Transaction<'_>,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+    let from_row = |row: &rusqlite::Row<'_>| {
+        let definition = row.get_blob(0).map(|x| x.to_vec())?;
+        let block_number = row.get_optional_block_number(1)?;
+        Ok((block_number, definition))
+    };
+
+    let result = transaction
         .inner()
         .query_row(
-            "SELECT definition FROM class_definitions WHERE hash = ?",
+            "SELECT definition, block_number FROM class_definitions WHERE hash = ?",
             params![&class_hash],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
+            from_row,
         )
         .optional()
         .context("Querying for class definition")?;
 
-    let Some(definition) = definition else {
+    let Some((block_number, definition)) = result else {
         return Ok(None);
     };
     let definition =
         zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
 
-    Ok(Some(definition))
+    Ok(Some((block_number, definition)))
 }
 
 pub(super) fn compressed_class_definition_at(
@@ -147,22 +161,37 @@ pub(super) fn compressed_class_definition_at(
     block_id: BlockId,
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
+    self::compressed_class_definition_at_with_block_number(tx, block_id, class_hash)
+        .map(|option| option.map(|(_block_number, definition)| definition))
+}
+
+pub(super) fn compressed_class_definition_at_with_block_number(
+    tx: &Transaction<'_>,
+    block_id: BlockId,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
+    let from_row = |row: &rusqlite::Row<'_>| {
+        let definition = row.get_blob(0).map(|x| x.to_vec())?;
+        let block_number = row.get_block_number(1)?;
+        Ok((block_number, definition))
+    };
+
     match block_id {
         BlockId::Latest => tx.inner().query_row(
-            "SELECT definition FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
+            "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
             params![&class_hash],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
+            from_row,
         ),
         BlockId::Number(number) => tx.inner().query_row(
-            "SELECT definition FROM class_definitions WHERE hash=? AND block_number <= ?",
+            "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number <= ?",
             params![&class_hash, &number],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
+            from_row,
         ),
         BlockId::Hash(hash) => tx.inner().query_row(
-            r"SELECT definition FROM class_definitions
+            r"SELECT definition, block_number FROM class_definitions
                 WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
             params![&class_hash, &hash],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
+            from_row,
         ),
     }
     .optional()
@@ -174,20 +203,30 @@ pub(super) fn class_definition_at(
     block_id: BlockId,
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
-    let definition = compressed_class_definition_at(tx, block_id, class_hash)?;
-    let Some(definition) = definition else {
+    self::class_definition_at_with_block_number(tx, block_id, class_hash)
+        .map(|option| option.map(|(_block_number, definition)| definition))
+}
+
+pub(super) fn class_definition_at_with_block_number(
+    tx: &Transaction<'_>,
+    block_id: BlockId,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
+    let definition = compressed_class_definition_at_with_block_number(tx, block_id, class_hash)?;
+    let Some((block_number, definition)) = definition else {
         return Ok(None);
     };
     let definition =
         zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
 
-    Ok(Some(definition))
+    Ok(Some((block_number, definition)))
 }
 
 pub(super) fn casm_definition(
     transaction: &Transaction<'_>,
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
+    // Don't reuse the "_with_block_number" impl here since the suffixed one requires a join that this one doesn't.
     let definition = transaction
         .inner()
         .query_row(
@@ -207,15 +246,70 @@ pub(super) fn casm_definition(
     Ok(Some(definition))
 }
 
+pub(super) fn casm_definition_with_block_number(
+    transaction: &Transaction<'_>,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+    let from_row = |row: &rusqlite::Row<'_>| {
+        let definition = row.get_blob(0).map(|x| x.to_vec())?;
+        let block_number = row.get_optional_block_number(1)?;
+        Ok((block_number, definition))
+    };
+
+    let result = transaction
+        .inner()
+        .query_row(
+            r"
+            SELECT
+                casm_definitions.definition,
+                class_definitions.block_number
+            FROM
+                casm_definitions
+                LEFT JOIN class_definitions ON (
+                    class_definitions.hash = casm_definitions.hash
+                )
+            WHERE
+                casm_definitions.hash = ?",
+            params![&class_hash],
+            from_row,
+        )
+        .optional()
+        .context("Querying for compiled class definition")?;
+
+    let Some((block_number, definition)) = result else {
+        return Ok(None);
+    };
+    let definition = zstd::decode_all(definition.as_slice())
+        .context("Decompressing compiled class definition")?;
+
+    Ok(Some((block_number, definition)))
+}
+
 pub(super) fn casm_definition_at(
     tx: &Transaction<'_>,
     block_id: BlockId,
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
+    self::casm_definition_at_with_block_number(tx, block_id, class_hash)
+        .map(|option| option.map(|(_block_number, definition)| definition))
+}
+
+pub(super) fn casm_definition_at_with_block_number(
+    tx: &Transaction<'_>,
+    block_id: BlockId,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+    let from_row = |row: &rusqlite::Row<'_>| {
+        let definition = row.get_blob(0).map(|x| x.to_vec())?;
+        let block_number = row.get_optional_block_number(1)?;
+        Ok((block_number, definition))
+    };
+
     let definition = match block_id {
         BlockId::Latest => tx.inner().query_row(
             r"SELECT
-                casm_definitions.definition 
+                casm_definitions.definition,
+                class_definitions.block_number
             FROM
                 casm_definitions
                 INNER JOIN class_definitions ON (
@@ -225,11 +319,12 @@ pub(super) fn casm_definition_at(
                 casm_definitions.hash = ?
                 AND class_definitions.block_number IS NOT NULL",
             params![&class_hash],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
+            from_row,
         ),
         BlockId::Number(number) => tx.inner().query_row(
             r"SELECT
-                casm_definitions.definition 
+                casm_definitions.definition,
+                class_definitions.block_number
             FROM
                 casm_definitions
                 INNER JOIN class_definitions ON (
@@ -239,11 +334,12 @@ pub(super) fn casm_definition_at(
                 casm_definitions.hash = ?
                 AND class_definitions.block_number <= ?",
             params![&class_hash, &number],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
+            from_row,
         ),
         BlockId::Hash(hash) => tx.inner().query_row(
             r"SELECT
-                casm_definitions.definition 
+                casm_definitions.definition,
+                class_definitions.block_number
             FROM
                 casm_definitions
                 INNER JOIN class_definitions ON (
@@ -253,19 +349,19 @@ pub(super) fn casm_definition_at(
                 casm_definitions.hash = ?
                 AND class_definitions.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)",
             params![&class_hash, &hash],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
+            from_row,
         ),
     }
     .optional()
     .context("Querying for compiled class definition")?;
 
-    let Some(definition) = definition else {
+    let Some((block_number, definition)) = definition else {
         return Ok(None);
     };
     let definition = zstd::decode_all(definition.as_slice())
         .context("Decompressing compiled class definition")?;
 
-    Ok(Some(definition))
+    Ok(Some((block_number, definition)))
 }
 
 pub(super) fn casm_hash(
