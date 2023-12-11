@@ -40,7 +40,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getTransactionByHash"            , method::get_transaction_by_hash)
         .register("starknet_getTransactionReceipt"           , method::get_transaction_receipt)
         .register("starknet_simulateTransactions"            , method::simulate_transactions)
-        .register("starknet_specVersion"                     , || "0.6.0-rc5")
+        .register("starknet_specVersion"                     , || "0.6.0")
         .register("starknet_traceBlockTransactions"          , method::trace_block_transactions)
         .register("starknet_traceTransaction"                , method::trace_transaction)
 

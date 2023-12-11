@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - v0.5 `starknet_simulateTransactions` returns internal error instead of `ContractError` for reverted transactions.
 
+### Changed
+
+- JSON-RPC v0.6 now serves `0.6.0` for `starknet_specVersion`.
+
 ## [0.10.1] - 2023-12-05
 
 ### Fixed
