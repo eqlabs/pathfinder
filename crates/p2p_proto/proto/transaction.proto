@@ -9,6 +9,11 @@ message ResourceLimits {
   starknet.common.Felt252 max_price_per_unit = 2;
 }
 
+message ResourceBounds {
+  ResourceLimits l1_gas = 1;
+  ResourceLimits l2_gas = 2;
+}
+
 message AccountSignature { repeated starknet.common.Felt252 parts = 1; }
 
 message Transaction {
