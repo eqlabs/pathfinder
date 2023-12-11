@@ -12,7 +12,7 @@ use p2p_proto::consts::{
     CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MAX_PARTS_PER_CLASS, MESSAGE_SIZE_LIMIT,
     PER_CLASS_OVERHEAD,
 };
-use p2p_proto::event::{Events, EventsRequest, EventsResponse, EventsResponseKind, TxnEvents};
+use p2p_proto::event::{Events, EventsRequest, EventsResponse, EventsResponseKind};
 use p2p_proto::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
 use p2p_proto::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
@@ -326,9 +326,10 @@ fn get_events_for_block(
 
     let items = txn_data
         .into_iter()
-        .map(|(_, r)| TxnEvents {
-            events: r.events.into_iter().map(ToProto::to_proto).collect(),
-            transaction_hash: Hash(r.transaction_hash.0),
+        .flat_map(|(_, r)| {
+            std::iter::repeat(r.transaction_hash)
+                .zip(r.events)
+                .map(ToProto::to_proto)
         })
         .collect::<Vec<_>>();
 

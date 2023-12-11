@@ -346,6 +346,36 @@ mod prop {
     use std::collections::HashMap;
     use tokio::runtime::Runtime;
 
+    #[macro_export]
+    macro_rules! prop_assert_eq_sorted {
+        ($left:expr, $right:expr) => {{
+            let left = &$left;
+            let right = &$right;
+            let comparison_string = pretty_assertions_sorted::Comparison::new(
+                &pretty_assertions_sorted::SortedDebug::new(left),
+                &pretty_assertions_sorted::SortedDebug::new(right)
+            ).to_string();
+            proptest::prop_assert!(
+                *left == *right,
+                "assertion failed: `(left == right)`\n{comparison_string}\n");
+        }};
+
+        ($left:expr, $right:expr, $fmt:tt $($args:tt)*) => {{
+            let left = &$left;
+            let right = &$right;
+            let comparison_string = pretty_assertions_sorted::Comparison::new(
+                &pretty_assertions_sorted::SortedDebug::new(left),
+                &pretty_assertions_sorted::SortedDebug::new(right)
+            ).to_string();
+            proptest::prop_assert!(
+                *left == *right,
+                concat!(
+                    "assertion failed: `(left == right)`\n\
+                    {}: ", $fmt),
+                comparison_string $($args)*);
+        }};
+    }
+
     proptest! {
         #[test]
         fn get_headers((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
@@ -374,8 +404,8 @@ mod prop {
             // Empty reply in the test is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(parts.len(), 1);
-                prop_assert_eq!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(parts.len(), 1);
+                prop_assert_eq_sorted!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group reply parts by block: [[hdr-0, fin-0], [hdr-1, fin-1], ...]
                 let actual = parts.chunks_exact(3).map(|chunk| {
@@ -394,7 +424,7 @@ mod prop {
                     (h, s)
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -424,8 +454,8 @@ mod prop {
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Collect replies into a set of (block_number, state_update, definitions)
                 let mut actual = HashMap::new();
@@ -463,7 +493,7 @@ mod prop {
                     }
                 }
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -518,8 +548,8 @@ mod prop {
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group replies by block, it is assumed that transactions per block are small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[transactions-0, fin-0], [transactions-1, fin-1], ...]
@@ -537,7 +567,7 @@ mod prop {
                     )
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -568,8 +598,8 @@ mod prop {
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group replies by block, it is assumed that receipts per block small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[receipts-0, fin-0], [receipts-1, fin-1], ...]
@@ -587,7 +617,7 @@ mod prop {
                     )
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -601,12 +631,13 @@ mod prop {
             // These are the events that we expect to be read from the db
             // Extract tuples (block_number, block_hash, [events{txn#1}, events{txn#2}, ...])
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, tr, _, _, _)|
+                .map(|(h, _, tr, _, _, _)|{
+                    let events = tr.into_iter().map(|(_, r)| (r.transaction_hash, r.events)).collect::<HashMap<_, Vec<_>>>();
                     (
                         h.number,
                         h.hash,
-                        tr.into_iter().map(|(_, r)| (r.transaction_hash, r.events)).collect::<Vec<_>>()
-                    )
+                        events
+                    )}
             ).collect::<Vec<_>>();
             // Run the handler
             let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
@@ -619,8 +650,8 @@ mod prop {
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group replies by block, it is assumed that events per block small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[events-0, fin-0], [events-1, fin-1], ...]
@@ -628,21 +659,20 @@ mod prop {
                     assert_eq!(replies[0].id, replies[1].id);
                     // Make sure block data is delimited
                     assert_eq!(replies[1].kind, EventsResponseKind::Fin(Fin::ok()));
-                    // Extract events
-                    let events = replies[0].kind.clone().into_events().unwrap().items;
                     let BlockId { number, hash } = replies[0].id.unwrap();
+                    // Extract events
+                    let mut events = HashMap::<_, Vec<_>>::new();
+                    replies[0].kind.clone().into_events().unwrap().items.into_iter().for_each(|e| {
+                        events.entry(TransactionHash(e.transaction_hash.0)).or_default().push(Event::try_from_dto(e).unwrap());
+                    });
                     (
                         BlockNumber::new(number).unwrap(),
                         BlockHash(hash.0),
-                        events.into_iter().map(|e|
-                            (
-                                TransactionHash(e.transaction_hash.0),
-                                e.events.into_iter().map(|e| Event::try_from_dto(e).unwrap()).collect::<Vec<_>>()
-                            )).collect::<Vec<_>>()
+                        events
                     )
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }

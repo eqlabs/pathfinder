@@ -4,7 +4,7 @@ use p2p_proto::receipt::EthereumAddress;
 use p2p_proto::receipt::{
     execution_resources::BuiltinCounter, DeclareTransactionReceipt,
     DeployAccountTransactionReceipt, DeployTransactionReceipt, ExecutionResources,
-    InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1, MessageToL2, ReceiptCommon,
+    InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1, ReceiptCommon,
 };
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
 use p2p_proto::transaction::AccountSignature;
@@ -319,14 +319,6 @@ impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
                 }
             },
             revert_reason: self.1.revert_error.unwrap_or_default(),
-            consumed_message: self.1.l1_to_l2_consumed_message.map(|x| MessageToL2 {
-                from_address: EthereumAddress(x.from_address.0),
-                payload: x.payload.into_iter().map(|p| p.0).collect(),
-                to_address: x.to_address.0,
-                entry_point_selector: x.selector.0,
-                // TODO option?
-                nonce: x.nonce.unwrap_or_default().0,
-            }),
         };
 
         match self.0 {
@@ -348,21 +340,13 @@ impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
     }
 }
 
-impl ToProto<p2p_proto::event::Event> for Event {
+impl ToProto<p2p_proto::event::Event> for (TransactionHash, Event) {
     fn to_proto(self) -> p2p_proto::event::Event {
         p2p_proto::event::Event {
-            from_address: self.from_address.0,
-            keys: self.keys.into_iter().map(|k| k.0).collect(),
-            data: self.data.into_iter().map(|d| d.0).collect(),
-        }
-    }
-}
-
-impl ToProto<p2p_proto::event::TxnEvents> for (TransactionHash, Vec<Event>) {
-    fn to_proto(self) -> p2p_proto::event::TxnEvents {
-        p2p_proto::event::TxnEvents {
             transaction_hash: Hash(self.0 .0),
-            events: self.1.into_iter().map(ToProto::to_proto).collect(),
+            from_address: self.1.from_address.0,
+            keys: self.1.keys.into_iter().map(|k| k.0).collect(),
+            data: self.1.data.into_iter().map(|d| d.0).collect(),
         }
     }
 }
