@@ -222,7 +222,7 @@ pub mod test_utils {
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::H160;
     use starknet_gateway_types::reply::transaction::{
-        DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
+        BuiltinCounters, DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
         InvokeTransactionV0, Receipt, Transaction,
     };
     use starknet_gateway_types::reply::transaction::{ExecutionStatus, L2ToL1Message};
@@ -463,9 +463,13 @@ pub mod test_utils {
             actual_fee: None,
             events: vec![],
             execution_resources: Some(ExecutionResources {
-                builtin_instance_counter: Default::default(),
-                n_memory_holes: 0,
-                n_steps: 0,
+                builtin_instance_counter: BuiltinCounters {
+                    output_builtin: 33,
+                    pedersen_builtin: 32,
+                    ..Default::default()
+                },
+                n_memory_holes: 5,
+                n_steps: 10,
             }),
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: vec![],
