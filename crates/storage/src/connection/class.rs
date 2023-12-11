@@ -111,7 +111,7 @@ pub(super) fn classes_exist(
 ) -> anyhow::Result<Vec<bool>> {
     let mut stmt = transaction
         .inner()
-        .prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+        .prepare_cached("SELECT 1 FROM class_definitions WHERE hash = ?")?;
 
     Ok(classes
         .iter()
@@ -137,13 +137,12 @@ pub(super) fn class_definition_with_block_number(
         Ok((block_number, definition))
     };
 
-    let result = transaction
+    let mut stmt = transaction
         .inner()
-        .query_row(
-            "SELECT definition, block_number FROM class_definitions WHERE hash = ?",
-            params![&class_hash],
-            from_row,
-        )
+        .prepare_cached("SELECT definition, block_number FROM class_definitions WHERE hash = ?")?;
+
+    let result = stmt
+        .query_row(params![&class_hash], from_row)
         .optional()
         .context("Querying for class definition")?;
 
@@ -177,22 +176,34 @@ pub(super) fn compressed_class_definition_at_with_block_number(
     };
 
     match block_id {
-        BlockId::Latest => tx.inner().query_row(
-            "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
-            params![&class_hash],
-            from_row,
-        ),
-        BlockId::Number(number) => tx.inner().query_row(
-            "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number <= ?",
-            params![&class_hash, &number],
-            from_row,
-        ),
-        BlockId::Hash(hash) => tx.inner().query_row(
-            r"SELECT definition, block_number FROM class_definitions
+        BlockId::Latest => {
+            let mut stmt = tx.inner().prepare_cached(
+                "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
+            )?;
+            stmt.query_row(
+                params![&class_hash],
+                from_row,
+            )
+        }
+        BlockId::Number(number) => {
+            let mut stmt = tx.inner().prepare_cached(
+                "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number <= ?",
+            )?;
+            stmt.query_row(
+                params![&class_hash, &number],
+                from_row,
+            )
+        }
+        BlockId::Hash(hash) => {
+            let mut stmt = tx.inner().prepare_cached(
+                r"SELECT definition, block_number FROM class_definitions
                 WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
-            params![&class_hash, &hash],
-            from_row,
-        ),
+            )?;
+            stmt.query_row(
+                params![&class_hash, &hash],
+                from_row,
+            )
+        }
     }
     .optional()
     .context("Querying for class definition")
