@@ -16,7 +16,7 @@ use crate::{
     types::{
         DeclareTransactionTrace, DeclaredSierraClass, DeployAccountTransactionTrace,
         DeployedContract, ExecuteInvocation, InvokeTransactionTrace, L1HandlerTransactionTrace,
-        ReplacedClass, StateDiff, StorageDiff,
+        PriceUnit, ReplacedClass, StateDiff, StorageDiff,
     },
     IntoFelt,
 };
@@ -46,6 +46,10 @@ pub fn simulate(
             transaction_declared_deprecated_class(&transaction);
         let fee_type = &super::transaction::fee_type(&transaction);
         let gas_price: U256 = block_context.gas_prices.get_by_fee_type(fee_type).into();
+        let unit = match fee_type {
+            blockifier::transaction::objects::FeeType::Strk => PriceUnit::Fri,
+            blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
+        };
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = transaction
@@ -83,6 +87,7 @@ pub fn simulate(
                         gas_consumed: U256::from(tx_info.actual_fee.0) / gas_price.max(1.into()),
                         gas_price,
                         overall_fee: tx_info.actual_fee.0.into(),
+                        unit,
                     },
                     trace: to_trace(transaction_type, tx_info, state_diff),
                 });

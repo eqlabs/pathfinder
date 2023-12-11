@@ -13,6 +13,13 @@ pub struct FeeEstimate {
     pub gas_consumed: primitive_types::U256,
     pub gas_price: primitive_types::U256,
     pub overall_fee: primitive_types::U256,
+    pub unit: PriceUnit,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum PriceUnit {
+    Wei,
+    Fri,
 }
 
 #[derive(Debug, Eq, PartialEq)]
