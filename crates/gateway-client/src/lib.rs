@@ -1442,9 +1442,6 @@ mod tests {
                 transaction_hash: transaction_hash!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
                 ),
-                address: contract_address!(
-                    "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
-                ),
             };
 
             assert_eq!(res, expected);

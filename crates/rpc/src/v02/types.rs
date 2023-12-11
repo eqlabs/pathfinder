@@ -448,6 +448,15 @@ pub mod request {
         V3(BroadcastedDeployAccountTransactionV3),
     }
 
+    impl BroadcastedDeployAccountTransaction {
+        pub fn deployed_contract_address(&self) -> ContractAddress {
+            match self {
+                Self::V0V1(tx) => tx.deployed_contract_address(),
+                Self::V3(tx) => tx.deployed_contract_address(),
+            }
+        }
+    }
+
     impl<'de> serde::Deserialize<'de> for BroadcastedDeployAccountTransaction {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where

@@ -98,12 +98,15 @@ pub async fn add_deploy_account_transaction(
     context: RpcContext,
     input: AddDeployAccountTransactionInput,
 ) -> Result<AddDeployAccountTransactionOutput, AddDeployAccountTransactionError> {
+    let contract_address = match &input.deploy_account_transaction {
+        Transaction::DeployAccount(tx) => tx.deployed_contract_address(),
+    };
     let Transaction::DeployAccount(tx) = input.deploy_account_transaction;
     let response = add_deploy_account_transaction_impl(&context, tx).await?;
 
     Ok(AddDeployAccountTransactionOutput {
         transaction_hash: response.transaction_hash,
-        contract_address: response.address,
+        contract_address,
     })
 }
 
