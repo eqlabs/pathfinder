@@ -20,7 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - v0.5 `starknet_simulateTransactions` returns internal error instead of `ContractError` for reverted transactions.
-- v0.6 `starknet_getTransactionReceipt` now returns EXECUTION_RESOURCES properties as numbers. The `segment_arena_builtin` resource has been added.
+- v0.6 `starknet_getTransactionReceipt`
+  - `EXECUTION_RESOURCES` fields are hex-strings instead of integers
+  - `segment_arena_builtin` resource is missing
+  - v3 transaction price unit type is `STRK` instead of `FRI`
 
 ### Changed
 
