@@ -24,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `EXECUTION_RESOURCES` fields are hex-strings instead of integers
   - `segment_arena_builtin` resource is missing
   - v3 transaction price unit type is `STRK` instead of `FRI`
-  - v3 transaction hashes are computed incorrectly when using the "query" flag, causing validation errors.
+  - v3 transaction hashes are computed incorrectly when using the "query" flag, causing validation errors
+- Execution performance for calls involving the `pending` blocks is much better for trivial calls (like `balanceOf`).
 
 ### Changed
 
