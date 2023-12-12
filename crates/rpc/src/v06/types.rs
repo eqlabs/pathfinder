@@ -3,10 +3,10 @@ mod transaction;
 pub use transaction::{Transaction, TransactionWithHash};
 
 use crate::felt::RpcFelt;
-use pathfinder_common::GasPrice;
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, SequencerAddress, StarknetVersion, StateCommitment,
 };
+use pathfinder_common::{GasPrice, TransactionVersion};
 use pathfinder_crypto::Felt;
 use serde::Serialize;
 use serde_with::{serde_as, skip_serializing_none};
@@ -90,6 +90,33 @@ impl BlockHeader {
                 },
                 starknet_version: pending.starknet_version,
             },
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+pub enum PriceUnit {
+    #[serde(rename = "WEI")]
+    Wei,
+    #[serde(rename = "FRI")]
+    Fri,
+}
+
+impl From<pathfinder_executor::types::PriceUnit> for PriceUnit {
+    fn from(value: pathfinder_executor::types::PriceUnit) -> Self {
+        match value {
+            pathfinder_executor::types::PriceUnit::Wei => Self::Wei,
+            pathfinder_executor::types::PriceUnit::Fri => Self::Fri,
+        }
+    }
+}
+
+impl PriceUnit {
+    pub fn for_transaction_version(version: &TransactionVersion) -> Self {
+        match version.without_query_version() {
+            0..=2 => PriceUnit::Wei,
+            _ => PriceUnit::Fri,
         }
     }
 }

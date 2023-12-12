@@ -230,7 +230,7 @@ mod tests {
     };
     use tempfile::tempdir;
 
-    use crate::v06::method::estimate_fee::PriceUnit;
+    use crate::v06::types::PriceUnit;
 
     use super::*;
 
