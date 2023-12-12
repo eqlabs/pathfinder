@@ -179,21 +179,23 @@ pub(super) fn block_id(
 pub(super) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
     match block {
         BlockId::Latest => {
-            tx.inner()
-                .query_row("SELECT EXISTS(SELECT 1 FROM canonical_blocks)", [], |row| {
-                    row.get(0)
-                })
+            let mut stmt = tx
+                .inner()
+                .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks)")?;
+            stmt.query_row([], |row| row.get(0))
         }
-        BlockId::Number(number) => tx.inner().query_row(
-            "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)",
-            params![&number],
-            |row| row.get(0),
-        ),
-        BlockId::Hash(hash) => tx.inner().query_row(
-            "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)",
-            params![&hash],
-            |row| row.get(0),
-        ),
+        BlockId::Number(number) => {
+            let mut stmt = tx
+                .inner()
+                .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)")?;
+            stmt.query_row(params![&number], |row| row.get(0))
+        }
+        BlockId::Hash(hash) => {
+            let mut stmt = tx
+                .inner()
+                .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)")?;
+            stmt.query_row(params![&hash], |row| row.get(0))
+        }
     }
     .map_err(|e| e.into())
 }
@@ -252,10 +254,15 @@ pub(super) fn block_header(
         Ok(header)
     };
 
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(&sql)
+        .context("Preparing block header query")?;
+
     let header = match block {
-        BlockId::Latest => tx.inner().query_row(&sql, [], parse_row),
-        BlockId::Number(number) => tx.inner().query_row(&sql, params![&number], parse_row),
-        BlockId::Hash(hash) => tx.inner().query_row(&sql, params![&hash], parse_row),
+        BlockId::Latest => stmt.query_row([], parse_row),
+        BlockId::Number(number) => stmt.query_row(params![&number], parse_row),
+        BlockId::Hash(hash) => stmt.query_row(params![&hash], parse_row),
     }
     .optional()
     .context("Querying for block header")?;
