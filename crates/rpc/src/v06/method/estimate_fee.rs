@@ -409,34 +409,34 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 3700.into(),
+                gas_consumed: 2768.into(),
                 gas_price: 1.into(),
-                overall_fee: 3700.into(),
+                overall_fee: 2768.into(),
                 unit: PriceUnit::Wei,
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 4337.into(),
+                gas_consumed: 3020.into(),
                 gas_price: 1.into(),
-                overall_fee: 4337.into(),
+                overall_fee: 3020.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_expected = FeeEstimate {
-                gas_consumed: 2491.into(),
+                gas_consumed: 1674.into(),
                 gas_price: 1.into(),
-                overall_fee: 2491.into(),
+                overall_fee: 1674.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v0_expected = FeeEstimate {
-                gas_consumed: 1260.into(),
+                gas_consumed: 880.into(),
                 gas_price: 1.into(),
-                overall_fee: 1260.into(),
+                overall_fee: 880.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v3_expected = FeeEstimate {
-                gas_consumed: 2491.into(),
+                gas_consumed: 1674.into(),
                 // STRK gas price is 2
                 gas_price: 2.into(),
-                overall_fee: 4982.into(),
+                overall_fee: 3348.into(),
                 unit: PriceUnit::Fri,
             };
             assert_eq!(

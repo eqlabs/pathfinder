@@ -587,9 +587,9 @@ pub(crate) mod tests {
             SimulatedTransaction {
                 fee_estimation:
                     FeeEstimate {
-                        gas_consumed: 3097.into(),
+                        gas_consumed: 2222.into(),
                         gas_price: 1.into(),
-                        overall_fee: 3097.into(),
+                        overall_fee: 2222.into(),
                     }
                 ,
                 transaction_trace:
@@ -741,7 +741,7 @@ pub(crate) mod tests {
             use super::dto::*;
             use super::*;
 
-            const DECLARE_GAS_CONSUMED: u64 = 3700;
+            const DECLARE_GAS_CONSUMED: u64 = 2768;
 
             pub fn declare(
                 account_contract_address: ContractAddress,
@@ -852,7 +852,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 4337;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3020;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -1099,7 +1099,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_GAS_CONSUMED: u64 = 2491;
+            const INVOKE_GAS_CONSUMED: u64 = 1674;
 
             pub fn invoke(
                 account_contract_address: ContractAddress,
