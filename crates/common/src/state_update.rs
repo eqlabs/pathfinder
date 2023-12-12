@@ -197,20 +197,32 @@ impl StateUpdate {
         contract: ContractAddress,
         key: StorageAddress,
     ) -> Option<StorageValue> {
-        self.contract_updates.get(&contract).and_then(|update| {
-            update
-                .storage
-                .iter()
-                .find_map(|(k, v)| (k == &key).then_some(*v))
-                .or_else(|| {
-                    update.class.as_ref().and_then(|c| match c {
-                        // If the contract has been deployed in pending but the key has not been set yet
-                        // return the default value of zero.
-                        ContractClassUpdate::Deploy(_) => Some(StorageValue::ZERO),
-                        ContractClassUpdate::Replace(_) => None,
+        self.contract_updates
+            .get(&contract)
+            .and_then(|update| {
+                update
+                    .storage
+                    .iter()
+                    .find_map(|(k, v)| (k == &key).then_some(*v))
+                    .or_else(|| {
+                        update.class.as_ref().and_then(|c| match c {
+                            // If the contract has been deployed in pending but the key has not been set yet
+                            // return the default value of zero.
+                            ContractClassUpdate::Deploy(_) => Some(StorageValue::ZERO),
+                            ContractClassUpdate::Replace(_) => None,
+                        })
                     })
-                })
-        })
+            })
+            .or_else(|| {
+                self.system_contract_updates
+                    .get(&contract)
+                    .and_then(|update| {
+                        update
+                            .storage
+                            .iter()
+                            .find_map(|(k, v)| (k == &key).then_some(*v))
+                    })
+            })
     }
 
     /// Compute the state diff commitment used in block commitment signatures.
@@ -522,6 +534,28 @@ mod tests {
                 .with_storage_update(c, k, v);
             let result = state_update.storage_value(c, k);
             assert_eq!(result, Some(v));
+        }
+
+        #[test]
+        fn system_contract_and_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default().with_system_storage_update(c, k, v);
+            let result = state_update.storage_value(c, k);
+            assert_eq!(result, Some(v))
+        }
+
+        #[test]
+        fn system_contract_and_not_set() {
+            let c = contract_address!("0x1");
+            let k = storage_address!("0x2");
+            let v = storage_value!("0x3");
+            let state_update = StateUpdate::default().with_system_storage_update(c, k, v);
+            let result = state_update.storage_value(contract_address!("0x4"), k);
+            assert_eq!(result, None);
+            let result = state_update.storage_value(c, storage_address!("0x24"));
+            assert_eq!(result, None);
         }
     }
 
