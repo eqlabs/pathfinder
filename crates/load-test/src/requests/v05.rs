@@ -267,6 +267,18 @@ pub async fn estimate_fee_for_invoke(
     .await
 }
 
+pub async fn get_nonce(user: &mut GooseUser, contract_address: Felt) -> MethodResult<Felt> {
+    post_jsonrpc_request(
+        user,
+        "starknet_getNonce",
+        json!({
+            "block_id": "pending",
+            "contract_address": contract_address
+        }),
+    )
+    .await
+}
+
 async fn post_jsonrpc_request<T: DeserializeOwned>(
     user: &mut GooseUser,
     method: &str,

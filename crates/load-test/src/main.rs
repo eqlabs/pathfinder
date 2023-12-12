@@ -74,6 +74,9 @@ fn register_v05(attack: GooseAttack) -> GooseAttack {
         .register_scenario(
             scenario!("v05_get_storage_at").register_transaction(transaction!(task_get_storage_at)),
         )
+        .register_scenario(
+            scenario!("v05_get_nonce").register_transaction(transaction!(task_get_nonce)),
+        )
         // primitive operations that don't use the database
         .register_scenario(
             scenario!("v05_syncing").register_transaction(transaction!(task_syncing)),
@@ -81,7 +84,7 @@ fn register_v05(attack: GooseAttack) -> GooseAttack {
         .register_scenario(
             scenario!("v05_chain_id").register_transaction(transaction!(task_chain_id)),
         )
-        // primitive operation utilizing the Cairo Python subprocesses
+        // primitive operation doing execution
         .register_scenario(scenario!("v05_call").register_transaction(transaction!(task_call)))
         .register_scenario(
             scenario!("v05_estimate_fee").register_transaction(transaction!(task_estimate_fee)),
