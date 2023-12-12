@@ -1,6 +1,6 @@
 use goose::prelude::*;
-use rand::{Rng, SeedableRng};
 use pathfinder_crypto::Felt;
+use rand::{Rng, SeedableRng};
 
 use crate::requests::v05::*;
 
@@ -258,5 +258,16 @@ pub async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
             .unwrap(),
     )
     .await?;
+    Ok(())
+}
+
+pub async fn task_get_nonce(user: &mut GooseUser) -> TransactionResult {
+    let _ = get_nonce(
+        user,
+        Felt::from_hex_str("0x01b68f7c1bbcaf9017bd8e2f3be124c01525341603e5c76a06870c32e10473c7")
+            .unwrap(),
+    )
+    .await?;
+
     Ok(())
 }
