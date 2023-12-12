@@ -74,7 +74,7 @@ pub struct SyncContext<G, E> {
     pub sequencer: G,
     pub state: Arc<SyncState>,
     pub head_poll_interval: Duration,
-    pub pending_data: WatchSender<Arc<PendingData>>,
+    pub pending_data: WatchSender<PendingData>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: Option<TopicBroadcasters>,
     pub block_cache_size: usize,
@@ -323,7 +323,7 @@ where
 struct ConsumerContext {
     pub storage: Storage,
     pub state: Arc<SyncState>,
-    pub pending_data: WatchSender<Arc<PendingData>>,
+    pub pending_data: WatchSender<PendingData>,
     pub verify_tree_hashes: bool,
     pub websocket_txs: Option<TopicBroadcasters>,
 }
@@ -533,11 +533,11 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 
                 if pending.0.parent_hash == hash {
                     let data = PendingData {
-                        block: pending.0,
-                        state_update: pending.1,
+                        block: pending.0.into(),
+                        state_update: pending.1.into(),
                         number: number + 1,
                     };
-                    pending_data.send_replace(Arc::new(data));
+                    pending_data.send_replace(data);
                     tracing::debug!("Updated pending data");
                 }
             }

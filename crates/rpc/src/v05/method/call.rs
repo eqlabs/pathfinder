@@ -176,7 +176,6 @@ mod tests {
     }
 
     mod in_memory {
-        use std::sync::Arc;
 
         use super::*;
 
@@ -282,7 +281,7 @@ mod tests {
             )
             .await;
 
-            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
             // unchanged on latest block
@@ -324,7 +323,7 @@ mod tests {
                     .with_storage_update(new_contract_address, test_key, new_value),
             )
             .await;
-            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
             let input = CallInput {
@@ -377,7 +376,7 @@ mod tests {
                     .with_storage_update(new_contract_address, storage_key, storage_value),
             )
             .await;
-            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
             let input = CallInput {
@@ -407,8 +406,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
-                },
-                state_update,
+                }
+                .into(),
+                state_update: state_update.into(),
                 number: last_block_header.number + 1,
             }
         }

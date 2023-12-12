@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::state_reader::PathfinderStateReader;
 use crate::IntoStarkFelt;
 use anyhow::Context;
@@ -15,7 +17,7 @@ pub struct ExecutionState<'tx> {
     pub chain_id: ChainId,
     pub header: BlockHeader,
     execute_on_parent_state: bool,
-    pending_state: Option<StateUpdate>,
+    pending_state: Option<Arc<StateUpdate>>,
 }
 
 impl<'tx> ExecutionState<'tx> {
@@ -73,7 +75,7 @@ impl<'tx> ExecutionState<'tx> {
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         chain_id: ChainId,
         header: BlockHeader,
-        pending_state: Option<StateUpdate>,
+        pending_state: Option<Arc<StateUpdate>>,
     ) -> Self {
         Self {
             transaction,
@@ -88,7 +90,7 @@ impl<'tx> ExecutionState<'tx> {
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         chain_id: ChainId,
         header: BlockHeader,
-        pending_state: Option<StateUpdate>,
+        pending_state: Option<Arc<StateUpdate>>,
     ) -> Self {
         Self {
             transaction,

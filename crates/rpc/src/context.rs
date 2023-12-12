@@ -31,7 +31,7 @@ impl RpcContext {
         sync_status: Arc<SyncState>,
         chain_id: ChainId,
         sequencer: SequencerClient,
-        pending_data: tokio_watch::Receiver<Arc<PendingData>>,
+        pending_data: tokio_watch::Receiver<PendingData>,
         batch_concurrency_limit: NonZeroUsize,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
@@ -92,7 +92,7 @@ impl RpcContext {
         }
     }
 
-    pub fn with_pending_data(self, pending_data: tokio_watch::Receiver<Arc<PendingData>>) -> Self {
+    pub fn with_pending_data(self, pending_data: tokio_watch::Receiver<PendingData>) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
         Self {
             pending_data,
@@ -107,7 +107,7 @@ impl RpcContext {
         let pending_data = super::test_utils::create_pending_data(context.storage.clone()).await;
 
         let (tx, rx) = tokio_watch::channel(Default::default());
-        tx.send(Arc::new(pending_data)).unwrap();
+        tx.send(pending_data).unwrap();
 
         context.with_pending_data(rx)
     }

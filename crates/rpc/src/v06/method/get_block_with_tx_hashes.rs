@@ -38,8 +38,8 @@ pub async fn get_block_with_tx_hashes(
                     .pending_data
                     .get(&transaction)
                     .context("Querying pending data")?
-                    .block
-                    .clone();
+                    .block;
+                let block = (*block).clone();
 
                 return Ok(types::Block::from_sequencer(block.into()));
             }

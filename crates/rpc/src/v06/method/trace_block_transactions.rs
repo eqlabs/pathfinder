@@ -269,10 +269,8 @@ pub async fn trace_block_transactions(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::sync::Arc;
-
     use pathfinder_common::{
-        block_hash, felt, BlockHeader, ChainId, GasPrice, SierraHash, StateUpdate, TransactionIndex,
+        block_hash, felt, BlockHeader, ChainId, GasPrice, SierraHash, TransactionIndex,
     };
     use starknet_gateway_types::reply::transaction::{ExecutionStatus, Receipt};
 
@@ -483,13 +481,13 @@ pub(crate) mod tests {
         };
 
         let pending_data = crate::pending::PendingData {
-            block: pending_block,
-            state_update: StateUpdate::default(),
+            block: pending_block.into(),
+            state_update: Default::default(),
             number: last_block_header.number + 1,
         };
 
         let (tx, rx) = tokio::sync::watch::channel(Default::default());
-        tx.send(Arc::new(pending_data)).unwrap();
+        tx.send(pending_data).unwrap();
 
         let context = context.with_pending_data(rx);
 
