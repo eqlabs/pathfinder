@@ -1,5 +1,6 @@
 /// Constants that allow us to estimate the maximum payload of certain types of messages
-pub const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
+/// Maximum size of an encoded protobuf message in bytes
+pub const MESSAGE_SIZE_LIMIT: usize = 20 * 1024 * 1024;
 pub const CLASSES_MESSAGE_OVERHEAD: usize = 58;
 /// Upper bound
 pub const PER_CLASS_OVERHEAD: usize = 96;
