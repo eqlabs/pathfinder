@@ -155,6 +155,7 @@ pub mod dto {
     use crate::felt::RpcFelt;
     use crate::v03::method::get_state_update::types::StateDiff;
     use crate::v05::method::call::FunctionCall;
+    use crate::v06::types::PriceUnit;
 
     use super::*;
 
@@ -185,23 +186,6 @@ pub mod dto {
                 gas_price: value.gas_price,
                 overall_fee: value.overall_fee,
                 unit: value.unit.into(),
-            }
-        }
-    }
-
-    #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
-    pub enum PriceUnit {
-        #[serde(rename = "WEI")]
-        Wei,
-        #[serde(rename = "FRI")]
-        Fri,
-    }
-
-    impl From<pathfinder_executor::types::PriceUnit> for PriceUnit {
-        fn from(value: pathfinder_executor::types::PriceUnit) -> Self {
-            match value {
-                pathfinder_executor::types::PriceUnit::Wei => Self::Wei,
-                pathfinder_executor::types::PriceUnit::Fri => Self::Fri,
             }
         }
     }
@@ -649,6 +633,7 @@ pub(crate) mod tests {
     use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
     pub(crate) use crate::v04::method::simulate_transactions::tests::setup_storage;
     use crate::v05::method::call::FunctionCall;
+    use crate::v06::types::PriceUnit;
     use pathfinder_common::{felt, macro_prelude::*, ClassHash, StorageValue, TransactionVersion};
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,

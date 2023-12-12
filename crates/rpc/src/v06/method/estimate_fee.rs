@@ -4,6 +4,7 @@ use serde_with::serde_as;
 
 use crate::{
     context::RpcContext, error::ApplicationError, v02::types::request::BroadcastedTransaction,
+    v06::types::PriceUnit,
 };
 use pathfinder_common::BlockId;
 
@@ -104,23 +105,6 @@ impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
             gas_price: value.gas_price,
             overall_fee: value.overall_fee,
             unit: value.unit.into(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
-pub enum PriceUnit {
-    #[serde(rename = "WEI")]
-    Wei,
-    #[serde(rename = "FRI")]
-    Fri,
-}
-
-impl From<pathfinder_executor::types::PriceUnit> for PriceUnit {
-    fn from(value: pathfinder_executor::types::PriceUnit) -> Self {
-        match value {
-            pathfinder_executor::types::PriceUnit::Wei => Self::Wei,
-            pathfinder_executor::types::PriceUnit::Fri => Self::Fri,
         }
     }
 }

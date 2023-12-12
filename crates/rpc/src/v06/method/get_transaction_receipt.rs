@@ -89,6 +89,7 @@ pub async fn get_transaction_receipt_impl(
 pub mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
+    use crate::v06::types::PriceUnit;
     use pathfinder_common::{
         BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
         L2ToL1MessagePayloadElem, TransactionHash, TransactionVersion,
@@ -257,15 +258,7 @@ pub mod types {
     pub enum FeePayment {
         // TODO: remove once RPC v0.5 is removed.
         V05(Fee),
-        V06 { amount: Fee, unit: FeeToken },
-    }
-
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum FeeToken {
-        Wei,
-        Strk,
+        V06 { amount: Fee, unit: PriceUnit },
     }
 
     impl FeePayment {
@@ -475,9 +468,9 @@ pub mod types {
             let fee_amount = receipt.actual_fee.unwrap_or_default();
             let fee_unit = match transaction.version() {
                 TransactionVersion::ZERO | TransactionVersion::ONE | TransactionVersion::TWO => {
-                    FeeToken::Wei
+                    PriceUnit::Wei
                 }
-                _ => FeeToken::Strk,
+                _ => PriceUnit::Fri,
             };
 
             let actual_fee = FeePayment::V06 {
@@ -592,12 +585,7 @@ pub mod types {
             transaction: &starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
             let fee_amount = receipt.actual_fee.unwrap_or_default();
-            let fee_unit = match transaction.version() {
-                TransactionVersion::ZERO | TransactionVersion::ONE | TransactionVersion::TWO => {
-                    FeeToken::Wei
-                }
-                _ => FeeToken::Strk,
-            };
+            let fee_unit = PriceUnit::for_transaction_version(&transaction.version());
 
             let actual_fee = FeePayment::V06 {
                 amount: fee_amount,
@@ -718,6 +706,8 @@ mod tests {
     // TODO: add serialization tests for each receipt variant
     // TODO: add test for v3 receipt to check gas unit is correct
 
+    use crate::v06::types::PriceUnit;
+
     use super::types::ExecutionResourcesProperties;
     use super::*;
     use pathfinder_common::macro_prelude::*;
@@ -794,7 +784,7 @@ mod tests {
                         transaction_hash: transaction_hash_bytes!(b"txn 0"),
                         actual_fee: FeePayment::V06 {
                             amount: Default::default(),
-                            unit: FeeToken::Wei,
+                            unit: PriceUnit::Wei,
                         },
                         block_hash: block_hash_bytes!(b"genesis"),
                         block_number: BlockNumber::new_or_panic(0),
@@ -840,7 +830,7 @@ mod tests {
                         transaction_hash: transaction_hash_bytes!(b"txn 6"),
                         actual_fee: FeePayment::V06 {
                             amount: Default::default(),
-                            unit: FeeToken::Wei,
+                            unit: PriceUnit::Wei,
                         },
                         block_hash: block_hash_bytes!(b"latest"),
                         block_number: BlockNumber::new_or_panic(2),
@@ -945,7 +935,7 @@ mod tests {
                         transaction_hash,
                         actual_fee: FeePayment::V06 {
                             amount: Default::default(),
-                            unit: FeeToken::Wei,
+                            unit: PriceUnit::Wei,
                         },
                         messages_sent: vec![],
                         events: vec![
