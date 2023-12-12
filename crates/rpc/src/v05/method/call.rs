@@ -278,8 +278,7 @@ mod tests {
             let pending_data = pending_data_with_update(
                 last_block_header,
                 StateUpdate::default().with_storage_update(contract_address, test_key, new_value),
-            )
-            .await;
+            );
 
             let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
@@ -321,8 +320,7 @@ mod tests {
                 StateUpdate::default()
                     .with_deployed_contract(new_contract_address, CONTRACT_DEFINITION_CLASS_HASH)
                     .with_storage_update(new_contract_address, test_key, new_value),
-            )
-            .await;
+            );
             let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
@@ -374,8 +372,7 @@ mod tests {
                     .with_declared_sierra_class(sierra_hash, casm_hash)
                     .with_deployed_contract(new_contract_address, ClassHash(sierra_hash.0))
                     .with_storage_update(new_contract_address, storage_key, storage_value),
-            )
-            .await;
+            );
             let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
@@ -391,7 +388,7 @@ mod tests {
             assert_eq!(result, CallOutput(vec![CallResultValue(storage_value.0)]));
         }
 
-        async fn pending_data_with_update(
+        fn pending_data_with_update(
             last_block_header: BlockHeader,
             state_update: StateUpdate,
         ) -> PendingData {
