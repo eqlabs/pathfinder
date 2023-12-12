@@ -1,84 +1,282 @@
-use blockifier::state::errors::StateError;
-use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
-use pathfinder_common::StateUpdate;
-use primitive_types::U256;
-use starknet_api::core::{ContractAddress, PatriciaKey};
+use std::sync::Arc;
+
+use blockifier::state::{errors::StateError, state_api::StateReader};
+
+use pathfinder_common::{StateUpdate, StorageAddress};
+use starknet_api::core::ContractAddress;
 use starknet_api::state::StorageKey;
+use starknet_api::StarknetApiError;
 
-use super::felt::IntoStarkFelt;
+use super::felt::{IntoFelt, IntoStarkFelt};
 
-pub(crate) fn apply_pending_update<S: blockifier::state::state_api::State>(
-    state: &mut S,
-    pending_update: &StateUpdate,
-) -> Result<(), StateError> {
-    // NOTE: class _declarations_ are handled during sync. We download and insert new class declarations for the pending block
-    // after downloading it -- here we build on the fact that those are already available in the database -- and thus in the state
-    // as well...
-    for (
-        contract_address,
-        ContractUpdate {
-            storage,
-            class,
+pub(super) struct PendingStateReader<S: StateReader> {
+    state: S,
+    pending_update: Option<Arc<StateUpdate>>,
+}
+
+impl<S: StateReader> PendingStateReader<S> {
+    pub(super) fn new(state: S, pending_update: Option<Arc<StateUpdate>>) -> Self {
+        Self {
+            state,
+            pending_update,
+        }
+    }
+}
+
+impl<S: StateReader> StateReader for PendingStateReader<S> {
+    fn get_storage_at(
+        &mut self,
+        contract_address: ContractAddress,
+        key: StorageKey,
+    ) -> blockifier::state::state_api::StateResult<starknet_api::hash::StarkFelt> {
+        let storage_key = StorageAddress::new(key.0.key().into_felt()).ok_or_else(|| {
+            StateError::StarknetApiError(StarknetApiError::OutOfRange {
+                string: "Storage key out of range".to_owned(),
+            })
+        })?;
+
+        let pathfinder_contract_address =
+            pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
+
+        self.pending_update
+            .as_ref()
+            .and_then(|pending_update| {
+                pending_update
+                    .storage_value(pathfinder_contract_address, storage_key)
+                    .map(|value| Ok(value.0.into_starkfelt()))
+            })
+            .unwrap_or_else(|| self.state.get_storage_at(contract_address, key))
+    }
+
+    fn get_nonce_at(
+        &mut self,
+        contract_address: ContractAddress,
+    ) -> blockifier::state::state_api::StateResult<starknet_api::core::Nonce> {
+        let pathfinder_contract_address =
+            pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
+
+        self.pending_update
+            .as_ref()
+            .and_then(|pending_update| {
+                pending_update
+                    .contract_nonce(pathfinder_contract_address)
+                    .map(|nonce| Ok(starknet_api::core::Nonce(nonce.0.into_starkfelt())))
+            })
+            .unwrap_or_else(|| self.state.get_nonce_at(contract_address))
+    }
+
+    fn get_class_hash_at(
+        &mut self,
+        contract_address: ContractAddress,
+    ) -> blockifier::state::state_api::StateResult<starknet_api::core::ClassHash> {
+        let pathfinder_contract_address =
+            pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
+
+        self.pending_update
+            .as_ref()
+            .and_then(|pending_update| {
+                pending_update
+                    .contract_class(pathfinder_contract_address)
+                    .map(|class_hash| {
+                        Ok(starknet_api::core::ClassHash(class_hash.0.into_starkfelt()))
+                    })
+            })
+            .unwrap_or_else(|| self.state.get_class_hash_at(contract_address))
+    }
+
+    fn get_compiled_contract_class(
+        &mut self,
+        class_hash: &starknet_api::core::ClassHash,
+    ) -> blockifier::state::state_api::StateResult<
+        blockifier::execution::contract_class::ContractClass,
+    > {
+        self.state.get_compiled_contract_class(class_hash)
+    }
+
+    fn get_compiled_class_hash(
+        &mut self,
+        class_hash: starknet_api::core::ClassHash,
+    ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash> {
+        self.state.get_compiled_class_hash(class_hash)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PendingStateReader;
+
+    use blockifier::state::state_api::StateReader;
+    use pathfinder_common::{
+        class_hash, contract_address, contract_nonce, storage_address, storage_value, StateUpdate,
+    };
+
+    struct DummyStateReader {}
+
+    impl StateReader for DummyStateReader {
+        fn get_storage_at(
+            &mut self,
+            _contract_address: starknet_api::core::ContractAddress,
+            _key: starknet_api::state::StorageKey,
+        ) -> blockifier::state::state_api::StateResult<starknet_api::hash::StarkFelt> {
+            Ok(starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap())
+        }
+
+        fn get_nonce_at(
+            &mut self,
+            _contract_address: starknet_api::core::ContractAddress,
+        ) -> blockifier::state::state_api::StateResult<starknet_api::core::Nonce> {
+            Ok(starknet_api::core::Nonce(
+                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),
+            ))
+        }
+
+        fn get_class_hash_at(
+            &mut self,
+            _contract_address: starknet_api::core::ContractAddress,
+        ) -> blockifier::state::state_api::StateResult<starknet_api::core::ClassHash> {
+            Ok(starknet_api::core::ClassHash(
+                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),
+            ))
+        }
+
+        fn get_compiled_contract_class(
+            &mut self,
+            _class_hash: &starknet_api::core::ClassHash,
+        ) -> blockifier::state::state_api::StateResult<
+            blockifier::execution::contract_class::ContractClass,
+        > {
+            unimplemented!()
+        }
+
+        fn get_compiled_class_hash(
+            &mut self,
+            _class_hash: starknet_api::core::ClassHash,
+        ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash>
+        {
+            Ok(starknet_api::core::CompiledClassHash(
+                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),
+            ))
+        }
+    }
+
+    #[test]
+    fn test_pending_nonce() {
+        let state_update = StateUpdate::default()
+            .with_contract_nonce(contract_address!("0x2"), contract_nonce!("0x3"));
+
+        let mut uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
+
+        // Nonce set in pending.
+        let nonce = uut
+            .get_nonce_at(starknet_api::core::ContractAddress(
+                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(2u8))
+                    .unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
             nonce,
-        },
-    ) in &pending_update.contract_updates
-    {
-        let address = ContractAddress(PatriciaKey::try_from(
-            contract_address.get().into_starkfelt(),
-        )?);
+            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::try_from(3u8).unwrap(),)
+        );
 
-        for (key, value) in storage {
-            let key = StorageKey(PatriciaKey::try_from(key.get().into_starkfelt())?);
-            let value = value.0.into_starkfelt();
-            state.set_storage_at(address, key, value);
-        }
-
-        if let Some(class) = class {
-            use pathfinder_common::state_update::ContractClassUpdate::*;
-            match class {
-                Deploy(class_hash) | Replace(class_hash) => {
-                    let class_hash = starknet_api::core::ClassHash(class_hash.0.into_starkfelt());
-                    state.set_class_hash_at(address, class_hash)?;
-                }
-            };
-        }
-
-        if let Some(nonce) = nonce {
-            let current_nonce = state.get_nonce_at(address)?;
-            let current_nonce = U256::from_big_endian(current_nonce.0.bytes());
-
-            let nonce = U256::from_big_endian(nonce.0.as_be_bytes());
-
-            if nonce > current_nonce {
-                let diff = nonce - current_nonce;
-                let diff = diff.as_u64();
-
-                for _ in 0..diff {
-                    state.increment_nonce(address)?;
-                }
-            } else {
-                tracing::error!(%contract_address, %current_nonce, %nonce, "Invalid nonce update in pending update");
-                return Err(StateError::StateReadError(format!(
-                    "Invalid nonce update in pending block for contract {}",
-                    contract_address
-                )));
-            }
-        }
+        // Nonce not set in pending.
+        let nonce = uut
+            .get_nonce_at(starknet_api::core::ContractAddress(
+                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(1u8))
+                    .unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            nonce,
+            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),)
+        );
     }
 
-    for (contract_address, SystemContractUpdate { storage }) in
-        &pending_update.system_contract_updates
-    {
-        let address = ContractAddress(PatriciaKey::try_from(
-            contract_address.get().into_starkfelt(),
-        )?);
+    #[test]
+    fn test_pending_storage_update() {
+        let state_update = StateUpdate::default().with_storage_update(
+            contract_address!("0x2"),
+            storage_address!("0x3"),
+            storage_value!("0x4"),
+        );
 
-        for (key, value) in storage {
-            let key = StorageKey(PatriciaKey::try_from(key.get().into_starkfelt())?);
-            let value = value.0.into_starkfelt();
-            state.set_storage_at(address, key, value);
-        }
+        let mut uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
+
+        // Storage set in pending.
+        let storage = uut
+            .get_storage_at(
+                starknet_api::core::ContractAddress(
+                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
+                        2u8,
+                    ))
+                    .unwrap(),
+                ),
+                starknet_api::state::StorageKey(
+                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
+                        3u8,
+                    ))
+                    .unwrap(),
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            storage,
+            starknet_api::hash::StarkFelt::try_from(4u8).unwrap()
+        );
+
+        // Storage not set in pending.
+        let storage = uut
+            .get_storage_at(
+                starknet_api::core::ContractAddress(
+                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
+                        1u8,
+                    ))
+                    .unwrap(),
+                ),
+                starknet_api::state::StorageKey(
+                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
+                        3u8,
+                    ))
+                    .unwrap(),
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            storage,
+            starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap()
+        );
     }
 
-    Ok(())
+    #[test]
+    fn test_pending_class_hash_at() {
+        let state_update = StateUpdate::default()
+            .with_deployed_contract(contract_address!("0x2"), class_hash!("0x3"));
+
+        let mut uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
+
+        // Contract deployed in pending
+        let class_hash = uut
+            .get_class_hash_at(starknet_api::core::ContractAddress(
+                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(2u8))
+                    .unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            class_hash,
+            starknet_api::core::ClassHash(starknet_api::hash::StarkFelt::try_from(3u8).unwrap())
+        );
+
+        // Contract not deployed in pending
+        let class_hash = uut
+            .get_class_hash_at(starknet_api::core::ContractAddress(
+                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(1u8))
+                    .unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            class_hash,
+            starknet_api::core::ClassHash(
+                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap()
+            )
+        );
+    }
 }

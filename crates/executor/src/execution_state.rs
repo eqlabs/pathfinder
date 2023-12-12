@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
 use crate::IntoStarkFelt;
 use anyhow::Context;
@@ -23,7 +24,10 @@ pub struct ExecutionState<'tx> {
 impl<'tx> ExecutionState<'tx> {
     pub(super) fn starknet_state(
         &mut self,
-    ) -> anyhow::Result<(CachedState<PathfinderStateReader<'_>>, BlockContext)> {
+    ) -> anyhow::Result<(
+        CachedState<PendingStateReader<PathfinderStateReader<'_>>>,
+        BlockContext,
+    )> {
         let block_context = super::block_context::construct_block_context(self)?;
 
         let block_number = if self.execute_on_parent_state {
@@ -37,7 +41,9 @@ impl<'tx> ExecutionState<'tx> {
             block_number,
             self.pending_state.is_some(),
         );
-        let mut cached_state = CachedState::new(raw_reader, GlobalContractCache::default());
+        let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
+        let mut cached_state =
+            CachedState::new(pending_state_reader, GlobalContractCache::default());
 
         // Perform system contract updates if we are executing ontop of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
@@ -63,10 +69,6 @@ impl<'tx> ExecutionState<'tx> {
                 block_hash.0.into_starkfelt(),
             )
         }
-
-        self.pending_state.as_ref().map(|pending_state| {
-            super::pending::apply_pending_update(&mut cached_state, pending_state)
-        });
 
         Ok((cached_state, block_context))
     }
