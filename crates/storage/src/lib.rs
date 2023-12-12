@@ -313,12 +313,14 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
         .rev()
         .take(amount)
         .rev()
-        .try_for_each(|migration| {
+        .enumerate()
+        .try_for_each(|(idx, migration)| {
             let mut do_migration = || -> anyhow::Result<()> {
                 current_revision += 1;
                 let span = tracing::info_span!("db_migration", revision = current_revision);
                 let _enter = span.enter();
 
+                tracing::info!("Starting migration {idx} of {amount}");
                 let transaction = connection
                     .transaction()
                     .context("Create database transaction")?;
@@ -329,7 +331,7 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
                 transaction
                     .commit()
                     .context("Commit migration transaction")?;
-
+                tracing::info!("Migration {idx} of {amount} complete");
                 Ok(())
             };
 

@@ -4,6 +4,7 @@ use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
+use rusqlite::CachedStatement;
 
 use crate::{prelude::*, BlockId};
 
@@ -20,9 +21,24 @@ pub(super) fn insert_state_update(
         )
         .context("Preparing nonce insert statement")?;
 
+    let mut insert_storage_address = tx
+        .inner()
+        .prepare_cached("INSERT INTO storage_addresses (address) VALUES (?) RETURNING idx")
+        .context("Preparing storage_address insert statement")?;
+
+    let mut get_storage_idx = tx
+        .inner()
+        .prepare_cached("SELECT idx FROM storage_addresses WHERE address = ?")
+        .context("Preparing storage_address read statement")?;
+
     let mut insert_storage = tx
-        .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_address, storage_address, storage_value) VALUES (?, ?, ?, ?)")
-        .context("Preparing nonce insert statement")?;
+        .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_idx, storage_idx, storage_value) VALUES (?, ?, ?, ?)")
+        .context("Preparing storage insert statement")?;
+
+    let mut insert_contract_address = tx
+        .inner()
+        .prepare_cached("INSERT INTO contract_addresses(address) VALUES(?)")
+        .context("Preparing contract address insert statement")?;
 
     let mut insert_contract = tx
         .inner().prepare_cached("INSERT INTO contract_updates (block_number, contract_address, class_hash) VALUES (?, ?, ?)")
@@ -35,7 +51,22 @@ pub(super) fn insert_state_update(
         )
         .context("Preparing class definition block number update statement")?;
 
+    let mut get_contract_idx = tx
+        .inner()
+        .prepare_cached("SELECT idx FROM contract_addresses WHERE address = ?")
+        .context("Preparing contract address idx query")?;
+
     for (address, update) in &state_update.contract_updates {
+        if let Some(ContractClassUpdate::Deploy(_)) = update.class {
+            insert_contract_address
+                .execute(params![address])
+                .context("Inserting contract address")?;
+        }
+
+        let contract_idx: u64 = get_contract_idx
+            .query_row(params![address], |row| row.get(0))
+            .context("Querying contract address index")?;
+
         if let Some(class_update) = &update.class {
             insert_contract
                 .execute(params![&block_number, address, &class_update.class_hash()])
@@ -49,17 +80,38 @@ pub(super) fn insert_state_update(
         }
 
         for (key, value) in &update.storage {
+            let key = intern_storage_key(key, &mut get_storage_idx, &mut insert_storage_address)
+                .context("Interning storage key")?;
+
             insert_storage
-                .execute(params![&block_number, address, key, value])
+                .execute(params![&block_number, &contract_idx, &key, value])
                 .context("Inserting storage update")?;
         }
     }
 
     for (address, update) in &state_update.system_contract_updates {
+        // System contracts are never deployed so we do it manually.
+        // This is a bit wasteful e.g. presently there is exactly one
+        // system contract at 0x1 which we could pre-"deploy". This way
+        // more robust / maintenance but costs one extra insert or ignore per block.
+        tx.inner()
+            .execute(
+                "INSERT OR IGNORE INTO contract_addresses(address) VALUES(?)",
+                params![address],
+            )
+            .context("Inserting system contract address")?;
+
+        let contract_idx: u64 = get_contract_idx
+            .query_row(params![address], |row| row.get(0))
+            .context("Querying system contract address index")?;
+
         for (key, value) in &update.storage {
+            let key = intern_storage_key(key, &mut get_storage_idx, &mut insert_storage_address)
+                .context("Interning storage key")?;
+
             insert_storage
-                .execute(params![&block_number, address, key, value])
-                .context("Inserting system storage update")?;
+                .execute(params![&block_number, &contract_idx, &key, value])
+                .context("Inserting storage update")?;
         }
     }
 
@@ -89,6 +141,26 @@ pub(super) fn insert_state_update(
     }
 
     Ok(())
+}
+
+/// Interns the storage key and returns its index.
+fn intern_storage_key(
+    key: &StorageAddress,
+    reader: &mut CachedStatement<'_>,
+    writer: &mut CachedStatement<'_>,
+) -> anyhow::Result<u64> {
+    let key_idx: Option<u64> = reader
+        .query_row(params![key], |row| row.get(0))
+        .optional()
+        .context("Querying storage key")?;
+
+    if let Some(key_idx) = key_idx {
+        return Ok(key_idx);
+    }
+
+    writer
+        .query_row(params![key], |row| row.get(0))
+        .context("Writing storage key")
 }
 
 fn block_details(
@@ -172,8 +244,12 @@ pub(super) fn state_update(
     }
 
     let mut stmt = tx
-        .inner().prepare_cached(
-            "SELECT contract_address, storage_address, storage_value FROM storage_updates WHERE block_number = ?"
+        .inner()
+        .prepare_cached(
+            r"SELECT contract_addresses.address, storage_addresses.address, storage_value FROM storage_updates 
+                JOIN contract_addresses ON(contract_addresses.idx = storage_updates.contract_idx)
+                JOIN storage_addresses  ON(storage_addresses.idx  = storage_updates.storage_idx)
+                WHERE block_number = ?"
         )
         .context("Preparing storage update query statement")?;
     let mut storage_diffs = stmt
@@ -282,21 +358,26 @@ pub(super) fn storage_value(
     match block {
         BlockId::Latest => tx.inner().query_row(
             r"SELECT storage_value FROM storage_updates 
-                WHERE contract_address = ? AND storage_address = ?
+                WHERE contract_idx = (SELECT idx FROM contract_addresses WHERE address = ?)
+                AND storage_idx = (SELECT idx FROM storage_addresses WHERE address = ?)
                 ORDER BY block_number DESC LIMIT 1",
             params![&contract_address, &key],
             |row| row.get_storage_value(0),
         ),
         BlockId::Number(number) => tx.inner().query_row(
             r"SELECT storage_value FROM storage_updates
-                WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
+                WHERE contract_idx = (SELECT idx FROM contract_addresses WHERE address = ?)
+                AND storage_idx = (SELECT idx FROM storage_addresses WHERE address = ?)
+                AND block_number <= ?
                 ORDER BY block_number DESC LIMIT 1",
             params![&contract_address, &key, &number],
             |row| row.get_storage_value(0),
         ),
         BlockId::Hash(hash) => tx.inner().query_row(
             r"SELECT storage_value FROM storage_updates
-                WHERE contract_address = ? AND storage_address = ? AND block_number <= (
+                WHERE contract_idx = (SELECT idx FROM contract_addresses WHERE address = ?)
+                AND storage_idx = (SELECT idx FROM storage_addresses WHERE address = ?)
+                AND block_number <= (
                     SELECT number FROM canonical_blocks WHERE hash = ?
                 )
                 ORDER BY block_number DESC LIMIT 1",
@@ -539,6 +620,11 @@ mod tests {
             .finalize_with_hash(block_hash!("0xabcdef"));
         let state_update = StateUpdate::default()
             .with_block_hash(header.hash)
+            .with_deployed_contract(contract_address, class_hash_bytes!(b"class hash"))
+            .with_deployed_contract(
+                contract_address_bytes!(b"contract addr 2"),
+                ClassHash(sierra_hash.0),
+            )
             .with_storage_update(
                 contract_address,
                 storage_address_bytes!(b"storage key"),
@@ -548,10 +634,6 @@ mod tests {
                 ContractAddress::ONE,
                 storage_address_bytes!(b"key"),
                 storage_value_bytes!(b"value"),
-            )
-            .with_deployed_contract(
-                contract_address_bytes!(b"contract addr 2"),
-                ClassHash(sierra_hash.0),
             )
             .with_declared_cairo_class(cairo_hash2)
             .with_declared_sierra_class(sierra_hash, casm_hash)
@@ -596,6 +678,8 @@ mod tests {
             let contract_address = contract_address_bytes!(b"contract address");
             let contract_address2 = contract_address_bytes!(b"contract address 2");
             let state_update = StateUpdate::default()
+                .with_deployed_contract(contract_address, class_hash_bytes!(b"class"))
+                .with_deployed_contract(contract_address2, class_hash_bytes!(b"class"))
                 .with_contract_nonce(contract_address, contract_nonce_bytes!(b"nonce value"))
                 .with_contract_nonce(contract_address2, contract_nonce_bytes!(b"nonce value 2"))
                 .with_storage_update(
