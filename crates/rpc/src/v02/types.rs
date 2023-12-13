@@ -423,7 +423,7 @@ pub mod request {
             ];
             starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
                 b"declare",
-                TransactionVersion::THREE,
+                self.version,
                 self.sender_address,
                 chain_id,
                 self.nonce,
@@ -631,7 +631,7 @@ pub mod request {
             ];
             starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
                 b"deploy_account",
-                TransactionVersion::THREE,
+                self.version,
                 sender_address,
                 chain_id,
                 self.nonce,
@@ -829,7 +829,7 @@ pub mod request {
             ];
             starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
                 b"invoke",
-                TransactionVersion::THREE,
+                self.version,
                 self.sender_address,
                 chain_id,
                 self.nonce,
@@ -1061,11 +1061,13 @@ pub mod request {
         }
 
         mod transaction_hash {
-            use crate::v02::types::ContractClass;
+            use crate::v02::types::{
+                ContractClass, DataAvailabilityMode, ResourceBound, ResourceBounds,
+            };
 
             use super::super::*;
 
-            use pathfinder_common::macro_prelude::*;
+            use pathfinder_common::{macro_prelude::*, ResourceAmount, ResourcePricePerUnit};
 
             #[test]
             fn declare_v1() {
@@ -1182,6 +1184,73 @@ pub mod request {
                     transaction.transaction_hash(ChainId::GOERLI_TESTNET, None),
                     transaction_hash!(
                         "0x25d11606f1a73602099a359e4b5da03c45372a92eb0c9be2800c3123e7a26aa"
+                    )
+                );
+            }
+
+            #[test]
+            fn invoke_v3() {
+                // https://integration.starkscan.co/tx/0x00ffba4f15f2a1f04bfaf9c47da4d41e4a9a277bf8f7768b2402fc5db3b35b17
+                let tx = BroadcastedInvokeTransactionV3 {
+                    version: TransactionVersion::THREE,
+                    signature: vec![
+                        transaction_signature_elem!(
+                            "0x477f5694ad01855fd178613eeb442541db745cf0d7070b0a67262e09481aec5"
+                        ),
+                        transaction_signature_elem!(
+                            "0x15b28a9ce57a714da837ef7213c1b99992a89135c6fc7f7db6d1aaf824265a0"
+                        ),
+                    ],
+                    nonce: transaction_nonce!("0xe19"),
+                    resource_bounds: ResourceBounds {
+                        l1_gas: ResourceBound {
+                            max_amount: ResourceAmount(0x186a0),
+                            max_price_per_unit: ResourcePricePerUnit(0x5af3107a4000),
+                        },
+                        l2_gas: ResourceBound {
+                            max_amount: ResourceAmount(0),
+                            max_price_per_unit: ResourcePricePerUnit(0),
+                        },
+                    },
+                    tip: Tip(0x0),
+                    paymaster_data: vec![],
+                    account_deployment_data: vec![],
+                    nonce_data_availability_mode: DataAvailabilityMode::L1,
+                    fee_data_availability_mode: DataAvailabilityMode::L1,
+                    sender_address: contract_address!(
+                        "0x3f6f3bc663aedc5285d6013cc3ffcbc4341d86ab488b8b68d297f8258793c41"
+                    ),
+                    calldata: vec![
+                        call_param!("0x2"),
+                        call_param!(
+                            "0x4c312760dfd17a954cdd09e76aa9f149f806d88ec3e402ffaf5c4926f568a42"
+                        ),
+                        call_param!(
+                            "0x5df99ae77df976b4f0e5cf28c7dcfe09bd6e81aab787b19ac0c08e03d928cf"
+                        ),
+                        call_param!("0x0"),
+                        call_param!("0x1"),
+                        call_param!(
+                            "0x4c312760dfd17a954cdd09e76aa9f149f806d88ec3e402ffaf5c4926f568a42"
+                        ),
+                        call_param!(
+                            "0x241f3ff573208515225eb136d2132bb89bd593e4c844225ead202a1657cfe64"
+                        ),
+                        call_param!("0x1"),
+                        call_param!("0x0"),
+                        call_param!("0x1"),
+                        call_param!(
+                            "0x5968790bb8d5412021a972c44f8768b70368dd18b43a3393ac3f59bf8bdd5b5"
+                        ),
+                    ],
+                };
+
+                let transaction =
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(tx));
+                assert_eq!(
+                    transaction.transaction_hash(ChainId::GOERLI_INTEGRATION, None),
+                    transaction_hash!(
+                        "0xffba4f15f2a1f04bfaf9c47da4d41e4a9a277bf8f7768b2402fc5db3b35b17"
                     )
                 );
             }
