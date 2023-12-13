@@ -251,6 +251,7 @@ impl<'a> Request<'a, stage::Final> {
             meta: RequestMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
             with_metrics(meta, async {
+                tracing::trace!(%url, "Fetching binary data from feeder gateway");
                 let response = client.get(url).send().await?;
                 let response = parse_raw(response).await?;
                 let bytes = response.bytes().await?;
@@ -303,6 +304,7 @@ impl<'a> Request<'a, stage::Final> {
             true => {
                 retry0(
                     || async {
+                        tracing::trace!(url=%self.url, "Posting data to gateway");
                         let clone_url = self.url.clone();
                         post_with_json_inner(clone_url, self.client, self.state.meta, json).await
                     },
