@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `EXECUTION_RESOURCES` fields are hex-strings instead of integers
   - `segment_arena_builtin` resource is missing
   - v3 transaction price unit type is `STRK` instead of `FRI`
+- Transaction hashes for version 3 broadcasted transactions using the "query" flag in the version field are now computed correctly.
 
 ### Changed
 
