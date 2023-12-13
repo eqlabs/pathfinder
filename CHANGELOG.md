@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.10.2] - 2023-12-13
+
 ### Added
 
 - Added `x-request-id` header to RPC responses. If the request does not have the header set then an ID is generated. This can be used to identify a specific caller's request/response within the node's logs. Duplicate IDs are possible since they can be set by the caller, so we recommend making your's identifiable with a prefix or using a GUID.
@@ -25,7 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `EXECUTION_RESOURCES` fields are hex-strings instead of integers
   - `segment_arena_builtin` resource is missing
   - v3 transaction price unit type is `STRK` instead of `FRI`
+- v0.6 `starknet_estimateFee`, `starknet_simulateTransactions`
   - v3 transaction hashes are computed incorrectly when using the "query" flag, causing validation errors
+  - `unit` field is missing from fee estimation results
+- v0.6 `starknet_addDeployAccountTransaction`
+  - the gateway doest not properly return address information for v3 transactions, we now compute the address ourselves
+- `starknet_getEvents`
+  - query strategy selection for some events involving a filter on very common keys is slow
 - Execution performance for calls involving the `pending` blocks is much better for trivial calls (like `balanceOf`).
 
 ### Changed
