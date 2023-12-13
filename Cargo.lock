@@ -5758,16 +5758,21 @@ dependencies = [
 name = "p2p_proto"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "fake",
  "libp2p-identity",
  "p2p_proto_derive",
  "pathfinder-crypto",
+ "pretty_assertions_sorted",
  "primitive-types",
  "prost 0.12.1",
  "prost-build",
  "prost-types 0.12.1",
  "rand",
  "rstest",
+ "serde",
+ "serde_json",
+ "serde_with",
 ]
 
 [[package]]

@@ -8,6 +8,7 @@ rust-version = { workspace = true }
 build = "build.rs"
 
 [dependencies]
+anyhow = { workspace = true }
 fake = { workspace = true }
 libp2p-identity = { version = "0.2.2", features = ["peerid"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
@@ -16,9 +17,14 @@ primitive-types = { workspace = true }
 prost = "0.12.1"
 prost-types = "0.12.1"
 rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["raw_value"] }
+serde_with = { workspace = true }
 
 [dev-dependencies]
-rstest = "0.18.2"
+anyhow = { workspace = true }
+pretty_assertions_sorted = { workspace = true }
+rstest = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.12.1"

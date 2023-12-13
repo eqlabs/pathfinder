@@ -15,9 +15,8 @@ use pathfinder_common::transaction::{
 use pathfinder_common::{
     AccountDeploymentDataElem, BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash,
     ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint,
-    EventData, EventKey, Fee, GasPrice, SequencerAddress, SierraHash, StarknetVersion,
-    StateCommitment, StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+    EventData, EventKey, Fee, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 
 /// We don't want to introduce circular dependencies between crates
@@ -68,11 +67,12 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
 }
 
+/// Simple state update with class definitions whose hashes have not been computed and compared against the state update yet.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StateUpdateWithDefs {
+pub struct StateUpdateWithDefinitions {
     pub block_hash: BlockHash,
     pub state_update: StateUpdate,
-    pub classes: Vec<Class>,
+    pub classes: Vec<p2p_proto::state::Class>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,44 +82,6 @@ pub struct ContractUpdate {
     /// We don't explicitly know if it's one or the other
     pub class: Option<ClassHash>,
     pub nonce: Option<ContractNonce>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Class {
-    Cairo {
-        hash: ClassHash,
-        definition: Vec<u8>,
-    },
-    Sierra {
-        sierra_hash: SierraHash,
-        definition: Vec<u8>,
-        casm_hash: CasmHash,
-    },
-}
-
-impl Class {
-    pub fn definition_mut(&mut self) -> &mut Vec<u8> {
-        match self {
-            Class::Cairo { definition, .. } => definition,
-            Class::Sierra { definition, .. } => definition,
-        }
-    }
-}
-
-impl From<p2p_proto::state::Class> for Class {
-    fn from(class: p2p_proto::state::Class) -> Self {
-        match class.casm_hash {
-            Some(casm_hash) => Class::Sierra {
-                sierra_hash: SierraHash(class.compiled_hash.0),
-                definition: class.definition,
-                casm_hash: CasmHash(casm_hash.0),
-            },
-            None => Class::Cairo {
-                hash: ClassHash(class.compiled_hash.0),
-                definition: class.definition,
-            },
-        }
-    }
 }
 
 impl From<pathfinder_common::BlockHeader> for BlockHeader {

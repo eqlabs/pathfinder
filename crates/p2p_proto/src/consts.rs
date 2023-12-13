@@ -76,6 +76,7 @@ mod tests {
                 state_commitment: Some(Hash::full()),
             })),
         };
+
         let len = BlockHeadersResponse { part: vec![part] }
             .encode_length_delimited_to_vec()
             .len();
