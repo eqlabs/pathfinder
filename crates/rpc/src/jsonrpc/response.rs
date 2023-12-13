@@ -18,10 +18,12 @@ impl<'a> RpcResponse<'a> {
         id: RequestId::Null,
     };
 
-    pub const INVALID_REQUEST: Self = Self {
-        output: Err(RpcError::InvalidRequest),
-        id: RequestId::Null,
-    };
+    pub const fn invalid_request(error: String) -> RpcResponse<'a> {
+        Self {
+            output: Err(RpcError::InvalidRequest(error)),
+            id: RequestId::Null,
+        }
+    }
 
     pub const fn method_not_found(id: RequestId<'a>) -> RpcResponse<'a> {
         Self {
@@ -30,9 +32,9 @@ impl<'a> RpcResponse<'a> {
         }
     }
 
-    pub const fn invalid_params(id: RequestId<'a>) -> RpcResponse<'a> {
+    pub const fn invalid_params(id: RequestId<'a>, error: String) -> RpcResponse<'a> {
         Self {
-            output: Err(RpcError::InvalidParams),
+            output: Err(RpcError::InvalidParams(error)),
             id,
         }
     }
@@ -92,17 +94,23 @@ mod tests {
 
     #[test]
     fn output_is_error() {
-        let serialized = serde_json::to_value(&RpcResponse {
-            output: Err(RpcError::InvalidParams),
+        let parsing_err = serde_json::from_str::<u32>("invalid")
+            .unwrap_err()
+            .to_string();
+        let response = RpcResponse {
+            output: Err(RpcError::InvalidParams(parsing_err.clone())),
             id: RequestId::Number(1),
-        })
-        .unwrap();
+        };
+        let parsing_err = RpcError::InvalidParams(parsing_err);
+
+        let serialized = serde_json::to_value(&response).unwrap();
 
         let expected = json!({
             "jsonrpc": "2.0",
             "error": {
-                "code": RpcError::InvalidParams.code(),
-                "message": RpcError::InvalidParams.message(),
+                "code": parsing_err.code(),
+                "message": parsing_err.message(),
+                "data": parsing_err.data(),
             },
             "id": 1,
         });

@@ -140,12 +140,15 @@ async fn read(
             }
         };
 
-        let Ok(request) = serde_json::from_slice::<RpcRequest<'_>>(&request) else {
-            match response_sender.try_send(ResponseEvent::InvalidRequest) {
-                Ok(_) => continue,
-                Err(e) => {
-                    tracing::debug!(reason=%e, "Failed to send invalid request response");
-                    break;
+        let request = match serde_json::from_slice::<RpcRequest<'_>>(&request) {
+            Ok(request) => request,
+            Err(err) => {
+                match response_sender.try_send(ResponseEvent::InvalidRequest(err.to_string())) {
+                    Ok(_) => continue,
+                    Err(e) => {
+                        tracing::debug!(reason=%e, "Failed to send invalid request response");
+                        break;
+                    }
                 }
             }
         };
@@ -191,8 +194,17 @@ impl SubscriptionManager {
         request_id: RequestId<'_>,
         request_params: RawParams<'_>,
     ) -> ResponseEvent {
-        let Ok(subscription_id) = request_params.deserialize::<SubscriptionId>() else {
-            return ResponseEvent::InvalidParams(request_id.into());
+        let subscription_id = match request_params.deserialize::<SubscriptionId>() {
+            Ok(x) => x,
+            Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
+                return ResponseEvent::InvalidParams(request_id.into(), e)
+            }
+            Err(_) => {
+                return ResponseEvent::InvalidParams(
+                    request_id.into(),
+                    "Unexpected parsing error".to_owned(),
+                )
+            }
         };
 
         let success = match self.subscriptions.remove(&subscription_id.id) {
@@ -219,8 +231,17 @@ impl SubscriptionManager {
         response_sender: mpsc::Sender<ResponseEvent>,
         websocket_source: TopicBroadcasters,
     ) -> ResponseEvent {
-        let Ok(kind) = request_params.deserialize::<Kind<'_>>() else {
-            return ResponseEvent::InvalidParams(request_id.into());
+        let kind = match request_params.deserialize::<Kind<'_>>() {
+            Ok(x) => x,
+            Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
+                return ResponseEvent::InvalidParams(request_id.into(), e)
+            }
+            Err(_) => {
+                return ResponseEvent::InvalidParams(
+                    request_id.into(),
+                    "Unexpected parsing error".to_owned(),
+                )
+            }
         };
 
         let subscription_id = self.next_id;
@@ -232,7 +253,12 @@ impl SubscriptionManager {
                 receiver,
                 subscription_id,
             )),
-            _ => return ResponseEvent::InvalidParams(request_id.into()),
+            _ => {
+                return ResponseEvent::InvalidParams(
+                    request_id.into(),
+                    "Unknown subscription type".to_owned(),
+                )
+            }
         };
 
         self.subscriptions.insert(subscription_id, handle);
@@ -378,7 +404,9 @@ mod tests {
 
         client
             .expect_response(&RpcResponse {
-                output: Err(RpcError::InvalidParams),
+                output: Err(RpcError::InvalidParams(
+                    "EOF while parsing a value at line 1 column 0".to_owned(),
+                )),
                 id: RequestId::Null,
             })
             .await;
