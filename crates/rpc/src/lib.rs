@@ -754,8 +754,8 @@ pub mod test_utils {
         .unwrap();
 
         PendingData {
-            block,
-            state_update,
+            block: block.into(),
+            state_update: state_update.into(),
             number: latest.number + 1,
         }
     }

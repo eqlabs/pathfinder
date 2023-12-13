@@ -256,12 +256,15 @@ pub(crate) mod tests {
     }
 
     mod in_memory {
-
         use super::*;
 
-        use pathfinder_common::{macro_prelude::*, EntryPoint, Tip};
+        use assert_matches::assert_matches;
+        use pathfinder_common::{
+            macro_prelude::*, BlockHeader, BlockTimestamp, EntryPoint, StateUpdate, Tip,
+        };
 
         use pathfinder_common::felt;
+        use starknet_gateway_types::reply::PendingBlock;
 
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
@@ -271,6 +274,7 @@ pub(crate) mod tests {
         use crate::v02::types::{
             ContractClass, DataAvailabilityMode, ResourceBounds, SierraContractClass,
         };
+        use crate::PendingData;
 
         #[test_log::test(tokio::test)]
         async fn declare_deploy_and_invoke_sierra_class() {
@@ -445,6 +449,100 @@ pub(crate) mod tests {
                     invoke_v3_expected,
                 ]
             );
+        }
+
+        fn pending_data_with_update(
+            last_block_header: BlockHeader,
+            state_update: StateUpdate,
+        ) -> PendingData {
+            PendingData {
+                block: PendingBlock {
+                    eth_l1_gas_price: last_block_header.eth_l1_gas_price,
+                    strk_l1_gas_price: None,
+                    parent_hash: last_block_header.hash,
+                    sequencer_address: last_block_header.sequencer_address,
+                    status: starknet_gateway_types::reply::Status::Pending,
+                    timestamp: BlockTimestamp::new_or_panic(last_block_header.timestamp.get() + 1),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                    starknet_version: last_block_header.starknet_version,
+                }
+                .into(),
+                state_update: state_update.into(),
+                number: last_block_header.number + 1,
+            }
+        }
+        #[test_log::test(tokio::test)]
+        async fn nonce_updated_in_pending() {
+            let (context, last_block_header, account_contract_address, _universal_deployer_address) =
+                crate::test_setup::test_context().await;
+
+            let state_update = StateUpdate::default()
+                .with_contract_nonce(account_contract_address, contract_nonce!("0xff"));
+            let pending_data = pending_data_with_update(last_block_header, state_update);
+
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
+            let context = context.with_pending_data(rx);
+
+            let sierra_definition =
+                include_bytes!("../../../fixtures/contracts/storage_access.json");
+            let sierra_hash =
+                class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
+            let casm_hash =
+                casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+
+            let contract_class: SierraContractClass =
+                ContractClass::from_definition_bytes(sierra_definition)
+                    .unwrap()
+                    .as_sierra()
+                    .unwrap();
+
+            assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
+
+            // try with incorrect nonce
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
+                    version: TransactionVersion::TWO,
+                    max_fee: Fee::default(),
+                    signature: vec![],
+                    nonce: TransactionNonce(Default::default()),
+                    contract_class: contract_class.clone(),
+                    sender_address: account_contract_address,
+                    compiled_class_hash: casm_hash,
+                }),
+            );
+
+            let input = EstimateFeeInput {
+                request: vec![declare_transaction],
+                simulation_flags: SimulationFlags(vec![]),
+                block_id: BlockId::Pending,
+            };
+            let err = estimate_fee(context.clone(), input).await.unwrap_err();
+            assert_matches!(
+                err,
+                EstimateFeeError::TransactionExecutionError{transaction_index: 0, error}
+                    if error.to_string().contains("Invalid transaction nonce of contract")
+            );
+
+            // try with correct nonce
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
+                    version: TransactionVersion::TWO,
+                    max_fee: Fee::default(),
+                    signature: vec![],
+                    nonce: transaction_nonce!("0xff"),
+                    contract_class,
+                    sender_address: account_contract_address,
+                    compiled_class_hash: casm_hash,
+                }),
+            );
+
+            let input = EstimateFeeInput {
+                request: vec![declare_transaction],
+                simulation_flags: SimulationFlags(vec![]),
+                block_id: BlockId::Pending,
+            };
+            estimate_fee(context, input).await.unwrap();
         }
     }
 }

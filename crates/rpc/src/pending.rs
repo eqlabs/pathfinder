@@ -10,12 +10,12 @@ use tokio::sync::watch::Receiver as WatchReceiver;
 /// Provides the latest [PendingData] which is consistent with a given
 /// view of storage.
 #[derive(Clone)]
-pub struct PendingWatcher(WatchReceiver<Arc<PendingData>>);
+pub struct PendingWatcher(WatchReceiver<PendingData>);
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct PendingData {
-    pub block: PendingBlock,
-    pub state_update: StateUpdate,
+    pub block: Arc<PendingBlock>,
+    pub state_update: Arc<StateUpdate>,
     pub number: BlockNumber,
 }
 
@@ -45,7 +45,7 @@ impl PendingData {
 }
 
 impl PendingWatcher {
-    pub fn new(receiver: WatchReceiver<Arc<PendingData>>) -> Self {
+    pub fn new(receiver: WatchReceiver<PendingData>) -> Self {
         Self(receiver)
     }
 
@@ -54,7 +54,7 @@ impl PendingWatcher {
     ///
     /// Returns an empty block with gas price and timestamp taken from the latest
     /// block if no valid pending data is available. The block number is also incremented.
-    pub fn get(&self, tx: &Transaction<'_>) -> anyhow::Result<Arc<PendingData>> {
+    pub fn get(&self, tx: &Transaction<'_>) -> anyhow::Result<PendingData> {
         let latest = tx
             .block_header(pathfinder_storage::BlockId::Latest)
             .context("Querying latest block header")?
@@ -75,24 +75,24 @@ impl PendingWatcher {
                     // know this is a pending block. But rather safe than sorry.
                     status: Status::Pending,
                     ..Default::default()
-                },
-                state_update: StateUpdate::default(),
+                }
+                .into(),
+                state_update: Default::default(),
                 number: latest.number + 1,
             };
 
-            Ok(Arc::new(data))
+            Ok(data)
         }
     }
 
     #[cfg(test)]
-    pub fn get_unchecked(&self) -> Arc<PendingData> {
+    pub fn get_unchecked(&self) -> PendingData {
         self.0.borrow().clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHeader, BlockTimestamp, GasPrice};
@@ -125,14 +125,16 @@ mod tests {
                 eth_l1_gas_price: GasPrice(51123),
                 strk_l1_gas_price: Some(GasPrice(44411)),
                 ..Default::default()
-            },
-            state_update: StateUpdate::default().with_contract_nonce(
-                contract_address_bytes!(b"contract address"),
-                contract_nonce_bytes!(b"nonce"),
-            ),
+            }
+            .into(),
+            state_update: StateUpdate::default()
+                .with_contract_nonce(
+                    contract_address_bytes!(b"contract address"),
+                    contract_nonce_bytes!(b"nonce"),
+                )
+                .into(),
             number: BlockNumber::GENESIS + 10,
         };
-        let pending = Arc::new(pending);
         sender.send(pending.clone()).unwrap();
 
         let result = uut.get(&tx).unwrap();
@@ -171,15 +173,21 @@ mod tests {
 
         let result = uut.get(&tx).unwrap();
 
-        let mut expected = PendingData::default();
-        expected.block.eth_l1_gas_price = latest.eth_l1_gas_price;
-        expected.block.strk_l1_gas_price = Some(latest.strk_l1_gas_price);
-        expected.block.timestamp = latest.timestamp;
-        expected.block.parent_hash = latest.hash;
-        expected.block.starknet_version = latest.starknet_version;
-        expected.block.status = Status::Pending;
-        expected.number = latest.number + 1;
+        let expected = PendingData {
+            block: PendingBlock {
+                eth_l1_gas_price: latest.eth_l1_gas_price,
+                strk_l1_gas_price: Some(latest.strk_l1_gas_price),
+                timestamp: latest.timestamp,
+                parent_hash: latest.hash,
+                starknet_version: latest.starknet_version,
+                status: Status::Pending,
+                ..Default::default()
+            }
+            .into(),
+            number: latest.number + 1,
+            ..Default::default()
+        };
 
-        pretty_assertions::assert_eq!(*result, expected);
+        pretty_assertions::assert_eq!(result, expected);
     }
 }

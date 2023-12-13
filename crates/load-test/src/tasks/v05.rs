@@ -156,23 +156,16 @@ pub async fn task_syncing(user: &mut GooseUser) -> TransactionResult {
 }
 
 pub async fn task_call(user: &mut GooseUser) -> TransactionResult {
-    // call a test contract deployed in block 0
-    // https://voyager.online/contract/0x06ee3440b08a9c805305449ec7f7003f27e9f7e287b83610952ec36bdc5a6bae
     call(
         user,
-        Felt::from_hex_str("0x06ee3440b08a9c805305449ec7f7003f27e9f7e287b83610952ec36bdc5a6bae")
+        Felt::from_hex_str("0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7")
             .unwrap(),
         &[
-            // address
-            "0x01e2cd4b3588e8f6f9c4e89fb0e293bf92018c96d7a93ee367d29a284223b6ff",
-            // value
-            "0x071d1e9d188c784a0bde95c1d508877a0d93e9102b37213d1e13f3ebc54a7751",
+            // account contract address
+            "0x05d7b537d7f0a56230cbd085ed1f7f40662df13718192c321a6b871f161acb7d",
         ],
-        // "set_value" entry point
-        "0x3d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3",
-        // hash of mainnet block 0
-        Felt::from_hex_str("0x47c3637b57c2b079b93c61539950c17e868a28f46cdef28f88521067f21e943")
-            .unwrap(),
+        // "balanceOf" entry point
+        "0x2e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e",
     )
     .await?;
     Ok(())

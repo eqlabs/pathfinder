@@ -176,7 +176,6 @@ mod tests {
     }
 
     mod in_memory {
-        use std::sync::Arc;
 
         use super::*;
 
@@ -279,10 +278,9 @@ mod tests {
             let pending_data = pending_data_with_update(
                 last_block_header,
                 StateUpdate::default().with_storage_update(contract_address, test_key, new_value),
-            )
-            .await;
+            );
 
-            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
             // unchanged on latest block
@@ -322,9 +320,8 @@ mod tests {
                 StateUpdate::default()
                     .with_deployed_contract(new_contract_address, CONTRACT_DEFINITION_CLASS_HASH)
                     .with_storage_update(new_contract_address, test_key, new_value),
-            )
-            .await;
-            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            );
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
             let input = CallInput {
@@ -375,9 +372,8 @@ mod tests {
                     .with_declared_sierra_class(sierra_hash, casm_hash)
                     .with_deployed_contract(new_contract_address, ClassHash(sierra_hash.0))
                     .with_storage_update(new_contract_address, storage_key, storage_value),
-            )
-            .await;
-            let (_tx, rx) = tokio::sync::watch::channel(Arc::new(pending_data));
+            );
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
             let input = CallInput {
@@ -392,7 +388,7 @@ mod tests {
             assert_eq!(result, CallOutput(vec![CallResultValue(storage_value.0)]));
         }
 
-        async fn pending_data_with_update(
+        fn pending_data_with_update(
             last_block_header: BlockHeader,
             state_update: StateUpdate,
         ) -> PendingData {
@@ -407,8 +403,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
-                },
-                state_update,
+                }
+                .into(),
+                state_update: state_update.into(),
                 number: last_block_header.number + 1,
             }
         }

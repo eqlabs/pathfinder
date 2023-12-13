@@ -30,8 +30,9 @@ pub async fn get_state_update(
                 .pending_data
                 .get(&tx)
                 .context("Query pending data")?
-                .state_update
-                .clone();
+                .state_update;
+
+            let state_update = (*state_update).clone();
 
             return Ok(state_update.into());
         }
@@ -571,12 +572,8 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
-        let expected: StateUpdate = context
-            .pending_data
-            .get_unchecked()
-            .state_update
-            .clone()
-            .into();
+        let expected = context.pending_data.get_unchecked().state_update;
+        let expected = (*expected).clone().into();
 
         let result = get_state_update(context, input).await.unwrap();
 
