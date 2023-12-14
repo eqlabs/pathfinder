@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.10.3-rc0] - 2023-12-14
+
 ### Changed
 
-- Fee estimations are now in-line with the new reduced values for Starknet 0.13.0.
-
-## [0.10.2] - 2023-12-13
+- Fee estimations are now compatible with starknet v0.13 and *incompatible* with starknet v0.12.3.
 
 ### Added
 
