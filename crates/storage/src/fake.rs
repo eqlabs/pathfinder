@@ -1,7 +1,8 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
+use fake::{Fake, Faker};
 use pathfinder_common::{
-    signature::BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
+    BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
 };
 use rand::Rng;
 use starknet_gateway_types::reply::transaction as gw;
@@ -13,26 +14,31 @@ pub type StorageInitializerItem = (
     BlockCommitmentSignature,
     Vec<(gw::Transaction, gw::Receipt)>,
     StateUpdate,
-    Vec<(ClassHash, Vec<u8>)>,  // Cairo 0 definitions
-    Vec<(SierraHash, Vec<u8>)>, // Sierra definitions
+    Vec<(ClassHash, Vec<u8>)>,           // Cairo 0 definitions
+    Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
 );
 
 /// Initialize [`Storage`] with fake blocks and state updates
 /// maintaining [**limited consistency guarantees**](crate::fake::init::with_n_blocks)
 pub fn with_n_blocks(storage: &Storage, n: usize) -> StorageInitializer {
     let mut rng = rand::thread_rng();
-    with_n_blocks_and_rng(storage, n, &mut rng)
+    let fake_bytes = |rng: &mut _| Faker.fake_with_rng::<Vec<u8>, _>(rng);
+    with_n_blocks_and_rng(storage, n, &mut rng, fake_bytes, fake_bytes, fake_bytes)
 }
 
 /// Same as [`with_n_blocks`] except caller can specify the rng used
-pub fn with_n_blocks_and_rng(
+pub fn with_n_blocks_and_rng<R: Rng>(
     storage: &Storage,
     n: usize,
-    rng: &mut impl Rng,
+    rng: &mut R,
+    fake_cairo_fn: impl FnMut(&mut R) -> Vec<u8>,
+    fake_sierra_fn: impl FnMut(&mut R) -> Vec<u8>,
+    fake_casm_fn: impl FnMut(&mut R) -> Vec<u8>,
 ) -> StorageInitializer {
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
-    let fake_data = init::with_n_blocks_and_rng(n, rng);
+    let fake_data =
+        init::with_n_blocks_and_rng(n, rng, fake_cairo_fn, fake_sierra_fn, fake_casm_fn);
     fake_data.iter().for_each(
         |(header, signature, transaction_data, state_update, cairo_defs, sierra_defs)| {
             tx.insert_block_header(header).unwrap();
@@ -52,16 +58,18 @@ pub fn with_n_blocks_and_rng(
                 .declared_sierra_classes
                 .iter()
                 .zip(sierra_defs.iter())
-                .for_each(|((sierra_hash, casm_hash), (_, sierra_definition))| {
-                    tx.insert_sierra_class(
-                        sierra_hash,
-                        sierra_definition,
-                        casm_hash,
-                        &[],
-                        "1.0.alpha6",
-                    )
-                    .unwrap()
-                });
+                .for_each(
+                    |((sierra_hash, casm_hash), (_, sierra_definition, casm_definition))| {
+                        tx.insert_sierra_class(
+                            sierra_hash,
+                            sierra_definition,
+                            casm_hash,
+                            casm_definition,
+                            "1.0.alpha6",
+                        )
+                        .unwrap()
+                    },
+                );
 
             tx.insert_state_update(header.number, state_update).unwrap();
         },
@@ -110,11 +118,18 @@ pub mod init {
     ///     
     pub fn with_n_blocks(n: usize) -> StorageInitializer {
         let mut rng = rand::thread_rng();
-        with_n_blocks_and_rng(n, &mut rng)
+        let fake_bytes = |rng: &mut _| Faker.fake_with_rng::<Vec<u8>, _>(rng);
+        with_n_blocks_and_rng(n, &mut rng, fake_bytes, fake_bytes, fake_bytes)
     }
 
     /// Same as [`with_n_blocks`] except caller can specify the rng used
-    pub fn with_n_blocks_and_rng(n: usize, rng: &mut impl Rng) -> StorageInitializer {
+    pub fn with_n_blocks_and_rng<R: Rng>(
+        n: usize,
+        rng: &mut R,
+        mut fake_cairo_fn: impl FnMut(&mut R) -> Vec<u8>,
+        mut fake_sierra_fn: impl FnMut(&mut R) -> Vec<u8>,
+        mut fake_casm_fn: impl FnMut(&mut R) -> Vec<u8>,
+    ) -> StorageInitializer {
         let mut init = Vec::with_capacity(n);
 
         for i in 0..n {
@@ -158,11 +173,11 @@ pub mod init {
 
             let cairo_definitions = declared_cairo_classes
                 .iter()
-                .map(|&class_hash| (class_hash, Faker.fake_with_rng::<Vec<u8>, _>(rng)))
+                .map(|&class_hash| (class_hash, fake_cairo_fn(rng)))
                 .collect::<Vec<_>>();
             let sierra_definitions = declared_sierra_classes
                 .iter()
-                .map(|(&sierra_hash, _)| (sierra_hash, Faker.fake_with_rng::<Vec<u8>, _>(rng)))
+                .map(|(&sierra_hash, _)| (sierra_hash, fake_sierra_fn(rng), fake_casm_fn(rng)))
                 .collect::<Vec<_>>();
 
             init.push((

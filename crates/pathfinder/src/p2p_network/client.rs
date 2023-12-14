@@ -7,7 +7,7 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use lru::LruCache;
-use p2p::client::types::{BlockHeader, Class, MaybeSignedBlockHeader, StateUpdateWithDefs};
+use p2p::client::types::{BlockHeader, MaybeSignedBlockHeader, StateUpdateWithDefinitions};
 use p2p::{client::peer_agnostic, HeadRx};
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
 use pathfinder_common::transaction::Transaction;
@@ -446,7 +446,7 @@ impl GatewayApi for HybridClient {
                         )));
                     }
 
-                    let StateUpdateWithDefs {
+                    let StateUpdateWithDefinitions {
                         block_hash,
                         state_update,
                         classes,
@@ -461,20 +461,21 @@ impl GatewayApi for HybridClient {
                     let mut definitions = HashMap::new();
 
                     for class in classes {
-                        match class {
-                            Class::Cairo { hash, definition } => {
-                                declared_cairo_classes.insert(hash);
-                                definitions.insert(hash, definition);
-                            }
-                            Class::Sierra {
-                                sierra_hash,
-                                definition,
-                                casm_hash,
-                            } => {
-                                declared_sierra_classes.insert(sierra_hash, casm_hash);
-                                definitions.insert(ClassHash(sierra_hash.0), definition);
-                            }
-                        }
+                        todo!()
+                        // match class {
+                        //     Class::Cairo { hash, definition } => {
+                        //         declared_cairo_classes.insert(hash);
+                        //         definitions.insert(hash, definition);
+                        //     }
+                        //     Class::Sierra {
+                        //         sierra_hash,
+                        //         definition,
+                        //         casm_hash,
+                        //     } => {
+                        //         declared_sierra_classes.insert(sierra_hash, casm_hash);
+                        //         definitions.insert(ClassHash(sierra_hash.0), definition);
+                        //     }
+                        // }
                     }
 
                     cache.insert_definitions(hash, definitions);

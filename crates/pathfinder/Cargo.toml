@@ -24,6 +24,7 @@ bitvec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.10", optional = true }
+fake = { workspace = true }
 futures = { workspace = true }
 lazy_static = { workspace = true }
 lru = "0.11.1"
@@ -42,6 +43,7 @@ pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
 primitive-types = { workspace = true }
+rand = { workspace = true }
 rayon = "1.8.0"
 reqwest = { workspace = true }
 semver = { workspace = true }
@@ -72,7 +74,6 @@ zstd = { workspace = true }
 assert_matches = { workspace = true }
 const-decoder = "0.3.0"
 crossbeam-channel = "0.5.8"
-fake = { workspace = true }
 flate2 = { workspace = true }
 http = { workspace = true }
 mockall = "0.11.4"
@@ -83,7 +84,6 @@ pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
 pretty_assertions_sorted = { workspace = true }
 proptest = "1.2.0"
-rand = { workspace = true }
 rand_chacha = "0.3.1"
 rstest = { workspace = true }
 serde_with = { workspace = true }

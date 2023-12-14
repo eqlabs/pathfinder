@@ -9,7 +9,7 @@ build = "build.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-fake = { workspace = true }
+fake = { workspace = true, features = ["serde_json"] }
 libp2p-identity = { version = "0.2.2", features = ["peerid"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 pathfinder-crypto = { path = "../crypto" }

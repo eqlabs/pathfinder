@@ -3394,6 +3394,7 @@ checksum = "9af7b0c58ac9d03169e27f080616ce9f64004edca3d2ef4147a811c21b23b319"
 dependencies = [
  "dummy",
  "rand",
+ "serde_json",
  "unidecode",
 ]
 
