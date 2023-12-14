@@ -49,7 +49,7 @@ pub struct ContractClass {
 impl EntryPoint {
     /// Returns a new EntryPoint which has been truncated to fit from Keccak256 digest of input.
     ///
-    /// See: <https://starknet.io/documentation/contracts/#function_selector>
+    /// See: <https://docs.starknet.io/documentation/architecture_and_concepts/Smart_Contracts/contract-classes/>
     pub fn hashed(input: &[u8]) -> Self {
         use sha3::Digest;
         EntryPoint(truncated_keccak(<[u8; 32]>::from(sha3::Keccak256::digest(
