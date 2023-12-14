@@ -585,9 +585,9 @@ pub(crate) mod tests {
             SimulatedTransaction {
                 fee_estimation:
                     FeeEstimate {
-                        gas_consumed: 3097.into(),
+                        gas_consumed: 2222.into(),
                         gas_price: 1.into(),
-                        overall_fee: 3097.into(),
+                        overall_fee: 2222.into(),
                     }
                 ,
                 transaction_trace:
@@ -695,7 +695,7 @@ pub(crate) mod tests {
 
         let result = simulate_transactions(context, input).await.unwrap();
 
-        const DECLARE_GAS_CONSUMED: u64 = 2476;
+        const DECLARE_GAS_CONSUMED: u64 = 1666;
         use super::dto::*;
         use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
 
@@ -763,7 +763,7 @@ pub(crate) mod tests {
                             storage_entries: vec![
                                 StorageEntry {
                                     key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff654")
+                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff97e")
                                 },
                                 StorageEntry {
                                     key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -810,7 +810,7 @@ pub(crate) mod tests {
             use super::dto::*;
             use super::*;
 
-            const DECLARE_GAS_CONSUMED: u64 = 3700;
+            const DECLARE_GAS_CONSUMED: u64 = 2768;
 
             pub fn declare(
                 account_contract_address: ContractAddress,
@@ -903,7 +903,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff18c")
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff530")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -967,7 +967,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 4337;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3020;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -1090,7 +1090,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe09b")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe964")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1264,7 +1264,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_GAS_CONSUMED: u64 = 2491;
+            const INVOKE_GAS_CONSUMED: u64 = 1674;
 
             pub fn invoke(
                 account_contract_address: ContractAddress,
@@ -1369,7 +1369,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffd6e0")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe2da")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),

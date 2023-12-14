@@ -348,24 +348,24 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 3700.into(),
+                gas_consumed: 2768.into(),
                 gas_price: 1.into(),
-                overall_fee: 3700.into(),
+                overall_fee: 2768.into(),
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 4337.into(),
+                gas_consumed: 3020.into(),
                 gas_price: 1.into(),
-                overall_fee: 4337.into(),
+                overall_fee: 3020.into(),
             };
             let invoke_expected = FeeEstimate {
-                gas_consumed: 2491.into(),
+                gas_consumed: 1674.into(),
                 gas_price: 1.into(),
-                overall_fee: 2491.into(),
+                overall_fee: 1674.into(),
             };
             let invoke_v0_expected = FeeEstimate {
-                gas_consumed: 1260.into(),
+                gas_consumed: 880.into(),
                 gas_price: 1.into(),
-                overall_fee: 1260.into(),
+                overall_fee: 880.into(),
             };
             assert_eq!(
                 result,

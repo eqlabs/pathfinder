@@ -67,7 +67,7 @@ fn default_resource_fee_costs() -> HashMap<String, f64> {
         SIGNATURE_BUILTIN_NAME,
     };
 
-    const N_STEPS_FEE_WEIGHT: f64 = 0.01;
+    const N_STEPS_FEE_WEIGHT: f64 = 0.005;
 
     HashMap::from([
         (

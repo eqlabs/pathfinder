@@ -54,7 +54,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .with_sequencer_address(sequencer_address!(
             "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8"
         ))
-        .with_starknet_version(StarknetVersion::new(0, 12, 3))
+        .with_starknet_version(StarknetVersion::new(0, 13, 0))
         .finalize_with_hash(block1_hash);
     tx.insert_block_header(&header).unwrap();
 
