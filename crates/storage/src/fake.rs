@@ -1,6 +1,5 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
-use fake::{Fake, Faker};
 use pathfinder_common::{
     BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
 };
@@ -22,8 +21,7 @@ pub type StorageInitializerItem = (
 /// maintaining [**limited consistency guarantees**](crate::fake::init::with_n_blocks)
 pub fn with_n_blocks(storage: &Storage, n: usize) -> StorageInitializer {
     let mut rng = rand::thread_rng();
-    let fake_bytes = |rng: &mut _| Faker.fake_with_rng::<Vec<u8>, _>(rng);
-    with_n_blocks_and_rng(storage, n, &mut rng, fake_bytes, fake_bytes, fake_bytes)
+    with_n_blocks_and_rng(storage, n, &mut rng)
 }
 
 /// Same as [`with_n_blocks`] except caller can specify the rng used
@@ -31,14 +29,10 @@ pub fn with_n_blocks_and_rng<R: Rng>(
     storage: &Storage,
     n: usize,
     rng: &mut R,
-    fake_cairo_fn: impl FnMut(&mut R) -> Vec<u8>,
-    fake_sierra_fn: impl FnMut(&mut R) -> Vec<u8>,
-    fake_casm_fn: impl FnMut(&mut R) -> Vec<u8>,
 ) -> StorageInitializer {
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
-    let fake_data =
-        init::with_n_blocks_and_rng(n, rng, fake_cairo_fn, fake_sierra_fn, fake_casm_fn);
+    let fake_data = init::with_n_blocks_and_rng(n, rng);
     fake_data.iter().for_each(
         |(header, signature, transaction_data, state_update, cairo_defs, sierra_defs)| {
             tx.insert_block_header(header).unwrap();
@@ -118,18 +112,11 @@ pub mod init {
     ///     
     pub fn with_n_blocks(n: usize) -> StorageInitializer {
         let mut rng = rand::thread_rng();
-        let fake_bytes = |rng: &mut _| Faker.fake_with_rng::<Vec<u8>, _>(rng);
-        with_n_blocks_and_rng(n, &mut rng, fake_bytes, fake_bytes, fake_bytes)
+        with_n_blocks_and_rng(n, &mut rng)
     }
 
     /// Same as [`with_n_blocks`] except caller can specify the rng used
-    pub fn with_n_blocks_and_rng<R: Rng>(
-        n: usize,
-        rng: &mut R,
-        mut fake_cairo_fn: impl FnMut(&mut R) -> Vec<u8>,
-        mut fake_sierra_fn: impl FnMut(&mut R) -> Vec<u8>,
-        mut fake_casm_fn: impl FnMut(&mut R) -> Vec<u8>,
-    ) -> StorageInitializer {
+    pub fn with_n_blocks_and_rng<R: Rng>(n: usize, rng: &mut R) -> StorageInitializer {
         let mut init = Vec::with_capacity(n);
 
         for i in 0..n {
@@ -173,11 +160,26 @@ pub mod init {
 
             let cairo_definitions = declared_cairo_classes
                 .iter()
-                .map(|&class_hash| (class_hash, fake_cairo_fn(rng)))
+                .map(|&class_hash| {
+                    (
+                        class_hash,
+                        serde_json::to_vec(&Faker.fake_with_rng::<class_definition::Cairo, _>(rng))
+                            .unwrap(),
+                    )
+                })
                 .collect::<Vec<_>>();
             let sierra_definitions = declared_sierra_classes
                 .iter()
-                .map(|(&sierra_hash, _)| (sierra_hash, fake_sierra_fn(rng), fake_casm_fn(rng)))
+                .map(|(&sierra_hash, _)| {
+                    (
+                        sierra_hash,
+                        serde_json::to_vec(
+                            &Faker.fake_with_rng::<class_definition::Sierra, _>(rng),
+                        )
+                        .unwrap(),
+                        Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+                    )
+                })
                 .collect::<Vec<_>>();
 
             init.push((
@@ -284,5 +286,73 @@ pub mod init {
         }
 
         init
+    }
+
+    pub mod class_definition {
+        use fake::{Dummy, Fake, Faker};
+        use pathfinder_crypto::Felt;
+        use rand::Rng;
+        use serde::Serialize;
+        use starknet_gateway_types::request::contract::{
+            SelectorAndFunctionIndex, SelectorAndOffset,
+        };
+
+        #[derive(Debug, Dummy, Serialize)]
+        pub struct Sierra {
+            /// Contract ABI.
+            pub abi: String,
+
+            /// Main program definition.
+            pub sierra_program: Vec<Felt>,
+
+            // Version
+            pub contract_class_version: String,
+
+            /// The contract entry points
+            pub entry_points_by_type: SierraEntryPoints,
+        }
+
+        #[derive(Debug, Serialize)]
+        pub struct Cairo {
+            /// Contract ABI, which has no schema definition.
+            pub abi: String,
+
+            /// Main program definition. __We assume that this is valid JSON.__
+            pub program: serde_json::Value,
+
+            /// The contract entry points.
+            pub entry_points_by_type: CairoEntryPoints,
+        }
+
+        impl<T> Dummy<T> for Cairo {
+            fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+                let program = serde_json::Value::Object(Faker.fake_with_rng(rng));
+                Self {
+                    abi: Faker.fake_with_rng(rng),
+                    program,
+                    entry_points_by_type: Faker.fake_with_rng(rng),
+                }
+            }
+        }
+
+        #[derive(Debug, Serialize, Dummy)]
+        pub struct SierraEntryPoints {
+            #[serde(rename = "EXTERNAL")]
+            pub external: Vec<SelectorAndFunctionIndex>,
+            #[serde(rename = "L1_HANDLER")]
+            pub l1_handler: Vec<SelectorAndFunctionIndex>,
+            #[serde(rename = "CONSTRUCTOR")]
+            pub constructor: Vec<SelectorAndFunctionIndex>,
+        }
+
+        #[derive(Debug, Serialize, Dummy)]
+        pub struct CairoEntryPoints {
+            #[serde(rename = "EXTERNAL")]
+            pub external: Vec<SelectorAndOffset>,
+            #[serde(rename = "L1_HANDLER")]
+            pub l1_handler: Vec<SelectorAndOffset>,
+            #[serde(rename = "CONSTRUCTOR")]
+            pub constructor: Vec<SelectorAndOffset>,
+        }
     }
 }

@@ -433,7 +433,7 @@ mod prop {
     proptest! {
         #[test]
         fn get_bodies((num_blocks, db_seed, start_block, limit, step, direction) in strategy::composite()) {
-            use crate::p2p_network::sync_handlers::class_definition::de::{Cairo, Sierra};
+            use crate::p2p_network::sync_handlers::class_definition::{Cairo, Sierra};
 
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(db_seed, num_blocks);
@@ -694,11 +694,7 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use crate::p2p_network::sync_handlers::{
-            class_definition::fake::{Cairo, Sierra},
-            MAX_COUNT_IN_TESTS,
-        };
-        use fake::{Fake, Faker};
+        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
         use pathfinder_storage::fake::{with_n_blocks_and_rng, StorageInitializer};
         use pathfinder_storage::Storage;
 
@@ -709,18 +705,8 @@ mod prop {
             let storage = Storage::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-            let fake_cairo0_class =
-                |rng: &mut _| serde_json::to_vec(&Faker.fake_with_rng::<Cairo, _>(rng)).unwrap();
-            let fake_cairo1_class =
-                |rng: &mut _| serde_json::to_vec(&Faker.fake_with_rng::<Sierra, _>(rng)).unwrap();
-            let initializer = with_n_blocks_and_rng(
-                &storage,
-                num_blocks.try_into().unwrap(),
-                &mut rng,
-                fake_cairo0_class,
-                fake_cairo1_class,
-                |rng: &mut _| Faker.fake_with_rng::<String, _>(rng).into_bytes(),
-            );
+            let initializer =
+                with_n_blocks_and_rng(&storage, num_blocks.try_into().unwrap(), &mut rng);
             (storage, initializer)
         }
     }

@@ -17,14 +17,11 @@ use pathfinder_common::{
     TransactionIndex,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
-use starknet_gateway_types::reply as gw;
+use starknet_gateway_types::reply::{self as gw, BlockSignature};
 use starknet_gateway_types::request::add_transaction::{Declare, DeployAccount, InvokeFunction};
 use starknet_gateway_types::trace;
-use starknet_gateway_types::{
-    error::SequencerError,
-    reply::{Block, BlockSignature},
-};
-use std::collections::{HashMap, HashSet};
+use starknet_gateway_types::{error::SequencerError, reply::Block};
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
@@ -456,12 +453,13 @@ impl GatewayApi for HybridClient {
                         return Err(block_not_found("Block hash mismatch"));
                     }
 
-                    let mut declared_cairo_classes = HashSet::new();
-                    let mut declared_sierra_classes = HashMap::new();
-                    let mut definitions = HashMap::new();
+                    // let mut declared_cairo_classes = HashSet::new();
+                    // let mut declared_sierra_classes = HashMap::new();
+                    let definitions = HashMap::new();
 
-                    for class in classes {
-                        todo!()
+                    for _class in classes {
+                        todo!();
+
                         // match class {
                         //     Class::Cairo { hash, definition } => {
                         //         declared_cairo_classes.insert(hash);
@@ -505,8 +503,8 @@ impl GatewayApi for HybridClient {
                             })
                             .collect(),
                         system_contract_updates: state_update.system_contract_updates,
-                        declared_cairo_classes,
-                        declared_sierra_classes,
+                        declared_cairo_classes: Default::default(),
+                        declared_sierra_classes: Default::default(),
                     })
                 }
                 _ => unreachable!("not used in sync"),
