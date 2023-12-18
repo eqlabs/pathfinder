@@ -325,6 +325,7 @@ mod boundary_conditions {
 mod prop {
     use crate::p2p_network::client::types as simplified;
     use crate::p2p_network::sync_handlers;
+    use crate::p2p_network::sync_handlers::def_into_dto;
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::types::{self as p2p_types, TryFromDto};
@@ -450,10 +451,15 @@ mod prop {
                             // "simplified" state update, without an explicit list of declared and replaced classes
                             state_update.clone().into(),
                             // Cairo0 class definitions, parsed into p2p DTOs
-                            cairo_defs.into_iter().map(|(_, d)| serde_json::from_slice::<Cairo<'_>>(&d).unwrap().into_dto()).collect(),
+                            cairo_defs.into_iter().map(|(_, d)| {
+                                let def = serde_json::from_slice::<Cairo<'_>>(&d).unwrap();
+                                def_into_dto::cairo(def)
+                            }).collect(),
                             // Cairo1 (Sierra) class definitions, parsed into p2p DTOs
-                            sierra_defs.into_iter().map(|(_, s, c)|
-                                (serde_json::from_slice::<Sierra<'_>>(&s).unwrap().into_dto(c))).collect()
+                            sierra_defs.into_iter().map(|(_, s, c)| {
+                                let def = serde_json::from_slice::<Sierra<'_>>(&s).unwrap();
+                                def_into_dto::sierra(def, c)
+                            }).collect()
                         )
                     )
                 ).collect::<HashMap<_, (p2p_types::StateUpdate, BTreeSet<Cairo0Class>, BTreeSet<Cairo1Class>)>>();

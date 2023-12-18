@@ -18,6 +18,7 @@ use p2p_proto::transaction::{
 use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
+use starknet_gateway_types::class_definition;
 
 pub mod conv;
 #[cfg(test)]
@@ -438,11 +439,12 @@ fn classes(
             (ClassId::Cairo(_), ClassDefinition::Cairo(definition)) => {
                 let cairo_class =
                     serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
-                Class::Cairo0(cairo_class.into_dto())
+                Class::Cairo0(def_into_dto::cairo(cairo_class))
             }
             (ClassId::Sierra(_, _), ClassDefinition::Sierra { sierra, casm }) => {
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
-                Class::Cairo1(sierra_class.into_dto(casm))
+                // Class::Cairo1(sierra_class.into_dto(casm))
+                Class::Cairo1(def_into_dto::sierra(sierra_class, casm))
             }
             _ => anyhow::bail!("Class definition type mismatch"),
         };
@@ -521,130 +523,78 @@ fn get_next_block_number(
     }
 }
 
-mod class_definition {
-    use fake::Dummy;
+mod def_into_dto {
     use p2p_proto::state::{
         Cairo0Class, Cairo1Class, Cairo1EntryPoints, EntryPoint, SierraEntryPoint,
     };
-    use pathfinder_crypto::Felt;
-    use serde::Deserialize;
     use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
 
-    /// A version of [`starknet_gateway_types::class_hash::json::SierraContractDefinition`]
-    /// used to deserialize from storage.
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct Sierra<'a> {
-        /// Contract ABI.
-        #[serde(borrow)]
-        pub abi: &'a str,
+    pub fn sierra<'a>(
+        sierra: super::class_definition::Sierra<'a>,
+        compiled: Vec<u8>,
+    ) -> Cairo1Class {
+        let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
+            selector: x.selector.0,
+            index: x.function_idx,
+        };
 
-        /// Main program definition.
-        pub sierra_program: Vec<Felt>,
+        let entry_points = Cairo1EntryPoints {
+            externals: sierra
+                .entry_points_by_type
+                .external
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            l1_handlers: sierra
+                .entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            constructors: sierra
+                .entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+        };
 
-        // Version
-        #[serde(borrow)]
-        pub contract_class_version: &'a str,
-
-        /// The contract entry points
-        pub entry_points_by_type: SierraEntryPoints,
-    }
-
-    impl<'a> Sierra<'a> {
-        pub fn into_dto(self, compiled: Vec<u8>) -> Cairo1Class {
-            Cairo1Class {
-                abi: self.abi.as_bytes().to_owned(),
-                program: self.sierra_program,
-                entry_points: self.entry_points_by_type.into_dto(),
-                compiled, // TODO not sure if encoding in storage and dto is the same
-                contract_class_version: self.contract_class_version.to_owned(),
-            }
+        Cairo1Class {
+            abi: sierra.abi.as_bytes().to_owned(),
+            program: sierra.sierra_program,
+            entry_points,
+            compiled, // TODO not sure if encoding in storage and dto is the same
+            contract_class_version: sierra.contract_class_version.into(),
         }
     }
 
-    /// A "shallow" version of the [`starknet_gateway_types::class_hash::json::CairoContractDefinition`]
-    /// used to deserialize from storage. Assumes that `program` is valid JSON.
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct Cairo<'a> {
-        /// Contract ABI, which has no schema definition.
-        #[serde(borrow)]
-        pub abi: &'a str,
+    pub fn cairo(cairo: super::class_definition::Cairo<'_>) -> Cairo0Class {
+        let into_dto = |x: SelectorAndOffset| EntryPoint {
+            selector: x.selector.0,
+            offset: x.offset.0,
+        };
 
-        /// Main program definition. __We assume that this is valid JSON.__
-        #[serde(borrow)]
-        pub program: &'a serde_json::value::RawValue,
-
-        /// The contract entry points.
-        pub entry_points_by_type: CairoEntryPoints,
-    }
-
-    impl<'a> Cairo<'a> {
-        pub fn into_dto(self) -> Cairo0Class {
-            let into_cairo = |x: SelectorAndOffset| EntryPoint {
-                selector: x.selector.0,
-                offset: x.offset.0,
-            };
-
-            Cairo0Class {
-                abi: self.abi.as_bytes().to_owned(),
-                externals: self
-                    .entry_points_by_type
-                    .external
-                    .into_iter()
-                    .map(into_cairo)
-                    .collect(),
-                l1_handlers: self
-                    .entry_points_by_type
-                    .l1_handler
-                    .into_iter()
-                    .map(into_cairo)
-                    .collect(),
-                constructors: self
-                    .entry_points_by_type
-                    .constructor
-                    .into_iter()
-                    .map(into_cairo)
-                    .collect(),
-                program: self.program.get().as_bytes().to_owned(),
-            }
+        Cairo0Class {
+            abi: cairo.abi.as_bytes().to_owned(),
+            externals: cairo
+                .entry_points_by_type
+                .external
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            l1_handlers: cairo
+                .entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            constructors: cairo
+                .entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            program: cairo.program.get().as_bytes().to_owned(),
         }
-    }
-
-    #[derive(Debug, Deserialize, Dummy)]
-    #[serde(deny_unknown_fields)]
-    pub struct SierraEntryPoints {
-        #[serde(rename = "EXTERNAL")]
-        pub external: Vec<SelectorAndFunctionIndex>,
-        #[serde(rename = "L1_HANDLER")]
-        pub l1_handler: Vec<SelectorAndFunctionIndex>,
-        #[serde(rename = "CONSTRUCTOR")]
-        pub constructor: Vec<SelectorAndFunctionIndex>,
-    }
-
-    impl SierraEntryPoints {
-        pub fn into_dto(self) -> Cairo1EntryPoints {
-            let into_sierra = |x: SelectorAndFunctionIndex| SierraEntryPoint {
-                selector: x.selector.0,
-                index: x.function_idx,
-            };
-
-            Cairo1EntryPoints {
-                externals: self.external.into_iter().map(into_sierra).collect(),
-                l1_handlers: self.l1_handler.into_iter().map(into_sierra).collect(),
-                constructors: self.constructor.into_iter().map(into_sierra).collect(),
-            }
-        }
-    }
-
-    #[derive(Debug, Deserialize, Dummy)]
-    #[serde(deny_unknown_fields)]
-    pub struct CairoEntryPoints {
-        #[serde(rename = "EXTERNAL")]
-        pub external: Vec<SelectorAndOffset>,
-        #[serde(rename = "L1_HANDLER")]
-        pub l1_handler: Vec<SelectorAndOffset>,
-        #[serde(rename = "CONSTRUCTOR")]
-        pub constructor: Vec<SelectorAndOffset>,
     }
 }

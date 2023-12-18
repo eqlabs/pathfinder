@@ -4,10 +4,11 @@ use crate::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
 use rand::Rng;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Sierra<'a> {
     /// Contract ABI.
     pub abi: Cow<'a, str>,
@@ -33,7 +34,8 @@ impl<T> Dummy<T> for Sierra<'_> {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cairo<'a> {
     /// Contract ABI, which has no schema definition.
     pub abi: Cow<'a, str>,
@@ -56,7 +58,8 @@ impl<T> Dummy<T> for Cairo<'_> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Dummy)]
+#[derive(Debug, Clone, Deserialize, Serialize, Dummy)]
+#[serde(deny_unknown_fields)]
 pub struct SierraEntryPoints {
     #[serde(rename = "EXTERNAL")]
     pub external: Vec<SelectorAndFunctionIndex>,
@@ -66,7 +69,8 @@ pub struct SierraEntryPoints {
     pub constructor: Vec<SelectorAndFunctionIndex>,
 }
 
-#[derive(Debug, Serialize, Dummy)]
+#[derive(Debug, Deserialize, Serialize, Dummy)]
+#[serde(deny_unknown_fields)]
 pub struct CairoEntryPoints {
     #[serde(rename = "EXTERNAL")]
     pub external: Vec<SelectorAndOffset>,
