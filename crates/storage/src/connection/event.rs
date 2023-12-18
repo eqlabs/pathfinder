@@ -1,5 +1,6 @@
+use crate::bloom::BloomFilter;
 use crate::params::ToSql;
-use crate::{prelude::*, BlockId};
+use crate::prelude::*;
 
 use anyhow::Context;
 use pathfinder_common::event::Event;
@@ -66,71 +67,29 @@ pub struct KeyFilterResult<'a> {
     pub param: (&'static str, rusqlite::types::ToSqlOutput<'a>),
 }
 
-pub(super) fn insert_events(
+pub(super) fn insert_block_events<'a>(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    transaction_hash: TransactionHash,
-    events: &[Event],
+    events: impl Iterator<Item = &'a Event>,
 ) -> anyhow::Result<()> {
-    let mut stmt = tx.inner().prepare(
-        r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                               VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)"
-    )?;
+    let mut stmt = tx
+        .inner()
+        .prepare("INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)")?;
 
-    let mut keys = String::new();
-    let mut buffer = Vec::new();
-
-    for (idx, event) in events.iter().enumerate() {
-        keys.clear();
-        event_keys_to_base64_strings(&event.keys, &mut keys);
-
-        buffer.clear();
-        encode_event_data_to_bytes(&event.data, &mut buffer);
-
-        stmt.execute(named_params![
-            ":block_number": &block_number,
-            ":idx": &idx.try_into_sql_int()?,
-            ":transaction_hash": &transaction_hash,
-            ":from_address": &event.from_address,
-            ":keys": &keys,
-            ":data": &buffer,
-        ])
-        .context("Insert events into events table")?;
-    }
-    Ok(())
-}
-
-pub(super) fn event_count_for_block(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<usize> {
-    match block {
-        BlockId::Number(number) => tx
-            .inner()
-            .query_row(
-                "SELECT COUNT(*) FROM starknet_events
-                WHERE block_number = ?1",
-                params![&number],
-                |row| row.get(0),
-            )
-            .context("Counting events"),
-        BlockId::Hash(hash) => tx
-            .inner()
-            .query_row(
-                "SELECT COUNT(*) FROM starknet_events
-                JOIN block_headers ON starknet_events.block_number = block_headers.number
-                WHERE block_headers.hash = ?1",
-                params![&hash],
-                |row| row.get(0),
-            )
-            .context("Counting transactions"),
-        BlockId::Latest => {
-            // First get the latest block
-            let block = match tx.block_id(BlockId::Latest)? {
-                Some((number, _)) => number,
-                None => return Ok(0),
-            };
-
-            event_count_for_block(tx, block.into())
+    let mut bloom = BloomFilter::new();
+    for event in events {
+        for (i, key) in event.keys.iter().enumerate() {
+            let mut key = key.0;
+            key.as_mut_be_bytes()[0] |= (i as u8) << 4;
+            bloom.set(&key);
         }
+
+        bloom.set(&event.from_address.0);
     }
+
+    stmt.execute(params![&block_number, &bloom.as_compressed_bytes()])?;
+
+    Ok(())
 }
 
 pub(super) fn get_events<K: KeyFilter>(
@@ -1208,27 +1167,5 @@ mod tests {
             ),
             None => assert_eq!(result, None),
         }
-    }
-
-    #[test]
-    fn event_count_for_block() {
-        let (storage, test_data) = test_utils::setup_test_storage();
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        assert_eq!(
-            tx.event_count_for_block(BlockId::Latest).unwrap(),
-            test_utils::EVENTS_PER_BLOCK
-        );
-        assert_eq!(
-            tx.event_count_for_block(BlockId::Number(BlockNumber::new_or_panic(1)))
-                .unwrap(),
-            test_utils::EVENTS_PER_BLOCK
-        );
-        assert_eq!(
-            tx.event_count_for_block(BlockId::Hash(test_data.headers.first().unwrap().hash))
-                .unwrap(),
-            test_utils::EVENTS_PER_BLOCK
-        );
     }
 }

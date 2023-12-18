@@ -49,12 +49,13 @@ pub(super) fn insert_transactions(
             ":receipt": &serialized_receipt,
             ":execution_status": &execution_status,
         ]).context("Inserting transaction data")?;
-
-        // insert events from receipt
-        super::event::insert_events(tx, block_number, receipt.transaction_hash, &receipt.events)
-            .context("Inserting events")?;
     }
 
+    let events = transaction_data
+        .iter()
+        .flat_map(|(_, receipt)| &receipt.events);
+    super::event::insert_block_events(tx, block_number, events)
+        .context("Inserting events into Bloom filter")?;
     Ok(())
 }
 
