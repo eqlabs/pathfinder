@@ -70,7 +70,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 
         let current_block_number = block_number.get();
         if current_block_number > last_block_number {
-            if current_block_number % 100 == 0 {
+            if current_block_number % 10000 == 0 {
                 tracing::debug!(%current_block_number, "Processing events");
             }
 
@@ -97,9 +97,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 bloom.set(&key);
             }
 
-            for data in event.data {
-                bloom.set(&data.0);
-            }
+            bloom.set(&event.from_address.0);
         }
     }
     insert_statement.execute(params![last_block_number, bloom.as_compressed_bytes()])?;
