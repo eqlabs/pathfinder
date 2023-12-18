@@ -1,8 +1,7 @@
-use std::collections::HashSet;
-
-use crate::params::RowExt;
+use crate::{bloom::BloomFilter, params::RowExt};
 
 use anyhow::Context;
+use rusqlite::params;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     //     tx.execute_batch(
@@ -36,6 +35,16 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     //     )
     //     .context("Creating new event tables")?;
 
+    tx.execute_batch(
+        r"
+        CREATE TABLE starknet_events_filters (
+            block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+            bloom BLOB NOT NULL
+        );
+    ",
+    )
+    .context("Creating event Bloom filter table")?;
+
     let mut query_statement = tx.prepare(
         r"SELECT
         block_headers.number as block_number,
@@ -44,17 +53,17 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         receipt
     FROM starknet_transactions
     INNER JOIN block_headers ON (starknet_transactions.block_hash = block_headers.hash)
+    ORDER BY block_number
     ",
     )?;
+
+    let mut insert_statement =
+        tx.prepare(r"INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)")?;
 
     let mut rows = query_statement.query([])?;
 
     let mut last_block_number: u64 = 0;
-
-    let mut receipt_compressed_json_length: usize = 0;
-    let mut receipt_compressed_bincode_length: usize = 0;
-    let mut transaction_compressed_json_length: usize = 0;
-    let mut transaction_compressed_bincode_length: usize = 0;
+    let mut bloom = BloomFilter::new();
 
     while let Some(row) = rows.next().context("Fetching next receipt")? {
         let block_number = row.get_block_number("block_number")?;
@@ -62,8 +71,12 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         let current_block_number = block_number.get();
         if current_block_number > last_block_number {
             if current_block_number % 100 == 0 {
-                tracing::debug!(%current_block_number, "Migrating events");
+                tracing::debug!(%current_block_number, "Processing events");
             }
+
+            insert_statement.execute(params![last_block_number, bloom.as_compressed_bytes()])?;
+
+            bloom = BloomFilter::new();
             last_block_number = current_block_number;
         }
 
@@ -71,32 +84,25 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             .get_ref_unwrap("receipt")
             .as_blob()
             .map_err(anyhow::Error::from)?;
-        receipt_compressed_json_length += receipt.len();
         let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
         let receipt: starknet_gateway_types::reply::transaction::Receipt =
             serde_json::from_slice(&receipt).context("Deserializing transaction receipt")?;
 
-        let tx = row
-            .get_ref_unwrap("tx")
-            .as_blob()
-            .map_err(anyhow::Error::from)?;
-        transaction_compressed_json_length += tx.len();
-        let tx = zstd::decode_all(tx).context("Decompressing transaction")?;
-        let tx: starknet_gateway_types::reply::transaction::Transaction =
-            serde_json::from_slice(&tx).context("Deserializing transaction")?;
-        let tx: pathfinder_common::transaction::Transaction =
-            tx.try_into().context("Converting transaction to common")?;
+        for event in receipt.events {
+            for (i, key) in event.keys.iter().enumerate() {
+                // FIXME
+                assert!(i < 16);
+                let mut key = key.0;
+                key.as_mut_be_bytes()[0] |= (i as u8) << 4;
+                bloom.set(&key);
+            }
 
-        let b = bincode::encode_to_vec(&receipt, bincode::config::standard())?;
-        let b = zstd::encode_all(b.as_slice(), 0)?;
-        receipt_compressed_bincode_length += b.len();
-
-        let b = bincode::encode_to_vec(&tx, bincode::config::standard())?;
-        let b = zstd::encode_all(b.as_slice(), 0)?;
-        transaction_compressed_bincode_length += b.len();
+            for data in event.data {
+                bloom.set(&data.0);
+            }
+        }
     }
-
-    tracing::info!(%receipt_compressed_json_length, %receipt_compressed_bincode_length, %transaction_compressed_json_length, %transaction_compressed_bincode_length, "Iteration over");
+    insert_statement.execute(params![last_block_number, bloom.as_compressed_bytes()])?;
 
     Ok(())
 }
