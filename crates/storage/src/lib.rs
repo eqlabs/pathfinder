@@ -5,6 +5,7 @@
 // This is intended for internal use only -- do not make public.
 mod prelude;
 
+mod bloom;
 mod connection;
 pub mod fake;
 mod params;
