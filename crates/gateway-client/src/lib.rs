@@ -117,7 +117,7 @@ pub trait GatewayApi: Sync {
 ///
 /// TODO remove when p2p friendly sync is implemented
 #[allow(unused_variables)]
-#[cfg_attr(feature = "test-utils", mockall::automock)]
+#[mockall::automock]
 #[async_trait::async_trait]
 pub trait GossipApi: Sync {
     async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
