@@ -164,8 +164,10 @@ pub mod init {
                 .map(|&class_hash| {
                     (
                         class_hash,
-                        serde_json::to_vec(&Faker.fake_with_rng::<class_definition::Cairo, _>(rng))
-                            .unwrap(),
+                        serde_json::to_vec(
+                            &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
+                        )
+                        .unwrap(),
                     )
                 })
                 .collect::<Vec<_>>();
@@ -175,7 +177,7 @@ pub mod init {
                     (
                         sierra_hash,
                         serde_json::to_vec(
-                            &Faker.fake_with_rng::<class_definition::Sierra, _>(rng),
+                            &Faker.fake_with_rng::<class_definition::Sierra<'_>, _>(rng),
                         )
                         .unwrap(),
                         Faker.fake_with_rng::<String, _>(rng).into_bytes(),

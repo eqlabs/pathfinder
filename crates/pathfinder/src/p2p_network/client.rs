@@ -708,7 +708,7 @@ fn sierra_defs_and_hashes_from_dto(
     let entry_points_clone = entry_points.clone();
     let sierra_hash = SierraHash(
         compute_sierra_class_hash(
-            &abi,
+            abi,
             program_clone,
             &contract_class_version,
             entry_points_clone,

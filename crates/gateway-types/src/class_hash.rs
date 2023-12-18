@@ -106,7 +106,7 @@ pub mod from_parts {
     use pathfinder_crypto::Felt;
     use std::collections::HashMap;
 
-    pub fn compute_cairo_class_hash<'a>(
+    pub fn compute_cairo_class_hash(
         abi: &[u8],
         program: &[u8],
         external_entry_points: Vec<SelectorAndOffset>,
@@ -119,15 +119,15 @@ pub mod from_parts {
         entry_points_by_type.insert(EntryPointType::Constructor, constructor_entry_points);
 
         let contract_definition = json::CairoContractDefinition {
-            abi: serde_json::from_slice(abi.as_ref())?,
-            program: serde_json::from_slice(program.as_ref())?,
+            abi: serde_json::from_slice(abi)?,
+            program: serde_json::from_slice(program)?,
             entry_points_by_type,
         };
 
         super::compute_cairo_class_hash(contract_definition)
     }
 
-    pub fn compute_sierra_class_hash<'a>(
+    pub fn compute_sierra_class_hash(
         abi: &str,
         sierra_program: Vec<Felt>,
         contract_class_version: &str,

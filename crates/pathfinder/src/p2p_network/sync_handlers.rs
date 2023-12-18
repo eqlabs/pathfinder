@@ -529,10 +529,7 @@ mod def_into_dto {
     };
     use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
 
-    pub fn sierra<'a>(
-        sierra: super::class_definition::Sierra<'a>,
-        compiled: Vec<u8>,
-    ) -> Cairo1Class {
+    pub fn sierra(sierra: super::class_definition::Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class {
         let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
             selector: x.selector.0,
             index: x.function_idx,
