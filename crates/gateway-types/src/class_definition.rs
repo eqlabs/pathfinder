@@ -38,7 +38,7 @@ impl<T> Dummy<T> for Sierra<'_> {
 #[serde(deny_unknown_fields)]
 pub struct Cairo<'a> {
     /// Contract ABI, which has no schema definition.
-    pub abi: Cow<'a, str>,
+    pub abi: Cow<'a, RawValue>,
 
     /// Main program definition. __We assume that this is valid JSON.__
     pub program: Cow<'a, RawValue>,
@@ -49,9 +49,10 @@ pub struct Cairo<'a> {
 
 impl<T> Dummy<T> for Cairo<'_> {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let abi = serde_json::Value::Object(Faker.fake_with_rng(rng));
         let program = serde_json::Value::Object(Faker.fake_with_rng(rng));
         Self {
-            abi: Cow::Owned(Faker.fake_with_rng(rng)),
+            abi: Cow::Owned(serde_json::value::to_raw_value(&abi).unwrap()),
             program: Cow::Owned(serde_json::value::to_raw_value(&program).unwrap()),
             entry_points_by_type: Faker.fake_with_rng(rng),
         }

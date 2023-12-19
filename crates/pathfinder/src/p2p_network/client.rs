@@ -31,6 +31,7 @@ use starknet_gateway_types::request::add_transaction::{Declare, DeployAccount, I
 use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
 use starknet_gateway_types::trace;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -663,12 +664,10 @@ fn cairo_hash_and_def_from_dto(c0: Cairo0Class) -> anyhow::Result<(ClassHash, Ve
     .context("compute cairo class hash")?;
 
     #[derive(Debug, Deserialize)]
-    struct Program<'a>(#[serde(borrow)] &'a RawValue);
+    struct Abi<'a>(#[serde(borrow)] &'a RawValue);
 
     let class_def = class_definition::Cairo {
-        abi: std::str::from_utf8(&abi)
-            .context("verify that cairo class abi is UTF-8")?
-            .into(),
+        abi: Cow::Borrowed(serde_json::from_slice::<Abi<'_>>(&abi).unwrap().0),
         program: serde_json::from_slice(&program)
             .context("verify that cairo class program is UTF-8")?,
         entry_points_by_type: class_definition::CairoEntryPoints {
@@ -730,7 +729,7 @@ fn sierra_defs_and_hashes_from_dto(
     );
 
     let class_def = class_definition::Sierra {
-        abi: abi.into(),
+        abi: Cow::Borrowed(abi),
         sierra_program: program,
         contract_class_version: contract_class_version.into(),
         entry_points_by_type: entry_points,

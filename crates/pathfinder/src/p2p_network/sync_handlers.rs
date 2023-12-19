@@ -443,7 +443,6 @@ fn classes(
             }
             (ClassId::Sierra(_, _), ClassDefinition::Sierra { sierra, casm }) => {
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
-                // Class::Cairo1(sierra_class.into_dto(casm))
                 Class::Cairo1(def_into_dto::sierra(sierra_class, casm))
             }
             _ => anyhow::bail!("Class definition type mismatch"),
@@ -572,7 +571,7 @@ mod def_into_dto {
         };
 
         Cairo0Class {
-            abi: cairo.abi.as_bytes().to_owned(),
+            abi: cairo.abi.get().as_bytes().to_owned(),
             externals: cairo
                 .entry_points_by_type
                 .external
