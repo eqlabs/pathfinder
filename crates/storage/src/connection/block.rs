@@ -84,7 +84,7 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
             "DELETE FROM starknet_events_filters WHERE block_number = ?",
             params![&block],
         )
-        .context("Deleting bloom filter");
+        .context("Deleting bloom filter")?;
 
     tx.inner()
         .execute(
