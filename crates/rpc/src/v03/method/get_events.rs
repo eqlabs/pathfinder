@@ -115,6 +115,12 @@ pub async fn get_events(
     let storage = context.storage.clone();
     let keys = V03KeyFilter::new(request.keys.clone());
 
+    // truncate empty key lists from the end of the key filter
+    let mut keys = request.keys.clone();
+    if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
+        keys.truncate(last_non_empty + 1);
+    }
+
     // blocking task to perform database event query
     let span = tracing::Span::current();
     let db_events: JoinHandle<Result<_, GetEventsError>> = tokio::task::spawn_blocking(move || {
@@ -420,14 +426,15 @@ fn append_pending_events(
                 return true;
             }
 
-            let keys_to_check = std::cmp::min(keys.len(), event.keys.len());
+            if event.keys.len() < keys.len() {
+                return false;
+            }
 
             event
                 .keys
                 .iter()
                 .zip(keys.iter())
-                .take(keys_to_check)
-                .all(|(key, filter)| filter.contains(key))
+                .all(|(key, filter)| filter.is_empty() || filter.contains(key))
         })
         .skip(skip)
         // We need to take an extra event to determine is_last_page.
@@ -1042,6 +1049,42 @@ mod tests {
             let result = get_events(context.clone(), input.clone()).await.unwrap();
             assert_eq!(result.events, &all[0..1]);
             assert_eq!(result.continuation_token, None);
+        }
+
+        #[tokio::test]
+        async fn key_matching() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let mut input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::Pending),
+                    address: None,
+                    keys: vec![],
+                    chunk_size: 1024,
+                    continuation_token: None,
+                },
+            };
+
+            let all = get_events(context.clone(), input.clone())
+                .await
+                .unwrap()
+                .events;
+            assert_eq!(all.len(), 3);
+
+            input.filter.keys = vec![vec![event_key_bytes!(b"pending key 2")]];
+            let events = get_events(context.clone(), input.clone())
+                .await
+                .unwrap()
+                .events;
+            assert_eq!(events, &all[2..3]);
+
+            input.filter.keys = vec![vec![], vec![event_key_bytes!(b"second pending key")]];
+            let events = get_events(context.clone(), input.clone())
+                .await
+                .unwrap()
+                .events;
+            assert_eq!(events, &all[1..2]);
         }
     }
 }
