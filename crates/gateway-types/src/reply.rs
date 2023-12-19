@@ -1194,7 +1194,7 @@ pub mod transaction {
 
     /// A version 2 declare transaction.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV3 {
         pub class_hash: ClassHash,
@@ -1215,6 +1215,27 @@ pub mod transaction {
         pub compiled_class_hash: CasmHash,
 
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+    }
+
+    impl<T> Dummy<T> for DeclareTransactionV3 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                class_hash: Faker.fake_with_rng(rng),
+
+                nonce: Faker.fake_with_rng(rng),
+                nonce_data_availability_mode: Faker.fake_with_rng(rng),
+                fee_data_availability_mode: Faker.fake_with_rng(rng),
+                resource_bounds: Faker.fake_with_rng(rng),
+                tip: Faker.fake_with_rng(rng),
+                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+
+                sender_address: Faker.fake_with_rng(rng),
+                signature: Faker.fake_with_rng(rng),
+                transaction_hash: Faker.fake_with_rng(rng),
+                compiled_class_hash: Faker.fake_with_rng(rng),
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+            }
+        }
     }
 
     const fn transaction_version_zero() -> TransactionVersion {
@@ -1371,7 +1392,8 @@ pub mod transaction {
                 fee_data_availability_mode: Faker.fake_with_rng(rng),
                 resource_bounds: Faker.fake_with_rng(rng),
                 tip: Faker.fake_with_rng(rng),
-                paymaster_data: Faker.fake_with_rng(rng),
+                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+
                 sender_address: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
@@ -1483,7 +1505,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 invoke transaction v3 data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV3 {
         pub nonce: TransactionNonce,
@@ -1502,6 +1524,25 @@ pub mod transaction {
         pub calldata: Vec<CallParam>,
 
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
+    }
+
+    impl<T> Dummy<T> for InvokeTransactionV3 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                nonce: Faker.fake_with_rng(rng),
+                nonce_data_availability_mode: Faker.fake_with_rng(rng),
+                fee_data_availability_mode: Faker.fake_with_rng(rng),
+                resource_bounds: Faker.fake_with_rng(rng),
+                tip: Faker.fake_with_rng(rng),
+                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+
+                sender_address: Faker.fake_with_rng(rng),
+                signature: Faker.fake_with_rng(rng),
+                transaction_hash: Faker.fake_with_rng(rng),
+                calldata: Faker.fake_with_rng(rng),
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+            }
+        }
     }
 
     /// Represents deserialized L2 "L1 handler" transaction data.
