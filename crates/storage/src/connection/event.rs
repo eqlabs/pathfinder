@@ -101,10 +101,11 @@ pub(super) fn get_events(
     let from_block = filter.from_block.unwrap_or(BlockNumber::GENESIS).get();
     let to_block = filter.to_block.unwrap_or(BlockNumber::MAX).get();
     let mut offset = filter.offset;
+    let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
 
     let mut bloom_stmt = tx
         .inner()
-        .prepare("SELECT bloom FROM starknet_events_filters WHERE block_number = ?")?;
+        .prepare_cached("SELECT bloom FROM starknet_events_filters WHERE block_number = ?")?;
 
     let mut emitted_events = Vec::new();
 
@@ -116,28 +117,28 @@ pub(super) fn get_events(
 
         tracing::trace!(%block_number, %events_required, "Processing block");
 
-        let bloom = bloom_stmt
-            .query_row(params![&block_number], |row| {
-                let bytes: Vec<u8> = row.get(0)?;
-                Ok(BloomFilter::from_compressed_bytes(&bytes))
-            })
-            .optional()?;
-        let Some(bloom) = bloom else {
-            break;
-        };
+        if !key_filter_is_empty || filter.contract_address.is_some() {
+            let bloom = bloom_stmt
+                .query_row(params![&block_number], |row| {
+                    let bytes: Vec<u8> = row.get(0)?;
+                    Ok(BloomFilter::from_compressed_bytes(&bytes))
+                })
+                .optional()?;
+            let Some(bloom) = bloom else {
+                break;
+            };
 
-        tracing::trace!("Bloom filter loaded");
-
-        if !keys_in_bloom(&bloom, &filter.keys) {
-            continue;
-        }
-        if let Some(contract_address) = filter.contract_address {
-            if !bloom.check(&contract_address.0) {
+            if !keys_in_bloom(&bloom, &filter.keys) {
                 continue;
             }
-        }
+            if let Some(contract_address) = filter.contract_address {
+                if !bloom.check(&contract_address.0) {
+                    continue;
+                }
+            }
 
-        tracing::trace!("Bloom filter matched");
+            tracing::trace!("Bloom filter matched");
+        }
 
         let block_header = tx.block_header(crate::BlockId::Number(BlockNumber::new_or_panic(
             block_number,
@@ -158,8 +159,6 @@ pub(super) fn get_events(
             .iter()
             .map(|keys| keys.into_iter().collect())
             .collect();
-
-        let key_filter_is_empty = keys.iter().flatten().count() == 0;
 
         let events = transaction_data
             .into_iter()
