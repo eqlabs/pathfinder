@@ -81,7 +81,7 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
     tx.inner()
         .execute(
-            "DELETE FROM starknet_events_filters WHERE number = ?",
+            "DELETE FROM starknet_events_filters WHERE block_number = ?",
             params![&block],
         )
         .context("Deleting bloom filter");
