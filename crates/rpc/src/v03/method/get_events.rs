@@ -4,7 +4,7 @@ use crate::context::RpcContext;
 use crate::pending::PendingData;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::{EventFilterError, V03KeyFilter};
+use pathfinder_storage::EventFilterError;
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -119,7 +119,6 @@ pub async fn get_events(
     if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
         keys.truncate(last_non_empty + 1);
     }
-    let keys = V03KeyFilter::new(keys);
 
     // blocking task to perform database event query
     let span = tracing::Span::current();
@@ -167,9 +166,7 @@ pub async fn get_events(
             page_size: request.chunk_size,
             offset: requested_offset,
         };
-        // We don't add context here, because [StarknetEventsTable::get_events] adds its
-        // own context to the errors. This way we get meaningful error information
-        // for errors related to query parameters.
+
         let page = transaction.events(&filter).map_err(|e| match e {
             EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
             EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
