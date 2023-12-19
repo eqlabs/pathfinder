@@ -4,7 +4,7 @@ use crate::context::RpcContext;
 use crate::pending::PendingData;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::{EventFilterError, V03KeyFilter};
+use pathfinder_storage::EventFilterError;
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -113,7 +113,6 @@ pub async fn get_events(
     }
 
     let storage = context.storage.clone();
-    let keys = V03KeyFilter::new(request.keys.clone());
 
     // truncate empty key lists from the end of the key filter
     let mut keys = request.keys.clone();

@@ -6156,9 +6156,11 @@ dependencies = [
  "sha3",
  "starknet-gateway-types",
  "tempfile",
+ "test-log",
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "zstd",
 ]
 
