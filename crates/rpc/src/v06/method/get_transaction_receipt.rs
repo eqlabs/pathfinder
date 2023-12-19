@@ -947,7 +947,10 @@ mod tests {
                             Event {
                                 data: vec![],
                                 from_address: contract_address!("0xabcddddddd"),
-                                keys: vec![event_key_bytes!(b"pending key")],
+                                keys: vec![
+                                    event_key_bytes!(b"pending key"),
+                                    event_key_bytes!(b"second pending key")
+                                ],
                             },
                             Event {
                                 data: vec![],
