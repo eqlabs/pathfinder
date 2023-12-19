@@ -64,6 +64,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 
     let mut last_block_number: u64 = 0;
     let mut bloom = BloomFilter::new();
+    let mut events_in_filter: usize = 0;
 
     while let Some(row) = rows.next().context("Fetching next receipt")? {
         let block_number = row.get_block_number("block_number")?;
@@ -78,6 +79,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 
             bloom = BloomFilter::new();
             last_block_number = current_block_number;
+            events_in_filter = 0;
         }
 
         let receipt = row
@@ -98,9 +100,13 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             }
 
             bloom.set(&event.from_address.0);
+
+            events_in_filter += 1;
         }
     }
-    insert_statement.execute(params![last_block_number, bloom.as_compressed_bytes()])?;
+    if events_in_filter > 0 {
+        insert_statement.execute(params![last_block_number, bloom.as_compressed_bytes()])?;
+    }
 
     Ok(())
 }
