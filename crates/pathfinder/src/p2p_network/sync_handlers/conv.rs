@@ -245,7 +245,7 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                     .map(|a| a.0)
                     .collect(),
             }),
-            L1Handler(x) => proto::Transaction::L1HandlerV1(proto::L1HandlerV1 {
+            L1Handler(x) => proto::Transaction::L1HandlerV0(proto::L1HandlerV0 {
                 nonce: x.nonce.0,
                 address: Address(x.contract_address.0),
                 entry_point_selector: x.entry_point_selector.0,

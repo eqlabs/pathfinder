@@ -73,7 +73,7 @@ message Receipt {
     starknet.common.Felt252 contract_address = 2;
   }
 
-  oneof receipt {
+  oneof type {
     Invoke        invoke            = 1;
     L1Handler     l1_handler        = 2;
     Declare       declare           = 3;
