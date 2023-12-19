@@ -38,7 +38,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(
         r"
         CREATE TABLE starknet_events_filters (
-            block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+            block_number INTEGER NOT NULL PRIMARY KEY,
             bloom BLOB NOT NULL
         );
     ",
