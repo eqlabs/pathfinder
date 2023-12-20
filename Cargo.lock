@@ -805,7 +805,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-secp256r1",
- "cached",
+ "cached 0.44.0",
  "cairo-felt 0.8.3",
  "cairo-lang-casm 2.4.0",
  "cairo-lang-runner",
@@ -901,7 +901,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b195e4fbc4b6862bbd065b991a34750399c119797efff72492f28a5864de8700"
 dependencies = [
  "async-trait",
- "cached_proc_macro",
+ "cached_proc_macro 0.17.0",
  "cached_proc_macro_types",
  "futures",
  "hashbrown 0.13.2",
@@ -912,12 +912,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "cached"
+version = "0.46.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c8c50262271cdf5abc979a5f76515c234e764fa025d1ba4862c0f0bcda0e95"
+dependencies = [
+ "ahash 0.8.3",
+ "cached_proc_macro 0.18.1",
+ "cached_proc_macro_types",
+ "hashbrown 0.14.2",
+ "instant",
+ "once_cell",
+ "thiserror",
+]
+
+[[package]]
 name = "cached_proc_macro"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b48814962d2fd604c50d2b9433c2a41a0ab567779ee2c02f7fba6eca1221f082"
 dependencies = [
  "cached_proc_macro_types",
+ "darling 0.14.4",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "cached_proc_macro"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c878c71c2821aa2058722038a59a67583a4240524687c6028571c9b395ded61f"
+dependencies = [
  "darling 0.14.4",
  "proc-macro2",
  "quote",
@@ -6025,7 +6052,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "blockifier",
- "cached",
+ "cached 0.44.0",
  "cairo-vm",
  "lazy_static",
  "pathfinder-common",
@@ -6135,6 +6162,7 @@ dependencies = [
  "bincode",
  "bitvec",
  "bloomfilter",
+ "cached 0.46.1",
  "const_format",
  "data-encoding",
  "fake",

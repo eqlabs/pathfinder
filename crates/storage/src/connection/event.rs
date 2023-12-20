@@ -1,6 +1,9 @@
+use std::sync::{Mutex, MutexGuard};
+
 use crate::bloom::BloomFilter;
 use crate::prelude::*;
 
+use cached::{Cached, SizedCache};
 use pathfinder_common::event::Event;
 use pathfinder_common::{
     BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
@@ -103,10 +106,6 @@ pub(super) fn get_events(
     let mut offset = filter.offset;
     let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
 
-    let mut bloom_stmt = tx
-        .inner()
-        .prepare_cached("SELECT bloom FROM starknet_events_filters WHERE block_number = ?")?;
-
     let mut emitted_events = Vec::new();
 
     for block_number in from_block..=to_block {
@@ -118,12 +117,7 @@ pub(super) fn get_events(
         tracing::trace!(%block_number, %events_required, "Processing block");
 
         if !key_filter_is_empty || filter.contract_address.is_some() {
-            let bloom = bloom_stmt
-                .query_row(params![&block_number], |row| {
-                    let bytes: Vec<u8> = row.get(0)?;
-                    Ok(BloomFilter::from_compressed_bytes(&bytes))
-                })
-                .optional()?;
+            let bloom = load_bloom(&tx, block_number)?;
             let Some(bloom) = bloom else {
                 break;
             };
@@ -212,6 +206,62 @@ pub(super) fn get_events(
         events: emitted_events,
         is_last_page,
     })
+}
+
+fn load_bloom(
+    tx: &Transaction<'_>,
+    block_number: u64,
+) -> Result<Option<BloomFilter>, EventFilterError> {
+    if let Some(bloom) = GLOBAL_CACHE.get(block_number)? {
+        return Ok(Some(bloom));
+    }
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached("SELECT bloom FROM starknet_events_filters WHERE block_number = ?")?;
+
+    let bloom = stmt
+        .query_row(params![&block_number], |row| {
+            let bytes: Vec<u8> = row.get(0)?;
+            Ok(BloomFilter::from_compressed_bytes(&bytes))
+        })
+        .optional()?;
+
+    if let Some(bloom) = &bloom {
+        GLOBAL_CACHE.set(block_number, bloom.clone())?;
+    }
+
+    Ok(bloom)
+}
+
+lazy_static::lazy_static! {
+    static ref GLOBAL_CACHE: BloomFilterCache = BloomFilterCache::new();
+}
+
+struct BloomFilterCache(Mutex<SizedCache<u64, BloomFilter>>);
+
+impl BloomFilterCache {
+    fn new() -> Self {
+        Self(Mutex::new(SizedCache::with_size(512 * 1024)))
+    }
+
+    fn locked_cache(
+        &self,
+    ) -> Result<MutexGuard<'_, SizedCache<u64, BloomFilter>>, EventFilterError> {
+        self.0.lock().map_err(|err| {
+            tracing::warn!("Bloom filter cache lock is poisoned. Cause: {}.", err);
+            EventFilterError::Internal(anyhow::anyhow!("Poisoned lock"))
+        })
+    }
+
+    pub fn get(&self, block_number: u64) -> Result<Option<BloomFilter>, EventFilterError> {
+        Ok(self.locked_cache()?.cache_get(&block_number).cloned())
+    }
+
+    pub fn set(&self, block_number: u64, bloom: BloomFilter) -> Result<(), EventFilterError> {
+        self.locked_cache()?.cache_set(block_number, bloom);
+        Ok(())
+    }
 }
 
 fn keys_in_bloom(bloom: &BloomFilter, keys: &[Vec<EventKey>]) -> bool {
