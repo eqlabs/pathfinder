@@ -18,7 +18,7 @@ Keeping these points in mind will increase the odds of a successful PR:
 - Have an accurate description of your changes and intentions with the PR.
 - Code comments should describe the **why** and not the **how**.
 - New features should have reasonable tests.
-- Ensure CI is happy. CI will run automatically when the PR is opened. This includes checks checks for
+- Ensure CI is happy. CI will run automatically when the PR is opened. This includes checks for
   - formatting (`cargo fmt`)
   - linting (`cargo clippy`)
   - testing (`cargo test`)
