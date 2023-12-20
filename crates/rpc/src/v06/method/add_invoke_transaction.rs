@@ -239,7 +239,7 @@ mod tests {
             let expected = AddInvokeTransactionInput {
                 invoke_transaction: test_invoke_txn(),
             };
-            pretty_assertions::assert_eq!(input, expected);
+            pretty_assertions_sorted::assert_eq!(input, expected);
         }
 
         #[test]

@@ -5,178 +5,174 @@ package starknet.transaction;
 import "common.proto";
 
 message ResourceLimits {
-  starknet.common.Felt252 max_amount = 1;
-  starknet.common.Felt252 max_price_per_unit = 2;
+    starknet.common.Felt252 max_amount         = 1;
+    starknet.common.Felt252 max_price_per_unit = 2;
 }
 
-message AccountSignature { repeated starknet.common.Felt252 parts = 1; }
-
-message Transaction {
-  message DeclareV0 {
-    starknet.common.Address sender = 1;
-    starknet.common.Felt252 max_fee = 2;
-    AccountSignature signature = 3;
-    starknet.common.Hash class_hash = 4;
-    // FIXME added missing field
-    // example:
-    // https://alpha4.starknet.io/feeder_gateway/get_transaction?transactionHash=0x6d346ba207eb124355960c19c737698ad37a3c920a588b741e0130ff5bd4d6d
-    starknet.common.Felt252 nonce = 5;
-  }
-
-  message DeclareV1 {
-    starknet.common.Address sender = 1;
-    starknet.common.Felt252 max_fee = 2;
-    AccountSignature signature = 3;
-    starknet.common.Hash class_hash = 4;
-    starknet.common.Felt252 nonce = 5;
-  }
-
-  message DeclareV2 {
-    starknet.common.Address sender = 1;
-    starknet.common.Felt252 max_fee = 2;
-    AccountSignature signature = 3;
-    starknet.common.Hash class_hash = 4;
-    starknet.common.Felt252 nonce = 5;
-    starknet.common.Felt252 compiled_class_hash = 6;
-  }
-
-  message DeclareV3 {
-    starknet.common.Address sender = 1;
-    starknet.common.Felt252 max_fee = 2;
-    AccountSignature signature = 3;
-    starknet.common.Hash class_hash = 4;
-    starknet.common.Felt252 nonce = 5;
-    starknet.common.Felt252 compiled_class_hash = 6;
-    ResourceLimits l1_gas = 7;
-    ResourceLimits l2_gas = 8;
-    starknet.common.Felt252 tip = 9;
-    starknet.common.Address paymaster = 10;
-    string nonce_domain = 11;
-    string fee_domain = 12;
-    // FIXME added missing fields
-    repeated starknet.common.Felt252 paymaster_data = 13;
-    repeated starknet.common.Felt252 account_deployment_data = 14;
-  }
-
-  message Deploy {
-    starknet.common.Hash class_hash = 1;
-    starknet.common.Felt252 address_salt = 2;
-    repeated starknet.common.Felt252 calldata = 3;
-    // FIXME added missing fields
-    starknet.common.Address address = 4;
-    uint32 version = 5;
-  }
-
-  message DeployAccountV1 {
-    starknet.common.Felt252 max_fee = 1;
-    AccountSignature signature = 2;
-    starknet.common.Hash class_hash = 3;
-    starknet.common.Felt252 nonce = 4;
-    starknet.common.Felt252 address_salt = 5;
-    repeated starknet.common.Felt252 calldata = 6;
-    // FIXME added missing fields
-    starknet.common.Address address = 7;
-  }
-
-  message DeployAccountV3 {
-    starknet.common.Felt252 max_fee = 1;
-    AccountSignature signature = 2;
-    starknet.common.Hash class_hash = 3;
-    starknet.common.Felt252 nonce = 4;
-    starknet.common.Felt252 address_salt = 5;
-    repeated starknet.common.Felt252 calldata = 6;
-    ResourceLimits l1_gas = 7;
-    ResourceLimits l2_gas = 8;
-    starknet.common.Felt252 tip = 9;
-    starknet.common.Address paymaster = 10;
-    string nonce_domain = 11;
-    string fee_domain = 12;
-    // FIXME added missing fields
-    repeated starknet.common.Felt252 paymaster_data = 13;
-    starknet.common.Address address = 14;
-  }
-
-  message InvokeV0 {
-    starknet.common.Felt252 max_fee = 1;
-    AccountSignature signature = 2;
-    starknet.common.Address address = 3;
-    starknet.common.Felt252 entry_point_selector = 4;
-    repeated starknet.common.Felt252 calldata = 5;
-    // FIXME added missing fields
-    optional EntryPointType entry_point_type = 6;
-  }
-
-  enum EntryPointType {
-    EXTERNAL = 0;
-    L1_HANDLER = 1;
-  }
-
-  message InvokeV1 {
-    starknet.common.Address sender = 1;
-    starknet.common.Felt252 max_fee = 2;
-    AccountSignature signature = 3;
-    // FIXME incorrect field
-    // starknet.common.Hash             class_hash = 4;
-    starknet.common.Felt252 nonce = 4;
-    repeated starknet.common.Felt252 calldata = 5;
-  }
-
-  message InvokeV3 {
-    starknet.common.Address sender = 1;
-    starknet.common.Felt252 max_fee = 2;
-    AccountSignature signature = 3;
-    // FIXME incorrect field
-    // starknet.common.Hash class_hash = 4;
-    repeated starknet.common.Felt252 calldata = 5;
-    ResourceLimits l1_gas = 6;
-    ResourceLimits l2_gas = 7;
-    starknet.common.Felt252 tip = 8;
-    starknet.common.Address paymaster = 9;
-    string nonce_domain = 10;
-    string fee_domain = 11;
-    // FIXME missing fields
-    starknet.common.Felt252 nonce = 12;
-    repeated starknet.common.Felt252 paymaster_data = 13;
-    repeated starknet.common.Felt252 account_deployment_data = 14;
-  }
-
-  message L1HandlerV1 {
-    starknet.common.Felt252 nonce = 1;
-    starknet.common.Address address = 2;
-    starknet.common.Felt252 entry_point_selector = 3;
-    repeated starknet.common.Felt252 calldata = 5;
-  }
-
-  oneof txn {
-    DeclareV0 declare_v0 = 1;
-    DeclareV1 declare_v1 = 2;
-    DeclareV2 declare_v2 = 3;
-    DeclareV3 declare_v3 = 4;
-    Deploy deploy = 5;
-    DeployAccountV1 deploy_account_v1 = 6;
-    DeployAccountV3 deploy_account_v3 = 7;
-    InvokeV0 invoke_v0 = 8;
-    InvokeV1 invoke_v1 = 9;
-    InvokeV3 invoke_v3 = 10;
-    // FIXME as of Sep '23 there are only V0 transactions
-    L1HandlerV1 l1_handler = 11;
-  }
+message ResourceBounds {
+    ResourceLimits l1_gas = 1;
+    ResourceLimits l2_gas = 2;
 }
 
-// TBD: can support a flag to return tx hashes only, good for standalone mempool
-// to remove them, or any node that keeps track of transaction streaming in the
-// consensus.
-message TransactionsRequest { starknet.common.Iteration iteration = 1; }
+message AccountSignature {
+    repeated starknet.common.Felt252 parts = 1;
+}
+
+message Transaction
+{
+    message DeclareV0 {
+        starknet.common.Address sender     = 1;
+        starknet.common.Felt252 max_fee    = 2;
+        AccountSignature        signature  = 3;
+        starknet.common.Hash    class_hash = 4;
+        // FIXME added missing field
+        // example:
+        // https://alpha4.starknet.io/feeder_gateway/get_transaction?transactionHash=0x6d346ba207eb124355960c19c737698ad37a3c920a588b741e0130ff5bd4d6d
+        starknet.common.Felt252 nonce      = 5;
+    }
+
+    message DeclareV1 {
+        starknet.common.Address sender     = 1;
+        starknet.common.Felt252 max_fee    = 2;
+        AccountSignature        signature  = 3;
+        starknet.common.Hash    class_hash = 4;
+        starknet.common.Felt252 nonce      = 5;
+    }
+
+    message DeclareV2 {
+        starknet.common.Address sender              = 1;
+        starknet.common.Felt252 max_fee             = 2;
+        AccountSignature        signature           = 3;
+        starknet.common.Hash    class_hash          = 4;
+        starknet.common.Felt252 nonce               = 5;
+        starknet.common.Felt252 compiled_class_hash = 6;
+    }
+
+    // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41d1f5206ef58a443e7d3d1ca073171ec25fa75313394318fc83a074a6631c3
+    message DeclareV3 {
+        starknet.common.Address sender                  = 1;
+        AccountSignature        signature               = 2;
+        starknet.common.Hash    class_hash              = 3;
+        starknet.common.Felt252 nonce                   = 4;
+        starknet.common.Felt252 compiled_class_hash     = 5;
+        ResourceBounds resource_bounds                  = 6;
+        starknet.common.Felt252 tip                     = 7;
+        starknet.common.Address paymaster_data          = 8;
+        starknet.common.Address account_deployment_data = 9;
+        string                  nonce_domain            = 10;
+        string                  fee_domain              = 11;
+    }
+
+    message Deploy {
+        starknet.common.Hash             class_hash   = 1;
+        starknet.common.Felt252          address_salt = 2;
+        repeated starknet.common.Felt252 calldata     = 3;
+        uint32                           version      = 4;
+        // FIXME added missing fields
+        starknet.common.Address          address      = 5;
+    }
+
+    message DeployAccountV1 {
+        starknet.common.Felt252          max_fee      = 1;
+        AccountSignature                 signature    = 2;
+        starknet.common.Hash             class_hash   = 3;
+        starknet.common.Felt252          nonce        = 4;
+        starknet.common.Felt252          address_salt = 5;
+        repeated starknet.common.Felt252 calldata     = 6;
+        // FIXME added missing fields
+        starknet.common.Address          address      = 7;
+    }
+
+    message DeployAccountV3 {
+        AccountSignature                 signature       = 1;
+        starknet.common.Hash             class_hash      = 2;
+        starknet.common.Felt252          nonce           = 3;
+        starknet.common.Felt252          address_salt    = 4;
+        repeated starknet.common.Felt252 calldata        = 5;
+        ResourceBounds                   resource_bounds = 6;
+        starknet.common.Felt252          tip             = 7;
+        starknet.common.Address          paymaster_data  = 8;
+        string                           nonce_domain    = 9;  // rename to nonce_data_availability_mode ?
+        string                           fee_domain      = 10; // rename to fee_data_availability_mode ?
+        // FIXME added missing fields
+        starknet.common.Address          address         = 11;
+    }
+
+    message InvokeV0 {
+        starknet.common.Felt252          max_fee              = 1;
+        AccountSignature                 signature            = 2;
+        starknet.common.Address          address              = 3;
+        starknet.common.Felt252          entry_point_selector = 4;
+        repeated starknet.common.Felt252 calldata             = 5;
+        // FIXME added missing fields
+        optional EntryPointType          entry_point_type     = 6;
+    }
+
+    enum EntryPointType {
+        EXTERNAL = 0;
+        L1_HANDLER = 1;
+    }
+
+    message InvokeV1 {
+        starknet.common.Address          sender    = 1;
+        starknet.common.Felt252          max_fee   = 2;
+        AccountSignature                 signature = 3;
+        repeated starknet.common.Felt252 calldata  = 4;
+        starknet.common.Felt252          nonce     = 5;
+    }
+
+    // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41906f1c314cca5f43170ea75d3b1904196a10101190d2b12a41cc61cfd17c
+    message InvokeV3 {
+        starknet.common.Address          sender                  = 1;
+        AccountSignature                 signature               = 2;
+        repeated starknet.common.Felt252 calldata                = 3;
+        ResourceBounds                   resource_bounds         = 4;
+        starknet.common.Felt252          tip                     = 5;
+        starknet.common.Address          paymaster_data          = 6;
+        starknet.common.Address          account_deployment_data = 7;
+        string                           nonce_domain            = 8;  // rename to nonce_data_availability_mode ?
+        string                           fee_domain              = 9;  // rename to fee_data_availability_mode ?
+        starknet.common.Felt252          nonce                   = 10;
+    }
+
+    message L1HandlerV0 {
+        starknet.common.Felt252 nonce = 1;
+        starknet.common.Address address = 2;
+        starknet.common.Felt252 entry_point_selector = 3;
+        repeated starknet.common.Felt252 calldata = 4;
+    }
+
+    oneof txn {
+        DeclareV0 declare_v0 = 1;
+        DeclareV1 declare_v1 = 2;
+        DeclareV2 declare_v2 = 3;
+        DeclareV3 declare_v3 = 4;
+        Deploy deploy = 5;
+        DeployAccountV1 deploy_account_v1 = 6;
+        DeployAccountV3 deploy_account_v3 = 7;
+        InvokeV0 invoke_v0 = 8;
+        InvokeV1 invoke_v1 = 9;
+        InvokeV3 invoke_v3 = 10;
+        L1HandlerV0 l1_handler = 11;
+    }
+}
+
+// TBD: can support a flag to return tx hashes only, good for standalone mempool to remove them,
+// or any node that keeps track of transaction streaming in the consensus.
+message TransactionsRequest {
+    starknet.common.Iteration iteration = 1;
+}
 
 // can be several in a single reply
-message Transactions { repeated Transaction items = 2; }
+message Transactions {
+    repeated Transaction items = 1;
+}
 
 message TransactionsResponse {
-  optional starknet.common.BlockID id =
-      1; // may not appear if Fin is sent to end the whole response
+    optional starknet.common.BlockID id = 1; // may not appear if Fin is sent to end the whole response
 
-  oneof responses {
-    Transactions transactions = 2;
-    starknet.common.Fin fin = 3;
-  }
+    oneof responses {
+        Transactions        transactions = 2;
+        starknet.common.Fin fin          = 3;
+    }
 }

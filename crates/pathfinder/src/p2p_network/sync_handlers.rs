@@ -8,18 +8,17 @@ use p2p_proto::block::{
 use p2p_proto::common::{
     BlockId, BlockNumberOrHash, ConsensusSignature, Direction, Fin, Hash, Iteration, Step,
 };
-use p2p_proto::consts::{
-    CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MAX_PARTS_PER_CLASS, MESSAGE_SIZE_LIMIT,
-    PER_CLASS_OVERHEAD,
-};
-use p2p_proto::event::{Events, EventsRequest, EventsResponse, EventsResponseKind, TxnEvents};
+use p2p_proto::consts::MAX_HEADERS_PER_MESSAGE;
+use p2p_proto::event::{Events, EventsRequest, EventsResponse, EventsResponseKind};
 use p2p_proto::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
+use p2p_proto::state::{Class, Classes};
 use p2p_proto::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
 };
 use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
+use starknet_gateway_types::class_definition;
 
 pub mod conv;
 #[cfg(test)]
@@ -38,11 +37,6 @@ const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 const _: () = assert!(
     MAX_BLOCKS_COUNT <= MAX_HEADERS_PER_MESSAGE as u64,
     "All requested block headers, limited up to MAX_BLOCKS_COUNT should fit into one reply"
-);
-
-const _: () = assert!(
-    MAX_PARTS_PER_CLASS as u64 <= MAX_BLOCKS_COUNT,
-    "It does not make sense to accept classes that comprise more parts than the node can accept"
 );
 
 pub async fn get_headers(
@@ -171,21 +165,18 @@ enum ClassId {
 }
 
 impl ClassId {
-    pub fn into_dto(self) -> (Hash, Option<Hash>) {
-        match self {
-            ClassId::Cairo(class_hash) => (Hash(class_hash.0), None),
-            ClassId::Sierra(sierra_hash, casm_hash) => {
-                (Hash(sierra_hash.0), Some(Hash(casm_hash.0)))
-            }
-        }
-    }
-
     pub fn class_hash(&self) -> ClassHash {
         match self {
             ClassId::Cairo(class_hash) => *class_hash,
             ClassId::Sierra(sierra_hash, _) => ClassHash(sierra_hash.0),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+enum ClassDefinition {
+    Cairo(Vec<u8>),
+    Sierra { sierra: Vec<u8>, casm: Vec<u8> },
 }
 
 fn get_body(
@@ -219,14 +210,25 @@ fn get_body(
         body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
     });
 
-    let get_compressed_definition =
-        |block_number: BlockNumber, class_hash| -> anyhow::Result<Vec<u8>> {
+    let get_definition =
+        |block_number: BlockNumber, class_hash| -> anyhow::Result<ClassDefinition> {
             let definition = tx
-                .compressed_class_definition_at(block_number.into(), class_hash)?
+                .class_definition_at(block_number.into(), class_hash)?
                 .ok_or_else(|| {
-                    anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
+                    anyhow::anyhow!(
+                        "Class definition {} not found at block {}",
+                        class_hash,
+                        block_number
+                    )
                 })?;
-            Ok(definition)
+            let casm_definition = tx.casm_definition(class_hash)?;
+            Ok(match casm_definition {
+                Some(casm) => ClassDefinition::Sierra {
+                    sierra: definition,
+                    casm,
+                },
+                None => ClassDefinition::Cairo(definition),
+            })
         };
 
     classes(
@@ -234,7 +236,7 @@ fn get_body(
         block_hash,
         new_classes,
         responses,
-        get_compressed_definition,
+        get_definition,
     )?;
 
     responses.push(BlockBodiesResponse {
@@ -326,9 +328,10 @@ fn get_events_for_block(
 
     let items = txn_data
         .into_iter()
-        .map(|(_, r)| TxnEvents {
-            events: r.events.into_iter().map(ToProto::to_proto).collect(),
-            transaction_hash: Hash(r.transaction_hash.0),
+        .flat_map(|(_, r)| {
+            std::iter::repeat(r.transaction_hash)
+                .zip(r.events)
+                .map(ToProto::to_proto)
         })
         .collect::<Vec<_>>();
 
@@ -420,191 +423,45 @@ fn get_start_block_number(
     })
 }
 
-/// Helper function to get a range of classes from storage and put them into messages taking into account the 1MiB encoded message size limit.
-///
-/// - If N consecutive classes are small enough to fit into a single message, then they will be put in a single message.
-/// - If a class is too big to fit into a single message, then it will be split into chunks and each chunk will be put into a separate message.
-/// - The function is not greedy, which means that no artificial chunking will be done to fill in the message size limit.
-/// - `class_definition_getter` assumes that the class definition should always be available in storage, otherwise there is a problem with
-///   the database itself (e.g. it's inconsistent/corrupted, inaccessible, etc.) which is a fatal error
 fn classes(
     block_number: BlockNumber,
     block_hash: BlockHash,
-    new_classes: Vec<ClassId>,
+    new_class_ids: Vec<ClassId>,
     responses: &mut Vec<BlockBodiesResponse>,
-    mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
+    mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<ClassDefinition>,
 ) -> anyhow::Result<()> {
-    let mut estimated_message_size = CLASSES_MESSAGE_OVERHEAD;
-    let mut classes_for_this_msg: Vec<(ClassId, Vec<u8>)> = Vec::new();
-    let new_classes = new_classes.into_iter();
+    let mut classes = Vec::new();
 
-    // 1. Let's take the next class definition from storage
-    for class_id in new_classes {
-        let compressed_definition = class_definition_getter(block_number, class_id.class_hash())?;
+    for class_id in new_class_ids {
+        let class_definition = class_definition_getter(block_number, class_id.class_hash())?;
 
-        // 2. Let's check if this definition needs to be chunked
-        if (CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
-            <= MESSAGE_SIZE_LIMIT
-        {
-            // 2.A Ok this definition is small enough but we can still exceed the limit for the entire
-            // message if we have already accumulated some previous "small" class definitions
-            estimated_message_size += PER_CLASS_OVERHEAD + compressed_definition.len();
-
-            if estimated_message_size <= MESSAGE_SIZE_LIMIT {
-                // 2.A.A Ok, it fits, let's add it to the message but don't send the message yet
-                classes_for_this_msg.push((class_id, compressed_definition));
-                // --> 1.
-            } else {
-                // 2.A.B Current definition would be too much for the current message, so send what we have accumulated so far
-                debug_assert!(!classes_for_this_msg.is_empty());
-                debug_assert_eq!(
-                    estimated_message_size,
-                    // What we have accumulated so far
-                    classes_for_this_msg.iter().fold(
-                                CLASSES_MESSAGE_OVERHEAD,
-                                |acc, (_, x)| acc
-                                    + PER_CLASS_OVERHEAD
-                                    + x.len()
-                            ) +
-                            // Current definition that didn't fit
-                            (PER_CLASS_OVERHEAD + compressed_definition.len()),
-                );
-                responses.push(block_bodies_response::take_from_class_definitions(
-                    block_number,
-                    block_hash,
-                    &mut classes_for_this_msg,
-                ));
-                // Buffer for accumulating class definitions for a new message is guaranteed to be empty now
-                debug_assert!(classes_for_this_msg.is_empty());
-
-                // Now we reset the counter and start over with the current definition that didn't fit
-                estimated_message_size =
-                    CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len();
-                classes_for_this_msg.push((class_id, compressed_definition));
-                // --> 1.
+        let class: Class = match (class_id, class_definition) {
+            (ClassId::Cairo(_), ClassDefinition::Cairo(definition)) => {
+                let cairo_class =
+                    serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
+                Class::Cairo0(def_into_dto::cairo(cairo_class))
             }
-        } else {
-            // 2.B Ok, so the current definition is too big to fit into a single message
-
-            // But first we need to send what we've already accumulated so far
-            if !classes_for_this_msg.is_empty() {
-                responses.push(block_bodies_response::take_from_class_definitions(
-                    block_number,
-                    block_hash,
-                    &mut classes_for_this_msg,
-                ));
+            (ClassId::Sierra(_, _), ClassDefinition::Sierra { sierra, casm }) => {
+                let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
+                Class::Cairo1(def_into_dto::sierra(sierra_class, casm))
             }
-            // Buffer for accumulating class definitions for a new message is guaranteed to be empty now
-            debug_assert!(classes_for_this_msg.is_empty());
-
-            // Now we can take care of the current class definition
-            // This class definition is too big, we need to chunk it and send each chunk in a separate message
-            const CHUNK_SIZE_LIMIT: usize =
-                MESSAGE_SIZE_LIMIT - CLASSES_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
-
-            let chunk_iter = compressed_definition.chunks(CHUNK_SIZE_LIMIT).enumerate();
-            let chunk_count = chunk_iter.len().try_into()?;
-
-            for (i, chunk) in chunk_iter {
-                let chunk_idx = i
-                    .try_into()
-                    .expect("chunk_count conversion succeeded, so chunk_idx should too");
-                // One chunk per message, we don't care if the last chunk is smaller
-                // as we don't want to artificially break the next class definition into pieces
-                responses.push(block_bodies_response::from_class_definition_part(
-                    block_number,
-                    block_hash,
-                    class_id,
-                    chunk,
-                    chunk_count,
-                    chunk_idx,
-                ));
-            }
-            // Now we reset the counter and start over with a clean slate
-            estimated_message_size = CLASSES_MESSAGE_OVERHEAD;
-            // --> 1.
-        }
+            _ => anyhow::bail!("Class definition type mismatch"),
+        };
+        classes.push(class);
     }
 
-    // 3. Send the remaining accumulated classes if there are any
-    if !classes_for_this_msg.is_empty() {
-        responses.push(block_bodies_response::take_from_class_definitions(
-            block_number,
-            block_hash,
-            &mut classes_for_this_msg,
-        ));
-    }
-    debug_assert!(classes_for_this_msg.is_empty());
+    responses.push(BlockBodiesResponse {
+        id: Some(BlockId {
+            number: block_number.get(),
+            hash: Hash(block_hash.0),
+        }),
+        body_message: BlockBodyMessage::Classes(Classes {
+            domain: 0, // TODO
+            classes,
+        }),
+    });
 
     Ok(())
-}
-
-mod block_bodies_response {
-    use super::*;
-    use p2p_proto::block::BlockBodyMessage;
-
-    /// It is assumed that the chunk is not empty
-    pub(super) fn from_class_definition_part(
-        block_number: BlockNumber,
-        block_hash: BlockHash,
-        class_id: ClassId,
-        part: &[u8],
-        parts_count: u32,
-        part_idx: u32,
-    ) -> BlockBodiesResponse {
-        use p2p_proto::state::{Class, Classes};
-        let (compiled_hash, casm_hash) = class_id.into_dto();
-        BlockBodiesResponse {
-            id: Some(BlockId {
-                number: block_number.get(),
-                hash: Hash(block_hash.0),
-            }),
-            body_message: BlockBodyMessage::Classes(Classes {
-                domain: 0, // FIXME
-                classes: vec![Class {
-                    compiled_hash,
-                    definition: part.to_vec(),
-                    casm_hash,
-                    total_parts: Some(parts_count),
-                    part_num: Some(part_idx),
-                }],
-            }),
-        }
-    }
-
-    /// Pops all elements from `class_definitions` leaving the vector empty as if it was just `clear()`-ed,
-    /// so that later on it can be reused.
-    pub(super) fn take_from_class_definitions(
-        block_number: BlockNumber,
-        block_hash: BlockHash,
-        class_definitions: &mut Vec<(ClassId, Vec<u8>)>,
-    ) -> BlockBodiesResponse {
-        use p2p_proto::state::{Class, Classes};
-        let classes = class_definitions
-            .drain(..)
-            .map(|(class_id, definition)| {
-                let (compiled_hash, casm_hash) = class_id.into_dto();
-
-                Class {
-                    compiled_hash,
-                    definition,
-                    casm_hash,
-                    total_parts: None,
-                    part_num: None,
-                }
-            })
-            .collect();
-        BlockBodiesResponse {
-            id: Some(BlockId {
-                number: block_number.get(),
-                hash: Hash(block_hash.0),
-            }),
-            body_message: BlockBodyMessage::Classes(Classes {
-                domain: 0, // FIXME
-                classes,
-            }),
-        }
-    }
 }
 
 async fn spawn_blocking_get<Request, Response, Getter>(
@@ -662,5 +519,78 @@ fn get_next_block_number(
             .get()
             .checked_sub(step.into_inner())
             .and_then(BlockNumber::new),
+    }
+}
+
+mod def_into_dto {
+    use p2p_proto::state::{
+        Cairo0Class, Cairo1Class, Cairo1EntryPoints, EntryPoint, SierraEntryPoint,
+    };
+    use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
+
+    pub fn sierra(sierra: super::class_definition::Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class {
+        let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
+            selector: x.selector.0,
+            index: x.function_idx,
+        };
+
+        let entry_points = Cairo1EntryPoints {
+            externals: sierra
+                .entry_points_by_type
+                .external
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            l1_handlers: sierra
+                .entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            constructors: sierra
+                .entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+        };
+
+        Cairo1Class {
+            abi: sierra.abi.as_bytes().to_owned(),
+            program: sierra.sierra_program,
+            entry_points,
+            compiled, // TODO not sure if encoding in storage and dto is the same
+            contract_class_version: sierra.contract_class_version.into(),
+        }
+    }
+
+    pub fn cairo(cairo: super::class_definition::Cairo<'_>) -> Cairo0Class {
+        let into_dto = |x: SelectorAndOffset| EntryPoint {
+            selector: x.selector.0,
+            offset: x.offset.0,
+        };
+
+        Cairo0Class {
+            abi: cairo.abi.get().as_bytes().to_owned(),
+            externals: cairo
+                .entry_points_by_type
+                .external
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            l1_handlers: cairo
+                .entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            constructors: cairo
+                .entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            program: cairo.program.get().as_bytes().to_owned(),
+        }
     }
 }

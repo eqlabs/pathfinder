@@ -1,7 +1,7 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
 use pathfinder_common::{
-    signature::BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
+    BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
 };
 use rand::Rng;
 use starknet_gateway_types::reply::transaction as gw;
@@ -13,8 +13,8 @@ pub type StorageInitializerItem = (
     BlockCommitmentSignature,
     Vec<(gw::Transaction, gw::Receipt)>,
     StateUpdate,
-    Vec<(ClassHash, Vec<u8>)>,  // Cairo 0 definitions
-    Vec<(SierraHash, Vec<u8>)>, // Sierra definitions
+    Vec<(ClassHash, Vec<u8>)>,           // Cairo 0 definitions
+    Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
 );
 
 /// Initialize [`Storage`] with fake blocks and state updates
@@ -25,10 +25,10 @@ pub fn with_n_blocks(storage: &Storage, n: usize) -> StorageInitializer {
 }
 
 /// Same as [`with_n_blocks`] except caller can specify the rng used
-pub fn with_n_blocks_and_rng(
+pub fn with_n_blocks_and_rng<R: Rng>(
     storage: &Storage,
     n: usize,
-    rng: &mut impl Rng,
+    rng: &mut R,
 ) -> StorageInitializer {
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
@@ -52,16 +52,18 @@ pub fn with_n_blocks_and_rng(
                 .declared_sierra_classes
                 .iter()
                 .zip(sierra_defs.iter())
-                .for_each(|((sierra_hash, casm_hash), (_, sierra_definition))| {
-                    tx.insert_sierra_class(
-                        sierra_hash,
-                        sierra_definition,
-                        casm_hash,
-                        &[],
-                        "1.0.alpha6",
-                    )
-                    .unwrap()
-                });
+                .for_each(
+                    |((sierra_hash, casm_hash), (_, sierra_definition, casm_definition))| {
+                        tx.insert_sierra_class(
+                            sierra_hash,
+                            sierra_definition,
+                            casm_hash,
+                            casm_definition,
+                            "1.0.alpha6",
+                        )
+                        .unwrap()
+                    },
+                );
 
             tx.insert_state_update(header.number, state_update).unwrap();
         },
@@ -84,6 +86,7 @@ pub mod init {
         StateUpdate, TransactionIndex,
     };
     use rand::Rng;
+    use starknet_gateway_types::class_definition;
     use starknet_gateway_types::reply::transaction as gw;
 
     /// Create fake blocks and state updates with __limited consistency guarantees__:
@@ -114,7 +117,7 @@ pub mod init {
     }
 
     /// Same as [`with_n_blocks`] except caller can specify the rng used
-    pub fn with_n_blocks_and_rng(n: usize, rng: &mut impl Rng) -> StorageInitializer {
+    pub fn with_n_blocks_and_rng<R: Rng>(n: usize, rng: &mut R) -> StorageInitializer {
         let mut init = Vec::with_capacity(n);
 
         for i in 0..n {
@@ -137,6 +140,8 @@ pub mod init {
                             transaction_index: TransactionIndex::new_or_panic(
                                 i.try_into().expect("u64 is at least as wide as usize"),
                             ),
+                            l1_to_l2_consumed_message: None,
+                            events: fake_non_empty_with_rng(rng),
                             ..Faker.fake_with_rng(rng)
                         },
                     )
@@ -156,11 +161,28 @@ pub mod init {
 
             let cairo_definitions = declared_cairo_classes
                 .iter()
-                .map(|&class_hash| (class_hash, Faker.fake_with_rng::<Vec<u8>, _>(rng)))
+                .map(|&class_hash| {
+                    (
+                        class_hash,
+                        serde_json::to_vec(
+                            &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
+                        )
+                        .unwrap(),
+                    )
+                })
                 .collect::<Vec<_>>();
             let sierra_definitions = declared_sierra_classes
                 .iter()
-                .map(|(&sierra_hash, _)| (sierra_hash, Faker.fake_with_rng::<Vec<u8>, _>(rng)))
+                .map(|(&sierra_hash, _)| {
+                    (
+                        sierra_hash,
+                        serde_json::to_vec(
+                            &Faker.fake_with_rng::<class_definition::Sierra<'_>, _>(rng),
+                        )
+                        .unwrap(),
+                        Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+                    )
+                })
                 .collect::<Vec<_>>();
 
             init.push((

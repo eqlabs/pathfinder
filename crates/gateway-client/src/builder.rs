@@ -416,7 +416,7 @@ mod tests {
     mod retry {
         use assert_matches::assert_matches;
         use http::{response::Builder, StatusCode};
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
         use std::{collections::VecDeque, net::SocketAddr, sync::Arc, time::Duration};
         use tokio::{sync::Mutex, task::JoinHandle};
         use warp::Filter;

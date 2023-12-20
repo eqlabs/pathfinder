@@ -468,7 +468,7 @@ pub fn extract_program_and_entry_points_by_type(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions_sorted::assert_eq;
 
     #[test]
     fn zero() {

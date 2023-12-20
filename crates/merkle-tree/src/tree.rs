@@ -1551,7 +1551,7 @@ mod tests {
                 bitvec![u8, Msb0;],
             );
 
-            pretty_assertions::assert_eq!(
+            pretty_assertions_sorted::assert_eq!(
                 visited,
                 vec![expected_0, expected_1, expected_2, expected_3]
             );
@@ -1639,7 +1639,7 @@ mod tests {
                 path_to_0,
             );
 
-            pretty_assertions::assert_eq!(
+            pretty_assertions_sorted::assert_eq!(
                 visited,
                 vec![
                     expected_0, expected_1, expected_2, expected_3, expected_4, expected_5,

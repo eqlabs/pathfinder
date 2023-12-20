@@ -15,9 +15,8 @@ use pathfinder_common::transaction::{
 use pathfinder_common::{
     AccountDeploymentDataElem, BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash,
     ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint,
-    EventData, EventKey, Fee, GasPrice, SequencerAddress, SierraHash, StarknetVersion,
-    StateCommitment, StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+    EventData, EventKey, Fee, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 
 /// We don't want to introduce circular dependencies between crates
@@ -68,11 +67,12 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
 }
 
+/// Simple state update with class definitions whose hashes have not been computed and compared against the state update yet.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StateUpdateWithDefs {
+pub struct StateUpdateWithDefinitions {
     pub block_hash: BlockHash,
     pub state_update: StateUpdate,
-    pub classes: Vec<Class>,
+    pub classes: Vec<p2p_proto::state::Class>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,44 +82,6 @@ pub struct ContractUpdate {
     /// We don't explicitly know if it's one or the other
     pub class: Option<ClassHash>,
     pub nonce: Option<ContractNonce>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Class {
-    Cairo {
-        hash: ClassHash,
-        definition: Vec<u8>,
-    },
-    Sierra {
-        sierra_hash: SierraHash,
-        definition: Vec<u8>,
-        casm_hash: CasmHash,
-    },
-}
-
-impl Class {
-    pub fn definition_mut(&mut self) -> &mut Vec<u8> {
-        match self {
-            Class::Cairo { definition, .. } => definition,
-            Class::Sierra { definition, .. } => definition,
-        }
-    }
-}
-
-impl From<p2p_proto::state::Class> for Class {
-    fn from(class: p2p_proto::state::Class) -> Self {
-        match class.casm_hash {
-            Some(casm_hash) => Class::Sierra {
-                sierra_hash: SierraHash(class.compiled_hash.0),
-                definition: class.definition,
-                casm_hash: CasmHash(casm_hash.0),
-            },
-            None => Class::Cairo {
-                hash: ClassHash(class.compiled_hash.0),
-                definition: class.definition,
-            },
-        }
-    }
 }
 
 impl From<pathfinder_common::BlockHeader> for BlockHeader {
@@ -278,41 +240,18 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 nonce: TransactionNonce(x.nonce),
                 nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
                 fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
-                resource_bounds: ResourceBounds {
-                    l1_gas: ResourceBound {
-                        max_amount: pathfinder_common::ResourceAmount(
-                            x.l1_gas.max_amount.try_into()?,
-                        ),
-                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
-                            x.l1_gas.max_price_per_unit.try_into()?,
-                        ),
-                    },
-                    l2_gas: ResourceBound {
-                        max_amount: pathfinder_common::ResourceAmount(
-                            x.l2_gas.max_amount.try_into()?,
-                        ),
-                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
-                            x.l2_gas.max_price_per_unit.try_into()?,
-                        ),
-                    },
-                },
+                resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
                 tip: pathfinder_common::Tip(x.tip.try_into()?),
-                paymaster_data: x
-                    .paymaster_data
-                    .into_iter()
-                    .map(pathfinder_common::PaymasterDataElem)
-                    .collect(),
+                paymaster_data: vec![pathfinder_common::PaymasterDataElem(x.paymaster_data.0)],
                 signature: x
                     .signature
                     .parts
                     .into_iter()
                     .map(TransactionSignatureElem)
                     .collect(),
-                account_deployment_data: x
-                    .account_deployment_data
-                    .into_iter()
-                    .map(AccountDeploymentDataElem)
-                    .collect(),
+                account_deployment_data: vec![AccountDeploymentDataElem(
+                    x.account_deployment_data.0,
+                )],
                 sender_address: ContractAddress(x.sender.0),
                 compiled_class_hash: CasmHash(x.compiled_class_hash),
             }),
@@ -355,30 +294,9 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 nonce: TransactionNonce(x.nonce),
                 nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
                 fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
-                resource_bounds: ResourceBounds {
-                    l1_gas: ResourceBound {
-                        max_amount: pathfinder_common::ResourceAmount(
-                            x.l1_gas.max_amount.try_into()?,
-                        ),
-                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
-                            x.l1_gas.max_price_per_unit.try_into()?,
-                        ),
-                    },
-                    l2_gas: ResourceBound {
-                        max_amount: pathfinder_common::ResourceAmount(
-                            x.l2_gas.max_amount.try_into()?,
-                        ),
-                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
-                            x.l2_gas.max_price_per_unit.try_into()?,
-                        ),
-                    },
-                },
+                resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
                 tip: pathfinder_common::Tip(x.tip.try_into()?),
-                paymaster_data: x
-                    .paymaster_data
-                    .into_iter()
-                    .map(pathfinder_common::PaymasterDataElem)
-                    .collect(),
+                paymaster_data: vec![pathfinder_common::PaymasterDataElem(x.paymaster_data.0)],
                 contract_address_salt: ContractAddressSalt(x.address_salt),
                 constructor_calldata: x.calldata.into_iter().map(CallParam).collect(),
                 class_hash: ClassHash(x.class_hash.0),
@@ -424,39 +342,16 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 nonce: TransactionNonce(x.nonce),
                 nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
                 fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
-                resource_bounds: ResourceBounds {
-                    l1_gas: ResourceBound {
-                        max_amount: pathfinder_common::ResourceAmount(
-                            x.l1_gas.max_amount.try_into()?,
-                        ),
-                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
-                            x.l1_gas.max_price_per_unit.try_into()?,
-                        ),
-                    },
-                    l2_gas: ResourceBound {
-                        max_amount: pathfinder_common::ResourceAmount(
-                            x.l2_gas.max_amount.try_into()?,
-                        ),
-                        max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
-                            x.l2_gas.max_price_per_unit.try_into()?,
-                        ),
-                    },
-                },
+                resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
                 tip: pathfinder_common::Tip(x.tip.try_into()?),
-                paymaster_data: x
-                    .paymaster_data
-                    .into_iter()
-                    .map(pathfinder_common::PaymasterDataElem)
-                    .collect(),
-                account_deployment_data: x
-                    .account_deployment_data
-                    .into_iter()
-                    .map(pathfinder_common::AccountDeploymentDataElem)
-                    .collect(),
+                paymaster_data: vec![pathfinder_common::PaymasterDataElem(x.paymaster_data.0)],
+                account_deployment_data: vec![AccountDeploymentDataElem(
+                    x.account_deployment_data.0,
+                )],
                 calldata: x.calldata.into_iter().map(CallParam).collect(),
                 sender_address: ContractAddress(x.sender.0),
             }),
-            L1HandlerV1(x) => TransactionVariant::L1Handler(L1HandlerTransaction {
+            L1HandlerV0(x) => TransactionVariant::L1Handler(L1HandlerTransaction {
                 contract_address: ContractAddress(x.address.0),
                 entry_point_selector: EntryPoint(x.entry_point_selector),
                 nonce: TransactionNonce(x.nonce),
@@ -470,6 +365,28 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 // https://alpha-mainnet.starknet.io/feeder_gateway/get_transaction?transactionHash=0x02e42cd5f71a2b09547083f82e267ac2f37ba71e09fa868ffce90d141531c3ba
                 version: TransactionVersion::ZERO,
             }),
+        })
+    }
+}
+
+impl TryFromDto<p2p_proto::transaction::ResourceBounds> for ResourceBounds {
+    fn try_from_dto(dto: p2p_proto::transaction::ResourceBounds) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self {
+            l1_gas: ResourceBound {
+                max_amount: pathfinder_common::ResourceAmount(dto.l1_gas.max_amount.try_into()?),
+                max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                    dto.l1_gas.max_price_per_unit.try_into()?,
+                ),
+            },
+            l2_gas: ResourceBound {
+                max_amount: pathfinder_common::ResourceAmount(dto.l2_gas.max_amount.try_into()?),
+                max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                    dto.l2_gas.max_price_per_unit.try_into()?,
+                ),
+            },
         })
     }
 }

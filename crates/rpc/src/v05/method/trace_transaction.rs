@@ -240,7 +240,7 @@ pub mod tests {
             };
             let output = trace_transaction(context.clone(), input).await.unwrap();
             let expected = TraceTransactionOutput(trace.trace_root);
-            pretty_assertions::assert_eq!(output, expected);
+            pretty_assertions_sorted::assert_eq!(output, expected);
         }
 
         Ok(())
@@ -256,7 +256,7 @@ pub mod tests {
             };
             let output = trace_transaction(context.clone(), input).await.unwrap();
             let expected = TraceTransactionOutput(trace.trace_root);
-            pretty_assertions::assert_eq!(output, expected);
+            pretty_assertions_sorted::assert_eq!(output, expected);
         }
 
         Ok(())

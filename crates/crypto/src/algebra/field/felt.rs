@@ -452,7 +452,7 @@ impl std::fmt::Display for HexParseError {
 #[cfg(test)]
 mod tests {
     use bitvec::bitvec;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions_sorted::assert_eq;
 
     use super::*;
 
@@ -525,7 +525,7 @@ mod tests {
     }
 
     mod from_be_slice {
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         use super::*;
 
@@ -569,7 +569,7 @@ mod tests {
     }
 
     mod fmt {
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         use super::Felt;
 
@@ -626,7 +626,7 @@ mod tests {
 
     mod from_hex_str {
         use assert_matches::assert_matches;
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         use super::*;
 
@@ -704,7 +704,7 @@ mod tests {
     }
 
     mod to_hex_str {
-        use pretty_assertions::assert_eq;
+        use pretty_assertions_sorted::assert_eq;
 
         use super::*;
 

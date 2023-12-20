@@ -325,6 +325,7 @@ mod boundary_conditions {
 mod prop {
     use crate::p2p_network::client::types as simplified;
     use crate::p2p_network::sync_handlers;
+    use crate::p2p_network::sync_handlers::def_into_dto;
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::types::{self as p2p_types, TryFromDto};
@@ -335,16 +336,47 @@ mod prop {
     use p2p_proto::common::{BlockId, BlockNumberOrHash, Error, Fin, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponseKind};
     use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponseKind};
+    use p2p_proto::state::{Cairo0Class, Cairo1Class, Class};
     use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseKind};
     use pathfinder_common::event::Event;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
     use pathfinder_common::{
-        BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber, ClassHash,
+        BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber,
         TransactionHash,
     };
     use proptest::prelude::*;
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
     use tokio::runtime::Runtime;
+
+    #[macro_export]
+    macro_rules! prop_assert_eq_sorted {
+        ($left:expr, $right:expr) => {{
+            let left = &$left;
+            let right = &$right;
+            let comparison_string = pretty_assertions_sorted::Comparison::new(
+                &pretty_assertions_sorted::SortedDebug::new(left),
+                &pretty_assertions_sorted::SortedDebug::new(right)
+            ).to_string();
+            proptest::prop_assert!(
+                *left == *right,
+                "assertion failed: `(left == right)`\n{comparison_string}\n");
+        }};
+
+        ($left:expr, $right:expr, $fmt:tt $($args:tt)*) => {{
+            let left = &$left;
+            let right = &$right;
+            let comparison_string = pretty_assertions_sorted::Comparison::new(
+                &pretty_assertions_sorted::SortedDebug::new(left),
+                &pretty_assertions_sorted::SortedDebug::new(right)
+            ).to_string();
+            proptest::prop_assert!(
+                *left == *right,
+                concat!(
+                    "assertion failed: `(left == right)`\n\
+                    {}: ", $fmt),
+                comparison_string $($args)*);
+        }};
+    }
 
     proptest! {
         #[test]
@@ -374,8 +406,8 @@ mod prop {
             // Empty reply in the test is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(parts.len(), 1);
-                prop_assert_eq!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(parts.len(), 1);
+                prop_assert_eq_sorted!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group reply parts by block: [[hdr-0, fin-0], [hdr-1, fin-1], ...]
                 let actual = parts.chunks_exact(3).map(|chunk| {
@@ -394,7 +426,7 @@ mod prop {
                     (h, s)
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -402,17 +434,35 @@ mod prop {
     proptest! {
         #[test]
         fn get_bodies((num_blocks, db_seed, start_block, limit, step, direction) in strategy::composite()) {
+            use crate::p2p_network::sync_handlers::class_definition::{Cairo, Sierra};
+
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(db_seed, num_blocks);
             // Get the overlapping set between the db and the request
-            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction);
+            // Extract the expected state updates, definitions and classes from the overlapping set
+            // in a form digestable for this test
+            let expected = expected.into_iter()
                 .map(|(header, _, _, state_update, cairo_defs, sierra_defs)|
                     (
+                        // block number and hash
                         (header.number, header.hash),
-                        (state_update.into(),
-                        cairo_defs.into_iter().chain(sierra_defs.into_iter().map(|(h, d)| (ClassHash(h.0), d))).collect())
+                        (
+                            // "simplified" state update, without an explicit list of declared and replaced classes
+                            state_update.clone().into(),
+                            // Cairo0 class definitions, parsed into p2p DTOs
+                            cairo_defs.into_iter().map(|(_, d)| {
+                                let def = serde_json::from_slice::<Cairo<'_>>(&d).unwrap();
+                                def_into_dto::cairo(def)
+                            }).collect(),
+                            // Cairo1 (Sierra) class definitions, parsed into p2p DTOs
+                            sierra_defs.into_iter().map(|(_, s, c)| {
+                                let def = serde_json::from_slice::<Sierra<'_>>(&s).unwrap();
+                                def_into_dto::sierra(def, c)
+                            }).collect()
+                        )
                     )
-            ).collect::<HashMap<_, (p2p_types::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
+                ).collect::<HashMap<_, (p2p_types::StateUpdate, BTreeSet<Cairo0Class>, BTreeSet<Cairo1Class>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = Runtime::new().unwrap().block_on(async {
@@ -421,11 +471,12 @@ mod prop {
                 let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
                 replies
             });
+
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Collect replies into a set of (block_number, state_update, definitions)
                 let mut actual = HashMap::new();
@@ -438,17 +489,17 @@ mod prop {
                             block_id = Some((BlockNumber::new(number).unwrap(), BlockHash(hash.0)));
 
                             let state_update = p2p_types::StateUpdate::from(d);
-                            actual.insert(block_id.unwrap(), (state_update, HashMap::new()));
+                            actual.insert(block_id.unwrap(), (state_update, BTreeSet::new(), BTreeSet::new()));
                         },
                         BlockBodyMessage::Classes(c) => {
                             // Classes coming after a state diff should be for the same block
                             let entry = actual.get_mut(&block_id.expect("Classes follow Diff so current block id should be set")).unwrap();
-                            entry.1.extend(c.classes.into_iter().map(|c|
-                                (
-                                    ClassHash(c.compiled_hash.0),
-                                    zstd::decode_all(&c.definition[..]).unwrap()
-                                )
-                            ));
+                            c.classes.into_iter().for_each(|c| {
+                                match c {
+                                    Class::Cairo0(cairo) => entry.1.insert(cairo),
+                                    Class::Cairo1(sierra) => entry.2.insert(sierra),
+                                };
+                            });
                         },
                         BlockBodyMessage::Fin(f) => {
                             match f.error {
@@ -463,7 +514,7 @@ mod prop {
                     }
                 }
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -518,8 +569,8 @@ mod prop {
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group replies by block, it is assumed that transactions per block are small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[transactions-0, fin-0], [transactions-1, fin-1], ...]
@@ -537,7 +588,7 @@ mod prop {
                     )
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -568,8 +619,8 @@ mod prop {
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group replies by block, it is assumed that receipts per block small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[receipts-0, fin-0], [receipts-1, fin-1], ...]
@@ -587,7 +638,7 @@ mod prop {
                     )
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -601,12 +652,13 @@ mod prop {
             // These are the events that we expect to be read from the db
             // Extract tuples (block_number, block_hash, [events{txn#1}, events{txn#2}, ...])
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, tr, _, _, _)|
+                .map(|(h, _, tr, _, _, _)|{
+                    let events = tr.into_iter().map(|(_, r)| (r.transaction_hash, r.events)).collect::<HashMap<_, Vec<_>>>();
                     (
                         h.number,
                         h.hash,
-                        tr.into_iter().map(|(_, r)| (r.transaction_hash, r.events)).collect::<Vec<_>>()
-                    )
+                        events
+                    )}
             ).collect::<Vec<_>>();
             // Run the handler
             let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
@@ -619,8 +671,8 @@ mod prop {
             // Empty reply is only possible if the request does not overlap with storage
             // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
-                prop_assert_eq!(replies.len(), 1);
-                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+                prop_assert_eq_sorted!(replies.len(), 1);
+                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
                 // Group replies by block, it is assumed that events per block small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[events-0, fin-0], [events-1, fin-1], ...]
@@ -628,21 +680,20 @@ mod prop {
                     assert_eq!(replies[0].id, replies[1].id);
                     // Make sure block data is delimited
                     assert_eq!(replies[1].kind, EventsResponseKind::Fin(Fin::ok()));
-                    // Extract events
-                    let events = replies[0].kind.clone().into_events().unwrap().items;
                     let BlockId { number, hash } = replies[0].id.unwrap();
+                    // Extract events
+                    let mut events = HashMap::<_, Vec<_>>::new();
+                    replies[0].kind.clone().into_events().unwrap().items.into_iter().for_each(|e| {
+                        events.entry(TransactionHash(e.transaction_hash.0)).or_default().push(Event::try_from_dto(e).unwrap());
+                    });
                     (
                         BlockNumber::new(number).unwrap(),
                         BlockHash(hash.0),
-                        events.into_iter().map(|e|
-                            (
-                                TransactionHash(e.transaction_hash.0),
-                                e.events.into_iter().map(|e| Event::try_from_dto(e).unwrap()).collect::<Vec<_>>()
-                            )).collect::<Vec<_>>()
+                        events
                     )
                 }).collect::<Vec<_>>();
 
-                prop_assert_eq!(actual, expected);
+                prop_assert_eq_sorted!(actual, expected);
             }
         }
     }
@@ -778,23 +829,8 @@ mod prop {
 }
 
 mod classes {
-    use crate::p2p_network::sync_handlers::{classes, ClassId};
+    use crate::p2p_network::sync_handlers::classes;
     use fake::{Fake, Faker};
-    use p2p_proto::common::BlockId;
-
-    #[test]
-    fn empty_input_yields_empty_output() {
-        let mut responses = vec![];
-        assert!(classes(
-            Faker.fake(),
-            Faker.fake(),
-            vec![],
-            &mut responses,
-            |_, _| Ok(vec![]),
-        )
-        .is_ok());
-        assert!(responses.is_empty());
-    }
 
     #[test]
     fn getter_error_yields_error() {
@@ -808,108 +844,5 @@ mod classes {
         )
         .is_err());
         assert!(responses.is_empty());
-    }
-
-    #[test]
-    fn batching_and_partitioning() {
-        use p2p_proto::block::BlockBodyMessage::Classes;
-        use p2p_proto::common::Hash;
-        use p2p_proto::consts::{CLASSES_MESSAGE_OVERHEAD, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD};
-        use p2p_proto::state::Class;
-
-        // Max size of definition that can be stored in one message
-        const FULL: usize = MESSAGE_SIZE_LIMIT - CLASSES_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
-        const SMALL: usize = FULL / 10;
-        const BIG: usize = MESSAGE_SIZE_LIMIT * 3;
-        let not_full = fake::vec![u8; 1..FULL];
-
-        let block_number = Faker.fake();
-        let block_hash = Faker.fake();
-        let defs = vec![
-            // Small ones are batched
-            fake::vec![u8; 1..=SMALL],
-            fake::vec![u8; 1..=SMALL],
-            // The biggest that fits into one msg is not artificially partitioned and glued to the previous message
-            fake::vec![u8; FULL],
-            // Two that fit exactly into one msg
-            fake::vec![u8; FULL - not_full.len() - PER_CLASS_OVERHEAD],
-            not_full,
-            // A small one has to be put in the next message as there's no space left
-            fake::vec![u8; 1..=SMALL],
-            // Big one, should be chunked, but the first chunk should not be glued to the previous message
-            fake::vec![u8; BIG],
-            // Small one again, is not glued to the last chunk of the previous partitioned definition, no matter how small that chunk is
-            fake::vec![u8; 1..=SMALL],
-        ];
-        let class_ids = fake::vec![ClassId; defs.len()];
-        let mut def_it = defs.clone().into_iter();
-        let class_definition_getter = |_, _| Ok(def_it.next().unwrap());
-
-        let mut responses = vec![];
-        // UUT
-        assert!(classes(
-            block_number,
-            block_hash,
-            class_ids.clone(),
-            &mut responses,
-            class_definition_getter,
-        )
-        .is_ok());
-
-        // Extract class definition responses, perform basic checks
-        let responses = responses
-            .into_iter()
-            .map(|r| {
-                assert_eq!(
-                    r.id,
-                    Some(BlockId {
-                        number: block_number.get(),
-                        hash: Hash(block_hash.0)
-                    })
-                );
-                match r.body_message {
-                    Classes(c) => {
-                        assert_eq!(c.domain, 0, "FIXME figure out what the domain id should be");
-                        c.classes
-                    }
-                    _ => panic!("unexpected message type"),
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let definition = |i| {
-            let (compiled_hash, casm_hash) = (class_ids[i] as ClassId).into_dto();
-            Class {
-                compiled_hash,
-                definition: (&defs[i] as &Vec<u8>).clone(),
-                casm_hash,
-                total_parts: None,
-                part_num: None,
-            }
-        };
-        let part = |i, d: &[u8], t, p| Class {
-            definition: d.to_vec(),
-            total_parts: Some(t),
-            part_num: Some(p),
-            ..definition(i)
-        };
-        // Small ones are batched
-        assert_eq!(responses[0], vec![definition(0), definition(1),]);
-        // The biggest that fits into one msg is not artificially partitioned and glued to the previous message
-        assert_eq!(responses[1], vec![definition(2)]);
-        // Two that fit exactly into one msg
-        assert_eq!(responses[2], vec![definition(3), definition(4)]);
-        // A small one has to be put in the next message as there's no space left
-        assert_eq!(responses[3], vec![definition(5)]);
-        // Big one, should be chunked, but the first chunk should not be glued to the previous message
-        assert_eq!(responses[4], vec![part(6, &defs[6][..FULL], 4, 0),]);
-        assert_eq!(responses[5], vec![part(6, &defs[6][FULL..2 * FULL], 4, 1),]);
-        assert_eq!(
-            responses[6],
-            vec![part(6, &defs[6][2 * FULL..3 * FULL], 4, 2),]
-        );
-        assert_eq!(responses[7], vec![part(6, &defs[6][3 * FULL..], 4, 3),]);
-        // Small one again, is not glued to the last chunk of the previous partitioned definition, no matter how small that chunk is
-        assert_eq!(responses[8], vec![definition(7)]);
     }
 }

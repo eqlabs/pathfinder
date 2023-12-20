@@ -3,8 +3,7 @@ use p2p_proto::receipt::{
     InvokeTransactionReceipt, L1HandlerTransactionReceipt,
 };
 use pathfinder_common::{
-    ContractAddress, EntryPoint, EthereumAddress, Fee, L1ToL2MessageNonce,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash,
+    ContractAddress, EthereumAddress, Fee, L2ToL1MessagePayloadElem, TransactionHash,
 };
 use starknet_gateway_types::reply::transaction as gw;
 
@@ -71,22 +70,7 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
                 },
-                l1_to_l2_consumed_message: match common.consumed_message {
-                    Some(x) => Some(gw::L1ToL2Message {
-                        from_address: EthereumAddress(x.from_address.0),
-                        payload: x
-                            .payload
-                            .into_iter()
-                            .map(L1ToL2MessagePayloadElem)
-                            .collect(),
-                        selector: EntryPoint(x.entry_point_selector),
-                        to_address: ContractAddress::new(x.to_address).ok_or_else(|| {
-                            anyhow::anyhow!("Invalid contract address > u32::MAX")
-                        })?,
-                        nonce: Some(L1ToL2MessageNonce(x.nonce)),
-                    }),
-                    None => None,
-                },
+                l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: common
                     .messages_sent
                     .into_iter()

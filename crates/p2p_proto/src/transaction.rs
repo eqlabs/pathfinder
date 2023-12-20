@@ -11,6 +11,13 @@ pub struct ResourceLimits {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::transaction::ResourceBounds")]
+pub struct ResourceBounds {
+    pub l1_gas: ResourceLimits,
+    pub l2_gas: ResourceLimits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::AccountSignature")]
 pub struct AccountSignature {
     pub parts: Vec<Felt>,
@@ -52,19 +59,16 @@ pub struct DeclareV2 {
 #[protobuf(name = "crate::proto::transaction::transaction::DeclareV3")]
 pub struct DeclareV3 {
     pub sender: Address,
-    pub max_fee: Felt,
     pub signature: AccountSignature,
     pub class_hash: Hash,
     pub nonce: Felt,
     pub compiled_class_hash: Felt,
-    pub l1_gas: ResourceLimits,
-    pub l2_gas: ResourceLimits,
+    pub resource_bounds: ResourceBounds,
     pub tip: Felt,
-    pub paymaster: Address,
+    pub paymaster_data: Address,
+    pub account_deployment_data: Address,
     pub nonce_domain: String,
     pub fee_domain: String,
-    pub paymaster_data: Vec<Felt>,
-    pub account_deployment_data: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -94,19 +98,16 @@ pub struct DeployAccountV1 {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeployAccountV3")]
 pub struct DeployAccountV3 {
-    pub max_fee: Felt,
     pub signature: AccountSignature,
     pub class_hash: Hash,
     pub nonce: Felt,
     pub address_salt: Felt,
     pub calldata: Vec<Felt>,
-    pub l1_gas: ResourceLimits,
-    pub l2_gas: ResourceLimits,
+    pub resource_bounds: ResourceBounds,
     pub tip: Felt,
-    pub paymaster: Address,
+    pub paymaster_data: Address,
     pub nonce_domain: String,
     pub fee_domain: String,
-    pub paymaster_data: Vec<Felt>,
     pub address: Address,
 }
 
@@ -145,23 +146,20 @@ pub struct InvokeV1 {
 #[protobuf(name = "crate::proto::transaction::transaction::InvokeV3")]
 pub struct InvokeV3 {
     pub sender: Address,
-    pub max_fee: Felt,
     pub signature: AccountSignature,
     pub calldata: Vec<Felt>,
-    pub l1_gas: ResourceLimits,
-    pub l2_gas: ResourceLimits,
+    pub resource_bounds: ResourceBounds,
     pub tip: Felt,
-    pub paymaster: Address,
+    pub paymaster_data: Address,
+    pub account_deployment_data: Address,
     pub nonce_domain: String,
     pub fee_domain: String,
     pub nonce: Felt,
-    pub paymaster_data: Vec<Felt>,
-    pub account_deployment_data: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::transaction::transaction::L1HandlerV1")]
-pub struct L1HandlerV1 {
+#[protobuf(name = "crate::proto::transaction::transaction::L1HandlerV0")]
+pub struct L1HandlerV0 {
     pub nonce: Felt,
     pub address: Address,
     pub entry_point_selector: Felt,
@@ -180,7 +178,7 @@ pub enum Transaction {
     InvokeV0(InvokeV0),
     InvokeV1(InvokeV1),
     InvokeV3(InvokeV3),
-    L1HandlerV1(L1HandlerV1),
+    L1HandlerV0(L1HandlerV0),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -259,7 +257,7 @@ impl ToProtobuf<proto::transaction::Transaction> for Transaction {
                 Self::InvokeV0(txn) => InvokeV0(txn.to_protobuf()),
                 Self::InvokeV1(txn) => InvokeV1(txn.to_protobuf()),
                 Self::InvokeV3(txn) => InvokeV3(txn.to_protobuf()),
-                Self::L1HandlerV1(txn) => L1Handler(txn.to_protobuf()),
+                Self::L1HandlerV0(txn) => L1Handler(txn.to_protobuf()),
             }),
         }
     }
@@ -296,7 +294,7 @@ impl TryFromProtobuf<proto::transaction::Transaction> for Transaction {
             InvokeV1(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::InvokeV1),
             InvokeV3(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::InvokeV3),
             L1Handler(t) => {
-                TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::L1HandlerV1)
+                TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::L1HandlerV0)
             }
         }
     }

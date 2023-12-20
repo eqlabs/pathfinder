@@ -110,6 +110,7 @@ impl From<BlockNumberOrTag> for pathfinder_common::BlockId {
 }
 
 pub mod contract {
+    use fake::Dummy;
     use pathfinder_common::{ByteCodeOffset, EntryPoint};
     use pathfinder_crypto::Felt;
     use serde_with::serde_as;
@@ -138,7 +139,7 @@ pub mod contract {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct SelectorAndOffset {
         pub selector: EntryPoint,
@@ -181,7 +182,7 @@ pub mod contract {
     }
 
     /// Descriptor of an entry point in a Sierra class.
-    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct SelectorAndFunctionIndex {
         pub selector: EntryPoint,

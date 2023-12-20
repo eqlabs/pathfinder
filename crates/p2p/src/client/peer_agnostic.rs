@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 
 use crate::sync::protocol;
 use crate::{
-    client::{peer_aware, types::StateUpdateWithDefs},
+    client::{peer_aware, types::StateUpdateWithDefinitions},
     peers,
 };
 
@@ -168,7 +168,7 @@ impl Client {
         &self,
         start_block_hash: BlockHash,
         num_blocks: usize,
-    ) -> anyhow::Result<Vec<StateUpdateWithDefs>> {
+    ) -> anyhow::Result<Vec<StateUpdateWithDefinitions>> {
         anyhow::ensure!(num_blocks > 0, "0 blocks requested");
 
         let limit: u64 = num_blocks.try_into()?;

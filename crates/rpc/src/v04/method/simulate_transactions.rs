@@ -639,7 +639,7 @@ pub(crate) mod tests {
         };
 
         let result = simulate_transactions(context, input).await.expect("result");
-        pretty_assertions::assert_eq!(result.0, expected);
+        pretty_assertions_sorted::assert_eq!(result.0, expected);
     }
 
     pub(crate) mod fixtures {
@@ -1327,7 +1327,7 @@ pub(crate) mod tests {
         };
         let result = simulate_transactions(context, input).await.unwrap();
 
-        pretty_assertions::assert_eq!(
+        pretty_assertions_sorted::assert_eq!(
             result,
             SimulateTransactionOutput(vec![
                 fixtures::expected_output::declare(account_contract_address, &last_block_header),
@@ -1370,7 +1370,7 @@ pub(crate) mod tests {
         };
         let result = simulate_transactions(context, input).await.unwrap();
 
-        pretty_assertions::assert_eq!(
+        pretty_assertions_sorted::assert_eq!(
             result,
             SimulateTransactionOutput(vec![
                 fixtures::expected_output::declare_without_fee_transfer(account_contract_address),
@@ -1411,7 +1411,7 @@ pub(crate) mod tests {
         };
         let result = simulate_transactions(context, input).await.unwrap();
 
-        pretty_assertions::assert_eq!(
+        pretty_assertions_sorted::assert_eq!(
             result,
             SimulateTransactionOutput(vec![
                 fixtures::expected_output::declare_without_validate(

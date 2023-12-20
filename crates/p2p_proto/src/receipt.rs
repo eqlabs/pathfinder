@@ -61,8 +61,6 @@ pub struct ReceiptCommon {
     pub messages_sent: Vec<MessageToL1>,
     pub execution_resources: ExecutionResources,
     pub revert_reason: String,
-    #[optional]
-    pub consumed_message: Option<MessageToL2>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -203,11 +201,11 @@ impl TryFromProtobuf<proto::receipt::Receipt> for Receipt {
         input: proto::receipt::Receipt,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::receipt::receipt::Receipt::{
+        use proto::receipt::receipt::Type::{
             Declare, DeployAccount, DeprecatedDeploy, Invoke, L1Handler,
         };
 
-        match input.receipt {
+        match input.r#type {
             Some(receipt) => match receipt {
                 Invoke(r) => Ok(Receipt::Invoke(TryFromProtobuf::try_from_protobuf(
                     r, field_name,
@@ -235,18 +233,18 @@ impl TryFromProtobuf<proto::receipt::Receipt> for Receipt {
 
 impl ToProtobuf<proto::receipt::Receipt> for Receipt {
     fn to_protobuf(self) -> proto::receipt::Receipt {
-        use proto::receipt::receipt::Receipt::{
+        use proto::receipt::receipt::Type::{
             Declare, DeployAccount, DeprecatedDeploy, Invoke, L1Handler,
         };
 
-        let receipt = Some(match self {
+        let r#type = Some(match self {
             Receipt::Invoke(r) => Invoke(r.to_protobuf()),
             Receipt::Declare(r) => Declare(r.to_protobuf()),
             Receipt::Deploy(r) => DeprecatedDeploy(r.to_protobuf()),
             Receipt::DeployAccount(r) => DeployAccount(r.to_protobuf()),
             Receipt::L1Handler(r) => L1Handler(r.to_protobuf()),
         });
-        proto::receipt::Receipt { receipt }
+        proto::receipt::Receipt { r#type }
     }
 }
 

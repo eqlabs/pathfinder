@@ -1,3 +1,4 @@
+pub mod class_definition;
 pub mod class_hash;
 pub mod error;
 pub mod reply;

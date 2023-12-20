@@ -42,7 +42,7 @@ impl<'de> Deserialize<'de> for Felt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions_sorted::assert_eq;
     const ZERO: &str = r#""0x0""#;
     const ODD: &str = "0x1234567890abcde";
     const EVEN: &str = "0x1234567890abcdef";

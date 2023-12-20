@@ -154,12 +154,11 @@ pub(crate) mod block_header {
 }
 
 pub(crate) mod state_update {
-    use crate::client::types::{Class, StateUpdate, StateUpdateWithDefs};
+    use crate::client::types::{StateUpdate, StateUpdateWithDefinitions};
     use p2p_proto::{
         block::{BlockBodiesResponse, BlockBodyMessage},
-        common::{BlockId, Error, Fin, Hash},
-        consts::MAX_PARTS_PER_CLASS,
-        state::Classes,
+        common::{BlockId, Error, Fin},
+        state::{Class, Classes},
     };
     use pathfinder_common::BlockHash;
     use std::collections::HashMap;
@@ -192,7 +191,7 @@ pub(crate) mod state_update {
     impl super::ParserState for State {
         type Dto = BlockBodiesResponse;
         type Inner = HashMap<BlockId, (StateUpdate, Vec<Class>)>;
-        type Out = Vec<StateUpdateWithDefs>;
+        type Out = Vec<StateUpdateWithDefinitions>;
 
         fn transition(self, item: Self::Dto) -> anyhow::Result<Self> {
             let BlockBodiesResponse { id, body_message } = item;
@@ -240,7 +239,7 @@ pub(crate) mod state_update {
                     let current = state_updates
                         .get_mut(&id)
                         .expect("state update for this id is present");
-                    current.1.extend(classes_from_dto(classes)?);
+                    current.1.extend(classes);
 
                     State::Classes {
                         last_id,
@@ -270,7 +269,7 @@ pub(crate) mod state_update {
         fn from_inner(inner: Self::Inner) -> Self::Out {
             inner
                 .into_iter()
-                .map(|(k, v)| StateUpdateWithDefs {
+                .map(|(k, v)| StateUpdateWithDefinitions {
                     block_hash: BlockHash(k.hash.0),
                     state_update: v.0,
                     classes: v.1,
@@ -279,89 +278,6 @@ pub(crate) mod state_update {
         }
 
         impl_take_parsed_and_should_stop!(state_updates);
-    }
-
-    /// Merges partitioned classes if necessary
-    fn classes_from_dto(classes: Vec<p2p_proto::state::Class>) -> anyhow::Result<Vec<Class>> {
-        #[derive(Copy, Clone, Debug, Default, PartialEq)]
-        struct Ctx {
-            hash: Hash,
-            total_parts: u32,
-            part_num: u32,
-        }
-
-        impl Ctx {
-            fn matches_next_part(&self, hash: Hash, total_parts: u32, part_num: u32) -> bool {
-                self.hash == hash
-                    && self.total_parts == total_parts
-                    && self.part_num + 1 == part_num
-            }
-
-            fn advance(mut self) -> Option<Self> {
-                // This was the last part
-                if self.part_num == self.total_parts {
-                    None
-                } else {
-                    self.part_num += 1;
-                    Some(self)
-                }
-            }
-        }
-
-        let mut converted = Vec::<Class>::new();
-        let mut ctx: Option<Ctx> = None;
-
-        for class in classes {
-            match (class.total_parts, class.part_num) {
-                // Small class definition, not partitioned
-                (None, None) => converted.push(class.into()),
-                // Large class definition, partitioned. Immediately reject invalid values or
-                // obvious attempts at DoS-ing us.
-                (Some(total_parts), Some(part_num))
-                    if total_parts > 0
-                        && total_parts < MAX_PARTS_PER_CLASS
-                        && part_num < total_parts =>
-                {
-                    match ctx {
-                        // First part of a larger definition
-                        None if part_num == 0 => {
-                            ctx = Some(Ctx {
-                                hash: class.compiled_hash,
-                                total_parts,
-                                part_num,
-                            });
-                            converted.push(class.into());
-                        }
-                        // Another part of the same definition
-                        Some(some_ctx)
-                            if some_ctx.matches_next_part(
-                                class.compiled_hash,
-                                total_parts,
-                                part_num,
-                            ) =>
-                        {
-                            converted
-                                .last_mut()
-                                .expect("gathered is not empty")
-                                .definition_mut()
-                                .extend(class.definition);
-
-                            ctx = some_ctx.advance();
-                        }
-                        None | Some(_) => {
-                            anyhow::bail!("Invalid Class part: {:?}/{:?}", part_num, total_parts)
-                        }
-                    }
-                }
-                _ => anyhow::bail!(
-                    "Invalid Class part: {:?}/{:?}",
-                    class.part_num,
-                    class.total_parts,
-                ),
-            }
-        }
-
-        Ok(converted)
     }
 }
 
@@ -611,7 +527,7 @@ pub(crate) mod receipts {
 }
 
 pub(crate) mod events {
-    use p2p_proto::common::{BlockId, Error, Fin, Hash};
+    use p2p_proto::common::{BlockId, Error, Fin};
     use p2p_proto::event::{Event, Events, EventsResponse, EventsResponseKind};
     use pathfinder_common::{BlockHash, TransactionHash};
     use std::collections::HashMap;
@@ -622,14 +538,14 @@ pub(crate) mod events {
         Uninitialized,
         Events {
             last_id: BlockId,
-            events: HashMap<BlockId, HashMap<Hash, Vec<Event>>>,
+            events: HashMap<BlockId, Vec<Event>>,
         },
         Delimited {
-            events: HashMap<BlockId, HashMap<Hash, Vec<Event>>>,
+            events: HashMap<BlockId, Vec<Event>>,
         },
         DelimitedWithError {
             error: Error,
-            events: HashMap<BlockId, HashMap<Hash, Vec<Event>>>,
+            events: HashMap<BlockId, Vec<Event>>,
         },
         Empty {
             error: Option<Error>,
@@ -638,7 +554,7 @@ pub(crate) mod events {
 
     impl super::ParserState for State {
         type Dto = EventsResponse;
-        type Inner = HashMap<BlockId, HashMap<Hash, Vec<Event>>>;
+        type Inner = HashMap<BlockId, Vec<Event>>;
         type Out =
             HashMap<BlockHash, HashMap<TransactionHash, Vec<pathfinder_common::event::Event>>>;
 
@@ -649,14 +565,7 @@ pub(crate) mod events {
                 (State::Uninitialized, Some(id), EventsResponseKind::Events(Events { items })) => {
                     State::Events {
                         last_id: id,
-                        events: [(
-                            id,
-                            items
-                                .into_iter()
-                                .map(|x| (x.transaction_hash, x.events))
-                                .collect(),
-                        )]
-                        .into(),
+                        events: [(id, items)].into(),
                     }
                 }
                 // The peer does not have anything we asked for
@@ -675,7 +584,7 @@ pub(crate) mod events {
                     events
                         .get_mut(&id)
                         .expect("transactions for this id is present")
-                        .extend(items.into_iter().map(|x| (x.transaction_hash, x.events)));
+                        .extend(items);
 
                     State::Events { last_id, events }
                 }
@@ -700,13 +609,7 @@ pub(crate) mod events {
                         anyhow::bail!("unexpected response");
                     }
 
-                    events.insert(
-                        id,
-                        items
-                            .into_iter()
-                            .map(|x| (x.transaction_hash, x.events))
-                            .collect(),
-                    );
+                    events.insert(id, items);
 
                     State::Events {
                         last_id: id,
@@ -718,36 +621,24 @@ pub(crate) mod events {
         }
 
         fn from_inner(inner: Self::Inner) -> Self::Out {
+            use pathfinder_common::{event::Event, ContractAddress, EventData, EventKey};
+
             inner
                 .into_iter()
                 .map(|(k, v)| {
-                    (
-                        BlockHash(k.hash.0),
-                        v.into_iter()
-                            .map(|(k, v)| {
-                                (
-                                    TransactionHash(k.0),
-                                    v.into_iter()
-                                        .map(|x| pathfinder_common::event::Event {
-                                            data: x
-                                                .data
-                                                .into_iter()
-                                                .map(pathfinder_common::EventData)
-                                                .collect(),
-                                            from_address: pathfinder_common::ContractAddress(
-                                                x.from_address,
-                                            ),
-                                            keys: x
-                                                .keys
-                                                .into_iter()
-                                                .map(pathfinder_common::EventKey)
-                                                .collect(),
-                                        })
-                                        .collect(),
-                                )
+                    let mut events = HashMap::<_, Vec<Event>>::new();
+                    v.into_iter().for_each(|e| {
+                        events
+                            .entry(TransactionHash(e.transaction_hash.0))
+                            .or_default()
+                            .push(Event {
+                                data: e.data.into_iter().map(EventData).collect(),
+                                from_address: ContractAddress(e.from_address),
+                                keys: e.keys.into_iter().map(EventKey).collect(),
                             })
-                            .collect(),
-                    )
+                    });
+
+                    (BlockHash(k.hash.0), events)
                 })
                 .collect()
         }

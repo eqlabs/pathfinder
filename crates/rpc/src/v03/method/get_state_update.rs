@@ -421,8 +421,8 @@ pub(crate) mod types {
             let fixture =
                 include_str!("../../../fixtures/0.50.0/state_update.json").replace([' ', '\n'], "");
 
-            pretty_assertions::assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
-            pretty_assertions::assert_eq!(
+            pretty_assertions_sorted::assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
+            pretty_assertions_sorted::assert_eq!(
                 serde_json::from_str::<Vec<StateUpdate>>(&fixture).unwrap(),
                 data
             );
@@ -484,7 +484,7 @@ mod tests {
         left.sort();
         right.sort();
 
-        pretty_assertions::assert_eq!(left, right);
+        pretty_assertions_sorted::assert_eq!(left, right);
     }
 
     #[tokio::test]

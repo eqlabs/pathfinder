@@ -63,7 +63,7 @@ flate2 = { workspace = true }
 hex = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
-pretty_assertions = { workspace = true }
+pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
 tempfile = "3.6"
 test-log = { version = "0.2.12", default-features = false, features = [

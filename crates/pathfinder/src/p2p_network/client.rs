@@ -6,24 +6,32 @@
 //! that syncs from the gateway and propagates new headers and a
 //! "proper" p2p node which only syncs via p2p.
 
+use anyhow::Context;
 use lru::LruCache;
-use p2p::client::types::{BlockHeader, Class, MaybeSignedBlockHeader, StateUpdateWithDefs};
+use p2p::client::types::{BlockHeader, MaybeSignedBlockHeader, StateUpdateWithDefinitions};
 use p2p::{client::peer_agnostic, HeadRx};
+use p2p_proto::state::{Cairo0Class, Cairo1Class, Class};
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
     BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockId, BlockNumber,
-    ClassHash, StateCommitment, StateDiffCommitment, StateUpdate, TransactionHash,
-    TransactionIndex,
+    ByteCodeOffset, CasmHash, ClassHash, EntryPoint, SierraHash, StateCommitment,
+    StateDiffCommitment, StateUpdate, TransactionHash, TransactionIndex,
 };
+use pathfinder_crypto::Felt;
+use serde::Deserialize;
+use serde_json::value::RawValue;
 use starknet_gateway_client::{GatewayApi, GossipApi};
-use starknet_gateway_types::reply as gw;
-use starknet_gateway_types::request::add_transaction::{Declare, DeployAccount, InvokeFunction};
-use starknet_gateway_types::trace;
-use starknet_gateway_types::{
-    error::SequencerError,
-    reply::{Block, BlockSignature},
+use starknet_gateway_types::class_definition::{self, SierraEntryPoints};
+use starknet_gateway_types::class_hash::from_parts::{
+    compute_cairo_class_hash, compute_sierra_class_hash,
 };
+use starknet_gateway_types::reply::{self as gw, BlockSignature};
+use starknet_gateway_types::request::add_transaction::{Declare, DeployAccount, InvokeFunction};
+use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
+use starknet_gateway_types::trace;
+use starknet_gateway_types::{error::SequencerError, reply::Block};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -60,7 +68,8 @@ pub struct Cache {
 pub struct CacheEntry {
     pub block: Block,
     pub signature: BlockCommitmentSignature,
-    pub definitions: HashMap<ClassHash, Vec<u8>>,
+    pub class_definitions: HashMap<ClassHash, Vec<u8>>,
+    pub casm_definitions: HashMap<ClassHash, Vec<u8>>,
 }
 
 impl Default for Cache {
@@ -109,7 +118,14 @@ impl Cache {
         let locked = self.inner.lock().unwrap();
         locked
             .iter()
-            .find_map(|(_, v)| v.definitions.get(&class_hash).cloned())
+            .find_map(|(_, v)| v.class_definitions.get(&class_hash).cloned())
+    }
+
+    fn get_casm(&self, class_hash: ClassHash) -> Option<Vec<u8>> {
+        let locked = self.inner.lock().unwrap();
+        locked
+            .iter()
+            .find_map(|(_, v)| v.casm_definitions.get(&class_hash).cloned())
     }
 
     fn clear_if_reorg(&self, header: &BlockHeader) {
@@ -138,17 +154,24 @@ impl Cache {
             CacheEntry {
                 block,
                 signature,
-                definitions: Default::default(),
+                class_definitions: Default::default(),
+                casm_definitions: Default::default(),
             },
         );
     }
 
-    fn insert_definitions(&self, block_hash: BlockHash, definitions: HashMap<ClassHash, Vec<u8>>) {
+    fn insert_definitions(
+        &self,
+        block_hash: BlockHash,
+        class_definitions: HashMap<ClassHash, Vec<u8>>,
+        casm_definitions: HashMap<ClassHash, Vec<u8>>,
+    ) {
         let mut locked = self.inner.lock().unwrap();
-        locked
+        let entry = locked
             .peek_mut(&block_hash)
-            .expect("block is already cached")
-            .definitions = definitions;
+            .expect("block is already cached");
+        entry.class_definitions = class_definitions;
+        entry.casm_definitions = casm_definitions;
     }
 }
 
@@ -400,17 +423,25 @@ impl GatewayApi for HybridClient {
                 let def = cache
                     .get_definition(class_hash)
                     .ok_or_else(|| class_not_found(format!("No peers with class {class_hash}")))?;
-                let jh = tokio::task::spawn_blocking(move || zstd::decode_all(def.as_slice()));
-                let def = jh
-                    .await
-                    .map_err(|error| {
-                        class_not_found(format!(
-                            "class decompression task ended unexpectedly: {error}"
-                        ))
-                    })?
-                    .map_err(|error| {
-                        class_not_found(format!("class decompression failed: {error}"))
-                    })?;
+                Ok(def.into())
+            }
+        }
+    }
+
+    async fn pending_casm_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        use error::class_not_found;
+
+        match self {
+            HybridClient::GatewayProxy { sequencer, .. } => {
+                sequencer.pending_casm_by_hash(class_hash).await
+            }
+            HybridClient::NonPropagatingP2P { cache, .. } => {
+                let def = cache.get_casm(class_hash).ok_or_else(|| {
+                    class_not_found(format!("No peers with casm for class {class_hash}"))
+                })?;
                 Ok(def.into())
             }
         }
@@ -446,7 +477,7 @@ impl GatewayApi for HybridClient {
                         )));
                     }
 
-                    let StateUpdateWithDefs {
+                    let StateUpdateWithDefinitions {
                         block_hash,
                         state_update,
                         classes,
@@ -458,26 +489,39 @@ impl GatewayApi for HybridClient {
 
                     let mut declared_cairo_classes = HashSet::new();
                     let mut declared_sierra_classes = HashMap::new();
-                    let mut definitions = HashMap::new();
+                    let mut class_definitions = HashMap::new();
+                    let mut casm_definitions = HashMap::new();
 
                     for class in classes {
                         match class {
-                            Class::Cairo { hash, definition } => {
-                                declared_cairo_classes.insert(hash);
-                                definitions.insert(hash, definition);
+                            Class::Cairo0(c0) => {
+                                let jh = tokio::task::spawn_blocking(move || {
+                                    cairo_hash_and_def_from_dto(c0)
+                                });
+                                let (class_hash, class_def) = jh
+                                    .await
+                                    .map_err(block_not_found)?
+                                    .map_err(block_not_found)?;
+                                declared_cairo_classes.insert(class_hash);
+                                class_definitions.insert(class_hash, class_def);
                             }
-                            Class::Sierra {
-                                sierra_hash,
-                                definition,
-                                casm_hash,
-                            } => {
+                            Class::Cairo1(c1) => {
+                                let jh = tokio::task::spawn_blocking(move || {
+                                    sierra_defs_and_hashes_from_dto(c1)
+                                });
+                                let (sierra_hash, sierra_def, casm_hash, casm) = jh
+                                    .await
+                                    .map_err(block_not_found)?
+                                    .map_err(block_not_found)?;
                                 declared_sierra_classes.insert(sierra_hash, casm_hash);
-                                definitions.insert(ClassHash(sierra_hash.0), definition);
+                                let class_hash = ClassHash(sierra_hash.0);
+                                class_definitions.insert(class_hash, sierra_def);
+                                casm_definitions.insert(class_hash, casm);
                             }
                         }
                     }
 
-                    cache.insert_definitions(hash, definitions);
+                    cache.insert_definitions(hash, class_definitions, casm_definitions);
 
                     let state_commitment =
                         cache.get_state_commitment(block_hash).unwrap_or_default();
@@ -588,6 +632,114 @@ impl GatewayApi for HybridClient {
                 }),
         }
     }
+}
+
+fn cairo_hash_and_def_from_dto(c0: Cairo0Class) -> anyhow::Result<(ClassHash, Vec<u8>)> {
+    let from_dto = |x: Vec<p2p_proto::state::EntryPoint>| {
+        x.into_iter()
+            .map(|e| SelectorAndOffset {
+                selector: EntryPoint(e.selector),
+                offset: ByteCodeOffset(e.offset),
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let abi = c0.abi;
+    let program = c0.program;
+    let external = from_dto(c0.externals);
+    let l1_handler = from_dto(c0.l1_handlers);
+    let constructor = from_dto(c0.constructors);
+
+    let external_entry_points = external.clone();
+    let l1_handler_entry_points = l1_handler.clone();
+    let constructor_entry_points = constructor.clone();
+
+    let class_hash = compute_cairo_class_hash(
+        &abi,
+        &program,
+        external_entry_points,
+        l1_handler_entry_points,
+        constructor_entry_points,
+    )
+    .context("compute cairo class hash")?;
+
+    #[derive(Debug, Deserialize)]
+    struct Abi<'a>(#[serde(borrow)] &'a RawValue);
+
+    let class_def = class_definition::Cairo {
+        abi: Cow::Borrowed(serde_json::from_slice::<Abi<'_>>(&abi).unwrap().0),
+        program: serde_json::from_slice(&program)
+            .context("verify that cairo class program is UTF-8")?,
+        entry_points_by_type: class_definition::CairoEntryPoints {
+            external,
+            l1_handler,
+            constructor,
+        },
+    };
+    let class_def = serde_json::to_vec(&class_def).context("serialize cairo class definition")?;
+    Ok((class_hash, class_def))
+}
+
+fn sierra_defs_and_hashes_from_dto(
+    c1: Cairo1Class,
+) -> Result<(SierraHash, Vec<u8>, CasmHash, Vec<u8>), SequencerError> {
+    let from_dto = |x: Vec<p2p_proto::state::SierraEntryPoint>| {
+        x.into_iter()
+            .map(|e| SelectorAndFunctionIndex {
+                selector: EntryPoint(e.selector),
+                function_idx: e.index,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let abi = std::str::from_utf8(&c1.abi)
+        .map_err(|e| error::block_not_found(format!("Sierra class abi is not valid UTF-8: {e}")))?;
+    let entry_points = SierraEntryPoints {
+        external: from_dto(c1.entry_points.externals),
+        l1_handler: from_dto(c1.entry_points.l1_handlers),
+        constructor: from_dto(c1.entry_points.constructors),
+    };
+    let program = c1.program;
+    let contract_class_version = c1.contract_class_version;
+    let compiled = c1.compiled;
+
+    let program_clone = program.clone();
+    let entry_points_clone = entry_points.clone();
+    let sierra_hash = SierraHash(
+        compute_sierra_class_hash(
+            abi,
+            program_clone,
+            &contract_class_version,
+            entry_points_clone,
+        )
+        .map_err(|e| error::block_not_found(format!("Failed to compute sierra class hash: {e}")))?
+        .0,
+    );
+
+    use cairo_lang_starknet::casm_contract_class::CasmContractClass;
+
+    let ccc: CasmContractClass = serde_json::from_slice(&compiled).map_err(|e| {
+        error::block_not_found(format!("Sierra class compiled is not valid UTF-8: {e}"))
+    })?;
+
+    let casm_hash = CasmHash(
+        Felt::from_be_bytes(ccc.compiled_class_hash().to_be_bytes()).map_err(|e| {
+            error::block_not_found(format!("Failed to compute casm class hash: {e}"))
+        })?,
+    );
+
+    let class_def = class_definition::Sierra {
+        abi: Cow::Borrowed(abi),
+        sierra_program: program,
+        contract_class_version: contract_class_version.into(),
+        entry_points_by_type: entry_points,
+    };
+
+    let class_def = serde_json::to_vec(&class_def).map_err(|e| {
+        error::block_not_found(format!("Failed to serialize sierra class definition: {e}"))
+    })?;
+
+    Ok((sierra_hash, class_def, casm_hash, compiled))
 }
 
 #[async_trait::async_trait]

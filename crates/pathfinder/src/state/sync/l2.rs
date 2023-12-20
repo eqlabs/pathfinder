@@ -1014,7 +1014,7 @@ mod tests {
 
         mod happy_path {
             use super::*;
-            use pretty_assertions::assert_eq;
+            use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
 
             #[tokio::test]
             async fn from_genesis() {
@@ -1095,7 +1095,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(*state_update, *STATE_UPDATE0);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE0);
                     assert_eq!(*signature, BLOCK0_COMMITMENT_SIGNATURE);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
@@ -1104,7 +1104,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(*state_update, *STATE_UPDATE1);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE1);
                     assert_eq!(*signature, BLOCK1_COMMITMENT_SIGNATURE);
                 });
             }
@@ -1212,7 +1212,7 @@ mod tests {
 
         mod reorg {
             use super::*;
-            use pretty_assertions::assert_eq;
+            use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
 
             #[tokio::test]
             // This reorg occurs at the genesis block, which is swapped for a new one.
@@ -1323,7 +1323,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(*state_update, *STATE_UPDATE0);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE0);
                 });
                 // Reorg started from the genesis block
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
@@ -1335,7 +1335,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
-                    assert_eq!(*state_update, *STATE_UPDATE0_V2);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE0_V2);
                 });
             }
 

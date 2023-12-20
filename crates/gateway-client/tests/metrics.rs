@@ -5,7 +5,7 @@
 
 use futures::stream::StreamExt;
 use pathfinder_common::{BlockId, BlockNumber};
-use pretty_assertions::assert_eq;
+use pretty_assertions_sorted::assert_eq;
 use starknet_gateway_client::test_utils::{response_from, setup_with_varied_responses};
 use starknet_gateway_client::{Client, GatewayApi};
 use starknet_gateway_test_fixtures::{v0_11_0, v0_9_0};

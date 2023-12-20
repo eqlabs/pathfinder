@@ -95,6 +95,60 @@ pub fn extract_abi_code_hash(
     }
 }
 
+pub mod from_parts {
+    use super::json;
+    use crate::{
+        class_definition::SierraEntryPoints,
+        request::contract::{EntryPointType, SelectorAndOffset},
+    };
+    use anyhow::Result;
+    use pathfinder_common::ClassHash;
+    use pathfinder_crypto::Felt;
+    use std::collections::HashMap;
+
+    pub fn compute_cairo_class_hash(
+        abi: &[u8],
+        program: &[u8],
+        external_entry_points: Vec<SelectorAndOffset>,
+        l1_handler_entry_points: Vec<SelectorAndOffset>,
+        constructor_entry_points: Vec<SelectorAndOffset>,
+    ) -> Result<ClassHash> {
+        let mut entry_points_by_type = HashMap::new();
+        entry_points_by_type.insert(EntryPointType::External, external_entry_points);
+        entry_points_by_type.insert(EntryPointType::L1Handler, l1_handler_entry_points);
+        entry_points_by_type.insert(EntryPointType::Constructor, constructor_entry_points);
+
+        let contract_definition = json::CairoContractDefinition {
+            abi: serde_json::from_slice(abi)?,
+            program: serde_json::from_slice(program)?,
+            entry_points_by_type,
+        };
+
+        super::compute_cairo_class_hash(contract_definition)
+    }
+
+    pub fn compute_sierra_class_hash(
+        abi: &str,
+        sierra_program: Vec<Felt>,
+        contract_class_version: &str,
+        entry_points: SierraEntryPoints,
+    ) -> Result<ClassHash> {
+        let mut entry_points_by_type = HashMap::new();
+        entry_points_by_type.insert(EntryPointType::External, entry_points.external);
+        entry_points_by_type.insert(EntryPointType::L1Handler, entry_points.l1_handler);
+        entry_points_by_type.insert(EntryPointType::Constructor, entry_points.constructor);
+
+        let contract_definition = json::SierraContractDefinition {
+            abi: abi.into(),
+            sierra_program,
+            contract_class_version: contract_class_version.into(),
+            entry_points_by_type,
+        };
+
+        super::compute_sierra_class_hash(contract_definition)
+    }
+}
+
 /// Computes the class hash for given Cairo class definition.
 ///
 /// The structure of the blob is not strictly defined, so it lives in privacy under `json` module
