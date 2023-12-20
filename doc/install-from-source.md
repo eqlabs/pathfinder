@@ -36,7 +36,7 @@ rustup update
 
 ## Install build dependencies
 
-`pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
+`pathfinder` compilation needs additional libraries to be installed (C compiler, linker, other deps)
 
 ```bash
 sudo apt install build-essential pkg-config libssl-dev protobuf-compiler libzstd-dev
