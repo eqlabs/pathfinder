@@ -1,6 +1,7 @@
 use bloomfilter::Bloom;
 use pathfinder_crypto::Felt;
 
+#[derive(Clone)]
 pub(crate) struct BloomFilter(Bloom<Felt>);
 
 impl BloomFilter {

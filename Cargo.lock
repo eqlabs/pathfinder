@@ -6168,6 +6168,7 @@ dependencies = [
  "bincode",
  "bitvec",
  "bloomfilter",
+ "cached",
  "const_format",
  "data-encoding",
  "fake",
