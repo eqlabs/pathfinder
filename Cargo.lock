@@ -5770,10 +5770,7 @@ dependencies = [
  "prost-build",
  "prost-types 0.12.1",
  "rand",
- "rstest",
- "serde",
  "serde_json",
- "serde_with",
 ]
 
 [[package]]

@@ -17,14 +17,10 @@ primitive-types = { workspace = true }
 prost = "0.12.1"
 prost-types = "0.12.1"
 rand = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
-serde_with = { workspace = true }
 
 [dev-dependencies]
-anyhow = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
-rstest = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.12.1"
