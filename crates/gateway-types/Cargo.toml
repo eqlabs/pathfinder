@@ -9,7 +9,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-fake = { workspace = true }
+fake = { workspace = true, features = ["serde_json"] }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
