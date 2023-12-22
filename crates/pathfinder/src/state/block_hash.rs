@@ -449,7 +449,7 @@ pub fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<Ev
 
 /// Calculate the hash of an event.
 ///
-/// See the [documentation](https://docs.starknet.io/docs/Events/starknet-events#event-hash)
+/// See the [documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Smart_Contracts/starknet-events/#event_hash)
 /// for details.
 fn calculate_event_hash(event: &Event) -> Felt {
     let mut keys_hash = HashChain::default();
