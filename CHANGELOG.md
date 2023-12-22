@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.10.2-api_key] - 2023-12-22
+
+### Added
+
+- `gateway-api-key API_KEY` configuration option. If enabled, each time a request is sent to the Starknet gateway or the feeder gateway a `X-Throttling-Bypass: API_KEY` header will be set.
+
 ## [0.10.2] - 2023-12-13
 
 ### Added
