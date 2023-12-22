@@ -13,10 +13,13 @@ use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
 use pathfinder_common::{BlockId, ClassHash, TransactionHash};
 use starknet_gateway_types::error::SequencerError;
 
+const X_THROTTLING_BYPASS: &str = "X-Throttling-Bypass";
+
 /// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
     state: S,
     url: reqwest::Url,
+    api_key: Option<String>,
     client: &'a reqwest::Client,
 }
 
@@ -64,10 +67,15 @@ pub mod stage {
 
 impl<'a> Request<'a, stage::Init> {
     /// Initialize a [Request] builder.
-    pub fn builder(client: &'a reqwest::Client, url: reqwest::Url) -> Request<'a, stage::Method> {
+    pub fn builder(
+        client: &'a reqwest::Client,
+        url: reqwest::Url,
+        api_key: Option<String>,
+    ) -> Request<'a, stage::Method> {
         Request {
             url,
             client,
+            api_key,
             state: stage::Method,
         }
     }
@@ -144,6 +152,7 @@ impl<'a> Request<'a, stage::Method> {
         Request {
             url: self.url,
             client: self.client,
+            api_key: self.api_key,
             state: stage::Params {
                 meta: RequestMetadata::new(method),
             },
@@ -201,6 +210,7 @@ impl<'a> Request<'a, stage::Params> {
         Request {
             url: self.url,
             client: self.client,
+            api_key: self.api_key,
             state: stage::Final {
                 meta: self.state.meta,
                 retry,
@@ -217,24 +227,31 @@ impl<'a> Request<'a, stage::Final> {
     {
         async fn send_request<T: serde::de::DeserializeOwned>(
             url: reqwest::Url,
+            api_key: Option<String>,
             client: &reqwest::Client,
             meta: RequestMetadata,
         ) -> Result<T, SequencerError> {
             with_metrics(meta, async move {
                 tracing::trace!(%url, "Fetching data from feeder gateway");
-                let response = client.get(url).send().await?;
+                let request = client.get(url);
+                let request = match api_key {
+                    Some(api_key) => request.header(X_THROTTLING_BYPASS, api_key),
+                    None => request,
+                };
+                let response = request.send().await?;
                 parse::<T>(response).await
             })
             .await
         }
 
         match self.state.retry {
-            false => send_request(self.url, self.client, self.state.meta).await,
+            false => send_request(self.url, self.api_key, self.client, self.state.meta).await,
             true => {
                 retry0(
                     || async {
-                        let clone_url = self.url.clone();
-                        send_request(clone_url, self.client, self.state.meta).await
+                        let url = self.url.clone();
+                        let api_key = self.api_key.clone();
+                        send_request(url, api_key, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -247,11 +264,17 @@ impl<'a> Request<'a, stage::Final> {
     pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
         async fn get_as_bytes_inner(
             url: reqwest::Url,
+            api_key: Option<String>,
             client: &reqwest::Client,
             meta: RequestMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
             with_metrics(meta, async {
-                let response = client.get(url).send().await?;
+                let request = client.get(url);
+                let request = match api_key {
+                    Some(api_key) => request.header(X_THROTTLING_BYPASS, api_key),
+                    None => request,
+                };
+                let response = request.send().await?;
                 let response = parse_raw(response).await?;
                 let bytes = response.bytes().await?;
                 Ok(bytes)
@@ -260,12 +283,13 @@ impl<'a> Request<'a, stage::Final> {
         }
 
         match self.state.retry {
-            false => get_as_bytes_inner(self.url, self.client, self.state.meta).await,
+            false => get_as_bytes_inner(self.url, self.api_key, self.client, self.state.meta).await,
             true => {
                 retry0(
                     || async {
-                        let clone_url = self.url.clone();
-                        get_as_bytes_inner(clone_url, self.client, self.state.meta).await
+                        let url = self.url.clone();
+                        let api_key = self.api_key.clone();
+                        get_as_bytes_inner(url, api_key, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -283,6 +307,7 @@ impl<'a> Request<'a, stage::Final> {
     {
         async fn post_with_json_inner<T, J>(
             url: reqwest::Url,
+            api_key: Option<String>,
             client: &reqwest::Client,
             meta: RequestMetadata,
             json: &J,
@@ -292,19 +317,28 @@ impl<'a> Request<'a, stage::Final> {
             J: serde::Serialize + ?Sized,
         {
             with_metrics(meta, async {
-                let response = client.post(url).json(json).send().await?;
+                let request = client.post(url);
+                let request = match api_key {
+                    Some(api_key) => request.header(X_THROTTLING_BYPASS, api_key),
+                    None => request,
+                };
+                let response = request.json(json).send().await?;
                 parse::<T>(response).await
             })
             .await
         }
 
         match self.state.retry {
-            false => post_with_json_inner(self.url, self.client, self.state.meta, json).await,
+            false => {
+                post_with_json_inner(self.url, self.api_key, self.client, self.state.meta, json)
+                    .await
+            }
             true => {
                 retry0(
                     || async {
-                        let clone_url = self.url.clone();
-                        post_with_json_inner(clone_url, self.client, self.state.meta, json).await
+                        let url = self.url.clone();
+                        let api_key = self.api_key.clone();
+                        post_with_json_inner(url, api_key, self.client, self.state.meta, json).await
                     },
                     retry_condition,
                 )
@@ -592,6 +626,106 @@ mod tests {
                 error.to_string(),
                 "error decoding response body: invalid error variant"
             );
+        }
+    }
+
+    mod api_key_is_set_when_configured {
+        use crate::Client;
+        use fake::{Fake, Faker};
+        use httpmock::{prelude::*, Mock};
+        use serde_json::json;
+
+        async fn setup_with_fake_api_key(server: &MockServer) -> (Mock<'_>, Client) {
+            let api_key = Faker.fake::<String>();
+
+            let mock = server.mock(|when, then| {
+                when.any_request().header("X-Throttling-Bypass", &api_key);
+                then.status(200).json_body(json!({}));
+            });
+
+            let client = Client::with_base_url(server.base_url().parse().unwrap())
+                .unwrap()
+                .with_api_key(Some(api_key.clone()));
+
+            (mock, client)
+        }
+
+        #[tokio::test]
+        async fn get() -> anyhow::Result<()> {
+            let server = MockServer::start_async().await;
+            let (mock, client) = setup_with_fake_api_key(&server).await;
+
+            let _: serde_json::Value = client
+                .clone()
+                .gateway_request()
+                .with_method("")
+                .with_retry(false)
+                .get()
+                .await?;
+
+            let _: serde_json::Value = client
+                .clone()
+                .feeder_gateway_request()
+                .with_method("")
+                .with_retry(false)
+                .get()
+                .await?;
+
+            mock.assert_hits(2);
+
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn get_as_bytes() -> anyhow::Result<()> {
+            let server = MockServer::start_async().await;
+            let (mock, client) = setup_with_fake_api_key(&server).await;
+
+            let _: bytes::Bytes = client
+                .clone()
+                .gateway_request()
+                .with_method("")
+                .with_retry(false)
+                .get_as_bytes()
+                .await?;
+
+            let _: bytes::Bytes = client
+                .clone()
+                .feeder_gateway_request()
+                .with_method("")
+                .with_retry(false)
+                .get_as_bytes()
+                .await?;
+
+            mock.assert_hits(2);
+
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn post_with_json() -> anyhow::Result<()> {
+            let server = MockServer::start_async().await;
+            let (mock, client) = setup_with_fake_api_key(&server).await;
+
+            let _: serde_json::Value = client
+                .clone()
+                .gateway_request()
+                .with_method("")
+                .with_retry(false)
+                .post_with_json(&json!({}))
+                .await?;
+
+            let _: serde_json::Value = client
+                .clone()
+                .feeder_gateway_request()
+                .with_method("")
+                .with_retry(false)
+                .post_with_json(&json!({}))
+                .await?;
+
+            mock.assert_hits(2);
+
+            Ok(())
         }
     }
 }

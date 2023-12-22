@@ -240,6 +240,8 @@ pub struct Client {
     /// Whether __read only__ requests should be retried, defaults to __true__ for production.
     /// Use [disable_retry_for_tests](Client::disable_retry_for_tests) to disable retry logic for all __read only__ requests when testing.
     retry: bool,
+    /// Api key added to each request as a value for 'X-Throttling-Bypass' header.
+    api_key: Option<String>,
 }
 
 impl Client {
@@ -289,7 +291,14 @@ impl Client {
             gateway,
             feeder_gateway,
             retry: true,
+            api_key: None,
         })
+    }
+
+    /// Sets the api key to be used for each request as a value for 'X-Throttling-Bypass' header.
+    pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
+        self.api_key = api_key;
+        self
     }
 
     /// Use this method to disable retry logic for all __non write__ requests when testing.
@@ -301,11 +310,15 @@ impl Client {
     }
 
     fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(&self.inner, self.gateway.clone())
+        builder::Request::builder(&self.inner, self.gateway.clone(), self.api_key.clone())
     }
 
     fn feeder_gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(&self.inner, self.feeder_gateway.clone())
+        builder::Request::builder(
+            &self.inner,
+            self.feeder_gateway.clone(),
+            self.api_key.clone(),
+        )
     }
 
     async fn block_with_retry_behaviour(
