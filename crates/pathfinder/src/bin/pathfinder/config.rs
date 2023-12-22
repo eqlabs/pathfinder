@@ -197,6 +197,14 @@ This should only be enabled for debugging purposes as it adds substantial proces
         action=ArgAction::Set
     )]
     is_rpc_enabled: bool,
+
+    #[arg(
+        long = "gateway-api-key",
+        value_name = "API_KEY",
+        long_help = "Specify an API key for both the Starknet feeder gateway and gateway.",
+        env = "PATHFINDER_GATEWAY_API_KEY"
+    )]
+    gateway_api_key: Option<String>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -438,6 +446,7 @@ pub struct Config {
     pub rpc_batch_concurrency_limit: NonZeroUsize,
     pub is_sync_enabled: bool,
     pub is_rpc_enabled: bool,
+    pub gateway_api_key: Option<String>,
 }
 
 pub struct Ethereum {
@@ -613,6 +622,7 @@ impl Config {
             rpc_batch_concurrency_limit: cli.rpc_batch_concurrency_limit,
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
+            gateway_api_key: cli.gateway_api_key,
         }
     }
 }

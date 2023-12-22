@@ -94,10 +94,13 @@ async fn async_main() -> anyhow::Result<()> {
             .context("Starting monitoring task")?;
     }
 
-    let pathfinder_context =
-        PathfinderContext::configure_and_proxy_check(network, config.data_directory)
-            .await
-            .context("Configuring pathfinder")?;
+    let pathfinder_context = PathfinderContext::configure_and_proxy_check(
+        network,
+        config.data_directory,
+        config.gateway_api_key,
+    )
+    .await
+    .context("Configuring pathfinder")?;
 
     verify_networks(pathfinder_context.network, ethereum.chain)?;
 
@@ -489,40 +492,41 @@ mod pathfinder_context {
         pub async fn configure_and_proxy_check(
             cfg: NetworkConfig,
             data_directory: PathBuf,
+            api_key: Option<String>,
         ) -> anyhow::Result<Self> {
             let context = match cfg {
                 NetworkConfig::Mainnet => Self {
                     network: Chain::Mainnet,
                     network_id: ChainId::MAINNET,
-                    gateway: GatewayClient::mainnet(),
+                    gateway: GatewayClient::mainnet().with_api_key(api_key),
                     database: data_directory.join("mainnet.sqlite"),
                     l1_core_address: H160::from(core_addr::MAINNET),
                 },
                 NetworkConfig::GoerliTestnet => Self {
                     network: Chain::GoerliTestnet,
                     network_id: ChainId::GOERLI_TESTNET,
-                    gateway: GatewayClient::goerli_testnet(),
+                    gateway: GatewayClient::goerli_testnet().with_api_key(api_key),
                     database: data_directory.join("goerli.sqlite"),
                     l1_core_address: H160::from(core_addr::GOERLI_TESTNET),
                 },
                 NetworkConfig::GoerliIntegration => Self {
                     network: Chain::GoerliIntegration,
                     network_id: ChainId::GOERLI_INTEGRATION,
-                    gateway: GatewayClient::goerli_integration(),
+                    gateway: GatewayClient::goerli_integration().with_api_key(api_key),
                     database: data_directory.join("integration.sqlite"),
                     l1_core_address: H160::from(core_addr::GOERLI_INTEGRATION),
                 },
                 NetworkConfig::SepoliaTestnet => Self {
                     network: Chain::SepoliaTestnet,
                     network_id: ChainId::SEPOLIA_TESTNET,
-                    gateway: GatewayClient::sepolia_testnet(),
+                    gateway: GatewayClient::sepolia_testnet().with_api_key(api_key),
                     database: data_directory.join("testnet-sepolia.sqlite"),
                     l1_core_address: H160::from(core_addr::SEPOLIA_TESTNET),
                 },
                 NetworkConfig::SepoliaIntegration => Self {
                     network: Chain::SepoliaIntegration,
                     network_id: ChainId::SEPOLIA_INTEGRATION,
-                    gateway: GatewayClient::sepolia_integration(),
+                    gateway: GatewayClient::sepolia_integration().with_api_key(api_key),
                     database: data_directory.join("integration-sepolia.sqlite"),
                     l1_core_address: H160::from(core_addr::SEPOLIA_INTEGRATION),
                 },
@@ -530,9 +534,15 @@ mod pathfinder_context {
                     gateway,
                     feeder_gateway,
                     chain_id,
-                } => Self::configure_custom(gateway, feeder_gateway, chain_id, data_directory)
-                    .await
-                    .context("Configuring custom network")?,
+                } => Self::configure_custom(
+                    gateway,
+                    feeder_gateway,
+                    chain_id,
+                    data_directory,
+                    api_key,
+                )
+                .await
+                .context("Configuring custom network")?,
             };
 
             Ok(context)
@@ -546,12 +556,14 @@ mod pathfinder_context {
             feeder: Url,
             chain_id: String,
             data_directory: PathBuf,
+            api_key: Option<String>,
         ) -> anyhow::Result<Self> {
             use pathfinder_crypto::Felt;
             use starknet_gateway_client::GatewayApi;
 
-            let gateway =
-                GatewayClient::with_urls(gateway, feeder).context("Creating gateway client")?;
+            let gateway = GatewayClient::with_urls(gateway, feeder)
+                .context("Creating gateway client")?
+                .with_api_key(api_key);
 
             let network_id =
                 ChainId(Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?);
