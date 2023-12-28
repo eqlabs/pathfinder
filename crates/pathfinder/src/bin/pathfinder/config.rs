@@ -303,11 +303,25 @@ struct P2PCli {
     listen_on: Multiaddr,
     #[arg(
         long = "p2p.bootstrap-addresses",
-        long_help = "Comma separated list of multiaddresses to use as bootstrap nodes. The list cannot be empty.",
+        long_help = r#"Comma separated list of multiaddresses to use as bootstrap nodes. The list cannot be empty. Each multiaddress must contain the peer ID of the node.
+
+Example:
+    '/ip4/127.0.0.1/9001/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN,/ip4/127.0.0.1/9002/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN'"#,
         value_name = "MULTIADDRESS_LIST",
         env = "PATHFINDER_P2P_BOOTSTRAP_ADDRESSES"
     )]
     bootstrap_addresses: Vec<String>,
+
+    #[arg(
+        long = "p2p.predefined-peers",
+        long_help = r#"Comma separated list of multiaddresses to use as peers apart from peers discovered via DHT discovery. The list is optional. Each multiaddress must contain the peer ID of the node.
+
+Example:
+    '/ip4/127.0.0.1/9003/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaP,/ip4/127.0.0.1/9004/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaR'"#,
+        value_name = "MULTIADDRESS_LIST",
+        env = "PATHFINDER_P2P_PREDEFINED_PEERS"
+    )]
+    predefined_peers: Vec<String>,
 }
 
 #[cfg(feature = "p2p")]
