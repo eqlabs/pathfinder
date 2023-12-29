@@ -303,7 +303,7 @@ struct P2PCli {
     listen_on: Multiaddr,
     #[arg(
         long = "p2p.bootstrap-addresses",
-        long_help = r#"Comma separated list of multiaddresses to use as bootstrap nodes. Each multiaddress must contain a peer ID. At least one bootstrap node or predefined peer has to be specified.
+        long_help = r#"Comma separated list of multiaddresses to use as bootstrap nodes. Each multiaddress must contain a peer ID.
 
 Example:
     '/ip4/127.0.0.1/9001/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN,/ip4/127.0.0.1/9002/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN'"#,
@@ -568,24 +568,12 @@ impl P2PConfig {
                 })
         };
 
-        let bootstrap_addresses = parse_multiaddr_vec(args.bootstrap_addresses);
-        let predefined_peers = parse_multiaddr_vec(args.predefined_peers);
-
-        if bootstrap_addresses.is_empty() && predefined_peers.is_empty() {
-            Cli::command()
-                .error(
-                    ErrorKind::ValueValidation,
-                    "Specify at least one bootstrap address or one predefined peer.",
-                )
-                .exit()
-        }
-
         Self {
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
             listen_on: args.listen_on,
-            bootstrap_addresses,
-            predefined_peers,
+            bootstrap_addresses: parse_multiaddr_vec(args.bootstrap_addresses),
+            predefined_peers: parse_multiaddr_vec(args.predefined_peers),
         }
     }
 }
