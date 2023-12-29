@@ -29,6 +29,7 @@ pub struct P2PContext {
     pub keypair: Keypair,
     pub listen_on: Multiaddr,
     pub bootstrap_addresses: Vec<Multiaddr>,
+    pub predefined_peers: Vec<Multiaddr>,
 }
 
 #[tracing::instrument(name = "p2p", skip_all)]
@@ -40,6 +41,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         keypair,
         listen_on,
         bootstrap_addresses,
+        predefined_peers,
     } = context;
 
     let peer_id = keypair.public().to_peer_id();
@@ -59,14 +61,20 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         .await
         .context("Starting P2P listener")?;
 
-    for bootstrap_address in bootstrap_addresses {
-        let peer_id = bootstrap_address
-            .iter()
+    let ensure_peer_id_in_multiaddr = |addr: &Multiaddr, msg: &'static str| {
+        addr.iter()
             .find_map(|p| match p {
                 p2p::libp2p::multiaddr::Protocol::P2p(peer_id) => Some(peer_id),
                 _ => None,
             })
-            .ok_or_else(|| anyhow::anyhow!("Bootstrap addresses must include peer ID"))?;
+            .ok_or_else(|| anyhow::anyhow!(msg))
+    };
+
+    for bootstrap_address in bootstrap_addresses {
+        let peer_id = ensure_peer_id_in_multiaddr(
+            &bootstrap_address,
+            "Bootstrap addresses must include peer ID",
+        )?;
         p2p_client.dial(peer_id, bootstrap_address.clone()).await?;
         p2p_client
             .start_listening(
@@ -76,6 +84,11 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
             )
             .await
             .context("Starting relay listener")?;
+    }
+
+    for peer in predefined_peers {
+        let peer_id = ensure_peer_id_in_multiaddr(&peer, "Predefined peers must include peer ID")?;
+        p2p_client.dial(peer_id, peer).await?;
     }
 
     let block_propagation_topic = format!("blocks/{}", chain_id.to_hex_str());
