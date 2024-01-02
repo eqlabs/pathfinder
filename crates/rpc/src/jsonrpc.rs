@@ -7,7 +7,7 @@ pub mod websocket;
 pub use error::RpcError;
 pub use request::RpcRequest;
 pub use response::{RpcResponse, RpcResult};
-pub use router::{rpc_handler, IntoRpcMethod, RpcMethodHandler, RpcRouter, RpcRouterBuilder};
+pub use router::{rpc_handler, RpcRouter, RpcRouterBuilder};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RequestId<'a> {

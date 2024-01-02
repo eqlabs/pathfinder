@@ -74,7 +74,7 @@ jobs:
           cargo clean
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
-      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
+      - run: cargo clippy --tests --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
 
   rustfmt:
     runs-on: ubuntu-latest

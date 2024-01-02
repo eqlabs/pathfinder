@@ -16,7 +16,7 @@ use tracing::Instrument;
 use crate::context::RpcContext;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::request::{RawParams, RpcRequest};
-use crate::jsonrpc::response::{RpcResponse, RpcResult};
+use crate::jsonrpc::{RpcResponse, RpcResult};
 
 #[derive(Clone)]
 pub struct RpcRouter {

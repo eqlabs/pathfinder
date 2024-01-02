@@ -118,7 +118,7 @@ mod tests {
             _contract_address: starknet_api::core::ContractAddress,
             _key: starknet_api::state::StorageKey,
         ) -> blockifier::state::state_api::StateResult<starknet_api::hash::StarkFelt> {
-            Ok(starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap())
+            Ok(starknet_api::hash::StarkFelt::from(u32::MAX))
         }
 
         fn get_nonce_at(
@@ -126,7 +126,7 @@ mod tests {
             _contract_address: starknet_api::core::ContractAddress,
         ) -> blockifier::state::state_api::StateResult<starknet_api::core::Nonce> {
             Ok(starknet_api::core::Nonce(
-                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),
+                starknet_api::hash::StarkFelt::from(u32::MAX),
             ))
         }
 
@@ -135,7 +135,7 @@ mod tests {
             _contract_address: starknet_api::core::ContractAddress,
         ) -> blockifier::state::state_api::StateResult<starknet_api::core::ClassHash> {
             Ok(starknet_api::core::ClassHash(
-                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),
+                starknet_api::hash::StarkFelt::from(u32::MAX),
             ))
         }
 
@@ -154,7 +154,7 @@ mod tests {
         ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash>
         {
             Ok(starknet_api::core::CompiledClassHash(
-                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),
+                starknet_api::hash::StarkFelt::from(u32::MAX),
             ))
         }
     }
@@ -175,7 +175,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             nonce,
-            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::try_from(3u8).unwrap(),)
+            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::from(3u8))
         );
 
         // Nonce not set in pending.
@@ -187,7 +187,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             nonce,
-            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap(),)
+            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::from(u32::MAX))
         );
     }
 
@@ -218,10 +218,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        assert_eq!(
-            storage,
-            starknet_api::hash::StarkFelt::try_from(4u8).unwrap()
-        );
+        assert_eq!(storage, starknet_api::hash::StarkFelt::from(4u8));
 
         // Storage not set in pending.
         let storage = uut
@@ -240,10 +237,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        assert_eq!(
-            storage,
-            starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap()
-        );
+        assert_eq!(storage, starknet_api::hash::StarkFelt::from(u32::MAX));
     }
 
     #[test]
@@ -262,7 +256,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             class_hash,
-            starknet_api::core::ClassHash(starknet_api::hash::StarkFelt::try_from(3u8).unwrap())
+            starknet_api::core::ClassHash(starknet_api::hash::StarkFelt::from(3u8))
         );
 
         // Contract not deployed in pending
@@ -274,9 +268,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             class_hash,
-            starknet_api::core::ClassHash(
-                starknet_api::hash::StarkFelt::try_from(u32::MAX).unwrap()
-            )
+            starknet_api::core::ClassHash(starknet_api::hash::StarkFelt::from(u32::MAX))
         );
     }
 }
