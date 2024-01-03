@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 #[derive(Debug)]
 pub enum RpcError {
-    ParseError,
+    ParseError(String),
     InvalidRequest(String),
     MethodNotFound,
     InvalidParams(String),
@@ -30,7 +30,7 @@ impl RpcError {
     pub fn code(&self) -> i32 {
         // From the json-rpc specification: https://www.jsonrpc.org/specification#error_object
         match self {
-            RpcError::ParseError => -32700,
+            RpcError::ParseError(..) => -32700,
             RpcError::InvalidRequest(..) => -32600,
             RpcError::MethodNotFound { .. } => -32601,
             RpcError::InvalidParams(..) => -32602,
@@ -42,7 +42,7 @@ impl RpcError {
 
     pub fn message(&self) -> Cow<'_, str> {
         match self {
-            RpcError::ParseError => "Parse error".into(),
+            RpcError::ParseError(..) => "Parse error".into(),
             RpcError::InvalidRequest(..) => "Invalid request".into(),
             RpcError::MethodNotFound { .. } => "Method not found".into(),
             RpcError::InvalidParams(..) => "Invalid params".into(),
@@ -63,14 +63,12 @@ impl RpcError {
             })),
             RpcError::ApplicationError(e) => e.data(),
             RpcError::InternalError(_) => None,
-            RpcError::ParseError => None,
-            RpcError::InvalidRequest(e) => Some(json!({
-                "reason": e
-            })),
             RpcError::MethodNotFound => None,
-            RpcError::InvalidParams(e) => Some(json!({
-                "reason": e
-            })),
+            RpcError::ParseError(e) | RpcError::InvalidRequest(e) | RpcError::InvalidParams(e) => {
+                Some(json!({
+                    "reason": e
+                }))
+            }
         }
     }
 }

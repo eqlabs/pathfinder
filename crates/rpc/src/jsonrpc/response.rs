@@ -13,10 +13,12 @@ pub struct RpcResponse<'a> {
 }
 
 impl<'a> RpcResponse<'a> {
-    pub const PARSE_ERROR: Self = Self {
-        output: Err(RpcError::ParseError),
-        id: RequestId::Null,
-    };
+    pub const fn parse_error(error: String) -> RpcResponse<'a> {
+        Self {
+            output: Err(RpcError::ParseError(error)),
+            id: RequestId::Null,
+        }
+    }
 
     pub const fn invalid_request(error: String) -> RpcResponse<'a> {
         Self {

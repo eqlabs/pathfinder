@@ -176,8 +176,11 @@ pub async fn rpc_handler(
         // for us. Instead we have to distinguish manually between a single request and a batch
         // request which we do by checking the first byte.
         if body.as_ref().first() != Some(&b'[') {
-            let Ok(request) = serde_json::from_slice::<&RawValue>(&body) else {
-                return RpcResponse::PARSE_ERROR.into_response();
+            let request = match serde_json::from_slice::<&RawValue>(&body) {
+                Ok(request) => request,
+                Err(e) => {
+                    return RpcResponse::parse_error(e.to_string()).into_response();
+                }
             };
 
             match state.run_request(request.get()).await {
@@ -185,8 +188,11 @@ pub async fn rpc_handler(
                 None => ().into_response(),
             }
         } else {
-            let Ok(requests) = serde_json::from_slice::<Vec<&RawValue>>(&body) else {
-                return RpcResponse::PARSE_ERROR.into_response();
+            let requests = match serde_json::from_slice::<Vec<&RawValue>>(&body) {
+                Ok(requests) => requests,
+                Err(e) => {
+                    return RpcResponse::parse_error(e.to_string()).into_response();
+                }
             };
 
             if requests.is_empty() {
@@ -749,15 +755,19 @@ mod tests {
         }
 
         #[rstest]
-        #[case::single(r#"{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]"#)]
+        #[case::single(
+            r#"{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]"#,
+            "expected `,` or `}` at line 1 column 40"
+        )]
         #[case::batch(
             r#"[
             {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
             {"jsonrpc": "2.0", "method"
-         ]"#
+         ]"#,
+            "expected `:` at line 4 column 10"
         )]
         #[tokio::test]
-        async fn invalid_json(#[case] request: &'static str) {
+        async fn invalid_json(#[case] request: &'static str, #[case] reason: &'static str) {
             let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
@@ -772,7 +782,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": null});
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32700, "data": {"reason": reason}, "message": "Parse error"}, "id": null});
             assert_eq!(res, expected);
         }
     }
