@@ -7,7 +7,7 @@ use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identify;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
-use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
 use p2p_proto::block::{BlockBodiesResponse, BlockHeadersResponse};
@@ -704,8 +704,6 @@ impl MainLoop {
                         // and we haven't started dialing yet.
                         DialOpts::peer_id(peer_id)
                             .addresses(vec![addr.clone()])
-                            .condition(PeerCondition::Disconnected)
-                            .extend_addresses_through_behaviour() // TODO not sure if we need it
                             .build(),
                     ) {
                         Ok(_) => {

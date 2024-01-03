@@ -9,7 +9,7 @@ mod params;
 mod projective;
 
 pub use affine::*;
-pub use params::*;
+
 pub use projective::*;
 
 #[cfg(test)]

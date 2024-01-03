@@ -40,7 +40,7 @@ pub async fn pending_transactions(
 
 #[cfg(test)]
 mod tests {
-    use crate::v04::types::Transaction;
+    use crate::v04::types::transaction::Transaction;
 
     use super::*;
     use pathfinder_common::macro_prelude::*;

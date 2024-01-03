@@ -303,11 +303,25 @@ struct P2PCli {
     listen_on: Multiaddr,
     #[arg(
         long = "p2p.bootstrap-addresses",
-        long_help = "Comma separated list of multiaddresses to use as bootstrap nodes. The list cannot be empty.",
+        long_help = r#"Comma separated list of multiaddresses to use as bootstrap nodes. Each multiaddress must contain a peer ID.
+
+Example:
+    '/ip4/127.0.0.1/9001/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN,/ip4/127.0.0.1/9002/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN'"#,
         value_name = "MULTIADDRESS_LIST",
         env = "PATHFINDER_P2P_BOOTSTRAP_ADDRESSES"
     )]
     bootstrap_addresses: Vec<String>,
+
+    #[arg(
+        long = "p2p.predefined-peers",
+        long_help = r#"Comma separated list of multiaddresses to use as peers apart from peers discovered via DHT discovery. Each multiaddress must contain a peer ID.
+
+Example:
+    '/ip4/127.0.0.1/9003/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaP,/ip4/127.0.0.1/9004/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaR'"#,
+        value_name = "MULTIADDRESS_LIST",
+        env = "PATHFINDER_P2P_PREDEFINED_PEERS"
+    )]
+    predefined_peers: Vec<String>,
 }
 
 #[cfg(feature = "p2p")]
@@ -473,6 +487,7 @@ pub struct P2PConfig {
     pub identity_config_file: Option<std::path::PathBuf>,
     pub listen_on: Multiaddr,
     pub bootstrap_addresses: Vec<Multiaddr>,
+    pub predefined_peers: Vec<Multiaddr>,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -541,31 +556,24 @@ impl P2PConfig {
         use p2p::libp2p::multiaddr::Result;
         use std::str::FromStr;
 
+        let parse_multiaddr_vec = |multiaddrs: Vec<String>| -> Vec<Multiaddr> {
+            multiaddrs
+                .into_iter()
+                .map(|addr| Multiaddr::from_str(&addr))
+                .collect::<Result<Vec<_>>>()
+                .unwrap_or_else(|error| {
+                    Cli::command()
+                        .error(ErrorKind::ValueValidation, error)
+                        .exit()
+                })
+        };
+
         Self {
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
             listen_on: args.listen_on,
-            bootstrap_addresses: {
-                let x = args
-                    .bootstrap_addresses
-                    .into_iter()
-                    .map(|addr| Multiaddr::from_str(&addr))
-                    .collect::<Result<Vec<_>>>()
-                    .unwrap_or_else(|error| {
-                        Cli::command()
-                            .error(ErrorKind::ValueValidation, error)
-                            .exit()
-                    });
-                x.is_empty().then(|| {
-                    Cli::command()
-                        .error(
-                            ErrorKind::ValueValidation,
-                            "Specify at least one bootstrap address.",
-                        )
-                        .exit()
-                });
-                x
-            },
+            bootstrap_addresses: parse_multiaddr_vec(args.bootstrap_addresses),
+            predefined_peers: parse_multiaddr_vec(args.predefined_peers),
         }
     }
 }

@@ -1,3 +1,3 @@
-mod transaction;
+pub(crate) mod transaction;
 
-pub use transaction::{Transaction, TransactionWithHash};
+pub use transaction::TransactionWithHash;

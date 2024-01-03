@@ -382,6 +382,7 @@ async fn start_p2p(
         keypair,
         listen_on: config.listen_on,
         bootstrap_addresses: config.bootstrap_addresses,
+        predefined_peers: config.predefined_peers,
     };
 
     let (_p2p_peers, p2p_client, head_receiver, p2p_handle) =

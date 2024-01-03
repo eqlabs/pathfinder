@@ -1,6 +1,6 @@
 mod transaction;
 
-pub use transaction::{Transaction, TransactionWithHash};
+pub use transaction::TransactionWithHash;
 
 use crate::felt::RpcFelt;
 use pathfinder_common::{

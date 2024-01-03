@@ -446,11 +446,7 @@ mod tests {
             .collect();
         assert_eq!(transactions.len(), receipts.len());
 
-        let body = transactions
-            .into_iter()
-            .zip(receipts)
-            .map(|(t, r)| (t, r))
-            .collect::<Vec<_>>();
+        let body = transactions.into_iter().zip(receipts).collect::<Vec<_>>();
 
         let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
         let db_tx = db.transaction().unwrap();
