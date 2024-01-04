@@ -8,7 +8,7 @@ use pathfinder_common::signature::BlockCommitmentSignature;
 use pathfinder_common::state_update::SystemContractUpdate;
 use pathfinder_common::transaction::{
     DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
-    DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction, EntryPointType,
+    DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
     InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
     ResourceBound, ResourceBounds, TransactionVariant,
 };
@@ -201,7 +201,7 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
             DeclareV0(x) => TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
                 class_hash: ClassHash(x.class_hash.0),
                 max_fee: Fee(x.max_fee),
-                nonce: TransactionNonce(x.nonce),
+                nonce: TransactionNonce::ZERO,
                 sender_address: ContractAddress(x.sender.0),
                 signature: x
                     .signature
@@ -305,13 +305,7 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 calldata: x.calldata.into_iter().map(CallParam).collect(),
                 sender_address: ContractAddress(x.address.0),
                 entry_point_selector: EntryPoint(x.entry_point_selector),
-                entry_point_type: x.entry_point_type.map(|x| {
-                    use p2p_proto::transaction::EntryPointType::{External, L1Handler};
-                    match x {
-                        External => EntryPointType::External,
-                        L1Handler => EntryPointType::L1Handler,
-                    }
-                }),
+                entry_point_type: None,
                 max_fee: Fee(x.max_fee),
                 signature: x
                     .signature

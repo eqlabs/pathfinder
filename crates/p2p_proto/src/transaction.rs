@@ -30,7 +30,6 @@ pub struct DeclareV0 {
     pub max_fee: Felt,
     pub signature: AccountSignature,
     pub class_hash: Hash,
-    pub nonce: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -119,9 +118,6 @@ pub struct InvokeV0 {
     pub address: Address,
     pub entry_point_selector: Felt,
     pub calldata: Vec<Felt>,
-    // FIXME added missing field
-    #[optional]
-    pub entry_point_type: Option<EntryPointType>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
@@ -324,24 +320,5 @@ impl TryFromProtobuf<proto::transaction::transactions_response::Responses>
             }
             Fin(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::Fin),
         }
-    }
-}
-
-impl ToProtobuf<i32> for EntryPointType {
-    fn to_protobuf(self) -> i32 {
-        match self {
-            EntryPointType::External => 0,
-            EntryPointType::L1Handler => 1,
-        }
-    }
-}
-
-impl TryFromProtobuf<i32> for EntryPointType {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
-        use proto::transaction::transaction::EntryPointType::{External, L1Handler};
-        Ok(match TryFrom::try_from(input)? {
-            External => Self::External,
-            L1Handler => Self::L1Handler,
-        })
     }
 }
