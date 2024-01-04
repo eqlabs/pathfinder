@@ -41,7 +41,7 @@ pub async fn task_block_by_number(user: &mut GooseUser) -> TransactionResult {
 pub async fn task_block_by_hash(user: &mut GooseUser) -> TransactionResult {
     get_block_by_hash(
         user,
-        Felt::from_hex_str("0x58d8604f22510af5b120d1204ebf25292a79bfb09c4882c2e456abc2763d4a")
+        Felt::from_hex_str("0x02c3adae98c15fb062687afb51f8a950b4e59d996e303e073c098b2adc61003d")
             .unwrap(),
     )
     .await?;
@@ -51,7 +51,7 @@ pub async fn task_block_by_hash(user: &mut GooseUser) -> TransactionResult {
 pub async fn task_state_update_by_hash(user: &mut GooseUser) -> TransactionResult {
     get_state_update(
         user,
-        Felt::from_hex_str("0x58d8604f22510af5b120d1204ebf25292a79bfb09c4882c2e456abc2763d4a")
+        Felt::from_hex_str("0x02c3adae98c15fb062687afb51f8a950b4e59d996e303e073c098b2adc61003d")
             .unwrap(),
     )
     .await?;
@@ -61,9 +61,9 @@ pub async fn task_state_update_by_hash(user: &mut GooseUser) -> TransactionResul
 pub async fn task_class_by_hash(user: &mut GooseUser) -> TransactionResult {
     get_class(
         user,
-        Felt::from_hex_str("0x037cb14332210a0eb0088c914d6516bae855c0012f499cef87f2109566180a8e")
+        Felt::from_hex_str("0x010d0c5c9ed1d31eb4f63aeed292433189c0684ed911cf7cf2f7fb00c055855e")
             .unwrap(),
-        Felt::from_hex_str("0x02cdf5ac65a41b135969dcefa9d52799a48994d4d3aee24732b78580a9fa7c63")
+        Felt::from_hex_str("0x019d709fa1783cf5533cc66827b0df9993a4252cb510aff36d4e9576dd63daea")
             .unwrap(),
     )
     .await?;
@@ -73,9 +73,9 @@ pub async fn task_class_by_hash(user: &mut GooseUser) -> TransactionResult {
 pub async fn task_class_hash_at(user: &mut GooseUser) -> TransactionResult {
     get_class_hash_at(
         user,
-        Felt::from_hex_str("0x037cb14332210a0eb0088c914d6516bae855c0012f499cef87f2109566180a8e")
+        Felt::from_hex_str("0x010d0c5c9ed1d31eb4f63aeed292433189c0684ed911cf7cf2f7fb00c055855e")
             .unwrap(),
-        Felt::from_hex_str("0x00da8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3")
+        Felt::from_hex_str("0x019d709fa1783cf5533cc66827b0df9993a4252cb510aff36d4e9576dd63daea")
             .unwrap(),
     )
     .await?;
@@ -85,9 +85,9 @@ pub async fn task_class_hash_at(user: &mut GooseUser) -> TransactionResult {
 pub async fn task_class_at(user: &mut GooseUser) -> TransactionResult {
     get_class_at(
         user,
-        Felt::from_hex_str("0x037cb14332210a0eb0088c914d6516bae855c0012f499cef87f2109566180a8e")
+        Felt::from_hex_str("0x010d0c5c9ed1d31eb4f63aeed292433189c0684ed911cf7cf2f7fb00c055855e")
             .unwrap(),
-        Felt::from_hex_str("0x00da8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3")
+        Felt::from_hex_str("0x019d709fa1783cf5533cc66827b0df9993a4252cb510aff36d4e9576dd63daea")
             .unwrap(),
     )
     .await?;
@@ -97,7 +97,7 @@ pub async fn task_class_at(user: &mut GooseUser) -> TransactionResult {
 pub async fn task_block_transaction_count_by_hash(user: &mut GooseUser) -> TransactionResult {
     get_block_transaction_count_by_hash(
         user,
-        Felt::from_hex_str("0x58d8604f22510af5b120d1204ebf25292a79bfb09c4882c2e456abc2763d4a")
+        Felt::from_hex_str("0x02c3adae98c15fb062687afb51f8a950b4e59d996e303e073c098b2adc61003d")
             .unwrap(),
     )
     .await?;
@@ -112,7 +112,7 @@ pub async fn task_block_transaction_count_by_number(user: &mut GooseUser) -> Tra
 pub async fn task_transaction_by_hash(user: &mut GooseUser) -> TransactionResult {
     get_transaction_by_hash(
         user,
-        Felt::from_hex_str("0x39ee26a0251338f1ef96b66c0ffacbc7a41f36bd465055e39621673ff10fb60")
+        Felt::from_hex_str("0x042278d003d257ca86fffd97e3e59dc435afe3771ee5b233a8ffad10e7eb8abd")
             .unwrap(),
     )
     .await?;
@@ -127,7 +127,7 @@ pub async fn task_transaction_by_block_number_and_index(user: &mut GooseUser) ->
 pub async fn task_transaction_by_block_hash_and_index(user: &mut GooseUser) -> TransactionResult {
     get_transaction_by_block_hash_and_index(
         user,
-        Felt::from_hex_str("0x58d8604f22510af5b120d1204ebf25292a79bfb09c4882c2e456abc2763d4a")
+        Felt::from_hex_str("0x02c3adae98c15fb062687afb51f8a950b4e59d996e303e073c098b2adc61003d")
             .unwrap(),
         3,
     )
@@ -138,7 +138,7 @@ pub async fn task_transaction_by_block_hash_and_index(user: &mut GooseUser) -> T
 pub async fn task_transaction_receipt_by_hash(user: &mut GooseUser) -> TransactionResult {
     get_transaction_receipt_by_hash(
         user,
-        Felt::from_hex_str("0x39ee26a0251338f1ef96b66c0ffacbc7a41f36bd465055e39621673ff10fb60")
+        Felt::from_hex_str("0x042278d003d257ca86fffd97e3e59dc435afe3771ee5b233a8ffad10e7eb8abd")
             .unwrap(),
     )
     .await?;
@@ -162,7 +162,7 @@ pub async fn task_call(user: &mut GooseUser) -> TransactionResult {
             .unwrap(),
         &[
             // account contract address
-            "0x05d7b537d7f0a56230cbd085ed1f7f40662df13718192c321a6b871f161acb7d",
+            "0x01518e1e27ad1bde8b2d7b83c68be6fb417f2135cb7683ff8af4ce62c830c3c9",
         ],
         // "balanceOf" entry point
         "0x2e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e",
@@ -176,7 +176,7 @@ pub async fn task_estimate_fee(user: &mut GooseUser) -> TransactionResult {
     // https://voyager.online/contract/0x06ee3440b08a9c805305449ec7f7003f27e9f7e287b83610952ec36bdc5a6bae
     estimate_fee_for_invoke(
         user,
-        Felt::from_hex_str("0x06ee3440b08a9c805305449ec7f7003f27e9f7e287b83610952ec36bdc5a6bae")
+        Felt::from_hex_str("0x040cc450c7078f03db6a404eb506e2e99f76a4d772f8b4a62a7bd41c5bdfea42")
             .unwrap(),
         &[
             // address
@@ -194,8 +194,8 @@ pub async fn task_estimate_fee(user: &mut GooseUser) -> TransactionResult {
         Felt::from_hex_str("0x3d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3")
             .unwrap(),
         Felt::ZERO,
-        // hash of mainnet block 0
-        Felt::from_hex_str("0x47c3637b57c2b079b93c61539950c17e868a28f46cdef28f88521067f21e943")
+        // hash of testnet block 0
+        Felt::from_hex_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b")
             .unwrap(),
     )
     .await?;
@@ -212,11 +212,11 @@ pub async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
     let events = get_events(
         user,
         EventFilter {
-            from_block: Some(1000),
-            to_block: Some(1100),
+            from_block: Some(927800),
+            to_block: Some(927900),
             address: Some(
                 Felt::from_hex_str(
-                    "0x103114c4c5ac233a360d39a9217b9067be6979f3d08e1cf971fd22baf8f8713",
+                    "0x02aa71f660f517253c94aeb16e3a0fdbb6540e10606b6c006c21b8929f320095",
                 )
                 .unwrap(),
             ),
@@ -233,21 +233,13 @@ pub async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
 }
 
 pub async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
-    // Taken from:
-    // https://alpha-mainnet.starknet.io/feeder_gateway/get_state_update?blockNumber=1700
-    //
-    // "block_hash": "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87"
-    //
-    // "storage_diffs": {"0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056":
-    // [{"key": "0x79deb98f1f7fc9a64df7073f93ce645a5f6a7588c34773ba76fdc879a2346e1",
-    // "value": "0x44054cde571399c485119e55cf0b9fc7dcc151fb3486f70020d3ee4d7b20f8d"}]
     get_storage_at(
         user,
-        Felt::from_hex_str("0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056")
+        Felt::from_hex_str("0x02aa71f660f517253c94aeb16e3a0fdbb6540e10606b6c006c21b8929f320095")
             .unwrap(),
-        Felt::from_hex_str("0x79deb98f1f7fc9a64df7073f93ce645a5f6a7588c34773ba76fdc879a2346e1")
+        Felt::from_hex_str("0x03a858959e825b7a94eb8d55c738f59c7bf4685267af5064bed5fd9c6bbc26de")
             .unwrap(),
-        Felt::from_hex_str("0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87")
+        Felt::from_hex_str("0x06dc3f487f80d284214da146af75402a7612d15c197354413cbd6192e8bd977c")
             .unwrap(),
     )
     .await?;
@@ -257,7 +249,7 @@ pub async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
 pub async fn task_get_nonce(user: &mut GooseUser) -> TransactionResult {
     let _ = get_nonce(
         user,
-        Felt::from_hex_str("0x01b68f7c1bbcaf9017bd8e2f3be124c01525341603e5c76a06870c32e10473c7")
+        Felt::from_hex_str("0x0117f284fdf09ed10a9ee3f435926d7066191ff7ab437b0c7e284817a677fa5f")
             .unwrap(),
     )
     .await?;
