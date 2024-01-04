@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2024-01-04
+
+### Added
+
+- RPC parsing failures now include the error reason when its an invalid JSON-RPC request (invalid request params already include the error reason). 
+
 ## [0.10.3-rc1] - 2023-12-22
 
 ### Added
