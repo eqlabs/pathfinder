@@ -1099,7 +1099,7 @@ pub mod transaction {
         }
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "version")]
     pub enum DeclareTransaction {
         #[serde(rename = "0x0")]
@@ -1157,6 +1157,22 @@ pub mod transaction {
                 DeclareTransaction::V1(tx) => tx.signature.as_ref(),
                 DeclareTransaction::V2(tx) => tx.signature.as_ref(),
                 DeclareTransaction::V3(tx) => tx.signature.as_ref(),
+            }
+        }
+    }
+
+    impl<T> Dummy<T> for DeclareTransaction {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            match rng.gen_range(0..=3) {
+                0 => {
+                    let mut v0: DeclareTransactionV0V1 = Faker.fake_with_rng(rng);
+                    v0.nonce = TransactionNonce::ZERO;
+                    Self::V0(v0)
+                }
+                1 => Self::V1(Faker.fake_with_rng(rng)),
+                2 => Self::V2(Faker.fake_with_rng(rng)),
+                3 => Self::V3(Faker.fake_with_rng(rng)),
+                _ => unreachable!(),
             }
         }
     }
@@ -1463,7 +1479,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 invoke transaction v0 data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
@@ -1481,6 +1497,20 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
+    }
+
+    impl<T> Dummy<T> for InvokeTransactionV0 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                calldata: Faker.fake_with_rng(rng),
+                sender_address: Faker.fake_with_rng(rng),
+                entry_point_selector: Faker.fake_with_rng(rng),
+                entry_point_type: None,
+                max_fee: Faker.fake_with_rng(rng),
+                signature: Faker.fake_with_rng(rng),
+                transaction_hash: Faker.fake_with_rng(rng),
+            }
+        }
     }
 
     /// Represents deserialized L2 invoke transaction v1 data.
