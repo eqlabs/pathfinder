@@ -25,10 +25,6 @@ message Transaction
         starknet.common.Felt252 max_fee    = 2;
         AccountSignature        signature  = 3;
         starknet.common.Hash    class_hash = 4;
-        // FIXME added missing field
-        // example:
-        // https://alpha4.starknet.io/feeder_gateway/get_transaction?transactionHash=0x6d346ba207eb124355960c19c737698ad37a3c920a588b741e0130ff5bd4d6d
-        starknet.common.Felt252 nonce      = 5;
     }
 
     message DeclareV1 {
@@ -104,13 +100,6 @@ message Transaction
         starknet.common.Address          address              = 3;
         starknet.common.Felt252          entry_point_selector = 4;
         repeated starknet.common.Felt252 calldata             = 5;
-        // FIXME added missing fields
-        optional EntryPointType          entry_point_type     = 6;
-    }
-
-    enum EntryPointType {
-        EXTERNAL = 0;
-        L1_HANDLER = 1;
     }
 
     message InvokeV1 {

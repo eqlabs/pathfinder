@@ -121,7 +121,6 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
                 },
                 class_hash: Hash(x.class_hash.0),
-                nonce: x.nonce.0,
             }),
             DeclareV1(x) => proto::Transaction::DeclareV1(proto::DeclareV1 {
                 sender: Address(x.sender_address.0),
@@ -220,13 +219,6 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 address: Address(x.sender_address.0),
                 entry_point_selector: x.entry_point_selector.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
-                entry_point_type: x.entry_point_type.map(|e| {
-                    use pathfinder_common::transaction::EntryPointType::{External, L1Handler};
-                    match e {
-                        External => proto::EntryPointType::External,
-                        L1Handler => proto::EntryPointType::L1Handler,
-                    }
-                }),
             }),
             InvokeV1(x) => proto::Transaction::InvokeV1(proto::InvokeV1 {
                 sender: Address(x.sender_address.0),
