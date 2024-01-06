@@ -9,7 +9,7 @@ Pathfinder is currently in alpha so expect some rough edges but it is already us
 - access the full Starknet state history
   - includes contract code and storage, and transactions
 - verifies state using Ethereum
-  - calculates the Starknet state's Patricia-Merkle Tree root on a block-by-block basis and confirms it against L1
+  - calculates the Starknet state's Patricia-Merkle Trie root on a block-by-block basis and confirms it against L1
   - this means the contract code and storage are now locally verified
 - implements the [Starknet JSON-RPC API](#json-rpc-api)
   - Starknet APIs like [starknet.js](https://www.starknetjs.com/) or [starknet.py](https://github.com/software-mansion/starknet.py)
