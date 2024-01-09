@@ -119,7 +119,7 @@ pub async fn get_events(
     if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
         keys.truncate(last_non_empty + 1);
     }
-    let keys = V03KeyFilter::new(request.keys.clone());
+    let keys = V03KeyFilter::new(keys);
 
     // blocking task to perform database event query
     let span = tracing::Span::current();
