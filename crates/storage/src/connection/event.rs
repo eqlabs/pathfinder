@@ -11,6 +11,7 @@ use pathfinder_common::{
 
 pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub const KEY_FILTER_LIMIT: usize = 16;
+const MAX_BLOCKS_TO_SCAN: usize = 200;
 
 #[derive(Debug)]
 pub struct EventFilter {
@@ -107,6 +108,7 @@ pub(super) fn get_events(
     let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
 
     let mut emitted_events = Vec::new();
+    let mut blocks_scanned: usize = 0;
 
     for block_number in from_block..=to_block {
         if emitted_events.len() > filter.page_size {
@@ -140,6 +142,11 @@ pub(super) fn get_events(
         let Some(block_header) = block_header else {
             break;
         };
+
+        blocks_scanned += 1;
+        if blocks_scanned > MAX_BLOCKS_TO_SCAN {
+            return Err(EventFilterError::TooManyMatches);
+        }
 
         let transaction_data = tx.transaction_data_for_block(crate::BlockId::Number(
             BlockNumber::new_or_panic(block_number),
