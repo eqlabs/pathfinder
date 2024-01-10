@@ -186,6 +186,13 @@ impl<'inner> Transaction<'inner> {
         transaction::transactions_for_block(self, block)
     }
 
+    pub fn receipts_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<gateway::Receipt>>> {
+        transaction::receipts_for_block(self, block)
+    }
+
     pub fn transaction_hashes_for_block(
         &self,
         block: BlockId,

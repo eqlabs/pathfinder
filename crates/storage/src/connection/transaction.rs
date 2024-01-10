@@ -259,6 +259,38 @@ pub(super) fn transactions_for_block(
     Ok(Some(data))
 }
 
+pub(super) fn receipts_for_block(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<Vec<gateway::Receipt>>> {
+    let Some((_, block_hash)) = tx.block_id(block)? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare("SELECT receipt FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .context("Preparing statement")?;
+
+    let mut rows = stmt
+        .query(params![&block_hash])
+        .context("Executing query")?;
+
+    let mut data = Vec::new();
+    while let Some(row) = rows.next()? {
+        let receipt = row
+            .get_ref_unwrap("receipt")
+            .as_blob_or_null()?
+            .context("Transaction data missing")?;
+        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
+        let receipt = serde_json::from_slice(&receipt).context("Deserializing receipt")?;
+
+        data.push(receipt);
+    }
+
+    Ok(Some(data))
+}
+
 pub(super) fn transaction_hashes_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
