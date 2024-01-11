@@ -120,20 +120,20 @@ pub(super) fn get_events(
 
         if !key_filter_is_empty || filter.contract_address.is_some() {
             let bloom = load_bloom(tx, block_number)?;
-            let Some(bloom) = bloom else {
-                break;
-            };
-
-            if !keys_in_bloom(&bloom, &filter.keys) {
-                continue;
-            }
-            if let Some(contract_address) = filter.contract_address {
-                if !bloom.check(&contract_address.0) {
+            if let Some(bloom) = bloom {
+                if !keys_in_bloom(&bloom, &filter.keys) {
+                    tracing::trace!("Bloom filter did not match keys");
                     continue;
                 }
-            }
+                if let Some(contract_address) = filter.contract_address {
+                    if !bloom.check(&contract_address.0) {
+                        tracing::trace!("Bloom filter did not match contract address");
+                        continue;
+                    }
+                }
 
-            tracing::trace!("Bloom filter matched");
+                tracing::trace!("Bloom filter matched");
+            };
         }
 
         let block_header = tx.block_header(crate::BlockId::Number(BlockNumber::new_or_panic(
