@@ -122,12 +122,22 @@ impl Storage {
         database_path: PathBuf,
         journal_mode: JournalMode,
     ) -> anyhow::Result<StorageManager> {
-        let mut connection = rusqlite::Connection::open(&database_path)
-            .context("Opening DB for setting journal mode")?;
-        setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
-        setup_connection(&mut connection, journal_mode)
+        let mut connection =
+            rusqlite::Connection::open(&database_path).context("Opening DB for migration")?;
+
+        // Migration is done with rollback journal mode. Otherwise dropped tables
+        // get copied into the WAL which is prohibitively expensive for large
+        // tables.
+        setup_journal_mode(&mut connection, JournalMode::Rollback)
+            .context("Setting journal mode to rollback")?;
+        setup_connection(&mut connection, JournalMode::Rollback)
             .context("Setting up database connection")?;
+
         migrate_database(&mut connection).context("Migrate database")?;
+
+        // Set the journal mode to the desired value.
+        setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
+
         connection
             .close()
             .map_err(|(_connection, error)| error)
