@@ -126,17 +126,12 @@ impl From<starknet_gateway_types::reply::transaction::DataAvailabilityMode>
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use std::ops::Rem;
-
     use pathfinder_common::{
-        AccountDeploymentDataElem, CallParam, CasmHash, ChainId, ClassHash, ContractAddress,
-        ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip, TransactionHash,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        deployed_contract_address, AccountDeploymentDataElem, CallParam, CasmHash, ChainId,
+        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip,
+        TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
-    use pathfinder_crypto::{
-        hash::{HashChain, PoseidonHasher},
-        Felt,
-    };
+    use pathfinder_crypto::hash::{HashChain, PoseidonHasher};
     use serde::Deserialize;
     use serde_with::serde_as;
     use starknet_gateway_types::transaction_hash::compute_txn_hash;
@@ -503,54 +498,10 @@ pub mod request {
         pub class_hash: ClassHash,
     }
 
-    fn deployed_contract_address(
-        constructor_calldata: &[CallParam],
-        contract_address_salt: &ContractAddressSalt,
-        class_hash: &ClassHash,
-    ) -> ContractAddress {
-        let constructor_calldata_hash = constructor_calldata
-            .iter()
-            .fold(HashChain::default(), |mut h, param| {
-                h.update(param.0);
-                h
-            })
-            .finalize();
-
-        let contract_address = [
-            Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
-            Felt::ZERO,
-            contract_address_salt.0,
-            class_hash.0,
-            constructor_calldata_hash,
-        ]
-        .into_iter()
-        .fold(HashChain::default(), |mut h, e| {
-            h.update(e);
-            h
-        })
-        .finalize();
-
-        // Contract addresses are _less than_ 2**251 - 256
-        let contract_address =
-            primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
-        let max_address = primitive_types::U256::from_str_radix(
-            "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
-            16,
-        )
-        .unwrap();
-
-        let contract_address = contract_address.rem(max_address);
-        let mut b = [0u8; 32];
-        contract_address.to_big_endian(&mut b);
-        let contract_address = Felt::from_be_slice(&b).unwrap();
-
-        ContractAddress::new_or_panic(contract_address)
-    }
-
     impl BroadcastedDeployAccountTransactionV0V1 {
         pub fn deployed_contract_address(&self) -> ContractAddress {
             deployed_contract_address(
-                self.constructor_calldata.as_slice(),
+                self.constructor_calldata.iter().copied(),
                 &self.contract_address_salt,
                 &self.class_hash,
             )
@@ -608,7 +559,7 @@ pub mod request {
     impl BroadcastedDeployAccountTransactionV3 {
         pub fn deployed_contract_address(&self) -> ContractAddress {
             deployed_contract_address(
-                self.constructor_calldata.as_slice(),
+                self.constructor_calldata.iter().copied(),
                 &self.contract_address_salt,
                 &self.class_hash,
             )

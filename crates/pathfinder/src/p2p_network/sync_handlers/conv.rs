@@ -185,8 +185,7 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
                 address_salt: x.contract_address_salt.0,
-                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
-                address: Address(x.contract_address.0),
+                constructor_calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
             }),
             DeployAccountV3(x) => proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
                 signature: AccountSignature {
@@ -209,7 +208,6 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 ), // TODO
                 nonce_domain: x.nonce_data_availability_mode.to_proto(),
                 fee_domain: x.fee_data_availability_mode.to_proto(),
-                address: Address(x.contract_address.0),
             }),
             InvokeV0(x) => proto::Transaction::InvokeV0(proto::InvokeV0 {
                 max_fee: x.max_fee.0,
