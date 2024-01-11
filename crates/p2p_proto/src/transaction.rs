@@ -76,7 +76,6 @@ pub struct Deploy {
     pub class_hash: Hash,
     pub address_salt: Felt,
     pub calldata: Vec<Felt>,
-    // FIXME added missing fields
     pub address: Address,
     pub version: u32,
 }
@@ -89,9 +88,7 @@ pub struct DeployAccountV1 {
     pub class_hash: Hash,
     pub nonce: Felt,
     pub address_salt: Felt,
-    pub calldata: Vec<Felt>,
-    // FIXME added missing field
-    pub address: Address,
+    pub constructor_calldata: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -107,7 +104,6 @@ pub struct DeployAccountV3 {
     pub paymaster_data: Address,
     pub nonce_domain: String,
     pub fee_domain: String,
-    pub address: Address,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
