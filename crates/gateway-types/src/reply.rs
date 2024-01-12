@@ -211,11 +211,11 @@ pub mod transaction_status {
 pub mod transaction {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
-        deployed_contract_address, AccountDeploymentDataElem, CallParam, CasmHash, ClassHash,
-        ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress, Fee,
-        L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, PaymasterDataElem,
-        ResourceAmount, ResourcePricePerUnit, Tip, TransactionHash, TransactionIndex,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        AccountDeploymentDataElem, CallParam, CasmHash, ClassHash, ConstructorParam,
+        ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress, Fee, L1ToL2MessageNonce,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, PaymasterDataElem, ResourceAmount,
+        ResourcePricePerUnit, Tip, TransactionHash, TransactionIndex, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
@@ -1367,7 +1367,7 @@ pub mod transaction {
 
             Self {
                 version: TransactionVersion::ONE,
-                contract_address: deployed_contract_address(
+                contract_address: ContractAddress::deployed_contract_address(
                     constructor_calldata.iter().copied(),
                     &contract_address_salt,
                     &class_hash,
@@ -1420,7 +1420,7 @@ pub mod transaction {
                 tip: Faker.fake_with_rng(rng),
                 paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
 
-                sender_address: deployed_contract_address(
+                sender_address: ContractAddress::deployed_contract_address(
                     constructor_calldata.iter().copied(),
                     &contract_address_salt,
                     &class_hash,
