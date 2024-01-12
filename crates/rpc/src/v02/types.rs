@@ -127,9 +127,9 @@ impl From<starknet_gateway_types::reply::transaction::DataAvailabilityMode>
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use pathfinder_common::{
-        deployed_contract_address, AccountDeploymentDataElem, CallParam, CasmHash, ChainId,
-        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip,
-        TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        AccountDeploymentDataElem, CallParam, CasmHash, ChainId, ClassHash, ContractAddress,
+        ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip, TransactionHash,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_crypto::hash::{HashChain, PoseidonHasher};
     use serde::Deserialize;
@@ -500,7 +500,7 @@ pub mod request {
 
     impl BroadcastedDeployAccountTransactionV0V1 {
         pub fn deployed_contract_address(&self) -> ContractAddress {
-            deployed_contract_address(
+            ContractAddress::deployed_contract_address(
                 self.constructor_calldata.iter().copied(),
                 &self.contract_address_salt,
                 &self.class_hash,
@@ -558,7 +558,7 @@ pub mod request {
 
     impl BroadcastedDeployAccountTransactionV3 {
         pub fn deployed_contract_address(&self) -> ContractAddress {
-            deployed_contract_address(
+            ContractAddress::deployed_contract_address(
                 self.constructor_calldata.iter().copied(),
                 &self.contract_address_salt,
                 &self.class_hash,

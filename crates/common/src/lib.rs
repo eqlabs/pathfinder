@@ -488,6 +488,51 @@ macros::felt_newtypes!(
 macros::fmt::thin_display!(BlockNumber);
 macros::fmt::thin_display!(BlockTimestamp);
 
+impl ContractAddress {
+    pub fn deployed_contract_address(
+        constructor_calldata: impl Iterator<Item = CallParam>,
+        contract_address_salt: &ContractAddressSalt,
+        class_hash: &ClassHash,
+    ) -> Self {
+        let constructor_calldata_hash = constructor_calldata
+            .fold(HashChain::default(), |mut h, param| {
+                h.update(param.0);
+                h
+            })
+            .finalize();
+
+        let contract_address = [
+            Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
+            Felt::ZERO,
+            contract_address_salt.0,
+            class_hash.0,
+            constructor_calldata_hash,
+        ]
+        .into_iter()
+        .fold(HashChain::default(), |mut h, e| {
+            h.update(e);
+            h
+        })
+        .finalize();
+
+        // Contract addresses are _less than_ 2**251 - 256
+        let contract_address =
+            primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
+        let max_address = primitive_types::U256::from_str_radix(
+            "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
+            16,
+        )
+        .unwrap();
+
+        let contract_address = contract_address.rem(max_address);
+        let mut b = [0u8; 32];
+        contract_address.to_big_endian(&mut b);
+        let contract_address = Felt::from_be_slice(&b).unwrap();
+
+        ContractAddress::new_or_panic(contract_address)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum AllowedOrigins {
     Any,
@@ -533,48 +578,6 @@ pub fn calculate_class_commitment_leaf_hash(
         )
         .into(),
     )
-}
-
-pub fn deployed_contract_address(
-    constructor_calldata: impl Iterator<Item = CallParam>,
-    contract_address_salt: &ContractAddressSalt,
-    class_hash: &ClassHash,
-) -> ContractAddress {
-    let constructor_calldata_hash = constructor_calldata
-        .fold(HashChain::default(), |mut h, param| {
-            h.update(param.0);
-            h
-        })
-        .finalize();
-
-    let contract_address = [
-        Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
-        Felt::ZERO,
-        contract_address_salt.0,
-        class_hash.0,
-        constructor_calldata_hash,
-    ]
-    .into_iter()
-    .fold(HashChain::default(), |mut h, e| {
-        h.update(e);
-        h
-    })
-    .finalize();
-
-    // Contract addresses are _less than_ 2**251 - 256
-    let contract_address = primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
-    let max_address = primitive_types::U256::from_str_radix(
-        "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
-        16,
-    )
-    .unwrap();
-
-    let contract_address = contract_address.rem(max_address);
-    let mut b = [0u8; 32];
-    contract_address.to_big_endian(&mut b);
-    let contract_address = Felt::from_be_slice(&b).unwrap();
-
-    ContractAddress::new_or_panic(contract_address)
 }
 
 #[cfg(test)]
@@ -651,7 +654,7 @@ mod tests {
         let expected_contract_address = ContractAddress(felt!(
             "0x2fab82e4aef1d8664874e1f194951856d48463c3e6bf9a8c68e234a629a6f50"
         ));
-        let actual_contract_address = super::deployed_contract_address(
+        let actual_contract_address = ContractAddress::deployed_contract_address(
             std::iter::once(CallParam(felt!(
                 "0x5cd65f3d7daea6c63939d659b8473ea0c5cd81576035a4d34e52fb06840196c"
             ))),

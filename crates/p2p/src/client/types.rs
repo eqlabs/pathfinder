@@ -13,11 +13,10 @@ use pathfinder_common::transaction::{
     ResourceBound, ResourceBounds, TransactionVariant,
 };
 use pathfinder_common::{
-    deployed_contract_address, AccountDeploymentDataElem, BlockHash, BlockNumber, BlockTimestamp,
-    CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-    ContractNonce, EntryPoint, EventData, EventKey, Fee, GasPrice, SequencerAddress,
-    StarknetVersion, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    AccountDeploymentDataElem, BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash,
+    ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint,
+    EventData, EventKey, Fee, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 
 /// We don't want to introduce circular dependencies between crates
@@ -269,7 +268,7 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
             }),
             DeployAccountV1(x) => {
                 TransactionVariant::DeployAccountV0V1(DeployAccountTransactionV0V1 {
-                    contract_address: deployed_contract_address(
+                    contract_address: ContractAddress::deployed_contract_address(
                         x.constructor_calldata.iter().map(|x| CallParam(*x)),
                         &ContractAddressSalt(x.address_salt),
                         &ClassHash(x.class_hash.0),
@@ -293,7 +292,7 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 })
             }
             DeployAccountV3(x) => TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
-                contract_address: deployed_contract_address(
+                contract_address: ContractAddress::deployed_contract_address(
                     x.calldata.iter().map(|x| CallParam(*x)),
                     &ContractAddressSalt(x.address_salt),
                     &ClassHash(x.class_hash.0),
