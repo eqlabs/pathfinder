@@ -191,6 +191,11 @@ impl From<p2p_proto::state::StateDiff> for StateUpdate {
 }
 
 impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
+    /// ## Important
+    ///
+    /// This conversion does not compute deployed contract address for deploy account transactions
+    /// ([`TransactionVariant::DeployAccountTransactionV0V1`] and [`TransactionVariant::DeployAccountTransactionV3`]),
+    /// filling it with a zero address instead. The caller is responsible for performing the computation after the conversion succeeds.
     fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
@@ -268,11 +273,7 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
             }),
             DeployAccountV1(x) => {
                 TransactionVariant::DeployAccountV0V1(DeployAccountTransactionV0V1 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        x.constructor_calldata.iter().map(|x| CallParam(*x)),
-                        &ContractAddressSalt(x.address_salt),
-                        &ClassHash(x.class_hash.0),
-                    ),
+                    contract_address: ContractAddress::ZERO,
                     max_fee: Fee(x.max_fee),
                     version: TransactionVersion::ONE,
                     signature: x
@@ -292,11 +293,7 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 })
             }
             DeployAccountV3(x) => TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
-                contract_address: ContractAddress::deployed_contract_address(
-                    x.calldata.iter().map(|x| CallParam(*x)),
-                    &ContractAddressSalt(x.address_salt),
-                    &ClassHash(x.class_hash.0),
-                ),
+                contract_address: ContractAddress::ZERO,
                 signature: x
                     .signature
                     .parts

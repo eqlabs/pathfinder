@@ -3,16 +3,19 @@ pub(crate) trait ParserState {
     type Inner;
     type Out;
 
-    fn advance(self, item: Self::Dto) -> anyhow::Result<Self>
+    fn advance(&mut self, item: Self::Dto) -> anyhow::Result<()>
     where
         Self: Default + Sized,
     {
-        let next_state = self.transition(item)?;
+        let current_state = std::mem::take(self);
+        let next_state = current_state.transition(item)?;
 
-        if next_state.should_stop() {
+        *self = next_state;
+
+        if self.should_stop() {
             anyhow::bail!("no data or premature end of response")
         } else {
-            Ok(next_state)
+            Ok(())
         }
     }
 
