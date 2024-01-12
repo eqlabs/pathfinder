@@ -241,16 +241,19 @@ fn load_bloom(
     Ok(bloom)
 }
 
+pub(crate) fn purge_block(block_number: BlockNumber) {
+    GLOBAL_CACHE.remove(block_number.get());
+}
+
 lazy_static::lazy_static! {
-    // FIXME: remove bloom filters when purging blocks
-    static ref GLOBAL_CACHE: BloomFilterCache = BloomFilterCache::new();
+    static ref GLOBAL_CACHE: BloomFilterCache = BloomFilterCache::with_size(512000);
 }
 
 struct BloomFilterCache(Mutex<SizedCache<u64, BloomFilter>>);
 
 impl BloomFilterCache {
-    fn new() -> Self {
-        Self(Mutex::new(SizedCache::with_size(512 * 1024)))
+    fn with_size(size: usize) -> Self {
+        Self(Mutex::new(SizedCache::with_size(size)))
     }
 
     fn locked_cache(
@@ -269,6 +272,10 @@ impl BloomFilterCache {
     pub fn set(&self, block_number: u64, bloom: BloomFilter) -> Result<(), EventFilterError> {
         self.locked_cache()?.cache_set(block_number, bloom);
         Ok(())
+    }
+
+    pub fn remove(&self, block_number: u64) {
+        self.locked_cache().unwrap().cache_remove(&block_number);
     }
 }
 
