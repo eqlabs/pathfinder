@@ -786,7 +786,7 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                chunk_size: pathfinder_storage::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::EVENT_PAGE_SIZE_LIMIT + 1,
                 ..Default::default()
             },
         };
@@ -799,7 +799,7 @@ mod tests {
     async fn get_events_with_too_many_keys_in_filter() {
         let (context, _) = setup();
 
-        let limit = pathfinder_storage::KEY_FILTER_LIMIT;
+        let limit = pathfinder_storage::EVENT_KEY_FILTER_LIMIT;
 
         let keys = [vec![event_key!("01")]]
             .iter()

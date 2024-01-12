@@ -14,7 +14,8 @@ mod trie;
 pub use rusqlite::TransactionBehavior;
 
 pub use event::KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT;
-pub use event::*;
+pub use event::PAGE_SIZE_LIMIT as EVENT_PAGE_SIZE_LIMIT;
+pub use event::{EmittedEvent, EventFilter, EventFilterError, PageOfEvents};
 
 pub use transaction::TransactionStatus;
 
