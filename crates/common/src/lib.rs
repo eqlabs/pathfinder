@@ -579,6 +579,8 @@ pub fn deployed_contract_address(
 
 #[cfg(test)]
 mod tests {
+    use crate::{felt, CallParam, ClassHash, ContractAddress, ContractAddressSalt};
+
     #[test]
     fn constructor_entry_point() {
         use crate::truncated_keccak;
@@ -642,5 +644,22 @@ mod tests {
                 serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
             assert_eq!(result, BlockId::Hash(block_hash!("0xdeadbeef")));
         }
+    }
+
+    #[test]
+    fn deployed_contract_address() {
+        let expected_contract_address = ContractAddress(felt!(
+            "0x2fab82e4aef1d8664874e1f194951856d48463c3e6bf9a8c68e234a629a6f50"
+        ));
+        let actual_contract_address = super::deployed_contract_address(
+            std::iter::once(CallParam(felt!(
+                "0x5cd65f3d7daea6c63939d659b8473ea0c5cd81576035a4d34e52fb06840196c"
+            ))),
+            &ContractAddressSalt(felt!("0x0")),
+            &ClassHash(felt!(
+                "0x2338634f11772ea342365abd5be9d9dc8a6f44f159ad782fdebd3db5d969738"
+            )),
+        );
+        assert_eq!(actual_contract_address, expected_contract_address);
     }
 }
