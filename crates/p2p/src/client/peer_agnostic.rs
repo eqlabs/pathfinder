@@ -137,14 +137,10 @@ impl Client {
 
                     let mut state = parse::block_header::State::Uninitialized;
                     for part in parts {
-                        let current = std::mem::take(&mut state);
-                        match current.advance(part) {
-                            Ok(next) => state = next,
-                            Err(error) => {
-                                tracing::debug!(from=%peer, %error, "headers response parsing");
-                                // Try the next peer
-                                break;
-                            }
+                        if let Err(error) = state.advance(part) {
+                            tracing::debug!(from=%peer, %error, "headers response parsing");
+                            // Try the next peer
+                            break;
                         }
                     }
 
@@ -240,9 +236,7 @@ impl Client {
 
             match response_receiver {
                 Ok(rx) => {
-                    if let Some(parsed) =
-                        parse_blocking::<parse::transactions::State>(&peer, rx).await
-                    {
+                    if let Some(parsed) = parse::<parse::transactions::State>(&peer, rx).await {
                         return Ok(parsed);
                     }
                 }
@@ -345,45 +339,9 @@ async fn parse<P: Default + ParserState>(
     let mut state = P::default();
 
     while let Some(response) = receiver.next().await {
-        let current = std::mem::take(&mut state);
-        match current.advance(response) {
-            Ok(next) => state = next,
-            Err(error) => {
-                tracing::debug!(from=%peer, %error, "{} response parsing", std::any::type_name::<P::Dto>());
-                break;
-            }
-        }
-    }
-
-    state.take_parsed().or_else(|| {
-        tracing::debug!(from=%peer, "empty response or unexpected end of response");
-        None
-    })
-}
-
-/// Use when parsing involves intensive computation, e.g. hashing.
-async fn parse_blocking<P: Default + ParserState + Send + 'static>(
-    peer: &PeerId,
-    mut receiver: mpsc::Receiver<P::Dto>,
-) -> Option<P::Out>
-where
-    P::Dto: Send + 'static,
-{
-    let mut state = P::default();
-
-    while let Some(response) = receiver.next().await {
-        let current = std::mem::take(&mut state);
-        let jh = tokio::task::spawn_blocking(move || current.advance(response));
-        match jh.await {
-            Ok(Ok(next)) => state = next,
-            Ok(Err(error)) => {
-                tracing::debug!(from=%peer, %error, "{} response parsing", std::any::type_name::<P::Dto>());
-                break;
-            }
-            Err(error) => {
-                tracing::debug!(from=%peer, %error, "{} response parsing", std::any::type_name::<P::Dto>());
-                break;
-            }
+        if let Err(error) = state.advance(response) {
+            tracing::debug!(from=%peer, %error, "{} response parsing", std::any::type_name::<P::Dto>());
+            break;
         }
     }
 
