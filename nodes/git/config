@@ -1,8 +1,0 @@
-[core]
-	repositoryformatversion = 0
-	filemode = true
-	bare = false
-	logallrefupdates = true
-[remote "origin"]
-	url = https://github.com/eqlabs/pathfinder
-	fetch = +refs/tags/v0.1.0-alpha:refs/tags/v0.1.0-alpha

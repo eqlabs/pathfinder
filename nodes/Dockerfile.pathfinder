@@ -2,15 +2,13 @@
 FROM rust:1.75-bookworm AS BUILD
 
 # Install build dependencies.
-RUN apt-get update && apt-get install -y ca-certificates libzstd-dev libgmp10 tini git protobuf-compiler
+RUN apt-get update && apt-get install -y ca-certificates libzstd-dev libgmp10 tini protobuf-compiler
 
 WORKDIR /pathfinder
 COPY . .
-# Our vergen requires a git repo, but our .dockerignore excludes the .git directory.
-RUN cp -r nodes/git .git
 
 # Build pathfinder with P2P communication enabled.
-RUN cargo build --features p2p --release -p pathfinder
+RUN PATHFINDER_FORCE_VERSION=v0.0.1-alpha cargo build --features p2p --release -p pathfinder
 
 # Run pathfinder.
 FROM rust:1.75-slim-bookworm AS RUN
