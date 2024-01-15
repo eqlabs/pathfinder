@@ -9,6 +9,9 @@ use libp2p::ping;
 use libp2p::relay;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::StreamProtocol;
+use p2p::kademlia_protocol_name;
+use p2p::IDENTIFY_PROTOCOL_NAME;
+use pathfinder_common::ChainId;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "BootstrapEvent", event_process = false)]
@@ -21,14 +24,9 @@ pub struct BootstrapBehaviour {
     pub kademlia: kad::Behaviour<MemoryStore>,
 }
 
-pub const KADEMLIA_PROTOCOL_NAME: &str = "/pathfinder/kad/1.0.0";
-
 impl BootstrapBehaviour {
-    pub fn new(pub_key: identity::PublicKey) -> Self {
+    pub fn new(pub_key: identity::PublicKey, chain_id: ChainId) -> Self {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
-        // FIXME: clarify what version number should be
-        // FIXME: we're also missing the starting '/'
-        const PROTOCOL_VERSION: &str = "starknet/0.9.1";
 
         let mut kademlia_config = kad::Config::default();
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
@@ -36,7 +34,10 @@ impl BootstrapBehaviour {
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         // FIXME: this make sure that the DHT we're implementing is incompatible with the "default" IPFS
         // DHT from libp2p.
-        kademlia_config.set_protocol_names(vec![StreamProtocol::new(KADEMLIA_PROTOCOL_NAME)]);
+        kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
+            kademlia_protocol_name(chain_id),
+        )
+        .unwrap()]);
 
         let kademlia = kad::Behaviour::with_config(
             pub_key.to_peer_id(),
@@ -52,7 +53,7 @@ impl BootstrapBehaviour {
             dcutr: dcutr::Behaviour::new(peer_id),
             ping: ping::Behaviour::new(ping::Config::new()),
             identify: identify::Behaviour::new(
-                identify::Config::new(PROTOCOL_VERSION.to_string(), pub_key)
+                identify::Config::new(IDENTIFY_PROTOCOL_NAME.to_string(), pub_key)
                     .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
             ),
             kademlia,
