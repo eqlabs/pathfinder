@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Update P2P protocol names to align with [the spec](https://github.com/starknet-io/starknet-p2p-specs/blob/17ada52f8838c96d648bba7bcd4351e8a64e078d/p2p/proto/protocols.md).
+- P2P protocol names now align with [the spec](https://github.com/starknet-io/starknet-p2p-specs/blob/17ada52f8838c96d648bba7bcd4351e8a64e078d/p2p/proto/protocols.md).
 
 ## [0.10.3] - 2024-01-04
 
