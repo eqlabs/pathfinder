@@ -1,5 +1,12 @@
 This is a docker-compose setup connecting multiple (different) nodes together.
-To run it, do the following:
+
+Before starting any of the nodes, you must first create a `pathfinder-var.env` file with your testnet Ethereum node URL:
+
+```
+PATHFINDER_ETHEREUM_API_URL=<infura or alchemy URL>
+```
+
+To start the P2P network, do the following:
 
 1. `docker-compose up -d pathfinder-proxy` to start the pathfinder proxy node, which connects to
 the sequencer gateway, fetches blocks, and stores them.
