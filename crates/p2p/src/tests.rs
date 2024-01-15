@@ -16,6 +16,7 @@ use p2p_proto::block::{
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use pathfinder_common::ChainId;
 use rstest::rstest;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -39,8 +40,12 @@ impl TestPeer {
         let keypair = Keypair::generate_ed25519();
         let peer_id = keypair.public().to_peer_id();
         let peers: Arc<RwLock<Peers>> = Default::default();
-        let (client, event_receiver, main_loop) =
-            crate::new(keypair.clone(), peers.clone(), periodic_cfg);
+        let (client, event_receiver, main_loop) = crate::new(
+            keypair.clone(),
+            peers.clone(),
+            periodic_cfg,
+            ChainId::GOERLI_TESTNET,
+        );
         let main_loop_jh = tokio::spawn(main_loop.run());
         Self {
             keypair,

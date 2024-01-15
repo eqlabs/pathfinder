@@ -16,7 +16,7 @@ use p2p_proto::block::{
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
-use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 mod behaviour;
@@ -41,10 +41,11 @@ pub fn new(
     keypair: Keypair,
     peers: Arc<RwLock<peers::Peers>>,
     periodic_cfg: PeriodicTaskConfig,
+    chain_id: ChainId,
 ) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
 
-    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
+    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id);
 
     let swarm = Swarm::new(
         transport::create(&keypair, relay_transport),
@@ -68,7 +69,14 @@ pub fn new(
     (
         Client::new(command_sender, local_peer_id),
         event_receiver,
-        MainLoop::new(swarm, command_receiver, event_sender, peers, periodic_cfg),
+        MainLoop::new(
+            swarm,
+            command_receiver,
+            event_sender,
+            peers,
+            periodic_cfg,
+            chain_id,
+        ),
     )
 }
 
