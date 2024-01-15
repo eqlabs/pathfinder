@@ -575,15 +575,6 @@ pub fn calculate_class_commitment_leaf_hash(
     )
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct ReorgCounter(i64);
-
-impl ReorgCounter {
-    pub fn new(value: i64) -> Self {
-        Self(value)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{felt, CallParam, ClassHash, ContractAddress, ContractAddressSalt};

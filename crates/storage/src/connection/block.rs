@@ -79,8 +79,6 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 }
 
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
-    super::event::purge_block(block);
-
     tx.inner()
         .execute(
             "DELETE FROM starknet_events_filters WHERE block_number = ?",

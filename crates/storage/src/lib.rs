@@ -88,11 +88,13 @@ struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
+    bloom_filter_cache: Arc<bloom::Cache>,
 }
 
 pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
+    bloom_filter_cache: Arc<bloom::Cache>,
 }
 
 impl StorageManager {
@@ -107,6 +109,7 @@ impl StorageManager {
         Ok(Storage(Inner {
             database_path: Arc::new(self.database_path.clone()),
             pool,
+            bloom_filter_cache: self.bloom_filter_cache.clone(),
         }))
     }
 }
@@ -121,6 +124,7 @@ impl Storage {
     pub fn migrate(
         database_path: PathBuf,
         journal_mode: JournalMode,
+        bloom_filter_cache_size: usize,
     ) -> anyhow::Result<StorageManager> {
         let mut connection =
             rusqlite::Connection::open(&database_path).context("Opening DB for migration")?;
@@ -146,13 +150,14 @@ impl Storage {
         Ok(StorageManager {
             database_path,
             journal_mode,
+            bloom_filter_cache: Arc::new(bloom::Cache::with_size(bloom_filter_cache_size)),
         })
     }
 
     /// Returns a new Sqlite [Connection] to the database.
     pub fn connection(&self) -> anyhow::Result<Connection> {
         let conn = self.0.pool.get()?;
-        Ok(Connection::from_inner(conn))
+        Ok(Connection::new(conn, self.0.bloom_filter_cache.clone()))
     }
 
     /// Convenience function for tests to create an in-memory database.
@@ -178,7 +183,7 @@ impl Storage {
         // therefore holds the database in-place until the pool is established.
         let _conn = rusqlite::Connection::open(&database_path)?;
 
-        let storage = Self::migrate(database_path, JournalMode::Rollback)?;
+        let storage = Self::migrate(database_path, JournalMode::Rollback, 16)?;
 
         storage.create_pool(NonZeroU32::new(5).unwrap())
     }

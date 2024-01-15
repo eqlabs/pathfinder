@@ -205,6 +205,16 @@ This should only be enabled for debugging purposes as it adds substantial proces
         env = "PATHFINDER_GATEWAY_API_KEY"
     )]
     gateway_api_key: Option<String>,
+
+    #[arg(
+        long = "storage.event-bloom-filter-cache-size",
+        long_help = "The number of blocks whose event bloom filters are cached in memory. \
+            This cache speeds up event related RPC queries at the cost of using extra memory. \
+            Each cached filter takes 2 KiB of memory.",
+        env = "PATHFINDER_STORAGE_BLOOM_FILTER_CACHE_SIZE",
+        default_value = "524288"
+    )]
+    bloom_filter_cache_size: std::num::NonZeroUsize,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -461,6 +471,7 @@ pub struct Config {
     pub is_sync_enabled: bool,
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
+    pub bloom_filter_cache_size: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -631,6 +642,7 @@ impl Config {
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
+            bloom_filter_cache_size: cli.bloom_filter_cache_size,
         }
     }
 }

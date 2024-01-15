@@ -53,6 +53,7 @@ async fn serve() -> anyhow::Result<()> {
     let storage = pathfinder_storage::Storage::migrate(
         database_path.into(),
         pathfinder_storage::JournalMode::WAL,
+        1,
     )?
     .create_pool(NonZeroU32::new(10).unwrap())
     .unwrap();

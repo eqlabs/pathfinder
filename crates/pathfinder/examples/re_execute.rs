@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
     let n_cpus = std::thread::available_parallelism().unwrap().get();
 
     let database_path = std::env::args().nth(1).unwrap();
-    let storage = Storage::migrate(database_path.into(), JournalMode::WAL)?
+    let storage = Storage::migrate(database_path.into(), JournalMode::WAL, 1)?
         .create_pool(NonZeroU32::new(n_cpus as u32 * 2).unwrap())?;
     let mut db = storage
         .connection()

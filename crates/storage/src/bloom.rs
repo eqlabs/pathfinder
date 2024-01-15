@@ -1,5 +1,11 @@
+use std::sync::{Mutex, MutexGuard};
+
 use bloomfilter::Bloom;
+use cached::{Cached, SizedCache};
+use pathfinder_common::BlockNumber;
 use pathfinder_crypto::Felt;
+
+use crate::ReorgCounter;
 
 #[derive(Clone)]
 pub(crate) struct BloomFilter(Bloom<Felt>);
@@ -97,6 +103,34 @@ impl BloomFilter {
                 self.check(&key)
             })
         })
+    }
+}
+
+type CacheKey = (crate::ReorgCounter, BlockNumber);
+pub(crate) struct Cache(Mutex<SizedCache<CacheKey, BloomFilter>>);
+
+impl Cache {
+    pub fn with_size(size: usize) -> Self {
+        Self(Mutex::new(SizedCache::with_size(size)))
+    }
+
+    fn locked_cache(&self) -> MutexGuard<'_, SizedCache<CacheKey, BloomFilter>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn get(
+        &self,
+        reorg_counter: ReorgCounter,
+        block_number: BlockNumber,
+    ) -> Option<BloomFilter> {
+        self.locked_cache()
+            .cache_get(&(reorg_counter, block_number))
+            .cloned()
+    }
+
+    pub fn set(&self, reorg_counter: ReorgCounter, block_number: BlockNumber, bloom: BloomFilter) {
+        self.locked_cache()
+            .cache_set((reorg_counter, block_number), bloom);
     }
 }
 

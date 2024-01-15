@@ -1,9 +1,6 @@
-use std::sync::{Mutex, MutexGuard};
-
 use crate::bloom::BloomFilter;
-use crate::prelude::*;
+use crate::{prelude::*, ReorgCounter};
 
-use cached::{Cached, SizedCache};
 use pathfinder_common::event::Event;
 use pathfinder_common::{
     BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
@@ -102,6 +99,8 @@ pub(super) fn get_events(
         return Err(EventFilterError::PageSizeTooSmall);
     }
 
+    let reorg_counter = tx.reorg_counter()?;
+
     let from_block = filter.from_block.unwrap_or(BlockNumber::GENESIS).get();
     let to_block = filter.to_block.unwrap_or(BlockNumber::MAX).get();
     let mut offset = filter.offset;
@@ -111,6 +110,7 @@ pub(super) fn get_events(
     let mut blocks_scanned: usize = 0;
 
     for block_number in from_block..=to_block {
+        let block_number = BlockNumber::new_or_panic(block_number);
         if emitted_events.len() > filter.page_size {
             break;
         }
@@ -119,7 +119,7 @@ pub(super) fn get_events(
         tracing::trace!(%block_number, %events_required, "Processing block");
 
         if !key_filter_is_empty || filter.contract_address.is_some() {
-            let bloom = load_bloom(tx, block_number)?;
+            let bloom = load_bloom(tx, reorg_counter, block_number)?;
             if let Some(bloom) = bloom {
                 if !keys_in_bloom(&bloom, &filter.keys) {
                     tracing::trace!("Bloom filter did not match keys");
@@ -136,9 +136,7 @@ pub(super) fn get_events(
             };
         }
 
-        let block_header = tx.block_header(crate::BlockId::Number(BlockNumber::new_or_panic(
-            block_number,
-        )))?;
+        let block_header = tx.block_header(crate::BlockId::Number(block_number))?;
         let Some(block_header) = block_header else {
             break;
         };
@@ -148,9 +146,7 @@ pub(super) fn get_events(
             return Err(EventFilterError::TooManyMatches);
         }
 
-        let receipts = tx.receipts_for_block(crate::BlockId::Number(BlockNumber::new_or_panic(
-            block_number,
-        )))?;
+        let receipts = tx.receipts_for_block(block_header.hash.into())?;
         let Some(receipts) = receipts else {
             break;
         };
@@ -217,9 +213,10 @@ pub(super) fn get_events(
 
 fn load_bloom(
     tx: &Transaction<'_>,
-    block_number: u64,
+    reorg_counter: ReorgCounter,
+    block_number: BlockNumber,
 ) -> Result<Option<BloomFilter>, EventFilterError> {
-    if let Some(bloom) = GLOBAL_CACHE.get(block_number)? {
+    if let Some(bloom) = tx.bloom_filter_cache.get(reorg_counter, block_number) {
         return Ok(Some(bloom));
     }
 
@@ -235,48 +232,11 @@ fn load_bloom(
         .optional()?;
 
     if let Some(bloom) = &bloom {
-        GLOBAL_CACHE.set(block_number, bloom.clone())?;
+        tx.bloom_filter_cache
+            .set(reorg_counter, block_number, bloom.clone());
     }
 
     Ok(bloom)
-}
-
-pub(crate) fn purge_block(block_number: BlockNumber) {
-    GLOBAL_CACHE.remove(block_number.get());
-}
-
-lazy_static::lazy_static! {
-    static ref GLOBAL_CACHE: BloomFilterCache = BloomFilterCache::with_size(512000);
-}
-
-struct BloomFilterCache(Mutex<SizedCache<u64, BloomFilter>>);
-
-impl BloomFilterCache {
-    fn with_size(size: usize) -> Self {
-        Self(Mutex::new(SizedCache::with_size(size)))
-    }
-
-    fn locked_cache(
-        &self,
-    ) -> Result<MutexGuard<'_, SizedCache<u64, BloomFilter>>, EventFilterError> {
-        self.0.lock().map_err(|err| {
-            tracing::warn!("Bloom filter cache lock is poisoned. Cause: {}.", err);
-            EventFilterError::Internal(anyhow::anyhow!("Poisoned lock"))
-        })
-    }
-
-    pub fn get(&self, block_number: u64) -> Result<Option<BloomFilter>, EventFilterError> {
-        Ok(self.locked_cache()?.cache_get(&block_number).cloned())
-    }
-
-    pub fn set(&self, block_number: u64, bloom: BloomFilter) -> Result<(), EventFilterError> {
-        self.locked_cache()?.cache_set(block_number, bloom);
-        Ok(())
-    }
-
-    pub fn remove(&self, block_number: u64) {
-        self.locked_cache().unwrap().cache_remove(&block_number);
-    }
 }
 
 fn keys_in_bloom(bloom: &BloomFilter, keys: &[Vec<EventKey>]) -> bool {

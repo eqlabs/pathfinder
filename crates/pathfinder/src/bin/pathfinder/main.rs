@@ -105,8 +105,13 @@ async fn async_main() -> anyhow::Result<()> {
     verify_networks(pathfinder_context.network, ethereum.chain)?;
 
     // Setup and verify database
-    let storage_manager =
-        Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
+
+    let storage_manager = Storage::migrate(
+        pathfinder_context.database.clone(),
+        config.sqlite_wal,
+        config.bloom_filter_cache_size.get(),
+    )
+    .unwrap();
     let sync_storage = storage_manager
         // 5 is enough for normal sync operations, and then `available_parallelism` for
         // the rayon thread pool workers to use.

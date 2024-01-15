@@ -4,10 +4,9 @@ use pathfinder_common::{
     CallParam, CallResultValue, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash,
     ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot,
     ContractStateHash, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
-    L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, ReorgCounter,
-    SequencerAddress, SierraHash, StarknetVersion, StateCommitment, StorageAddress,
-    StorageCommitment, StorageValue, TransactionCommitment, TransactionHash, TransactionNonce,
-    TransactionSignatureElem,
+    L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress,
+    SierraHash, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
+    TransactionCommitment, TransactionHash, TransactionNonce, TransactionSignatureElem,
 };
 use pathfinder_crypto::Felt;
 use rusqlite::types::{FromSqlError, ToSqlOutput};
@@ -262,9 +261,12 @@ pub trait RowExt {
         Ok(addr)
     }
 
-    fn get_reorg_counter<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<ReorgCounter> {
+    fn get_reorg_counter<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<crate::ReorgCounter> {
         let num = self.get_i64(index)?;
-        Ok(ReorgCounter::new(num))
+        Ok(crate::ReorgCounter::new(num))
     }
 
     row_felt_wrapper!(get_block_hash, BlockHash);

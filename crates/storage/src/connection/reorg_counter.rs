@@ -1,6 +1,13 @@
-use pathfinder_common::ReorgCounter;
-
 use crate::prelude::*;
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub struct ReorgCounter(i64);
+
+impl ReorgCounter {
+    pub fn new(value: i64) -> Self {
+        Self(value)
+    }
+}
 
 pub(super) fn increment_reorg_counter(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.inner().execute(
