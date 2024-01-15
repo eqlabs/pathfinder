@@ -38,7 +38,7 @@ pub struct Behaviour {
     pub events_sync: p2p_stream::Behaviour<codec::Events>,
 }
 
-const IDENTIFY_PROTOCOL_NAME: &str = "/starknet/id/1.0.0";
+pub const IDENTIFY_PROTOCOL_NAME: &str = "/starknet/id/1.0.0";
 
 pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
     format!("/starknet/kad/{}/1.0.0", chain_id.to_hex_str())

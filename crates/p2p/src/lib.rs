@@ -37,6 +37,8 @@ pub use sync::protocol::PROTOCOLS;
 use client::peer_aware::Client;
 use main_loop::MainLoop;
 
+pub use behaviour::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
+
 pub fn new(
     keypair: Keypair,
     peers: Arc<RwLock<peers::Peers>>,
