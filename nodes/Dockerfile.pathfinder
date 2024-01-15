@@ -1,0 +1,25 @@
+# Build pathfinder.
+FROM rust:1.75-bookworm AS BUILD
+
+# Install build dependencies.
+RUN apt-get update && apt-get install -y ca-certificates libzstd-dev libgmp10 tini git protobuf-compiler
+
+WORKDIR /pathfinder
+COPY . .
+# Our vergen requires a git repo, but our .dockerignore excludes the .git directory.
+RUN cp -r nodes/git .git
+
+# Build pathfinder with P2P communication enabled.
+RUN cargo build --features p2p --release -p pathfinder
+
+# Run pathfinder.
+FROM rust:1.75-slim-bookworm AS RUN
+
+WORKDIR /pathfinder
+COPY --from=BUILD /pathfinder/target/release/pathfinder .
+
+# Create a few hardcoded identity files.
+RUN echo '{"private_key":"CAESQArAo83bMrNgftGfokSJ0XcP26bgn6WL3vXUhqUR8BbVVPsL0F/dGWu+VZPcnP3DhH24s5EaHVOinqv2BEkbfdc=","peer_id":"12D3KooWFY6SaqJkRxJDepwvBi4Rw36iMUGZrejW69qkjYQQ2ydQ"}' > identity1.json
+RUN echo '{"private_key":"CAESQB0FvSeC8TTUn/4de4v/qsmz+RkZRkPz84+a9E9fypyM8AK2KjyEM1C5HEyu8LpSwK0lXrO38JB/xAvkCLy3rCc=","peer_id":"12D3KooWRyGQzKzz1PcUZugCZnP1i6GRNXYjXHw4RqDHsSJ9XP5Q"}' > identity2.json
+
+ENTRYPOINT ["/pathfinder/pathfinder"]
