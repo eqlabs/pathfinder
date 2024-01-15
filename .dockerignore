@@ -17,5 +17,4 @@ crates/stark_hash_python/target/
 .env
 # pyenv
 .python-version
-nodes/Dockerfile.pathfinder
-nodes/docker-compose.yaml
+nodes/
