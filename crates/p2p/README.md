@@ -30,7 +30,7 @@ cargo run -p p2p --example generate_key
 Starting up the bootstrap node:
 
 ```shell
-RUST_LOG=info cargo run -p p2p --bin bootstrap -- --identity-config-file ./identity1.json --listen-on /ip4/127.0.0.1/tcp/4000 --bootstrap-interval-seconds 3
+RUST_LOG=info cargo run -p p2p --bin bootstrap -- --network goerli-testnet --identity-config-file ./identity.json --listen-on /ip4/127.0.0.1/tcp/4000 --bootstrap-interval-seconds 3
 ````
 
 And then starting three peers that initially connect to the bootstrap node:
