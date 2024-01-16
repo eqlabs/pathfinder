@@ -16,6 +16,7 @@ use p2p_proto::receipt::ReceiptsResponse;
 use p2p_proto::transaction::TransactionsResponse;
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use p2p_stream::{self, OutboundRequestId};
+use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::time::Duration;
 
@@ -40,6 +41,7 @@ pub struct MainLoop {
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
+    chain_id: ChainId,
     _pending_test_queries: TestQueries,
 }
 
@@ -79,6 +81,7 @@ impl MainLoop {
         event_sender: mpsc::Sender<Event>,
         peers: Arc<RwLock<peers::Peers>>,
         periodic_cfg: PeriodicTaskConfig,
+        chain_id: ChainId,
     ) -> Self {
         Self {
             bootstrap_cfg: periodic_cfg.bootstrap,
@@ -89,6 +92,7 @@ impl MainLoop {
             pending_dials: Default::default(),
             pending_sync_requests: Default::default(),
             pending_queries: Default::default(),
+            chain_id,
             _pending_test_queries: Default::default(),
         }
     }
@@ -255,7 +259,7 @@ impl MainLoop {
 
                     if protocols
                         .iter()
-                        .any(|p| p.as_ref() == behaviour::KADEMLIA_PROTOCOL_NAME)
+                        .any(|p| p.as_ref() == behaviour::kademlia_protocol_name(self.chain_id))
                     {
                         for addr in &listen_addrs {
                             self.swarm

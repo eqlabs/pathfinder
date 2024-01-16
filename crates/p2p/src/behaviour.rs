@@ -19,6 +19,7 @@ use p2p_proto::block::{
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use pathfinder_common::ChainId;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "Event", event_process = false)]
@@ -37,13 +38,17 @@ pub struct Behaviour {
     pub events_sync: p2p_stream::Behaviour<codec::Events>,
 }
 
-pub const KADEMLIA_PROTOCOL_NAME: &str = "/pathfinder/kad/1.0.0";
-// FIXME: clarify what version number should be
-// FIXME: we're also missing the starting '/'
-const PROTOCOL_VERSION: &str = "starknet/0.9.1";
+pub const IDENTIFY_PROTOCOL_NAME: &str = "/starknet/id/1.0.0";
+
+pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
+    format!("/starknet/kad/{}/1.0.0", chain_id.to_hex_str())
+}
 
 impl Behaviour {
-    pub fn new(identity: &identity::Keypair) -> (Self, relay::client::Transport) {
+    pub fn new(
+        identity: &identity::Keypair,
+        chain_id: ChainId,
+    ) -> (Self, relay::client::Transport) {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
 
         let mut kademlia_config = kad::Config::default();
@@ -52,7 +57,10 @@ impl Behaviour {
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         // This makes sure that the DHT we're implementing is incompatible with the "default" IPFS
         // DHT from libp2p.
-        kademlia_config.set_protocol_names(vec![StreamProtocol::new(KADEMLIA_PROTOCOL_NAME)]);
+        kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
+            kademlia_protocol_name(chain_id),
+        )
+        .unwrap()]);
 
         let peer_id = identity.public().to_peer_id();
 
@@ -91,7 +99,7 @@ impl Behaviour {
                 dcutr: dcutr::Behaviour::new(peer_id),
                 ping: ping::Behaviour::new(ping::Config::new()),
                 identify: identify::Behaviour::new(
-                    identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
+                    identify::Config::new(IDENTIFY_PROTOCOL_NAME.to_string(), identity.public())
                         .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
                 ),
                 kademlia,

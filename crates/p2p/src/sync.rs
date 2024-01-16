@@ -18,11 +18,11 @@ pub mod protocol {
         };
     }
 
-    define_protocol!(Headers, "/core/headers-sync/1");
-    define_protocol!(Bodies, "/core/bodies-sync/1");
-    define_protocol!(Transactions, "/core/transactions-sync/1");
-    define_protocol!(Receipts, "/core/receipts-sync/1");
-    define_protocol!(Events, "/core/events-sync/1");
+    define_protocol!(Headers, "/starknet/headers/1");
+    define_protocol!(Bodies, "/starknet/bodies/1");
+    define_protocol!(Transactions, "/starknet/transactions/1");
+    define_protocol!(Receipts, "/starknet/receipts/1");
+    define_protocol!(Events, "/starknet/events/1");
 
     pub const PROTOCOLS: &[&str] = &[
         Headers::NAME,

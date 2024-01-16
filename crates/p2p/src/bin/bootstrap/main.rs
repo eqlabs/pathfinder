@@ -11,6 +11,8 @@ use libp2p::identity::Keypair;
 use libp2p::swarm::{Config, SwarmEvent};
 use libp2p::{dns, noise};
 use libp2p::{Multiaddr, Swarm, Transport};
+use p2p::kademlia_protocol_name;
+use pathfinder_common::ChainId;
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
@@ -26,6 +28,8 @@ struct Args {
     bootstrap_interval_seconds: u64,
     #[clap(long, short, value_parser, env = "PRETTY_LOG", default_value = "false")]
     pretty_log: bool,
+    #[clap(long, short, value_parser, env = "NETWORK")]
+    network: Network,
 }
 
 #[derive(Clone, Deserialize)]
@@ -43,6 +47,16 @@ impl zeroize::Zeroize for IdentityConfig {
     fn zeroize(&mut self) {
         self.private_key.zeroize()
     }
+}
+
+#[derive(clap::ValueEnum, Clone, serde::Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
+enum Network {
+    Mainnet,
+    GoerliTestnet,
+    GoerliIntegration,
+    SepoliaTestnet,
+    SepoliaIntegration,
 }
 
 #[tokio::main]
@@ -80,9 +94,16 @@ async fn main() -> anyhow::Result<()> {
         .multiplex(libp2p::yamux::Config::default())
         .boxed();
 
+    let chain_id = match args.network {
+        Network::Mainnet => ChainId::MAINNET,
+        Network::GoerliTestnet => ChainId::GOERLI_TESTNET,
+        Network::GoerliIntegration => ChainId::GOERLI_INTEGRATION,
+        Network::SepoliaTestnet => ChainId::SEPOLIA_TESTNET,
+        Network::SepoliaIntegration => ChainId::SEPOLIA_INTEGRATION,
+    };
     let mut swarm = Swarm::new(
         transport,
-        behaviour::BootstrapBehaviour::new(keypair.public()),
+        behaviour::BootstrapBehaviour::new(keypair.public(), chain_id),
         keypair.public().to_peer_id(),
         Config::with_tokio_executor(),
     );
@@ -147,7 +168,7 @@ async fn main() -> anyhow::Result<()> {
 
                             if protocols
                                 .iter()
-                                .any(|p| p.as_ref() == behaviour::KADEMLIA_PROTOCOL_NAME)
+                                .any(|p| p.as_ref() == kademlia_protocol_name(chain_id))
                             {
                                 for addr in listen_addrs {
                                     swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
