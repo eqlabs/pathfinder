@@ -34,6 +34,7 @@ pub struct MainLoop {
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
     peers: Arc<RwLock<peers::Peers>>,
+    // TODO Check all references to this one more time
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -171,6 +172,7 @@ impl MainLoop {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
+                // TODO Here, I should insert the element and start a timer to remove it
                 self.peers.write().await.peer_connected(&peer_id);
 
                 if endpoint.is_dialer() {
@@ -212,6 +214,11 @@ impl MainLoop {
                 if num_established == 0 {
                     self.peers.write().await.peer_disconnected(&peer_id);
                     tracing::debug!(%peer_id, "Fully disconnected from");
+                    send_test_event(
+                        &self.event_sender,
+                        TestEvent::ConnectionClosed { remote: peer_id },
+                    )
+                    .await;
                 } else {
                     tracing::debug!(%peer_id, other_connections_for_this_peer=%num_established, "Connection closed");
                 }
@@ -721,6 +728,20 @@ impl MainLoop {
                 } else {
                     let _ = sender.send(Err(anyhow::anyhow!("Dialing is already pending")));
                 }
+            }
+            Command::Disconnect { peer_id, sender } => {
+                match self.swarm.disconnect_peer_id(peer_id) {
+                    Ok(()) => {
+                        tracing::debug!(%peer_id, "Disconnected");
+                        let _ = sender.send(Ok(()));
+                        self.pending_dials.remove(&peer_id);
+                    }
+                    Err(()) => {
+                        let _ = sender.send(Err(anyhow::anyhow!(
+                            "Failed to disconnect: peer not connected"
+                        )));
+                    }
+                };
             }
             Command::ProvideCapability { capability, sender } => {
                 let _ = match self.swarm.behaviour_mut().provide_capability(&capability) {

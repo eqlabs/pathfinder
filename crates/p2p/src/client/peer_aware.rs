@@ -75,6 +75,15 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    pub async fn disconnect(&self, peer_id: PeerId) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::Disconnect { peer_id, sender })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
     pub async fn provide_capability(&self, capability: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
