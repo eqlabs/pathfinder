@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
@@ -30,11 +31,14 @@ use crate::{
 
 pub struct MainLoop {
     bootstrap_cfg: BootstrapConfig,
+    /// A peer may attempt to connect only once in this interval.
+    connection_timeout: Duration,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
     peers: Arc<RwLock<peers::Peers>>,
-    // TODO Check all references to this one more time
+    /// IPs of peers that have connected within the last `connection_timeout` seconds.
+    recent_peers: Arc<RwLock<HashSet<IpAddr>>>,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -86,6 +90,8 @@ impl MainLoop {
     ) -> Self {
         Self {
             bootstrap_cfg: periodic_cfg.bootstrap,
+            connection_timeout: periodic_cfg.connection_timeout,
+            recent_peers: Default::default(),
             swarm,
             command_receiver,
             event_sender,
@@ -172,7 +178,49 @@ impl MainLoop {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
-                // TODO Here, I should insert the element and start a timer to remove it
+                // If this is an incoming connection, we have to prevent the peer from
+                // reconnecting too quickly.
+                if endpoint.is_listener() {
+                    // Extract the IP address of the peer from his multiaddr.
+                    let ip = endpoint.get_remote_address().iter().find_map(|p| match p {
+                        Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+                        Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                        _ => None,
+                    });
+                    match ip {
+                        Some(ip) => {
+                            // If the peer is in the recent peers set, this means he is attempting to
+                            // reconnect too quickly. Close the connection.
+                            if self.recent_peers.read().await.contains(&ip) {
+                                tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
+                                if let Err(e) = self.disconnect(peer_id).await {
+                                    tracing::error!(%e, "Failed to disconnect peer");
+                                }
+                                return;
+                            } else {
+                                // Otherwise, add the peer to the recent peers set. After a certain period,
+                                // remove the peer from the recent peers set. This allows us to prevent
+                                // malicious peers from reconnecting too quickly.
+                                let recent_peers = self.recent_peers.clone();
+                                let timeout = self.connection_timeout;
+                                recent_peers.write().await.insert(ip);
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(timeout).await;
+                                    recent_peers.write().await.remove(&ip);
+                                });
+                            }
+                        }
+                        None => {
+                            // If the peer has no IP address, close the connection.
+                            tracing::warn!(%peer_id, "Peer has no IP address, disconnecting");
+                            if let Err(e) = self.disconnect(peer_id).await {
+                                tracing::error!(%e, "Failed to disconnect peer");
+                            }
+                            return;
+                        }
+                    }
+                }
+
                 self.peers.write().await.peer_connected(&peer_id);
 
                 if endpoint.is_dialer() {
@@ -730,18 +778,7 @@ impl MainLoop {
                 }
             }
             Command::Disconnect { peer_id, sender } => {
-                match self.swarm.disconnect_peer_id(peer_id) {
-                    Ok(()) => {
-                        tracing::debug!(%peer_id, "Disconnected");
-                        let _ = sender.send(Ok(()));
-                        self.pending_dials.remove(&peer_id);
-                    }
-                    Err(()) => {
-                        let _ = sender.send(Err(anyhow::anyhow!(
-                            "Failed to disconnect: peer not connected"
-                        )));
-                    }
-                };
+                let _ = sender.send(self.disconnect(peer_id).await);
             }
             Command::ProvideCapability { capability, sender } => {
                 let _ = match self.swarm.behaviour_mut().provide_capability(&capability) {
@@ -867,6 +904,17 @@ impl MainLoop {
             .map_err(|e| anyhow::anyhow!("Gossipsub publish failed: {}", e))?;
         tracing::debug!(?message_id, "Data published");
         Ok(())
+    }
+
+    async fn disconnect(&mut self, peer_id: PeerId) -> anyhow::Result<()> {
+        self.pending_dials.remove(&peer_id);
+        match self.swarm.disconnect_peer_id(peer_id) {
+            Ok(()) => {
+                tracing::debug!(%peer_id, "Disconnected");
+                Ok(())
+            }
+            Err(()) => Err(anyhow::anyhow!("Failed to disconnect: peer not connected")),
+        }
     }
 
     /// No-op outside tests

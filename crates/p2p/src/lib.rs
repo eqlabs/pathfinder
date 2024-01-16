@@ -85,6 +85,7 @@ pub fn new(
 #[derive(Copy, Clone, Debug)]
 pub struct PeriodicTaskConfig {
     pub bootstrap: BootstrapConfig,
+    pub connection_timeout: Duration,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -100,6 +101,7 @@ impl Default for PeriodicTaskConfig {
                 start_offset: Duration::from_secs(5),
                 period: Duration::from_secs(10 * 60),
             },
+            connection_timeout: Duration::from_secs(30),
         }
     }
 }
