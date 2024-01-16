@@ -5,11 +5,13 @@ mod class;
 mod ethereum;
 mod event;
 mod reference;
+mod reorg_counter;
 mod signature;
 mod state_update;
 mod transaction;
 mod trie;
 
+use pathfinder_common::ReorgCounter;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 
@@ -507,6 +509,14 @@ impl<'inner> Transaction<'inner> {
 
     pub fn signature(&self, block: BlockId) -> anyhow::Result<Option<BlockCommitmentSignature>> {
         signature::signature(self, block)
+    }
+
+    pub fn increment_reorg_counter(&self) -> anyhow::Result<()> {
+        reorg_counter::increment_reorg_counter(self)
+    }
+
+    pub fn reorg_counter(&self) -> anyhow::Result<ReorgCounter> {
+        reorg_counter::reorg_counter(self)
     }
 
     pub(self) fn inner(&self) -> &rusqlite::Transaction<'_> {

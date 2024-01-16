@@ -91,5 +91,15 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Dropping starknet_events table")?;
 
+    tracing::debug!("Creating reorg counter table");
+    tx.execute_batch(
+        "CREATE TABLE reorg_counter (
+            id INTEGER NOT NULL PRIMARY KEY,
+            counter INTEGER NOT NULL
+        );
+        INSERT INTO reorg_counter (id, counter) VALUES (1, 0);",
+    )
+    .context("Creating reorg counter table")?;
+
     Ok(())
 }
