@@ -120,6 +120,10 @@ enum Command {
         addr: Multiaddr,
         sender: EmptyResultSender,
     },
+    Disconnect {
+        peer_id: PeerId,
+        sender: EmptyResultSender,
+    },
     ProvideCapability {
         capability: String,
         sender: EmptyResultSender,
@@ -215,6 +219,7 @@ pub enum TestEvent {
     PeriodicBootstrapCompleted(Result<PeerId, PeerId>),
     StartProvidingCompleted(Result<RecordKey, RecordKey>),
     ConnectionEstablished { outbound: bool, remote: PeerId },
+    ConnectionClosed { remote: PeerId },
     Subscribed { remote: PeerId, topic: String },
     PeerAddedToDHT { remote: PeerId },
     Dummy,

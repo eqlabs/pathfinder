@@ -81,16 +81,11 @@ impl TestPeer {
         self.start_listening_on(Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap())
             .await
     }
+}
 
-    /// Get peer IDs of the connected peers
-    pub async fn connected(&self) -> HashSet<PeerId> {
-        self.peers
-            .read()
-            .await
-            .connected()
-            .map(Clone::clone)
-            .collect()
-    }
+/// Get peer IDs of the connected peers
+async fn connected(peers: &RwLock<Peers>) -> HashSet<PeerId> {
+    peers.read().await.connected().map(Clone::clone).collect()
 }
 
 impl Default for TestPeer {
@@ -167,11 +162,59 @@ async fn dial() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    let peers_of1 = peer1.connected().await;
-    let peers_of2 = peer2.connected().await;
+    let peers_of1 = connected(&peer1.peers).await;
+    let peers_of2 = connected(&peer2.peers).await;
 
     assert_eq!(peers_of1, [peer2.peer_id].into());
     assert_eq!(peers_of2, [peer1.peer_id].into());
+}
+
+#[test_log::test(tokio::test)]
+async fn disconnect() {
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let peer1 = TestPeer::default();
+    let mut peer2 = TestPeer::default();
+
+    let addr2 = peer2.start_listening().await.unwrap();
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    let peers_of1 = connected(&peer1.peers).await;
+    let peers_of2 = connected(&peer2.peers).await;
+
+    assert_eq!(peers_of1, [peer2.peer_id].into());
+    assert_eq!(peers_of2, [peer1.peer_id].into());
+
+    peer2.client.disconnect(peer1.peer_id).await.unwrap();
+
+    println!("after disconnect");
+
+    let peers1 = peer1.peers.clone();
+    let peers2 = peer2.peers.clone();
+
+    let mut peer1_connection_closed =
+        filter_events(peer1.event_receiver, move |event| match event {
+            Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => {
+                Some(())
+            }
+            _ => None,
+        });
+
+    let mut peer2_connection_closed =
+        filter_events(peer2.event_receiver, move |event| match event {
+            Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => {
+                Some(())
+            }
+            _ => None,
+        });
+
+    peer1_connection_closed.recv().await;
+    peer2_connection_closed.recv().await;
+
+    assert!(connected(&peers1).await.is_empty());
+    assert!(connected(&peers2).await.is_empty());
 }
 
 #[test_log::test(tokio::test)]
@@ -294,6 +337,9 @@ async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
 
     assert_eq!(msg, expected);
 }
+
+// TODO Add a test here where peers connect and immediately disconnect. Verify that
+// attempting to reconnect results in the connection being denied
 
 /// Defines a sync test case named [`$test_name`], where there are 2 peers:
 /// - peer2 sends a request to peer1
