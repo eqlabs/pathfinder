@@ -81,11 +81,16 @@ impl TestPeer {
         self.start_listening_on(Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap())
             .await
     }
-}
 
-/// Get peer IDs of the connected peers
-async fn connected(peers: &RwLock<Peers>) -> HashSet<PeerId> {
-    peers.read().await.connected().map(Clone::clone).collect()
+    /// Get peer IDs of the connected peers
+    pub async fn connected(&self) -> HashSet<PeerId> {
+        self.peers
+            .read()
+            .await
+            .connected()
+            .map(Clone::clone)
+            .collect()
+    }
 }
 
 impl Default for TestPeer {
@@ -115,6 +120,19 @@ fn filter_events<T: Debug + Send + 'static>(
     });
 
     rx
+}
+
+/// Wait for a specific event to happen.
+async fn wait_event<T: Debug + Send + 'static>(
+    event_receiver: &mut EventReceiver,
+    mut f: impl FnMut(Event) -> Option<T>,
+) -> Option<T> {
+    while let Some(event) = event_receiver.recv().await {
+        if let Some(data) = f(event) {
+            return Some(data);
+        }
+    }
+    None
 }
 
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
@@ -162,8 +180,8 @@ async fn dial() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    let peers_of1 = connected(&peer1.peers).await;
-    let peers_of2 = connected(&peer2.peers).await;
+    let peers_of1 = peer1.connected().await;
+    let peers_of2 = peer2.connected().await;
 
     assert_eq!(peers_of1, [peer2.peer_id].into());
     assert_eq!(peers_of2, [peer1.peer_id].into());
@@ -173,7 +191,7 @@ async fn dial() {
 async fn disconnect() {
     let _ = env_logger::builder().is_test(true).try_init();
 
-    let peer1 = TestPeer::default();
+    let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
     let addr2 = peer2.start_listening().await.unwrap();
@@ -181,40 +199,30 @@ async fn disconnect() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    let peers_of1 = connected(&peer1.peers).await;
-    let peers_of2 = connected(&peer2.peers).await;
+    let peers_of1 = peer1.connected().await;
+    let peers_of2 = peer2.connected().await;
 
     assert_eq!(peers_of1, [peer2.peer_id].into());
     assert_eq!(peers_of2, [peer1.peer_id].into());
 
     peer2.client.disconnect(peer1.peer_id).await.unwrap();
 
-    println!("after disconnect");
+    wait_event(&mut peer1.event_receiver, move |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    }).await;
 
-    let peers1 = peer1.peers.clone();
-    let peers2 = peer2.peers.clone();
+    wait_event(&mut peer2.event_receiver, move |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    }).await;
 
-    let mut peer1_connection_closed =
-        filter_events(peer1.event_receiver, move |event| match event {
-            Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => {
-                Some(())
-            }
-            _ => None,
-        });
-
-    let mut peer2_connection_closed =
-        filter_events(peer2.event_receiver, move |event| match event {
-            Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => {
-                Some(())
-            }
-            _ => None,
-        });
-
-    peer1_connection_closed.recv().await;
-    peer2_connection_closed.recv().await;
-
-    assert!(connected(&peers1).await.is_empty());
-    assert!(connected(&peers2).await.is_empty());
+    assert!(peer1.connected().await.is_empty());
+    assert!(peer2.connected().await.is_empty());
 }
 
 #[test_log::test(tokio::test)]
@@ -228,6 +236,7 @@ async fn periodic_bootstrap() {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
         },
+        connection_timeout: Duration::from_millis(500),
     };
     let mut boot = TestPeer::new(periodic_cfg);
     let mut peer1 = TestPeer::new(periodic_cfg);
@@ -278,6 +287,112 @@ async fn periodic_bootstrap() {
     assert_eq!(boot_dht, [peer1.peer_id, peer2.peer_id].into());
     assert_eq!(dht1, [boot.peer_id, peer2.peer_id].into());
     assert_eq!(dht2, [boot.peer_id, peer1.peer_id].into());
+}
+
+/// Test that if a peer attempts to reconnect too quickly, the connection is closed.
+#[test_log::test(tokio::test)]
+async fn reconnect_too_quickly() {
+    const CONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
+    let periodic_cfg = PeriodicTaskConfig {
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            // Bootstrapping can cause redials, so set the offset to a high value.
+            start_offset: Duration::from_secs(3),
+        },
+        connection_timeout: CONNECTION_TIMEOUT,
+    };
+
+    let mut peer1 = TestPeer::new(periodic_cfg);
+    let mut peer2 = TestPeer::new(periodic_cfg);
+
+    let addr2 = peer2.start_listening().await.unwrap();
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    // Open the connection.
+    peer1
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
+
+    wait_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    let peers_of1 = peer1.connected().await;
+    let peers_of2 = peer2.connected().await;
+
+    assert_eq!(peers_of1, [peer2.peer_id].into());
+    assert_eq!(peers_of2, [peer1.peer_id].into());
+
+    // Close the connection.
+    peer1.client.disconnect(peer2.peer_id).await.unwrap();
+
+    wait_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    wait_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    // Attempt to immediately reconnect.
+    peer1
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
+
+    // TODO Try to use the IncomingConnection swarm event instead? Not sure if possible
+    // The peer gets disconnected without completing the connection establishment handler.
+    wait_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    wait_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    // Attempt to reconnect after the timeout.
+    tokio::time::sleep(CONNECTION_TIMEOUT).await;
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    // The connection is established.
+    wait_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
 }
 
 #[rstest]
@@ -337,9 +452,6 @@ async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
 
     assert_eq!(msg, expected);
 }
-
-// TODO Add a test here where peers connect and immediately disconnect. Verify that
-// attempting to reconnect results in the connection being denied
 
 /// Defines a sync test case named [`$test_name`], where there are 2 peers:
 /// - peer2 sends a request to peer1
