@@ -222,7 +222,7 @@ mod tests {
         #[case::object_with_spaces("{   }")]
         #[case::object_with_newlines("{  \n  }")]
         fn empty(#[case] s: &str) {
-            let raw_value = RawValue::from_string(dbg!(s).to_owned()).unwrap();
+            let raw_value = RawValue::from_string(s.to_owned()).unwrap();
             let uut = RawParams(Some(&raw_value));
 
             assert!(uut.is_empty());

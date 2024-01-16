@@ -574,8 +574,7 @@ mod tests {
             let timeout_result = timeout(Duration::from_millis(100), self.receiver.next()).await;
 
             match timeout_result {
-                Ok(Some(reception_result)) => {
-                    let _ = dbg!(reception_result);
+                Ok(Some(_)) => {
                     panic!("Unexpected message received")
                 }
                 Ok(None) => {
