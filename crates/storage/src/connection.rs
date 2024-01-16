@@ -103,6 +103,10 @@ impl<'inner> Transaction<'inner> {
         block::block_id(self, block)
     }
 
+    pub fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {
+        block::block_hash(self, block)
+    }
+
     pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
         block::block_exists(self, block)
     }

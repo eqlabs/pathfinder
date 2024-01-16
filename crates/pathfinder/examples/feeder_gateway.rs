@@ -295,10 +295,9 @@ fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> 
     };
 
     let genesis_hash = tx
-        .block_id(BlockNumber::GENESIS.into())
+        .block_hash(BlockNumber::GENESIS.into())
         .unwrap()
-        .context("Getting genesis hash")?
-        .1;
+        .context("Getting genesis hash")?;
 
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => Chain::Mainnet,

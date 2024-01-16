@@ -50,9 +50,9 @@ impl<'tx> ExecutionState<'tx> {
         if self.execute_on_parent_state && self.header.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
                 pathfinder_common::BlockNumber::new_or_panic(self.header.number.get() - 10);
-            let (_, block_hash) = self
+            let block_hash = self
                 .transaction
-                .block_id(block_number_whose_hash_becomes_available.into())?
+                .block_hash(block_number_whose_hash_becomes_available.into())?
                 .context("Getting historical block hash")?;
 
             tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");

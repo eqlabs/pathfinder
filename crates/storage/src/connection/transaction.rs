@@ -122,7 +122,7 @@ pub(super) fn transaction_at_block(
     index: usize,
 ) -> anyhow::Result<Option<gateway::Transaction>> {
     // Identify block hash
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
@@ -173,8 +173,8 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
             .context("Counting transactions"),
         BlockId::Latest => {
             // First get the latest block
-            let block = match tx.block_id(BlockId::Latest)? {
-                Some((number, _)) => number,
+            let block = match tx.block_hash(BlockId::Latest)? {
+                Some(hash) => hash,
                 None => return Ok(0),
             };
 
@@ -187,7 +187,7 @@ pub(super) fn transaction_data_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<(gateway::Transaction, gateway::Receipt)>>> {
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
@@ -230,7 +230,7 @@ pub(super) fn transactions_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<gateway::Transaction>>> {
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
@@ -263,7 +263,7 @@ pub(super) fn receipts_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<gateway::Receipt>>> {
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
@@ -295,7 +295,7 @@ pub(super) fn transaction_hashes_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<TransactionHash>>> {
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
