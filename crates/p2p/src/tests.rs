@@ -393,7 +393,8 @@ async fn reconnect_too_quickly() {
     .await;
 }
 
-/// Test that if a peer attempts to reconnect too quickly, the connection is closed.
+/// Test that each peer accepts at most one connection from any other peer, and duplicate
+/// connections are closed.
 #[test_log::test(tokio::test)]
 async fn duplicate_connection() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
