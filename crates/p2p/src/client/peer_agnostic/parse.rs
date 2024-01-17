@@ -296,24 +296,85 @@ pub(crate) mod transactions {
         Uninitialized,
         Transactions {
             last_id: BlockId,
-            transactions: HashMap<BlockId, Vec<TransactionVariant>>,
+            transactions: InnerTransactions,
         },
         Delimited {
-            transactions: HashMap<BlockId, Vec<TransactionVariant>>,
+            transactions: InnerTransactions,
         },
         DelimitedWithError {
             error: Error,
-            transactions: HashMap<BlockId, Vec<TransactionVariant>>,
+            transactions: InnerTransactions,
         },
         Empty {
             error: Option<Error>,
         },
     }
 
+    #[derive(Debug)]
+    pub struct InnerTransactions {
+        pub deploy_account: HashMap<BlockId, Vec<TransactionVariant>>,
+        pub other: HashMap<BlockId, Vec<TransactionVariant>>,
+    }
+
+    impl InnerTransactions {
+        pub fn is_empty(&self) -> bool {
+            self.deploy_account.is_empty() && self.other.is_empty()
+        }
+
+        pub fn contains_key(&self, id: &BlockId) -> bool {
+            self.deploy_account.contains_key(id) || self.other.contains_key(id)
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct ParsedTransactions {
+        pub deploy_account: HashMap<BlockHash, Vec<TransactionVariant>>,
+        pub other: HashMap<BlockHash, Vec<TransactionVariant>>,
+    }
+
+    impl From<InnerTransactions> for ParsedTransactions {
+        fn from(inner: InnerTransactions) -> Self {
+            Self {
+                deploy_account: inner
+                    .deploy_account
+                    .into_iter()
+                    .map(|(k, v)| (BlockHash(k.hash.0), v))
+                    .collect(),
+                other: inner
+                    .other
+                    .into_iter()
+                    .map(|(k, v)| (BlockHash(k.hash.0), v))
+                    .collect(),
+            }
+        }
+    }
+
+    fn try_from_dto(
+        dtos: Vec<p2p_proto::transaction::Transaction>,
+    ) -> anyhow::Result<(Vec<TransactionVariant>, Vec<TransactionVariant>)> {
+        let mut deploy_account_txns = Vec::new();
+        let mut other_txns = Vec::new();
+
+        for dto in dtos {
+            let transaction =
+                TransactionVariant::try_from_dto(dto).context("parsing transaction")?;
+            if matches!(
+                transaction,
+                TransactionVariant::DeployAccountV0V1(_) | TransactionVariant::DeployAccountV3(_)
+            ) {
+                deploy_account_txns.push(transaction);
+            } else {
+                other_txns.push(transaction);
+            }
+        }
+
+        Ok((deploy_account_txns, other_txns))
+    }
+
     impl super::ParserState for State {
         type Dto = TransactionsResponse;
-        type Inner = HashMap<BlockId, Vec<TransactionVariant>>;
-        type Out = HashMap<BlockHash, Vec<TransactionVariant>>;
+        type Inner = InnerTransactions;
+        type Out = ParsedTransactions;
 
         fn transition(self, next: Self::Dto) -> anyhow::Result<Self> {
             let TransactionsResponse { id, kind } = next;
@@ -323,18 +384,25 @@ pub(crate) mod transactions {
                     State::Uninitialized,
                     Some(id),
                     TransactionsResponseKind::Transactions(Transactions { items }),
-                ) => State::Transactions {
-                    last_id: id,
-                    transactions: [(
-                        id,
-                        items
-                            .into_iter()
-                            .map(TransactionVariant::try_from_dto)
-                            .collect::<anyhow::Result<Vec<_>>>()
-                            .context("parsing transactions")?,
-                    )]
-                    .into(),
-                },
+                ) => {
+                    let mut deploy_account = HashMap::new();
+                    let mut other = HashMap::new();
+                    let (new_deploy_account, new_other) = try_from_dto(items)?;
+                    if !deploy_account.is_empty() {
+                        deploy_account.insert(id, new_deploy_account);
+                    }
+                    if !other.is_empty() {
+                        other.insert(id, new_other);
+                    }
+
+                    State::Transactions {
+                        last_id: id,
+                        transactions: InnerTransactions {
+                            deploy_account,
+                            other,
+                        },
+                    }
+                }
                 // The peer does not have anything we asked for
                 (State::Uninitialized, _, TransactionsResponseKind::Fin(Fin { error })) => {
                     State::Empty { error }
@@ -348,16 +416,17 @@ pub(crate) mod transactions {
                     Some(id),
                     TransactionsResponseKind::Transactions(Transactions { items }),
                 ) if last_id == id => {
+                    let (new_deploy_account, new_other) = try_from_dto(items)?;
                     transactions
+                        .deploy_account
                         .get_mut(&id)
-                        .expect("transactions for this id is present")
-                        .extend(
-                            items
-                                .into_iter()
-                                .map(TransactionVariant::try_from_dto)
-                                .collect::<anyhow::Result<Vec<_>>>()
-                                .context("parsing transactions")?,
-                        );
+                        .expect("this id is present")
+                        .extend(new_deploy_account);
+                    transactions
+                        .other
+                        .get_mut(&id)
+                        .expect("this id is present")
+                        .extend(new_other);
 
                     State::Transactions {
                         last_id,
@@ -391,17 +460,14 @@ pub(crate) mod transactions {
                         anyhow::bail!("unexpected response");
                     }
 
-                    transactions.insert(
-                        id,
-                        items
-                            .into_iter()
-                            .map(TransactionVariant::try_from_dto)
-                            .collect::<anyhow::Result<Vec<_>>>()
-                            .context("parsing transactions")?,
-                    );
+                    let (new_deploy_account, new_other) = try_from_dto(items)?;
+
+                    transactions.deploy_account.insert(id, new_deploy_account);
+                    transactions.other.insert(id, new_other);
 
                     State::Transactions {
                         last_id: id,
+
                         transactions,
                     }
                 }
@@ -410,10 +476,7 @@ pub(crate) mod transactions {
         }
 
         fn from_inner(inner: Self::Inner) -> Self::Out {
-            inner
-                .into_iter()
-                .map(|(k, v)| (BlockHash(k.hash.0), v))
-                .collect()
+            inner.into()
         }
 
         impl_take_parsed_and_should_stop!(transactions);
