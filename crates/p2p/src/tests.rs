@@ -208,18 +208,16 @@ async fn disconnect() {
     peer2.client.disconnect(peer1.peer_id).await.unwrap();
 
     wait_event(&mut peer1.event_receiver, move |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => {
-            Some(())
-        }
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
         _ => None,
-    }).await;
+    })
+    .await;
 
     wait_event(&mut peer2.event_receiver, move |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => {
-            Some(())
-        }
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
         _ => None,
-    }).await;
+    })
+    .await;
 
     assert!(peer1.connected().await.is_empty());
     assert!(peer2.connected().await.is_empty());
