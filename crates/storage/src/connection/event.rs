@@ -72,16 +72,11 @@ pub(super) fn insert_block_events<'a>(
 
     let mut bloom = BloomFilter::new();
     for event in events {
-        for (i, key) in event.keys.iter().take(KEY_FILTER_LIMIT).enumerate() {
-            let mut key = key.0;
-            key.as_mut_be_bytes()[0] |= (i as u8) << 4;
-            bloom.set(&key);
-        }
-
-        bloom.set(&event.from_address.0);
+        bloom.set_keys(&event.keys);
+        bloom.set_address(&event.from_address);
     }
 
-    stmt.execute(params![&block_number, &bloom.as_compressed_bytes()])?;
+    stmt.execute(params![&block_number, &bloom.to_compressed_bytes()])?;
 
     Ok(())
 }
