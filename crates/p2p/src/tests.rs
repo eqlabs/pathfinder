@@ -123,7 +123,7 @@ fn filter_events<T: Debug + Send + 'static>(
 }
 
 /// Wait for a specific event to happen.
-async fn wait_event<T: Debug + Send + 'static>(
+async fn wait_for_event<T: Debug + Send + 'static>(
     event_receiver: &mut EventReceiver,
     mut f: impl FnMut(Event) -> Option<T>,
 ) -> Option<T> {
