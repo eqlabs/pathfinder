@@ -183,16 +183,14 @@ impl MainLoop {
                     _ => None,
                 });
 
-                let peer_ip = match peer_ip {
-                    Some(ip) => ip,
-                    None => {
-                        // If the peer has no IP address, disconnect.
-                        tracing::info!(%peer_id, "Peer has no IP address, disconnecting");
-                        if let Err(e) = self.disconnect(peer_id).await {
-                            tracing::debug!(%e, "Failed to disconnect peer");
-                        }
-                        return;
+                // If the peer has no IP address, disconnect.
+                let Some(peer_ip) = peer_ip else {
+                    if let Err(e) = self.disconnect(peer_id).await {
+                        tracing::debug!(reason=%e, %peer_id, "Failed to disconnect peer without IP");
+                    } else {
+                        tracing::debug!(%peer_id, "Disconnected peer without IP");
                     }
+                    return;
                 };
 
                 // If this is an incoming connection, we have to prevent the peer from
