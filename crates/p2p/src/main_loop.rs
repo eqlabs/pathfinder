@@ -23,6 +23,7 @@ use tokio::time::Duration;
 
 use crate::behaviour;
 use crate::peers;
+use crate::recent_peers::RecentPeers;
 #[cfg(test)]
 use crate::test_utils;
 use crate::{
@@ -31,14 +32,12 @@ use crate::{
 
 pub struct MainLoop {
     bootstrap_cfg: BootstrapConfig,
-    /// A peer may attempt to connect only once in this interval.
-    connection_timeout: Duration,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
     peers: Arc<RwLock<peers::Peers>>,
-    /// IPs of peers that have connected within the last `connection_timeout` seconds.
-    recent_peers: Arc<RwLock<HashSet<IpAddr>>>,
+    /// Peers that have connected within the last `connection_timeout` seconds.
+    recent_peers: RecentPeers,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -90,8 +89,7 @@ impl MainLoop {
     ) -> Self {
         Self {
             bootstrap_cfg: periodic_cfg.bootstrap,
-            connection_timeout: periodic_cfg.connection_timeout,
-            recent_peers: Default::default(),
+            recent_peers: RecentPeers::new(periodic_cfg.connection_timeout),
             swarm,
             command_receiver,
             event_sender,
@@ -178,46 +176,39 @@ impl MainLoop {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
+                // Extract the IP address of the peer from his multiaddr.
+                let peer_ip = endpoint.get_remote_address().iter().find_map(|p| match p {
+                    Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+                    Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                    _ => None,
+                });
+
+                let peer_ip = match peer_ip {
+                    Some(ip) => ip,
+                    None => {
+                        // If the peer has no IP address, disconnect.
+                        tracing::info!(%peer_id, "Peer has no IP address, disconnecting");
+                        if let Err(e) = self.disconnect(peer_id).await {
+                            tracing::debug!(%e, "Failed to disconnect peer");
+                        }
+                        return;
+                    }
+                };
+
                 // If this is an incoming connection, we have to prevent the peer from
                 // reconnecting too quickly.
                 if endpoint.is_listener() {
-                    // Extract the IP address of the peer from his multiaddr.
-                    let ip = endpoint.get_remote_address().iter().find_map(|p| match p {
-                        Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
-                        Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
-                        _ => None,
-                    });
-                    match ip {
-                        Some(ip) => {
-                            // If the peer is in the recent peers set, this means he is attempting to
-                            // reconnect too quickly. Close the connection.
-                            if self.recent_peers.read().await.contains(&ip) {
-                                tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
-                                if let Err(e) = self.disconnect(peer_id).await {
-                                    tracing::error!(%e, "Failed to disconnect peer");
-                                }
-                                return;
-                            } else {
-                                // Otherwise, add the peer to the recent peers set. After a certain period,
-                                // remove the peer from the recent peers set. This allows us to prevent
-                                // malicious peers from reconnecting too quickly.
-                                let recent_peers = self.recent_peers.clone();
-                                let timeout = self.connection_timeout;
-                                recent_peers.write().await.insert(ip);
-                                tokio::spawn(async move {
-                                    tokio::time::sleep(timeout).await;
-                                    recent_peers.write().await.remove(&ip);
-                                });
-                            }
+                    // If the peer is in the recent peers set, this means he is attempting to
+                    // reconnect too quickly. Close the connection.
+                    if self.recent_peers.contains(&peer_ip) {
+                        tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
+                        if let Err(e) = self.disconnect(peer_id).await {
+                            tracing::error!(%e, "Failed to disconnect peer");
                         }
-                        None => {
-                            // If the peer has no IP address, close the connection.
-                            tracing::warn!(%peer_id, "Peer has no IP address, disconnecting");
-                            if let Err(e) = self.disconnect(peer_id).await {
-                                tracing::error!(%e, "Failed to disconnect peer");
-                            }
-                            return;
-                        }
+                        return;
+                    } else {
+                        // Otherwise, add the peer to the recent peers set.
+                        self.recent_peers.insert(peer_id, peer_ip);
                     }
                 }
 
@@ -261,6 +252,8 @@ impl MainLoop {
             } => {
                 if num_established == 0 {
                     self.peers.write().await.peer_disconnected(&peer_id);
+                    // Don't keep expired peers in the recent peers set.
+                    self.recent_peers.remove_if_expired(peer_id);
                     tracing::debug!(%peer_id, "Fully disconnected from");
                     send_test_event(
                         &self.event_sender,

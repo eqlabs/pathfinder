@@ -23,6 +23,7 @@ mod behaviour;
 pub mod client;
 mod main_loop;
 mod peers;
+mod recent_peers;
 mod sync;
 #[cfg(test)]
 mod test_utils;
@@ -85,6 +86,7 @@ pub fn new(
 #[derive(Copy, Clone, Debug)]
 pub struct PeriodicTaskConfig {
     pub bootstrap: BootstrapConfig,
+    /// A peer can only connect once in this period.
     pub connection_timeout: Duration,
 }
 
