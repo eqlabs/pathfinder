@@ -207,13 +207,13 @@ async fn disconnect() {
 
     peer2.client.disconnect(peer1.peer_id).await.unwrap();
 
-    wait_event(&mut peer1.event_receiver, move |event| match event {
+    wait_for_event(&mut peer1.event_receiver, move |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_event(&mut peer2.event_receiver, move |event| match event {
+    wait_for_event(&mut peer2.event_receiver, move |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
         _ => None,
     })
@@ -313,7 +313,7 @@ async fn reconnect_too_quickly() {
         .await
         .unwrap();
 
-    wait_event(&mut peer1.event_receiver, |event| match event {
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
             Some(())
         }
@@ -321,7 +321,7 @@ async fn reconnect_too_quickly() {
     })
     .await;
 
-    wait_event(&mut peer2.event_receiver, |event| match event {
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
             Some(())
         }
@@ -338,13 +338,13 @@ async fn reconnect_too_quickly() {
     // Close the connection.
     peer1.client.disconnect(peer2.peer_id).await.unwrap();
 
-    wait_event(&mut peer1.event_receiver, |event| match event {
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_event(&mut peer2.event_receiver, |event| match event {
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
         _ => None,
     })
@@ -359,13 +359,13 @@ async fn reconnect_too_quickly() {
 
     // TODO Try to use the IncomingConnection swarm event instead? Not sure if possible
     // The peer gets disconnected without completing the connection establishment handler.
-    wait_event(&mut peer1.event_receiver, |event| match event {
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_event(&mut peer2.event_receiver, |event| match event {
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
         _ => None,
     })
@@ -376,7 +376,7 @@ async fn reconnect_too_quickly() {
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
     // The connection is established.
-    wait_event(&mut peer1.event_receiver, |event| match event {
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
             Some(())
         }
@@ -384,7 +384,7 @@ async fn reconnect_too_quickly() {
     })
     .await;
 
-    wait_event(&mut peer2.event_receiver, |event| match event {
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
             Some(())
         }
