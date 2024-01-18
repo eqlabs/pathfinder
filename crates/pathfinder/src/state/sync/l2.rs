@@ -520,9 +520,8 @@ async fn download_block(
 
             let (send, recv) = tokio::sync::oneshot::channel();
 
-            rayon::scope(|s| {
-                s.spawn(|_| {
-                    let result = block.transactions.par_iter().enumerate().try_for_each(|(i, txn)| {
+            rayon::spawn(move || {
+                let result = block.transactions.par_iter().enumerate().try_for_each(|(i, txn)| {
                         match verify(txn, chain_id, block_number) {
                             starknet_gateway_types::transaction_hash::VerifyResult::Match => {}
                             starknet_gateway_types::transaction_hash::VerifyResult::Mismatch(actual) =>
@@ -537,13 +536,12 @@ async fn download_block(
                             }
                         };
                         Ok(())
-                    });
+                    }).map(|_| block);
 
-                    let _ = send.send(result);
-                })
+                let _ = send.send(result);
             });
 
-            recv.await.expect("Panic on rayon thread")?;
+            let block = recv.await.expect("Panic on rayon thread")?;
 
             Ok(DownloadBlock::Block(block, commitments))
         }
