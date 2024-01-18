@@ -404,7 +404,8 @@ async fn duplicate_connection() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
-        connection_timeout: CONNECTION_TIMEOUT,
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
     };
     let keypair = Keypair::generate_ed25519();
     let mut peer1 = TestPeer::new(periodic_cfg, keypair.clone());
@@ -421,7 +422,7 @@ async fn duplicate_connection() {
         .await
         .unwrap();
 
-    wait_event(&mut peer1.event_receiver, |event| match event {
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
             Some(())
         }
@@ -429,7 +430,7 @@ async fn duplicate_connection() {
     })
     .await;
 
-    wait_event(&mut peer2.event_receiver, |event| match event {
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
             Some(())
         }
@@ -449,7 +450,7 @@ async fn duplicate_connection() {
         .await
         .unwrap();
 
-    wait_event(&mut peer1_copy.event_receiver, |event| match event {
+    wait_for_event(&mut peer1_copy.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
             Some(())
         }
@@ -457,7 +458,7 @@ async fn duplicate_connection() {
     })
     .await;
 
-    wait_event(&mut peer1_copy.event_receiver, |event| match event {
+    wait_for_event(&mut peer1_copy.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer2.peer_id => {
             Some(())
         }
