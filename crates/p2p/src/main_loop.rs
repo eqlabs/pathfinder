@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
 use libp2p::gossipsub::{self, IdentTopic};
-use libp2p::identify;
+use libp2p::{identify, Multiaddr};
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
@@ -36,8 +36,12 @@ pub struct MainLoop {
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
     peers: Arc<RwLock<peers::Peers>>,
-    /// Peers that have connected within the last `connection_timeout` seconds.
-    recent_peers: RecentPeers,
+    /// Recent peers that have connected directly (not over a relay).
+    ///
+    /// The distinction is important because different limits apply to direct and relayed peers.
+    recent_direct_peers: RecentPeers,
+    /// Recent peers that have connected over a relay.
+    recent_relay_peers: RecentPeers,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -89,7 +93,8 @@ impl MainLoop {
     ) -> Self {
         Self {
             bootstrap_cfg: periodic_cfg.bootstrap,
-            recent_peers: RecentPeers::new(periodic_cfg.connection_timeout),
+            recent_direct_peers: RecentPeers::new(periodic_cfg.direct_connection_timeout),
+            recent_relay_peers: RecentPeers::new(periodic_cfg.relay_connection_timeout),
             swarm,
             command_receiver,
             event_sender,
@@ -177,11 +182,7 @@ impl MainLoop {
                 peer_id, endpoint, ..
             } => {
                 // Extract the IP address of the peer from his multiaddr.
-                let peer_ip = endpoint.get_remote_address().iter().find_map(|p| match p {
-                    Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
-                    Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
-                    _ => None,
-                });
+                let peer_ip = get_ip(endpoint.get_remote_address());
 
                 // If the peer has no IP address, disconnect.
                 let Some(peer_ip) = peer_ip else {
@@ -196,9 +197,18 @@ impl MainLoop {
                 // If this is an incoming connection, we have to prevent the peer from
                 // reconnecting too quickly.
                 if endpoint.is_listener() {
+                    // Is this connection established over a relay node?
+                    let is_relay = endpoint.get_remote_address().iter().any(|p| p == Protocol::P2pCircuit);
+                    // Different rules apply to direct and relayed peers.
+                    let recent_peers = if is_relay {
+                        &mut self.recent_relay_peers
+                    } else {
+                        &mut self.recent_direct_peers
+                    };
+
                     // If the peer is in the recent peers set, this means he is attempting to
                     // reconnect too quickly. Close the connection.
-                    if self.recent_peers.contains(&peer_ip) {
+                    if recent_peers.contains(&peer_ip) {
                         tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
                         if let Err(e) = self.disconnect(peer_id).await {
                             tracing::error!(%e, "Failed to disconnect peer");
@@ -206,7 +216,7 @@ impl MainLoop {
                         return;
                     } else {
                         // Otherwise, add the peer to the recent peers set.
-                        self.recent_peers.insert(peer_id, peer_ip);
+                        recent_peers.insert(peer_ip);
                     }
                 }
 
@@ -246,12 +256,16 @@ impl MainLoop {
                 peer_id,
                 num_established,
                 connection_id: _, // TODO consider tracking connection IDs for peers
+                endpoint,
                 ..
             } => {
                 if num_established == 0 {
                     self.peers.write().await.peer_disconnected(&peer_id);
                     // Don't keep expired peers in the recent peers set.
-                    self.recent_peers.remove_if_expired(peer_id);
+                    if let Some(peer_ip) = get_ip(endpoint.get_remote_address()) {
+                        self.recent_direct_peers.remove_if_expired(&peer_ip);
+                        self.recent_relay_peers.remove_if_expired(&peer_ip);
+                    }
                     tracing::debug!(%peer_id, "Fully disconnected from");
                     send_test_event(
                         &self.event_sender,
@@ -942,6 +956,14 @@ impl MainLoop {
         #[cfg(test)]
         test_utils::query_progressed(&self._pending_test_queries.inner, _id, _result).await
     }
+}
+
+fn get_ip(addr: &Multiaddr) -> Option<IpAddr> {
+    addr.iter().find_map(|p| match p {
+        Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+        Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+        _ => None,
+    })
 }
 
 /// No-op outside tests

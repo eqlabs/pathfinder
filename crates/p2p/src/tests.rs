@@ -234,7 +234,8 @@ async fn periodic_bootstrap() {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
         },
-        connection_timeout: Duration::from_millis(500),
+        direct_connection_timeout: Duration::from_millis(500),
+        relay_connection_timeout: Duration::from_millis(500),
     };
     let mut boot = TestPeer::new(periodic_cfg);
     let mut peer1 = TestPeer::new(periodic_cfg);
@@ -297,7 +298,8 @@ async fn reconnect_too_quickly() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(3),
         },
-        connection_timeout: CONNECTION_TIMEOUT,
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
     };
 
     let mut peer1 = TestPeer::new(periodic_cfg);
