@@ -328,7 +328,7 @@ mod prop {
     use crate::p2p_network::sync_handlers::def_into_dto;
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p::client::types::{self as p2p_types, TryFromDto};
+    use p2p::client::types::{self as p2p_types, RawTransactionVariant, TryFromDto};
     use p2p_proto::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
@@ -339,7 +339,7 @@ mod prop {
     use p2p_proto::state::{Cairo0Class, Cairo1Class, Class};
     use p2p_proto::transaction::{TransactionsRequest, TransactionsResponseKind};
     use pathfinder_common::event::Event;
-    use pathfinder_common::transaction::{Transaction, TransactionVariant};
+    use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
         BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber,
         TransactionHash,
@@ -555,7 +555,7 @@ mod prop {
                     (
                         h.number,
                         h.hash,
-                        tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t)).variant).collect::<Vec<_>>()
+                        tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t)).variant.into()).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -584,7 +584,7 @@ mod prop {
                     (
                         BlockNumber::new(number).unwrap(),
                         BlockHash(hash.0),
-                        transactions.into_iter().map(|t| TransactionVariant::try_from_dto(t).unwrap()).collect::<Vec<_>>()
+                        transactions.into_iter().map(|t| RawTransactionVariant::try_from_dto(t).unwrap()).collect::<Vec<_>>()
                     )
                 }).collect::<Vec<_>>();
 
