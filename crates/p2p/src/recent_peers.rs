@@ -4,11 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Set of recently connected peers. Peers are tracked primarily by their IP address, but the
-/// peer ID is also stored to allow for removal of peers.
+/// Set of recently connected peers tracked by their IP address.
 ///
-/// Peers are removed from the set after a timeout. The actual removal only happens once any
-/// of the methods on this type are called.
+/// Peers are removed from the set after a timeout. The actual removal only happens once one
+/// of the methods on this type is called.
 #[derive(Debug)]
 pub struct RecentPeers {
     peers: HashMap<IpAddr, Instant>,

@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
 use libp2p::gossipsub::{self, IdentTopic};
-use libp2p::{identify, Multiaddr};
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
+use libp2p::{identify, Multiaddr};
 use p2p_proto::block::{BlockBodiesResponse, BlockHeadersResponse};
 use p2p_proto::event::EventsResponse;
 use p2p_proto::receipt::ReceiptsResponse;
@@ -197,9 +197,11 @@ impl MainLoop {
                 // If this is an incoming connection, we have to prevent the peer from
                 // reconnecting too quickly.
                 if endpoint.is_listener() {
-                    // Is this connection established over a relay node?
-                    let is_relay = endpoint.get_remote_address().iter().any(|p| p == Protocol::P2pCircuit);
-                    // Different rules apply to direct and relayed peers.
+                    // Different timeouts apply to direct peers and peers connecting over a relay.
+                    let is_relay = endpoint
+                        .get_remote_address()
+                        .iter()
+                        .any(|p| p == Protocol::P2pCircuit);
                     let recent_peers = if is_relay {
                         &mut self.recent_relay_peers
                     } else {
