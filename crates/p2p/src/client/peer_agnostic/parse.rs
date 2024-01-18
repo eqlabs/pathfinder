@@ -282,11 +282,12 @@ pub(crate) mod state_update {
 }
 
 pub(crate) mod transactions {
-    use crate::client::types::TryFromDto;
+    use crate::client::types::{
+        NonDeployAccountTransaction, RawDeployAccountTransaction, RawTransactionVariant, TryFromDto,
+    };
     use anyhow::Context;
     use p2p_proto::common::{BlockId, Error, Fin};
     use p2p_proto::transaction::{Transactions, TransactionsResponse, TransactionsResponseKind};
-    use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::BlockHash;
     use std::collections::HashMap;
 
@@ -312,8 +313,8 @@ pub(crate) mod transactions {
 
     #[derive(Debug)]
     pub struct InnerTransactions {
-        pub deploy_account: HashMap<BlockId, Vec<TransactionVariant>>,
-        pub other: HashMap<BlockId, Vec<TransactionVariant>>,
+        pub deploy_account: HashMap<BlockId, Vec<RawDeployAccountTransaction>>,
+        pub other: HashMap<BlockId, Vec<NonDeployAccountTransaction>>,
     }
 
     impl InnerTransactions {
@@ -328,8 +329,8 @@ pub(crate) mod transactions {
 
     #[derive(Debug)]
     pub struct ParsedTransactions {
-        pub deploy_account: HashMap<BlockHash, Vec<TransactionVariant>>,
-        pub other: HashMap<BlockHash, Vec<TransactionVariant>>,
+        pub deploy_account: HashMap<BlockHash, Vec<RawDeployAccountTransaction>>,
+        pub other: HashMap<BlockHash, Vec<NonDeployAccountTransaction>>,
     }
 
     impl From<InnerTransactions> for ParsedTransactions {
@@ -351,20 +352,23 @@ pub(crate) mod transactions {
 
     fn try_from_dto(
         dtos: Vec<p2p_proto::transaction::Transaction>,
-    ) -> anyhow::Result<(Vec<TransactionVariant>, Vec<TransactionVariant>)> {
+    ) -> anyhow::Result<(
+        Vec<RawDeployAccountTransaction>,
+        Vec<NonDeployAccountTransaction>,
+    )> {
         let mut deploy_account_txns = Vec::new();
         let mut other_txns = Vec::new();
 
         for dto in dtos {
             let transaction =
-                TransactionVariant::try_from_dto(dto).context("parsing transaction")?;
-            if matches!(
-                transaction,
-                TransactionVariant::DeployAccountV0V1(_) | TransactionVariant::DeployAccountV3(_)
-            ) {
-                deploy_account_txns.push(transaction);
-            } else {
-                other_txns.push(transaction);
+                RawTransactionVariant::try_from_dto(dto).context("parsing transaction")?;
+            match transaction {
+                RawTransactionVariant::DeployAccount(txn) => {
+                    deploy_account_txns.push(txn);
+                }
+                RawTransactionVariant::NonDeployAccount(txn) => {
+                    other_txns.push(txn);
+                }
             }
         }
 
