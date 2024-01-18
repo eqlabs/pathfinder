@@ -359,7 +359,6 @@ async fn reconnect_too_quickly() {
         .await
         .unwrap();
 
-    // TODO Try to use the IncomingConnection swarm event instead? Not sure if possible
     // The peer gets disconnected without completing the connection establishment handler.
     wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
