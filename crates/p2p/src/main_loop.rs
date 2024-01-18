@@ -202,9 +202,9 @@ impl MainLoop {
 
                     // Only allow one connection per peer.
                     if num_established.get() > 1 {
-                        tracing::warn!(%peer_id, "Peer has more than one connection, closing");
+                        tracing::debug!(%peer_id, "Peer has more than one connection, closing");
                         if let Err(e) = self.disconnect(peer_id).await {
-                            tracing::error!(%e, "Failed to disconnect peer");
+                            tracing::debug!(%e, "Failed to disconnect peer");
                         }
                         return;
                     }
@@ -227,7 +227,7 @@ impl MainLoop {
                     if recent_peers.contains(&peer_ip) {
                         tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
                         if let Err(e) = self.disconnect(peer_id).await {
-                            tracing::error!(%e, "Failed to disconnect peer");
+                            tracing::debug!(%e, "Failed to disconnect peer");
                         }
                         return;
                     } else {
