@@ -37,7 +37,7 @@ pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 prost = "0.12.1"
 rand = { workspace = true }
-rayon = "1.8.0"
+rayon = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = "0.10.7"
