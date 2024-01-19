@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use futures::{channel::mpsc, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse};
@@ -239,11 +240,12 @@ impl Client {
             match response_receiver {
                 Ok(rx) => {
                     if let Some(parsed) = parse::<parse::transactions::State>(&peer, rx).await {
-                        let (tx, rx) = tokio::sync::oneshot::channel();
+                        let computed = compute_contract_addresses(parsed.deploy_account)
+                            .await
+                            .context(
+                                "compute contract addresses for deploy account transactions",
+                            )?;
 
-                        compute_contract_addresses(parsed.deploy_account, tx);
-
-                        let computed = rx.await?;
                         let mut parsed: HashMap<_, _> = parsed
                             .other
                             .into_iter()
@@ -349,11 +351,10 @@ impl Client {
 }
 
 /// Does not block the current thread.
-fn compute_contract_addresses(
+async fn compute_contract_addresses(
     deploy_account: HashMap<BlockHash, Vec<super::types::RawDeployAccountTransaction>>,
-    tx: tokio::sync::oneshot::Sender<Vec<(BlockHash, Vec<TransactionVariant>)>>,
-) {
-    rayon::spawn(move || {
+) -> anyhow::Result<Vec<(BlockHash, Vec<TransactionVariant>)>> {
+    let jh = tokio::task::spawn_blocking(move || {
         // Now we can compute the missing addresses
         let computed: Vec<_> = deploy_account
             .into_par_iter()
@@ -407,10 +408,10 @@ fn compute_contract_addresses(
                 )
             })
             .collect();
-
-        // Send the result back to Tokio.
-        let _ = tx.send(computed);
+        computed
     });
+    let computed = jh.await.context("task ended unexpectedly")?;
+    Ok(computed)
 }
 
 async fn parse<P: Default + ParserState>(
