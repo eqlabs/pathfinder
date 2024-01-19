@@ -269,6 +269,15 @@ impl std::ops::Add for Felt {
     }
 }
 
+impl std::ops::Sub for Felt {
+    type Output = Felt;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let result = MontFelt::from(self) - MontFelt::from(rhs);
+        Felt::from(result)
+    }
+}
+
 impl From<MontFelt> for Felt {
     fn from(fp: MontFelt) -> Self {
         // safe as BE-bytes representations are the same
