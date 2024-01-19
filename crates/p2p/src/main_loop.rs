@@ -258,16 +258,10 @@ impl MainLoop {
                 peer_id,
                 num_established,
                 connection_id: _, // TODO consider tracking connection IDs for peers
-                endpoint,
                 ..
             } => {
                 if num_established == 0 {
                     self.peers.write().await.peer_disconnected(&peer_id);
-                    // Don't keep expired peers in the recent peers set.
-                    if let Some(peer_ip) = get_ip(endpoint.get_remote_address()) {
-                        self.recent_direct_peers.remove_if_expired(&peer_ip);
-                        self.recent_relay_peers.remove_if_expired(&peer_ip);
-                    }
                     tracing::debug!(%peer_id, "Fully disconnected from");
                     send_test_event(
                         &self.event_sender,

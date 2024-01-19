@@ -24,8 +24,10 @@ impl RecentPeers {
 
     /// Insert the peer into the recent peers set.
     ///
-    /// Panics if the peer is already in the set.
+    /// Removes all expired peers. Panics if the peer is already in the set.
     pub fn insert(&mut self, peer_ip: IpAddr) {
+        self.peers
+            .retain(|_, instant| instant.elapsed() < self.timeout);
         if self.peers.insert(peer_ip, Instant::now()).is_some() {
             panic!("peer already in the set, was insert called before contains?");
         }
@@ -42,11 +44,5 @@ impl RecentPeers {
                 false
             }
         }
-    }
-
-    /// Removes the peer from the set if it is expired.
-    pub fn remove_if_expired(&mut self, peer_ip: &IpAddr) {
-        // The contains method removes the peer IP if it is expired.
-        self.contains(peer_ip);
     }
 }
