@@ -23,6 +23,7 @@ mod behaviour;
 pub mod client;
 mod main_loop;
 mod peers;
+mod recent_peers;
 mod sync;
 #[cfg(test)]
 mod test_utils;
@@ -85,6 +86,10 @@ pub fn new(
 #[derive(Copy, Clone, Debug)]
 pub struct PeriodicTaskConfig {
     pub bootstrap: BootstrapConfig,
+    /// A direct (not relayed) peer can only connect once in this period.
+    pub direct_connection_timeout: Duration,
+    /// A relayed peer can only connect once in this period.
+    pub relay_connection_timeout: Duration,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -100,6 +105,8 @@ impl Default for PeriodicTaskConfig {
                 start_offset: Duration::from_secs(5),
                 period: Duration::from_secs(10 * 60),
             },
+            direct_connection_timeout: Duration::from_secs(30),
+            relay_connection_timeout: Duration::from_secs(10),
         }
     }
 }
@@ -118,6 +125,10 @@ enum Command {
     Dial {
         peer_id: PeerId,
         addr: Multiaddr,
+        sender: EmptyResultSender,
+    },
+    Disconnect {
+        peer_id: PeerId,
         sender: EmptyResultSender,
     },
     ProvideCapability {
@@ -215,6 +226,7 @@ pub enum TestEvent {
     PeriodicBootstrapCompleted(Result<PeerId, PeerId>),
     StartProvidingCompleted(Result<RecordKey, RecordKey>),
     ConnectionEstablished { outbound: bool, remote: PeerId },
+    ConnectionClosed { remote: PeerId },
     Subscribed { remote: PeerId, topic: String },
     PeerAddedToDHT { remote: PeerId },
     Dummy,

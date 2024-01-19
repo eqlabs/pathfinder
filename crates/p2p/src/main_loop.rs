@@ -1,15 +1,16 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
 use libp2p::gossipsub::{self, IdentTopic};
-use libp2p::identify;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
+use libp2p::{identify, Multiaddr};
 use p2p_proto::block::{BlockBodiesResponse, BlockHeadersResponse};
 use p2p_proto::event::EventsResponse;
 use p2p_proto::receipt::ReceiptsResponse;
@@ -22,6 +23,7 @@ use tokio::time::Duration;
 
 use crate::behaviour;
 use crate::peers;
+use crate::recent_peers::RecentPeers;
 #[cfg(test)]
 use crate::test_utils;
 use crate::{
@@ -34,6 +36,12 @@ pub struct MainLoop {
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
     peers: Arc<RwLock<peers::Peers>>,
+    /// Recent peers that have connected directly (not over a relay).
+    ///
+    /// The distinction is important because different limits apply to direct and relayed peers.
+    recent_direct_peers: RecentPeers,
+    /// Recent peers that have connected over a relay.
+    recent_relay_peers: RecentPeers,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -85,6 +93,8 @@ impl MainLoop {
     ) -> Self {
         Self {
             bootstrap_cfg: periodic_cfg.bootstrap,
+            recent_direct_peers: RecentPeers::new(periodic_cfg.direct_connection_timeout),
+            recent_relay_peers: RecentPeers::new(periodic_cfg.relay_connection_timeout),
             swarm,
             command_receiver,
             event_sender,
@@ -171,6 +181,47 @@ impl MainLoop {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
+                // Extract the IP address of the peer from his multiaddr.
+                let peer_ip = get_ip(endpoint.get_remote_address());
+
+                // If the peer has no IP address, disconnect.
+                let Some(peer_ip) = peer_ip else {
+                    if let Err(e) = self.disconnect(peer_id).await {
+                        tracing::debug!(reason=%e, %peer_id, "Failed to disconnect peer without IP");
+                    } else {
+                        tracing::debug!(%peer_id, "Disconnected peer without IP");
+                    }
+                    return;
+                };
+
+                // If this is an incoming connection, we have to prevent the peer from
+                // reconnecting too quickly.
+                if endpoint.is_listener() {
+                    // Different timeouts apply to direct peers and peers connecting over a relay.
+                    let is_relay = endpoint
+                        .get_remote_address()
+                        .iter()
+                        .any(|p| p == Protocol::P2pCircuit);
+                    let recent_peers = if is_relay {
+                        &mut self.recent_relay_peers
+                    } else {
+                        &mut self.recent_direct_peers
+                    };
+
+                    // If the peer is in the recent peers set, this means he is attempting to
+                    // reconnect too quickly. Close the connection.
+                    if recent_peers.contains(&peer_ip) {
+                        tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
+                        if let Err(e) = self.disconnect(peer_id).await {
+                            tracing::error!(%e, "Failed to disconnect peer");
+                        }
+                        return;
+                    } else {
+                        // Otherwise, add the peer to the recent peers set.
+                        recent_peers.insert(peer_ip);
+                    }
+                }
+
                 self.peers.write().await.peer_connected(&peer_id);
 
                 if endpoint.is_dialer() {
@@ -212,6 +263,11 @@ impl MainLoop {
                 if num_established == 0 {
                     self.peers.write().await.peer_disconnected(&peer_id);
                     tracing::debug!(%peer_id, "Fully disconnected from");
+                    send_test_event(
+                        &self.event_sender,
+                        TestEvent::ConnectionClosed { remote: peer_id },
+                    )
+                    .await;
                 } else {
                     tracing::debug!(%peer_id, other_connections_for_this_peer=%num_established, "Connection closed");
                 }
@@ -722,6 +778,9 @@ impl MainLoop {
                     let _ = sender.send(Err(anyhow::anyhow!("Dialing is already pending")));
                 }
             }
+            Command::Disconnect { peer_id, sender } => {
+                let _ = sender.send(self.disconnect(peer_id).await);
+            }
             Command::ProvideCapability { capability, sender } => {
                 let _ = match self.swarm.behaviour_mut().provide_capability(&capability) {
                     Ok(_) => {
@@ -848,6 +907,17 @@ impl MainLoop {
         Ok(())
     }
 
+    async fn disconnect(&mut self, peer_id: PeerId) -> anyhow::Result<()> {
+        self.pending_dials.remove(&peer_id);
+        match self.swarm.disconnect_peer_id(peer_id) {
+            Ok(()) => {
+                tracing::debug!(%peer_id, "Disconnected");
+                Ok(())
+            }
+            Err(()) => Err(anyhow::anyhow!("Failed to disconnect: peer not connected")),
+        }
+    }
+
     /// No-op outside tests
     async fn handle_event_for_test(&mut self, _event: SwarmEvent<behaviour::Event>) {
         #[cfg(test)]
@@ -882,6 +952,14 @@ impl MainLoop {
         #[cfg(test)]
         test_utils::query_progressed(&self._pending_test_queries.inner, _id, _result).await
     }
+}
+
+fn get_ip(addr: &Multiaddr) -> Option<IpAddr> {
+    addr.iter().find_map(|p| match p {
+        Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+        Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+        _ => None,
+    })
 }
 
 /// No-op outside tests

@@ -122,6 +122,19 @@ fn filter_events<T: Debug + Send + 'static>(
     rx
 }
 
+/// Wait for a specific event to happen.
+async fn wait_for_event<T: Debug + Send + 'static>(
+    event_receiver: &mut EventReceiver,
+    mut f: impl FnMut(Event) -> Option<T>,
+) -> Option<T> {
+    while let Some(event) = event_receiver.recv().await {
+        if let Some(data) = f(event) {
+            return Some(data);
+        }
+    }
+    None
+}
+
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall
 fn consume_events(mut event_receiver: EventReceiver) {
@@ -175,6 +188,42 @@ async fn dial() {
 }
 
 #[test_log::test(tokio::test)]
+async fn disconnect() {
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let mut peer1 = TestPeer::default();
+    let mut peer2 = TestPeer::default();
+
+    let addr2 = peer2.start_listening().await.unwrap();
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    let peers_of1 = peer1.connected().await;
+    let peers_of2 = peer2.connected().await;
+
+    assert_eq!(peers_of1, [peer2.peer_id].into());
+    assert_eq!(peers_of2, [peer1.peer_id].into());
+
+    peer2.client.disconnect(peer1.peer_id).await.unwrap();
+
+    wait_for_event(&mut peer1.event_receiver, move |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer2.event_receiver, move |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    assert!(peer1.connected().await.is_empty());
+    assert!(peer2.connected().await.is_empty());
+}
+
+#[test_log::test(tokio::test)]
 async fn periodic_bootstrap() {
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -185,6 +234,8 @@ async fn periodic_bootstrap() {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
         },
+        direct_connection_timeout: Duration::from_millis(500),
+        relay_connection_timeout: Duration::from_millis(500),
     };
     let mut boot = TestPeer::new(periodic_cfg);
     let mut peer1 = TestPeer::new(periodic_cfg);
@@ -235,6 +286,112 @@ async fn periodic_bootstrap() {
     assert_eq!(boot_dht, [peer1.peer_id, peer2.peer_id].into());
     assert_eq!(dht1, [boot.peer_id, peer2.peer_id].into());
     assert_eq!(dht2, [boot.peer_id, peer1.peer_id].into());
+}
+
+/// Test that if a peer attempts to reconnect too quickly, the connection is closed.
+#[test_log::test(tokio::test)]
+async fn reconnect_too_quickly() {
+    const CONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
+    let periodic_cfg = PeriodicTaskConfig {
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            // Bootstrapping can cause redials, so set the offset to a high value.
+            start_offset: Duration::from_secs(3),
+        },
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
+    };
+
+    let mut peer1 = TestPeer::new(periodic_cfg);
+    let mut peer2 = TestPeer::new(periodic_cfg);
+
+    let addr2 = peer2.start_listening().await.unwrap();
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    // Open the connection.
+    peer1
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
+
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    let peers_of1 = peer1.connected().await;
+    let peers_of2 = peer2.connected().await;
+
+    assert_eq!(peers_of1, [peer2.peer_id].into());
+    assert_eq!(peers_of2, [peer1.peer_id].into());
+
+    // Close the connection.
+    peer1.client.disconnect(peer2.peer_id).await.unwrap();
+
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    // Attempt to immediately reconnect.
+    peer1
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
+
+    // The peer gets disconnected without completing the connection establishment handler.
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
+        _ => None,
+    })
+    .await;
+
+    // Attempt to reconnect after the timeout.
+    tokio::time::sleep(CONNECTION_TIMEOUT).await;
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    // The connection is established.
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
 }
 
 #[rstest]
