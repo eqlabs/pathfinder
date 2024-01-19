@@ -179,7 +179,10 @@ impl MainLoop {
             // Connection management
             // ===========================
             SwarmEvent::ConnectionEstablished {
-                peer_id, endpoint, ..
+                peer_id,
+                endpoint,
+                num_established,
+                ..
             } => {
                 // Extract the IP address of the peer from his multiaddr.
                 let peer_ip = get_ip(endpoint.get_remote_address());
@@ -194,10 +197,21 @@ impl MainLoop {
                     return;
                 };
 
-                // If this is an incoming connection, we have to prevent the peer from
-                // reconnecting too quickly.
                 if endpoint.is_listener() {
-                    // Different timeouts apply to direct peers and peers connecting over a relay.
+                    // This is an incoming connection.
+
+                    // Only allow one connection per peer.
+                    if num_established.get() > 1 {
+                        tracing::debug!(%peer_id, "Peer has more than one connection, closing");
+                        if let Err(e) = self.disconnect(peer_id).await {
+                            tracing::debug!(%e, "Failed to disconnect peer");
+                        }
+                        return;
+                    }
+
+                    // Prevent the peer from reconnecting too quickly.
+
+                    // Different connection timeouts apply to direct peers and peers connecting over a relay.
                     let is_relay = endpoint
                         .get_remote_address()
                         .iter()
@@ -213,7 +227,7 @@ impl MainLoop {
                     if recent_peers.contains(&peer_ip) {
                         tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
                         if let Err(e) = self.disconnect(peer_id).await {
-                            tracing::error!(%e, "Failed to disconnect peer");
+                            tracing::debug!(%e, "Failed to disconnect peer");
                         }
                         return;
                     } else {

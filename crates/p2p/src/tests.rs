@@ -36,8 +36,7 @@ struct TestPeer {
 
 impl TestPeer {
     #[must_use]
-    pub fn new(periodic_cfg: PeriodicTaskConfig) -> Self {
-        let keypair = Keypair::generate_ed25519();
+    pub fn new(periodic_cfg: PeriodicTaskConfig, keypair: Keypair) -> Self {
         let peer_id = keypair.public().to_peer_id();
         let peers: Arc<RwLock<Peers>> = Default::default();
         let (client, event_receiver, main_loop) = crate::new(
@@ -95,7 +94,7 @@ impl TestPeer {
 
 impl Default for TestPeer {
     fn default() -> Self {
-        Self::new(Default::default())
+        Self::new(Default::default(), Keypair::generate_ed25519())
     }
 }
 
@@ -237,9 +236,9 @@ async fn periodic_bootstrap() {
         direct_connection_timeout: Duration::from_millis(500),
         relay_connection_timeout: Duration::from_millis(500),
     };
-    let mut boot = TestPeer::new(periodic_cfg);
-    let mut peer1 = TestPeer::new(periodic_cfg);
-    let mut peer2 = TestPeer::new(periodic_cfg);
+    let mut boot = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
 
     let mut boot_addr = boot.start_listening().await.unwrap();
     boot_addr.push(Protocol::P2p(boot.peer_id));
@@ -296,14 +295,14 @@ async fn reconnect_too_quickly() {
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
-            start_offset: Duration::from_secs(3),
+            start_offset: Duration::from_secs(10),
         },
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
     };
 
-    let mut peer1 = TestPeer::new(periodic_cfg);
-    let mut peer2 = TestPeer::new(periodic_cfg);
+    let mut peer1 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
@@ -392,6 +391,82 @@ async fn reconnect_too_quickly() {
         _ => None,
     })
     .await;
+}
+
+/// Test that each peer accepts at most one connection from any other peer, and duplicate
+/// connections are closed.
+#[test_log::test(tokio::test)]
+async fn duplicate_connection() {
+    const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
+    let periodic_cfg = PeriodicTaskConfig {
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            // Bootstrapping can cause redials, so set the offset to a high value.
+            start_offset: Duration::from_secs(10),
+        },
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
+    };
+    let keypair = Keypair::generate_ed25519();
+    let mut peer1 = TestPeer::new(periodic_cfg, keypair.clone());
+    let mut peer1_copy = TestPeer::new(periodic_cfg, keypair);
+    let mut peer2 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
+
+    let addr2 = peer2.start_listening().await.unwrap();
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    // Open the connection.
+    peer1
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
+
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    // Ensure that the connection timeout has passed, so this is not the reason why the connection
+    // is getting closed.
+    tokio::time::sleep(CONNECTION_TIMEOUT).await;
+
+    // Try to open another connection using the same peer ID and IP address (in this case,
+    // localhost).
+    peer1_copy
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
+
+    wait_for_event(&mut peer1_copy.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer1_copy.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    assert!(peer1_copy.connected().await.is_empty());
 }
 
 #[rstest]
