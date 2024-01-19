@@ -86,11 +86,11 @@ impl BloomFilter {
         self.0.check(key)
     }
 
-    pub fn check_address(&self, address: &ContractAddress) -> bool {
+    fn check_address(&self, address: &ContractAddress) -> bool {
         self.check(&address.0)
     }
 
-    pub fn check_keys(&self, keys: &[Vec<EventKey>]) -> bool {
+    fn check_keys(&self, keys: &[Vec<EventKey>]) -> bool {
         keys.iter().enumerate().all(|(idx, keys)| {
             if keys.is_empty() {
                 return true;
@@ -103,6 +103,16 @@ impl BloomFilter {
                 self.check(&key)
             })
         })
+    }
+
+    pub fn check_filter(&self, filter: &crate::EventFilter) -> bool {
+        if let Some(contract_address) = filter.contract_address {
+            if !self.check_address(&contract_address) {
+                return false;
+            }
+        }
+
+        self.check_keys(&filter.keys)
     }
 }
 

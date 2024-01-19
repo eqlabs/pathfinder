@@ -235,7 +235,7 @@ impl<'inner> Transaction<'inner> {
     }
 
     pub fn events(&self, filter: &EventFilter) -> Result<PageOfEvents, EventFilterError> {
-        event::get_events(self, filter)
+        event::get_events(self, filter, event::MAX_BLOCKS_TO_SCAN)
     }
 
     pub fn insert_sierra_class(
