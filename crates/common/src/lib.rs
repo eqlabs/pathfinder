@@ -2,9 +2,11 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
+use std::ops::Rem;
+
 use anyhow::Context;
 use fake::Dummy;
-use pathfinder_crypto::Felt;
+use pathfinder_crypto::{hash::HashChain, Felt};
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 
@@ -99,7 +101,6 @@ impl StorageAddress {
 
     pub fn from_map_name_and_key(name: &[u8], key: Felt) -> Self {
         use sha3::Digest;
-        use std::ops::Rem;
 
         let intermediate = truncated_keccak(<[u8; 32]>::from(sha3::Keccak256::digest(name)));
         let value = pathfinder_crypto::hash::pedersen_hash(intermediate, key);
@@ -487,6 +488,46 @@ macros::felt_newtypes!(
 macros::fmt::thin_display!(BlockNumber);
 macros::fmt::thin_display!(BlockTimestamp);
 
+impl ContractAddress {
+    pub fn deployed_contract_address(
+        constructor_calldata: impl Iterator<Item = CallParam>,
+        contract_address_salt: &ContractAddressSalt,
+        class_hash: &ClassHash,
+    ) -> Self {
+        let constructor_calldata_hash = constructor_calldata
+            .fold(HashChain::default(), |mut h, param| {
+                h.update(param.0);
+                h
+            })
+            .finalize();
+
+        let contract_address = [
+            Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
+            Felt::ZERO,
+            contract_address_salt.0,
+            class_hash.0,
+            constructor_calldata_hash,
+        ]
+        .into_iter()
+        .fold(HashChain::default(), |mut h, e| {
+            h.update(e);
+            h
+        })
+        .finalize();
+
+        // Contract addresses are _less than_ 2**251 - 256
+        const MAX_CONTRACT_ADDRESS: Felt =
+            felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00");
+        let contract_address = if contract_address >= MAX_CONTRACT_ADDRESS {
+            contract_address - MAX_CONTRACT_ADDRESS
+        } else {
+            contract_address
+        };
+
+        ContractAddress::new_or_panic(contract_address)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum AllowedOrigins {
     Any,
@@ -536,6 +577,8 @@ pub fn calculate_class_commitment_leaf_hash(
 
 #[cfg(test)]
 mod tests {
+    use crate::{felt, CallParam, ClassHash, ContractAddress, ContractAddressSalt};
+
     #[test]
     fn constructor_entry_point() {
         use crate::truncated_keccak;
@@ -599,5 +642,22 @@ mod tests {
                 serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
             assert_eq!(result, BlockId::Hash(block_hash!("0xdeadbeef")));
         }
+    }
+
+    #[test]
+    fn deployed_contract_address() {
+        let expected_contract_address = ContractAddress(felt!(
+            "0x2fab82e4aef1d8664874e1f194951856d48463c3e6bf9a8c68e234a629a6f50"
+        ));
+        let actual_contract_address = ContractAddress::deployed_contract_address(
+            std::iter::once(CallParam(felt!(
+                "0x5cd65f3d7daea6c63939d659b8473ea0c5cd81576035a4d34e52fb06840196c"
+            ))),
+            &ContractAddressSalt(felt!("0x0")),
+            &ClassHash(felt!(
+                "0x2338634f11772ea342365abd5be9d9dc8a6f44f159ad782fdebd3db5d969738"
+            )),
+        );
+        assert_eq!(actual_contract_address, expected_contract_address);
     }
 }

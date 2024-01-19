@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use futures::{channel::mpsc, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse};
@@ -14,21 +15,23 @@ use p2p_proto::event::EventsRequest;
 use p2p_proto::receipt::{Receipt, ReceiptsRequest};
 use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::{
-    event::Event, transaction::TransactionVariant, BlockHash, BlockNumber, TransactionHash,
+    event::Event,
+    transaction::{DeployAccountTransactionV0V1, DeployAccountTransactionV3, TransactionVariant},
+    BlockHash, BlockNumber, ContractAddress, TransactionHash,
 };
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tokio::sync::RwLock;
 
-use crate::sync::protocol;
-use crate::{
-    client::{peer_aware, types::StateUpdateWithDefinitions},
-    peers,
+use crate::client::peer_aware;
+use crate::client::types::{
+    MaybeSignedBlockHeader, RawDeployAccountTransaction, StateUpdateWithDefinitions,
 };
+use crate::peers;
+use crate::sync::protocol;
 
 mod parse;
 
 use parse::ParserState;
-
-use super::types::MaybeSignedBlockHeader;
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -237,6 +240,21 @@ impl Client {
             match response_receiver {
                 Ok(rx) => {
                     if let Some(parsed) = parse::<parse::transactions::State>(&peer, rx).await {
+                        let computed = compute_contract_addresses(parsed.deploy_account)
+                            .await
+                            .context(
+                                "compute contract addresses for deploy account transactions",
+                            )?;
+
+                        let mut parsed: HashMap<_, _> = parsed
+                            .other
+                            .into_iter()
+                            .map(|(h, txns)| {
+                                (h, txns.into_iter().map(|t| t.into_variant()).collect())
+                            })
+                            .collect();
+                        parsed.extend(computed);
+
                         return Ok(parsed);
                     }
                 }
@@ -330,6 +348,70 @@ impl Client {
             "No valid responses to events request: start {start_block_hash}, n {num_blocks}"
         )
     }
+}
+
+/// Does not block the current thread.
+async fn compute_contract_addresses(
+    deploy_account: HashMap<BlockHash, Vec<super::types::RawDeployAccountTransaction>>,
+) -> anyhow::Result<Vec<(BlockHash, Vec<TransactionVariant>)>> {
+    let jh = tokio::task::spawn_blocking(move || {
+        // Now we can compute the missing addresses
+        let computed: Vec<_> = deploy_account
+            .into_par_iter()
+            .map(|(block_hash, transactions)| {
+                (
+                    block_hash,
+                    transactions
+                        .into_par_iter()
+                        .map(|t| match t {
+                            RawDeployAccountTransaction::DeployAccountV0V1(x) => {
+                                let contract_address = ContractAddress::deployed_contract_address(
+                                    x.constructor_calldata.iter().copied(),
+                                    &x.contract_address_salt,
+                                    &x.class_hash,
+                                );
+                                TransactionVariant::DeployAccountV0V1(
+                                    DeployAccountTransactionV0V1 {
+                                        contract_address,
+                                        max_fee: x.max_fee,
+                                        version: x.version,
+                                        signature: x.signature,
+                                        nonce: x.nonce,
+                                        contract_address_salt: x.contract_address_salt,
+                                        constructor_calldata: x.constructor_calldata,
+                                        class_hash: x.class_hash,
+                                    },
+                                )
+                            }
+                            RawDeployAccountTransaction::DeployAccountV3(x) => {
+                                let contract_address = ContractAddress::deployed_contract_address(
+                                    x.constructor_calldata.iter().copied(),
+                                    &x.contract_address_salt,
+                                    &x.class_hash,
+                                );
+                                TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
+                                    contract_address,
+                                    signature: x.signature,
+                                    nonce: x.nonce,
+                                    nonce_data_availability_mode: x.nonce_data_availability_mode,
+                                    fee_data_availability_mode: x.fee_data_availability_mode,
+                                    resource_bounds: x.resource_bounds,
+                                    tip: x.tip,
+                                    paymaster_data: x.paymaster_data,
+                                    contract_address_salt: x.contract_address_salt,
+                                    constructor_calldata: x.constructor_calldata,
+                                    class_hash: x.class_hash,
+                                })
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        computed
+    });
+    let computed = jh.await.context("task ended unexpectedly")?;
+    Ok(computed)
 }
 
 async fn parse<P: Default + ParserState>(

@@ -45,7 +45,7 @@ pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
 primitive-types = { workspace = true }
 rand = { workspace = true }
-rayon = "1.8.0"
+rayon = { workspace = true }
 reqwest = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

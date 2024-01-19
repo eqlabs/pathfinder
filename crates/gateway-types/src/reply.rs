@@ -1361,18 +1361,24 @@ pub mod transaction {
 
     impl<T> Dummy<T> for DeployAccountTransactionV0V1 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                // TODO verify this is the only realistic value
-                version: TransactionVersion::ONE,
+            let contract_address_salt = Faker.fake_with_rng(rng);
+            let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
+            let class_hash = Faker.fake_with_rng(rng);
 
-                contract_address: Faker.fake_with_rng(rng),
+            Self {
+                version: TransactionVersion::ONE,
+                contract_address: ContractAddress::deployed_contract_address(
+                    constructor_calldata.iter().copied(),
+                    &contract_address_salt,
+                    &class_hash,
+                ),
                 transaction_hash: Faker.fake_with_rng(rng),
                 max_fee: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
                 nonce: Faker.fake_with_rng(rng),
-                contract_address_salt: Faker.fake_with_rng(rng),
-                constructor_calldata: Faker.fake_with_rng(rng),
-                class_hash: Faker.fake_with_rng(rng),
+                contract_address_salt,
+                constructor_calldata,
+                class_hash,
             }
         }
     }
@@ -1402,6 +1408,10 @@ pub mod transaction {
 
     impl<T> Dummy<T> for DeployAccountTransactionV3 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let contract_address_salt = Faker.fake_with_rng(rng);
+            let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
+            let class_hash = Faker.fake_with_rng(rng);
+
             Self {
                 nonce: Faker.fake_with_rng(rng),
                 nonce_data_availability_mode: Faker.fake_with_rng(rng),
@@ -1410,13 +1420,17 @@ pub mod transaction {
                 tip: Faker.fake_with_rng(rng),
                 paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
 
-                sender_address: Faker.fake_with_rng(rng),
+                sender_address: ContractAddress::deployed_contract_address(
+                    constructor_calldata.iter().copied(),
+                    &contract_address_salt,
+                    &class_hash,
+                ),
                 signature: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 version: TransactionVersion::THREE,
-                contract_address_salt: Faker.fake_with_rng(rng),
-                constructor_calldata: Faker.fake_with_rng(rng),
-                class_hash: Faker.fake_with_rng(rng),
+                contract_address_salt,
+                constructor_calldata,
+                class_hash,
             }
         }
     }
