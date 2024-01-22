@@ -109,7 +109,7 @@ async fn async_main() -> anyhow::Result<()> {
     let storage_manager = Storage::migrate(
         pathfinder_context.database.clone(),
         config.sqlite_wal,
-        config.bloom_filter_cache_size.get(),
+        config.event_bloom_filter_cache_size.get(),
     )
     .unwrap();
     let sync_storage = storage_manager
@@ -170,6 +170,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let (tx_pending, rx_pending) = tokio::sync::watch::channel(Default::default());
 
+    let rpc_config = pathfinder_rpc::context::RpcConfig {
+        batch_concurrency_limit: config.rpc_batch_concurrency_limit,
+        get_events_max_blocks_to_scan: config.get_events_max_blocks_to_scan,
+    };
+
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         execution_storage,
@@ -177,7 +182,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
         rx_pending,
-        config.rpc_batch_concurrency_limit,
+        rpc_config,
     );
 
     let context = if config.websocket.enabled {

@@ -214,7 +214,16 @@ This should only be enabled for debugging purposes as it adds substantial proces
         env = "PATHFINDER_STORAGE_BLOOM_FILTER_CACHE_SIZE",
         default_value = "524288"
     )]
-    bloom_filter_cache_size: std::num::NonZeroUsize,
+    event_bloom_filter_cache_size: std::num::NonZeroUsize,
+
+    #[arg(
+        long = "rpc.get-events-max-blocks-to-scan",
+        long_help = "The number of blocks to scan for events when querying for events. \
+            This limit is used to prevent queries from taking too long.",
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOCKS_TO_SCAN",
+        default_value = "500"
+    )]
+    get_events_max_blocks_to_scan: std::num::NonZeroUsize,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -471,7 +480,8 @@ pub struct Config {
     pub is_sync_enabled: bool,
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
-    pub bloom_filter_cache_size: NonZeroUsize,
+    pub event_bloom_filter_cache_size: NonZeroUsize,
+    pub get_events_max_blocks_to_scan: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -642,7 +652,8 @@ impl Config {
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
-            bloom_filter_cache_size: cli.bloom_filter_cache_size,
+            event_bloom_filter_cache_size: cli.event_bloom_filter_cache_size,
+            get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
         }
     }
 }

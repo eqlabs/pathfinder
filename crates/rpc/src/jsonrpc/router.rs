@@ -203,7 +203,7 @@ pub async fn rpc_handler(
             }
 
             let responses = run_concurrently(
-                state.context.batch_concurrency_limit,
+                state.context.config.batch_concurrency_limit,
                 requests.into_iter().enumerate(),
                 |(idx, request)| {
                     state

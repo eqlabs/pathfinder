@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 mod block;
@@ -234,8 +235,12 @@ impl<'inner> Transaction<'inner> {
         transaction::transaction_count(self, block)
     }
 
-    pub fn events(&self, filter: &EventFilter) -> Result<PageOfEvents, EventFilterError> {
-        event::get_events(self, filter, event::MAX_BLOCKS_TO_SCAN)
+    pub fn events(
+        &self,
+        filter: &EventFilter,
+        max_blocks_to_scan: NonZeroUsize,
+    ) -> Result<PageOfEvents, EventFilterError> {
+        event::get_events(self, filter, max_blocks_to_scan)
     }
 
     pub fn insert_sierra_class(

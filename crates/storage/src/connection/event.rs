@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::bloom::BloomFilter;
 use crate::{prelude::*, ReorgCounter};
 
@@ -8,7 +10,6 @@ use pathfinder_common::{
 
 pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub const KEY_FILTER_LIMIT: usize = 16;
-pub const MAX_BLOCKS_TO_SCAN: usize = 300;
 
 #[derive(Debug)]
 pub struct EventFilter {
@@ -91,7 +92,7 @@ pub(super) fn insert_block_events<'a>(
 pub(super) fn get_events(
     tx: &Transaction<'_>,
     filter: &EventFilter,
-    max_blocks_to_scan: usize,
+    max_blocks_to_scan: NonZeroUsize,
 ) -> Result<PageOfEvents, EventFilterError> {
     if filter.page_size > PAGE_SIZE_LIMIT {
         return Err(EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT));
@@ -142,7 +143,7 @@ pub(super) fn get_events(
 
         // Check if we've reached our block scan limit
         blocks_scanned += 1;
-        if blocks_scanned > max_blocks_to_scan {
+        if blocks_scanned > max_blocks_to_scan.get() {
             tracing::trace!("Block scan limit reached");
             break ScanResult::ContinueFrom(block_number);
         }
@@ -361,6 +362,10 @@ mod tests {
     use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::transaction as gateway_tx;
 
+    lazy_static::lazy_static!(
+        static ref MAX_BLOCKS_TO_SCAN: NonZeroUsize = NonZeroUsize::new(100).unwrap();
+    );
+
     #[test_log::test(test)]
     fn get_events_with_fully_specified_filter() {
         let (storage, test_data) = test_utils::setup_test_storage();
@@ -379,7 +384,7 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -498,7 +503,7 @@ mod tests {
                 page_size: 1024,
                 offset: 0,
             },
-            MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOCKS_TO_SCAN,
         )
         .unwrap()
         .events
@@ -533,7 +538,7 @@ mod tests {
 
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
             ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -562,7 +567,7 @@ mod tests {
 
         let expected_events =
             &emitted_events[..test_utils::EVENTS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -590,7 +595,7 @@ mod tests {
         };
 
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * FROM_BLOCK_NUMBER..];
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -618,7 +623,7 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -645,7 +650,7 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -659,7 +664,7 @@ mod tests {
             keys: vec![vec![expected_event.keys[1]], vec![expected_event.keys[0]]],
             ..filter
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -685,7 +690,7 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -710,7 +715,7 @@ mod tests {
             page_size: 10,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -730,7 +735,7 @@ mod tests {
             page_size: 10,
             offset: 10,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -750,7 +755,7 @@ mod tests {
             page_size: 10,
             offset: 30,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -776,7 +781,7 @@ mod tests {
             // _after_ the last one
             offset: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -800,7 +805,7 @@ mod tests {
             page_size: 0,
             offset: 0,
         };
-        let result = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN);
+        let result = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN);
         assert!(result.is_err());
         assert_matches!(result.unwrap_err(), EventFilterError::PageSizeTooSmall);
 
@@ -812,7 +817,7 @@ mod tests {
             page_size: PAGE_SIZE_LIMIT + 1,
             offset: 0,
         };
-        let result = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN);
+        let result = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN);
         assert!(result.is_err());
         assert_matches!(
             result.unwrap_err(),
@@ -841,7 +846,7 @@ mod tests {
             page_size: 2,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -862,7 +867,7 @@ mod tests {
             page_size: 2,
             offset: 2,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -883,7 +888,7 @@ mod tests {
             page_size: 2,
             offset: 2,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -904,7 +909,7 @@ mod tests {
             page_size: 2,
             offset: 4,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -922,7 +927,7 @@ mod tests {
             page_size: 2,
             offset: 1,
         };
-        let events = get_events(&tx, &filter, MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -947,7 +952,7 @@ mod tests {
             page_size: 20,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, 1).unwrap();
+        let events = get_events(&tx, &filter, 1.try_into().unwrap()).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -967,7 +972,7 @@ mod tests {
             page_size: 20,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, 1).unwrap();
+        let events = get_events(&tx, &filter, 1.try_into().unwrap()).unwrap();
         assert_eq!(
             events,
             PageOfEvents {

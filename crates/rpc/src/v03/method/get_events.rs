@@ -167,12 +167,14 @@ pub async fn get_events(
             offset: requested_offset,
         };
 
-        let page = transaction.events(&filter).map_err(|e| match e {
-            EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
-            EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
-            EventFilterError::Internal(e) => GetEventsError::Internal(e),
-            EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
-        })?;
+        let page = transaction
+            .events(&filter, context.config.get_events_max_blocks_to_scan)
+            .map_err(|e| match e {
+                EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
+                EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
+                EventFilterError::Internal(e) => GetEventsError::Internal(e),
+                EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
+            })?;
 
         let mut events = types::GetEventsResult {
             events: page.events.into_iter().map(|e| e.into()).collect(),
