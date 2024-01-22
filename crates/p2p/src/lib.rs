@@ -49,7 +49,7 @@ pub fn new(
 ) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
 
-    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id);
+    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id, limits_cfg);
 
     let swarm = Swarm::new(
         transport::create(&keypair, relay_transport),
@@ -79,7 +79,6 @@ pub fn new(
             event_sender,
             peers,
             periodic_cfg,
-            limits_cfg,
             chain_id,
         ),
     )
