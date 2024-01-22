@@ -45,7 +45,5 @@ zstd = { workspace = true }
 assert_matches = { workspace = true }
 rstest = { workspace = true }
 tempfile = "3.6"
-test-log = { version = "0.2.12", default-features = false, features = [
-    "trace",
-] }
+test-log = { workspace = true }
 tracing-subscriber = { workspace = true }

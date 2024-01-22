@@ -66,8 +66,6 @@ pathfinder-crypto = { path = "../crypto" }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
 tempfile = "3.6"
-test-log = { version = "0.2.12", default-features = false, features = [
-    "trace",
-] }
+test-log = { workspace = true }
 tokio-tungstenite = "0.20"
 tracing-subscriber = { workspace = true }

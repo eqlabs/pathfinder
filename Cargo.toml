@@ -73,6 +73,9 @@ serde_with = "3.0.0"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
 starknet_api = "=0.6.0"
+test-log = { version = "0.2.12", default-features = false, features = [
+    "trace",
+] }
 thiserror = "1.0.48"
 tokio = "1.29.1"
 tracing = "0.1.37"
