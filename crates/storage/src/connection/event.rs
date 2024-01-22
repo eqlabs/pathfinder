@@ -116,15 +116,15 @@ pub(super) fn get_events(
         if !key_filter_is_empty || filter.contract_address.is_some() {
             let bloom = load_bloom(tx, reorg_counter, block_number)?;
             if let Some(bloom) = bloom {
-                if !keys_in_bloom(&bloom, &filter.keys) {
-                    tracing::trace!("Bloom filter did not match keys");
-                    continue;
-                }
                 if let Some(contract_address) = filter.contract_address {
-                    if !bloom.check(&contract_address.0) {
+                    if !bloom.check_address(&contract_address) {
                         tracing::trace!("Bloom filter did not match contract address");
                         continue;
                     }
+                }
+                if !bloom.check_keys(&filter.keys) {
+                    tracing::trace!("Bloom filter did not match keys");
+                    continue;
                 }
 
                 tracing::trace!("Bloom filter matched");
@@ -232,21 +232,6 @@ fn load_bloom(
     }
 
     Ok(bloom)
-}
-
-fn keys_in_bloom(bloom: &BloomFilter, keys: &[Vec<EventKey>]) -> bool {
-    keys.iter().enumerate().all(|(idx, keys)| {
-        if keys.is_empty() {
-            return true;
-        };
-
-        keys.iter().any(|key| {
-            let mut key = key.0;
-            key.as_mut_be_bytes()[0] |= (idx as u8) << 4;
-            tracing::trace!(%idx, %key, "Checking key in filter");
-            bloom.check(&key)
-        })
-    })
 }
 
 #[cfg(test)]
