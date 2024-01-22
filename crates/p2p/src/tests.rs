@@ -487,6 +487,7 @@ async fn duplicate_connection() {
     .await;
 
     assert!(peer1_copy.connected().await.is_empty());
+    assert!(peer1.connected().await.contains(&peer2.peer_id));
 }
 
 /// Test that each peer accepts at most one connection from any other peer, and duplicate
