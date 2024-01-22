@@ -605,7 +605,7 @@ async fn max_inbound_connections() {
 
     assert!(peer4.connected().await.is_empty());
 
-    // The restriction does not apply to inbound connections, so peer 1 can still open a connection
+    // The restriction does not apply to outbound connections, so peer 1 can still open a connection
     // to peer 4.
 
     let peer4_id = peer4.peer_id;
