@@ -93,6 +93,7 @@ pub(super) fn get_events(
     tx: &Transaction<'_>,
     filter: &EventFilter,
     max_blocks_to_scan: NonZeroUsize,
+    max_bloom_filters_to_load: NonZeroUsize,
 ) -> Result<PageOfEvents, EventFilterError> {
     if filter.page_size > PAGE_SIZE_LIMIT {
         return Err(EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT));
@@ -109,6 +110,7 @@ pub(super) fn get_events(
     let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
 
     let mut emitted_events = Vec::new();
+    let mut bloom_filters_loaded: usize = 0;
     let mut blocks_scanned: usize = 0;
     let mut block_number = from_block;
     let mut offset = filter.offset;
@@ -132,11 +134,23 @@ pub(super) fn get_events(
 
         // Check bloom filter
         if !key_filter_is_empty || filter.contract_address.is_some() {
-            if let Some(bloom) = load_bloom(tx, reorg_counter, block_number)? {
-                if !bloom.check_filter(filter) {
-                    tracing::trace!("Bloom filter did not match");
-                    block_number += 1;
-                    continue;
+            let bloom = load_bloom(tx, reorg_counter, block_number)?;
+            match bloom {
+                Filter::Missing => {}
+                Filter::Cached(bloom) => {
+                    if !bloom.check_filter(filter) {
+                        tracing::trace!("Bloom filter did not match");
+                        block_number += 1;
+                        continue;
+                    }
+                }
+                Filter::Loaded(bloom) => {
+                    bloom_filters_loaded += 1;
+                    if !bloom.check_filter(filter) {
+                        tracing::trace!("Bloom filter did not match");
+                        block_number += 1;
+                        continue;
+                    }
                 }
             }
         }
@@ -163,6 +177,12 @@ pub(super) fn get_events(
         }
 
         block_number += 1;
+
+        // Check if we've reached our Bloom filter load limit
+        if bloom_filters_loaded >= max_bloom_filters_to_load.get() {
+            tracing::trace!("Bloom filter limit reached");
+            break ScanResult::ContinueFrom(block_number);
+        }
     };
 
     match result {
@@ -322,13 +342,19 @@ fn continuation_token(
     Some(token)
 }
 
+enum Filter {
+    Missing,
+    Cached(BloomFilter),
+    Loaded(BloomFilter),
+}
+
 fn load_bloom(
     tx: &Transaction<'_>,
     reorg_counter: ReorgCounter,
     block_number: BlockNumber,
-) -> Result<Option<BloomFilter>, EventFilterError> {
+) -> Result<Filter, EventFilterError> {
     if let Some(bloom) = tx.bloom_filter_cache.get(reorg_counter, block_number) {
-        return Ok(Some(bloom));
+        return Ok(Filter::Cached(bloom));
     }
 
     let mut stmt = tx
@@ -342,12 +368,14 @@ fn load_bloom(
         })
         .optional()?;
 
-    if let Some(bloom) = &bloom {
-        tx.bloom_filter_cache
-            .set(reorg_counter, block_number, bloom.clone());
-    }
-
-    Ok(bloom)
+    Ok(match bloom {
+        Some(bloom) => {
+            tx.bloom_filter_cache
+                .set(reorg_counter, block_number, bloom.clone());
+            Filter::Loaded(bloom)
+        }
+        None => Filter::Missing,
+    })
 }
 
 #[cfg(test)]
@@ -364,6 +392,7 @@ mod tests {
 
     lazy_static::lazy_static!(
         static ref MAX_BLOCKS_TO_SCAN: NonZeroUsize = NonZeroUsize::new(100).unwrap();
+        static ref MAX_BLOOM_FILTERS_TO_LOAD: NonZeroUsize = NonZeroUsize::new(100).unwrap();
     );
 
     #[test_log::test(test)]
@@ -384,7 +413,13 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -504,6 +539,7 @@ mod tests {
                 offset: 0,
             },
             *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
         )
         .unwrap()
         .events
@@ -538,7 +574,13 @@ mod tests {
 
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
             ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -567,7 +609,13 @@ mod tests {
 
         let expected_events =
             &emitted_events[..test_utils::EVENTS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -595,7 +643,13 @@ mod tests {
         };
 
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * FROM_BLOCK_NUMBER..];
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -623,7 +677,13 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -650,7 +710,13 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -664,7 +730,13 @@ mod tests {
             keys: vec![vec![expected_event.keys[1]], vec![expected_event.keys[0]]],
             ..filter
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -690,7 +762,13 @@ mod tests {
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -715,7 +793,13 @@ mod tests {
             page_size: 10,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -735,7 +819,13 @@ mod tests {
             page_size: 10,
             offset: 10,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -755,7 +845,13 @@ mod tests {
             page_size: 10,
             offset: 30,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -781,7 +877,13 @@ mod tests {
             // _after_ the last one
             offset: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -805,7 +907,12 @@ mod tests {
             page_size: 0,
             offset: 0,
         };
-        let result = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN);
+        let result = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        );
         assert!(result.is_err());
         assert_matches!(result.unwrap_err(), EventFilterError::PageSizeTooSmall);
 
@@ -817,7 +924,12 @@ mod tests {
             page_size: PAGE_SIZE_LIMIT + 1,
             offset: 0,
         };
-        let result = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN);
+        let result = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        );
         assert!(result.is_err());
         assert_matches!(
             result.unwrap_err(),
@@ -846,7 +958,13 @@ mod tests {
             page_size: 2,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -867,7 +985,13 @@ mod tests {
             page_size: 2,
             offset: 2,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -888,7 +1012,13 @@ mod tests {
             page_size: 2,
             offset: 2,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -909,7 +1039,13 @@ mod tests {
             page_size: 2,
             offset: 4,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -927,7 +1063,13 @@ mod tests {
             page_size: 2,
             offset: 1,
         };
-        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -952,7 +1094,13 @@ mod tests {
             page_size: 20,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, 1.try_into().unwrap()).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            1.try_into().unwrap(),
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
@@ -972,7 +1120,61 @@ mod tests {
             page_size: 20,
             offset: 0,
         };
-        let events = get_events(&tx, &filter, 1.try_into().unwrap()).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            1.try_into().unwrap(),
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                events: emitted_events[10..20].to_vec(),
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(2),
+                    offset: 0
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn bloom_filter_load_limit() {
+        let (storage, test_data) = test_utils::setup_test_storage();
+        let emitted_events = test_data.events;
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let filter = EventFilter {
+            from_block: None,
+            to_block: None,
+            contract_address: None,
+            keys: vec![vec![], vec![emitted_events[0].keys[1]]],
+            page_size: emitted_events.len(),
+            offset: 0,
+        };
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN, 1.try_into().unwrap()).unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                events: emitted_events[..10].to_vec(),
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(1),
+                    offset: 0
+                }),
+            }
+        );
+
+        let filter = EventFilter {
+            from_block: Some(BlockNumber::new_or_panic(1)),
+            to_block: None,
+            contract_address: None,
+            keys: vec![vec![], vec![emitted_events[0].keys[1]]],
+            page_size: emitted_events.len(),
+            offset: 0,
+        };
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN, 1.try_into().unwrap()).unwrap();
         assert_eq!(
             events,
             PageOfEvents {

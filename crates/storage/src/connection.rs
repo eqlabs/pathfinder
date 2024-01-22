@@ -239,8 +239,9 @@ impl<'inner> Transaction<'inner> {
         &self,
         filter: &EventFilter,
         max_blocks_to_scan: NonZeroUsize,
+        max_bloom_filters_to_load: NonZeroUsize,
     ) -> Result<PageOfEvents, EventFilterError> {
-        event::get_events(self, filter, max_blocks_to_scan)
+        event::get_events(self, filter, max_blocks_to_scan, max_bloom_filters_to_load)
     }
 
     pub fn insert_sierra_class(

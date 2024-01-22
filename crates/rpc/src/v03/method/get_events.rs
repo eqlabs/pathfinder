@@ -168,7 +168,11 @@ pub async fn get_events(
         };
 
         let page = transaction
-            .events(&filter, context.config.get_events_max_blocks_to_scan)
+            .events(
+                &filter,
+                context.config.get_events_max_blocks_to_scan,
+                context.config.get_events_max_bloom_filters_to_load,
+            )
             .map_err(|e| match e {
                 EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
                 EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
