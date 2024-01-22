@@ -2,10 +2,16 @@ use std::sync::{Mutex, MutexGuard};
 
 use bloomfilter::Bloom;
 use cached::{Cached, SizedCache};
-use pathfinder_common::BlockNumber;
+use pathfinder_common::{BlockNumber, ContractAddress, EventKey};
 use pathfinder_crypto::Felt;
 
 use crate::ReorgCounter;
+
+// We're using the upper 4 bits of the 32 byte representation of a felt
+// to store the index of the key in the values set in the Bloom filter.
+// This allows for the maximum of 16 keys per event to be stored in the
+// filter.
+pub const EVENT_KEY_FILTER_LIMIT: usize = 16;
 
 #[derive(Clone)]
 pub(crate) struct BloomFilter(Bloom<Felt>);
