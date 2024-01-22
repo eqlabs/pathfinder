@@ -21,17 +21,18 @@ use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::time::Duration;
 
-use crate::behaviour;
 use crate::peers;
 use crate::recent_peers::RecentPeers;
 #[cfg(test)]
 use crate::test_utils;
+use crate::{behaviour, LimitsConfig};
 use crate::{
     BootstrapConfig, Command, EmptyResultSender, Event, PeriodicTaskConfig, TestCommand, TestEvent,
 };
 
 pub struct MainLoop {
     bootstrap_cfg: BootstrapConfig,
+    limits_cfg: LimitsConfig,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
@@ -42,6 +43,10 @@ pub struct MainLoop {
     recent_direct_peers: RecentPeers,
     /// Recent peers that have connected over a relay.
     recent_relay_peers: RecentPeers,
+    /// Number of peers that have inbound connections open to us directly (not over a relay).
+    inbound_direct_peers: usize,
+    /// Number of peers that have inbound connections open to us over a relay.
+    inbound_relay_peers: usize,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -89,12 +94,16 @@ impl MainLoop {
         event_sender: mpsc::Sender<Event>,
         peers: Arc<RwLock<peers::Peers>>,
         periodic_cfg: PeriodicTaskConfig,
+        limits_cfg: LimitsConfig,
         chain_id: ChainId,
     ) -> Self {
         Self {
             bootstrap_cfg: periodic_cfg.bootstrap,
-            recent_direct_peers: RecentPeers::new(periodic_cfg.direct_connection_timeout),
-            recent_relay_peers: RecentPeers::new(periodic_cfg.relay_connection_timeout),
+            limits_cfg,
+            recent_direct_peers: RecentPeers::new(limits_cfg.direct_connection_timeout),
+            recent_relay_peers: RecentPeers::new(limits_cfg.relay_connection_timeout),
+            inbound_direct_peers: 0,
+            inbound_relay_peers: 0,
             swarm,
             command_receiver,
             event_sender,
@@ -209,13 +218,37 @@ impl MainLoop {
                         return;
                     }
 
-                    // Prevent the peer from reconnecting too quickly.
-
-                    // Different connection timeouts apply to direct peers and peers connecting over a relay.
+                    // Is the peer connecting over a relay?
                     let is_relay = endpoint
                         .get_remote_address()
                         .iter()
                         .any(|p| p == Protocol::P2pCircuit);
+
+                    // Limit the number of inbound peer connections. Different limits apply to direct peers
+                    // and peers connecting over a relay.
+                    if is_relay {
+                        if self.inbound_relay_peers >= self.limits_cfg.max_inbound_relay_peers {
+                            tracing::debug!(%peer_id, "Too many inbound relay peers, closing");
+                            if let Err(e) = self.disconnect(peer_id).await {
+                                tracing::debug!(%e, "Failed to disconnect peer");
+                            }
+                            return;
+                        }
+                        self.inbound_relay_peers += 1;
+                    } else {
+                        if self.inbound_direct_peers >= self.limits_cfg.max_inbound_direct_peers {
+                            tracing::debug!(%peer_id, "Too many inbound direct peers, closing");
+                            if let Err(e) = self.disconnect(peer_id).await {
+                                tracing::debug!(%e, "Failed to disconnect peer");
+                            }
+                            return;
+                        }
+                        self.inbound_direct_peers += 1;
+                    }
+
+                    // Prevent the peer from reconnecting too quickly.
+
+                    // Different connection timeouts apply to direct peers and peers connecting over a relay.
                     let recent_peers = if is_relay {
                         &mut self.recent_relay_peers
                     } else {
