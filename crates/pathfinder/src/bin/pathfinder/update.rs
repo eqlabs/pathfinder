@@ -4,16 +4,26 @@
 ///
 /// Will continuously log this with every poll so that the user
 /// has a better chance of spotting it.
-pub async fn poll_github_for_releases() -> anyhow::Result<()> {
-    use anyhow::Context;
+pub async fn poll_github_for_releases() {
     let current_version = pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
     let current_version = current_version.strip_prefix('v').unwrap_or(current_version);
-    let local_version = semver::Version::parse(current_version)
-        .context("Semver parsing of local version failed")?;
+    let local_version = match semver::Version::parse(current_version) {
+        Ok(version) => version,
+        Err(e) => {
+            tracing::error!(error=%e, "Parsing of Pathfinder version failed, not checking for new versions");
+            return;
+        }
+    };
     let mut latest_gh_version = None;
     let mut etag = None;
 
-    let client = configure_client()?;
+    let client = match configure_client() {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::error!(error=%e, "Failed to configure Github client, not checking for new versions");
+            return;
+        }
+    };
 
     loop {
         match fetch_latest_github_release(&client, &etag).await {
