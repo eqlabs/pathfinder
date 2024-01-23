@@ -103,7 +103,7 @@ impl Default for TestPeer {
     fn default() -> Self {
         Self::new(
             Default::default(),
-            Default::default(),
+            LimitsConfig::new(10, 10),
             Keypair::generate_ed25519(),
         )
     }
@@ -248,7 +248,8 @@ async fn periodic_bootstrap() {
     let limits_cfg = LimitsConfig {
         direct_connection_timeout: Duration::from_millis(50),
         relay_connection_timeout: Duration::from_millis(50),
-        ..Default::default()
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
     };
     let mut boot = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
     let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
@@ -315,7 +316,8 @@ async fn reconnect_too_quickly() {
     let limits_cfg = LimitsConfig {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
-        ..Default::default()
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
     };
 
     let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
@@ -410,7 +412,8 @@ async fn duplicate_connection() {
     let limits_cfg = LimitsConfig {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
-        ..Default::default()
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
     };
     let keypair = Keypair::generate_ed25519();
     let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, keypair.clone());
@@ -491,7 +494,7 @@ async fn max_inbound_connections() {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
         max_inbound_direct_peers: 2,
-        ..Default::default()
+        max_inbound_relay_peers: 0,
     };
     let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
     let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());

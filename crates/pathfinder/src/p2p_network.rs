@@ -23,6 +23,7 @@ pub type P2PNetworkHandle = (
 );
 
 pub struct P2PContext {
+    pub limits_cfg: p2p::LimitsConfig,
     pub chain_id: ChainId,
     pub storage: Storage,
     pub proxy: bool,
@@ -35,6 +36,7 @@ pub struct P2PContext {
 #[tracing::instrument(name = "p2p", skip_all)]
 pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     let P2PContext {
+        limits_cfg,
         chain_id,
         storage,
         proxy,
@@ -52,7 +54,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         keypair,
         peers.clone(),
         Default::default(),
-        Default::default(),
+        limits_cfg,
         chain_id,
     );
 

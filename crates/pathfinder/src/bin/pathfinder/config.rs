@@ -322,6 +322,24 @@ Example:
         env = "PATHFINDER_P2P_PREDEFINED_PEERS"
     )]
     predefined_peers: Vec<String>,
+
+    #[arg(
+        long = "p2p.max-inbound-direct-connections",
+        long_help = "The maximum number of inbound direct (non-relayed) connections.",
+        value_name = "MAX_INBOUND_DIRECT_CONNECTIONS",
+        env = "PATHFINDER_MAX_INBOUND_DIRECT_CONNECTIONS",
+        default_value = "35"
+    )]
+    max_inbound_direct_connections: u32,
+
+    #[arg(
+        long = "p2p.max-inbound-relayed-connections",
+        long_help = "The maximum number of inbound relayed connections.",
+        value_name = "MAX_INBOUND_RELAYED_CONNECTIONS",
+        env = "PATHFINDER_MAX_INBOUND_RELAYED_CONNECTIONS",
+        default_value = "15"
+    )]
+    max_inbound_relayed_connections: u32,
 }
 
 #[cfg(feature = "p2p")]
@@ -488,6 +506,8 @@ pub struct P2PConfig {
     pub listen_on: Multiaddr,
     pub bootstrap_addresses: Vec<Multiaddr>,
     pub predefined_peers: Vec<Multiaddr>,
+    pub max_inbound_direct_connections: usize,
+    pub max_inbound_relayed_connections: usize,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -569,6 +589,11 @@ impl P2PConfig {
         };
 
         Self {
+            max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
+            max_inbound_relayed_connections: args
+                .max_inbound_relayed_connections
+                .try_into()
+                .unwrap(),
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
             listen_on: args.listen_on,
