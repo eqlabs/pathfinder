@@ -830,9 +830,9 @@ mod tests {
 
     #[rustfmt::skip]
     #[rstest::rstest]
-    #[case::root_api  ("/", "v04/starknet_api_openrpc.json",       &[])]
-    #[case::root_trace("/", "v04/starknet_trace_api_openrpc.json", &[])]
-    #[case::root_write("/", "v04/starknet_write_api.json",         &[])]
+    #[case::root_api  ("/", "v05/starknet_api_openrpc.json",       &[])]
+    #[case::root_trace("/", "v05/starknet_trace_api_openrpc.json", &[])]
+    #[case::root_write("/", "v05/starknet_write_api.json",         &[])]
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
     #[case::v0_6_api  ("/rpc/v0_6", "v06/starknet_api_openrpc.json", &[])]
@@ -850,15 +850,6 @@ mod tests {
     #[case::v0_5_write("/rpc/v0_5", "v05/starknet_write_api.json",         &[])]
     #[case::v0_5_pathfinder("/rpc/v0_5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
-    #[case::v04_api  ("/rpc/v0.4", "v04/starknet_api_openrpc.json",       &[])]
-    #[case::v04_trace("/rpc/v0.4", "v04/starknet_trace_api_openrpc.json", &[])]
-    #[case::v04_write("/rpc/v0.4", "v04/starknet_write_api.json",         &[])]
-    #[case::v04_pathfinder("/rpc/v0.4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-    #[case::v0_4_api  ("/rpc/v0_4", "v04/starknet_api_openrpc.json", &[])]
-    #[case::v0_4_trace("/rpc/v0_4", "v04/starknet_trace_api_openrpc.json", &[])]
-    #[case::v0_4_write("/rpc/v0_4", "v04/starknet_write_api.json",         &[])]
-    #[case::v0_4_pathfinder("/rpc/v0_4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-    
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
 
     #[tokio::test]
