@@ -22,6 +22,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.msrv.outputs.MSRV }}
-      - uses: Noelware/setup-protoc@1.1.0
+      - uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: check
         run: cargo check
