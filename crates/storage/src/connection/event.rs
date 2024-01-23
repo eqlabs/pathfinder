@@ -214,7 +214,7 @@ pub(super) fn get_events(
             });
         }
         ScanResult::ContinueFrom(block_number) => {
-            // We've scanned MAX_BLOCKS_TO_SCAN blocks and still haven't found enough events.
+            // We've reached a search limit without filling the page.
             // We'll need to continue from the next block.
             return Ok(PageOfEvents {
                 events: emitted_events,
