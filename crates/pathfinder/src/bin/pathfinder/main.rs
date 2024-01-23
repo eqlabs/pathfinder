@@ -239,12 +239,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         tokio::spawn(std::future::pending())
     };
 
-    let update_handle = tokio::spawn(update::poll_github_for_releases());
+    tokio::spawn(update::poll_github_for_releases());
 
     // We are now ready.
     readiness.store(true, std::sync::atomic::Ordering::Relaxed);
 
-    // Monitor our spawned process tasks.
+    // Monitor our critical spawned process tasks.
     tokio::select! {
         result = sync_handle => {
             match result {
@@ -256,12 +256,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             match result {
                 Ok(_) => tracing::error!("RPC server process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "RPC server process ended unexpectedly"),
-            }
-        }
-        result = update_handle => {
-            match result {
-                Ok(_) => tracing::error!("Release monitoring process ended unexpectedly"),
-                Err(err) => tracing::error!(error=%err, "Release monitoring process ended unexpectedly"),
             }
         }
         result = p2p_handle => {
