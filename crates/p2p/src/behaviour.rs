@@ -220,13 +220,11 @@ impl NetworkBehaviour for Behaviour {
                     "too many inbound relay peers"
                 )));
             }
-        } else {
-            if self.inbound_direct_peers >= self.limits.max_inbound_direct_peers {
-                tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
-                return Err(ConnectionDenied::new(anyhow!(
-                    "too many inbound direct peers"
-                )));
-            }
+        } else if self.inbound_direct_peers >= self.limits.max_inbound_direct_peers {
+            tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
+            return Err(ConnectionDenied::new(anyhow!(
+                "too many inbound direct peers"
+            )));
         }
 
         self.inner
@@ -353,7 +351,7 @@ impl Behaviour {
             tracing::debug!(%peer_id, "Peer already connected, closing");
             return Err(ConnectionDenied::new(anyhow!("duplicate connection")));
         }
-        self.connected_peers.insert(peer_id.clone());
+        self.connected_peers.insert(peer_id);
         Ok(())
     }
 
