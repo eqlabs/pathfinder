@@ -18,8 +18,8 @@ use libp2p::multiaddr::Protocol;
 use libp2p::ping;
 use libp2p::relay;
 use libp2p::swarm::{
-    ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
-    THandlerOutEvent, ToSwarm,
+    ConnectionClosed, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler,
+    THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 use libp2p::StreamProtocol;
 use libp2p::{autonat, Multiaddr, PeerId};
@@ -84,6 +84,30 @@ impl NetworkBehaviour for Behaviour {
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         self.on_connection_established(peer)?;
+
+        // Is the peer connecting over a relay?
+        let is_relay = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
+
+        // Limit the number of inbound peer connections. Different limits apply to direct peers
+        // and peers connecting over a relay.
+        if is_relay {
+            if self.inbound_relay_peers >= self.limits.max_inbound_relay_peers {
+                tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
+                return Err(ConnectionDenied::new(anyhow!(
+                    "too many inbound relay peers"
+                )));
+            }
+            self.inbound_relay_peers += 1;
+        } else {
+            if self.inbound_direct_peers >= self.limits.max_inbound_direct_peers {
+                tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
+                return Err(ConnectionDenied::new(anyhow!(
+                    "too many inbound direct peers"
+                )));
+            }
+            self.inbound_direct_peers += 1;
+        }
+
         self.inner.handle_established_inbound_connection(
             connection_id,
             peer,
@@ -105,6 +129,20 @@ impl NetworkBehaviour for Behaviour {
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
+        if let FromSwarm::ConnectionClosed(ConnectionClosed {
+            peer_id, endpoint, ..
+        }) = event
+        {
+            // Is this an inbound connection?
+            if endpoint.is_listener() {
+                if endpoint.is_relayed() {
+                    self.inbound_relay_peers -= 1;
+                } else {
+                    self.inbound_direct_peers -= 1;
+                }
+            }
+            self.connected_peers.remove(&peer_id);
+        }
         self.inner.on_swarm_event(event)
     }
 
@@ -144,11 +182,11 @@ impl NetworkBehaviour for Behaviour {
             return Err(ConnectionDenied::new(anyhow!("peer without IP")));
         };
 
-        // Prevent the peer from reconnecting too quickly.
-
         // Is the peer connecting over a relay?
         let is_relay = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
 
+        // Prevent the peer from reconnecting too quickly.
+        //
         // Different connection timeouts apply to direct peers and peers connecting over a relay.
         let recent_peers = if is_relay {
             &mut self.recent_inbound_relay_peers
@@ -168,6 +206,13 @@ impl NetworkBehaviour for Behaviour {
 
         // Limit the number of inbound peer connections. Different limits apply to direct peers
         // and peers connecting over a relay.
+        //
+        // This same check happens when the connection is established, but we are also checking
+        // here because it allows us to avoid potentially expensive protocol negotiation with the
+        // peer if there are already too many inbound connections.
+        //
+        // The check must be repeated when the connection is established due to race conditions,
+        // since multiple peers may be attempting to connect at the same time.
         if is_relay {
             if self.inbound_relay_peers >= self.limits.max_inbound_relay_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
@@ -175,7 +220,6 @@ impl NetworkBehaviour for Behaviour {
                     "too many inbound relay peers"
                 )));
             }
-            self.inbound_relay_peers += 1;
         } else {
             if self.inbound_direct_peers >= self.limits.max_inbound_direct_peers {
                 tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
@@ -183,7 +227,6 @@ impl NetworkBehaviour for Behaviour {
                     "too many inbound direct peers"
                 )));
             }
-            self.inbound_direct_peers += 1;
         }
 
         self.inner

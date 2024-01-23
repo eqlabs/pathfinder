@@ -246,8 +246,8 @@ async fn periodic_bootstrap() {
         },
     };
     let limits_cfg = LimitsConfig {
-        direct_connection_timeout: Duration::from_millis(500),
-        relay_connection_timeout: Duration::from_millis(500),
+        direct_connection_timeout: Duration::from_millis(50),
+        relay_connection_timeout: Duration::from_millis(50),
         ..Default::default()
     };
     let mut boot = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
@@ -369,28 +369,13 @@ async fn reconnect_too_quickly() {
     .await;
 
     // Attempt to immediately reconnect.
-    peer1
-        .client
-        .dial(peer2.peer_id, addr2.clone())
-        .await
-        .unwrap();
-
-    // The peer gets disconnected without completing the connection establishment handler.
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
-        _ => None,
-    })
-    .await;
-
-    wait_for_event(&mut peer2.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
-        _ => None,
-    })
-    .await;
+    let result = peer1.client.dial(peer2.peer_id, addr2.clone()).await;
+    assert!(result.is_err());
 
     // Attempt to reconnect after the timeout.
     tokio::time::sleep(CONNECTION_TIMEOUT).await;
-    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+    let result = peer1.client.dial(peer2.peer_id, addr2).await;
+    assert!(result.is_ok());
 
     // The connection is established.
     wait_for_event(&mut peer1.event_receiver, |event| match event {
@@ -574,36 +559,8 @@ async fn max_inbound_connections() {
 
     // Open another inbound connection to the peer. Since the limit is 2, and there are already 2
     // inbound connections, this is not allowed.
-    peer4
-        .client
-        .dial(peer1.peer_id, addr1.clone())
-        .await
-        .unwrap();
-
-    wait_for_event(&mut peer4.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
-            Some(())
-        }
-        _ => None,
-    })
-    .await;
-
-    wait_for_event(&mut peer4.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer1.peer_id => {
-            Some(())
-        }
-        _ => None,
-    })
-    .await;
-
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer4.peer_id => {
-            Some(())
-        }
-        _ => None,
-    })
-    .await;
-
+    let result = peer4.client.dial(peer1.peer_id, addr1.clone()).await;
+    assert!(result.is_err());
     assert!(peer4.connected().await.is_empty());
 
     // The restriction does not apply to outbound connections, so peer 1 can still open a connection
