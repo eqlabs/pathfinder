@@ -48,8 +48,13 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     tracing::info!(%peer_id, "🖧 Starting P2P");
 
     let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
-    let (p2p_client, mut p2p_events, p2p_main_loop) =
-        p2p::new(keypair, peers.clone(), Default::default(), chain_id);
+    let (p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(
+        keypair,
+        peers.clone(),
+        Default::default(),
+        Default::default(),
+        chain_id,
+    );
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");

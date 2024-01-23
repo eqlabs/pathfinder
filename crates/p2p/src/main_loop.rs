@@ -1,16 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::net::IpAddr;
 use std::sync::Arc;
 
 use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
 use libp2p::gossipsub::{self, IdentTopic};
+use libp2p::identify;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
-use libp2p::{identify, Multiaddr};
 use p2p_proto::block::{BlockBodiesResponse, BlockHeadersResponse};
 use p2p_proto::event::EventsResponse;
 use p2p_proto::receipt::ReceiptsResponse;
@@ -23,7 +22,6 @@ use tokio::time::Duration;
 
 use crate::behaviour;
 use crate::peers;
-use crate::recent_peers::RecentPeers;
 #[cfg(test)]
 use crate::test_utils;
 use crate::{
@@ -36,12 +34,6 @@ pub struct MainLoop {
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
     peers: Arc<RwLock<peers::Peers>>,
-    /// Recent peers that have connected directly (not over a relay).
-    ///
-    /// The distinction is important because different limits apply to direct and relayed peers.
-    recent_direct_peers: RecentPeers,
-    /// Recent peers that have connected over a relay.
-    recent_relay_peers: RecentPeers,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -93,8 +85,6 @@ impl MainLoop {
     ) -> Self {
         Self {
             bootstrap_cfg: periodic_cfg.bootstrap,
-            recent_direct_peers: RecentPeers::new(periodic_cfg.direct_connection_timeout),
-            recent_relay_peers: RecentPeers::new(periodic_cfg.relay_connection_timeout),
             swarm,
             command_receiver,
             event_sender,
@@ -137,7 +127,7 @@ impl MainLoop {
                     tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
                 }
                 _ = peer_status_interval_tick => {
-                    let dht = self.swarm.behaviour_mut().kademlia
+                    let dht = self.swarm.behaviour_mut().kademlia_mut()
                         .kbuckets()
                         // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
                         .map(|kbucket_ref| {
@@ -160,7 +150,7 @@ impl MainLoop {
                 }
                 _ = bootstrap_interval_tick => {
                     tracing::debug!("Doing periodical bootstrap");
-                    _ = self.swarm.behaviour_mut().kademlia.bootstrap();
+                    _ = self.swarm.behaviour_mut().kademlia_mut().bootstrap();
                 }
                 command = self.command_receiver.recv() => {
                     match command {
@@ -179,63 +169,8 @@ impl MainLoop {
             // Connection management
             // ===========================
             SwarmEvent::ConnectionEstablished {
-                peer_id,
-                endpoint,
-                num_established,
-                ..
+                peer_id, endpoint, ..
             } => {
-                // Extract the IP address of the peer from his multiaddr.
-                let peer_ip = get_ip(endpoint.get_remote_address());
-
-                // If the peer has no IP address, disconnect.
-                let Some(peer_ip) = peer_ip else {
-                    if let Err(e) = self.disconnect(peer_id).await {
-                        tracing::debug!(reason=%e, %peer_id, "Failed to disconnect peer without IP");
-                    } else {
-                        tracing::debug!(%peer_id, "Disconnected peer without IP");
-                    }
-                    return;
-                };
-
-                if endpoint.is_listener() {
-                    // This is an incoming connection.
-
-                    // Only allow one connection per peer.
-                    if num_established.get() > 1 {
-                        tracing::debug!(%peer_id, "Peer has more than one connection, closing");
-                        if let Err(e) = self.disconnect(peer_id).await {
-                            tracing::debug!(%e, "Failed to disconnect peer");
-                        }
-                        return;
-                    }
-
-                    // Prevent the peer from reconnecting too quickly.
-
-                    // Different connection timeouts apply to direct peers and peers connecting over a relay.
-                    let is_relay = endpoint
-                        .get_remote_address()
-                        .iter()
-                        .any(|p| p == Protocol::P2pCircuit);
-                    let recent_peers = if is_relay {
-                        &mut self.recent_relay_peers
-                    } else {
-                        &mut self.recent_direct_peers
-                    };
-
-                    // If the peer is in the recent peers set, this means he is attempting to
-                    // reconnect too quickly. Close the connection.
-                    if recent_peers.contains(&peer_ip) {
-                        tracing::debug!(%peer_id, "Peer attempted to reconnect too quickly, closing");
-                        if let Err(e) = self.disconnect(peer_id).await {
-                            tracing::debug!(%e, "Failed to disconnect peer");
-                        }
-                        return;
-                    } else {
-                        // Otherwise, add the peer to the recent peers set.
-                        recent_peers.insert(peer_ip);
-                    }
-                }
-
                 self.peers.write().await.peer_connected(&peer_id);
 
                 if endpoint.is_dialer() {
@@ -334,7 +269,7 @@ impl MainLoop {
                         for addr in &listen_addrs {
                             self.swarm
                                 .behaviour_mut()
-                                .kademlia
+                                .kademlia_mut()
                                 .add_address(&peer_id, addr.clone());
                         }
 
@@ -771,7 +706,7 @@ impl MainLoop {
                 {
                     self.swarm
                         .behaviour_mut()
-                        .kademlia
+                        .kademlia_mut()
                         .add_address(&peer_id, addr.clone());
                     match self.swarm.dial(
                         // Dial a known peer with a given address only if it's not connected yet
@@ -830,7 +765,7 @@ impl MainLoop {
                 let request_id = self
                     .swarm
                     .behaviour_mut()
-                    .headers_sync
+                    .headers_sync_mut()
                     .send_request(&peer_id, request);
                 self.pending_sync_requests
                     .headers
@@ -846,7 +781,7 @@ impl MainLoop {
                 let request_id = self
                     .swarm
                     .behaviour_mut()
-                    .bodies_sync
+                    .bodies_sync_mut()
                     .send_request(&peer_id, request);
                 self.pending_sync_requests.bodies.insert(request_id, sender);
             }
@@ -860,7 +795,7 @@ impl MainLoop {
                 let request_id = self
                     .swarm
                     .behaviour_mut()
-                    .transactions_sync
+                    .transactions_sync_mut()
                     .send_request(&peer_id, request);
                 self.pending_sync_requests
                     .transactions
@@ -876,7 +811,7 @@ impl MainLoop {
                 let request_id = self
                     .swarm
                     .behaviour_mut()
-                    .receipts_sync
+                    .receipts_sync_mut()
                     .send_request(&peer_id, request);
                 self.pending_sync_requests
                     .receipts
@@ -892,7 +827,7 @@ impl MainLoop {
                 let request_id = self
                     .swarm
                     .behaviour_mut()
-                    .events_sync
+                    .events_sync_mut()
                     .send_request(&peer_id, request);
                 self.pending_sync_requests.events.insert(request_id, sender);
             }
@@ -914,7 +849,7 @@ impl MainLoop {
         let message_id = self
             .swarm
             .behaviour_mut()
-            .gossipsub
+            .gossipsub_mut()
             .publish(topic, data)
             .map_err(|e| anyhow::anyhow!("Gossipsub publish failed: {}", e))?;
         tracing::debug!(?message_id, "Data published");
@@ -966,14 +901,6 @@ impl MainLoop {
         #[cfg(test)]
         test_utils::query_progressed(&self._pending_test_queries.inner, _id, _result).await
     }
-}
-
-fn get_ip(addr: &Multiaddr) -> Option<IpAddr> {
-    addr.iter().find_map(|p| match p {
-        Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
-        Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
-        _ => None,
-    })
 }
 
 /// No-op outside tests

@@ -63,7 +63,7 @@ pub(super) async fn handle_command(
     match command {
         TestCommand::GetPeersFromDHT(sender) => {
             let peers = behavior
-                .kademlia
+                .kademlia_mut()
                 .kbuckets()
                 // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
                 .map(|kbucket_ref| {

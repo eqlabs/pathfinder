@@ -21,7 +21,9 @@ use rstest::rstest;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use crate::{BootstrapConfig, Event, EventReceiver, Peers, PeriodicTaskConfig, TestEvent};
+use crate::{
+    BootstrapConfig, Event, EventReceiver, LimitsConfig, Peers, PeriodicTaskConfig, TestEvent,
+};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -36,13 +38,18 @@ struct TestPeer {
 
 impl TestPeer {
     #[must_use]
-    pub fn new(periodic_cfg: PeriodicTaskConfig, keypair: Keypair) -> Self {
+    pub fn new(
+        periodic_cfg: PeriodicTaskConfig,
+        limits_cfg: LimitsConfig,
+        keypair: Keypair,
+    ) -> Self {
         let peer_id = keypair.public().to_peer_id();
         let peers: Arc<RwLock<Peers>> = Default::default();
         let (client, event_receiver, main_loop) = crate::new(
             keypair.clone(),
             peers.clone(),
             periodic_cfg,
+            limits_cfg,
             ChainId::GOERLI_TESTNET,
         );
         let main_loop_jh = tokio::spawn(main_loop.run());
@@ -94,7 +101,11 @@ impl TestPeer {
 
 impl Default for TestPeer {
     fn default() -> Self {
-        Self::new(Default::default(), Keypair::generate_ed25519())
+        Self::new(
+            Default::default(),
+            Default::default(),
+            Keypair::generate_ed25519(),
+        )
     }
 }
 
@@ -233,12 +244,15 @@ async fn periodic_bootstrap() {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
         },
-        direct_connection_timeout: Duration::from_millis(500),
-        relay_connection_timeout: Duration::from_millis(500),
     };
-    let mut boot = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
-    let mut peer1 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
-    let mut peer2 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
+    let limits_cfg = LimitsConfig {
+        direct_connection_timeout: Duration::from_millis(50),
+        relay_connection_timeout: Duration::from_millis(50),
+        ..Default::default()
+    };
+    let mut boot = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
 
     let mut boot_addr = boot.start_listening().await.unwrap();
     boot_addr.push(Protocol::P2p(boot.peer_id));
@@ -297,12 +311,15 @@ async fn reconnect_too_quickly() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+    };
+    let limits_cfg = LimitsConfig {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
+        ..Default::default()
     };
 
-    let mut peer1 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
-    let mut peer2 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
@@ -352,28 +369,13 @@ async fn reconnect_too_quickly() {
     .await;
 
     // Attempt to immediately reconnect.
-    peer1
-        .client
-        .dial(peer2.peer_id, addr2.clone())
-        .await
-        .unwrap();
-
-    // The peer gets disconnected without completing the connection establishment handler.
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
-        _ => None,
-    })
-    .await;
-
-    wait_for_event(&mut peer2.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
-        _ => None,
-    })
-    .await;
+    let result = peer1.client.dial(peer2.peer_id, addr2.clone()).await;
+    assert!(result.is_err());
 
     // Attempt to reconnect after the timeout.
     tokio::time::sleep(CONNECTION_TIMEOUT).await;
-    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+    let result = peer1.client.dial(peer2.peer_id, addr2).await;
+    assert!(result.is_ok());
 
     // The connection is established.
     wait_for_event(&mut peer1.event_receiver, |event| match event {
@@ -404,13 +406,16 @@ async fn duplicate_connection() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+    };
+    let limits_cfg = LimitsConfig {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
+        ..Default::default()
     };
     let keypair = Keypair::generate_ed25519();
-    let mut peer1 = TestPeer::new(periodic_cfg, keypair.clone());
-    let mut peer1_copy = TestPeer::new(periodic_cfg, keypair);
-    let mut peer2 = TestPeer::new(periodic_cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, keypair.clone());
+    let mut peer1_copy = TestPeer::new(periodic_cfg, limits_cfg, keypair);
+    let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
@@ -467,6 +472,126 @@ async fn duplicate_connection() {
     .await;
 
     assert!(peer1_copy.connected().await.is_empty());
+    assert!(peer1.connected().await.contains(&peer2.peer_id));
+}
+
+/// Test that each peer accepts at most one connection from any other peer, and duplicate
+/// connections are closed.
+#[test_log::test(tokio::test)]
+async fn max_inbound_connections() {
+    const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
+    let periodic_cfg = PeriodicTaskConfig {
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            // Bootstrapping can cause redials, so set the offset to a high value.
+            start_offset: Duration::from_secs(10),
+        },
+    };
+    let limits_cfg = LimitsConfig {
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
+        max_inbound_direct_peers: 2,
+        ..Default::default()
+    };
+    let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer3 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer4 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+
+    let addr1 = peer1.start_listening().await.unwrap();
+    tracing::info!(%peer1.peer_id, %addr1);
+    let addr4 = peer4.start_listening().await.unwrap();
+    tracing::info!(%peer4.peer_id, %addr4);
+
+    // Open the connection.
+    peer2
+        .client
+        .dial(peer1.peer_id, addr1.clone())
+        .await
+        .unwrap();
+
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    // Ensure that the connection timeout has passed, so this is not the reason why the connection
+    // would be closed.
+    tokio::time::sleep(CONNECTION_TIMEOUT).await;
+
+    // Open another inbound connection to the peer. Since the limit is 2, this is allowed.
+    peer3
+        .client
+        .dial(peer1.peer_id, addr1.clone())
+        .await
+        .unwrap();
+
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer3.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    wait_for_event(&mut peer3.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    // Ensure that the connection timeout has passed, so this is not the reason why the connection
+    // would be closed.
+    tokio::time::sleep(CONNECTION_TIMEOUT).await;
+
+    // Open another inbound connection to the peer. Since the limit is 2, and there are already 2
+    // inbound connections, this is not allowed.
+    let result = peer4.client.dial(peer1.peer_id, addr1.clone()).await;
+    assert!(result.is_err());
+    assert!(peer4.connected().await.is_empty());
+
+    // The restriction does not apply to outbound connections, so peer 1 can still open a connection
+    // to peer 4.
+
+    let peer4_id = peer4.peer_id;
+    let mut peer_1_connection_established =
+        filter_events(peer1.event_receiver, move |event| match event {
+            Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer4_id => {
+                Some(())
+            }
+            _ => None,
+        });
+
+    let peer1_id = peer1.peer_id;
+    let mut peer_4_connection_established =
+        filter_events(peer4.event_receiver, move |event| match event {
+            Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1_id => {
+                Some(())
+            }
+            _ => None,
+        });
+
+    peer1
+        .client
+        .dial(peer4.peer_id, dbg!(addr4.clone()))
+        .await
+        .unwrap();
+
+    peer_1_connection_established.recv().await;
+    peer_4_connection_established.recv().await;
 }
 
 #[rstest]

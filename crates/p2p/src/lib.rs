@@ -44,11 +44,12 @@ pub fn new(
     keypair: Keypair,
     peers: Arc<RwLock<peers::Peers>>,
     periodic_cfg: PeriodicTaskConfig,
+    limits_cfg: LimitsConfig,
     chain_id: ChainId,
 ) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
 
-    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id);
+    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id, limits_cfg);
 
     let swarm = Swarm::new(
         transport::create(&keypair, relay_transport),
@@ -86,10 +87,29 @@ pub fn new(
 #[derive(Copy, Clone, Debug)]
 pub struct PeriodicTaskConfig {
     pub bootstrap: BootstrapConfig,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct LimitsConfig {
     /// A direct (not relayed) peer can only connect once in this period.
     pub direct_connection_timeout: Duration,
     /// A relayed peer can only connect once in this period.
     pub relay_connection_timeout: Duration,
+    /// Maximum number of direct (non-relayed) peers.
+    pub max_inbound_direct_peers: usize,
+    /// Maximum number of relayed peers.
+    pub max_inbound_relay_peers: usize,
+}
+
+impl Default for LimitsConfig {
+    fn default() -> Self {
+        Self {
+            direct_connection_timeout: Duration::from_secs(30),
+            relay_connection_timeout: Duration::from_secs(10),
+            max_inbound_direct_peers: 35,
+            max_inbound_relay_peers: 15,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -105,8 +125,6 @@ impl Default for PeriodicTaskConfig {
                 start_offset: Duration::from_secs(5),
                 period: Duration::from_secs(10 * 60),
             },
-            direct_connection_timeout: Duration::from_secs(30),
-            relay_connection_timeout: Duration::from_secs(10),
         }
     }
 }
