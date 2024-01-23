@@ -332,7 +332,7 @@ fn continuation_token(
             offset: number_of_events_in_last_block,
         }
     } else {
-        // the page contains events form the same block
+        // the page contains events from the same block
         ContinuationToken {
             block_number: previous_token.block_number,
             offset: previous_token.offset + events.len(),
