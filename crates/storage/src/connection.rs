@@ -544,7 +544,7 @@ impl<'inner> Transaction<'inner> {
         reorg_counter::increment_reorg_counter(self)
     }
 
-    pub fn reorg_counter(&self) -> anyhow::Result<ReorgCounter> {
+    fn reorg_counter(&self) -> anyhow::Result<ReorgCounter> {
         reorg_counter::reorg_counter(self)
     }
 
