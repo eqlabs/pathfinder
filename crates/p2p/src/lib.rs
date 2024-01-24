@@ -71,10 +71,11 @@ pub fn new(
     let (event_sender, event_receiver) = mpsc::channel(1);
 
     (
-        Client::new(command_sender, local_peer_id),
+        Client::new(command_sender.clone(), local_peer_id),
         event_receiver,
         MainLoop::new(
             swarm,
+            command_sender,
             command_receiver,
             event_sender,
             peers,
@@ -191,6 +192,7 @@ enum Command {
         new_block: NewBlock,
         sender: EmptyResultSender,
     },
+    CheckProtocols(PeerId),
     /// For testing purposes only
     _Test(TestCommand),
 }
