@@ -83,7 +83,7 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        self.on_connection_established(peer)?;
+        self.on_established_connection(peer)?;
 
         // Is the peer connecting over a relay?
         let is_relay = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
@@ -123,7 +123,7 @@ impl NetworkBehaviour for Behaviour {
         addr: &Multiaddr,
         role_override: Endpoint,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        self.on_connection_established(peer)?;
+        self.on_established_connection(peer)?;
         self.inner
             .handle_established_outbound_connection(connection_id, peer, addr, role_override)
     }
@@ -181,6 +181,17 @@ impl NetworkBehaviour for Behaviour {
             tracing::debug!(%connection_id, "Disconnected peer without IP");
             return Err(ConnectionDenied::new(anyhow!("peer without IP")));
         };
+
+        // If the peer is not in the IP whitelist, disconnect.
+        if !self
+            .limits
+            .ip_whitelist
+            .iter()
+            .any(|net| net.contains(&peer_ip))
+        {
+            tracing::debug!(%connection_id, "Disconnected peer not in IP whitelist");
+            return Err(ConnectionDenied::new(anyhow!("peer not in IP whitelist")));
+        }
 
         // Is the peer connecting over a relay?
         let is_relay = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
@@ -298,11 +309,11 @@ impl Behaviour {
 
         (
             Self {
-                limits,
                 recent_inbound_direct_peers: RecentPeers::new(limits.direct_connection_timeout),
                 recent_inbound_relay_peers: RecentPeers::new(limits.relay_connection_timeout),
                 inbound_direct_peers: Default::default(),
                 inbound_relay_peers: Default::default(),
+                limits,
                 connected_peers: Default::default(),
                 inner: Inner {
                     relay,
@@ -345,7 +356,7 @@ impl Behaviour {
         Ok(())
     }
 
-    fn on_connection_established(&mut self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
+    fn on_established_connection(&mut self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         // Only allow one connection per peer.
         if self.connected_peers.contains(&peer_id) {
             tracing::debug!(%peer_id, "Peer already connected, closing");

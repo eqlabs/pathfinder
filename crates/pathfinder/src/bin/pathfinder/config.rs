@@ -1,4 +1,5 @@
 use clap::{ArgAction, CommandFactory, Parser};
+use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
 use pathfinder_common::AllowedOrigins;
@@ -367,6 +368,15 @@ Example:
         default_value = "15"
     )]
     max_inbound_relayed_connections: u32,
+
+    #[arg(
+        long = "p2p.ip-whitelist",
+        long_help = "Comma separated list of IP addresses or IP address ranges (in CIDR) to whitelist for incoming connections. If not provided, all incoming connections are allowed.",
+        value_name = "LIST",
+        default_value = "0.0.0.0/0,::/0",
+        env = "IP_WHITELIST"
+    )]
+    ip_whitelist: Vec<IpNet>,
 }
 
 #[cfg(feature = "p2p")]

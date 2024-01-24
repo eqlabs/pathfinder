@@ -57,6 +57,7 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 http = "0.2.9"
 httpmock = "0.7.0-rc.1"
+ipnet = { version = "2.9.0", features = ["serde"] }
 lazy_static = "1.4.0"
 metrics = "0.20.1"
 num-bigint = { version = "0.4.4", features = ["serde"] }
