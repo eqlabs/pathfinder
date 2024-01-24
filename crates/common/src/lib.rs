@@ -254,6 +254,10 @@ impl BlockNumber {
             Some(*self - 1)
         }
     }
+
+    pub fn is_zero(&self) -> bool {
+        self == &Self::GENESIS
+    }
 }
 
 impl std::ops::Add<u64> for BlockNumber {
