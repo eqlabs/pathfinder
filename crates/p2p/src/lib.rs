@@ -31,6 +31,7 @@ mod test_utils;
 mod tests;
 mod transport;
 
+pub use client::peer_agnostic::PeerData;
 pub use libp2p;
 pub use peers::Peers;
 pub use sync::protocol::PROTOCOLS;
