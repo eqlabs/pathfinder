@@ -1,8 +1,5 @@
-use crate::{
-    BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, EventCommitment, GasPrice,
-    SequencerAddress, StarknetVersion, StateCommitment, StateUpdate, StorageCommitment,
-    TransactionCommitment,
-};
+use crate::prelude::*;
+use crate::BlockCommitmentSignature;
 use fake::Dummy;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
@@ -22,6 +19,12 @@ pub struct BlockHeader {
     pub transaction_commitment: TransactionCommitment,
     pub transaction_count: usize,
     pub event_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SignedBlockHeader {
+    pub header: BlockHeader,
+    pub signature: BlockCommitmentSignature,
 }
 
 pub struct BlockHeaderBuilder(BlockHeader);

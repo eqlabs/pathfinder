@@ -25,7 +25,7 @@ pub mod trie;
 pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
 
-pub use header::{BlockHeader, BlockHeaderBuilder};
+pub use header::{BlockHeader, BlockHeaderBuilder, SignedBlockHeader};
 
 impl ContractAddress {
     /// The contract at 0x1 is special. It was never deployed and therefore
