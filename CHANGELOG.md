@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_getEvents` incorrectly evaluates empty sub-lists in key filters for pending events.
+- For `UNEXPECTED_ERROR`, change the `data` field into a `string` to comply with the spec.
 
 ### Changed
 

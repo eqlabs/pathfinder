@@ -199,9 +199,7 @@ impl ApplicationError {
                 "limit": limit,
                 "requested": requested,
             })),
-            ApplicationError::UnexpectedError { data } => Some(json!({
-                "error": data,
-            })),
+            ApplicationError::UnexpectedError { data } => Some(json!(data)),
             ApplicationError::ProofLimitExceeded { limit, requested } => Some(json!({
                 "limit": limit,
                 "requested": requested,
