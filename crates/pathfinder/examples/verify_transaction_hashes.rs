@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
 
     println!("Migrating database...");
 
-    let storage = Storage::migrate(database_path.into(), JournalMode::WAL)?
+    let storage = Storage::migrate(database_path.into(), JournalMode::WAL, 1)?
         .create_pool(NonZeroU32::new(1).unwrap())
         .unwrap();
     let mut db = storage

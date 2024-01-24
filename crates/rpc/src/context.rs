@@ -12,6 +12,13 @@ type SequencerClient = starknet_gateway_client::Client;
 use tokio::sync::watch as tokio_watch;
 
 #[derive(Clone)]
+pub struct RpcConfig {
+    pub batch_concurrency_limit: NonZeroUsize,
+    pub get_events_max_blocks_to_scan: NonZeroUsize,
+    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
+}
+
+#[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
     pub execution_storage: Storage,
@@ -21,7 +28,7 @@ pub struct RpcContext {
     pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
-    pub batch_concurrency_limit: NonZeroUsize,
+    pub config: RpcConfig,
 }
 
 impl RpcContext {
@@ -32,7 +39,7 @@ impl RpcContext {
         chain_id: ChainId,
         sequencer: SequencerClient,
         pending_data: tokio_watch::Receiver<PendingData>,
-        batch_concurrency_limit: NonZeroUsize,
+        config: RpcConfig,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
         Self {
@@ -44,7 +51,7 @@ impl RpcContext {
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             websocket: None,
-            batch_concurrency_limit,
+            config,
         }
     }
 
@@ -73,6 +80,12 @@ impl RpcContext {
         let sync_state = Arc::new(SyncState::default());
         let (_, rx) = tokio_watch::channel(Default::default());
 
+        let config = RpcConfig {
+            batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
+            get_events_max_blocks_to_scan: NonZeroUsize::new(1000).unwrap(),
+            get_events_max_uncached_bloom_filters_to_load: NonZeroUsize::new(1000).unwrap(),
+        };
+
         Self::new(
             storage.clone(),
             storage,
@@ -80,7 +93,7 @@ impl RpcContext {
             chain_id,
             sequencer.disable_retry_for_tests(),
             rx,
-            NonZeroUsize::new(8).unwrap(),
+            config,
         )
     }
 

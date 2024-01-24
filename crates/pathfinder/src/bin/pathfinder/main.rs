@@ -105,8 +105,13 @@ async fn async_main() -> anyhow::Result<()> {
     verify_networks(pathfinder_context.network, ethereum.chain)?;
 
     // Setup and verify database
-    let storage_manager =
-        Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
+
+    let storage_manager = Storage::migrate(
+        pathfinder_context.database.clone(),
+        config.sqlite_wal,
+        config.event_bloom_filter_cache_size.get(),
+    )
+    .unwrap();
     let sync_storage = storage_manager
         // 5 is enough for normal sync operations, and then `available_parallelism` for
         // the rayon thread pool workers to use.
@@ -165,6 +170,13 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let (tx_pending, rx_pending) = tokio::sync::watch::channel(Default::default());
 
+    let rpc_config = pathfinder_rpc::context::RpcConfig {
+        batch_concurrency_limit: config.rpc_batch_concurrency_limit,
+        get_events_max_blocks_to_scan: config.get_events_max_blocks_to_scan,
+        get_events_max_uncached_bloom_filters_to_load: config
+            .get_events_max_uncached_bloom_filters_to_load,
+    };
+
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         execution_storage,
@@ -172,7 +184,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
         rx_pending,
-        config.rpc_batch_concurrency_limit,
+        rpc_config,
     );
 
     let context = if config.websocket.enabled {

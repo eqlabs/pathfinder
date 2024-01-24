@@ -251,7 +251,7 @@ fn get_transactions_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<TransactionsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+    let Some(block_hash) = tx.block_hash(block_number.into())? else {
         return Ok(false);
     };
 
@@ -286,7 +286,7 @@ fn get_receipts_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<ReceiptsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+    let Some(block_hash) = tx.block_hash(block_number.into())? else {
         return Ok(false);
     };
 
@@ -318,7 +318,7 @@ fn get_events_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<EventsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+    let Some(block_hash) = tx.block_hash(block_number.into())? else {
         return Ok(false);
     };
 

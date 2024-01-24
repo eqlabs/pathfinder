@@ -307,7 +307,7 @@ mod tests {
         let mut db_path = dir.path().to_path_buf();
         db_path.push("db.sqlite");
 
-        let storage = Storage::migrate(db_path, JournalMode::WAL)
+        let storage = Storage::migrate(db_path, JournalMode::WAL, 1)
             .expect("storage")
             .create_pool(std::num::NonZeroU32::new(1).expect("one"))
             .expect("storage");

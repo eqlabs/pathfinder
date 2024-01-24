@@ -4,7 +4,7 @@ use crate::context::RpcContext;
 use crate::pending::PendingData;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::{EventFilterError, V03KeyFilter};
+use pathfinder_storage::EventFilterError;
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -119,7 +119,6 @@ pub async fn get_events(
     if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
         keys.truncate(last_non_empty + 1);
     }
-    let keys = V03KeyFilter::new(keys);
 
     // blocking task to perform database event query
     let span = tracing::Span::current();
@@ -167,66 +166,37 @@ pub async fn get_events(
             page_size: request.chunk_size,
             offset: requested_offset,
         };
-        // We don't add context here, because [StarknetEventsTable::get_events] adds its
-        // own context to the errors. This way we get meaningful error information
-        // for errors related to query parameters.
-        let page = transaction.events(&filter).map_err(|e| match e {
-            EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
-            EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
-            EventFilterError::Internal(e) => GetEventsError::Internal(e),
-            EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
-        })?;
 
-        let new_continuation_token = match page.is_last_page {
-            true => None,
-            false => {
-                assert_eq!(page.events.len(), request.chunk_size);
-                let last_block_number = page.events.last().unwrap().block_number;
-                let number_of_events_in_last_block = page
-                    .events
-                    .iter()
-                    .rev()
-                    .take_while(|event| event.block_number == last_block_number)
-                    .count();
-
-                if number_of_events_in_last_block < request.chunk_size {
-                    // the page contains events from a new block
-                    Some(ContinuationToken {
-                        block_number: last_block_number,
-                        offset: number_of_events_in_last_block,
-                    })
-                } else {
-                    match continuation_token {
-                        Some(previous_continuation_token) => Some(ContinuationToken {
-                            block_number: previous_continuation_token.block_number,
-                            offset: previous_continuation_token.offset + request.chunk_size,
-                        }),
-                        None => Some(ContinuationToken {
-                            block_number: page.events.first().unwrap().block_number,
-                            offset: request.chunk_size,
-                        }),
-                    }
-                }
-            }
-        };
+        let page = transaction
+            .events(
+                &filter,
+                context.config.get_events_max_blocks_to_scan,
+                context.config.get_events_max_uncached_bloom_filters_to_load,
+            )
+            .map_err(|e| match e {
+                EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
+                EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
+                EventFilterError::Internal(e) => GetEventsError::Internal(e),
+                EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
+            })?;
 
         let mut events = types::GetEventsResult {
             events: page.events.into_iter().map(|e| e.into()).collect(),
-            continuation_token: new_continuation_token.map(|token| token.to_string()),
+            continuation_token: page.continuation_token.map(|token| {
+                ContinuationToken {
+                    block_number: token.block_number,
+                    offset: token.offset,
+                }
+                .to_string()
+            }),
         };
 
         // Append pending data if required.
-        if matches!(request.to_block, Some(Pending)) {
+        if events.continuation_token.is_none() && matches!(request.to_block, Some(Pending)) {
             let pending = context
                 .pending_data
                 .get(&transaction)
                 .context("Querying pending data")?;
-
-            let keys: Vec<std::collections::HashSet<_>> = request
-                .keys
-                .into_iter()
-                .map(|keys| keys.into_iter().collect())
-                .collect();
 
             if events.events.len() < request.chunk_size {
                 let amount = request.chunk_size - events.events.len();
@@ -237,6 +207,12 @@ pub async fn get_events(
                     }
                     None => 0,
                 };
+
+                let keys: Vec<std::collections::HashSet<_>> = request
+                    .keys
+                    .into_iter()
+                    .map(|keys| keys.into_iter().collect())
+                    .collect();
 
                 let is_last_page = append_pending_events(
                     &pending.block,
@@ -256,29 +232,18 @@ pub async fn get_events(
                     };
                     Some(continuation_token.to_string())
                 };
-            } else if page.is_last_page {
-                // the page is full but this was the last page from the DB, so
-                // we should continue with the first pending event in the next
-                // page
-
-                // check if there are matching pending events
-                let mut buf: Vec<types::EmittedEvent> = Vec::new();
-                let _ =
-                    append_pending_events(&pending.block, &mut buf, 0, 1, request.address, keys);
-                if buf.is_empty() {
-                    // if there are no matching events in pending we should not return a token
-                    events.continuation_token = None;
-                } else {
-                    let continuation_token = ContinuationToken {
+            } else {
+                // We have a full page from the database, but there might be more pending events.
+                // Return a continuation token for the pending block.
+                events.continuation_token = Some(
+                    ContinuationToken {
                         block_number: pending.number,
                         offset: 0,
-                    };
-                    events.continuation_token = Some(continuation_token.to_string());
-                }
+                    }
+                    .to_string(),
+                );
             }
         }
-
-        check_continuation_token_validity(continuation_token, &events.events)?;
 
         Ok(events)
     });
@@ -315,8 +280,6 @@ fn get_pending_events(
         request.address,
         keys,
     );
-
-    check_continuation_token_validity(continuation_token, &events)?;
 
     let continuation_token = if is_last_page {
         None
@@ -522,20 +485,6 @@ impl ContinuationToken {
 
 #[derive(Debug, Eq, PartialEq)]
 struct ParseContinuationTokenError;
-
-/// Continuation token is invalid if it yields an empty page since we only ever
-/// return a token if we know there are more events.
-///
-/// Unfortunately page retrieval has to be completed before the actual check can be done.
-fn check_continuation_token_validity(
-    continuation_token: Option<ContinuationToken>,
-    events: &[types::EmittedEvent],
-) -> Result<(), GetEventsError> {
-    match continuation_token {
-        Some(_) if events.is_empty() => Err(GetEventsError::InvalidContinuationToken),
-        Some(_) | None => Ok(()),
-    }
-}
 
 mod types {
     use pathfinder_common::{
@@ -789,7 +738,7 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                chunk_size: pathfinder_storage::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::EVENT_PAGE_SIZE_LIMIT + 1,
                 ..Default::default()
             },
         };
@@ -802,7 +751,7 @@ mod tests {
     async fn get_events_with_too_many_keys_in_filter() {
         let (context, _) = setup();
 
-        let limit = pathfinder_storage::KEY_FILTER_LIMIT;
+        let limit = pathfinder_storage::EVENT_KEY_FILTER_LIMIT;
 
         let keys = [vec![event_key!("01")]]
             .iter()
@@ -849,7 +798,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[..1].to_vec(),
-                continuation_token: Some("2-1".to_string()),
+                continuation_token: Some("0-1".to_string()),
             }
         );
 
@@ -857,7 +806,7 @@ mod tests {
             filter: EventFilter {
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: Some("2-1".to_string()),
+                continuation_token: Some("0-1".to_string()),
                 ..Default::default()
             },
         };
@@ -866,7 +815,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[1..3].to_vec(),
-                continuation_token: Some("2-3".to_string()),
+                continuation_token: Some("3-0".to_string()),
             }
         );
 
@@ -874,7 +823,7 @@ mod tests {
             filter: EventFilter {
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 3,
-                continuation_token: Some("2-3".to_string()),
+                continuation_token: Some("3-0".to_string()),
                 ..Default::default()
             },
         };
@@ -897,8 +846,9 @@ mod tests {
                 ..Default::default()
             },
         };
-        let error = get_events(context, input).await.unwrap_err();
-        assert_eq!(error, GetEventsError::InvalidContinuationToken);
+        let result = get_events(context, input).await.unwrap();
+        assert_eq!(result.events, &[]);
+        assert_eq!(result.continuation_token, None);
     }
 
     mod pending {
@@ -1002,10 +952,9 @@ mod tests {
             // nonexistent page: offset too large
             input.filter.chunk_size = 123; // Does not matter
             input.filter.continuation_token = Some("3-3".to_string()); // Points to after the last event
-            let error = get_events(context.clone(), input.clone())
-                .await
-                .unwrap_err();
-            assert_eq!(error, GetEventsError::InvalidContinuationToken);
+            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            assert_eq!(result.events, &[]);
+            assert_eq!(result.continuation_token, None);
 
             // nonexistent page: block number
             input.filter.chunk_size = 123; // Does not matter
@@ -1043,12 +992,6 @@ mod tests {
             let result = get_events(context.clone(), input.clone()).await.unwrap();
             assert_eq!(result.events, &all[0..1]);
             assert_eq!(result.continuation_token, Some("3-0".to_string()));
-
-            // returns no continuation token if there are no matches in pending
-            input.filter.keys = vec![vec![event_key_bytes!(b"event 0 key")]];
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
-            assert_eq!(result.events, &all[0..1]);
-            assert_eq!(result.continuation_token, None);
         }
 
         #[tokio::test]

@@ -660,7 +660,7 @@ mod tests {
             fn root() {
                 let mut db = setup_db();
                 let tx = db.transaction().unwrap();
-                let tx = crate::Transaction::from_inner(tx);
+                let tx = crate::Transaction::new(tx);
 
                 test_table::insert(&tx, felt_bytes!(b"missing"), &HashMap::new()).unwrap_err();
             }
@@ -669,7 +669,7 @@ mod tests {
             fn binary() {
                 let mut db = setup_db();
                 let tx = db.transaction().unwrap();
-                let tx = crate::Transaction::from_inner(tx);
+                let tx = crate::Transaction::new(tx);
 
                 let root = felt_bytes!(b"root");
                 let mut nodes = HashMap::new();
@@ -695,7 +695,7 @@ mod tests {
             fn edge() {
                 let mut db = setup_db();
                 let tx = db.transaction().unwrap();
-                let tx = crate::Transaction::from_inner(tx);
+                let tx = crate::Transaction::new(tx);
 
                 let root = felt_bytes!(b"root");
                 let mut nodes = HashMap::new();
@@ -717,7 +717,7 @@ mod tests {
             // the tree and its hashes are retrieved accurately.
             let mut db = setup_db();
             let tx = db.transaction().unwrap();
-            let tx = crate::Transaction::from_inner(tx);
+            let tx = crate::Transaction::new(tx);
 
             let edge_leaf_hash = felt_bytes!(b"edge leaf");
             let edge_leaf_node = Node::LeafEdge {
@@ -781,7 +781,7 @@ mod tests {
             // isn't enforced within the db.
             let mut db = setup_db();
             let tx = db.transaction().unwrap();
-            let tx = crate::Transaction::from_inner(tx);
+            let tx = crate::Transaction::new(tx);
 
             let edge_hash = felt_bytes!(b"edge");
             let edge_node = Node::Edge {

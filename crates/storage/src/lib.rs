@@ -5,6 +5,7 @@
 // This is intended for internal use only -- do not make public.
 mod prelude;
 
+mod bloom;
 mod connection;
 pub mod fake;
 mod params;
@@ -18,7 +19,6 @@ use std::sync::Arc;
 pub use connection::*;
 
 use pathfinder_common::{BlockHash, BlockNumber};
-use rusqlite::functions::FunctionFlags;
 
 use anyhow::Context;
 use r2d2::Pool;
@@ -88,11 +88,13 @@ struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
+    bloom_filter_cache: Arc<bloom::Cache>,
 }
 
 pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
+    bloom_filter_cache: Arc<bloom::Cache>,
 }
 
 impl StorageManager {
@@ -107,6 +109,7 @@ impl StorageManager {
         Ok(Storage(Inner {
             database_path: Arc::new(self.database_path.clone()),
             pool,
+            bloom_filter_cache: self.bloom_filter_cache.clone(),
         }))
     }
 }
@@ -121,13 +124,24 @@ impl Storage {
     pub fn migrate(
         database_path: PathBuf,
         journal_mode: JournalMode,
+        bloom_filter_cache_size: usize,
     ) -> anyhow::Result<StorageManager> {
-        let mut connection = rusqlite::Connection::open(&database_path)
-            .context("Opening DB for setting journal mode")?;
-        setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
-        setup_connection(&mut connection, journal_mode)
+        let mut connection =
+            rusqlite::Connection::open(&database_path).context("Opening DB for migration")?;
+
+        // Migration is done with rollback journal mode. Otherwise dropped tables
+        // get copied into the WAL which is prohibitively expensive for large
+        // tables.
+        setup_journal_mode(&mut connection, JournalMode::Rollback)
+            .context("Setting journal mode to rollback")?;
+        setup_connection(&mut connection, JournalMode::Rollback)
             .context("Setting up database connection")?;
+
         migrate_database(&mut connection).context("Migrate database")?;
+
+        // Set the journal mode to the desired value.
+        setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
+
         connection
             .close()
             .map_err(|(_connection, error)| error)
@@ -136,13 +150,14 @@ impl Storage {
         Ok(StorageManager {
             database_path,
             journal_mode,
+            bloom_filter_cache: Arc::new(bloom::Cache::with_size(bloom_filter_cache_size)),
         })
     }
 
     /// Returns a new Sqlite [Connection] to the database.
     pub fn connection(&self) -> anyhow::Result<Connection> {
         let conn = self.0.pool.get()?;
-        Ok(Connection::from_inner(conn))
+        Ok(Connection::new(conn, self.0.bloom_filter_cache.clone()))
     }
 
     /// Convenience function for tests to create an in-memory database.
@@ -168,7 +183,7 @@ impl Storage {
         // therefore holds the database in-place until the pool is established.
         let _conn = rusqlite::Connection::open(&database_path)?;
 
-        let storage = Self::migrate(database_path, JournalMode::Rollback)?;
+        let storage = Self::migrate(database_path, JournalMode::Rollback, 16)?;
 
         storage.create_pool(NonZeroU32::new(5).unwrap())
     }
@@ -207,21 +222,6 @@ fn setup_connection(
         true,
     )?;
 
-    connection.create_scalar_function(
-        "base64_felts_to_index_prefixed_base32_felts",
-        1,
-        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
-        move |ctx| {
-            assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
-            let base64_felts = ctx
-                .get_raw(0)
-                .as_str()
-                .map_err(|e| rusqlite::Error::UserFunctionError(e.into()))?;
-
-            Ok(base64_felts_to_index_prefixed_base32_felts(base64_felts))
-        },
-    )?;
-
     match journal_mode {
         JournalMode::Rollback => {
             // According to the documentation FULL is the recommended setting for rollback mode.
@@ -234,24 +234,6 @@ fn setup_connection(
     };
 
     Ok(())
-}
-
-fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
-    let strings = base64_felts
-        .split(' ')
-        // Convert only the first 256 elements so that the index fits into one u8
-        // we will use as a prefix byte.
-        .take(connection::EVENT_KEY_FILTER_LIMIT)
-        .enumerate()
-        .map(|(index, key)| {
-            let mut buf: [u8; 33] = [0u8; 33];
-            buf[0] = index as u8;
-            base64::decode_config_slice(key, base64::STANDARD, &mut buf[1..]).unwrap();
-            data_encoding::BASE32_NOPAD.encode(&buf)
-        })
-        .collect::<Vec<_>>();
-
-    strings.join(" ")
 }
 
 /// Migrates the database to the latest version. This __MUST__ be called
@@ -354,9 +336,6 @@ fn schema_version(connection: &rusqlite::Connection) -> anyhow::Result<usize> {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::felt;
-    use pathfinder_crypto::Felt;
-
     use super::*;
 
     #[test]
@@ -429,31 +408,6 @@ mod tests {
             .unwrap();
         conn.execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", [])
             .unwrap_err();
-    }
-
-    #[test]
-    fn felts_to_index_prefixed_base32_strings() {
-        let input: String = [felt!("0x901823"), felt!("0x901823"), felt!("0x901825")]
-            .iter()
-            .map(|f| base64::encode(f.as_be_bytes()))
-            .collect::<Vec<_>>()
-            .join(" ");
-        assert_eq!(
-            super::base64_felts_to_index_prefixed_base32_felts(&input),
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAMCG AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAMCG AIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAMCK".to_owned()
-        );
-    }
-
-    #[test]
-    fn felts_to_index_prefixed_base32_strings_encodes_the_first_256_felts() {
-        let input = [Felt::ZERO; 257]
-            .iter()
-            .map(|f| base64::encode(f.as_be_bytes()))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let output = super::base64_felts_to_index_prefixed_base32_felts(&input);
-
-        assert_eq!(output.split(' ').count(), 256);
     }
 
     #[test]

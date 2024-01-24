@@ -503,7 +503,7 @@ mod tests {
 
             std::fs::copy(&source_path, &db_path).unwrap();
 
-            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL)
+            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL, 1)
                 .unwrap()
                 .create_pool(NonZeroU32::new(1).unwrap())
                 .unwrap();

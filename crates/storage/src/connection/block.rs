@@ -81,6 +81,13 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
     tx.inner()
         .execute(
+            "DELETE FROM starknet_events_filters WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting bloom filter")?;
+
+    tx.inner()
+        .execute(
             r"DELETE FROM starknet_transactions WHERE block_hash = (
                 SELECT hash FROM canonical_blocks WHERE number = ?
             )",
@@ -174,6 +181,33 @@ pub(super) fn block_id(
     }
     .optional()
     .map_err(|e| e.into())
+}
+
+pub(super) fn block_hash(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<BlockHash>> {
+    match block {
+        BlockId::Latest => tx
+            .inner()
+            .query_row(
+                "SELECT hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get_block_hash(0),
+            )
+            .optional()
+            .map_err(|e| e.into()),
+        BlockId::Number(number) => tx
+            .inner()
+            .query_row(
+                "SELECT hash FROM canonical_blocks WHERE number = ?",
+                params![&number],
+                |row| row.get_block_hash(0),
+            )
+            .optional()
+            .map_err(|e| e.into()),
+        BlockId::Hash(hash) => Ok(Some(hash)),
+    }
 }
 
 pub(super) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {

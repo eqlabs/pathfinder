@@ -1,27 +1,22 @@
-use crate::params::ToSql;
-use crate::{prelude::*, BlockId};
+use std::num::NonZeroUsize;
 
-use anyhow::Context;
+use crate::bloom::BloomFilter;
+use crate::{prelude::*, ReorgCounter};
+
 use pathfinder_common::event::Event;
 use pathfinder_common::{
     BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
 };
-use pathfinder_crypto::Felt;
 
 pub const PAGE_SIZE_LIMIT: usize = 1_024;
-pub const KEY_FILTER_LIMIT: usize = 256;
+pub const KEY_FILTER_LIMIT: usize = 16;
 
-const KEY_FILTER_COST_LIMIT: usize = 1_000_000;
-const KEY_FILTER_WEIGHT: usize = 50;
-
-const KEY_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT / KEY_FILTER_WEIGHT + 1;
-const RANGE_FILTER_UPPER_BOUND: usize = KEY_FILTER_COST_LIMIT + 1;
-
-pub struct EventFilter<K: KeyFilter> {
+#[derive(Debug)]
+pub struct EventFilter {
     pub from_block: Option<BlockNumber>,
     pub to_block: Option<BlockNumber>,
     pub contract_address: Option<ContractAddress>,
-    pub keys: K,
+    pub keys: Vec<Vec<EventKey>>,
     pub page_size: usize,
     pub offset: usize,
 }
@@ -48,15 +43,22 @@ pub enum EventFilterError {
     TooManyMatches,
 }
 
+impl From<rusqlite::Error> for EventFilterError {
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Internal(error.into())
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ContinuationToken {
+    pub block_number: BlockNumber,
+    pub offset: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PageOfEvents {
     pub events: Vec<EmittedEvent>,
-    pub is_last_page: bool,
-}
-
-pub trait KeyFilter {
-    fn count(&self, tx: &Transaction<'_>) -> anyhow::Result<Option<usize>>;
-    fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>>;
+    pub continuation_token: Option<ContinuationToken>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -66,76 +68,32 @@ pub struct KeyFilterResult<'a> {
     pub param: (&'static str, rusqlite::types::ToSqlOutput<'a>),
 }
 
-pub(super) fn insert_events(
+pub(super) fn insert_block_events<'a>(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    transaction_hash: TransactionHash,
-    events: &[Event],
+    events: impl Iterator<Item = &'a Event>,
 ) -> anyhow::Result<()> {
-    let mut stmt = tx.inner().prepare(
-        r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                               VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)"
-    )?;
+    let mut stmt = tx
+        .inner()
+        .prepare("INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)")?;
 
-    let mut keys = String::new();
-    let mut buffer = Vec::new();
-
-    for (idx, event) in events.iter().enumerate() {
-        keys.clear();
-        event_keys_to_base64_strings(&event.keys, &mut keys);
-
-        buffer.clear();
-        encode_event_data_to_bytes(&event.data, &mut buffer);
-
-        stmt.execute(named_params![
-            ":block_number": &block_number,
-            ":idx": &idx.try_into_sql_int()?,
-            ":transaction_hash": &transaction_hash,
-            ":from_address": &event.from_address,
-            ":keys": &keys,
-            ":data": &buffer,
-        ])
-        .context("Insert events into events table")?;
+    let mut bloom = BloomFilter::new();
+    for event in events {
+        bloom.set_keys(&event.keys);
+        bloom.set_address(&event.from_address);
     }
+
+    stmt.execute(params![&block_number, &bloom.to_compressed_bytes()])?;
+
     Ok(())
 }
 
-pub(super) fn event_count_for_block(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<usize> {
-    match block {
-        BlockId::Number(number) => tx
-            .inner()
-            .query_row(
-                "SELECT COUNT(*) FROM starknet_events
-                WHERE block_number = ?1",
-                params![&number],
-                |row| row.get(0),
-            )
-            .context("Counting events"),
-        BlockId::Hash(hash) => tx
-            .inner()
-            .query_row(
-                "SELECT COUNT(*) FROM starknet_events
-                JOIN block_headers ON starknet_events.block_number = block_headers.number
-                WHERE block_headers.hash = ?1",
-                params![&hash],
-                |row| row.get(0),
-            )
-            .context("Counting transactions"),
-        BlockId::Latest => {
-            // First get the latest block
-            let block = match tx.block_id(BlockId::Latest)? {
-                Some((number, _)) => number,
-                None => return Ok(0),
-            };
-
-            event_count_for_block(tx, block.into())
-        }
-    }
-}
-
-pub(super) fn get_events<K: KeyFilter>(
+#[tracing::instrument(skip(tx))]
+pub(super) fn get_events(
     tx: &Transaction<'_>,
-    filter: &EventFilter<K>,
+    filter: &EventFilter,
+    max_blocks_to_scan: NonZeroUsize,
+    max_uncached_bloom_filters_to_load: NonZeroUsize,
 ) -> Result<PageOfEvents, EventFilterError> {
     if filter.page_size > PAGE_SIZE_LIMIT {
         return Err(EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT));
@@ -145,455 +103,279 @@ pub(super) fn get_events<K: KeyFilter>(
         return Err(EventFilterError::PageSizeTooSmall);
     }
 
-    let strategy = select_query_strategy(
-        tx,
-        filter.from_block.as_ref(),
-        filter.to_block.as_ref(),
-        filter.contract_address.as_ref(),
-        &filter.keys,
-    )?;
+    let reorg_counter = tx.reorg_counter()?;
 
-    let base_query = r#"SELECT
-              block_number,
-              block_headers.hash as block_hash,
-              transaction_hash,
-              starknet_transactions.idx as transaction_idx,
-              from_address,
-              data,
-              starknet_events.keys as keys
-           FROM starknet_events
-           INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
-           INNER JOIN block_headers ON (block_headers.number = starknet_events.block_number)"#;
+    let from_block = filter.from_block.unwrap_or(BlockNumber::GENESIS);
+    let to_block = filter.to_block.unwrap_or(BlockNumber::MAX);
+    let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
 
-    let (mut base_query, mut params) = event_query(
-        base_query,
-        filter.from_block.as_ref(),
-        filter.to_block.as_ref(),
-        filter.contract_address.as_ref(),
-        &filter.keys,
-        strategy,
-    );
-
-    // We have to be able to decide if there are more events. We request one extra event
-    // above the requested page size, so that we can decide.
-    let limit = filter.page_size + 1;
-    params.push((":limit", limit.try_into_sql()?));
-    params.push((":offset", filter.offset.try_into_sql()?));
-
-    base_query.to_mut().push_str(
-        " ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
-    );
-
-    let mut statement = tx
-        .inner()
-        .prepare(&base_query)
-        .context("Preparing SQL query")?;
-    let params = params
-        .iter()
-        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
-        .collect::<Vec<_>>();
-    let mut rows = statement
-        .query(params.as_slice())
-        .context("Executing SQL query")?;
-
-    let mut is_last_page = true;
     let mut emitted_events = Vec::new();
-    while let Some(row) = rows.next().context("Fetching next event")? {
-        if emitted_events.len() == filter.page_size {
-            // We already have a full page, and are just fetching the extra event
-            // This means that there are more pages.
-            is_last_page = false;
-        } else {
-            let block_number = row
-                .get_block_number("block_number")
-                .map_err(anyhow::Error::from)?;
-            let block_hash = row
-                .get_block_hash("block_hash")
-                .map_err(anyhow::Error::from)?;
-            let transaction_hash = row
-                .get_transaction_hash("transaction_hash")
-                .map_err(anyhow::Error::from)?;
-            let from_address = row
-                .get_contract_address("from_address")
-                .map_err(anyhow::Error::from)?;
+    let mut bloom_filters_loaded: usize = 0;
+    let mut blocks_scanned: usize = 0;
+    let mut block_number = from_block;
+    let mut offset = filter.offset;
 
-            let data = row
-                .get_ref_unwrap("data")
-                .as_blob()
-                .map_err(anyhow::Error::from)?;
-            let data: Vec<_> = data
-                .chunks_exact(32)
-                .map(|data| {
-                    let data = Felt::from_be_slice(data).map_err(anyhow::Error::from)?;
-                    Ok(EventData(data))
-                })
-                .collect::<Result<_, EventFilterError>>()?;
-
-            let keys = row
-                .get_ref_unwrap("keys")
-                .as_str()
-                .map_err(anyhow::Error::from)?;
-
-            // no need to allocate a vec for this in loop
-            let mut temp = [0u8; 32];
-
-            let keys: Vec<_> = keys
-                .split(' ')
-                .map(|key| {
-                    let used = base64::decode_config_slice(key, base64::STANDARD, &mut temp)
-                        .map_err(anyhow::Error::from)?;
-                    let key = Felt::from_be_slice(&temp[..used]).map_err(anyhow::Error::from)?;
-                    Ok(EventKey(key))
-                })
-                .collect::<Result<_, EventFilterError>>()?;
-
-            let event = EmittedEvent {
-                data,
-                from_address,
-                keys,
-                block_hash,
-                block_number,
-                transaction_hash,
-            };
-            emitted_events.push(event);
-        }
+    enum ScanResult {
+        Done,
+        PageFull,
+        ContinueFrom(BlockNumber),
     }
 
-    Ok(PageOfEvents {
-        events: emitted_events,
-        is_last_page,
-    })
-}
-
-fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
-    // with padding it seems 44 bytes are needed for each
-    let needed = (keys.len() * (" ".len() + 44)).saturating_sub(" ".len());
-
-    if let Some(more) = needed.checked_sub(out.capacity() - out.len()) {
-        // This is a wish which is not always fulfilled
-        out.reserve(more);
-    }
-
-    keys.iter().enumerate().for_each(|(i, x)| {
-        encode_event_key_to_base64(x, out);
-
-        if i != keys.len() - 1 {
-            out.push(' ');
+    let result = loop {
+        // Stop if we're past the last block.
+        if block_number > to_block {
+            break ScanResult::Done;
         }
-    });
-}
 
-fn encode_event_key_to_base64(key: &EventKey, buf: &mut String) {
-    base64::encode_config_buf(key.0.as_be_bytes(), base64::STANDARD, buf);
-}
+        // Stop if we have a page of events plus an extra one to decide if we're on the last page.
+        if emitted_events.len() > filter.page_size {
+            break ScanResult::PageFull;
+        }
 
-fn encode_event_data_to_bytes(data: &[EventData], buffer: &mut Vec<u8>) {
-    buffer.extend(data.iter().flat_map(|e| (*e.0.as_be_bytes()).into_iter()))
-}
-
-fn encode_event_key_and_index_to_base32(index: u8, key: &EventKey, output: &mut String) {
-    let mut buf = [0u8; 33];
-    buf[0] = index;
-    buf[1..].copy_from_slice(key.0.as_be_bytes());
-    data_encoding::BASE32_NOPAD.encode_append(&buf, output);
-}
-
-#[derive(Clone)]
-/// Event key filter for v0.3 of the JSON-RPC API
-///
-/// Here the filter is an array of array of keys. Each position in the array contains
-/// a list of matching values for that position of the key.
-///
-/// [["key1_value1", "key1_value2"], [], ["key3_value1"]] means:
-/// ((key1 == "key1_value1" OR key1 == "key1_value2") AND (key3 == "key3_value1")).
-pub struct V03KeyFilter {
-    key_fts_expression: Option<String>,
-}
-
-impl V03KeyFilter {
-    pub fn new(keys: Vec<Vec<EventKey>>) -> Self {
-        let filter_count = keys.iter().flatten().count();
-
-        let key_fts_expression = if filter_count == 0 {
-            None
-        } else {
-            let mut key_fts_expression = String::with_capacity(100);
-            keys.iter().enumerate().for_each(|(i, values)| {
-                if !values.is_empty() {
-                    if key_fts_expression.ends_with(')') {
-                        key_fts_expression.push_str(" AND ");
+        // Check bloom filter
+        if !key_filter_is_empty || filter.contract_address.is_some() {
+            let bloom = load_bloom(tx, reorg_counter, block_number)?;
+            match bloom {
+                Filter::Missing => {}
+                Filter::Cached(bloom) => {
+                    if !bloom.check_filter(filter) {
+                        tracing::trace!("Bloom filter did not match");
+                        block_number += 1;
+                        continue;
                     }
-
-                    key_fts_expression.push('(');
-                    values.iter().enumerate().for_each(|(j, key)| {
-                        key_fts_expression.push('"');
-                        encode_event_key_and_index_to_base32(i as u8, key, &mut key_fts_expression);
-                        key_fts_expression.push('"');
-
-                        if j != values.len() - 1 {
-                            key_fts_expression.push_str(" OR ")
-                        }
-                    });
-                    key_fts_expression.push(')');
                 }
-            });
-
-            Some(key_fts_expression)
-        };
-
-        Self { key_fts_expression }
-    }
-}
-
-impl KeyFilter for V03KeyFilter {
-    fn count(&self, tx: &Transaction<'_>) -> anyhow::Result<Option<usize>> {
-        match &self.key_fts_expression {
-            None => Ok(None),
-            Some(key_fts_expression) => {
-                let count: usize = tx.inner().query_row(
-                    "SELECT COUNT(1) FROM (SELECT 1 FROM starknet_events_keys_03 WHERE keys MATCH :events_match LIMIT :limit)",
-                    params!(key_fts_expression, &(KEY_FILTER_UPPER_BOUND as u64)),
-                    |row| row.get(0),
-                )?;
-                Ok(Some(count))
+                Filter::Loaded(bloom) => {
+                    bloom_filters_loaded += 1;
+                    if !bloom.check_filter(filter) {
+                        tracing::trace!("Bloom filter did not match");
+                        block_number += 1;
+                        continue;
+                    }
+                }
             }
         }
-    }
 
-    fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>> {
-        match self.key_fts_expression.as_ref() {
-            None => None,
-            Some(key_fts_expression) => {
-                let base_query = match strategy {
-                    QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-                    QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-                };
+        // Check if we've reached our block scan limit
+        blocks_scanned += 1;
+        if blocks_scanned > max_blocks_to_scan.get() {
+            tracing::trace!("Block scan limit reached");
+            break ScanResult::ContinueFrom(block_number);
+        }
 
-                Some(KeyFilterResult {
-                    base_query,
-                    where_statement: "starknet_events_keys_03.keys MATCH :events_match",
-                    param: (":events_match", key_fts_expression.to_sql()),
-                })
+        match scan_block_into(
+            tx,
+            block_number,
+            filter,
+            key_filter_is_empty,
+            offset,
+            &mut emitted_events,
+        )? {
+            BlockScanResult::NoSuchBlock => break ScanResult::Done,
+            BlockScanResult::Done { new_offset } => {
+                offset = new_offset;
             }
         }
-    }
-}
 
-fn event_query<'query, 'arg>(
-    base: &'query str,
-    from_block: Option<&'arg BlockNumber>,
-    to_block: Option<&'arg BlockNumber>,
-    contract_address: Option<&'arg ContractAddress>,
-    keys: &'arg (dyn KeyFilter + 'arg),
-    strategy: QueryStrategy,
-) -> (
-    std::borrow::Cow<'query, str>,
-    Vec<(&'static str, rusqlite::types::ToSqlOutput<'arg>)>,
-) {
-    let mut base_query = std::borrow::Cow::Borrowed(base);
+        block_number += 1;
 
-    let mut where_statement_parts: Vec<&'static str> = Vec::new();
-    let mut params: Vec<(&str, rusqlite::types::ToSqlOutput<'arg>)> = Vec::new();
-
-    // filter on block range
-    match (from_block, to_block) {
-        (Some(from_block), Some(to_block)) => {
-            where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-            params.push((":from_block", from_block.to_sql()));
-            params.push((":to_block", to_block.to_sql()));
+        // Check if we've reached our Bloom filter load limit
+        if bloom_filters_loaded >= max_uncached_bloom_filters_to_load.get() {
+            tracing::trace!("Bloom filter limit reached");
+            break ScanResult::ContinueFrom(block_number);
         }
-        (Some(from_block), None) => {
-            where_statement_parts.push("block_number >= :from_block");
-            params.push((":from_block", from_block.to_sql()));
+    };
+
+    match result {
+        ScanResult::Done => {
+            return Ok(PageOfEvents {
+                events: emitted_events,
+                continuation_token: None,
+            })
         }
-        (None, Some(to_block)) => {
-            where_statement_parts.push("block_number <= :to_block");
-            params.push((":to_block", to_block.to_sql()));
-        }
-        (None, None) => {}
-    }
+        ScanResult::PageFull => {
+            assert!(emitted_events.len() > filter.page_size);
+            let continuation_token = continuation_token(
+                &emitted_events,
+                ContinuationToken {
+                    block_number: from_block,
+                    offset: filter.offset,
+                },
+            )
+            .unwrap();
+            emitted_events.truncate(filter.page_size);
 
-    // on contract address
-    if let Some(contract_address) = contract_address {
-        where_statement_parts.push("from_address = :contract_address");
-        params.push((":contract_address", contract_address.to_sql()));
-    }
-
-    // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
-    // The idea is that we convert keys to a space-separated list of Base64/Base32 encoded string
-    // representation and then use the full-text index to find events matching the events.
-    if let Some(result) = keys.apply(strategy) {
-        base_query.to_mut().push_str(result.base_query);
-        where_statement_parts.push(result.where_statement);
-        params.push((result.param.0, result.param.1));
-    }
-
-    if !where_statement_parts.is_empty() {
-        let needed = " WHERE ".len()
-            + where_statement_parts.len() * " AND ".len()
-            + where_statement_parts.iter().map(|x| x.len()).sum::<usize>();
-
-        let q = base_query.to_mut();
-        if let Some(more) = needed.checked_sub(q.capacity() - q.len()) {
-            q.reserve(more);
-        }
-
-        let _capacity = q.capacity();
-
-        q.push_str(" WHERE ");
-
-        let total = where_statement_parts.len();
-        where_statement_parts
-            .into_iter()
-            .enumerate()
-            .for_each(|(i, part)| {
-                q.push_str(part);
-
-                if i != total - 1 {
-                    q.push_str(" AND ");
-                }
+            return Ok(PageOfEvents {
+                events: emitted_events,
+                continuation_token: Some(ContinuationToken {
+                    block_number: continuation_token.block_number,
+                    // account for the extra event
+                    offset: continuation_token.offset - 1,
+                }),
             });
-
-        debug_assert_eq!(_capacity, q.capacity(), "pre-reservation was not enough");
+        }
+        ScanResult::ContinueFrom(block_number) => {
+            // We've reached a search limit without filling the page.
+            // We'll need to continue from the next block.
+            return Ok(PageOfEvents {
+                events: emitted_events,
+                continuation_token: Some(ContinuationToken {
+                    block_number,
+                    offset: 0,
+                }),
+            });
+        }
     }
-
-    (base_query, params)
 }
 
-pub enum QueryStrategy {
-    BlockRangeFirst,
-    KeysFirst,
+enum BlockScanResult {
+    NoSuchBlock,
+    Done { new_offset: usize },
 }
 
-fn select_query_strategy(
+fn scan_block_into(
     tx: &Transaction<'_>,
-    from_block: Option<&BlockNumber>,
-    to_block: Option<&BlockNumber>,
-    contract_address: Option<&ContractAddress>,
-    keys: &dyn KeyFilter,
-) -> anyhow::Result<QueryStrategy> {
-    // evaluate key filter first as that is roughly constant time
-    let events_by_key_filter = number_of_events_by_key_filter(tx, keys)?;
-    if let Some(events_by_key_filter) = events_by_key_filter {
-        // shortcut if the key filter is specific enough
-        // KEY_FILTER_UPPER_BOUND really means >= KEY_FILTER_UPPER_BOUND
-        if events_by_key_filter < KEY_FILTER_UPPER_BOUND {
-            tracing::trace!(
-                %events_by_key_filter,
-                "Partial queries for number of events done"
-            );
-            return Ok(QueryStrategy::KeysFirst);
+    block_number: BlockNumber,
+    filter: &EventFilter,
+    key_filter_is_empty: bool,
+    mut offset: usize,
+    emitted_events: &mut Vec<EmittedEvent>,
+) -> Result<BlockScanResult, EventFilterError> {
+    let events_required = filter.page_size + 1 - emitted_events.len();
+
+    tracing::trace!(%block_number, %events_required, "Processing block");
+
+    let block_header = tx.block_header(crate::BlockId::Number(block_number))?;
+    let Some(block_header) = block_header else {
+        return Ok(BlockScanResult::NoSuchBlock);
+    };
+
+    let receipts = tx.receipts_for_block(block_header.hash.into())?;
+    let Some(receipts) = receipts else {
+        return Ok(BlockScanResult::NoSuchBlock);
+    };
+
+    let keys: Vec<std::collections::HashSet<_>> = filter
+        .keys
+        .iter()
+        .map(|keys| keys.iter().collect())
+        .collect();
+
+    let events = receipts
+        .into_iter()
+        .flat_map(|receipt| {
+            receipt
+                .events
+                .into_iter()
+                .zip(std::iter::repeat(receipt.transaction_hash))
+        })
+        .filter(|(event, _)| match filter.contract_address {
+            Some(address) => event.from_address == address,
+            None => true,
+        })
+        .filter(|(event, _)| {
+            if key_filter_is_empty {
+                return true;
+            }
+
+            if event.keys.len() < keys.len() {
+                return false;
+            }
+
+            event
+                .keys
+                .iter()
+                .zip(keys.iter())
+                .all(|(key, filter)| filter.is_empty() || filter.contains(key))
+        })
+        .skip_while(|_| {
+            let skip = offset > 0;
+            offset = offset.saturating_sub(1);
+            skip
+        })
+        .take(events_required)
+        .map(|(event, tx_hash)| EmittedEvent {
+            data: event.data.clone(),
+            keys: event.keys.clone(),
+            from_address: event.from_address,
+            block_hash: block_header.hash,
+            block_number: block_header.number,
+            transaction_hash: tx_hash,
+        });
+
+    emitted_events.extend(events);
+
+    Ok(BlockScanResult::Done { new_offset: offset })
+}
+
+fn continuation_token(
+    events: &[EmittedEvent],
+    previous_token: ContinuationToken,
+) -> Option<ContinuationToken> {
+    if events.is_empty() {
+        return None;
+    }
+
+    let last_block_number = events.last().unwrap().block_number;
+    let number_of_events_in_last_block = events
+        .iter()
+        .rev()
+        .take_while(|event| event.block_number == last_block_number)
+        .count();
+
+    // Since we're taking the block number of the last block this is at least one.
+    assert!(number_of_events_in_last_block >= 1);
+
+    let token = if number_of_events_in_last_block < events.len() {
+        // the page contains events from a new block
+        ContinuationToken {
+            block_number: last_block_number,
+            offset: number_of_events_in_last_block,
         }
     } else {
-        // we have no key filter at all
-        return Ok(QueryStrategy::BlockRangeFirst);
-    }
-
-    let events_in_block_range =
-        number_of_events_in_block_range(tx, from_block, to_block, contract_address)?;
-
-    tracing::trace!(
-        ?events_in_block_range,
-        ?events_by_key_filter,
-        "Partial queries for number of events done"
-    );
-
-    let weighted_events_by_key_filter =
-        events_by_key_filter.map(|n| n.saturating_mul(KEY_FILTER_WEIGHT));
-
-    if events_in_block_range
-        .or(weighted_events_by_key_filter)
-        .is_some()
-    {
-        let cost = std::cmp::min(
-            events_in_block_range.unwrap_or(usize::MAX),
-            weighted_events_by_key_filter.unwrap_or(usize::MAX),
-        );
-
-        if cost > KEY_FILTER_COST_LIMIT {
-            return Err(EventFilterError::TooManyMatches.into());
-        }
-    }
-
-    let strategy = match (events_in_block_range, events_by_key_filter) {
-        (None, None) => QueryStrategy::BlockRangeFirst,
-        (None, Some(_)) => QueryStrategy::KeysFirst,
-        (Some(_), None) => QueryStrategy::BlockRangeFirst,
-        (Some(events_in_block_range), Some(_)) => {
-            if events_in_block_range
-                > weighted_events_by_key_filter
-                    .expect("Unwrap is safe because events_by_key_filter is some")
-            {
-                QueryStrategy::KeysFirst
-            } else {
-                QueryStrategy::BlockRangeFirst
-            }
+        // the page contains events from the same block
+        ContinuationToken {
+            block_number: previous_token.block_number,
+            offset: previous_token.offset + events.len(),
         }
     };
 
-    Ok(strategy)
+    Some(token)
 }
 
-fn number_of_events_in_block_range(
+enum Filter {
+    Missing,
+    Cached(BloomFilter),
+    Loaded(BloomFilter),
+}
+
+fn load_bloom(
     tx: &Transaction<'_>,
-    from_block: Option<&BlockNumber>,
-    to_block: Option<&BlockNumber>,
-    contract_address: Option<&ContractAddress>,
-) -> anyhow::Result<Option<usize>> {
-    let mut query = "SELECT COUNT(1) FROM (SELECT 1 FROM starknet_events WHERE ".to_owned();
-    let mut params: Vec<(&str, rusqlite::types::ToSqlOutput<'_>)> = Vec::new();
-
-    match (from_block, to_block) {
-        (Some(from_block), Some(to_block)) => {
-            query.push_str("block_number BETWEEN :from_block AND :to_block ");
-            params.push((":from_block", from_block.to_sql()));
-            params.push((":to_block", to_block.to_sql()));
-        }
-        (Some(from_block), None) => {
-            query.push_str("block_number >= :from_block ");
-            params.push((":from_block", from_block.to_sql()));
-        }
-        (None, Some(to_block)) => {
-            query.push_str("block_number <= :to_block ");
-            params.push((":to_block", to_block.to_sql()));
-        }
-        (None, None) => {}
-    };
-
-    // on contract address
-    if let Some(contract_address) = contract_address {
-        if params.is_empty() {
-            query.push_str("from_address = :contract_address");
-        } else {
-            query.push_str("AND from_address = :contract_address");
-        }
-        params.push((":contract_address", contract_address.to_sql()));
+    reorg_counter: ReorgCounter,
+    block_number: BlockNumber,
+) -> Result<Filter, EventFilterError> {
+    if let Some(bloom) = tx.bloom_filter_cache.get(reorg_counter, block_number) {
+        return Ok(Filter::Cached(bloom));
     }
 
-    query.push_str(" LIMIT :limit)");
-    params.push((":limit", (RANGE_FILTER_UPPER_BOUND as u64).to_sql()));
-
-    let params = params
-        .iter()
-        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
-        .collect::<Vec<_>>();
-
-    if params.is_empty() {
-        return Ok(None);
-    }
-
-    let count: usize = tx
+    let mut stmt = tx
         .inner()
-        .query_row(&query, params.as_slice(), |row| row.get(0))?;
+        .prepare_cached("SELECT bloom FROM starknet_events_filters WHERE block_number = ?")?;
 
-    Ok(Some(count))
-}
+    let bloom = stmt
+        .query_row(params![&block_number], |row| {
+            let bytes: Vec<u8> = row.get(0)?;
+            Ok(BloomFilter::from_compressed_bytes(&bytes))
+        })
+        .optional()?;
 
-fn number_of_events_by_key_filter(
-    tx: &Transaction<'_>,
-    keys: &dyn KeyFilter,
-) -> anyhow::Result<Option<usize>> {
-    keys.count(tx)
+    Ok(match bloom {
+        Some(bloom) => {
+            tx.bloom_filter_cache
+                .set(reorg_counter, block_number, bloom.clone());
+            Filter::Loaded(bloom)
+        }
+        None => Filter::Missing,
+    })
 }
 
 #[cfg(test)]
@@ -605,49 +387,15 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHeader, BlockTimestamp, EntryPoint, Fee};
 
+    use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::transaction as gateway_tx;
 
-    #[test]
-    fn event_data_serialization() {
-        let data = [event_data!("0x1"), event_data!("0x2"), event_data!("0x3")];
+    lazy_static::lazy_static!(
+        static ref MAX_BLOCKS_TO_SCAN: NonZeroUsize = NonZeroUsize::new(100).unwrap();
+        static ref MAX_BLOOM_FILTERS_TO_LOAD: NonZeroUsize = NonZeroUsize::new(100).unwrap();
+    );
 
-        let mut buffer = Vec::new();
-        encode_event_data_to_bytes(&data, &mut buffer);
-
-        assert_eq!(
-            &buffer,
-            &[
-                0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3
-            ]
-        );
-    }
-
-    #[test]
-    fn event_keys_to_base64_strings() {
-        let event = Event {
-            from_address: contract_address!(
-                "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-            ),
-            data: vec![],
-            keys: vec![
-                event_key!("0x901823"),
-                event_key!("0x901824"),
-                event_key!("0x901825"),
-            ],
-        };
-
-        let mut buf = String::new();
-        super::event_keys_to_base64_strings(&event.keys, &mut buf);
-        assert_eq!(
-                    buf,
-                    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCM= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCQ= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCU="
-                );
-    }
-
-    #[test]
+    #[test_log::test(test)]
     fn get_events_with_fully_specified_filter() {
         let (storage, test_data) = test_utils::setup_test_storage();
         let emitted_events = test_data.events;
@@ -660,17 +408,23 @@ mod tests {
             to_block: Some(expected_event.block_number),
             contract_address: Some(expected_event.from_address),
             // we're using a key which is present in _all_ events as the 2nd key
-            keys: V03KeyFilter::new(vec![vec![], vec![event_key!("0xdeadbeef")]]),
+            keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: vec![expected_event.clone()],
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -780,10 +534,12 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: V03KeyFilter::new(vec![]),
+                keys: vec![],
                 page_size: 1024,
                 offset: 0,
             },
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
         )
         .unwrap()
         .events
@@ -811,19 +567,25 @@ mod tests {
             from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
             to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
 
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
             ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: expected_events.to_vec(),
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -840,19 +602,25 @@ mod tests {
             from_block: None,
             to_block: Some(BlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
 
         let expected_events =
             &emitted_events[..test_utils::EVENTS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: expected_events.to_vec(),
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -869,18 +637,24 @@ mod tests {
             from_block: Some(BlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
 
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * FROM_BLOCK_NUMBER..];
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: expected_events.to_vec(),
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -898,17 +672,23 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: Some(expected_event.from_address),
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: vec![expected_event.clone()],
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -925,37 +705,43 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![
-                vec![expected_event.keys[0]],
-                vec![expected_event.keys[1]],
-            ]),
+            keys: vec![vec![expected_event.keys[0]], vec![expected_event.keys[1]]],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: vec![expected_event.clone()],
-                is_last_page: true,
+                continuation_token: None,
             }
         );
 
         // try event keys in the wrong order, should not match
         let filter = EventFilter {
-            keys: V03KeyFilter::new(vec![
-                vec![expected_event.keys[1]],
-                vec![expected_event.keys[0]],
-            ]),
+            keys: vec![vec![expected_event.keys[1]], vec![expected_event.keys[0]]],
             ..filter
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: vec![],
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -971,17 +757,23 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
 
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: emitted_events,
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -997,16 +789,25 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: 10,
             offset: 0,
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: emitted_events[..10].to_vec(),
-                is_last_page: false,
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(1),
+                    offset: 0
+                }),
             }
         );
 
@@ -1014,16 +815,25 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: 10,
             offset: 10,
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: emitted_events[10..20].to_vec(),
-                is_last_page: false,
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(2),
+                    offset: 0
+                }),
             }
         );
 
@@ -1031,16 +841,22 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: 10,
             offset: 30,
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: emitted_events[30..40].to_vec(),
-                is_last_page: true,
+                continuation_token: None
             }
         );
     }
@@ -1056,17 +872,23 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: PAGE_SIZE,
             // _after_ the last one
             offset: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK,
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: vec![],
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -1081,11 +903,16 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: 0,
             offset: 0,
         };
-        let result = get_events(&tx, &filter);
+        let result = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        );
         assert!(result.is_err());
         assert_matches!(result.unwrap_err(), EventFilterError::PageSizeTooSmall);
 
@@ -1093,11 +920,16 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter::new(vec![]),
+            keys: vec![],
             page_size: PAGE_SIZE_LIMIT + 1,
             offset: 0,
         };
-        let result = get_events(&tx, &filter);
+        let result = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        );
         assert!(result.is_err());
         assert_matches!(
             result.unwrap_err(),
@@ -1113,10 +945,10 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         let expected_events = &emitted_events[27..32];
-        let keys_for_expected_events = V03KeyFilter::new(vec![
+        let keys_for_expected_events = vec![
             expected_events.iter().map(|e| e.keys[0]).collect(),
             expected_events.iter().map(|e| e.keys[1]).collect(),
-        ]);
+        ];
 
         let filter = EventFilter {
             from_block: None,
@@ -1126,16 +958,26 @@ mod tests {
             page_size: 2,
             offset: 0,
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: expected_events[..2].to_vec(),
-                is_last_page: false,
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(0),
+                    offset: 2
+                }),
             }
         );
 
-        let filter = EventFilter {
+        // increase offset
+        let filter: EventFilter = EventFilter {
             from_block: None,
             to_block: None,
             contract_address: None,
@@ -1143,92 +985,205 @@ mod tests {
             page_size: 2,
             offset: 2,
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: expected_events[2..4].to_vec(),
-                is_last_page: false,
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(3),
+                    offset: 1
+                }),
             }
         );
+
+        // using the continuation token should be equivalent to the previous query
+        let filter: EventFilter = EventFilter {
+            from_block: Some(BlockNumber::new_or_panic(0)),
+            to_block: None,
+            contract_address: None,
+            keys: keys_for_expected_events.clone(),
+            page_size: 2,
+            offset: 2,
+        };
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                events: expected_events[2..4].to_vec(),
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(3),
+                    offset: 1
+                }),
+            }
+        );
+
+        // increase offset by two
+        let filter = EventFilter {
+            from_block: None,
+            to_block: None,
+            contract_address: None,
+            keys: keys_for_expected_events.clone(),
+            page_size: 2,
+            offset: 4,
+        };
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                events: expected_events[4..].to_vec(),
+                continuation_token: None,
+            }
+        );
+
+        // using the continuation token should be equivalent to the previous query
+        let filter = EventFilter {
+            from_block: Some(BlockNumber::new_or_panic(3)),
+            to_block: None,
+            contract_address: None,
+            keys: keys_for_expected_events,
+            page_size: 2,
+            offset: 1,
+        };
+        let events = get_events(
+            &tx,
+            &filter,
+            *MAX_BLOCKS_TO_SCAN,
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                events: expected_events[4..].to_vec(),
+                continuation_token: None,
+            }
+        );
+    }
+
+    #[test]
+    fn scan_limit() {
+        let (storage, test_data) = test_utils::setup_test_storage();
+        let emitted_events = test_data.events;
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
 
         let filter = EventFilter {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: keys_for_expected_events,
-            page_size: 2,
-            offset: 4,
+            keys: vec![],
+            page_size: 20,
+            offset: 0,
         };
-        let events = get_events(&tx, &filter).unwrap();
+        let events = get_events(
+            &tx,
+            &filter,
+            1.try_into().unwrap(),
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
-                events: expected_events[4..].to_vec(),
-                is_last_page: true,
+                events: emitted_events[..10].to_vec(),
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(1),
+                    offset: 0
+                }),
+            }
+        );
+
+        let filter = EventFilter {
+            from_block: Some(BlockNumber::new_or_panic(1)),
+            to_block: None,
+            contract_address: None,
+            keys: vec![],
+            page_size: 20,
+            offset: 0,
+        };
+        let events = get_events(
+            &tx,
+            &filter,
+            1.try_into().unwrap(),
+            *MAX_BLOOM_FILTERS_TO_LOAD,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                events: emitted_events[10..20].to_vec(),
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(2),
+                    offset: 0
+                }),
             }
         );
     }
 
     #[test]
-    fn v03_key_filter() {
-        check_v03_filter(vec![], None);
-        check_v03_filter(vec![vec![], vec![]], None);
-        check_v03_filter(
-                    vec![
-                        vec![],
-                        vec![event_key!("01"), event_key!("02")],
-                        vec![],
-                        vec![event_key!("01"), event_key!("03")],
-                        vec![],
-                    ],
-                    Some("(\"AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC\" OR \"AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE\") AND (\"AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC\" OR \"AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG\")"),
-                );
-    }
-
-    fn check_v03_filter(filter: Vec<Vec<EventKey>>, expected_fts_expression: Option<&str>) {
-        let filter = V03KeyFilter::new(filter);
-
-        let result = filter.apply(QueryStrategy::KeysFirst);
-        match expected_fts_expression {
-            Some(expected_fts_expression) => assert_matches!(
-                result,
-                Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-                 where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression.to_sql()) })}
-            ),
-            None => assert_eq!(result, None),
-        }
-
-        let result = filter.apply(QueryStrategy::BlockRangeFirst);
-        match expected_fts_expression {
-            Some(expected_fts_expression) => assert_matches!(
-                result,
-                Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-                 where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression.to_sql()) })}
-            ),
-            None => assert_eq!(result, None),
-        }
-    }
-
-    #[test]
-    fn event_count_for_block() {
+    fn bloom_filter_load_limit() {
         let (storage, test_data) = test_utils::setup_test_storage();
+        let emitted_events = test_data.events;
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
+        let filter = EventFilter {
+            from_block: None,
+            to_block: None,
+            contract_address: None,
+            keys: vec![vec![], vec![emitted_events[0].keys[1]]],
+            page_size: emitted_events.len(),
+            offset: 0,
+        };
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN, 1.try_into().unwrap()).unwrap();
         assert_eq!(
-            tx.event_count_for_block(BlockId::Latest).unwrap(),
-            test_utils::EVENTS_PER_BLOCK
+            events,
+            PageOfEvents {
+                events: emitted_events[..10].to_vec(),
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(1),
+                    offset: 0
+                }),
+            }
         );
+
+        let filter = EventFilter {
+            from_block: Some(BlockNumber::new_or_panic(1)),
+            to_block: None,
+            contract_address: None,
+            keys: vec![vec![], vec![emitted_events[0].keys[1]]],
+            page_size: emitted_events.len(),
+            offset: 0,
+        };
+        let events = get_events(&tx, &filter, *MAX_BLOCKS_TO_SCAN, 1.try_into().unwrap()).unwrap();
         assert_eq!(
-            tx.event_count_for_block(BlockId::Number(BlockNumber::new_or_panic(1)))
-                .unwrap(),
-            test_utils::EVENTS_PER_BLOCK
-        );
-        assert_eq!(
-            tx.event_count_for_block(BlockId::Hash(test_data.headers.first().unwrap().hash))
-                .unwrap(),
-            test_utils::EVENTS_PER_BLOCK
+            events,
+            PageOfEvents {
+                events: emitted_events[10..20].to_vec(),
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(2),
+                    offset: 0
+                }),
+            }
         );
     }
 }

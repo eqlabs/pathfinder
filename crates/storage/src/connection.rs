@@ -1,10 +1,13 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 mod block;
 mod class;
 mod ethereum;
 mod event;
 mod reference;
+mod reorg_counter;
 mod signature;
 mod state_update;
 mod transaction;
@@ -14,7 +17,10 @@ mod trie;
 pub use rusqlite::TransactionBehavior;
 
 pub use event::KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT;
-pub use event::*;
+pub use event::PAGE_SIZE_LIMIT as EVENT_PAGE_SIZE_LIMIT;
+pub use event::{EmittedEvent, EventFilter, EventFilterError, PageOfEvents};
+
+pub(crate) use reorg_counter::ReorgCounter;
 
 pub use transaction::TransactionStatus;
 
@@ -34,36 +40,57 @@ use crate::BlockId;
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
-pub struct Connection(PooledConnection);
+pub struct Connection {
+    connection: PooledConnection,
+    bloom_filter_cache: Arc<crate::bloom::Cache>,
+}
 
 impl Connection {
-    pub(crate) fn from_inner(inner: PooledConnection) -> Self {
-        Self(inner)
+    pub(crate) fn new(
+        connection: PooledConnection,
+        bloom_filter_cache: Arc<crate::bloom::Cache>,
+    ) -> Self {
+        Self {
+            connection,
+            bloom_filter_cache,
+        }
     }
 
     pub fn transaction(&mut self) -> anyhow::Result<Transaction<'_>> {
-        let tx = self.0.transaction()?;
-        Ok(Transaction(tx))
+        let tx = self.connection.transaction()?;
+        Ok(Transaction {
+            transaction: tx,
+            bloom_filter_cache: self.bloom_filter_cache.clone(),
+        })
     }
 
     pub fn transaction_with_behavior(
         &mut self,
         behavior: TransactionBehavior,
     ) -> anyhow::Result<Transaction<'_>> {
-        let tx = self.0.transaction_with_behavior(behavior)?;
-        Ok(Transaction(tx))
+        let tx = self.connection.transaction_with_behavior(behavior)?;
+        Ok(Transaction {
+            transaction: tx,
+            bloom_filter_cache: self.bloom_filter_cache.clone(),
+        })
     }
 }
 
-pub struct Transaction<'inner>(rusqlite::Transaction<'inner>);
+pub struct Transaction<'inner> {
+    transaction: rusqlite::Transaction<'inner>,
+    bloom_filter_cache: Arc<crate::bloom::Cache>,
+}
 
 impl<'inner> Transaction<'inner> {
     // The implementations here are intentionally kept as simple wrappers. This lets the real implementations
     // be kept in separate files with more reasonable LOC counts and easier test oversight.
 
     #[cfg(test)]
-    pub(crate) fn from_inner(tx: rusqlite::Transaction<'inner>) -> Self {
-        Self(tx)
+    pub(crate) fn new(tx: rusqlite::Transaction<'inner>) -> Self {
+        Self {
+            transaction: tx,
+            bloom_filter_cache: Arc::new(crate::bloom::Cache::with_size(1)),
+        }
     }
 
     pub fn insert_contract_state_hash(
@@ -100,6 +127,10 @@ impl<'inner> Transaction<'inner> {
 
     pub fn block_id(&self, block: BlockId) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
         block::block_id(self, block)
+    }
+
+    pub fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {
+        block::block_hash(self, block)
     }
 
     pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
@@ -186,6 +217,13 @@ impl<'inner> Transaction<'inner> {
         transaction::transactions_for_block(self, block)
     }
 
+    pub fn receipts_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<gateway::Receipt>>> {
+        transaction::receipts_for_block(self, block)
+    }
+
     pub fn transaction_hashes_for_block(
         &self,
         block: BlockId,
@@ -199,13 +237,16 @@ impl<'inner> Transaction<'inner> {
 
     pub fn events(
         &self,
-        filter: &EventFilter<impl KeyFilter>,
+        filter: &EventFilter,
+        max_blocks_to_scan: NonZeroUsize,
+        max_uncached_bloom_filters_to_load: NonZeroUsize,
     ) -> Result<PageOfEvents, EventFilterError> {
-        event::get_events(self, filter)
-    }
-
-    pub fn event_count_for_block(&self, block: BlockId) -> anyhow::Result<usize> {
-        event::event_count_for_block(self, block)
+        event::get_events(
+            self,
+            filter,
+            max_blocks_to_scan,
+            max_uncached_bloom_filters_to_load,
+        )
     }
 
     pub fn insert_sierra_class(
@@ -504,11 +545,19 @@ impl<'inner> Transaction<'inner> {
         signature::signature(self, block)
     }
 
+    pub fn increment_reorg_counter(&self) -> anyhow::Result<()> {
+        reorg_counter::increment_reorg_counter(self)
+    }
+
+    fn reorg_counter(&self) -> anyhow::Result<ReorgCounter> {
+        reorg_counter::reorg_counter(self)
+    }
+
     pub(self) fn inner(&self) -> &rusqlite::Transaction<'_> {
-        &self.0
+        &self.transaction
     }
 
     pub fn commit(self) -> anyhow::Result<()> {
-        Ok(self.0.commit()?)
+        Ok(self.transaction.commit()?)
     }
 }

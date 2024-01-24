@@ -49,12 +49,13 @@ pub(super) fn insert_transactions(
             ":receipt": &serialized_receipt,
             ":execution_status": &execution_status,
         ]).context("Inserting transaction data")?;
-
-        // insert events from receipt
-        super::event::insert_events(tx, block_number, receipt.transaction_hash, &receipt.events)
-            .context("Inserting events")?;
     }
 
+    let events = transaction_data
+        .iter()
+        .flat_map(|(_, receipt)| &receipt.events);
+    super::event::insert_block_events(tx, block_number, events)
+        .context("Inserting events into Bloom filter")?;
     Ok(())
 }
 
@@ -121,7 +122,7 @@ pub(super) fn transaction_at_block(
     index: usize,
 ) -> anyhow::Result<Option<gateway::Transaction>> {
     // Identify block hash
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
@@ -172,8 +173,8 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
             .context("Counting transactions"),
         BlockId::Latest => {
             // First get the latest block
-            let block = match tx.block_id(BlockId::Latest)? {
-                Some((number, _)) => number,
+            let block = match tx.block_hash(BlockId::Latest)? {
+                Some(hash) => hash,
                 None => return Ok(0),
             };
 
@@ -186,7 +187,7 @@ pub(super) fn transaction_data_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<(gateway::Transaction, gateway::Receipt)>>> {
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
@@ -229,7 +230,7 @@ pub(super) fn transactions_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<gateway::Transaction>>> {
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
@@ -258,11 +259,43 @@ pub(super) fn transactions_for_block(
     Ok(Some(data))
 }
 
+pub(super) fn receipts_for_block(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<Vec<gateway::Receipt>>> {
+    let Some(block_hash) = tx.block_hash(block)? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare("SELECT receipt FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .context("Preparing statement")?;
+
+    let mut rows = stmt
+        .query(params![&block_hash])
+        .context("Executing query")?;
+
+    let mut data = Vec::new();
+    while let Some(row) = rows.next()? {
+        let receipt = row
+            .get_ref_unwrap("receipt")
+            .as_blob_or_null()?
+            .context("Transaction data missing")?;
+        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
+        let receipt = serde_json::from_slice(&receipt).context("Deserializing receipt")?;
+
+        data.push(receipt);
+    }
+
+    Ok(Some(data))
+}
+
 pub(super) fn transaction_hashes_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<TransactionHash>>> {
-    let Some((_, block_hash)) = tx.block_id(block)? else {
+    let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 

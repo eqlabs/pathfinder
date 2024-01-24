@@ -12,6 +12,8 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 bincode = "2.0.0-rc.3"
 bitvec = { workspace = true }
+bloomfilter = "1.0.12"
+cached = "0.44.0"
 const_format = { workspace = true }
 data-encoding = "2.4.0"
 fake = { workspace = true }
@@ -43,3 +45,5 @@ zstd = { workspace = true }
 assert_matches = { workspace = true }
 rstest = { workspace = true }
 tempfile = "3.6"
+test-log = { workspace = true }
+tracing-subscriber = { workspace = true }

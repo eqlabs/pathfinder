@@ -261,6 +261,14 @@ pub trait RowExt {
         Ok(addr)
     }
 
+    fn get_reorg_counter<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<crate::ReorgCounter> {
+        let num = self.get_i64(index)?;
+        Ok(crate::ReorgCounter::new(num))
+    }
+
     row_felt_wrapper!(get_block_hash, BlockHash);
     row_felt_wrapper!(get_casm_hash, CasmHash);
     row_felt_wrapper!(get_class_hash, ClassHash);

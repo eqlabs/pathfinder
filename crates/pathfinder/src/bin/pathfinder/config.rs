@@ -205,6 +205,34 @@ This should only be enabled for debugging purposes as it adds substantial proces
         env = "PATHFINDER_GATEWAY_API_KEY"
     )]
     gateway_api_key: Option<String>,
+
+    #[arg(
+        long = "storage.event-bloom-filter-cache-size",
+        long_help = "The number of blocks whose event bloom filters are cached in memory. \
+            This cache speeds up event related RPC queries at the cost of using extra memory. \
+            Each cached filter takes 2 KiB of memory.",
+        env = "PATHFINDER_STORAGE_BLOOM_FILTER_CACHE_SIZE",
+        default_value = "524288"
+    )]
+    event_bloom_filter_cache_size: std::num::NonZeroUsize,
+
+    #[arg(
+        long = "rpc.get-events-max-blocks-to-scan",
+        long_help = "The number of blocks to scan for events when querying for events. \
+            This limit is used to prevent queries from taking too long.",
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOCKS_TO_SCAN",
+        default_value = "500"
+    )]
+    get_events_max_blocks_to_scan: std::num::NonZeroUsize,
+
+    #[arg(
+        long = "rpc.get-events-max-uncached-bloom-filters-to-load",
+        long_help = "The number of Bloom filters to load for events when querying for events. \
+            This limit is used to prevent queries from taking too long.",
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_BLOOM_FILTERS_TO_LOAD",
+        default_value = "100000"
+    )]
+    get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -461,6 +489,9 @@ pub struct Config {
     pub is_sync_enabled: bool,
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
+    pub event_bloom_filter_cache_size: NonZeroUsize,
+    pub get_events_max_blocks_to_scan: NonZeroUsize,
+    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -631,6 +662,10 @@ impl Config {
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
+            event_bloom_filter_cache_size: cli.event_bloom_filter_cache_size,
+            get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
+            get_events_max_uncached_bloom_filters_to_load: cli
+                .get_events_max_uncached_bloom_filters_to_load,
         }
     }
 }

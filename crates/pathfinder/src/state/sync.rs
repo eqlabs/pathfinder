@@ -671,9 +671,8 @@ async fn l1_update(
             .context("Insert update")?;
 
         let l2_hash = transaction
-            .block_id(update.block_number.into())
-            .context("Fetching block hash")?
-            .map(|(_, hash)| hash);
+            .block_hash(update.block_number.into())
+            .context("Fetching block hash")?;
 
         if let Some(l2_hash) = l2_hash {
             if l2_hash == update.block_hash {
@@ -850,6 +849,10 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .context("Querying latest block number")?
             .context("Latest block number is none during reorg")?
             .0;
+
+        transaction
+            .increment_reorg_counter()
+            .context("Incrementing reorg counter")?;
 
         // Purge each block one at a time.
         //

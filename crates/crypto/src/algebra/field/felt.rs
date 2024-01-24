@@ -95,6 +95,11 @@ impl Felt {
         &self.0
     }
 
+    /// Big-endian mutable representation of this [Felt].
+    pub fn as_mut_be_bytes(&mut self) -> &mut [u8; 32] {
+        &mut self.0
+    }
+
     /// Convenience function which extends [Felt::from_be_bytes] to work with slices.
     pub const fn from_be_slice(bytes: &[u8]) -> Result<Self, OverflowError> {
         if bytes.len() > 32 {
