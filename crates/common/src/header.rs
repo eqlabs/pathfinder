@@ -27,6 +27,17 @@ pub struct SignedBlockHeader {
     pub signature: BlockCommitmentSignature,
 }
 
+impl SignedBlockHeader {
+    /// Returns true if the signature is correct for the block header.
+    ///
+    /// Note that this does not imply that a given state diff is correct.
+    /// TODO: improve this documentation somehow.
+    pub fn verify_signature(&self) -> bool {
+        // TODO: implement this.
+        true
+    }
+}
+
 pub struct BlockHeaderBuilder(BlockHeader);
 
 impl BlockHeader {
@@ -49,6 +60,10 @@ impl BlockHeader {
         StateUpdate::default()
             .with_block_hash(self.hash)
             .with_state_commitment(self.state_commitment)
+    }
+
+    pub fn verify_hash(&self) -> bool {
+        todo!();
     }
 }
 
