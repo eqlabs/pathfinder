@@ -621,8 +621,7 @@ async fn max_inbound_connections() {
     peer_4_connection_established.recv().await;
 }
 
-/// Test that each peer accepts at most one connection from any other peer, and duplicate
-/// connections are closed.
+/// Test that peers can only connect if they are whitelisted.
 #[test_log::test(tokio::test)]
 async fn ip_whitelist() {
     let periodic_cfg = PeriodicTaskConfig {
