@@ -91,6 +91,26 @@ impl<'inner> Transaction<'inner> {
         block::block_header(self, block)
     }
 
+    /// Returns the closest ancestor header that is in storage.
+    ///
+    /// i.e. returns the latest header with number < target.
+    pub fn next_ancestor(
+        &self,
+        block: BlockNumber,
+    ) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+        block::next_ancestor(self, block)
+    }
+
+    /// Searches in reverse chronological order for a block that exists in storage, but whose parent does not.
+    ///
+    /// Note that target is included in the search.
+    pub fn next_ancestor_without_parent(
+        &self,
+        block: BlockNumber,
+    ) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+        block::next_ancestor_without_parent(self, block)
+    }
+
     /// Removes all data related to this block.
     ///
     /// This includes block header, block body and state update information.
