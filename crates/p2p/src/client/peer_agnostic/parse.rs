@@ -1,3 +1,11 @@
+use anyhow::Context;
+use p2p_proto::{block::BlockHeadersResponsePart, common::ConsensusSignature};
+use pathfinder_common::{
+    BlockCommitmentSignature, BlockCommitmentSignatureElem, SignedBlockHeader,
+};
+
+use crate::client::types::TryFromDto;
+
 pub(crate) trait ParserState {
     type Dto;
     type Inner;
@@ -712,4 +720,70 @@ pub(crate) mod events {
 
         impl_take_parsed_and_should_stop!(events);
     }
+}
+
+/// Parses (header, signature) pairs. Expects chunks(2) as input,
+/// will panic if given a chunk with length not one or two.
+///
+/// Errors if the chunk is not a (header, signature) pair or a
+/// successful [BlockHeadersResponsePart::Fin].
+pub(crate) fn handle_signed_header_chunk(
+    chunk: Vec<BlockHeadersResponsePart>,
+) -> Option<anyhow::Result<SignedBlockHeader>> {
+    use anyhow::anyhow;
+
+    if let [single] = chunk.as_slice() {
+        match single {
+            Header(_) => {
+                return Some(Err(anyhow!("Stream finalized with header")));
+            }
+            Signatures(_) => {
+                return Some(Err(anyhow!("Stream finalized with signature")));
+            }
+            Fin(p2p_proto::common::Fin { error: Some(error) }) => {
+                return Some(Err(anyhow!("Stream finalized with error: {error:?}")));
+            }
+            Fin(_) => return None,
+        }
+    }
+
+    let [a, b] = chunk.as_slice() else {
+        panic!("Expected exactly two items in the chunk");
+    };
+
+    use BlockHeadersResponsePart::*;
+    let result = match (a, b) {
+        (Fin(_), _) | (_, Fin(_)) => Err(anyhow!("Received unexpected Fin")),
+        (Signatures(_), _) => Err(anyhow!("Received signature without header")),
+        (_, Header(_)) => Err(anyhow!("Received header without signature")),
+        (Header(header), Signatures(signatures)) => {
+            if header.hash != signatures.block.hash {
+                return Some(Err(anyhow!("Signature and header block hash mismatch")));
+            }
+            if header.number != signatures.block.number {
+                return Some(Err(anyhow!("Signature and header block number mismatch")));
+            }
+
+            let header = match pathfinder_common::BlockHeader::try_from_dto(header)
+                .context("Parsing header")
+            {
+                Ok(header) => header,
+                Err(e) => return Some(Err(e)),
+            };
+
+            let signature = match signatures.signatures.as_slice() {
+                &[ConsensusSignature { r, s }] => BlockCommitmentSignature {
+                    r: BlockCommitmentSignatureElem(r),
+                    s: BlockCommitmentSignatureElem(s),
+                },
+                other => {
+                    return Some(Err(anyhow!("Bad signature length: {}", other.len(),)));
+                }
+            };
+
+            Ok(SignedBlockHeader { header, signature })
+        }
+    };
+
+    Some(result)
 }
