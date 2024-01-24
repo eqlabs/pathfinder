@@ -101,13 +101,13 @@ pub struct LimitsConfig {
     pub max_inbound_relay_peers: usize,
 }
 
-impl Default for LimitsConfig {
-    fn default() -> Self {
+impl LimitsConfig {
+    pub fn new(max_inbound_direct_peers: usize, max_inbound_relay_peers: usize) -> Self {
         Self {
             direct_connection_timeout: Duration::from_secs(30),
             relay_connection_timeout: Duration::from_secs(10),
-            max_inbound_direct_peers: 35,
-            max_inbound_relay_peers: 15,
+            max_inbound_direct_peers,
+            max_inbound_relay_peers,
         }
     }
 }

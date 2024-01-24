@@ -381,6 +381,10 @@ async fn start_p2p(
     };
 
     let context = P2PContext {
+        limits_cfg: p2p::LimitsConfig::new(
+            config.max_inbound_direct_connections,
+            config.max_inbound_relayed_connections,
+        ),
         chain_id,
         storage,
         proxy: config.proxy,
