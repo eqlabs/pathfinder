@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{BlockHash, BlockNumber, SignedBlockHeader};
@@ -41,7 +42,7 @@ pub(super) async fn next_gap(
         let gap_head = if head_exists {
             // Find the next header that exists, but whose parent does not.
             let Some(gap_head) = db
-                .next_ancestor_without_parent(head.into())
+                .next_ancestor_without_parent(head)
                 .context("Querying head of gap")?
             else {
                 // No headers are missing so no gap found.
@@ -153,9 +154,9 @@ pub(super) async fn persist(
         let tx = db.transaction().context("Creating database transaction")?;
 
         for SignedBlockHeader { header, signature } in signed_headers.iter().map(|x| &x.data) {
-            tx.insert_block_header(&header)
+            tx.insert_block_header(header)
                 .context("Persisting block header")?;
-            tx.insert_signature(header.number, &signature)
+            tx.insert_signature(header.number, signature)
                 .context("Persisting block signature")?;
         }
 
