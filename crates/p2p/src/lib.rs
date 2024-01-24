@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
+use ipnet::IpNet;
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
@@ -90,7 +91,8 @@ pub struct PeriodicTaskConfig {
     pub bootstrap: BootstrapConfig,
 }
 
-#[derive(Copy, Clone, Debug)]
+/// P2P limitations.
+#[derive(Debug, Clone)]
 pub struct LimitsConfig {
     /// A direct (not relayed) peer can only connect once in this period.
     pub direct_connection_timeout: Duration,
@@ -100,6 +102,7 @@ pub struct LimitsConfig {
     pub max_inbound_direct_peers: usize,
     /// Maximum number of relayed peers.
     pub max_inbound_relay_peers: usize,
+    pub ip_whitelist: Vec<IpNet>,
 }
 
 impl LimitsConfig {
@@ -109,6 +112,7 @@ impl LimitsConfig {
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers,
             max_inbound_relay_peers,
+            ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         }
     }
 }
