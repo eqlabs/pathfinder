@@ -33,6 +33,19 @@ mod parse;
 
 use parse::ParserState;
 
+/// Data received from a specific peer.
+#[derive(Debug)]
+pub struct PeerData<T> {
+    pub peer: PeerId,
+    pub data: T,
+}
+
+impl<T> PeerData<T> {
+    pub fn new(peer: PeerId, data: T) -> Self {
+        Self { peer, data }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Client {
     inner: peer_aware::Client,
