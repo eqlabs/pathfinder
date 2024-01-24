@@ -248,6 +248,7 @@ async fn periodic_bootstrap() {
     let limits_cfg = LimitsConfig {
         direct_connection_timeout: Duration::from_millis(50),
         relay_connection_timeout: Duration::from_millis(50),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relay_peers: 10,
     };
@@ -324,6 +325,7 @@ async fn reconnect_too_quickly() {
     let limits_cfg = LimitsConfig {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relay_peers: 10,
     };
@@ -424,6 +426,7 @@ async fn duplicate_connection() {
     let limits_cfg = LimitsConfig {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relay_peers: 10,
     };
@@ -505,6 +508,7 @@ async fn max_inbound_connections() {
     let limits_cfg = LimitsConfig {
         direct_connection_timeout: CONNECTION_TIMEOUT,
         relay_connection_timeout: Duration::from_millis(500),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
         max_inbound_relay_peers: 0,
     };
@@ -635,7 +639,8 @@ async fn ip_whitelist() {
         direct_connection_timeout: Duration::from_millis(50),
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
-        ..Default::default()
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
     };
     let mut peer1 = TestPeer::new(
         periodic_cfg,
@@ -663,7 +668,8 @@ async fn ip_whitelist() {
         direct_connection_timeout: Duration::from_millis(50),
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
-        ..Default::default()
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
     };
     let mut peer3 = TestPeer::new(
         periodic_cfg,
