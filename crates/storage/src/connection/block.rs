@@ -45,6 +45,47 @@ pub(super) fn insert_block_header(
     Ok(())
 }
 
+pub(super) fn next_ancestor(
+    tx: &Transaction<'_>,
+    target: BlockNumber,
+) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+    tx.inner()
+        .query_row(
+            "SELECT number,hash FROM block_headers 
+                WHERE number < ? 
+                ORDER BY number DESC LIMIT 1",
+            params![&target],
+            |row| {
+                let number = row.get_block_number(0)?;
+                let hash = row.get_block_hash(1)?;
+                Ok((number, hash))
+            },
+        )
+        .optional()
+        .map_err(|x| x.into())
+}
+
+pub(super) fn next_ancestor_without_parent(
+    tx: &Transaction<'_>,
+    target: BlockNumber,
+) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+    tx.inner()
+        .query_row(
+            "SELECT number,hash FROM block_headers t1 
+                WHERE number <= ? AND 
+                NOT EXISTS (SELECT * FROM block_headers t2 WHERE t1.number - 1 = t2.number) 
+                ORDER BY number DESC LIMIT 1;",
+            params![&target],
+            |row| {
+                let number = row.get_block_number(0)?;
+                let hash = row.get_block_hash(1)?;
+                Ok((number, hash))
+            },
+        )
+        .optional()
+        .map_err(|x| x.into())
+}
+
 fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> anyhow::Result<i64> {
     let id: Option<i64> = tx
         .inner()
@@ -507,5 +548,168 @@ mod tests {
         assert!(!l2_by_hash);
         let l2_by_number = tx.block_is_l1_accepted(headers[1].number.into()).unwrap();
         assert!(!l2_by_number);
+    }
+
+    mod next_ancestor {
+        use super::*;
+
+        #[test]
+        fn empty_chain_returns_none() {
+            let storage = crate::Storage::in_memory().unwrap();
+            let mut db = storage.connection().unwrap();
+            let db = db.transaction().unwrap();
+
+            let result = next_ancestor(&db, BlockNumber::GENESIS + 10).unwrap();
+            assert!(result.is_none());
+
+            let result = next_ancestor(&db, BlockNumber::GENESIS).unwrap();
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn father_exists() {
+            let (mut connection, headers) = setup();
+            let tx = connection.transaction().unwrap();
+
+            let result = next_ancestor(&tx, headers[2].number + 1).unwrap().unwrap();
+            let expected = (headers[2].number, headers[2].hash);
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn grandfather_exists() {
+            let (mut connection, headers) = setup();
+            let tx = connection.transaction().unwrap();
+
+            let result = next_ancestor(&tx, headers[2].number + 2).unwrap().unwrap();
+            let expected = (headers[2].number, headers[2].hash);
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn gap_in_chain() {
+            let storage = crate::Storage::in_memory().unwrap();
+            let mut db = storage.connection().unwrap();
+            let db = db.transaction().unwrap();
+
+            let genesis = BlockHeader::default();
+            db.insert_block_header(&genesis).unwrap();
+
+            let header_after_gap = genesis
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"skipped"))
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"expected"));
+
+            db.insert_block_header(&header_after_gap).unwrap();
+
+            let result = next_ancestor(&db, header_after_gap.number + 1)
+                .unwrap()
+                .unwrap();
+            let expected = (header_after_gap.number, header_after_gap.hash);
+            assert_eq!(result, expected);
+        }
+    }
+
+    mod next_ancestor_without_parent {
+        use super::*;
+
+        #[test]
+        fn empty_chain_returns_none() {
+            let storage = crate::Storage::in_memory().unwrap();
+            let mut db = storage.connection().unwrap();
+            let db = db.transaction().unwrap();
+
+            let result = next_ancestor_without_parent(&db, BlockNumber::GENESIS + 10).unwrap();
+            assert!(result.is_none());
+
+            let result = next_ancestor_without_parent(&db, BlockNumber::GENESIS).unwrap();
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn target_without_parent_returns_target() {
+            let storage = crate::Storage::in_memory().unwrap();
+            let mut db = storage.connection().unwrap();
+            let db = db.transaction().unwrap();
+
+            let genesis = BlockHeader::default();
+
+            let header_after_gap = genesis
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"skipped"))
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"expected"));
+
+            db.insert_block_header(&genesis).unwrap();
+            db.insert_block_header(&header_after_gap).unwrap();
+
+            let expected = (genesis.number, genesis.hash);
+            let result = next_ancestor_without_parent(&db, genesis.number)
+                .unwrap()
+                .unwrap();
+            assert_eq!(result, expected);
+
+            let expected = (header_after_gap.number, header_after_gap.hash);
+            let result = next_ancestor_without_parent(&db, header_after_gap.number)
+                .unwrap()
+                .unwrap();
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn missing_target_is_skipped() {
+            let (mut connection, headers) = setup();
+            let tx = connection.transaction().unwrap();
+
+            let target = headers
+                .last()
+                .unwrap()
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"target"));
+
+            let expected = (headers[0].number, headers[0].hash);
+            let result = next_ancestor_without_parent(&tx, target.number)
+                .unwrap()
+                .unwrap();
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn complete_chain_returns_genesis() {
+            let (mut connection, headers) = setup();
+            let tx = connection.transaction().unwrap();
+
+            let result = next_ancestor_without_parent(&tx, BlockNumber::GENESIS)
+                .unwrap()
+                .unwrap();
+            let expected = (headers[0].number, headers[0].hash);
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn incomplete_chain_returns_tail() {
+            let (mut connection, headers) = setup();
+            let tx = connection.transaction().unwrap();
+
+            let tail = headers
+                .last()
+                .unwrap()
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"skipped"))
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"tail"));
+            let target = tail
+                .child_builder()
+                .finalize_with_hash(block_hash_bytes!(b"target"));
+            tx.insert_block_header(&tail).unwrap();
+            tx.insert_block_header(&target).unwrap();
+
+            let result = next_ancestor_without_parent(&tx, target.number)
+                .unwrap()
+                .unwrap();
+            let expected = (tail.number, tail.hash);
+            assert_eq!(result, expected);
+        }
     }
 }
