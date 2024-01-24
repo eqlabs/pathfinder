@@ -974,6 +974,24 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .increment_reorg_counter()
             .context("Incrementing reorg counter")?;
 
+        // Roll back Merkle trie updates.
+        //
+        // If we're rolling back genesis then there will be no blocks left so state will be empty.
+        if reorg_tail != BlockNumber::GENESIS {
+            let target_block = reorg_tail - 1;
+            let target_header = transaction
+                .block_header(target_block.into())
+                .context("Fetching target block header")?
+                .context("Expected target header to exist")?;
+            pathfinder_merkle_tree::contract_state::revert_contract_updates(
+                &transaction,
+                head,
+                target_block,
+                target_header.storage_commitment,
+            )?;
+            // FIXME: revert class trie changes
+        }
+
         // Purge each block one at a time.
         //
         // This is done 1-by-1 to allow sending the reorg'd block data

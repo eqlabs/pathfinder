@@ -14,6 +14,7 @@ pub(crate) mod transaction;
 mod trie;
 
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::reverse_state_update::ReverseContractUpdate;
 use pathfinder_common::state_update::StateUpdateCounts;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
@@ -588,6 +589,14 @@ impl<'inner> Transaction<'inner> {
         block_id: BlockId,
     ) -> anyhow::Result<bool> {
         state_update::contract_exists(self, contract_address, block_id)
+    }
+
+    pub fn reverse_contract_updates(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<HashMap<ContractAddress, ReverseContractUpdate>> {
+        state_update::reverse_updates(self, from_block, to_block)
     }
 
     pub fn insert_signature(

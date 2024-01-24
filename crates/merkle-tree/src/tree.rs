@@ -437,8 +437,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     }
 
     /// Returns the value stored at key, or `None` if it does not exist.
-    #[cfg(test)]
-    fn get(&self, storage: &impl Storage, key: BitVec<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
+    pub fn get(
+        &self,
+        storage: &impl Storage,
+        key: BitVec<u8, Msb0>,
+    ) -> anyhow::Result<Option<Felt>> {
         let node = self.traverse(storage, &key)?;
         let node = node.last();
 

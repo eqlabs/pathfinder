@@ -165,6 +165,12 @@ impl<'tx> StorageCommitmentTree<'tx> {
         self.tree.set(&self.storage, key, value.0)
     }
 
+    pub fn get(&self, address: &ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
+        let key = address.view_bits().to_owned();
+        let value = self.tree.get(&self.storage, key)?;
+        Ok(value.map(ContractStateHash))
+    }
+
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, Node>)> {
