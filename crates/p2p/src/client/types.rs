@@ -56,6 +56,39 @@ impl From<BlockHeader> for MaybeSignedBlockHeader {
     }
 }
 
+impl<T> TryFromDto<T> for pathfinder_common::BlockHeader
+where
+    T: AsRef<p2p_proto::block::BlockHeader>,
+{
+    fn try_from_dto(dto: T) -> anyhow::Result<Self> {
+        let dto = dto.as_ref();
+        Ok(Self {
+            hash: BlockHash(dto.hash.0),
+            parent_hash: BlockHash(dto.parent_hash.0),
+            number: BlockNumber::new(dto.number)
+                .ok_or(anyhow::anyhow!("Invalid block number > i64::MAX"))?,
+            timestamp: BlockTimestamp::new(
+                dto.time.duration_since(SystemTime::UNIX_EPOCH)?.as_secs(),
+            )
+            .ok_or(anyhow::anyhow!("Invalid block timestamp"))?,
+            sequencer_address: SequencerAddress(dto.sequencer_address.0),
+            eth_l1_gas_price: GasPrice::from_be_slice(dto.gas_price.as_slice())?,
+            starknet_version: StarknetVersion::from(dto.starknet_version.clone()),
+            // State commitments may only be calculated intermittently in the future to save on compute.
+            state_commitment: StateCommitment(dto.state_commitment.unwrap_or_default().0),
+            event_commitment: pathfinder_common::EventCommitment(dto.events.root.0),
+            event_count: dto.events.n_leaves as usize,
+            transaction_commitment: pathfinder_common::TransactionCommitment(
+                dto.transactions.root.0,
+            ),
+            transaction_count: dto.transactions.n_leaves as usize,
+            strk_l1_gas_price: Default::default(),
+            class_commitment: Default::default(),
+            storage_commitment: Default::default(),
+        })
+    }
+}
+
 /// Simple state update meant for the temporary p2p client hidden behind
 /// the gateway client api, ie.:
 /// - does not contain any commitments

@@ -17,9 +17,9 @@ use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::{
     event::Event,
     transaction::{DeployAccountTransactionV0V1, DeployAccountTransactionV3, TransactionVariant},
-    BlockHash, BlockNumber, ContractAddress, TransactionHash,
+    BlockHash, BlockNumber, ContractAddress, SignedBlockHeader, TransactionHash,
 };
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::sync::RwLock;
 
 use crate::client::peer_aware;
@@ -32,6 +32,19 @@ use crate::sync::protocol;
 mod parse;
 
 use parse::ParserState;
+
+/// Data received from a specific peer.
+#[derive(Debug)]
+pub struct PeerData<T> {
+    pub peer: PeerId,
+    pub data: T,
+}
+
+impl<T> PeerData<T> {
+    pub fn new(peer: PeerId, data: T) -> Self {
+        Self { peer, data }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -103,6 +116,85 @@ impl Client {
         };
         peers.shuffle(&mut rand::thread_rng());
         peers
+    }
+
+    pub fn header_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        reverse: bool,
+    ) -> impl futures::Stream<Item = PeerData<SignedBlockHeader>> {
+        let (mut start, stop, direction) = match reverse {
+            true => (stop, start, Direction::Backward),
+            false => (start, stop, Direction::Forward),
+        };
+
+        async_stream::stream! {
+            // Loop which refreshes peer set once we exhaust it.
+            loop {
+                let peers = self
+                    .get_update_peers_with_sync_capability(protocol::Headers::NAME)
+                    .await;
+
+                // Attempt each peer.
+                'next_peer: for peer in peers {
+                    let limit = start.get().max(stop.get()) - start.get().min(stop.get());
+
+                    let request = BlockHeadersRequest {
+                        iteration: Iteration {
+                            start: start.get().into(),
+                            direction,
+                            limit,
+                            step: 1.into(),
+                        },
+                    };
+
+                    let responses = match self.inner.send_headers_sync_request(peer, request).await
+                    {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // Failed to establish connection, try next peer.
+                            tracing::debug!(%peer, reason=%error, "Headers request failed");
+                            continue 'next_peer;
+                        }
+                    };
+
+                    let mut responses = responses
+                        .flat_map(|response| futures::stream::iter(response.parts))
+                        .chunks(2)
+                        .scan((), |(), chunk| async { parse::handle_signed_header_chunk(chunk) })
+                        .boxed();
+
+                    while let Some(signed_header) = responses.next().await {
+                        let signed_header = match signed_header {
+                            Ok(signed_header) => signed_header,
+                            Err(error) => {
+                                tracing::debug!(%peer, %error, "Header stream failed");
+                                continue 'next_peer;
+                            }
+                        };
+
+                        // Small sanity check. We cannot reliably check the hash here,
+                        // its easier for the caller to ensure it matches expectations.
+                        if signed_header.header.number != start {
+                            tracing::debug!(%peer, "Wrong block number");
+                            continue 'next_peer;
+                        }
+
+                        start = match direction {
+                            Direction::Forward => start + 1,
+                            // unwrap_or_default is safe as this is the genesis edge case,
+                            // at which point the loop will complete at the end of this iteration.
+                            Direction::Backward => start.parent().unwrap_or_default(),
+                        };
+
+                        yield PeerData::new(peer, signed_header);
+                    }
+
+                    // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
+                }
+            }
+        }
     }
 
     pub async fn block_headers(
