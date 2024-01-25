@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 use anyhow::Context;
 use pathfinder_common::{BlockNumber, ChainId};
 use pathfinder_storage::{JournalMode, Storage};
+use rayon::prelude::*;
 use starknet_gateway_types::transaction_hash::{verify, VerifyResult};
 
 /// Verify transaction hashes in a pathfinder database.
@@ -58,8 +59,10 @@ fn main() -> anyhow::Result<()> {
             .context("Transaction data missing")?;
         drop(tx);
 
-        for (i, (txn, _)) in transactions.iter().enumerate() {
-            match verify(txn, chain_id, BlockNumber::new_or_panic(block_number)) {
+        transactions
+            .par_iter()
+            .enumerate()
+            .for_each(|(i, (txn, _))| match verify(txn, chain_id) {
                 VerifyResult::Match => {}
                 VerifyResult::Mismatch(calculated) => println!(
                     "Mismatch: block {block_number} idx {i} expected {} calculated {} full_txn\n{}",
@@ -67,13 +70,7 @@ fn main() -> anyhow::Result<()> {
                     calculated,
                     serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
                 ),
-                VerifyResult::NotVerifiable => println!(
-                    "Skipped: block {block_number} idx {i} hash {} full_txn\n{}",
-                    txn.hash(),
-                    serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
-                ),
-            }
-        }
+            });
     }
 
     println!("Done.");
