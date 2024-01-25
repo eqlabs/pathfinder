@@ -189,7 +189,7 @@ impl NetworkBehaviour for Behaviour {
             .iter()
             .any(|net| net.contains(&peer_ip))
         {
-            tracing::debug!(%connection_id, "Disconnected peer not in IP whitelist");
+            tracing::debug!(%peer_ip, %connection_id, "Disconnected peer not in IP whitelist");
             return Err(ConnectionDenied::new(anyhow!("peer not in IP whitelist")));
         }
 
