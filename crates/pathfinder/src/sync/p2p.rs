@@ -132,7 +132,7 @@ impl Sync {
     }
 }
 
-/// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with a given L1 checkpoint, and
+/// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with a given L1 checkpoint,
 /// and [handles](Self::handle) the result.
 enum CheckpointAnalysis {
     /// The checkpoint hash does not match the local L1 anchor, indicating an inconsistency with the Ethereum source

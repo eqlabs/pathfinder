@@ -188,7 +188,6 @@ impl Client {
                             Direction::Backward => start.parent().unwrap_or_default(),
                         };
 
-
                         yield PeerData::new(peer, signed_header);
                     }
 
