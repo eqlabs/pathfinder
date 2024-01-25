@@ -8,8 +8,8 @@ use crate::reply::transaction::{
 };
 use pathfinder_common::{
     transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds},
-    BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, PaymasterDataElem, Tip,
-    TransactionHash, TransactionNonce, TransactionVersion,
+    CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, PaymasterDataElem, Tip, TransactionHash,
+    TransactionNonce, TransactionVersion,
 };
 
 use crate::class_hash::truncated_keccak;
@@ -24,33 +24,9 @@ use sha3::{Digest, Keccak256};
 pub enum VerifyResult {
     Match,
     Mismatch(TransactionHash),
-    NotVerifiable,
 }
 
-pub fn verify(txn: &Transaction, chain_id: ChainId, block_number: BlockNumber) -> VerifyResult {
-    let chain_id = match chain_id {
-        // We don't know how to properly compute hashes of some old L1 Handler transactions
-        // Worse still those are invokes in old snapshots but currently are served as
-        // L1 handler txns.
-        ChainId::MAINNET => {
-            if block_number.get() <= 4399 && matches!(txn, Transaction::L1Handler(_)) {
-                // Unable to compute, skipping
-                return VerifyResult::NotVerifiable;
-            } else {
-                chain_id
-            }
-        }
-        ChainId::GOERLI_TESTNET => {
-            if block_number.get() <= 306007 && matches!(txn, Transaction::L1Handler(_)) {
-                // Unable to compute, skipping
-                return VerifyResult::NotVerifiable;
-            } else {
-                chain_id
-            }
-        }
-        _ => chain_id,
-    };
-
+pub fn verify(txn: &Transaction, chain_id: ChainId) -> VerifyResult {
     let computed_hash = compute_transaction_hash(txn, chain_id);
 
     if computed_hash == txn.hash() {
@@ -240,6 +216,7 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> Transactio
             Some(*CONSTRUCTOR),
             constructor_params_hash,
             chain_id,
+            None,
         )
     }
 }
@@ -356,6 +333,7 @@ fn compute_invoke_v0_hash(txn: &InvokeTransactionV0, chain_id: ChainId) -> Trans
             Some(txn.entry_point_selector),
             call_params_hash,
             chain_id,
+            None,
         )
     }
 }
@@ -461,16 +439,31 @@ fn compute_l1_handler_hash(txn: &L1HandlerTransaction, chain_id: ChainId) -> Tra
     if h == txn.transaction_hash {
         h
     } else {
-        legacy_compute_txn_hash(
-            // Oldest L1 Handler transactions were actually Invokes
-            // which later on were "renamed" to be the former,
-            // yet the hashes remain, hence the prefix
-            b"invoke",
+        // Starknet 0.7 L1 Handler transactions were
+        // using a nonce.
+        let h = legacy_compute_txn_hash(
+            b"l1_handler",
             txn.contract_address,
             Some(txn.entry_point_selector),
             call_params_hash,
             chain_id,
-        )
+            Some(txn.nonce.0),
+        );
+        if h == txn.transaction_hash {
+            h
+        } else {
+            // Oldest L1 Handler transactions were actually Invokes
+            // which later on were "renamed" to be the former,
+            // yet the hashes remain, hence the prefix
+            legacy_compute_txn_hash(
+                b"invoke",
+                txn.contract_address,
+                Some(txn.entry_point_selector),
+                call_params_hash,
+                chain_id,
+                None,
+            )
+        }
     }
 }
 
@@ -506,6 +499,7 @@ fn legacy_compute_txn_hash(
     entry_point_selector: Option<EntryPoint>,
     list_hash: Felt,
     chain_id: ChainId,
+    additional_data: Option<Felt>,
 ) -> TransactionHash {
     let mut h = HashChain::default();
     h.update(Felt::from_be_slice(prefix).expect("prefix is convertible"));
@@ -513,6 +507,9 @@ fn legacy_compute_txn_hash(
     h.update(entry_point_selector.map(|e| e.0).unwrap_or(Felt::ZERO));
     h.update(list_hash);
     h.update(chain_id.0);
+    if let Some(felt) = additional_data {
+        h.update(felt);
+    }
 
     TransactionHash(h.finalize())
 }
@@ -691,13 +688,13 @@ mod tests {
     mod verification {
         use super::TxWrapper;
         use crate::transaction_hash::{verify, VerifyResult};
-        use pathfinder_common::{BlockNumber, ChainId};
+        use pathfinder_common::ChainId;
         use starknet_gateway_test_fixtures::v0_11_0;
 
         // Historically L1 handler transactions were served as Invoke V0 because there was no explicit L1 transaction type.
         // Later on the gateway retroactively changed these to the new L1 handler transaction type.
-        // We don't know how to properly compute hashes for those transactions, so we skip them.
-        mod unverifiable {
+        // In Starknet 0.7 nonces were introduced for L1 handlers.
+        mod l1_handler {
             use super::*;
 
             // This is how L1 handler transactions were served later on.
@@ -708,12 +705,8 @@ mod tests {
                         .unwrap();
 
                 assert_eq!(
-                    verify(
-                        &block_854_idx_96,
-                        ChainId::GOERLI_TESTNET,
-                        BlockNumber::new_or_panic(854),
-                    ),
-                    VerifyResult::NotVerifiable
+                    verify(&block_854_idx_96, ChainId::MAINNET,),
+                    VerifyResult::Match
                 );
             }
 
@@ -725,12 +718,8 @@ mod tests {
                         .unwrap();
 
                 assert_eq!(
-                    verify(
-                        &block_854_idx_96,
-                        ChainId::GOERLI_TESTNET,
-                        BlockNumber::new_or_panic(854),
-                    ),
-                    VerifyResult::NotVerifiable
+                    verify(&block_854_idx_96, ChainId::MAINNET,),
+                    VerifyResult::Match
                 );
             }
         }
@@ -743,14 +732,7 @@ mod tests {
             .unwrap()
             .transaction;
 
-            assert_eq!(
-                verify(
-                    &txn,
-                    ChainId::GOERLI_TESTNET,
-                    BlockNumber::new_or_panic(797220),
-                ),
-                VerifyResult::Match
-            );
+            assert_eq!(verify(&txn, ChainId::GOERLI_TESTNET,), VerifyResult::Match);
         }
 
         #[test]
@@ -762,7 +744,7 @@ mod tests {
             .transaction;
             // Wrong chain id to force failure
             assert!(matches!(
-                verify(&txn, ChainId::MAINNET, BlockNumber::new_or_panic(797220),),
+                verify(&txn, ChainId::MAINNET),
                 VerifyResult::Mismatch(_)
             ))
         }

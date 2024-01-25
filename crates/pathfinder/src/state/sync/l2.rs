@@ -522,18 +522,12 @@ async fn download_block(
 
             rayon::spawn(move || {
                 let result = block.transactions.par_iter().enumerate().try_for_each(|(i, txn)| {
-                        match verify(txn, chain_id, block_number) {
+                        match verify(txn, chain_id) {
                             starknet_gateway_types::transaction_hash::VerifyResult::Match => {}
                             starknet_gateway_types::transaction_hash::VerifyResult::Mismatch(actual) =>
                                 anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i} expected {} calculated {}",
                                     txn.hash(),
                                     actual),
-                            starknet_gateway_types::transaction_hash::VerifyResult::NotVerifiable => {
-                                tracing::trace!(
-                                    "Skipping transaction verification: block {block_number} idx {i} hash {}",
-                                    txn.hash()
-                                )
-                            }
                         };
                         Ok(())
                     }).map(|_| block);
