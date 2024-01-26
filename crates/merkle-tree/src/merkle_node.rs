@@ -141,6 +141,15 @@ impl InternalNode {
     pub fn is_leaf(&self) -> bool {
         matches!(self, InternalNode::Leaf)
     }
+
+    pub fn storage_index(&self) -> Option<u64> {
+        match self {
+            InternalNode::Unresolved(storage_index) => Some(*storage_index),
+            InternalNode::Binary(binary) => binary.storage_index,
+            InternalNode::Edge(edge) => edge.storage_index,
+            InternalNode::Leaf => None,
+        }
+    }
 }
 
 impl EdgeNode {

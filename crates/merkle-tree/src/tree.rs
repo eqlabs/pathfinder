@@ -52,7 +52,7 @@ use pathfinder_common::hash::FeltHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Node, StoredNode};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
@@ -61,6 +61,7 @@ use std::{cell::RefCell, rc::Rc};
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
     root: Option<Rc<RefCell<InternalNode>>>,
     leaves: HashMap<BitVec<u8, Msb0>, Felt>,
+    nodes_removed: HashSet<u64>,
     _hasher: std::marker::PhantomData<H>,
     /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
@@ -74,6 +75,8 @@ pub struct TrieUpdate {
     /// New nodes added. Note that these may contain false positives if the
     /// mutations resulted in removing and then re-adding the same nodes within the tree.
     pub nodes_added: HashMap<Felt, Node>,
+    // Nodes committed to storage that have been removed.
+    pub nodes_removed: HashSet<u64>,
 }
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
@@ -84,6 +87,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             _hasher: std::marker::PhantomData,
             verify_hashes: false,
             leaves: Default::default(),
+            nodes_removed: Default::default(),
         }
     }
 
@@ -98,15 +102,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             _hasher: std::marker::PhantomData,
             verify_hashes: false,
             leaves: Default::default(),
+            nodes_removed: Default::default(),
         }
     }
 
     /// Commits all tree mutations and returns the [changes](TrieUpdate) to the tree.
-    pub fn commit(mut self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
-        self.commit_mut(storage)
-    }
-
-    pub fn commit_mut(&mut self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
+    pub fn commit(self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = HashMap::new();
 
@@ -126,6 +127,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(TrieUpdate {
             root,
             nodes_added: added,
+            nodes_removed: self.nodes_removed,
         })
     }
 
@@ -339,7 +341,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     }
                 };
 
-                node.swap(&RefCell::new(updated));
+                let old_node = node.replace(updated);
+                if let Some(index) = old_node.storage_index() {
+                    self.nodes_removed.insert(index);
+                };
             }
             None => {
                 // Getting no travel nodes implies that the tree is empty.
@@ -425,7 +430,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     edge
                 };
                 // Replace the old binary node with the new edge node.
-                node.swap(&RefCell::new(InternalNode::Edge(new_edge)));
+                let old_node = node.replace(InternalNode::Edge(new_edge));
+                if let Some(index) = old_node.storage_index() {
+                    self.nodes_removed.insert(index);
+                };
             }
             None => {
                 // We reached the root without a hitting binary node. The new tree
@@ -602,7 +610,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             let next = match current_tmp {
                 Unresolved(idx) => {
                     let node = self.resolve(storage, idx, height)?;
-                    current.swap(&RefCell::new(node));
+                    current.replace(node);
                     current
                 }
                 Binary(binary) => {
@@ -681,7 +689,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
     /// (since edge nodes __must be__ maximal subtrees).
-    fn merge_edges(&self, storage: &impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
+    fn merge_edges(&mut self, storage: &impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
         let resolved_child = match &*parent.child.borrow() {
             InternalNode::Unresolved(hash) => {
                 self.resolve(storage, *hash, parent.height + parent.path.len())?
@@ -692,6 +700,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         if let Some(child_edge) = resolved_child.as_edge().cloned() {
             parent.path.extend_from_bitslice(&child_edge.path);
             parent.child = child_edge.child;
+            if let Some(storage_index) = child_edge.storage_index {
+                self.nodes_removed.insert(storage_index);
+            }
         }
 
         Ok(())
