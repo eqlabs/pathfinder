@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use pathfinder_common::{
@@ -62,11 +62,11 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, Node>)> {
+    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, Node>, HashSet<u64>)> {
         let update = self.tree.commit(&self.storage)?;
 
         let commitment = ClassCommitment(update.root);
-        Ok((commitment, update.nodes_added))
+        Ok((commitment, update.nodes_added, update.nodes_removed))
     }
 }
 
