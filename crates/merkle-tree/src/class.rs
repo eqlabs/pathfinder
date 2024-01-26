@@ -66,7 +66,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
         let update = self.tree.commit(&self.storage)?;
 
         let commitment = ClassCommitment(update.root);
-        Ok((commitment, update.nodes))
+        Ok((commitment, update.nodes_added))
     }
 }
 

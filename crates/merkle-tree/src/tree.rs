@@ -73,7 +73,7 @@ pub struct TrieUpdate {
     pub root: Felt,
     /// New nodes added. Note that these may contain false positives if the
     /// mutations resulted in removing and then re-adding the same nodes within the tree.
-    pub nodes: HashMap<Felt, Node>,
+    pub nodes_added: HashMap<Felt, Node>,
 }
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
@@ -123,7 +123,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             Felt::ZERO
         };
 
-        Ok(TrieUpdate { root, nodes: added })
+        Ok(TrieUpdate {
+            root,
+            nodes_added: added,
+        })
     }
 
     /// Persists any changes in this subtree to storage.
@@ -282,6 +285,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             true => Rc::new(RefCell::new(InternalNode::Leaf)),
                             false => {
                                 let new_edge = InternalNode::Edge(EdgeNode {
+                                    storage_index: None,
                                     height: child_height,
                                     path: new_path,
                                     child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -295,6 +299,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             true => edge.child.clone(),
                             false => {
                                 let old_edge = InternalNode::Edge(EdgeNode {
+                                    storage_index: None,
                                     height: child_height,
                                     path: old_path,
                                     child: edge.child.clone(),
@@ -310,6 +315,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         };
 
                         let branch = InternalNode::Binary(BinaryNode {
+                            storage_index: None,
                             height: branch_height,
                             left,
                             right,
@@ -319,6 +325,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         match common.is_empty() {
                             true => branch,
                             false => InternalNode::Edge(EdgeNode {
+                                storage_index: None,
                                 height: edge.height,
                                 path: common.to_bitvec(),
                                 child: Rc::new(RefCell::new(branch)),
@@ -340,6 +347,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // Create a new leaf node with the value, and the root becomes
                 // an edge node connecting to the leaf.
                 let edge = InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path: key.to_bitvec(),
                     child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -405,6 +413,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     let child = binary.get_child(direction);
                     let path = std::iter::once(bool::from(direction)).collect::<BitVec<_, _>>();
                     let mut edge = EdgeNode {
+                        storage_index: None,
                         height: binary.height,
                         path,
                         child,
@@ -638,21 +647,25 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         let node = match node {
             StoredNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
+                storage_index: Some(index),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Unresolved(left))),
                 right: Rc::new(RefCell::new(InternalNode::Unresolved(right))),
             }),
             StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
+                storage_index: Some(index),
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Unresolved(child))),
             }),
             StoredNode::LeafBinary => InternalNode::Binary(BinaryNode {
+                storage_index: Some(index),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Leaf)),
                 right: Rc::new(RefCell::new(InternalNode::Leaf)),
             }),
             StoredNode::LeafEdge { path } => InternalNode::Edge(EdgeNode {
+                storage_index: Some(index),
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -849,12 +862,12 @@ mod tests {
 
         let mut indices = HashMap::new();
         let mut idx = storage.nodes.len();
-        for hash in update.nodes.keys() {
+        for hash in update.nodes_added.keys() {
             indices.insert(*hash, idx as u64);
             idx += 1;
         }
 
-        for (hash, node) in update.nodes {
+        for (hash, node) in update.nodes_added {
             let node = match node {
                 Node::Binary { left, right } => {
                     let left = match left {
@@ -1502,6 +1515,7 @@ mod tests {
                 vec![
                     (
                         InternalNode::Edge(EdgeNode {
+                            storage_index: None,
                             height: 0,
                             path: key.view_bits().into(),
                             child: Rc::new(RefCell::new(InternalNode::Leaf))
@@ -1539,6 +1553,7 @@ mod tests {
             let expected_2 = (InternalNode::Leaf, key_left.view_bits().into());
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
+                    storage_index: None,
                     height: 250,
                     left: Rc::new(RefCell::new(expected_2.0.clone())),
                     right: Rc::new(RefCell::new(expected_3.0.clone())),
@@ -1547,6 +1562,7 @@ mod tests {
             );
             let expected_0 = (
                 InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path: bitvec![u8, Msb0; 0; 250],
                     child: Rc::new(RefCell::new(expected_1.0.clone())),
@@ -1609,6 +1625,7 @@ mod tests {
             let expected_6 = (InternalNode::Leaf, key_c.view_bits().into());
             let expected_5 = (
                 InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 250,
                     path: bitvec![u8, Msb0; 1; 1],
                     child: Rc::new(RefCell::new(expected_6.0.clone())),
@@ -1619,6 +1636,7 @@ mod tests {
             let expected_3 = (InternalNode::Leaf, key_a.view_bits().into());
             let expected_2 = (
                 InternalNode::Binary(BinaryNode {
+                    storage_index: None,
                     height: 250,
                     left: Rc::new(RefCell::new(expected_3.0.clone())),
                     right: Rc::new(RefCell::new(expected_4.0.clone())),
@@ -1627,6 +1645,7 @@ mod tests {
             );
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
+                    storage_index: None,
                     height: 249,
                     left: Rc::new(RefCell::new(expected_2.0.clone())),
                     right: Rc::new(RefCell::new(expected_5.0.clone())),
@@ -1635,6 +1654,7 @@ mod tests {
             );
             let expected_0 = (
                 InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path: path_to_1,
                     child: Rc::new(RefCell::new(expected_1.0.clone())),

@@ -103,7 +103,7 @@ impl<'tx> ContractsStorageTree<'tx> {
     pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, Node>)> {
         let update = self.tree.commit(&self.storage)?;
         let commitment = ContractRoot(update.root);
-        Ok((commitment, update.nodes))
+        Ok((commitment, update.nodes_added))
     }
 
     /// See [`MerkleTree::dfs`]
@@ -176,7 +176,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
     pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, Node>)> {
         let update = self.tree.commit(&self.storage)?;
         let commitment = StorageCommitment(update.root);
-        Ok((commitment, update.nodes))
+        Ok((commitment, update.nodes_added))
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
