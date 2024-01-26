@@ -401,10 +401,19 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         }
 
         // Go backwards until we hit a branch node.
-        let mut node_iter = path
-            .into_iter()
-            .rev()
-            .skip_while(|node| !node.borrow().is_binary());
+        let mut indexes_removed = Vec::new();
+        let mut node_iter = path.into_iter().rev().skip_while(|node| {
+            let node = node.borrow();
+            match *node {
+                InternalNode::Binary(_) => false,
+                _ => {
+                    if let Some(index) = node.storage_index() {
+                        indexes_removed.push(index);
+                    };
+                    true
+                }
+            }
+        });
 
         match node_iter.next() {
             Some(node) => {
@@ -449,6 +458,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 self.merge_edges(storage, edge)?;
             }
         }
+
+        // All nodes below the binary node were deleted
+        self.nodes_removed.extend(indexes_removed.into_iter());
 
         Ok(())
     }
