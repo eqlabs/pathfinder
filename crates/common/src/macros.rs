@@ -137,6 +137,18 @@ macro_rules! felt_newtypes {
                 }
             }
 
+            impl From<&'static str> for $target {
+                fn from(value: &'static str) -> Self {
+                    Self(pathfinder_crypto::Felt::from_hex_str(value).unwrap())
+                }
+            }
+
+            impl<const N: usize> From<&'static [u8; N]> for $target {
+                fn from(value: &'static [u8; N]) -> Self {
+                    Self(pathfinder_crypto::Felt::from_be_slice(value).unwrap())
+                }
+            }
+
             $crate::macros::fmt::thin_debug!($target);
             $crate::macros::fmt::thin_display!($target);
         }
@@ -189,6 +201,18 @@ macro_rules! felt_newtypes {
             impl From<crate::macros::MacroFelt> for $target {
                 fn from(value: crate::macros::MacroFelt) -> Self {
                     Self::new_or_panic(pathfinder_crypto::Felt::from(value))
+                }
+            }
+
+            impl From<&'static str> for $target {
+                fn from(value: &'static str) -> Self {
+                    Self(pathfinder_crypto::Felt::from_hex_str(value).unwrap())
+                }
+            }
+
+            impl<const N: usize> From<&'static [u8; N]> for $target {
+                fn from(value: &'static [u8; N]) -> Self {
+                    Self(pathfinder_crypto::Felt::from_be_slice(value).unwrap())
                 }
             }
 
@@ -359,13 +383,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn felt2_examples() {
+    fn macro_felt_example() {
         let single: pathfinder_crypto::Felt = felt2!("0xABCD");
         let vector: Vec<pathfinder_crypto::Felt> = felt2!["0x1", "0x2", "0x4xxx"];
 
         let tx = crate::transaction::InvokeTransactionV3 {
             signature: felt2!["0xAAAA", "0xBBBB"],
             nonce: felt2!("0xABCD"),
+            nonce_data_availability_mode: todo!(),
+            fee_data_availability_mode: todo!(),
+            resource_bounds: todo!(),
+            tip: todo!(),
+            paymaster_data: todo!(),
+            account_deployment_data: todo!(),
+            calldata: todo!(),
+            sender_address: todo!(),
+        };
+    }
+
+    #[test]
+    fn static_from_example() {
+        let single: pathfinder_crypto::Felt = felt2!("0xABCD");
+        let vector: Vec<pathfinder_crypto::Felt> = felt2!["0x1", "0x2", "0x4xxx"];
+
+        let tx = crate::transaction::InvokeTransactionV3 {
+            signature: vec!["0xAAAA".into(), "0xBBBB".into()],
+            nonce: b"abcdefasd".into(),
             nonce_data_availability_mode: todo!(),
             fee_data_availability_mode: todo!(),
             resource_bounds: todo!(),
