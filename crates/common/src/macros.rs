@@ -131,6 +131,12 @@ macro_rules! felt_newtypes {
                 }
             }
 
+            impl From<crate::macros::MacroFelt> for $target {
+                fn from(value: crate::macros::MacroFelt) -> Self {
+                    Self(pathfinder_crypto::Felt::from(value))
+                }
+            }
+
             $crate::macros::fmt::thin_debug!($target);
             $crate::macros::fmt::thin_display!($target);
         }
@@ -177,6 +183,12 @@ macro_rules! felt_newtypes {
 
                 pub fn view_bits(&self) -> &bitvec::slice::BitSlice<u8, bitvec::order::Msb0> {
                     self.0.view_bits()
+                }
+            }
+
+            impl From<crate::macros::MacroFelt> for $target {
+                fn from(value: crate::macros::MacroFelt) -> Self {
+                    Self::new_or_panic(pathfinder_crypto::Felt::from(value))
                 }
             }
 
@@ -298,6 +310,38 @@ macro_rules! felt {
     }};
 }
 
+#[macro_export]
+macro_rules! felt2 {
+    ($hex:expr) => {
+        MacroFelt(felt!($hex)).into()
+    };
+    [$($hex:expr),*] => {
+        felt2![@unroll [] -> $($hex);*]
+    };
+    [@unroll [$($state:tt)*] -> $head:expr; $($rest:expr);*] => {
+        felt2![@unroll [$($state)* $head,] -> $($rest);*]
+    };
+    [@unroll [$($state:tt)*] -> $head:expr] => {
+        felt2![@unroll [$($state)* $head,] ->]
+    };
+    [@unroll [$($state:tt)*] ->] => {
+        [$($state)*].into_iter().map(|x| match pathfinder_crypto::Felt::from_hex_str(x){
+            Ok(x) => MacroFelt(x).into(),
+            Err(_) => panic!("oops"),
+        }).collect::<Vec<_>>()
+    };
+    // ($($x:expr,)*) => (felt2![$($x),*]);
+}
+pub use felt2;
+
+pub struct MacroFelt(pathfinder_crypto::Felt);
+
+impl From<MacroFelt> for pathfinder_crypto::Felt {
+    fn from(value: MacroFelt) -> Self {
+        value.0
+    }
+}
+
 /// Creates a [`pathfinder_crypto::Felt`] from a byte slice, resulting in compile-time error when
 /// invalid.
 #[macro_export]
@@ -308,4 +352,28 @@ macro_rules! felt_bytes {
             Err(pathfinder_crypto::OverflowError) => panic!("Invalid constant: OverflowError"),
         }
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn felt2_examples() {
+        let single: pathfinder_crypto::Felt = felt2!("0xABCD");
+        let vector: Vec<pathfinder_crypto::Felt> = felt2!["0x1", "0x2", "0x4xxx"];
+
+        let tx = crate::transaction::InvokeTransactionV3 {
+            signature: felt2!["0xAAAA", "0xBBBB"],
+            nonce: felt2!("0xABCD"),
+            nonce_data_availability_mode: todo!(),
+            fee_data_availability_mode: todo!(),
+            resource_bounds: todo!(),
+            tip: todo!(),
+            paymaster_data: todo!(),
+            account_deployment_data: todo!(),
+            calldata: todo!(),
+            sender_address: todo!(),
+        };
+    }
 }
