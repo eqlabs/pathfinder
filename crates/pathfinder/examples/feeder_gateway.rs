@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::num::NonZeroU32;
 
 use anyhow::Context;
@@ -260,7 +261,7 @@ async fn serve() -> anyhow::Result<()> {
                     match class {
                         Ok(class) => {
                             let response = warp::http::Response::builder().header("content-type", "application/json").body(class).unwrap();
-                            Ok(response)
+                            Result::<_, Infallible>::Ok(response)
                         },
                         Err(_) => {
                             let error = r#"{"code": "StarknetErrorCode.UNDECLARED_CLASS", "message": "Class not found"}"#;

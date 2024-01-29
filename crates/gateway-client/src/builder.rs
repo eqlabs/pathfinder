@@ -451,7 +451,9 @@ mod tests {
         use assert_matches::assert_matches;
         use http::{response::Builder, StatusCode};
         use pretty_assertions_sorted::assert_eq;
-        use std::{collections::VecDeque, net::SocketAddr, sync::Arc, time::Duration};
+        use std::{
+            collections::VecDeque, convert::Infallible, net::SocketAddr, sync::Arc, time::Duration,
+        };
         use tokio::{sync::Mutex, task::JoinHandle};
         use warp::Filter;
 
@@ -482,7 +484,7 @@ mod tests {
         fn slow_server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
             let any = warp::any().then(|| async {
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                Ok(Builder::new().status(200).body(""))
+                Result::<_, Infallible>::Ok(Builder::new().status(200).body(""))
             });
             let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
             let server_handle = tokio::spawn(run_srv);
