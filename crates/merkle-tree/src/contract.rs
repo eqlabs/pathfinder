@@ -16,8 +16,7 @@ use pathfinder_common::{
     StorageCommitment, StorageValue,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_storage::{Node, Transaction};
-use std::collections::{HashMap, HashSet};
+use pathfinder_storage::{Transaction, TrieUpdate};
 use std::ops::ControlFlow;
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to a Starknet contract's storage.
@@ -100,10 +99,10 @@ impl<'tx> ContractsStorageTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, Node>, HashSet<u64>)> {
+    pub fn commit(self) -> anyhow::Result<(ContractRoot, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
-        let commitment = ContractRoot(update.root);
-        Ok((commitment, update.nodes_added, update.nodes_removed))
+        let commitment = ContractRoot(update.root_hash());
+        Ok((commitment, update))
     }
 
     /// See [`MerkleTree::dfs`]
@@ -173,10 +172,10 @@ impl<'tx> StorageCommitmentTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, Node>, HashSet<u64>)> {
+    pub fn commit(self) -> anyhow::Result<(StorageCommitment, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
-        let commitment = StorageCommitment(update.root);
-        Ok((commitment, update.nodes_added, update.nodes_removed))
+        let commitment = StorageCommitment(update.root_hash());
+        Ok((commitment, update))
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].

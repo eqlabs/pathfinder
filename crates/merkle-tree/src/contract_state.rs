@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::ContractsStorageTree;
 use anyhow::Context;
@@ -7,7 +7,7 @@ use pathfinder_common::{
     ContractRoot, ContractStateHash, StorageAddress, StorageValue,
 };
 use pathfinder_crypto::{hash::pedersen_hash, Felt};
-use pathfinder_storage::{Node, Transaction};
+use pathfinder_storage::{Transaction, TrieUpdate};
 
 #[derive(Debug)]
 pub struct ContractStateUpdateResult {
@@ -15,10 +15,7 @@ pub struct ContractStateUpdateResult {
     pub contract_address: ContractAddress,
     root: ContractRoot,
     did_storage_updates: bool,
-    // trie nodes to be inserted into the database
-    nodes_added: HashMap<Felt, Node>,
-    // trie nodes to be removed from the database
-    nodes_removed: HashSet<u64>,
+    trie_update: TrieUpdate,
 }
 
 impl ContractStateUpdateResult {
@@ -29,9 +26,9 @@ impl ContractStateUpdateResult {
     pub fn insert(self, block: BlockNumber, transaction: &Transaction<'_>) -> anyhow::Result<()> {
         // Insert nodes only if we made storage updates.
         if self.did_storage_updates {
-            let root_index = if !self.root.0.is_zero() && !self.nodes_added.is_empty() {
+            let root_index = if !self.root.0.is_zero() && !self.trie_update.nodes_added.is_empty() {
                 let root_index = transaction
-                    .insert_contract_trie(self.root, &self.nodes_added)
+                    .insert_contract_trie(&self.trie_update)
                     .context("Persisting contract trie")?;
                 Some(root_index)
             } else {
@@ -60,7 +57,7 @@ pub fn update_contract_state(
     block: BlockNumber,
 ) -> anyhow::Result<ContractStateUpdateResult> {
     // Load the contract tree and insert the updates.
-    let (new_root, nodes_added, nodes_removed) = if !updates.is_empty() {
+    let (new_root, trie_update) = if !updates.is_empty() {
         let mut contract_tree = match block.parent() {
             Some(parent) => ContractsStorageTree::load(transaction, contract_address, parent)
                 .context("Loading contract storage tree")?
@@ -74,18 +71,18 @@ pub fn update_contract_state(
                 .set(*key, *value)
                 .context("Update contract storage tree")?;
         }
-        let (contract_root, nodes_added, nodes_removed) = contract_tree
+        let (contract_root, trie_update) = contract_tree
             .commit()
             .context("Apply contract storage tree changes")?;
 
-        (contract_root, nodes_added, nodes_removed)
+        (contract_root, trie_update)
     } else {
         let current_root = transaction
             .contract_root(block, contract_address)
             .context("Querying current contract root")?
             .unwrap_or_default();
 
-        (current_root, Default::default(), Default::default())
+        (current_root, Default::default())
     };
 
     let class_hash = if contract_address.is_system_contract() {
@@ -117,8 +114,7 @@ pub fn update_contract_state(
         state_hash,
         root: new_root,
         did_storage_updates: !updates.is_empty(),
-        nodes_added,
-        nodes_removed,
+        trie_update,
     })
 }
 
@@ -190,11 +186,11 @@ pub fn revert_contract_state(
                         .context("Updating contract state")?;
                 }
 
-                let (root, nodes_added) = tree.commit().context("Committing contract state")?;
+                let (root, trie_update) = tree.commit().context("Committing contract state")?;
 
-                let root_index = if !root.0.is_zero() && !nodes_added.is_empty() {
+                let root_index = if !root.0.is_zero() && !trie_update.nodes_added.is_empty() {
                     let root_index = transaction
-                        .insert_contract_trie(root, &nodes_added)
+                        .insert_contract_trie(&trie_update)
                         .context("Persisting contract trie")?;
                     Some(root_index)
                 } else {

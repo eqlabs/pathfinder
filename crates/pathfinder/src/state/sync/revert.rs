@@ -87,7 +87,7 @@ fn revert_contract_updates(
 
         tracing::debug!("Applied reverse updates, committing global state tree");
 
-        let (storage_commitment, nodes_added) = global_tree
+        let (storage_commitment, trie_update) = global_tree
             .commit()
             .context("Committing global state tree")?;
 
@@ -101,7 +101,7 @@ fn revert_contract_updates(
 
         let root_idx = if !storage_commitment.0.is_zero() {
             let root_idx = transaction
-                .insert_storage_trie(storage_commitment, &nodes_added)
+                .insert_storage_trie(&trie_update)
                 .context("Persisting storage trie")?;
 
             Some(root_idx)
@@ -155,7 +155,7 @@ fn revert_class_updates(
                 .context("Updating class commitment trie")?;
         }
 
-        let (class_commitment, nodes_added) =
+        let (class_commitment, trie_update) =
             class_tree.commit().context("Committing class trie")?;
 
         if expected_class_commitment != class_commitment {
@@ -168,7 +168,7 @@ fn revert_class_updates(
 
         let root_idx = if !class_commitment.0.is_zero() {
             let root_idx = transaction
-                .insert_class_trie(class_commitment, &nodes_added)
+                .insert_class_trie(&trie_update)
                 .context("Persisting class trie")?;
 
             Some(root_idx)

@@ -1,11 +1,9 @@
-use std::collections::{HashMap, HashSet};
-
 use anyhow::Context;
 use pathfinder_common::{
     BlockNumber, ClassCommitment, ClassCommitmentLeafHash, ClassHash, SierraHash,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_storage::{Node, Transaction};
+use pathfinder_storage::{Transaction, TrieUpdate};
 
 use crate::tree::MerkleTree;
 use pathfinder_common::hash::PoseidonHash;
@@ -62,11 +60,11 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, Node>, HashSet<u64>)> {
+    pub fn commit(self) -> anyhow::Result<(ClassCommitment, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
 
-        let commitment = ClassCommitment(update.root);
-        Ok((commitment, update.nodes_added, update.nodes_removed))
+        let commitment = ClassCommitment(update.root_hash());
+        Ok((commitment, update))
     }
 }
 

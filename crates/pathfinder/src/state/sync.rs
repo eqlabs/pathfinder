@@ -1115,13 +1115,13 @@ fn update_starknet_state(
     }
 
     // Apply storage commitment tree changes.
-    let (storage_commitment, nodes_added, nodes_removed) = storage_commitment_tree
+    let (storage_commitment, trie_update) = storage_commitment_tree
         .commit()
         .context("Apply storage commitment tree updates")?;
 
     let root_idx = if !storage_commitment.0.is_zero() {
         let root_idx = transaction
-            .insert_storage_trie(storage_commitment, &nodes_added)
+            .insert_storage_trie(&trie_update)
             .context("Persisting storage trie")?;
 
         Some(root_idx)
@@ -1154,13 +1154,13 @@ fn update_starknet_state(
     }
 
     // Apply all class commitment tree changes.
-    let (class_commitment, nodes_added, nodes_removed) = class_commitment_tree
+    let (class_commitment, trie_update) = class_commitment_tree
         .commit()
         .context("Apply class commitment tree updates")?;
 
     let class_root_idx = if !class_commitment.0.is_zero() {
         let class_root_idx = transaction
-            .insert_class_trie(class_commitment, &nodes_added)
+            .insert_class_trie(&trie_update)
             .context("Persisting class trie")?;
 
         Some(class_root_idx)
