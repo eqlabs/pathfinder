@@ -42,6 +42,8 @@ pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
 
 pub struct Behaviour {
     cfg: Config,
+    // TODO Should be good to remove all the other fields and use only this one.
+    peers: PeerSet,
     /// Recent peers that have connected to us directly (not over a relay).
     ///
     /// The distinction is important because different limits apply to direct and relayed peers.
@@ -52,8 +54,6 @@ pub struct Behaviour {
     inbound_direct_peers: usize,
     /// Number of peers that have inbound connections open to us over a relay.
     inbound_relay_peers: usize,
-    peers: PeerSet,
-    // TODO Remove this
     /// Peers connected to our node. Used for closing duplicate connections.
     connected_peers: HashSet<PeerId>,
     inner: Inner,
