@@ -9,7 +9,7 @@ use ipnet::IpNet;
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
-use libp2p::swarm::Config;
+use libp2p::swarm;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use p2p_proto::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse, NewBlock,
@@ -45,13 +45,12 @@ pub use behaviour::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
 pub fn new(
     keypair: Keypair,
     peers: Arc<RwLock<peers::Peers>>,
-    periodic_cfg: PeriodicTaskConfig,
-    limits_cfg: LimitsConfig,
+    cfg: Config,
     chain_id: ChainId,
 ) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
 
-    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id, limits_cfg);
+    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id, cfg.clone());
 
     let swarm = Swarm::new(
         transport::create(&keypair, relay_transport),
@@ -66,7 +65,7 @@ pub fn new(
         // 2. I'm not sure if we really need keep alive, as connections should be closed when not used
         //    because they consume resources, and in general we should be managing connections in a wiser manner,
         //    the deprecated `libp2p::swarm::keep_alive::Behaviour` was supposed to be mostly used for testing anyway.
-        Config::with_tokio_executor().with_idle_connection_timeout(Duration::MAX),
+        swarm::Config::with_tokio_executor().with_idle_connection_timeout(Duration::MAX),
     );
 
     let (command_sender, command_receiver) = mpsc::channel(1);
@@ -75,25 +74,13 @@ pub fn new(
     (
         Client::new(command_sender, local_peer_id),
         event_receiver,
-        MainLoop::new(
-            swarm,
-            command_receiver,
-            event_sender,
-            peers,
-            periodic_cfg,
-            chain_id,
-        ),
+        MainLoop::new(swarm, command_receiver, event_sender, peers, cfg, chain_id),
     )
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct PeriodicTaskConfig {
-    pub bootstrap: BootstrapConfig,
 }
 
 /// P2P limitations.
 #[derive(Debug, Clone)]
-pub struct LimitsConfig {
+pub struct Config {
     /// A direct (not relayed) peer can only connect once in this period.
     pub direct_connection_timeout: Duration,
     /// A relayed peer can only connect once in this period.
@@ -103,16 +90,22 @@ pub struct LimitsConfig {
     /// Maximum number of relayed peers.
     pub max_inbound_relay_peers: usize,
     pub ip_whitelist: Vec<IpNet>,
+    pub bootstrap: BootstrapConfig,
 }
 
-impl LimitsConfig {
-    pub fn new(max_inbound_direct_peers: usize, max_inbound_relay_peers: usize) -> Self {
+impl Config {
+    pub fn new(
+        max_inbound_direct_peers: usize,
+        max_inbound_relay_peers: usize,
+        bootstrap: BootstrapConfig,
+    ) -> Self {
         Self {
             direct_connection_timeout: Duration::from_secs(30),
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers,
             max_inbound_relay_peers,
             ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+            bootstrap,
         }
     }
 }
@@ -123,13 +116,11 @@ pub struct BootstrapConfig {
     pub period: Duration,
 }
 
-impl Default for PeriodicTaskConfig {
+impl Default for BootstrapConfig {
     fn default() -> Self {
         Self {
-            bootstrap: BootstrapConfig {
-                start_offset: Duration::from_secs(5),
-                period: Duration::from_secs(10 * 60),
-            },
+            start_offset: Duration::from_secs(5),
+            period: Duration::from_secs(10 * 60),
         }
     }
 }

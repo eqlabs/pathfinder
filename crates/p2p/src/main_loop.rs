@@ -24,9 +24,8 @@ use crate::behaviour;
 use crate::peers;
 #[cfg(test)]
 use crate::test_utils;
-use crate::{
-    BootstrapConfig, Command, EmptyResultSender, Event, PeriodicTaskConfig, TestCommand, TestEvent,
-};
+use crate::Config;
+use crate::{BootstrapConfig, Command, EmptyResultSender, Event, TestCommand, TestEvent};
 
 pub struct MainLoop {
     bootstrap_cfg: BootstrapConfig,
@@ -80,11 +79,11 @@ impl MainLoop {
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
         peers: Arc<RwLock<peers::Peers>>,
-        periodic_cfg: PeriodicTaskConfig,
+        cfg: Config,
         chain_id: ChainId,
     ) -> Self {
         Self {
-            bootstrap_cfg: periodic_cfg.bootstrap,
+            bootstrap_cfg: cfg.bootstrap,
             swarm,
             command_receiver,
             event_sender,
