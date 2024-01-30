@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::recent_peers::RecentPeers;
 use crate::sync::codec;
-use crate::LimitsConfig;
+use crate::Config;
 use anyhow::anyhow;
 use libp2p::core::Endpoint;
 use libp2p::dcutr;
@@ -39,7 +39,7 @@ pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
 }
 
 pub struct Behaviour {
-    limits: LimitsConfig,
+    cfg: Config,
     /// Recent peers that have connected to us directly (not over a relay).
     ///
     /// The distinction is important because different limits apply to direct and relayed peers.
@@ -91,7 +91,7 @@ impl NetworkBehaviour for Behaviour {
         // Limit the number of inbound peer connections. Different limits apply to direct peers
         // and peers connecting over a relay.
         if is_relay {
-            if self.inbound_relay_peers >= self.limits.max_inbound_relay_peers {
+            if self.inbound_relay_peers >= self.cfg.max_inbound_relay_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound relay peers"
@@ -99,7 +99,7 @@ impl NetworkBehaviour for Behaviour {
             }
             self.inbound_relay_peers += 1;
         } else {
-            if self.inbound_direct_peers >= self.limits.max_inbound_direct_peers {
+            if self.inbound_direct_peers >= self.cfg.max_inbound_direct_peers {
                 tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound direct peers"
@@ -184,7 +184,7 @@ impl NetworkBehaviour for Behaviour {
 
         // If the peer is not in the IP whitelist, disconnect.
         if !self
-            .limits
+            .cfg
             .ip_whitelist
             .iter()
             .any(|net| net.contains(&peer_ip))
@@ -225,13 +225,13 @@ impl NetworkBehaviour for Behaviour {
         // The check must be repeated when the connection is established due to race conditions,
         // since multiple peers may be attempting to connect at the same time.
         if is_relay {
-            if self.inbound_relay_peers >= self.limits.max_inbound_relay_peers {
+            if self.inbound_relay_peers >= self.cfg.max_inbound_relay_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound relay peers"
                 )));
             }
-        } else if self.inbound_direct_peers >= self.limits.max_inbound_direct_peers {
+        } else if self.inbound_direct_peers >= self.cfg.max_inbound_direct_peers {
             tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
             return Err(ConnectionDenied::new(anyhow!(
                 "too many inbound direct peers"
@@ -262,7 +262,7 @@ impl Behaviour {
     pub fn new(
         identity: &identity::Keypair,
         chain_id: ChainId,
-        limits: LimitsConfig,
+        cfg: Config,
     ) -> (Self, relay::client::Transport) {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
 
@@ -309,11 +309,11 @@ impl Behaviour {
 
         (
             Self {
-                recent_inbound_direct_peers: RecentPeers::new(limits.direct_connection_timeout),
-                recent_inbound_relay_peers: RecentPeers::new(limits.relay_connection_timeout),
+                recent_inbound_direct_peers: RecentPeers::new(cfg.direct_connection_timeout),
+                recent_inbound_relay_peers: RecentPeers::new(cfg.relay_connection_timeout),
                 inbound_direct_peers: Default::default(),
                 inbound_relay_peers: Default::default(),
-                limits,
+                cfg,
                 connected_peers: Default::default(),
                 inner: Inner {
                     relay,
