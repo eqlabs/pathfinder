@@ -4,9 +4,10 @@ use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::time::Duration;
 
+use crate::peers::{Connectivity, Direction, Peer};
 use crate::recent_peers::RecentPeers;
 use crate::sync::codec;
-use crate::Config;
+use crate::{Config, PeerSet};
 use anyhow::anyhow;
 use libp2p::core::Endpoint;
 use libp2p::dcutr;
@@ -17,9 +18,10 @@ use libp2p::kad::{self, store::MemoryStore};
 use libp2p::multiaddr::Protocol;
 use libp2p::ping;
 use libp2p::relay;
+use libp2p::swarm::behaviour::ConnectionEstablished;
 use libp2p::swarm::{
-    ConnectionClosed, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler,
-    THandlerInEvent, THandlerOutEvent, ToSwarm,
+    ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, FromSwarm, NetworkBehaviour,
+    THandler, THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 use libp2p::StreamProtocol;
 use libp2p::{autonat, Multiaddr, PeerId};
@@ -50,6 +52,8 @@ pub struct Behaviour {
     inbound_direct_peers: usize,
     /// Number of peers that have inbound connections open to us over a relay.
     inbound_relay_peers: usize,
+    peers: PeerSet,
+    // TODO Remove this
     /// Peers connected to our node. Used for closing duplicate connections.
     connected_peers: HashSet<PeerId>,
     inner: Inner,
@@ -129,20 +133,74 @@ impl NetworkBehaviour for Behaviour {
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
-        if let FromSwarm::ConnectionClosed(ConnectionClosed {
-            peer_id, endpoint, ..
-        }) = event
-        {
-            // Is this an inbound connection?
-            if endpoint.is_listener() {
-                if endpoint.is_relayed() {
-                    self.inbound_relay_peers -= 1;
-                } else {
-                    self.inbound_direct_peers -= 1;
-                }
+        match event {
+            FromSwarm::ConnectionEstablished(ConnectionEstablished {
+                peer_id, endpoint, ..
+            }) => {
+                self.peers.upsert(
+                    peer_id,
+                    |peer| {
+                        peer.connectivity = Connectivity::connected();
+                    },
+                    || {
+                        Peer::new(
+                            Connectivity::connected(),
+                            if endpoint.is_dialer() {
+                                Direction::Outbound
+                            } else {
+                                Direction::Inbound
+                            },
+                        )
+                    },
+                );
             }
-            self.connected_peers.remove(&peer_id);
+            FromSwarm::DialFailure(DialFailure { peer_id, error, .. }) => {
+                if let Some(peer_id) = peer_id {
+                    self.peers.upsert(
+                        peer_id,
+                        |peer| {
+                            if !peer.is_connected() {
+                                // If there was no successful connection when the dialing failed,
+                                // then the peer is definitely not connected. Otherwise, this might
+                                // have been a redial attempt, and the peer might still be
+                                // connected.
+                                peer.connectivity = Connectivity::disconnected();
+                            };
+                        },
+                        || Peer::new(Connectivity::disconnected(), Direction::Outbound),
+                    );
+                }
+                tracing::debug!(?peer_id, %error, "Error while dialing peer");
+            }
+            FromSwarm::ConnectionClosed(ConnectionClosed {
+                peer_id,
+                endpoint,
+                remaining_established,
+                ..
+            }) => {
+                if remaining_established == 0 {
+                    self.peers.update(peer_id, |peer| {
+                        peer.connectivity = Connectivity::disconnected();
+                    });
+                    tracing::debug!(%peer_id, "Fully disconnected from");
+                } else {
+                    tracing::debug!(%peer_id, %remaining_established, "Connection closed");
+                }
+                // TODO This should no longer be necessary, and the two counter fields should not
+                // be needed either.
+                // Is this an inbound connection?
+                if endpoint.is_listener() {
+                    if endpoint.is_relayed() {
+                        self.inbound_relay_peers -= 1;
+                    } else {
+                        self.inbound_direct_peers -= 1;
+                    }
+                }
+                self.connected_peers.remove(&peer_id);
+            }
+            _ => {}
         }
+
         self.inner.on_swarm_event(event)
     }
 
@@ -249,6 +307,29 @@ impl NetworkBehaviour for Behaviour {
         addresses: &[Multiaddr],
         effective_role: Endpoint,
     ) -> Result<Vec<Multiaddr>, ConnectionDenied> {
+        if let Some(peer_id) = maybe_peer {
+            self.peers.upsert(
+                peer_id,
+                |peer| {
+                    if !peer.is_connected() {
+                        peer.connectivity = Connectivity::Dialing;
+                    } else {
+                        // If peer is already connected, this is a redial. The peer is still
+                        // connected.
+                    }
+                },
+                || {
+                    Peer::new(
+                        Connectivity::Dialing,
+                        if effective_role.is_dialer() {
+                            Direction::Outbound
+                        } else {
+                            Direction::Inbound
+                        },
+                    )
+                },
+            );
+        }
         self.inner.handle_pending_outbound_connection(
             connection_id,
             maybe_peer,
@@ -314,6 +395,7 @@ impl Behaviour {
                 inbound_direct_peers: Default::default(),
                 inbound_relay_peers: Default::default(),
                 cfg,
+                peers: Default::default(),
                 connected_peers: Default::default(),
                 inner: Inner {
                     relay,
@@ -392,6 +474,10 @@ impl Behaviour {
 
     pub fn events_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Events> {
         &mut self.inner.events_sync
+    }
+
+    pub fn peers(&self) -> impl Iterator<Item = (PeerId, Peer)> + '_ {
+        self.peers.iter()
     }
 }
 

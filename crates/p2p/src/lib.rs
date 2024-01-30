@@ -1,7 +1,6 @@
 #![deny(rust_2018_idioms)]
 
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
@@ -18,7 +17,8 @@ use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
-use tokio::sync::{mpsc, oneshot, RwLock};
+use peers::Peer;
+use tokio::sync::{mpsc, oneshot};
 
 mod behaviour;
 pub mod client;
@@ -34,7 +34,7 @@ mod transport;
 
 pub use client::peer_agnostic::PeerData;
 pub use libp2p;
-pub use peers::Peers;
+pub use peers::PeerSet;
 pub use sync::protocol::PROTOCOLS;
 
 use client::peer_aware::Client;
@@ -42,12 +42,7 @@ use main_loop::MainLoop;
 
 pub use behaviour::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
 
-pub fn new(
-    keypair: Keypair,
-    peers: Arc<RwLock<peers::Peers>>,
-    cfg: Config,
-    chain_id: ChainId,
-) -> (Client, EventReceiver, MainLoop) {
+pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id, cfg.clone());
@@ -74,7 +69,7 @@ pub fn new(
     (
         Client::new(command_sender, local_peer_id),
         event_receiver,
-        MainLoop::new(swarm, command_receiver, event_sender, peers, cfg, chain_id),
+        MainLoop::new(swarm, command_receiver, event_sender, cfg, chain_id),
     )
 }
 
@@ -194,6 +189,7 @@ enum Command {
 #[derive(Debug)]
 pub enum TestCommand {
     GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
+    GetConnectedPeers(oneshot::Sender<HashMap<PeerId, Peer>>),
 }
 
 #[derive(Debug)]

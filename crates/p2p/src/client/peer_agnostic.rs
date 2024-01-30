@@ -26,7 +26,6 @@ use crate::client::peer_aware;
 use crate::client::types::{
     MaybeSignedBlockHeader, RawDeployAccountTransaction, StateUpdateWithDefinitions,
 };
-use crate::peers;
 use crate::sync::protocol;
 
 mod parse;
@@ -51,24 +50,17 @@ pub struct Client {
     inner: peer_aware::Client,
     block_propagation_topic: String,
     peers_with_capability: Arc<RwLock<PeersWithCapability>>,
-    // FIXME
-    _peers: Arc<RwLock<peers::Peers>>,
 }
 
 // TODO Rework the API!
 // I.e. make sure the api looks reasonable from the perspective of
 // the __user__, which is the sync driving algo/entity.
 impl Client {
-    pub fn new(
-        inner: peer_aware::Client,
-        block_propagation_topic: String,
-        peers: Arc<RwLock<peers::Peers>>,
-    ) -> Self {
+    pub fn new(inner: peer_aware::Client, block_propagation_topic: String) -> Self {
         Self {
             inner,
             block_propagation_topic,
             peers_with_capability: Default::default(),
-            _peers: peers,
         }
     }
 
