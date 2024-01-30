@@ -23,7 +23,7 @@ pub type P2PNetworkHandle = (
 );
 
 pub struct P2PContext {
-    pub limits_cfg: p2p::LimitsConfig,
+    pub cfg: p2p::Config,
     pub chain_id: ChainId,
     pub storage: Storage,
     pub proxy: bool,
@@ -36,7 +36,7 @@ pub struct P2PContext {
 #[tracing::instrument(name = "p2p", skip_all)]
 pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     let P2PContext {
-        limits_cfg,
+        cfg,
         chain_id,
         storage,
         proxy,
@@ -50,13 +50,8 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     tracing::info!(%peer_id, "🖧 Starting P2P");
 
     let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
-    let (p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(
-        keypair,
-        peers.clone(),
-        Default::default(),
-        limits_cfg,
-        chain_id,
-    );
+    let (p2p_client, mut p2p_events, p2p_main_loop) =
+        p2p::new(keypair, peers.clone(), cfg, chain_id);
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");
