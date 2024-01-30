@@ -124,6 +124,10 @@ async fn wait_for_event<T: Debug + Send + 'static>(
     None
 }
 
+async fn exhaust_events(event_receiver: &mut EventReceiver) {
+    while event_receiver.try_recv().is_ok() {}
+}
+
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall
 fn consume_events(mut event_receiver: EventReceiver) {
@@ -161,13 +165,15 @@ async fn client_to_server() -> (TestPeer, TestPeer) {
 async fn dial() {
     let _ = env_logger::builder().is_test(true).try_init();
     // tokio::time::pause() does not make a difference
-    let peer1 = TestPeer::default();
+    let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    exhaust_events(&mut peer1.event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
@@ -187,6 +193,8 @@ async fn disconnect() {
     tracing::info!(%peer2.peer_id, %addr2);
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    exhaust_events(&mut peer1.event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
