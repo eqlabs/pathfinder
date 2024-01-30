@@ -1,7 +1,6 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -18,17 +17,16 @@ use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
 use rstest::rstest;
-use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use crate::{BootstrapConfig, Config, Event, EventReceiver, Peers, TestEvent};
+use crate::peers::Peer;
+use crate::{BootstrapConfig, Config, Event, EventReceiver, TestEvent};
 
 #[allow(dead_code)]
 #[derive(Debug)]
 struct TestPeer {
     pub keypair: Keypair,
     pub peer_id: PeerId,
-    pub peers: Arc<RwLock<Peers>>,
     pub client: crate::Client,
     pub event_receiver: crate::EventReceiver,
     pub main_loop_jh: JoinHandle<()>,
@@ -38,14 +36,12 @@ impl TestPeer {
     #[must_use]
     pub fn new(cfg: Config, keypair: Keypair) -> Self {
         let peer_id = keypair.public().to_peer_id();
-        let peers: Arc<RwLock<Peers>> = Default::default();
         let (client, event_receiver, main_loop) =
-            crate::new(keypair.clone(), peers.clone(), cfg, ChainId::GOERLI_TESTNET);
+            crate::new(keypair.clone(), cfg, ChainId::GOERLI_TESTNET);
         let main_loop_jh = tokio::spawn(main_loop.run());
         Self {
             keypair,
             peer_id,
-            peers,
             client,
             event_receiver,
             main_loop_jh,
@@ -78,13 +74,8 @@ impl TestPeer {
     }
 
     /// Get peer IDs of the connected peers
-    pub async fn connected(&self) -> HashSet<PeerId> {
-        self.peers
-            .read()
-            .await
-            .connected()
-            .map(Clone::clone)
-            .collect()
+    pub async fn connected(&self) -> HashMap<PeerId, Peer> {
+        self.client.for_test().get_connected_peers().await
     }
 }
 
@@ -178,11 +169,11 @@ async fn dial() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    let peers_of1 = peer1.connected().await;
-    let peers_of2 = peer2.connected().await;
+    let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
+    let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
 
-    assert_eq!(peers_of1, [peer2.peer_id].into());
-    assert_eq!(peers_of2, [peer1.peer_id].into());
+    assert_eq!(peers_of1, vec![peer2.peer_id]);
+    assert_eq!(peers_of2, vec![peer1.peer_id]);
 }
 
 #[test_log::test(tokio::test)]
@@ -197,11 +188,11 @@ async fn disconnect() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    let peers_of1 = peer1.connected().await;
-    let peers_of2 = peer2.connected().await;
+    let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
+    let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
 
-    assert_eq!(peers_of1, [peer2.peer_id].into());
-    assert_eq!(peers_of2, [peer1.peer_id].into());
+    assert_eq!(peers_of1, vec![peer2.peer_id]);
+    assert_eq!(peers_of2, vec![peer1.peer_id]);
 
     peer2.client.disconnect(peer1.peer_id).await.unwrap();
 
@@ -335,11 +326,11 @@ async fn reconnect_too_quickly() {
     })
     .await;
 
-    let peers_of1 = peer1.connected().await;
-    let peers_of2 = peer2.connected().await;
+    let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
+    let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
 
-    assert_eq!(peers_of1, [peer2.peer_id].into());
-    assert_eq!(peers_of2, [peer1.peer_id].into());
+    assert_eq!(peers_of1, vec![peer2.peer_id]);
+    assert_eq!(peers_of2, vec![peer1.peer_id]);
 
     // Close the connection.
     peer1.client.disconnect(peer2.peer_id).await.unwrap();
@@ -460,7 +451,7 @@ async fn duplicate_connection() {
     .await;
 
     assert!(peer1_copy.connected().await.is_empty());
-    assert!(peer1.connected().await.contains(&peer2.peer_id));
+    assert!(peer1.connected().await.contains_key(&peer2.peer_id));
 }
 
 /// Test that each peer accepts at most one connection from any other peer, and duplicate
