@@ -105,7 +105,7 @@ impl PeerSet {
         self.peers.retain(|_, peer| match peer.connectivity {
             Connectivity::Disconnected {
                 disconnected_at, ..
-            } => Instant::now().duration_since(disconnected_at) < self.retention_period,
+            } => disconnected_at.elapsed() < self.retention_period,
             _ => true,
         });
         self.peers
@@ -118,9 +118,15 @@ impl PeerSet {
         self.peers.get(&peer_id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (PeerId, Peer)> + '_ {
-        self.peers
-            .iter()
-            .map(|(peer_id, peer)| (*peer_id, peer.clone()))
+    pub fn iter(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
+        self.peers.iter().filter_map(|(peer_id, peer)| {
+            // Filter out peers that have been disconnected for too long.
+            match peer.connectivity {
+                Connectivity::Disconnected {
+                    disconnected_at, ..
+                } if disconnected_at.elapsed() >= self.retention_period => None,
+                _ => Some((*peer_id, peer)),
+            }
+        })
     }
 }

@@ -92,7 +92,7 @@ pub(super) async fn handle_command(
                 .peers()
                 .filter_map(|(peer_id, peer)| {
                     if peer.is_connected() {
-                        Some((peer_id, peer))
+                        Some((peer_id, peer.clone()))
                     } else {
                         None
                     }

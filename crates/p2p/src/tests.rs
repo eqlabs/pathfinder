@@ -227,8 +227,8 @@ async fn periodic_bootstrap() {
     // TODO figure out how to make this test run using tokio::time::pause()
     // instead of arbitrary short delays
     let cfg = Config {
-        direct_connection_timeout: Duration::from_millis(50),
-        relay_connection_timeout: Duration::from_millis(50),
+        direct_connection_timeout: Duration::from_secs(0),
+        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,

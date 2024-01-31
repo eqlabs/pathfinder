@@ -480,7 +480,7 @@ impl Behaviour {
         &mut self.inner.events_sync
     }
 
-    pub fn peers(&self) -> impl Iterator<Item = (PeerId, Peer)> + '_ {
+    pub fn peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
         self.peers.iter()
     }
 
