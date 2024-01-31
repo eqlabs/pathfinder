@@ -1,0 +1,52 @@
+syntax = "proto3";
+import "common.proto";
+import "state.proto";
+import "google/protobuf/timestamp.proto";
+
+package starknet.header;
+
+// Note: commitments may change to be for the previous blocks like comet/tendermint
+// hash of block header sent to L1
+message SignedBlockHeader {
+    starknet.common.Hash                        parent_hash       = 1;
+    uint64                                      number            = 2;
+    google.protobuf.Timestamp                   time              = 3;   // TODO: see if this needs to be Felt252 or can be converted
+    starknet.common.Address                     sequencer_address = 4;
+    starknet.common.Merkle                      state_diffs       = 5;   //  By order of (contract, key), taking last in case of duplicates.
+                                                         // This means the proposer needs to sort after finishing the block (TBD: patricia? )
+                                                         // State is optional and appears every X blocks for the last block. This is to support
+                                                         // snapshot sync and also so that light nodes can sync on state without state diffs.
+    starknet.common.Patricia                    state             = 6;   // hash of contract and class patricia tries. Same as in L1. Later more trees will be included
+    starknet.common.Merkle                      classes           = 7;   // By order of declaration.
+    // The following merkles can be built on the fly while sequencing/validating txs.
+    starknet.common.Merkle                      transactions      = 8;   // By order of execution. TBD: required? the client can execute (powerful machine) and match state diff
+    starknet.common.Merkle                      events            = 9;   // By order of issuance. TBD: in receipts?
+    starknet.common.Merkle                      receipts          = 10;  // By order of issuance.
+    string                                      protocol_version  = 11; // Starknet version
+    starknet.common.Felt252                     gas_price         = 12;
+    // for now, we assume a small consensus, so this fits in 1M. Else, these will be repeated and extracted from this message.
+    repeated starknet.common.ConsensusSignature signatures        = 13; //
+                                       // can be more explicit here about the signature structure as this is not part of account abstraction
+}
+
+// sent to all peers (except the ones this was received from, if any).
+// for a fraction of peers, also send the GetBlockHeaders response (as if they asked for it for this block)
+message NewBlock {
+    oneof maybe_full {
+        starknet.common.BlockID id     = 1;
+        BlockHeadersResponse    header = 2;
+    }
+}
+
+
+message BlockHeadersRequest {
+    starknet.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request.
+message BlockHeadersResponse {
+    oneof header_message {
+        SignedBlockHeader   header = 1;
+        starknet.common.Fin fin    = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its header.
+    }
+}

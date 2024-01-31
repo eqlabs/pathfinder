@@ -1,0 +1,60 @@
+syntax = "proto3";
+import "common.proto";
+
+package starknet.class;
+
+message EntryPoint {
+    starknet.common.Felt252 selector = 1;
+    starknet.common.Felt252 offset = 2;
+}
+
+message Cairo0Class {
+    bytes abi = 1;
+    repeated EntryPoint externals = 2;
+    repeated EntryPoint l1_handlers = 3;
+    repeated EntryPoint constructors = 4;
+    bytes program = 5;
+}
+
+message SierraEntryPoint {
+    uint64 index = 1;
+    starknet.common.Felt252 selector = 2;
+}
+
+message Cairo1EntryPoints {
+    repeated SierraEntryPoint externals = 1;
+    repeated SierraEntryPoint l1_handlers = 2;
+    repeated SierraEntryPoint constructors = 3;
+}
+
+message Cairo1Class {
+    bytes abi = 1;
+    Cairo1EntryPoints entry_points = 2;
+    repeated starknet.common.Felt252 program = 3;
+    string contract_class_version = 4;
+    bytes compiled = 5;
+}
+
+// is it better to separate the definition from the hashes? (will need to repeat the hashes
+// for the definitions stream)
+// or, make the definitions optional? maybe it is enough to know only that a class exists, not its definition
+// which may be fetched lazily later.
+message Class {
+    oneof class {
+        Cairo0Class cairo0 = 1;
+        Cairo1Class cairo1 = 2;
+    }
+    uint32 domain = 3;
+}
+
+message ClassesRequest {
+    starknet.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request.
+message ClassesResponse {
+    oneof class_message {
+        Class               class = 1;
+        starknet.common.Fin fin   = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its classes.
+    }
+}

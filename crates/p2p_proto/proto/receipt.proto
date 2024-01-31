@@ -1,8 +1,7 @@
 syntax = "proto3";
-
-package starknet.receipt;
-
 import "common.proto";
+
+package starknet.receipts;
 
 message MessageToL1 {
   starknet.common.Felt252          from_address = 1;
@@ -14,26 +13,17 @@ message EthereumAddress {
   bytes elements = 1;
 }
 
-message MessageToL2 {
-  EthereumAddress                  from_address         = 1;
-  repeated starknet.common.Felt252 payload              = 2;
-  starknet.common.Felt252          to_address           = 3;
-  starknet.common.Felt252          entry_point_selector = 4;
-  starknet.common.Felt252          nonce                = 5;
-}
-
 message Receipt {
   message ExecutionResources {
     message BuiltinCounter {
-      uint32 bitwise       = 1;
-      uint32 ecdsa         = 2;
-      uint32 ec_op         = 3;
-      uint32 pedersen      = 4;
-      uint32 range_check   = 5;
-      uint32 poseidon      = 6;
-      uint32 keccak        = 7;
-      uint32 output        = 8;
-      uint32 segment_arena = 9;
+      uint32 bitwise     = 1;
+      uint32 ecdsa       = 2;
+      uint32 ec_op       = 3;
+      uint32 pedersen    = 4;
+      uint32 range_check = 5;
+      uint32 poseidon    = 6;
+      uint32 keccak      = 7;
+      uint32 output      = 8;
     }
 
     BuiltinCounter builtins     = 1;
@@ -90,11 +80,10 @@ message Receipts {
     repeated Receipt items = 2;
 }
 
+// Responses are sent ordered by the order given in the request.
 message ReceiptsResponse {
-  optional starknet.common.BlockID id = 1; // may not appear if Fin is sent to end the whole response
-
-  oneof responses {
-    Receipts            receipts = 2;
-    starknet.common.Fin fin      = 3;
-  }
+    oneof receipt_message {
+        Receipt             receipt = 1;
+        starknet.common.Fin fin     = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its receipts.
+    }
 }

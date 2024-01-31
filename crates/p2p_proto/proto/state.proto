@@ -1,73 +1,33 @@
 syntax = "proto3";
+import "common.proto";
 
 package starknet.state;
 
-import "common.proto";
-
 // optimized for flat storage, not through a trie (not sharing key prefixes)
 message ContractStoredValue {
-    starknet.common.Felt252 key = 1;
+    starknet.common.Felt252 key   = 1;
     starknet.common.Felt252 value = 2;
 }
 
-message StateDiff
-{
-    // a bit more efficient than the state sync separation
-    message ContractDiff {
-        starknet.common.Address          address    = 1;
-        optional starknet.common.Felt252 nonce      = 2;
-        optional starknet.common.Felt252 class_hash = 3;  // can change for replace_class or new contract
-        repeated ContractStoredValue     values     = 4;
+message ContractDiff {
+    starknet.common.Address          address    = 1;
+    optional starknet.common.Felt252 nonce      = 2;
+    optional starknet.common.Felt252 class_hash = 3;  // can change for replace_class or new contract
+    repeated ContractStoredValue     values     = 4;
+    uint32                           domain     = 5;  // volition state domain
+}
+
+message StateDiffsRequest {
+    starknet.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request.
+message StateDiffsResponse {
+    // All of the messages related to a block need to be sent before a message from the next block is sent.
+    oneof state_diff_message {
+        ContractDiff            contract_diff     = 1; // Multiple contract diffs for the same contract may appear continuously if the diff is too large.
+        starknet.common.Address deployed_contract = 2;
+        starknet.common.Address replaced_contract = 3;
+        starknet.common.Fin     fin               = 4; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its state diff.
     }
-
-    uint32   domain                      = 1;  // volition state domain
-    repeated ContractDiff contract_diffs = 2;
-}
-
-message EntryPoint {
-    starknet.common.Felt252 selector = 1;
-    starknet.common.Felt252 offset = 2;
-}
-
-message Cairo0Class {
-    bytes abi = 1;
-    repeated EntryPoint externals = 2;
-    repeated EntryPoint l1_handlers = 3;
-    repeated EntryPoint constructors = 4;
-    bytes program = 5;
-}
-
-message SierraEntryPoint {
-    uint64 index = 1;
-    starknet.common.Felt252 selector = 2;
-}
-
-message Cairo1EntryPoints {
-    repeated SierraEntryPoint externals = 1;
-    repeated SierraEntryPoint l1_handlers = 2;
-    repeated SierraEntryPoint constructors = 3;
-}
-
-message Cairo1Class {
-    bytes abi = 1;
-    Cairo1EntryPoints entry_points = 2;
-    repeated starknet.common.Felt252 program = 3;
-    string contract_class_version = 4;
-    bytes compiled = 5;
-}
-
-// is it better to separate the definition from the hashes? (will need to repeate the hashes
-// for the definitions stream)
-// or, make the definitions optional? maybe it is enough to know only that a class exists, not its definition
-// which may be fetched lazily later.
-message Class {
-    oneof class {
-        Cairo0Class cairo0 = 1;
-        Cairo1Class cairo1 = 2;
-    }
-}
-
-message Classes {
-    uint32   domain        = 1;
-    repeated Class classes = 2;
 }

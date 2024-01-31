@@ -1,8 +1,7 @@
 syntax = "proto3";
+import "common.proto";
 
 package starknet.event;
-
-import "common.proto";
 
 message Event {
     starknet.common.Hash transaction_hash = 1;
@@ -15,16 +14,10 @@ message EventsRequest {
     starknet.common.Iteration iteration = 1;
 }
 
-message Events {
-    repeated Event items = 1;
-}
-
-// can be several in a single reply
+// Responses are sent ordered by the order given in the request.
 message EventsResponse {
-    optional starknet.common.BlockID id = 1; // may not appear if Fin is sent to end the whole response
-
-    oneof responses {
-        Events              events = 2;
-        starknet.common.Fin fin    = 3;
+    oneof event_message {
+        Event               event = 1;
+        starknet.common.Fin fin   = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its events.
     }
 }
