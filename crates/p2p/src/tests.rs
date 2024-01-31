@@ -21,9 +21,7 @@ use rstest::rstest;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use crate::{
-    BootstrapConfig, Event, EventReceiver, LimitsConfig, Peers, PeriodicTaskConfig, TestEvent,
-};
+use crate::{BootstrapConfig, Config, Event, EventReceiver, Peers, TestEvent};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -38,20 +36,11 @@ struct TestPeer {
 
 impl TestPeer {
     #[must_use]
-    pub fn new(
-        periodic_cfg: PeriodicTaskConfig,
-        limits_cfg: LimitsConfig,
-        keypair: Keypair,
-    ) -> Self {
+    pub fn new(cfg: Config, keypair: Keypair) -> Self {
         let peer_id = keypair.public().to_peer_id();
         let peers: Arc<RwLock<Peers>> = Default::default();
-        let (client, event_receiver, main_loop) = crate::new(
-            keypair.clone(),
-            peers.clone(),
-            periodic_cfg,
-            limits_cfg,
-            ChainId::GOERLI_TESTNET,
-        );
+        let (client, event_receiver, main_loop) =
+            crate::new(keypair.clone(), peers.clone(), cfg, ChainId::GOERLI_TESTNET);
         let main_loop_jh = tokio::spawn(main_loop.run());
         Self {
             keypair,
@@ -102,8 +91,7 @@ impl TestPeer {
 impl Default for TestPeer {
     fn default() -> Self {
         Self::new(
-            Default::default(),
-            LimitsConfig::new(10, 10),
+            Config::new(10, 10, Default::default()),
             Keypair::generate_ed25519(),
         )
     }
@@ -239,30 +227,20 @@ async fn periodic_bootstrap() {
 
     // TODO figure out how to make this test run using tokio::time::pause()
     // instead of arbitrary short delays
-    let periodic_cfg = PeriodicTaskConfig {
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(1),
-        },
-    };
-    let limits_cfg = LimitsConfig {
+    let cfg = Config {
         direct_connection_timeout: Duration::from_millis(50),
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relay_peers: 10,
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            start_offset: Duration::from_secs(1),
+        },
     };
-    let mut boot = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
-    let mut peer1 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
-    let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
     let mut boot_addr = boot.start_listening().await.unwrap();
     boot_addr.push(Protocol::P2p(boot.peer_id));
@@ -315,27 +293,21 @@ async fn periodic_bootstrap() {
 #[test_log::test(tokio::test)]
 async fn reconnect_too_quickly() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
-    let periodic_cfg = PeriodicTaskConfig {
+    let cfg = Config {
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
     };
-    let limits_cfg = LimitsConfig {
-        direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_millis(500),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
-    };
 
-    let mut peer1 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
-    let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
@@ -416,24 +388,22 @@ async fn reconnect_too_quickly() {
 #[test_log::test(tokio::test)]
 async fn duplicate_connection() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
-    let periodic_cfg = PeriodicTaskConfig {
+    let cfg = Config {
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
     };
-    let limits_cfg = LimitsConfig {
-        direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_millis(500),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
-    };
     let keypair = Keypair::generate_ed25519();
-    let mut peer1 = TestPeer::new(periodic_cfg, limits_cfg.clone(), keypair.clone());
-    let mut peer1_copy = TestPeer::new(periodic_cfg, limits_cfg.clone(), keypair);
-    let mut peer2 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone(), keypair.clone());
+    let mut peer1_copy = TestPeer::new(cfg.clone(), keypair);
+    let mut peer2 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
@@ -498,36 +468,22 @@ async fn duplicate_connection() {
 #[test_log::test(tokio::test)]
 async fn max_inbound_connections() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
-    let periodic_cfg = PeriodicTaskConfig {
+    let cfg = Config {
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_millis(500),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+        max_inbound_direct_peers: 2,
+        max_inbound_relay_peers: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
     };
-    let limits_cfg = LimitsConfig {
-        direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_millis(500),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-        max_inbound_direct_peers: 2,
-        max_inbound_relay_peers: 0,
-    };
-    let mut peer1 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
-    let mut peer2 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
-    let mut peer3 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
-    let mut peer4 = TestPeer::new(periodic_cfg, limits_cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer3 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer4 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
@@ -628,30 +584,20 @@ async fn max_inbound_connections() {
 /// Test that peers can only connect if they are whitelisted.
 #[test_log::test(tokio::test)]
 async fn ip_whitelist() {
-    let periodic_cfg = PeriodicTaskConfig {
+    let cfg = Config {
+        direct_connection_timeout: Duration::from_millis(50),
+        relay_connection_timeout: Duration::from_millis(50),
+        ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
+        max_inbound_direct_peers: 10,
+        max_inbound_relay_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
     };
-    let limits_cfg = LimitsConfig {
-        direct_connection_timeout: Duration::from_millis(50),
-        relay_connection_timeout: Duration::from_millis(50),
-        ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
-    };
-    let mut peer1 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
-    let peer2 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
+    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
@@ -664,18 +610,19 @@ async fn ip_whitelist() {
     assert!(result.is_err());
 
     // Start another peer accepting connections from 127.0.0.1.
-    let limits_cfg = LimitsConfig {
+    let cfg = Config {
         direct_connection_timeout: Duration::from_millis(50),
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relay_peers: 10,
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            // Bootstrapping can cause redials, so set the offset to a high value.
+            start_offset: Duration::from_secs(10),
+        },
     };
-    let mut peer3 = TestPeer::new(
-        periodic_cfg,
-        limits_cfg.clone(),
-        Keypair::generate_ed25519(),
-    );
+    let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
     let addr3 = peer3.start_listening().await.unwrap();
     tracing::info!(%peer3.peer_id, %addr3);
