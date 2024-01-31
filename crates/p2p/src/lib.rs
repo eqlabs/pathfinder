@@ -24,7 +24,6 @@ mod behaviour;
 pub mod client;
 mod main_loop;
 mod peers;
-mod recent_peers;
 mod sync;
 #[cfg(test)]
 mod test_utils;
