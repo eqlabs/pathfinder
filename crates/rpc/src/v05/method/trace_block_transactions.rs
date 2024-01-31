@@ -305,7 +305,6 @@ pub(crate) mod tests {
                 fixtures::SIERRA_DEFINITION,
                 &fixtures::CASM_HASH,
                 fixtures::CASM_DEFINITION,
-                "compiler version",
             )?;
 
             let next_block_header = BlockHeader::builder()
@@ -425,7 +424,6 @@ pub(crate) mod tests {
                 fixtures::SIERRA_DEFINITION,
                 &fixtures::CASM_HASH,
                 fixtures::CASM_DEFINITION,
-                "compiler version",
             )?;
 
             let dummy_receipt: Receipt = Receipt {

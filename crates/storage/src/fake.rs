@@ -59,7 +59,6 @@ pub fn with_n_blocks_and_rng<R: Rng>(
                             sierra_definition,
                             casm_hash,
                             casm_definition,
-                            "1.0.alpha6",
                         )
                         .unwrap()
                     },

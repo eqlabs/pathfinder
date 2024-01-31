@@ -9,7 +9,6 @@ pub(super) fn insert_sierra_class(
     sierra_definition: &[u8],
     casm_hash: &CasmHash,
     casm_definition: &[u8],
-    compiler_version: &str,
 ) -> anyhow::Result<()> {
     let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
     let sierra_definition = compressor
@@ -18,9 +17,6 @@ pub(super) fn insert_sierra_class(
     let casm_definition = compressor
         .compress(casm_definition)
         .context("Compressing casm definition")?;
-
-    let version_id = intern_compiler_version(transaction, compiler_version)
-        .context("Interning compiler version")?;
 
     transaction
         .inner()
@@ -34,14 +30,13 @@ pub(super) fn insert_sierra_class(
         .inner()
         .execute(
             r"INSERT OR REPLACE INTO casm_definitions
-                (hash, definition, compiled_class_hash, compiler_version_id)
+                (hash, definition, compiled_class_hash)
             VALUES
-                (:hash, :definition, :compiled_class_hash, :compiler_version_id)",
+                (:hash, :definition, :compiled_class_hash)",
             named_params! {
                 ":hash": sierra_hash,
                 ":definition": &casm_definition,
                 ":compiled_class_hash": casm_hash,
-                ":compiler_version_id": &version_id,
             },
         )
         .context("Inserting casm definition")?;
@@ -68,40 +63,6 @@ pub(super) fn insert_cairo_class(
         .context("Inserting cairo definition")?;
 
     Ok(())
-}
-
-fn intern_compiler_version(
-    transaction: &Transaction<'_>,
-    compiler_version: &str,
-) -> anyhow::Result<i64> {
-    let id: Option<i64> = transaction
-        .inner()
-        .query_row(
-            "SELECT id FROM casm_compiler_versions WHERE version = ?",
-            [compiler_version],
-            |r| Ok(r.get_unwrap(0)),
-        )
-        .optional()
-        .context("Querying for an existing casm compiler version")?;
-
-    let id = if let Some(id) = id {
-        id
-    } else {
-        // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
-        // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
-        // read back with last_insert_rowid
-
-        transaction
-            .inner()
-            .query_row(
-                "INSERT INTO casm_compiler_versions(version) VALUES (?) RETURNING id",
-                [compiler_version],
-                |row| row.get(0),
-            )
-            .context("Inserting unique casm_compiler_version")?
-    };
-
-    Ok(id)
 }
 
 /// Returns whether or not the given class definitions exist.
@@ -521,29 +482,6 @@ mod tests {
     }
 
     #[test]
-    fn compiler_version_interning() {
-        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
-        let transaction = connection.transaction().unwrap();
-
-        let alpha = intern_compiler_version(&transaction, "alpha").unwrap();
-        let alpha_again = intern_compiler_version(&transaction, "alpha").unwrap();
-        assert_eq!(alpha, alpha_again);
-
-        let beta = intern_compiler_version(&transaction, "beta").unwrap();
-        assert_ne!(alpha, beta);
-
-        let beta_again = intern_compiler_version(&transaction, "beta").unwrap();
-        assert_eq!(beta, beta_again);
-
-        for i in 0..10 {
-            intern_compiler_version(&transaction, i.to_string().as_str()).unwrap();
-        }
-
-        let alpha_again2 = intern_compiler_version(&transaction, "alpha").unwrap();
-        assert_eq!(alpha, alpha_again2);
-    }
-
-    #[test]
     fn insert_cairo() {
         let mut connection = Storage::in_memory().unwrap().connection().unwrap();
         let tx = connection.transaction().unwrap();
@@ -567,7 +505,6 @@ mod tests {
         let casm_hash = casm_hash_bytes!(b"casm hash");
         let sierra_definition = b"example sierra program";
         let casm_definition = b"compiled sierra program";
-        let version = "compiler version";
 
         insert_sierra_class(
             &tx,
@@ -575,14 +512,13 @@ mod tests {
             sierra_definition,
             &casm_hash,
             casm_definition,
-            version,
         )
         .unwrap();
 
         let casm_result = tx
-            .inner().query_row(
+            .inner()
+            .query_row(
                 r"SELECT * FROM casm_definitions 
-                    JOIN casm_compiler_versions ON casm_definitions.compiler_version_id = casm_compiler_versions.id 
                     WHERE hash = ?",
                 params![&sierra_hash],
                 |row| {
@@ -592,16 +528,13 @@ mod tests {
                     let casm_definition = row.get_blob("definition").unwrap().to_vec();
                     let casm_definition = zstd::decode_all(casm_definition.as_slice()).unwrap();
 
-                    let version: String = row.get("version").unwrap();
-
-                    Ok((casm_hash, casm_definition, version))
+                    Ok((casm_hash, casm_definition))
                 },
             )
             .unwrap();
 
         assert_eq!(casm_result.0, casm_hash);
         assert_eq!(casm_result.1, casm_definition);
-        assert_eq!(casm_result.2, version);
 
         let definition = class_definition(&tx, ClassHash(sierra_hash.0))
             .unwrap()

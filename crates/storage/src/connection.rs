@@ -275,7 +275,6 @@ impl<'inner> Transaction<'inner> {
         sierra_definition: &[u8],
         casm_hash: &CasmHash,
         casm_definition: &[u8],
-        compiler_version: &str,
     ) -> anyhow::Result<()> {
         class::insert_sierra_class(
             self,
@@ -283,7 +282,6 @@ impl<'inner> Transaction<'inner> {
             sierra_definition,
             casm_hash,
             casm_definition,
-            compiler_version,
         )
     }
 
