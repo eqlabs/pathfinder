@@ -83,7 +83,7 @@ pub struct Config {
     /// Maximum number of direct (non-relayed) peers.
     pub max_inbound_direct_peers: usize,
     /// Maximum number of relayed peers.
-    pub max_inbound_relay_peers: usize,
+    pub max_inbound_relayed_peers: usize,
     pub ip_whitelist: Vec<IpNet>,
     pub bootstrap: BootstrapConfig,
 }
@@ -98,7 +98,7 @@ impl Config {
             direct_connection_timeout: Duration::from_secs(30),
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers,
-            max_inbound_relay_peers,
+            max_inbound_relayed_peers: max_inbound_relay_peers,
             ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
             bootstrap,
         }

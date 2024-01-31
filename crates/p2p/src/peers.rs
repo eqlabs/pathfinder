@@ -11,22 +11,18 @@ pub struct Peer {
     pub direction: Direction,
     pub evicted: bool,
     pub useful: bool,
+    pub relayed: bool,
     // TODO are we still able to maintain info about peers' sync heads?
     // sync_status: Option<p2p_proto_v0::sync::Status>,
 }
 
 impl Peer {
-    pub fn new(connectivity: Connectivity, direction: Direction) -> Self {
-        Self {
-            connectivity,
-            direction,
-            evicted: false,
-            useful: true,
-        }
-    }
-
     pub fn is_connected(&self) -> bool {
         matches!(self.connectivity, Connectivity::Connected { .. })
+    }
+
+    pub fn is_inbound(&self) -> bool {
+        matches!(self.direction, Direction::Inbound)
     }
 }
 
