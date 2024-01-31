@@ -421,7 +421,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 
                 let download_time = (timings.block_download
                     + timings.class_declaration
-                    + timings.state_diff_download
                     + timings.signature_download)
                     .as_secs_f64();
 
@@ -446,7 +445,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                         tracing::info!("Updated Starknet state with block {}", block_number)
                     }
                     Some(_) => {
-                        tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s, signature in {:2}s",
+                        tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, signature in {:2}s",
                                     block_number,
                                     block_time.as_secs_f32(),
                                     block_time_avg.as_secs_f32(),
@@ -454,7 +453,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                                     storage_updates,
                                     update_t.as_secs_f32(),
                                     timings.block_download.as_secs_f32(),
-                                    timings.state_diff_download.as_secs_f32(),
                                     timings.signature_download.as_secs_f32(),
                                 );
                     }
