@@ -231,7 +231,7 @@ async fn periodic_bootstrap() {
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
@@ -297,7 +297,7 @@ async fn reconnect_too_quickly() {
         relay_connection_timeout: Duration::from_millis(500),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
@@ -392,7 +392,7 @@ async fn duplicate_connection() {
         relay_connection_timeout: Duration::from_millis(500),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
@@ -472,7 +472,7 @@ async fn max_inbound_connections() {
         relay_connection_timeout: Duration::from_millis(500),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
-        max_inbound_relay_peers: 0,
+        max_inbound_relayed_peers: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
@@ -588,7 +588,7 @@ async fn ip_whitelist() {
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
@@ -614,7 +614,7 @@ async fn ip_whitelist() {
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
