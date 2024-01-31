@@ -152,14 +152,21 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
     }
 }
 
-// use p2p_proto_derive::*;
-// pub mod block;
-// pub mod common;
-// pub mod consensus;
+fn proto_field<T>(input: Option<T>, field_name: &'static str) -> Result<T, std::io::Error> {
+    input.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Missing field {field_name}"),
+        )
+    })
+}
+
+use p2p_proto_derive::*;
+pub mod class;
+pub mod common;
 // pub mod consts;
-// pub mod event;
-// pub mod mempool;
-// pub mod receipt;
-// pub mod snapshot;
-// pub mod state;
-// pub mod transaction;
+pub mod event;
+pub mod header;
+pub mod receipt;
+pub mod state;
+pub mod transaction;

@@ -2,8 +2,8 @@ use fake::Dummy;
 use pathfinder_crypto::Felt;
 use primitive_types::H160;
 
-use crate::common::{BlockId, Fin, Hash, Iteration};
-use crate::{proto, ToProtobuf, TryFromProtobuf};
+use crate::common::{Hash, Iteration};
+use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::MessageToL1")]
@@ -16,16 +16,6 @@ pub struct MessageToL1 {
 // Avoid pathfinder_common dependency
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct EthereumAddress(pub H160);
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::MessageToL2")]
-pub struct MessageToL2 {
-    pub from_address: EthereumAddress,
-    pub payload: Vec<Felt>,
-    pub to_address: Felt,
-    pub entry_point_selector: Felt,
-    pub nonce: Felt,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::receipt::ExecutionResources")]
@@ -49,7 +39,6 @@ pub mod execution_resources {
         pub poseidon: u32,
         pub keccak: u32,
         pub output: u32,
-        pub segment_arena: u32,
     }
 }
 
@@ -112,61 +101,15 @@ pub struct ReceiptsRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::Receipts")]
-pub struct Receipts {
-    pub items: Vec<Receipt>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::ReceiptsResponse")]
-pub struct ReceiptsResponse {
-    #[optional]
-    pub id: Option<BlockId>,
-    #[rename(responses)]
-    pub kind: ReceiptsResponseKind,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
-pub enum ReceiptsResponseKind {
-    Receipts(Receipts),
-    Fin(Fin),
+pub enum ReceiptsResponse {
+    Receipt(Receipt),
+    Fin,
 }
 
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self(H160::random_using(rng))
-    }
-}
-
-impl From<Fin> for ReceiptsResponse {
-    fn from(fin: Fin) -> Self {
-        Self {
-            id: None,
-            kind: ReceiptsResponseKind::Fin(fin),
-        }
-    }
-}
-
-impl ReceiptsResponse {
-    pub fn into_fin(self) -> Option<Fin> {
-        self.kind.into_fin()
-    }
-}
-
-impl ReceiptsResponseKind {
-    pub fn into_receipts(self) -> Option<Receipts> {
-        match self {
-            Self::Receipts(r) => Some(r),
-            _ => None,
-        }
-    }
-
-    pub fn into_fin(self) -> Option<Fin> {
-        match self {
-            Self::Fin(f) => Some(f),
-            _ => None,
-        }
     }
 }
 
@@ -205,29 +148,15 @@ impl TryFromProtobuf<proto::receipt::Receipt> for Receipt {
             Declare, DeployAccount, DeprecatedDeploy, Invoke, L1Handler,
         };
 
-        match input.r#type {
-            Some(receipt) => match receipt {
-                Invoke(r) => Ok(Receipt::Invoke(TryFromProtobuf::try_from_protobuf(
-                    r, field_name,
-                )?)),
-                L1Handler(r) => Ok(Receipt::L1Handler(TryFromProtobuf::try_from_protobuf(
-                    r, field_name,
-                )?)),
-                Declare(r) => Ok(Receipt::Declare(TryFromProtobuf::try_from_protobuf(
-                    r, field_name,
-                )?)),
-                DeprecatedDeploy(r) => Ok(Receipt::Deploy(TryFromProtobuf::try_from_protobuf(
-                    r, field_name,
-                )?)),
-                DeployAccount(r) => Ok(Receipt::DeployAccount(TryFromProtobuf::try_from_protobuf(
-                    r, field_name,
-                )?)),
-            },
-            None => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse {field_name}: missing receipt field"),
-            )),
-        }
+        Ok(match proto_field(input.r#type, field_name)? {
+            Invoke(r) => Self::Invoke(TryFromProtobuf::try_from_protobuf(r, field_name)?),
+            L1Handler(r) => Self::L1Handler(TryFromProtobuf::try_from_protobuf(r, field_name)?),
+            Declare(r) => Self::Declare(TryFromProtobuf::try_from_protobuf(r, field_name)?),
+            DeprecatedDeploy(r) => Self::Deploy(TryFromProtobuf::try_from_protobuf(r, field_name)?),
+            DeployAccount(r) => {
+                Self::DeployAccount(TryFromProtobuf::try_from_protobuf(r, field_name)?)
+            }
+        })
     }
 }
 
@@ -248,29 +177,27 @@ impl ToProtobuf<proto::receipt::Receipt> for Receipt {
     }
 }
 
-impl ToProtobuf<proto::receipt::receipts_response::Responses> for ReceiptsResponseKind {
-    fn to_protobuf(self) -> proto::receipt::receipts_response::Responses {
-        use proto::receipt::receipts_response::Responses::{Fin, Receipts};
-        match self {
-            ReceiptsResponseKind::Receipts(r) => Receipts(r.to_protobuf()),
-            ReceiptsResponseKind::Fin(f) => Fin(f.to_protobuf()),
+impl ToProtobuf<proto::receipt::ReceiptsResponse> for ReceiptsResponse {
+    fn to_protobuf(self) -> proto::receipt::ReceiptsResponse {
+        use proto::receipt::receipts_response::ReceiptMessage::{Fin, Receipt};
+        proto::receipt::ReceiptsResponse {
+            receipt_message: Some(match self {
+                Self::Receipt(r) => Receipt(r.to_protobuf()),
+                Self::Fin => Fin(proto::common::Fin {}),
+            }),
         }
     }
 }
 
-impl TryFromProtobuf<proto::receipt::receipts_response::Responses> for ReceiptsResponseKind {
+impl TryFromProtobuf<proto::receipt::ReceiptsResponse> for ReceiptsResponse {
     fn try_from_protobuf(
-        input: proto::receipt::receipts_response::Responses,
+        input: proto::receipt::ReceiptsResponse,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::receipt::receipts_response::Responses::{Fin, Receipts};
-        match input {
-            Receipts(r) => Ok(ReceiptsResponseKind::Receipts(
-                TryFromProtobuf::try_from_protobuf(r, field_name)?,
-            )),
-            Fin(f) => Ok(ReceiptsResponseKind::Fin(
-                TryFromProtobuf::try_from_protobuf(f, field_name)?,
-            )),
-        }
+        use proto::receipt::receipts_response::ReceiptMessage::{Fin, Receipt};
+        Ok(match proto_field(input.receipt_message, field_name)? {
+            Receipt(r) => Self::Receipt(TryFromProtobuf::try_from_protobuf(r, field_name)?),
+            Fin(_) => Self::Fin,
+        })
     }
 }

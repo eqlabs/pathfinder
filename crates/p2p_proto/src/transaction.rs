@@ -1,5 +1,5 @@
-use crate::common::{Address, BlockId, Fin, Hash, Iteration};
-use crate::{proto, ToProtobuf, TryFromProtobuf};
+use crate::common::{Address, Hash, Iteration};
+use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use pathfinder_crypto::Felt;
 
@@ -76,7 +76,6 @@ pub struct Deploy {
     pub class_hash: Hash,
     pub address_salt: Felt,
     pub calldata: Vec<Felt>,
-    pub address: Address,
     pub version: u32,
 }
 
@@ -88,7 +87,7 @@ pub struct DeployAccountV1 {
     pub class_hash: Hash,
     pub nonce: Felt,
     pub address_salt: Felt,
-    pub constructor_calldata: Vec<Felt>,
+    pub calldata: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -179,56 +178,10 @@ pub struct TransactionsRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::transaction::Transactions")]
-pub struct Transactions {
-    pub items: Vec<Transaction>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::transaction::TransactionsResponse")]
-pub struct TransactionsResponse {
-    #[optional]
-    pub id: Option<BlockId>,
-    #[rename(responses)]
-    pub kind: TransactionsResponseKind,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
-pub enum TransactionsResponseKind {
-    Transactions(Transactions),
-    Fin(Fin),
-}
-
-impl From<Fin> for TransactionsResponse {
-    fn from(fin: Fin) -> Self {
-        Self {
-            id: None,
-            kind: TransactionsResponseKind::Fin(fin),
-        }
-    }
-}
-
-impl TransactionsResponse {
-    pub fn into_fin(self) -> Option<Fin> {
-        self.kind.into_fin()
-    }
-}
-
-impl TransactionsResponseKind {
-    pub fn into_transactions(self) -> Option<Transactions> {
-        match self {
-            Self::Transactions(t) => Some(t),
-            _ => None,
-        }
-    }
-
-    pub fn into_fin(self) -> Option<Fin> {
-        match self {
-            Self::Fin(f) => Some(f),
-            _ => None,
-        }
-    }
+pub enum TransactionsResponse {
+    Transaction(Transaction),
+    Fin,
 }
 
 impl ToProtobuf<proto::transaction::Transaction> for Transaction {
@@ -264,13 +217,7 @@ impl TryFromProtobuf<proto::transaction::Transaction> for Transaction {
             DeclareV0, DeclareV1, DeclareV2, DeclareV3, Deploy, DeployAccountV1, DeployAccountV3,
             InvokeV0, InvokeV1, InvokeV3, L1Handler,
         };
-        let txn = input.txn.ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Missing field txn in {field_name}"),
-            )
-        })?;
-        match txn {
+        match proto_field(input.txn, field_name)? {
             DeclareV0(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV0),
             DeclareV1(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV1),
             DeclareV2(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV2),
@@ -292,29 +239,27 @@ impl TryFromProtobuf<proto::transaction::Transaction> for Transaction {
     }
 }
 
-impl ToProtobuf<proto::transaction::transactions_response::Responses> for TransactionsResponseKind {
-    fn to_protobuf(self) -> proto::transaction::transactions_response::Responses {
-        use proto::transaction::transactions_response::Responses::{Fin, Transactions};
-        match self {
-            Self::Transactions(t) => Transactions(t.to_protobuf()),
-            Self::Fin(t) => Fin(t.to_protobuf()),
+impl ToProtobuf<proto::transaction::TransactionsResponse> for TransactionsResponse {
+    fn to_protobuf(self) -> proto::transaction::TransactionsResponse {
+        use proto::transaction::transactions_response::TransactionMessage::{Fin, Transaction};
+        proto::transaction::TransactionsResponse {
+            transaction_message: Some(match self {
+                Self::Transaction(t) => Transaction(t.to_protobuf()),
+                Self::Fin => Fin(proto::common::Fin {}),
+            }),
         }
     }
 }
 
-impl TryFromProtobuf<proto::transaction::transactions_response::Responses>
-    for TransactionsResponseKind
-{
+impl TryFromProtobuf<proto::transaction::TransactionsResponse> for TransactionsResponse {
     fn try_from_protobuf(
-        input: proto::transaction::transactions_response::Responses,
+        input: proto::transaction::TransactionsResponse,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::transaction::transactions_response::Responses::{Fin, Transactions};
-        match input {
-            Transactions(t) => {
-                TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::Transactions)
-            }
-            Fin(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::Fin),
-        }
+        use proto::transaction::transactions_response::TransactionMessage::{Fin, Transaction};
+        Ok(match proto_field(input.transaction_message, field_name)? {
+            Transaction(t) => Self::Transaction(TryFromProtobuf::try_from_protobuf(t, field_name)?),
+            Fin(_) => Self::Fin,
+        })
     }
 }

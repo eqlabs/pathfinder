@@ -1,7 +1,7 @@
 syntax = "proto3";
 import "common.proto";
 
-package starknet.receipts;
+package starknet.receipt;
 
 message MessageToL1 {
   starknet.common.Felt252          from_address = 1;

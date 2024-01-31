@@ -73,21 +73,6 @@ pub enum Direction {
     Backward,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::common::Fin")]
-pub struct Fin {
-    #[optional]
-    pub error: Option<Error>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Dummy)]
-pub enum Error {
-    Busy,
-    TooMuch,
-    Unknown,
-    Pruned,
-}
-
 impl ToProtobuf<proto::common::Felt252> for Felt {
     fn to_protobuf(self) -> proto::common::Felt252 {
         proto::common::Felt252 {
@@ -285,48 +270,6 @@ impl TryFromProtobuf<i32> for Direction {
         Ok(match TryFrom::try_from(input)? {
             Backward => Direction::Backward,
             Forward => Direction::Forward,
-        })
-    }
-}
-
-impl Fin {
-    pub fn ok() -> Self {
-        Self { error: None }
-    }
-
-    pub fn too_much() -> Self {
-        Self {
-            error: Some(Error::TooMuch),
-        }
-    }
-
-    pub fn unknown() -> Self {
-        Self {
-            error: Some(Error::Unknown),
-        }
-    }
-}
-
-impl ToProtobuf<i32> for Error {
-    fn to_protobuf(self) -> i32 {
-        use proto::common::fin::Error::{Busy, Pruned, TooMuch, Unknown};
-        match self {
-            Error::Busy => Busy as i32,
-            Error::TooMuch => TooMuch as i32,
-            Error::Unknown => Unknown as i32,
-            Error::Pruned => Pruned as i32,
-        }
-    }
-}
-
-impl TryFromProtobuf<i32> for Error {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
-        use proto::common::fin::Error::{Busy, Pruned, TooMuch, Unknown};
-        Ok(match TryFrom::try_from(input)? {
-            Busy => Error::Busy,
-            TooMuch => Error::TooMuch,
-            Unknown => Error::Unknown,
-            Pruned => Error::Pruned,
         })
     }
 }
