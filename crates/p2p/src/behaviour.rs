@@ -1,5 +1,4 @@
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::time::Duration;
@@ -7,7 +6,7 @@ use std::time::Duration;
 use crate::peers::{Connectivity, Direction, Peer};
 use crate::recent_peers::RecentPeers;
 use crate::sync::codec;
-use crate::{Config, PeerSet};
+use crate::{peers::PeerSet, Config};
 use anyhow::anyhow;
 use libp2p::core::Endpoint;
 use libp2p::dcutr;
@@ -50,8 +49,6 @@ pub struct Behaviour {
     recent_inbound_direct_peers: RecentPeers,
     /// Recent peers that have connected to us over a relay.
     recent_inbound_relay_peers: RecentPeers,
-    /// Peers connected to our node. Used for closing duplicate connections.
-    connected_peers: HashSet<PeerId>,
     inner: Inner,
 }
 
@@ -97,13 +94,11 @@ impl NetworkBehaviour for Behaviour {
                     "too many inbound relay peers"
                 )));
             }
-        } else {
-            if self.inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
-                tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
-                return Err(ConnectionDenied::new(anyhow!(
-                    "too many inbound direct peers"
-                )));
-            }
+        } else if self.inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
+            tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
+            return Err(ConnectionDenied::new(anyhow!(
+                "too many inbound direct peers"
+            )));
         }
 
         self.inner.handle_established_inbound_connection(
@@ -187,7 +182,6 @@ impl NetworkBehaviour for Behaviour {
                 } else {
                     tracing::debug!(%peer_id, %remaining_established, "Connection closed");
                 }
-                self.connected_peers.remove(&peer_id);
             }
             _ => {}
         }
@@ -299,28 +293,28 @@ impl NetworkBehaviour for Behaviour {
         effective_role: Endpoint,
     ) -> Result<Vec<Multiaddr>, ConnectionDenied> {
         if let Some(peer_id) = maybe_peer {
-            self.peers.upsert(
-                peer_id,
-                |peer| {
-                    if !peer.is_connected() {
-                        peer.connectivity = Connectivity::Dialing;
-                    } else {
-                        // If peer is already connected, this is a redial. The peer is still
-                        // connected.
-                    }
-                },
-                || Peer {
-                    connectivity: Connectivity::Dialing,
-                    direction: if effective_role.is_dialer() {
-                        Direction::Outbound
-                    } else {
-                        Direction::Inbound
+            if effective_role.is_dialer() {
+                // This really is an outbound connection, and not a connection that requires
+                // hole-punching.
+                self.peers.upsert(
+                    peer_id,
+                    |peer| {
+                        if !peer.is_connected() {
+                            peer.connectivity = Connectivity::Dialing;
+                        } else {
+                            // If peer is already connected, this is a redial. The peer is still
+                            // connected.
+                        }
                     },
-                    evicted: false,
-                    useful: true,
-                    relayed: false,
-                },
-            );
+                    || Peer {
+                        connectivity: Connectivity::Dialing,
+                        direction: Direction::Outbound,
+                        evicted: false,
+                        useful: true,
+                        relayed: false,
+                    },
+                );
+            }
         }
         self.inner.handle_pending_outbound_connection(
             connection_id,
@@ -384,9 +378,8 @@ impl Behaviour {
             Self {
                 recent_inbound_direct_peers: RecentPeers::new(cfg.direct_connection_timeout),
                 recent_inbound_relay_peers: RecentPeers::new(cfg.relay_connection_timeout),
+                peers: PeerSet::new(cfg.eviction_timeout),
                 cfg,
-                peers: Default::default(),
-                connected_peers: Default::default(),
                 inner: Inner {
                     relay,
                     autonat: autonat::Behaviour::new(peer_id, Default::default()),
@@ -430,11 +423,15 @@ impl Behaviour {
 
     fn check_duplicate_connection(&mut self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         // Only allow one connection per peer.
-        if self.connected_peers.contains(&peer_id) {
+        if self
+            .peers
+            .get(peer_id)
+            .map(|peer| peer.is_connected())
+            .unwrap_or(false)
+        {
             tracing::debug!(%peer_id, "Peer already connected, closing");
             return Err(ConnectionDenied::new(anyhow!("duplicate connection")));
         }
-        self.connected_peers.insert(peer_id);
         Ok(())
     }
 

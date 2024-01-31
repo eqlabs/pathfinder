@@ -49,8 +49,8 @@ pub enum Direction {
     Outbound,
 }
 
-#[derive(Debug, Default)]
-pub struct PeerSet {
+#[derive(Debug)]
+pub(crate) struct PeerSet {
     peers: HashMap<PeerId, Peer>,
     /// How long to keep disconnected peers in the set.
     retention_period: Duration,
@@ -93,10 +93,6 @@ impl PeerSet {
 
     pub fn get(&self, peer_id: PeerId) -> Option<&Peer> {
         self.peers.get(&peer_id)
-    }
-
-    pub fn contains(&self, peer_id: PeerId) -> bool {
-        self.peers.contains_key(&peer_id)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PeerId, Peer)> + '_ {

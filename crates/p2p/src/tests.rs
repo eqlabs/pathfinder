@@ -236,6 +236,7 @@ async fn periodic_bootstrap() {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -303,6 +304,7 @@ async fn reconnect_too_quickly() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
 
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -398,6 +400,7 @@ async fn duplicate_connection() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let keypair = Keypair::generate_ed25519();
     let mut peer1 = TestPeer::new(cfg.clone(), keypair.clone());
@@ -478,6 +481,7 @@ async fn max_inbound_connections() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -594,6 +598,7 @@ async fn ip_whitelist() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -620,6 +625,7 @@ async fn ip_whitelist() {
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
