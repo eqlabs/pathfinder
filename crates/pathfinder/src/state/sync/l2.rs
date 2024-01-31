@@ -146,6 +146,18 @@ where
                             storage.clone(),
                         )));
                     }
+
+                    // Poll the head until it changes. This query is very quick and cheap to perform.
+                    // Once its changed we exit the loop to try download the next block.
+                    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                    loop {
+                        let (_, hash) = sequencer.head().await.context("Polling head of chain")?;
+                        if hash != head.unwrap_or_default().1 {
+                            break;
+                        }
+                        interval.tick().await;
+                    }
                 }
                 DownloadBlock::Reorg => {
                     head = match head {
