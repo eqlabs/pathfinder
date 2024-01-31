@@ -1,17 +1,18 @@
 use std::{
     collections::HashMap,
+    net::IpAddr,
     time::{Duration, Instant},
 };
 
-use libp2p::PeerId;
+use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 
 #[derive(Debug, Clone)]
 pub struct Peer {
     pub connectivity: Connectivity,
     pub direction: Direction,
+    pub addr: Option<Multiaddr>,
     pub evicted: bool,
     pub useful: bool,
-    pub relayed: bool,
     // TODO are we still able to maintain info about peers' sync heads?
     // sync_status: Option<p2p_proto_v0::sync::Status>,
 }
@@ -24,23 +25,45 @@ impl Peer {
     pub fn is_inbound(&self) -> bool {
         matches!(self.direction, Direction::Inbound)
     }
+
+    pub fn is_relayed(&self) -> bool {
+        self.addr
+            .as_ref()
+            .map_or(false, |addr| addr.iter().any(|p| p == Protocol::P2pCircuit))
+    }
+
+    pub fn ip_addr(&self) -> Option<IpAddr> {
+        self.addr.as_ref().and_then(|addr| {
+            addr.iter().find_map(|p| match p {
+                Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+                Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                _ => None,
+            })
+        })
+    }
+
+    pub fn connected_at(&self) -> Option<Instant> {
+        match self.connectivity {
+            Connectivity::Connected { connected_at } => Some(connected_at),
+            Connectivity::Disconnected { connected_at, .. } => connected_at,
+            Connectivity::Dialing => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Connectivity {
     Dialing,
-    Connected(Instant),
-    Disconnected(Instant),
-}
-
-impl Connectivity {
-    pub fn connected() -> Self {
-        Self::Connected(Instant::now())
-    }
-
-    pub fn disconnected() -> Self {
-        Self::Disconnected(Instant::now())
-    }
+    Connected {
+        /// When the peer was connected.
+        connected_at: Instant,
+    },
+    Disconnected {
+        /// When the peer was connected, if he was connected.
+        connected_at: Option<Instant>,
+        /// When the peer was disconnected.
+        disconnected_at: Instant,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,9 +103,9 @@ impl PeerSet {
     ) {
         // Remove peers that have been disconnected for too long.
         self.peers.retain(|_, peer| match peer.connectivity {
-            Connectivity::Disconnected(when) => {
-                Instant::now().duration_since(when) < self.retention_period
-            }
+            Connectivity::Disconnected {
+                disconnected_at, ..
+            } => Instant::now().duration_since(disconnected_at) < self.retention_period,
             _ => true,
         });
         self.peers
