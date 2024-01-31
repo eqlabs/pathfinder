@@ -114,15 +114,12 @@ where
         };
 
         let t_block = std::time::Instant::now();
-        // Next block and state update which we can get for free when exiting poll pending mode
-        let mut next_block = None;
-        let mut next_state_update = None;
+
+        let mut pending_handle = None;
 
         let (block, commitments) = loop {
             match download_block(
                 next,
-                // Reuse the next full block if we got it for free when polling pending
-                std::mem::take(&mut next_block),
                 chain,
                 chain_id,
                 head_meta.map(|h| h.1),
@@ -140,19 +137,26 @@ where
                         // Not implemented yet for P2P
                         tracing::info!("Skipping the pending blocks polling");
                         tokio::time::sleep(PENDING_POLL_INTERVAL).await;
-                    } else {
-                        tracing::trace!("Polling pending blocks");
-                        let head =
-                            head_meta.expect("Head hash should exist when entering pending mode");
-                        (next_block, next_state_update) = pending::poll_pending(
+                    } else if pending_handle.is_none() {
+                        tracing::info!("At head of chain, enabling polling of pending data");
+                        pending_handle = Some(tokio::spawn(pending::poll_pending(
                             tx_event.clone(),
-                            &sequencer,
-                            (head.1, head.2),
+                            sequencer.clone(),
                             PENDING_POLL_INTERVAL,
                             storage.clone(),
-                        )
-                        .await
-                        .context("Polling pending block")?;
+                        )));
+                    }
+
+                    // Poll the head until it changes. This query is very quick and cheap to perform.
+                    // Once its changed we exit the loop to try download the next block.
+                    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                    loop {
+                        let (_, hash) = sequencer.head().await.context("Polling head of chain")?;
+                        if hash != head.unwrap_or_default().1 {
+                            break;
+                        }
+                        interval.tick().await;
                     }
                 }
                 DownloadBlock::Reorg => {
@@ -211,15 +215,10 @@ where
         let block_hash = block.block_hash;
         let t_update = std::time::Instant::now();
 
-        let state_update = match next_state_update {
-            // Reuse the next full state update if we got it for free when polling pending
-            Some(state_update) if state_update.block_hash == block_hash => state_update,
-            // We were unlucky or poll pending is disabled
-            Some(_) | None => sequencer
-                .state_update(block_hash.into())
-                .await
-                .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?,
-        };
+        let state_update = sequencer
+            .state_update(block_hash.into())
+            .await
+            .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?;
 
         anyhow::ensure!(
             state_update.block_hash != BlockHash::ZERO,
@@ -424,8 +423,6 @@ pub enum BlockValidationMode {
 
 async fn download_block(
     block_number: BlockNumber,
-    // Poll pending could exit when it encountered a finalized block, so we'd like to reuse it
-    next_block: Option<Block>,
     chain: Chain,
     chain_id: ChainId,
     prev_block_hash: Option<BlockHash>,
@@ -436,12 +433,8 @@ async fn download_block(
         error::KnownStarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
     };
 
-    let result = match next_block {
-        // Reuse a finalized block downloaded before pending mode exited
-        Some(block) if block.block_number == block_number => Ok(MaybePendingBlock::Block(block)),
-        // Bad luck or poll pending is disabled
-        Some(_) | None => sequencer.block(block_number.into()).await,
-    };
+    // TODO: merge block and state update call.
+    let result = sequencer.block(block_number.into()).await;
 
     let result = match result {
         Ok(MaybePendingBlock::Block(block)) => {
@@ -568,7 +561,6 @@ async fn reorg(
 
         match download_block(
             previous_block_number,
-            None,
             chain,
             chain_id,
             Some(previous.0),
