@@ -3,8 +3,6 @@ use std::borrow::Cow;
 use anyhow::Context;
 use pathfinder_common::StarknetVersion;
 
-pub const COMPILER_VERSION: &str = env!("SIERRA_CASM_COMPILER_VERSION");
-
 /// Compile a Sierra class definition into CASM.
 ///
 /// The class representation expected by the compiler doesn't match the representation used

@@ -23,10 +23,3 @@ serde_json = { workspace = true, features = [
 
 [dev-dependencies]
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-
-[build-dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }

@@ -323,7 +323,6 @@ mod tests {
                 CAIRO_1_1_0_BALANCE_SIERRA_JSON,
                 &casm_hash!("0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"),
                 CAIRO_1_1_0_BALANCE_CASM_JSON,
-                "cairo-lang-starknet 1.1.0",
             )
             .expect("insert class");
 
