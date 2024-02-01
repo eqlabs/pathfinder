@@ -30,7 +30,8 @@ pub struct MainLoop {
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
-    // TODO What do we need this for?
+    /// Match dial commands with their senders so that we can notify the caller when the dial
+    /// succeeds or fails.
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
