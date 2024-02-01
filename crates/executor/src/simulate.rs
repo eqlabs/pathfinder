@@ -1,13 +1,17 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
 
 use blockifier::{
     state::{cached_state::CachedState, errors::StateError, state_api::State},
     transaction::transaction_execution::Transaction,
     transaction::transactions::ExecutableTransaction,
 };
+use cached::{Cached, SizedCache};
 use pathfinder_common::{
-    CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
-    TransactionHash,
+    BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
+    StorageValue, TransactionHash,
 };
 use primitive_types::U256;
 
@@ -26,6 +30,17 @@ use super::{
     execution_state::ExecutionState,
     types::{FeeEstimate, TransactionSimulation, TransactionTrace},
 };
+
+#[derive(Debug, Clone)]
+pub struct TraceCache(Arc<Mutex<SizedCache<BlockHash, Traces>>>);
+
+type Traces = Vec<(TransactionHash, TransactionTrace)>;
+
+impl Default for TraceCache {
+    fn default() -> Self {
+        Self(Arc::new(Mutex::new(SizedCache::with_size(128))))
+    }
+}
 
 pub fn simulate(
     mut execution_state: ExecutionState<'_>,
@@ -101,57 +116,28 @@ pub fn simulate(
     Ok(simulations)
 }
 
-pub fn trace_one(
+pub fn trace(
     mut execution_state: ExecutionState<'_>,
-    transactions: Vec<Transaction>,
-    target_transaction_hash: TransactionHash,
-    charge_fee: bool,
-    validate: bool,
-) -> Result<TransactionTrace, TransactionExecutionError> {
-    let (mut state, block_context) = execution_state.starknet_state()?;
-
-    for (transaction_idx, tx) in transactions.into_iter().enumerate() {
-        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
-
-        let hash = transaction_hash(&tx);
-        let tx_type = transaction_type(&tx);
-        let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
-
-        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = tx
-            .execute(&mut tx_state, &block_context, charge_fee, validate)
-            .map_err(|e| TransactionExecutionError::ExecutionError {
-                transaction_index: transaction_idx,
-                error: e.to_string(),
-            })?;
-        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
-        tx_state.commit();
-
-        let trace = to_trace(tx_type, tx_info, state_diff);
-        if hash == target_transaction_hash {
-            return Ok(trace);
-        }
-    }
-
-    Err(TransactionExecutionError::Internal(anyhow::anyhow!(
-        "Transaction hash not found: {}",
-        target_transaction_hash
-    )))
-}
-
-pub fn trace_all(
-    mut execution_state: ExecutionState<'_>,
+    cache: &TraceCache,
+    block_hash: BlockHash,
     transactions: Vec<Transaction>,
     charge_fee: bool,
     validate: bool,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let mut ret = Vec::with_capacity(transactions.len());
+    let cached = { cache.0.lock().unwrap().cache_get(&block_hash).cloned() };
+    if let Some(cached) = cached {
+        tracing::trace!(block=%block_hash, "trace cache hit");
+        return Ok(cached);
+    }
+
+    tracing::trace!(block=%block_hash, "trace cache miss");
+    let mut traces = Vec::with_capacity(transactions.len());
     for (transaction_idx, tx) in transactions.into_iter().enumerate() {
+        let hash = transaction_hash(&tx);
         let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
 
-        let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
 
@@ -166,10 +152,14 @@ pub fn trace_all(
         tx_state.commit();
 
         let trace = to_trace(tx_type, tx_info, state_diff);
-        ret.push((hash, trace));
+        traces.push((hash, trace));
     }
-
-    Ok(ret)
+    cache
+        .0
+        .lock()
+        .unwrap()
+        .cache_set(block_hash, traces.clone());
+    Ok(traces)
 }
 
 enum TransactionType {

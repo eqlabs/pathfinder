@@ -1,4 +1,5 @@
 use clap::{ArgAction, CommandFactory, Parser};
+#[cfg(feature = "p2p")]
 use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
