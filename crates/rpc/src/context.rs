@@ -4,6 +4,7 @@ use crate::pending::PendingData;
 use crate::pending::PendingWatcher;
 use crate::SyncState;
 use pathfinder_common::ChainId;
+use pathfinder_executor::TraceCache;
 use pathfinder_storage::Storage;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use tokio::sync::watch as tokio_watch;
 
 #[derive(Clone)]
 pub struct RpcContext {
-    // TODO Add the cache here, should map TransactionHash -> TransactionTrace
+    pub cache: TraceCache,
     pub storage: Storage,
     pub execution_storage: Storage,
     pub pending_data: PendingWatcher,
@@ -37,6 +38,7 @@ impl RpcContext {
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
         Self {
+            cache: Default::default(),
             storage,
             execution_storage,
             sync_status,
