@@ -80,13 +80,13 @@ impl NetworkBehaviour for Behaviour {
         // Limit the number of inbound peer connections. Different limits apply to direct peers
         // and peers connecting over a relay.
         if is_relayed {
-            if self.inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
+            if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound relay peers"
                 )));
             }
-        } else if self.inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
+        } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
             tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
             return Err(ConnectionDenied::new(anyhow!(
                 "too many inbound direct peers"
@@ -287,13 +287,13 @@ impl NetworkBehaviour for Behaviour {
         // The check must be repeated when the connection is established due to race conditions,
         // since multiple peers may be attempting to connect at the same time.
         if is_relayed {
-            if self.inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
+            if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound relay peers"
                 )));
             }
-        } else if self.inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
+        } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
             tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
             return Err(ConnectionDenied::new(anyhow!(
                 "too many inbound direct peers"
@@ -485,7 +485,7 @@ impl Behaviour {
     }
 
     /// Number of inbound non-relayed peers.
-    fn inbound_direct_peers(&self) -> usize {
+    fn num_inbound_direct_peers(&self) -> usize {
         self.peers
             .iter()
             .filter(|(_, peer)| peer.is_inbound() && !peer.is_relayed())
@@ -493,7 +493,7 @@ impl Behaviour {
     }
 
     /// Number of inbound relayed peers.
-    fn inbound_relayed_peers(&self) -> usize {
+    fn num_inbound_relayed_peers(&self) -> usize {
         self.peers
             .iter()
             .filter(|(_, peer)| peer.is_inbound() && peer.is_relayed())
