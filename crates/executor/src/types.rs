@@ -22,7 +22,7 @@ pub enum PriceUnit {
     Fri,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum EntryPointType {
     Constructor,
     External,
@@ -41,7 +41,7 @@ impl TransactionSimulation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TransactionTrace {
     Declare(DeclareTransactionTrace),
     DeployAccount(DeployAccountTransactionTrace),
@@ -61,14 +61,14 @@ impl TransactionTrace {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DeclareTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
     pub state_diff: StateDiff,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DeployAccountTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub constructor_invocation: Option<FunctionInvocation>,
@@ -76,13 +76,13 @@ pub struct DeployAccountTransactionTrace {
     pub state_diff: StateDiff,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExecuteInvocation {
     FunctionInvocation(Option<FunctionInvocation>),
     RevertedReason(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InvokeTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub execute_invocation: ExecuteInvocation,
@@ -90,26 +90,26 @@ pub struct InvokeTransactionTrace {
     pub state_diff: StateDiff,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct L1HandlerTransactionTrace {
     pub function_invocation: Option<FunctionInvocation>,
     pub state_diff: StateDiff,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CallType {
     Call,
     Delegate,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Event {
     pub order: i64,
     pub data: Vec<Felt>,
     pub keys: Vec<Felt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionInvocation {
     pub calldata: Vec<Felt>,
     pub contract_address: ContractAddress,
@@ -125,7 +125,7 @@ pub struct FunctionInvocation {
     pub execution_resources: ExecutionResources,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MsgToL1 {
     pub order: usize,
     pub payload: Vec<Felt>,
@@ -133,7 +133,7 @@ pub struct MsgToL1 {
     pub from_address: Felt,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct StateDiff {
     pub storage_diffs: BTreeMap<ContractAddress, Vec<StorageDiff>>,
     pub deployed_contracts: Vec<DeployedContract>,
@@ -143,31 +143,31 @@ pub struct StateDiff {
     pub replaced_classes: Vec<ReplacedClass>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct StorageDiff {
     pub key: StorageAddress,
     pub value: StorageValue,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DeployedContract {
     pub address: ContractAddress,
     pub class_hash: ClassHash,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DeclaredSierraClass {
     pub class_hash: SierraHash,
     pub compiled_class_hash: CasmHash,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ReplacedClass {
     pub contract_address: ContractAddress,
     pub class_hash: ClassHash,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ExecutionResources {
     pub steps: usize,
     pub memory_holes: usize,
