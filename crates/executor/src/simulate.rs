@@ -32,7 +32,9 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub struct TraceCache(Arc<Mutex<SizedCache<BlockHash, Vec<(TransactionHash, TransactionTrace)>>>>);
+pub struct TraceCache(Arc<Mutex<SizedCache<BlockHash, Traces>>>);
+
+type Traces = Vec<(TransactionHash, TransactionTrace)>;
 
 impl Default for TraceCache {
     fn default() -> Self {
@@ -128,7 +130,7 @@ pub fn trace(
     match traces {
         Some(traces) => {
             tracing::trace!("transaction trace cache hit for block {:?}", block_hash);
-            return Ok(traces);
+            Ok(traces)
         }
         None => {
             tracing::trace!("transaction trace cache hit for block {:?}", block_hash);
