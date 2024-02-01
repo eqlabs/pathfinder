@@ -200,7 +200,7 @@ pub async fn trace_transaction(
                     })
                     .ok_or_else(|| {
                         TraceTransactionError::Internal(anyhow::anyhow!(
-                            "Transaction hash not found: {}",
+                            "Transaction trace missing from block: {}",
                             input.transaction_hash
                         ))
                     })
