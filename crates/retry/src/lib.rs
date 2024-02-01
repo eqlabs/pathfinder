@@ -118,9 +118,7 @@ impl From<Strategy> for MaybeLimited {
                 .unwrap_or(u64::MAX),
         );
         let backoff = match s.max_delay {
-            Some(max_delay) => {
-                backoff.max_delay(max_delay.checked_mul(FACTOR).unwrap_or(Duration::MAX))
-            }
+            Some(max_delay) => backoff.max_delay(max_delay),
             None => backoff,
         };
 
