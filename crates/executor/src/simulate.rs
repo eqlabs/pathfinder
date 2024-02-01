@@ -38,7 +38,7 @@ type Traces = Vec<(TransactionHash, TransactionTrace)>;
 
 impl Default for TraceCache {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(SizedCache::with_size(1024))))
+        Self(Arc::new(Mutex::new(SizedCache::with_size(128))))
     }
 }
 
