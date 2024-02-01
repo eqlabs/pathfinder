@@ -131,37 +131,35 @@ pub fn trace(
         tracing::trace!(block=%block_hash, "trace cache hit");
         return Ok(cached);
     }
-        None => {
-            tracing::trace!(block=%block_hash, "trace cache miss");
-            let mut traces = Vec::with_capacity(transactions.len());
-            for (transaction_idx, tx) in transactions.into_iter().enumerate() {
-                let hash = transaction_hash(&tx);
-                let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
 
-                let tx_type = transaction_type(&tx);
-                let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
+    tracing::trace!(block=%block_hash, "trace cache miss");
+    let mut traces = Vec::with_capacity(transactions.len());
+    for (transaction_idx, tx) in transactions.into_iter().enumerate() {
+        let hash = transaction_hash(&tx);
+        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
 
-                let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-                let tx_info = tx
-                    .execute(&mut tx_state, &block_context, charge_fee, validate)
-                    .map_err(|e| TransactionExecutionError::ExecutionError {
-                        transaction_index: transaction_idx,
-                        error: e.to_string(),
-                    })?;
-                let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
-                tx_state.commit();
+        let tx_type = transaction_type(&tx);
+        let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
 
-                let trace = to_trace(tx_type, tx_info, state_diff);
-                traces.push((hash, trace));
-            }
-            cache
-                .0
-                .lock()
-                .unwrap()
-                .cache_set(block_hash, traces.clone());
-            Ok(traces)
-        }
+        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
+        let tx_info = tx
+            .execute(&mut tx_state, &block_context, charge_fee, validate)
+            .map_err(|e| TransactionExecutionError::ExecutionError {
+                transaction_index: transaction_idx,
+                error: e.to_string(),
+            })?;
+        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
+        tx_state.commit();
+
+        let trace = to_trace(tx_type, tx_info, state_diff);
+        traces.push((hash, trace));
     }
+    cache
+        .0
+        .lock()
+        .unwrap()
+        .cache_set(block_hash, traces.clone());
+    Ok(traces)
 }
 
 enum TransactionType {
