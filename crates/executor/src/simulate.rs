@@ -126,12 +126,11 @@ pub fn trace(
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let traces = { cache.0.lock().unwrap().cache_get(&block_hash).cloned() };
-    match traces {
-        Some(traces) => {
-            tracing::trace!("transaction trace cache hit for block {:?}", block_hash);
-            Ok(traces)
-        }
+    let cached = { cache.0.lock().unwrap().cache_get(&block_hash).cloned() };
+    if let Some(cached) = cached {
+        tracing::trace!(block=%block_hash, "trace cache hit");
+        return Ok(cached);
+    }
         None => {
             tracing::trace!("transaction trace cache hit for block {:?}", block_hash);
             let mut traces = Vec::with_capacity(transactions.len());
