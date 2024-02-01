@@ -397,8 +397,8 @@ where
     use std::num::NonZeroU64;
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
-        .factor(NonZeroU64::new(15).unwrap())
-        .max_delay(std::time::Duration::from_secs(10 * 60))
+        .factor(NonZeroU64::new(1).unwrap())
+        .max_delay(std::time::Duration::from_secs(10))
         .when(retry_condition)
         .await
 }
@@ -594,9 +594,9 @@ mod tests {
             );
 
             // The retry loops forever, so wrap it in a timeout and check the counter.
-            // 5 retries = 465s
-            // 6 retries = 945s
-            tokio::time::timeout(Duration::from_secs(500), fut)
+            // 4 retries = 2 + 4 + 8 + 10 = 24 seconds
+            // 5 retries = 2 + 4 + 8 + 10 + 10 = 34 seconds
+            tokio::time::timeout(Duration::from_secs(30), fut)
                 .await
                 .unwrap_err();
 
