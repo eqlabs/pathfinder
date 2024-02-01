@@ -1,3 +1,5 @@
+use crate::peers::Peer;
+
 use super::{behaviour, Command, Event, TestCommand, TestEvent};
 use libp2p::{
     gossipsub,
@@ -5,7 +7,7 @@ use libp2p::{
     swarm::SwarmEvent,
     PeerId,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone)]
@@ -24,6 +26,15 @@ impl Client {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::_Test(TestCommand::GetPeersFromDHT(sender)))
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
+    pub async fn get_connected_peers(&self) -> HashMap<PeerId, Peer> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::_Test(TestCommand::GetConnectedPeers(sender)))
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
@@ -74,6 +85,19 @@ pub(super) async fn handle_command(
                 })
                 .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
                 .collect::<HashSet<_>>();
+            sender.send(peers).expect("Receiver not to be dropped")
+        }
+        TestCommand::GetConnectedPeers(sender) => {
+            let peers = behavior
+                .peers()
+                .filter_map(|(peer_id, peer)| {
+                    if peer.is_connected() {
+                        Some((peer_id, peer.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             sender.send(peers).expect("Receiver not to be dropped")
         }
     }

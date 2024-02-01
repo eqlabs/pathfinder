@@ -1,7 +1,6 @@
 #![deny(rust_2018_idioms)]
 
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
@@ -18,13 +17,13 @@ use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
-use tokio::sync::{mpsc, oneshot, RwLock};
+use peers::Peer;
+use tokio::sync::{mpsc, oneshot};
 
 mod behaviour;
 pub mod client;
 mod main_loop;
 mod peers;
-mod recent_peers;
 mod sync;
 #[cfg(test)]
 mod test_utils;
@@ -34,7 +33,6 @@ mod transport;
 
 pub use client::peer_agnostic::PeerData;
 pub use libp2p;
-pub use peers::Peers;
 pub use sync::protocol::PROTOCOLS;
 
 use client::peer_aware::Client;
@@ -42,12 +40,7 @@ use main_loop::MainLoop;
 
 pub use behaviour::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
 
-pub fn new(
-    keypair: Keypair,
-    peers: Arc<RwLock<peers::Peers>>,
-    cfg: Config,
-    chain_id: ChainId,
-) -> (Client, EventReceiver, MainLoop) {
+pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id, cfg.clone());
@@ -74,7 +67,7 @@ pub fn new(
     (
         Client::new(command_sender, local_peer_id),
         event_receiver,
-        MainLoop::new(swarm, command_receiver, event_sender, peers, cfg, chain_id),
+        MainLoop::new(swarm, command_receiver, event_sender, cfg, chain_id),
     )
 }
 
@@ -88,7 +81,9 @@ pub struct Config {
     /// Maximum number of direct (non-relayed) peers.
     pub max_inbound_direct_peers: usize,
     /// Maximum number of relayed peers.
-    pub max_inbound_relay_peers: usize,
+    pub max_inbound_relayed_peers: usize,
+    /// How long to prevent evicted peers from reconnecting.
+    pub eviction_timeout: Duration,
     pub ip_whitelist: Vec<IpNet>,
     pub bootstrap: BootstrapConfig,
 }
@@ -103,9 +98,10 @@ impl Config {
             direct_connection_timeout: Duration::from_secs(30),
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers,
-            max_inbound_relay_peers,
+            max_inbound_relayed_peers: max_inbound_relay_peers,
             ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
             bootstrap,
+            eviction_timeout: Duration::from_secs(15 * 60),
         }
     }
 }
@@ -194,6 +190,7 @@ enum Command {
 #[derive(Debug)]
 pub enum TestCommand {
     GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
+    GetConnectedPeers(oneshot::Sender<HashMap<PeerId, Peer>>),
 }
 
 #[derive(Debug)]

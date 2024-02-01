@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::sync::Arc;
 
 use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
 use libp2p::gossipsub::{self, IdentTopic};
@@ -17,11 +16,10 @@ use p2p_proto::transaction::TransactionsResponse;
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use p2p_stream::{self, OutboundRequestId};
 use pathfinder_common::ChainId;
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
 
 use crate::behaviour;
-use crate::peers;
 #[cfg(test)]
 use crate::test_utils;
 use crate::Config;
@@ -32,7 +30,8 @@ pub struct MainLoop {
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
-    peers: Arc<RwLock<peers::Peers>>,
+    /// Match dial commands with their senders so that we can notify the caller when the dial
+    /// succeeds or fails.
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
@@ -78,7 +77,6 @@ impl MainLoop {
         swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
-        peers: Arc<RwLock<peers::Peers>>,
         cfg: Config,
         chain_id: ChainId,
     ) -> Self {
@@ -87,7 +85,6 @@ impl MainLoop {
             swarm,
             command_receiver,
             event_sender,
-            peers,
             pending_dials: Default::default(),
             pending_sync_requests: Default::default(),
             pending_queries: Default::default(),
@@ -137,8 +134,17 @@ impl MainLoop {
                         })
                         .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
                         .collect::<HashSet<_>>();
-                    let guard = self.peers.read().await;
-                    let connected = guard.connected().collect::<Vec<_>>();
+                    let connected = self
+                        .swarm
+                        .behaviour_mut()
+                        .peers()
+                        .filter_map(|(peer_id, peer)| {
+                            if peer.is_connected() {
+                                Some(peer_id)
+                            } else {
+                                None
+                            }
+                        }).collect::<Vec<_>>();
 
                     tracing::info!(
                         "Peer status: me {}, connected {:?}, dht {:?}",
@@ -170,8 +176,6 @@ impl MainLoop {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
-                self.peers.write().await.peer_connected(&peer_id);
-
                 if endpoint.is_dialer() {
                     if let Some(sender) = self.pending_dials.remove(&peer_id) {
                         let _ = sender.send(Ok(()));
@@ -193,10 +197,6 @@ impl MainLoop {
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = peer_id {
-                    self.peers.write().await.peer_dial_error(&peer_id);
-
-                    tracing::debug!(%peer_id, %error, "Error while dialing peer");
-
                     if let Some(sender) = self.pending_dials.remove(&peer_id) {
                         let _ = sender.send(Err(error.into()));
                     }
@@ -209,15 +209,11 @@ impl MainLoop {
                 ..
             } => {
                 if num_established == 0 {
-                    self.peers.write().await.peer_disconnected(&peer_id);
-                    tracing::debug!(%peer_id, "Fully disconnected from");
                     send_test_event(
                         &self.event_sender,
                         TestEvent::ConnectionClosed { remote: peer_id },
                     )
                     .await;
-                } else {
-                    tracing::debug!(%peer_id, other_connections_for_this_peer=%num_established, "Connection closed");
                 }
             }
             SwarmEvent::Dialing {
@@ -226,7 +222,6 @@ impl MainLoop {
                 peer_id: Some(peer_id),
                 connection_id: _, // TODO consider tracking connection ids for peers
             } => {
-                self.peers.write().await.peer_dialing(&peer_id);
                 tracing::debug!(%peer_id, "Dialing peer");
             }
             // ===========================

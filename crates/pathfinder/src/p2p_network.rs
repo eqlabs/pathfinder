@@ -1,12 +1,9 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use p2p::client::peer_agnostic;
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr};
-use p2p::{HeadRx, HeadTx, Peers};
+use p2p::{HeadRx, HeadTx};
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
-use tokio::sync::RwLock;
 use tracing::Instrument;
 
 pub mod client;
@@ -15,12 +12,7 @@ mod sync_handlers;
 use sync_handlers::{get_bodies, get_events, get_headers, get_receipts, get_transactions};
 
 // Silence clippy
-pub type P2PNetworkHandle = (
-    Arc<RwLock<Peers>>,
-    peer_agnostic::Client,
-    HeadRx,
-    tokio::task::JoinHandle<()>,
-);
+pub type P2PNetworkHandle = (peer_agnostic::Client, HeadRx, tokio::task::JoinHandle<()>);
 
 pub struct P2PContext {
     pub cfg: p2p::Config,
@@ -49,9 +41,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "🖧 Starting P2P");
 
-    let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
-    let (p2p_client, mut p2p_events, p2p_main_loop) =
-        p2p::new(keypair, peers.clone(), cfg, chain_id);
+    let (p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(keypair, cfg, chain_id);
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");
@@ -129,8 +119,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     };
 
     Ok((
-        peers.clone(),
-        peer_agnostic::Client::new(p2p_client, block_propagation_topic, peers),
+        peer_agnostic::Client::new(p2p_client, block_propagation_topic),
         rx,
         join_handle,
     ))

@@ -1,7 +1,6 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -18,17 +17,16 @@ use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
 use rstest::rstest;
-use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
-use crate::{BootstrapConfig, Config, Event, EventReceiver, Peers, TestEvent};
+use crate::peers::Peer;
+use crate::{BootstrapConfig, Config, Event, EventReceiver, TestEvent};
 
 #[allow(dead_code)]
 #[derive(Debug)]
 struct TestPeer {
     pub keypair: Keypair,
     pub peer_id: PeerId,
-    pub peers: Arc<RwLock<Peers>>,
     pub client: crate::Client,
     pub event_receiver: crate::EventReceiver,
     pub main_loop_jh: JoinHandle<()>,
@@ -38,14 +36,12 @@ impl TestPeer {
     #[must_use]
     pub fn new(cfg: Config, keypair: Keypair) -> Self {
         let peer_id = keypair.public().to_peer_id();
-        let peers: Arc<RwLock<Peers>> = Default::default();
         let (client, event_receiver, main_loop) =
-            crate::new(keypair.clone(), peers.clone(), cfg, ChainId::GOERLI_TESTNET);
+            crate::new(keypair.clone(), cfg, ChainId::GOERLI_TESTNET);
         let main_loop_jh = tokio::spawn(main_loop.run());
         Self {
             keypair,
             peer_id,
-            peers,
             client,
             event_receiver,
             main_loop_jh,
@@ -78,13 +74,8 @@ impl TestPeer {
     }
 
     /// Get peer IDs of the connected peers
-    pub async fn connected(&self) -> HashSet<PeerId> {
-        self.peers
-            .read()
-            .await
-            .connected()
-            .map(Clone::clone)
-            .collect()
+    pub async fn connected(&self) -> HashMap<PeerId, Peer> {
+        self.client.for_test().get_connected_peers().await
     }
 }
 
@@ -133,6 +124,10 @@ async fn wait_for_event<T: Debug + Send + 'static>(
     None
 }
 
+async fn exhaust_events(event_receiver: &mut EventReceiver) {
+    while event_receiver.try_recv().is_ok() {}
+}
+
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall
 fn consume_events(mut event_receiver: EventReceiver) {
@@ -170,7 +165,7 @@ async fn client_to_server() -> (TestPeer, TestPeer) {
 async fn dial() {
     let _ = env_logger::builder().is_test(true).try_init();
     // tokio::time::pause() does not make a difference
-    let peer1 = TestPeer::default();
+    let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
     let addr2 = peer2.start_listening().await.unwrap();
@@ -178,11 +173,13 @@ async fn dial() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    let peers_of1 = peer1.connected().await;
-    let peers_of2 = peer2.connected().await;
+    exhaust_events(&mut peer1.event_receiver).await;
 
-    assert_eq!(peers_of1, [peer2.peer_id].into());
-    assert_eq!(peers_of2, [peer1.peer_id].into());
+    let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
+    let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
+
+    assert_eq!(peers_of1, vec![peer2.peer_id]);
+    assert_eq!(peers_of2, vec![peer1.peer_id]);
 }
 
 #[test_log::test(tokio::test)]
@@ -197,11 +194,13 @@ async fn disconnect() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    let peers_of1 = peer1.connected().await;
-    let peers_of2 = peer2.connected().await;
+    exhaust_events(&mut peer1.event_receiver).await;
 
-    assert_eq!(peers_of1, [peer2.peer_id].into());
-    assert_eq!(peers_of2, [peer1.peer_id].into());
+    let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
+    let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
+
+    assert_eq!(peers_of1, vec![peer2.peer_id]);
+    assert_eq!(peers_of2, vec![peer1.peer_id]);
 
     peer2.client.disconnect(peer1.peer_id).await.unwrap();
 
@@ -228,15 +227,16 @@ async fn periodic_bootstrap() {
     // TODO figure out how to make this test run using tokio::time::pause()
     // instead of arbitrary short delays
     let cfg = Config {
-        direct_connection_timeout: Duration::from_millis(50),
-        relay_connection_timeout: Duration::from_millis(50),
+        direct_connection_timeout: Duration::from_secs(0),
+        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             start_offset: Duration::from_secs(1),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -298,12 +298,13 @@ async fn reconnect_too_quickly() {
         relay_connection_timeout: Duration::from_millis(500),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
 
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -335,11 +336,11 @@ async fn reconnect_too_quickly() {
     })
     .await;
 
-    let peers_of1 = peer1.connected().await;
-    let peers_of2 = peer2.connected().await;
+    let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
+    let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
 
-    assert_eq!(peers_of1, [peer2.peer_id].into());
-    assert_eq!(peers_of2, [peer1.peer_id].into());
+    assert_eq!(peers_of1, vec![peer2.peer_id]);
+    assert_eq!(peers_of2, vec![peer1.peer_id]);
 
     // Close the connection.
     peer1.client.disconnect(peer2.peer_id).await.unwrap();
@@ -393,12 +394,13 @@ async fn duplicate_connection() {
         relay_connection_timeout: Duration::from_millis(500),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let keypair = Keypair::generate_ed25519();
     let mut peer1 = TestPeer::new(cfg.clone(), keypair.clone());
@@ -460,7 +462,7 @@ async fn duplicate_connection() {
     .await;
 
     assert!(peer1_copy.connected().await.is_empty());
-    assert!(peer1.connected().await.contains(&peer2.peer_id));
+    assert!(peer1.connected().await.contains_key(&peer2.peer_id));
 }
 
 /// Test that each peer accepts at most one connection from any other peer, and duplicate
@@ -473,12 +475,13 @@ async fn max_inbound_connections() {
         relay_connection_timeout: Duration::from_millis(500),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
-        max_inbound_relay_peers: 0,
+        max_inbound_relayed_peers: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -589,12 +592,13 @@ async fn ip_whitelist() {
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -615,12 +619,13 @@ async fn ip_whitelist() {
         relay_connection_timeout: Duration::from_millis(50),
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
-        max_inbound_relay_peers: 10,
+        max_inbound_relayed_peers: 10,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
             // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
+        eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
 

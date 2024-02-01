@@ -1,117 +1,132 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    time::{Duration, Instant},
+};
 
-use libp2p::PeerId;
+use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 
-#[derive(Debug, Default)]
-struct Peer {
-    connection_status: ConnectionStatus,
+#[derive(Debug, Clone)]
+pub struct Peer {
+    pub connectivity: Connectivity,
+    pub direction: Direction,
+    pub addr: Option<Multiaddr>,
+    pub evicted: bool,
+    pub useful: bool,
     // TODO are we still able to maintain info about peers' sync heads?
     // sync_status: Option<p2p_proto_v0::sync::Status>,
 }
 
 impl Peer {
-    pub fn connection_status(&self) -> &ConnectionStatus {
-        &self.connection_status
-    }
-
-    pub fn update_connection_status(&mut self, new_status: ConnectionStatus) {
-        use ConnectionStatus::*;
-
-        self.connection_status = match (&self.connection_status, new_status) {
-            (Connected, Dialing) => Connected,
-            (_, new_status) => new_status,
-        };
-    }
-
-    pub fn _update_sync_status(&mut self, _new_status: () /*p2p_proto_v0::sync::Status*/) {
-        todo!("not sure rn if we can reliaby maintain info about peers' sync heads")
-    }
-
     pub fn is_connected(&self) -> bool {
-        matches!(self.connection_status, ConnectionStatus::Connected)
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-enum ConnectionStatus {
-    #[default]
-    Disconnected,
-    Dialing,
-    Connected,
-    Disconnecting,
-}
-
-#[derive(Debug, Default)]
-pub struct Peers {
-    peers: HashMap<PeerId, Peer>,
-}
-
-impl Peers {
-    fn update_connection_status(&mut self, peer_id: &PeerId, connection_status: ConnectionStatus) {
-        self.peers
-            .entry(*peer_id)
-            .or_default()
-            .update_connection_status(connection_status);
+        matches!(self.connectivity, Connectivity::Connected { .. })
     }
 
-    pub fn update_sync_status(&mut self, _peer_id: &PeerId, _sync_status: ()) {
-        todo!("not sure rn if we can reliaby maintain info about peers' sync heads")
+    pub fn is_inbound(&self) -> bool {
+        matches!(self.direction, Direction::Inbound)
     }
 
-    pub fn peer_dialing(&mut self, peer_id: &PeerId) {
-        self.update_connection_status(peer_id, ConnectionStatus::Dialing)
+    pub fn is_relayed(&self) -> bool {
+        self.addr
+            .as_ref()
+            .map_or(false, |addr| addr.iter().any(|p| p == Protocol::P2pCircuit))
     }
 
-    pub fn peer_connected(&mut self, peer_id: &PeerId) {
-        self.update_connection_status(peer_id, ConnectionStatus::Connected)
-    }
-
-    pub fn peer_disconnecting(&mut self, peer_id: &PeerId) {
-        self.update_connection_status(peer_id, ConnectionStatus::Disconnecting)
-    }
-
-    pub fn peer_disconnected(&mut self, peer_id: &PeerId) {
-        self.update_connection_status(peer_id, ConnectionStatus::Disconnected)
-    }
-
-    pub fn peer_dial_error(&mut self, peer_id: &PeerId) {
-        self.peers.entry(*peer_id).and_modify(|peer| {
-            if !matches!(peer.connection_status(), ConnectionStatus::Connected) {
-                // no successful connection yet, dialing failed, set to disconnected
-                peer.update_connection_status(ConnectionStatus::Disconnected)
-            };
-        });
-    }
-
-    fn connection_status(&self, peer_id: &PeerId) -> Option<ConnectionStatus> {
-        self.peers
-            .get(peer_id)
-            .map(|peer| peer.connection_status().clone())
-    }
-
-    pub fn is_connected(&self, peer_id: &PeerId) -> bool {
-        matches!(
-            self.connection_status(peer_id),
-            Some(ConnectionStatus::Connected)
-        )
-    }
-
-    pub fn connected(&self) -> impl Iterator<Item = &PeerId> {
-        self.peers.iter().filter_map(|(peer_id, peer)| {
-            if peer.is_connected() {
-                Some(peer_id)
-            } else {
-                None
-            }
+    pub fn ip_addr(&self) -> Option<IpAddr> {
+        self.addr.as_ref().and_then(|addr| {
+            addr.iter().find_map(|p| match p {
+                Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+                Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                _ => None,
+            })
         })
     }
 
-    pub fn syncing(&self) /* -> impl Iterator<Item = (&PeerId, &p2p_proto_v0::sync::Status)> */
-    {
-        todo!("not sure rn if we can reliaby maintain info about peers' sync heads")
+    pub fn connected_at(&self) -> Option<Instant> {
+        match self.connectivity {
+            Connectivity::Connected { connected_at } => Some(connected_at),
+            Connectivity::Disconnected { connected_at, .. } => connected_at,
+            Connectivity::Dialing => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Connectivity {
+    Dialing,
+    Connected {
+        /// When the peer was connected.
+        connected_at: Instant,
+    },
+    Disconnected {
+        /// When the peer was connected, if he was connected.
+        connected_at: Option<Instant>,
+        /// When the peer was disconnected.
+        disconnected_at: Instant,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Direction {
+    Inbound,
+    Outbound,
+}
+
+#[derive(Debug)]
+pub(crate) struct PeerSet {
+    peers: HashMap<PeerId, Peer>,
+    /// How long to keep disconnected peers in the set.
+    retention_period: Duration,
+}
+
+impl PeerSet {
+    pub fn new(retention_period: Duration) -> Self {
+        Self {
+            peers: HashMap::new(),
+            retention_period,
+        }
     }
 
-    pub fn remove(&mut self, peer_id: &PeerId) {
-        self.peers.remove(peer_id);
+    /// Update a peer in the set.
+    ///
+    /// Panics if the peer is not in the set.
+    pub fn update(&mut self, peer_id: PeerId, update: impl FnOnce(&mut Peer)) {
+        self.upsert(peer_id, update, || panic!("peer not in set"));
+    }
+
+    /// Update a peer in the set, or insert a new one if it is not present.
+    pub fn upsert(
+        &mut self,
+        peer_id: PeerId,
+        update: impl FnOnce(&mut Peer),
+        insert: impl FnOnce() -> Peer,
+    ) {
+        // Remove peers that have been disconnected for too long.
+        self.peers.retain(|_, peer| match peer.connectivity {
+            Connectivity::Disconnected {
+                disconnected_at, ..
+            } => disconnected_at.elapsed() < self.retention_period,
+            _ => true,
+        });
+        self.peers
+            .entry(peer_id)
+            .and_modify(update)
+            .or_insert_with(insert);
+    }
+
+    pub fn get(&self, peer_id: PeerId) -> Option<&Peer> {
+        self.peers.get(&peer_id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
+        self.peers.iter().filter_map(|(peer_id, peer)| {
+            // Filter out peers that have been disconnected for too long.
+            match peer.connectivity {
+                Connectivity::Disconnected {
+                    disconnected_at, ..
+                } if disconnected_at.elapsed() >= self.retention_period => None,
+                _ => Some((*peer_id, peer)),
+            }
+        })
     }
 }

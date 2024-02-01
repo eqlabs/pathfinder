@@ -1,12 +1,11 @@
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use crate::recent_peers::RecentPeers;
+use crate::peers::{Connectivity, Direction, Peer};
 use crate::sync::codec;
-use crate::Config;
+use crate::{peers::PeerSet, Config};
 use anyhow::anyhow;
 use libp2p::core::Endpoint;
 use libp2p::dcutr;
@@ -17,9 +16,10 @@ use libp2p::kad::{self, store::MemoryStore};
 use libp2p::multiaddr::Protocol;
 use libp2p::ping;
 use libp2p::relay;
+use libp2p::swarm::behaviour::ConnectionEstablished;
 use libp2p::swarm::{
-    ConnectionClosed, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler,
-    THandlerInEvent, THandlerOutEvent, ToSwarm,
+    ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, FromSwarm, NetworkBehaviour,
+    THandler, THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 use libp2p::StreamProtocol;
 use libp2p::{autonat, Multiaddr, PeerId};
@@ -40,18 +40,7 @@ pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
 
 pub struct Behaviour {
     cfg: Config,
-    /// Recent peers that have connected to us directly (not over a relay).
-    ///
-    /// The distinction is important because different limits apply to direct and relayed peers.
-    recent_inbound_direct_peers: RecentPeers,
-    /// Recent peers that have connected to us over a relay.
-    recent_inbound_relay_peers: RecentPeers,
-    /// Number of peers that have inbound connections open to us directly (not over a relay).
-    inbound_direct_peers: usize,
-    /// Number of peers that have inbound connections open to us over a relay.
-    inbound_relay_peers: usize,
-    /// Peers connected to our node. Used for closing duplicate connections.
-    connected_peers: HashSet<PeerId>,
+    peers: PeerSet,
     inner: Inner,
 }
 
@@ -83,29 +72,25 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        self.on_established_connection(peer)?;
+        self.check_duplicate_connection(peer)?;
 
         // Is the peer connecting over a relay?
-        let is_relay = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
+        let is_relayed = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
 
         // Limit the number of inbound peer connections. Different limits apply to direct peers
         // and peers connecting over a relay.
-        if is_relay {
-            if self.inbound_relay_peers >= self.cfg.max_inbound_relay_peers {
+        if is_relayed {
+            if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound relay peers"
                 )));
             }
-            self.inbound_relay_peers += 1;
-        } else {
-            if self.inbound_direct_peers >= self.cfg.max_inbound_direct_peers {
-                tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
-                return Err(ConnectionDenied::new(anyhow!(
-                    "too many inbound direct peers"
-                )));
-            }
-            self.inbound_direct_peers += 1;
+        } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
+            tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
+            return Err(ConnectionDenied::new(anyhow!(
+                "too many inbound direct peers"
+            )));
         }
 
         self.inner.handle_established_inbound_connection(
@@ -123,26 +108,89 @@ impl NetworkBehaviour for Behaviour {
         addr: &Multiaddr,
         role_override: Endpoint,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        self.on_established_connection(peer)?;
+        self.check_duplicate_connection(peer)?;
         self.inner
             .handle_established_outbound_connection(connection_id, peer, addr, role_override)
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
-        if let FromSwarm::ConnectionClosed(ConnectionClosed {
-            peer_id, endpoint, ..
-        }) = event
-        {
-            // Is this an inbound connection?
-            if endpoint.is_listener() {
-                if endpoint.is_relayed() {
-                    self.inbound_relay_peers -= 1;
+        match event {
+            FromSwarm::ConnectionEstablished(ConnectionEstablished {
+                peer_id, endpoint, ..
+            }) => {
+                self.peers.upsert(
+                    peer_id,
+                    |peer| {
+                        peer.connectivity = Connectivity::Connected {
+                            connected_at: Instant::now(),
+                        };
+                        peer.addr = Some(endpoint.get_remote_address().clone());
+                    },
+                    || Peer {
+                        connectivity: Connectivity::Connected {
+                            connected_at: Instant::now(),
+                        },
+                        direction: if endpoint.is_dialer() {
+                            Direction::Outbound
+                        } else {
+                            Direction::Inbound
+                        },
+                        addr: Some(endpoint.get_remote_address().clone()),
+                        evicted: false,
+                        useful: true,
+                    },
+                );
+            }
+            FromSwarm::DialFailure(DialFailure { peer_id, error, .. }) => {
+                if let Some(peer_id) = peer_id {
+                    self.peers.upsert(
+                        peer_id,
+                        |peer| {
+                            if !peer.is_connected() {
+                                // If there was no successful connection when the dialing failed,
+                                // then the peer is definitely not connected. Otherwise, this might
+                                // have been a redial attempt, and the peer might still be
+                                // connected.
+                                peer.connectivity = Connectivity::Disconnected {
+                                    connected_at: None,
+                                    disconnected_at: Instant::now(),
+                                };
+                            };
+                        },
+                        || Peer {
+                            connectivity: Connectivity::Disconnected {
+                                connected_at: None,
+                                disconnected_at: Instant::now(),
+                            },
+                            direction: Direction::Outbound,
+                            addr: None,
+                            evicted: false,
+                            useful: true,
+                        },
+                    );
+                }
+                tracing::debug!(?peer_id, %error, "Error while dialing peer");
+            }
+            FromSwarm::ConnectionClosed(ConnectionClosed {
+                peer_id,
+                remaining_established,
+                ..
+            }) => {
+                if remaining_established == 0 {
+                    self.peers.update(peer_id, |peer| {
+                        peer.connectivity = Connectivity::Disconnected {
+                            connected_at: peer.connected_at(),
+                            disconnected_at: Instant::now(),
+                        };
+                    });
+                    tracing::debug!(%peer_id, "Fully disconnected from");
                 } else {
-                    self.inbound_direct_peers -= 1;
+                    tracing::debug!(%peer_id, %remaining_established, "Connection closed");
                 }
             }
-            self.connected_peers.remove(&peer_id);
+            _ => {}
         }
+
         self.inner.on_swarm_event(event)
     }
 
@@ -194,25 +242,39 @@ impl NetworkBehaviour for Behaviour {
         }
 
         // Is the peer connecting over a relay?
-        let is_relay = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
+        let is_relayed = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
 
         // Prevent the peer from reconnecting too quickly.
-        //
-        // Different connection timeouts apply to direct peers and peers connecting over a relay.
-        let recent_peers = if is_relay {
-            &mut self.recent_inbound_relay_peers
-        } else {
-            &mut self.recent_inbound_direct_peers
-        };
 
-        // If the peer is in the recent peers set, this means he is attempting to
+        // Get the list of IP addresses of recently connected inbound peers.
+        let mut recent_peers = self.peers().filter_map(|(_, peer)| {
+            if !peer.is_inbound() {
+                return None;
+            }
+            peer.connected_at().and_then(|connected_at| {
+                // If the connecting peer is relayed, only consider relayed peers for the recent
+                // peers set. Otherwise, only consider direct peers. Different connection timeouts
+                // apply to direct and relayed peers.
+                if is_relayed {
+                    if !peer.is_relayed()
+                        || connected_at.elapsed() >= self.cfg.relay_connection_timeout
+                    {
+                        return None;
+                    }
+                } else if peer.is_relayed()
+                    || connected_at.elapsed() >= self.cfg.direct_connection_timeout
+                {
+                    return None;
+                }
+                peer.ip_addr()
+            })
+        });
+
+        // If the peer IP is in the recent peers set, this means he is attempting to
         // reconnect too quickly. Close the connection.
-        if recent_peers.contains(&peer_ip) {
+        if recent_peers.any(|ip| ip == peer_ip) {
             tracing::debug!(%connection_id, "Peer attempted to reconnect too quickly, closing");
             return Err(ConnectionDenied::new(anyhow!("reconnect too quickly")));
-        } else {
-            // Otherwise, add the peer to the recent peers set.
-            recent_peers.insert(peer_ip);
         }
 
         // Limit the number of inbound peer connections. Different limits apply to direct peers
@@ -224,20 +286,21 @@ impl NetworkBehaviour for Behaviour {
         //
         // The check must be repeated when the connection is established due to race conditions,
         // since multiple peers may be attempting to connect at the same time.
-        if is_relay {
-            if self.inbound_relay_peers >= self.cfg.max_inbound_relay_peers {
+        if is_relayed {
+            if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound relay peers"
                 )));
             }
-        } else if self.inbound_direct_peers >= self.cfg.max_inbound_direct_peers {
+        } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
             tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
             return Err(ConnectionDenied::new(anyhow!(
                 "too many inbound direct peers"
             )));
         }
 
+        drop(recent_peers);
         self.inner
             .handle_pending_inbound_connection(connection_id, local_addr, remote_addr)
     }
@@ -249,6 +312,30 @@ impl NetworkBehaviour for Behaviour {
         addresses: &[Multiaddr],
         effective_role: Endpoint,
     ) -> Result<Vec<Multiaddr>, ConnectionDenied> {
+        if let Some(peer_id) = maybe_peer {
+            if effective_role.is_dialer() {
+                // This really is an outbound connection, and not a connection that requires
+                // hole-punching.
+                self.peers.upsert(
+                    peer_id,
+                    |peer| {
+                        if !peer.is_connected() {
+                            peer.connectivity = Connectivity::Dialing;
+                        } else {
+                            // If peer is already connected, this is a redial. The peer is still
+                            // connected.
+                        }
+                    },
+                    || Peer {
+                        connectivity: Connectivity::Dialing,
+                        direction: Direction::Outbound,
+                        addr: None,
+                        evicted: false,
+                        useful: true,
+                    },
+                );
+            }
+        }
         self.inner.handle_pending_outbound_connection(
             connection_id,
             maybe_peer,
@@ -309,12 +396,8 @@ impl Behaviour {
 
         (
             Self {
-                recent_inbound_direct_peers: RecentPeers::new(cfg.direct_connection_timeout),
-                recent_inbound_relay_peers: RecentPeers::new(cfg.relay_connection_timeout),
-                inbound_direct_peers: Default::default(),
-                inbound_relay_peers: Default::default(),
+                peers: PeerSet::new(cfg.eviction_timeout),
                 cfg,
-                connected_peers: Default::default(),
                 inner: Inner {
                     relay,
                     autonat: autonat::Behaviour::new(peer_id, Default::default()),
@@ -356,13 +439,16 @@ impl Behaviour {
         Ok(())
     }
 
-    fn on_established_connection(&mut self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
+    fn check_duplicate_connection(&mut self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         // Only allow one connection per peer.
-        if self.connected_peers.contains(&peer_id) {
+        if self
+            .peers
+            .get(peer_id)
+            .map_or(false, |peer| peer.is_connected())
+        {
             tracing::debug!(%peer_id, "Peer already connected, closing");
             return Err(ConnectionDenied::new(anyhow!("duplicate connection")));
         }
-        self.connected_peers.insert(peer_id);
         Ok(())
     }
 
@@ -392,6 +478,26 @@ impl Behaviour {
 
     pub fn events_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Events> {
         &mut self.inner.events_sync
+    }
+
+    pub fn peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
+        self.peers.iter()
+    }
+
+    /// Number of inbound non-relayed peers.
+    fn num_inbound_direct_peers(&self) -> usize {
+        self.peers
+            .iter()
+            .filter(|(_, peer)| peer.is_inbound() && !peer.is_relayed())
+            .count()
+    }
+
+    /// Number of inbound relayed peers.
+    fn num_inbound_relayed_peers(&self) -> usize {
+        self.peers
+            .iter()
+            .filter(|(_, peer)| peer.is_inbound() && peer.is_relayed())
+            .count()
     }
 }
 
