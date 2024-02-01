@@ -101,45 +101,7 @@ pub fn simulate(
     Ok(simulations)
 }
 
-pub fn trace_one(
-    mut execution_state: ExecutionState<'_>,
-    transactions: Vec<Transaction>,
-    target_transaction_hash: TransactionHash,
-    charge_fee: bool,
-    validate: bool,
-) -> Result<TransactionTrace, TransactionExecutionError> {
-    let (mut state, block_context) = execution_state.starknet_state()?;
-
-    for (transaction_idx, tx) in transactions.into_iter().enumerate() {
-        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
-
-        let hash = transaction_hash(&tx);
-        let tx_type = transaction_type(&tx);
-        let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
-
-        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = tx
-            .execute(&mut tx_state, &block_context, charge_fee, validate)
-            .map_err(|e| TransactionExecutionError::ExecutionError {
-                transaction_index: transaction_idx,
-                error: e.to_string(),
-            })?;
-        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
-        tx_state.commit();
-
-        let trace = to_trace(tx_type, tx_info, state_diff);
-        if hash == target_transaction_hash {
-            return Ok(trace);
-        }
-    }
-
-    Err(TransactionExecutionError::Internal(anyhow::anyhow!(
-        "Transaction hash not found: {}",
-        target_transaction_hash
-    )))
-}
-
-pub fn trace_all(
+pub fn trace(
     mut execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     charge_fee: bool,
@@ -166,6 +128,7 @@ pub fn trace_all(
         tx_state.commit();
 
         let trace = to_trace(tx_type, tx_info, state_diff);
+        // TODO Store the cache here
         ret.push((hash, trace));
     }
 

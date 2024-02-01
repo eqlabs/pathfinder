@@ -219,7 +219,7 @@ pub async fn trace_block_transactions(
             .collect::<Result<Vec<_>, _>>()?;
 
         let state = ExecutionState::trace(&db, context.chain_id, header, None);
-        let traces = pathfinder_executor::trace_all(state, transactions, true, true)?;
+        let traces = pathfinder_executor::trace(state, transactions, true, true)?;
 
         let result = traces
             .into_iter()

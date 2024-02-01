@@ -200,8 +200,24 @@ pub async fn trace_transaction(
             .map(|transaction| compose_executor_transaction(transaction, &db))
             .collect::<Result<Vec<_>, _>>()?;
 
-        pathfinder_executor::trace_one(state, transactions, input.transaction_hash, true, true)
+        pathfinder_executor::trace(state, transactions, true, true)
             .map_err(TraceTransactionError::from)
+            .and_then(|txs| {
+                txs.into_iter()
+                    .find_map(|(tx_hash, trace)| {
+                        if tx_hash == input.transaction_hash {
+                            Some(trace)
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or_else(|| {
+                        TraceTransactionError::Internal(anyhow::anyhow!(
+                            "Transaction hash not found: {}",
+                            input.transaction_hash
+                        ))
+                    })
+            })
             .map(|x| LocalExecution::Success(x.into()))
     })
     .await

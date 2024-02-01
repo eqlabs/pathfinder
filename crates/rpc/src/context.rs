@@ -20,6 +20,7 @@ pub struct RpcConfig {
 
 #[derive(Clone)]
 pub struct RpcContext {
+    // TODO Add the cache here, should map TransactionHash -> TransactionTrace
     pub storage: Storage,
     pub execution_storage: Storage,
     pub pending_data: PendingWatcher,
