@@ -16,6 +16,7 @@ pub mod hash;
 mod header;
 mod macros;
 pub mod prelude;
+pub mod receipt;
 pub mod signature;
 pub mod state_update;
 pub mod test_utils;
@@ -148,7 +149,7 @@ macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
 macros::i64_backed_u64::serdes!(BlockTimestamp);
 
 /// A Starknet transaction index.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct TransactionIndex(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
