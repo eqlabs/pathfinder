@@ -285,7 +285,7 @@ impl Client {
 
         Ok(Self {
             inner: reqwest::Client::builder()
-                .timeout(Duration::from_secs(120))
+                .timeout(Duration::from_secs(5))
                 .user_agent(pathfinder_common::consts::USER_AGENT)
                 .build()?,
             gateway,
