@@ -207,3 +207,12 @@ pub enum DataAvailabilityMode {
     L1,
     L2,
 }
+
+impl From<DataAvailabilityMode> for u64 {
+    fn from(value: DataAvailabilityMode) -> Self {
+        match value {
+            DataAvailabilityMode::L1 => 0,
+            DataAvailabilityMode::L2 => 1,
+        }
+    }
+}
