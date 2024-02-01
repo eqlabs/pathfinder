@@ -16,9 +16,6 @@ pub struct Transaction {
 
 impl Transaction {
     /// Verifies the transaction hash against the transaction data.
-    ///
-    /// Returns the calculated transaction hash in the error variant if
-    /// there is a mismatch.
     #[must_use = "Should act on verification result"]
     pub fn verify_hash(&self, chain_id: ChainId) -> bool {
         self.variant.verify_hash(chain_id, self.hash)
@@ -671,7 +668,7 @@ impl V3Hasher<'_> {
             .chain(self.hash_paymaster_data().into())
             .chain(chain_id.0.into())
             .chain(self.nonce.0.into())
-            .chain(self.pack_data_pack_data_availability().into());
+            .chain(self.pack_data_availability().into());
 
         let hash = self
             .data_hashes
@@ -682,7 +679,7 @@ impl V3Hasher<'_> {
         TransactionHash(hash.into())
     }
 
-    fn pack_data_pack_data_availability(&self) -> u64 {
+    fn pack_data_availability(&self) -> u64 {
         let nonce = u64::from(self.nonce_data_availability_mode) << 32;
         let fee = u64::from(self.fee_data_availability_mode);
 
