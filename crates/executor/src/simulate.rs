@@ -132,7 +132,7 @@ pub fn trace(
         return Ok(cached);
     }
         None => {
-            tracing::trace!("transaction trace cache hit for block {:?}", block_hash);
+            tracing::trace!(block=%block_hash, "trace cache miss");
             let mut traces = Vec::with_capacity(transactions.len());
             for (transaction_idx, tx) in transactions.into_iter().enumerate() {
                 let hash = transaction_hash(&tx);
