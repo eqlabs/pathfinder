@@ -19,14 +19,16 @@ pub mod protocol {
     }
 
     define_protocol!(Headers, "/starknet/headers/1");
-    define_protocol!(Bodies, "/starknet/bodies/1");
+    define_protocol!(StateDiffs, "/starknet/state_diffs/1");
+    define_protocol!(Classes, "/starknet/classes/1");
     define_protocol!(Transactions, "/starknet/transactions/1");
     define_protocol!(Receipts, "/starknet/receipts/1");
     define_protocol!(Events, "/starknet/events/1");
 
     pub const PROTOCOLS: &[&str] = &[
         Headers::NAME,
-        Bodies::NAME,
+        StateDiffs::NAME,
+        Classes::NAME,
         Transactions::NAME,
         Receipts::NAME,
         Events::NAME,
@@ -38,25 +40,33 @@ pub(crate) mod codec {
     use async_trait::async_trait;
     use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
     use p2p_proto::consts::MESSAGE_SIZE_LIMIT;
-    use p2p_proto::{block, event, proto, receipt, transaction};
+    use p2p_proto::{class, event, header, proto, receipt, state, transaction};
     use p2p_proto::{ToProtobuf, TryFromProtobuf};
     use p2p_stream::Codec;
     use std::marker::PhantomData;
 
     pub type Headers = SyncCodec<
         protocol::Headers,
-        block::BlockHeadersRequest,
-        block::BlockHeadersResponse,
-        proto::block::BlockHeadersRequest,
-        proto::block::BlockHeadersResponse,
+        header::BlockHeadersRequest,
+        header::BlockHeadersResponse,
+        proto::header::BlockHeadersRequest,
+        proto::header::BlockHeadersResponse,
     >;
 
-    pub type Bodies = SyncCodec<
-        protocol::Bodies,
-        block::BlockBodiesRequest,
-        block::BlockBodiesResponse,
-        proto::block::BlockBodiesRequest,
-        proto::block::BlockBodiesResponse,
+    pub type StateDiffs = SyncCodec<
+        protocol::StateDiffs,
+        state::StateDiffsRequest,
+        state::StateDiffsResponse,
+        proto::state::StateDiffsRequest,
+        proto::state::StateDiffsResponse,
+    >;
+
+    pub type Classes = SyncCodec<
+        protocol::Classes,
+        class::ClassesRequest,
+        class::ClassesResponse,
+        proto::class::ClassesRequest,
+        proto::class::ClassesResponse,
     >;
 
     pub type Transactions = SyncCodec<

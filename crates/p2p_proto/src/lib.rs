@@ -164,7 +164,7 @@ fn proto_field<T>(input: Option<T>, field_name: &'static str) -> Result<T, std::
 use p2p_proto_derive::*;
 pub mod class;
 pub mod common;
-// pub mod consts;
+pub mod consts;
 pub mod event;
 pub mod header;
 pub mod receipt;

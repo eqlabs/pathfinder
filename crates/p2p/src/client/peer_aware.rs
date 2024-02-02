@@ -5,10 +5,11 @@ use std::collections::HashSet;
 use anyhow::Context;
 use futures::channel::mpsc::Receiver as ResponseReceiver;
 use libp2p::{gossipsub::IdentTopic, Multiaddr, PeerId};
-use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse, NewBlock,
-};
+use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
+use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
+
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use tokio::sync::{mpsc, oneshot};
@@ -138,10 +139,17 @@ impl Client {
     );
 
     impl_send!(
-        send_bodies_sync_request,
-        SendBodiesSyncRequest,
-        BlockBodiesRequest,
-        BlockBodiesResponse
+        send_classes_sync_request,
+        SendClassesSyncRequest,
+        ClassesRequest,
+        ClassesResponse
+    );
+
+    impl_send!(
+        send_state_diffs_sync_request,
+        SendStateDiffsSyncRequest,
+        StateDiffsRequest,
+        StateDiffsResponse
     );
 
     impl_send!(

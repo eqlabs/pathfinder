@@ -10,11 +10,11 @@ use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
 use libp2p::swarm;
 use libp2p::{Multiaddr, PeerId, Swarm};
-use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse, NewBlock,
-};
+use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use peers::Peer;
@@ -156,10 +156,15 @@ enum Command {
         request: BlockHeadersRequest,
         sender: oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
     },
-    SendBodiesSyncRequest {
+    SendClassesSyncRequest {
         peer_id: PeerId,
-        request: BlockBodiesRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<BlockBodiesResponse>>>,
+        request: ClassesRequest,
+        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<ClassesResponse>>>,
+    },
+    SendStateDiffsSyncRequest {
+        peer_id: PeerId,
+        request: StateDiffsRequest,
+        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<StateDiffsResponse>>>,
     },
     SendTransactionsSyncRequest {
         peer_id: PeerId,
@@ -205,10 +210,15 @@ pub enum Event {
         request: BlockHeadersRequest,
         channel: ResponseSender<BlockHeadersResponse>,
     },
-    InboundBodiesSyncRequest {
+    InboundClassesSyncRequest {
         from: PeerId,
-        request: BlockBodiesRequest,
-        channel: ResponseSender<BlockBodiesResponse>,
+        request: ClassesRequest,
+        channel: ResponseSender<ClassesResponse>,
+    },
+    InboundStateDiffsSyncRequest {
+        from: PeerId,
+        request: StateDiffsRequest,
+        channel: ResponseSender<StateDiffsResponse>,
     },
     InboundTransactionsSyncRequest {
         from: PeerId,

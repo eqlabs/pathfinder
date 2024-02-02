@@ -24,7 +24,7 @@ pub struct ContractDiff {
     pub domain: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::state::StateDiffsRequest")]
 pub struct StateDiffsRequest {
     pub iteration: Iteration,

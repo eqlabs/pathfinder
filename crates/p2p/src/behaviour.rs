@@ -24,11 +24,11 @@ use libp2p::swarm::{
 };
 use libp2p::StreamProtocol;
 use libp2p::{autonat, Multiaddr, PeerId};
-use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse,
-};
+use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
 use std::{cmp, task};
@@ -58,7 +58,8 @@ pub struct Inner {
     kademlia: kad::Behaviour<MemoryStore>,
     gossipsub: gossipsub::Behaviour,
     headers_sync: p2p_stream::Behaviour<codec::Headers>,
-    bodies_sync: p2p_stream::Behaviour<codec::Bodies>,
+    classes_sync: p2p_stream::Behaviour<codec::Classes>,
+    state_diffs_sync: p2p_stream::Behaviour<codec::StateDiffs>,
     transactions_sync: p2p_stream::Behaviour<codec::Transactions>,
     receipts_sync: p2p_stream::Behaviour<codec::Receipts>,
     events_sync: p2p_stream::Behaviour<codec::Events>,
@@ -468,7 +469,8 @@ impl Behaviour {
         .expect("valid gossipsub params");
 
         let headers_sync = request_response_behavior::<codec::Headers>();
-        let bodies_sync = request_response_behavior::<codec::Bodies>();
+        let classes_sync = request_response_behavior::<codec::Classes>();
+        let state_diffs_sync = request_response_behavior::<codec::StateDiffs>();
         let transactions_sync = request_response_behavior::<codec::Transactions>();
         let receipts_sync = request_response_behavior::<codec::Receipts>();
         let events_sync = request_response_behavior::<codec::Events>();
@@ -496,7 +498,8 @@ impl Behaviour {
                     kademlia,
                     gossipsub,
                     headers_sync,
-                    bodies_sync,
+                    classes_sync,
+                    state_diffs_sync,
                     transactions_sync,
                     receipts_sync,
                     events_sync,
@@ -787,8 +790,12 @@ impl Behaviour {
         &mut self.inner.headers_sync
     }
 
-    pub fn bodies_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Bodies> {
-        &mut self.inner.bodies_sync
+    pub fn classes_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Classes> {
+        &mut self.inner.classes_sync
+    }
+
+    pub fn state_diffs_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::StateDiffs> {
+        &mut self.inner.state_diffs_sync
     }
 
     pub fn transactions_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Transactions> {
@@ -847,7 +854,8 @@ pub enum Event {
     Kademlia(kad::Event),
     Gossipsub(gossipsub::Event),
     HeadersSync(p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>),
-    BodiesSync(p2p_stream::Event<BlockBodiesRequest, BlockBodiesResponse>),
+    ClassesSync(p2p_stream::Event<ClassesRequest, ClassesResponse>),
+    StateDiffsSync(p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>),
     TransactionsSync(p2p_stream::Event<TransactionsRequest, TransactionsResponse>),
     ReceiptsSync(p2p_stream::Event<ReceiptsRequest, ReceiptsResponse>),
     EventsSync(p2p_stream::Event<EventsRequest, EventsResponse>),
@@ -901,9 +909,15 @@ impl From<p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>> for Even
     }
 }
 
-impl From<p2p_stream::Event<BlockBodiesRequest, BlockBodiesResponse>> for Event {
-    fn from(event: p2p_stream::Event<BlockBodiesRequest, BlockBodiesResponse>) -> Self {
-        Event::BodiesSync(event)
+impl From<p2p_stream::Event<ClassesRequest, ClassesResponse>> for Event {
+    fn from(event: p2p_stream::Event<ClassesRequest, ClassesResponse>) -> Self {
+        Event::ClassesSync(event)
+    }
+}
+
+impl From<p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>> for Event {
+    fn from(event: p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>) -> Self {
+        Event::StateDiffsSync(event)
     }
 }
 

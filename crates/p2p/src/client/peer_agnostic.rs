@@ -9,10 +9,12 @@ use std::{
 use anyhow::Context;
 use futures::{channel::mpsc, StreamExt};
 use libp2p::PeerId;
-use p2p_proto::block::{BlockBodiesRequest, BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::class::{Class, ClassesRequest};
 use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::event::EventsRequest;
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::receipt::{Receipt, ReceiptsRequest};
+use p2p_proto::state::StateDiffsRequest;
 use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::{
     event::Event,
@@ -76,7 +78,7 @@ impl Client {
         self.inner
             .publish(
                 &self.block_propagation_topic,
-                p2p_proto::block::NewBlock::Id(block_id),
+                p2p_proto::header::NewBlock::Id(block_id),
             )
             .await
     }
@@ -120,320 +122,79 @@ impl Client {
             true => (stop, start, Direction::Backward),
             false => (start, stop, Direction::Forward),
         };
+        let (_, dummy_stream) = futures::channel::mpsc::channel(0);
+        dummy_stream
+        // FIXME
+        // async_stream::stream! {
+        //     // Loop which refreshes peer set once we exhaust it.
+        //     loop {
+        //         let peers = self
+        //             .get_update_peers_with_sync_capability(protocol::Headers::NAME)
+        //             .await;
 
-        async_stream::stream! {
-            // Loop which refreshes peer set once we exhaust it.
-            loop {
-                let peers = self
-                    .get_update_peers_with_sync_capability(protocol::Headers::NAME)
-                    .await;
+        //         // Attempt each peer.
+        //         'next_peer: for peer in peers {
+        //             let limit = start.get().max(stop.get()) - start.get().min(stop.get());
 
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let limit = start.get().max(stop.get()) - start.get().min(stop.get());
+        //             let request = BlockHeadersRequest {
+        //                 iteration: Iteration {
+        //                     start: start.get().into(),
+        //                     direction,
+        //                     limit,
+        //                     step: 1.into(),
+        //                 },
+        //             };
 
-                    let request = BlockHeadersRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction,
-                            limit,
-                            step: 1.into(),
-                        },
-                    };
+        //             let responses = match self.inner.send_headers_sync_request(peer, request).await
+        //             {
+        //                 Ok(x) => x,
+        //                 Err(error) => {
+        //                     // Failed to establish connection, try next peer.
+        //                     tracing::debug!(%peer, reason=%error, "Headers request failed");
+        //                     continue 'next_peer;
+        //                 }
+        //             };
 
-                    let responses = match self.inner.send_headers_sync_request(peer, request).await
-                    {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Headers request failed");
-                            continue 'next_peer;
-                        }
-                    };
+        //             let mut responses = responses
+        //                 .flat_map(|response| futures::stream::iter(response.parts))
+        //                 .chunks(2)
+        //                 .scan((), |(), chunk| async { parse::handle_signed_header_chunk(chunk) })
+        //                 .boxed();
 
-                    let mut responses = responses
-                        .flat_map(|response| futures::stream::iter(response.parts))
-                        .chunks(2)
-                        .scan((), |(), chunk| async { parse::handle_signed_header_chunk(chunk) })
-                        .boxed();
+        //             while let Some(signed_header) = responses.next().await {
+        //                 let signed_header = match signed_header {
+        //                     Ok(signed_header) => signed_header,
+        //                     Err(error) => {
+        //                         tracing::debug!(%peer, %error, "Header stream failed");
+        //                         continue 'next_peer;
+        //                     }
+        //                 };
 
-                    while let Some(signed_header) = responses.next().await {
-                        let signed_header = match signed_header {
-                            Ok(signed_header) => signed_header,
-                            Err(error) => {
-                                tracing::debug!(%peer, %error, "Header stream failed");
-                                continue 'next_peer;
-                            }
-                        };
+        //                 // Small sanity check. We cannot reliably check the hash here,
+        //                 // its easier for the caller to ensure it matches expectations.
+        //                 if signed_header.header.number != start {
+        //                     tracing::debug!(%peer, "Wrong block number");
+        //                     continue 'next_peer;
+        //                 }
 
-                        // Small sanity check. We cannot reliably check the hash here,
-                        // its easier for the caller to ensure it matches expectations.
-                        if signed_header.header.number != start {
-                            tracing::debug!(%peer, "Wrong block number");
-                            continue 'next_peer;
-                        }
+        //                 start = match direction {
+        //                     Direction::Forward => start + 1,
+        //                     // unwrap_or_default is safe as this is the genesis edge case,
+        //                     // at which point the loop will complete at the end of this iteration.
+        //                     Direction::Backward => start.parent().unwrap_or_default(),
+        //                 };
 
-                        start = match direction {
-                            Direction::Forward => start + 1,
-                            // unwrap_or_default is safe as this is the genesis edge case,
-                            // at which point the loop will complete at the end of this iteration.
-                            Direction::Backward => start.parent().unwrap_or_default(),
-                        };
+        //                 yield PeerData::new(peer, signed_header);
+        //             }
 
-                        yield PeerData::new(peer, signed_header);
-                    }
-
-                    // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
-                }
-            }
-        }
-    }
-
-    pub async fn block_headers(
-        &self,
-        start_block: BlockNumber,
-        num_blocks: usize,
-    ) -> anyhow::Result<Vec<MaybeSignedBlockHeader>> {
-        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
-
-        let limit: u64 = num_blocks.try_into()?;
-
-        for peer in self
-            .get_update_peers_with_sync_capability(protocol::Headers::NAME)
-            .await
-        {
-            let request = BlockHeadersRequest {
-                iteration: Iteration {
-                    start: start_block.get().into(),
-                    direction: Direction::Forward,
-                    limit,
-                    step: 1.into(),
-                },
-            };
-            let response_receiver = self.inner.send_headers_sync_request(peer, request).await;
-
-            match response_receiver {
-                Ok(mut receiver) => {
-                    // Limits on max message size and our internal limit of maximum blocks per response
-                    // imply that we can't receive more than 1 response. See static asserts in
-                    // [`pathfinder_lib::p2p_network::sync_handlers`].
-                    let Some(BlockHeadersResponse { parts }) = receiver.next().await else {
-                        // Try the next peer
-                        break;
-                    };
-
-                    let mut state = parse::block_header::State::Uninitialized;
-                    for part in parts {
-                        if let Err(error) = state.advance(part) {
-                            tracing::debug!(from=%peer, %error, "headers response parsing");
-                            // Try the next peer
-                            break;
-                        }
-                    }
-
-                    if let Some(headers) = state.take_parsed() {
-                        // Success
-                        return Ok(headers);
-                    } else {
-                        // Try the next peer
-                        tracing::debug!(from=%peer, "unexpected end of part");
-                        break;
-                    }
-                }
-                // Try the next peer
-                Err(error) => {
-                    tracing::debug!(from=%peer, %error, "headers request failed");
-                }
-            }
-        }
-
-        anyhow::bail!("No valid responses to headers request: start {start_block}, n {num_blocks}")
-    }
-
-    /// Including new class definitions
-    pub async fn state_updates(
-        &self,
-        start_block_hash: BlockHash,
-        num_blocks: usize,
-    ) -> anyhow::Result<Vec<StateUpdateWithDefinitions>> {
-        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
-
-        let limit: u64 = num_blocks.try_into()?;
-
-        // If at some point, mid-way a peer suddenly replies not according to the spec we just
-        // dump everything from this peer and try with the next peer.
-        // We're not permissive when it comes to following the spec.
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Bodies::NAME)
-            .await;
-        for peer in peers {
-            let request = BlockBodiesRequest {
-                iteration: Iteration {
-                    start: start_block_hash.0.into(),
-                    direction: Direction::Forward,
-                    limit,
-                    step: 1.into(),
-                },
-            };
-            let response_receiver = self.inner.send_bodies_sync_request(peer, request).await;
-
-            match response_receiver {
-                Ok(rx) => {
-                    if let Some(parsed) = parse::<parse::state_update::State>(&peer, rx).await {
-                        return Ok(parsed);
-                    }
-                }
-                Err(error) => tracing::debug!(from=%peer, %error, "bodies request failed"),
-            }
-        }
-
-        anyhow::bail!(
-            "No valid responses to bodies request: start {start_block_hash}, n {num_blocks}"
-        )
-    }
-
-    pub async fn transactions(
-        &self,
-        start_block_hash: BlockHash,
-        num_blocks: usize,
-    ) -> anyhow::Result<HashMap<BlockHash, Vec<TransactionVariant>>> {
-        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
-
-        let limit: u64 = num_blocks.try_into()?;
-
-        // If at some point, mid-way a peer suddenly replies not according to the spec we just
-        // dump everything from this peer and try with the next peer.
-        // We're not permissive when it comes to following the spec.
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
-            .await;
-        for peer in peers {
-            let request = TransactionsRequest {
-                iteration: Iteration {
-                    start: start_block_hash.0.into(),
-                    direction: Direction::Forward,
-                    limit,
-                    step: 1.into(),
-                },
-            };
-            let response_receiver = self
-                .inner
-                .send_transactions_sync_request(peer, request)
-                .await;
-
-            match response_receiver {
-                Ok(rx) => {
-                    if let Some(parsed) = parse::<parse::transactions::State>(&peer, rx).await {
-                        let computed = compute_contract_addresses(parsed.deploy_account)
-                            .await
-                            .context(
-                                "compute contract addresses for deploy account transactions",
-                            )?;
-
-                        let mut parsed: HashMap<_, _> = parsed
-                            .other
-                            .into_iter()
-                            .map(|(h, txns)| {
-                                (h, txns.into_iter().map(|t| t.into_variant()).collect())
-                            })
-                            .collect();
-                        parsed.extend(computed);
-
-                        return Ok(parsed);
-                    }
-                }
-                Err(error) => tracing::debug!(from=%peer, %error, "transactions request failed"),
-            }
-        }
-
-        anyhow::bail!(
-            "No valid responses to transactions request: start {start_block_hash}, n {num_blocks}"
-        )
-    }
-
-    pub async fn receipts(
-        &self,
-        start_block_hash: BlockHash,
-        num_blocks: usize,
-    ) -> anyhow::Result<HashMap<BlockHash, Vec<Receipt>>> {
-        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
-
-        let limit: u64 = num_blocks.try_into()?;
-
-        // If at some point, mid-way a peer suddenly replies not according to the spec we just
-        // dump everything from this peer and try with the next peer.
-        // We're not permissive when it comes to following the spec.
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Receipts::NAME)
-            .await;
-        for peer in peers {
-            let request = ReceiptsRequest {
-                iteration: Iteration {
-                    start: start_block_hash.0.into(),
-                    direction: Direction::Forward,
-                    limit,
-                    step: 1.into(),
-                },
-            };
-            let response_receiver = self.inner.send_receipts_sync_request(peer, request).await;
-
-            match response_receiver {
-                Ok(rx) => {
-                    if let Some(parsed) = parse::<parse::receipts::State>(&peer, rx).await {
-                        return Ok(parsed);
-                    }
-                }
-                Err(error) => tracing::debug!(from=%peer, %error, "receipts request failed"),
-            }
-        }
-
-        anyhow::bail!(
-            "No valid responses to receipts request: start {start_block_hash}, n {num_blocks}"
-        )
-    }
-
-    pub async fn event(
-        &self,
-        start_block_hash: BlockHash,
-        num_blocks: usize,
-    ) -> anyhow::Result<HashMap<BlockHash, HashMap<TransactionHash, Vec<Event>>>> {
-        anyhow::ensure!(num_blocks > 0, "0 blocks requested");
-
-        let limit: u64 = num_blocks.try_into()?;
-
-        // If at some point, mid-way a peer suddenly replies not according to the spec we just
-        // dump everything from this peer and try with the next peer.
-        // We're not permissive when it comes to following the spec.
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Events::NAME)
-            .await;
-        for peer in peers {
-            let request = EventsRequest {
-                iteration: Iteration {
-                    start: start_block_hash.0.into(),
-                    direction: Direction::Forward,
-                    limit,
-                    step: 1.into(),
-                },
-            };
-            let response_receiver = self.inner.send_events_sync_request(peer, request).await;
-
-            match response_receiver {
-                Ok(rx) => {
-                    if let Some(parsed) = parse::<parse::events::State>(&peer, rx).await {
-                        return Ok(parsed);
-                    }
-                }
-                Err(error) => tracing::debug!(from=%peer, %error, "events request failed"),
-            }
-        }
-
-        anyhow::bail!(
-            "No valid responses to events request: start {start_block_hash}, n {num_blocks}"
-        )
+        //             // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
+        //         }
+        //     }
+        // }
     }
 }
 
+// TODO
 /// Does not block the current thread.
 async fn compute_contract_addresses(
     deploy_account: HashMap<BlockHash, Vec<super::types::RawDeployAccountTransaction>>,
