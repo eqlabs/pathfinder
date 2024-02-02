@@ -105,6 +105,8 @@ where
         storage,
     } = context;
 
+    let mut pending_handle = None;
+
     'outer: loop {
         // Get the next block from L2.
         let (next, head_meta) = match &head {
@@ -113,8 +115,6 @@ where
         };
 
         let t_block = std::time::Instant::now();
-
-        let mut pending_handle = None;
 
         let (block, commitments, state_update) = loop {
             match download_block(
