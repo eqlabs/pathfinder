@@ -553,6 +553,7 @@ mod tests {
             b"sierra definition",
             &casm_hash,
             b"casm definition",
+            "compiler version",
         )
         .unwrap();
 

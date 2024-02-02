@@ -351,8 +351,14 @@ mod tests {
 
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
-                .unwrap();
+            tx.insert_sierra_class(
+                &sierra_hash,
+                sierra_definition,
+                &casm_hash,
+                casm_definition,
+                "2.0.2",
+            )
+            .unwrap();
             tx.commit().unwrap();
 
             drop(connection);
@@ -425,8 +431,14 @@ mod tests {
             let mut connection = context.storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
-                .unwrap();
+            tx.insert_sierra_class(
+                &sierra_hash,
+                sierra_definition,
+                &casm_hash,
+                casm_definition,
+                "2.0.0",
+            )
+            .unwrap();
 
             let header = BlockHeader::builder()
                 .with_number(block_number)

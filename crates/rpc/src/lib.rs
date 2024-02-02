@@ -293,6 +293,7 @@ pub mod test_utils {
                 &sierra_class_definition,
                 &casm_hash_bytes!(b"non-existent"),
                 &[],
+                "compiler version 123",
             )
             .unwrap();
         db_txn
@@ -740,7 +741,7 @@ pub mod test_utils {
             }
 
             for (sierra, casm) in state_update_copy.declared_sierra_classes {
-                tx.insert_sierra_class(&sierra, b"sierra def", &casm, b"casm def")
+                tx.insert_sierra_class(&sierra, b"sierra def", &casm, b"casm def", "test version")
                     .unwrap();
             }
 
