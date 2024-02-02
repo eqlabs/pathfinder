@@ -118,7 +118,7 @@ pub fn simulate(
 
 pub fn trace(
     mut execution_state: ExecutionState<'_>,
-    cache: &TraceCache,
+    cache: TraceCache,
     block_hash: BlockHash,
     transactions: Vec<Transaction>,
     charge_fee: bool,
