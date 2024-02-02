@@ -116,6 +116,8 @@ pub fn simulate(
     Ok(simulations)
 }
 
+pub type BlockTrace = Vec<(TransactionHash, TransactionTrace)>;
+
 pub fn trace(
     mut execution_state: ExecutionState<'_>,
     cache: &TraceCache,
@@ -123,7 +125,7 @@ pub fn trace(
     transactions: Vec<Transaction>,
     charge_fee: bool,
     validate: bool,
-) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
+) -> Result<BlockTrace, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
     let cached = { cache.0.lock().unwrap().cache_get(&block_hash).cloned() };

@@ -2,6 +2,7 @@ use crate::gas_price;
 pub use crate::jsonrpc::websocket::WebsocketContext;
 use crate::pending::PendingData;
 use crate::pending::PendingWatcher;
+use crate::trace::BlockTraceCache;
 use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_executor::TraceCache;
@@ -21,6 +22,7 @@ pub struct RpcConfig {
 
 #[derive(Clone)]
 pub struct RpcContext {
+    pub trace_cache: BlockTraceCache,
     pub cache: TraceCache,
     pub storage: Storage,
     pub execution_storage: Storage,
@@ -45,6 +47,7 @@ impl RpcContext {
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
         Self {
+            trace_cache: BlockTraceCache::new(128),
             cache: Default::default(),
             storage,
             execution_storage,
