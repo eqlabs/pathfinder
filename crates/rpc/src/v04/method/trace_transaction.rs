@@ -104,11 +104,11 @@ pub async fn trace_transaction(
             .get(&db)
             .context("Querying pending data")?;
 
-        let (header, transactions) = if let Some(pending_idx) = pending
+        let (header, transactions) = if let Some(pending_tx) = pending
             .block
             .transactions
             .iter()
-            .position(|tx| tx.hash() == input.transaction_hash)
+            .find(|tx| tx.hash() == input.transaction_hash)
         {
             let header = pending.header();
 
@@ -120,21 +120,10 @@ pub async fn trace_transaction(
             if starknet_version
                 < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
             {
-                return Ok(LocalExecution::Unsupported(
-                    pending.block.transactions[pending_idx].clone(),
-                ));
+                return Ok(LocalExecution::Unsupported(pending_tx.clone()));
             }
 
-            (
-                header,
-                pending
-                    .block
-                    .transactions
-                    .iter()
-                    .take(pending_idx + 1)
-                    .cloned()
-                    .collect::<Vec<_>>(),
-            )
+            (header, pending.block.transactions.clone())
         } else {
             let block_hash = db
                 .transaction_block_hash(input.transaction_hash)?
@@ -166,17 +155,10 @@ pub async fn trace_transaction(
                 .context("Fetching block transactions")?
                 .context("Block transactions missing")?;
 
-            let index = transactions
-                .iter()
-                .position(|tx| tx.hash() == input.transaction_hash)
-                .context("Failed to find transaction in the batch")?;
-
-            (
-                header,
-                transactions.into_iter().take(index + 1).collect::<Vec<_>>(),
-            )
+            (header, transactions.clone())
         };
 
+        let hash = header.hash;
         let state = ExecutionState::trace(&db, context.chain_id, header, None);
 
         let transactions = transactions
@@ -184,8 +166,24 @@ pub async fn trace_transaction(
             .map(|transaction| compose_executor_transaction(transaction, &db))
             .collect::<Result<Vec<_>, _>>()?;
 
-        pathfinder_executor::trace_one(state, transactions, input.transaction_hash, true, true)
+        pathfinder_executor::trace(state, &context.cache, hash, transactions, true, true)
             .map_err(TraceTransactionError::from)
+            .and_then(|txs| {
+                txs.into_iter()
+                    .find_map(|(tx_hash, trace)| {
+                        if tx_hash == input.transaction_hash {
+                            Some(trace)
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or_else(|| {
+                        TraceTransactionError::Internal(anyhow::anyhow!(
+                            "Transaction hash not found: {}",
+                            input.transaction_hash
+                        ))
+                    })
+            })
             .map(|x| LocalExecution::Success(x.into()))
     })
     .await

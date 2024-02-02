@@ -99,8 +99,10 @@ pub async fn trace_block_transactions(
             .map(|transaction| compose_executor_transaction(transaction, &db))
             .collect::<Result<Vec<_>, _>>()?;
 
+        let hash = header.hash;
         let state = ExecutionState::trace(&db, context.chain_id, header, None);
-        let traces = pathfinder_executor::trace_all(state, transactions, true, true)?;
+        let traces =
+            pathfinder_executor::trace(state, &context.cache, hash, transactions, true, true)?;
 
         let result = traces
             .into_iter()
