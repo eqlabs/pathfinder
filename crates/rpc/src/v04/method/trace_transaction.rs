@@ -104,7 +104,7 @@ pub async fn trace_transaction(
             .get(&db)
             .context("Querying pending data")?;
 
-        let (header, transactions) = if let Some(pending_tx) = pending
+        let (header, transactions, cache) = if let Some(pending_tx) = pending
             .block
             .transactions
             .iter()
@@ -123,7 +123,11 @@ pub async fn trace_transaction(
                 return Ok(LocalExecution::Unsupported(pending_tx.clone()));
             }
 
-            (header, pending.block.transactions.clone())
+            (
+                header,
+                pending.block.transactions.clone(),
+                Default::default(),
+            )
         } else {
             let block_hash = db
                 .transaction_block_hash(input.transaction_hash)?
@@ -155,7 +159,7 @@ pub async fn trace_transaction(
                 .context("Fetching block transactions")?
                 .context("Block transactions missing")?;
 
-            (header, transactions.clone())
+            (header, transactions.clone(), context.cache.clone())
         };
 
         let hash = header.hash;
@@ -166,7 +170,7 @@ pub async fn trace_transaction(
             .map(|transaction| compose_executor_transaction(transaction, &db))
             .collect::<Result<Vec<_>, _>>()?;
 
-        pathfinder_executor::trace(state, &context.cache, hash, transactions, true, true)
+        pathfinder_executor::trace(state, cache, hash, transactions, true, true)
             .map_err(TraceTransactionError::from)
             .and_then(|txs| {
                 txs.into_iter()
