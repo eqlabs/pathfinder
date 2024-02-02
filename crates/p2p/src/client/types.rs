@@ -542,14 +542,6 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for RawTransactionVariant {
                     entry_point_selector: EntryPoint(x.entry_point_selector),
                     nonce: TransactionNonce(x.nonce),
                     calldata: x.calldata.into_iter().map(CallParam).collect(),
-                    // TODO there's a bug in the spec, all available L1 handler transactions up to now (Sep '23)
-                    // carry version 0
-                    // e.g.
-                    // @block 10k
-                    // https://alpha-mainnet.starknet.io/feeder_gateway/get_transaction?transactionHash=0x02e42cd5f71a2b09547083f82e267ac2f37ba71e09fa868ffce90d141531c3ba
-                    // @block ~261k
-                    // https://alpha-mainnet.starknet.io/feeder_gateway/get_transaction?transactionHash=0x02e42cd5f71a2b09547083f82e267ac2f37ba71e09fa868ffce90d141531c3ba
-                    version: TransactionVersion::ZERO,
                 }),
             ),
         })

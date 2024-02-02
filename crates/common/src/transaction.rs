@@ -247,7 +247,6 @@ pub struct L1HandlerTransaction {
     pub entry_point_selector: EntryPoint,
     pub nonce: TransactionNonce,
     pub calldata: Vec<CallParam>,
-    pub version: TransactionVersion,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -423,7 +422,7 @@ impl L1HandlerTransaction {
     fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
         PreV3Hasher {
             prefix: felt_bytes!(b"l1_handler"),
-            version: self.version,
+            version: TransactionVersion::ZERO,
             address: self.contract_address,
             entry_point: self.entry_point_selector,
             data_hash: self.calldata_hash(),
@@ -1187,7 +1186,6 @@ mod tests {
                     "0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5"
                 ),
                 nonce: transaction_nonce!("0x18cb20"),
-                version: TransactionVersion::ZERO,
                 calldata: vec![
                     call_param!("0xae0ee0a63a2ce6baeeffe56e7714fb4efe48d419"),
                     call_param!(
@@ -1213,7 +1211,6 @@ mod tests {
                     "0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b"
                 ),
                 nonce: transaction_nonce!("0x0"),
-                version: TransactionVersion::ZERO,
                 calldata: vec![
                     call_param!("0x142273bcbfca76512b2a05aed21f134c4495208"),
                     call_param!("0xa0c316cb0bb0c9632315ddc8f49c7921f2c80daa"),
@@ -1238,7 +1235,6 @@ mod tests {
                 entry_point_selector: entry_point!(
                     "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
                 ),
-                version: TransactionVersion::ZERO,
                 calldata: vec![
                     call_param!("0x2db8c2615db39a5ed8750b87ac8f217485be11ec"),
                     call_param!("0xbc614e"),
