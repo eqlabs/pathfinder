@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionHash};
-use pathfinder_executor::{ExecutionState, TransactionExecutionError};
+use pathfinder_executor::{ExecutionState, TraceCache, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
@@ -165,7 +165,7 @@ pub async fn trace_block_transactions(
         let mut db = storage.connection()?;
         let db = db.transaction()?;
 
-        let (header, transactions) = match input.block_id {
+        let (header, transactions, cache) = match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
@@ -175,7 +175,12 @@ pub async fn trace_block_transactions(
                 let header = pending.header();
                 let transactions = pending.block.transactions.clone();
 
-                (header, transactions)
+                (
+                    header,
+                    transactions,
+                    // Can't use the cache for pending blocks since they have no block hash.
+                    TraceCache::default(),
+                )
             }
             other => {
                 let block_id = other.try_into().expect("Only pending should fail");
@@ -187,7 +192,7 @@ pub async fn trace_block_transactions(
                     .transactions_for_block(block_id)?
                     .context("Transaction data missing")?;
 
-                (header, transactions)
+                (header, transactions, context.cache.clone())
             }
         };
 
@@ -220,8 +225,7 @@ pub async fn trace_block_transactions(
 
         let hash = header.hash;
         let state = ExecutionState::trace(&db, context.chain_id, header, None);
-        let traces =
-            pathfinder_executor::trace(state, &context.cache, hash, transactions, true, true)?;
+        let traces = pathfinder_executor::trace(state, cache, hash, transactions, true, true)?;
 
         let result = traces
             .into_iter()
