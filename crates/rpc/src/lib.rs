@@ -10,6 +10,7 @@ mod pathfinder;
 mod pending;
 #[cfg(test)]
 mod test_setup;
+mod trace;
 pub mod v02;
 pub mod v03;
 pub mod v04;

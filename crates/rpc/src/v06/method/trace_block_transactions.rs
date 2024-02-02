@@ -1,15 +1,15 @@
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionHash};
-use pathfinder_executor::{ExecutionState, TransactionExecutionError};
+use pathfinder_executor::TransactionExecutionError;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
 
-use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
+use crate::trace::{trace_pending_block, TraceError};
 use crate::v06::method::simulate_transactions::dto::{
     DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
 };
-use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
+use crate::{context::RpcContext, executor::ExecutionStateError};
 
 use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 
@@ -151,96 +151,55 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    enum LocalExecution {
-        Success(Vec<Trace>),
-        Unsupported(Vec<GatewayTransaction>),
-    }
-
     let span = tracing::Span::current();
 
     let storage = context.storage.clone();
-    let traces = tokio::task::spawn_blocking(move || {
+    let trace_result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
         let mut db = storage.connection()?;
         let db = db.transaction()?;
 
-        let (header, transactions) = match input.block_id {
+        match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
                     .get(&db)
                     .context("Querying pending data")?;
 
-                let header = pending.header();
-                let transactions = pending.block.transactions.clone();
-
-                (header, transactions)
+                trace_pending_block(pending, &db, context.chain_id)
             }
             other => {
                 let block_id = other.try_into().expect("Only pending should fail");
-                let header = db
-                    .block_header(block_id)?
-                    .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
+                let (_, block_hash) = db
+                    .block_id(block_id)
+                    .context("Fetching block ID")?
+                    .ok_or(TraceError::BlockNotFound)?;
 
-                let transactions = db
-                    .transactions_for_block(block_id)?
-                    .context("Transaction data missing")?;
-
-                (header, transactions)
-            }
-        };
-
-        let starknet_version = header
-            .starknet_version
-            .parse_as_semver()
-            .context("Parsing starknet version")?
-            .unwrap_or(semver::Version::new(0, 0, 0));
-        if starknet_version
-            < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
-        {
-            match input.block_id {
-                BlockId::Pending => {
-                    return Err(TraceBlockTransactionsError::Internal(anyhow::anyhow!(
-                        "Traces are not supported for pending blocks by the feeder gateway"
-                    )))
-                }
-                _ => {
-                    return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported(
-                        transactions,
-                    ))
-                }
+                crate::trace::trace_block(&context.trace_cache, block_hash, &db, context.chain_id)
             }
         }
-
-        let transactions = transactions
-            .iter()
-            .map(|transaction| compose_executor_transaction(transaction, &db))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let hash = header.hash;
-        let state = ExecutionState::trace(&db, context.chain_id, header, None);
-        let traces =
-            pathfinder_executor::trace(state, &context.cache, hash, transactions, true, true)?;
-
-        let result = traces
-            .into_iter()
-            .map(|(hash, trace)| {
-                Ok(Trace {
-                    transaction_hash: hash,
-                    trace_root: trace.try_into()?,
-                })
-            })
-            .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?;
-
-        Ok(LocalExecution::Success(result))
     })
     .await
-    .context("trace_block_transactions: fetch block & transactions")??;
+    .context("trace_block_transactions: fetch block & transactions")?;
 
-    let transactions = match traces {
-        LocalExecution::Success(traces) => return Ok(TraceBlockTransactionsOutput(traces)),
-        LocalExecution::Unsupported(transactions) => transactions,
+    let transactions = match trace_result {
+        Ok(traces) => {
+            let traces = traces
+                .iter()
+                .cloned()
+                .map(|(hash, trace)| Trace {
+                    transaction_hash: hash,
+                    trace_root: trace.try_into().expect("Trace should map"),
+                })
+                .collect();
+
+            return Ok(TraceBlockTransactionsOutput(traces));
+        }
+        Err(TraceError::BlockNotFound) => return Err(TraceBlockTransactionsError::BlockNotFound),
+        Err(TraceError::Other(other)) => return Err(TraceBlockTransactionsError::Internal(other)),
+        Err(TraceError::ExecutionError(execution)) => return Err(execution.into()),
+        Err(TraceError::VersionNotSupported(transactions)) => transactions,
     };
 
     context
