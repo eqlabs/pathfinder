@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Removed
-
-- Support for RPC v0.4
-
 ### Fixed
 
 - `starknet_getEvents` incorrectly evaluates empty sub-lists in key filters for pending events.
