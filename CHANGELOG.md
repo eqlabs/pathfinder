@@ -13,17 +13,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Support for RPC v0.4
 
-### Fixed
-
-- `starknet_getEvents` incorrectly evaluates empty sub-lists in key filters for pending events.
-- For `UNEXPECTED_ERROR`, change the `data` field into a `string` to comply with the spec.
-
 ### Changed
 
 - `starknet_getEvents` implementation is now using a much simpler implementation that no longer relies on SQLite queries. In general this leads to more consistent query times and a roughly 20% smaller database.
   - The migration step involves computing Bloom filters for all blocks and dropping database tables no longer needed. This takes more than one hour for a mainnet database.
   - The new `storage.event-bloom-filter-cache-size`, `rpc.get-events-max-blocks-to-scan` and `rpc.get-events-max-bloom-filters-to-load` arguments control some aspects of the algorithm.
-- Performance improvements for `starknet_traceTransaction` and `starknet_traceBlockTransactions` via caching.
+
+## [0.10.6] - 2024-02-03
+
+### Added
+
+- Performance improvements for `starknet_traceTransaction` and `starknet_traceBlockTransactions` via caching
+- Performance improvements for the sync process's interaction with the feeder gateway
+  - more aggressive timeouts and retry strategy
+  - polling pending and latest blocks concurrently
+  - using combined requests where possible
+
+## [0.10.5] - 2024-02-02
+
+**YANKED**
+
+This release accidentally contained a mixture of unreleased code and performance improvements, including a somewhat broken database migration.
+
+Users should not use this version.
+
+## [0.10.4] - 2024-02-02
+
+### Fixed
+
+- `starknet_getEvents` incorrectly evaluates empty sub-lists in key filters for pending events
+- The RPC error UNEXPECTED_ERROR is an object not a string
 
 ## [0.10.3] - 2024-01-04
 
