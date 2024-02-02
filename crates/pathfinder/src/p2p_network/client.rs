@@ -7,13 +7,11 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use anyhow::Context;
-use p2p::client::types::{BlockHeader, MaybeSignedBlockHeader, StateUpdateWithDefinitions};
 use p2p::{client::peer_agnostic, HeadRx};
-use p2p_proto::state::{Cairo0Class, Cairo1Class, Class};
-use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
+use p2p_proto::class::{Cairo0Class, Cairo1Class};
 use pathfinder_common::{
-    BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockId, BlockNumber,
-    ByteCodeOffset, CasmHash, ClassHash, EntryPoint, SierraHash, StateCommitment,
+    BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockHeader, BlockId,
+    BlockNumber, ByteCodeOffset, CasmHash, ClassHash, EntryPoint, SierraHash, StateCommitment,
     StateDiffCommitment, StateUpdate, TransactionHash,
 };
 use pathfinder_crypto::Felt;
@@ -30,7 +28,7 @@ use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, Select
 use starknet_gateway_types::trace;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 pub mod types;
@@ -230,131 +228,22 @@ mod error {
 #[async_trait::async_trait]
 impl GatewayApi for HybridClient {
     async fn block(&self, block: BlockId) -> Result<gw::MaybePendingBlock, SequencerError> {
-        use error::block_not_found;
-
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.block(block).await,
             HybridClient::NonPropagatingP2P {
                 p2p_client, cache, ..
-            } => {
-                match block {
-                    BlockId::Number(n) => {
-                        if let Some(block) = cache.get_block(n) {
-                            tracing::trace!(number=%n, "HybridClient: using cached block");
-                            return Ok(block.into());
-                        }
-
-                        let headers = p2p_client.block_headers(n, 1).await.map_err(|error| {
-                            block_not_found(format!("getting headers failed: block {n}, {error}",))
-                        })?;
-
-                        if headers.len() != 1 {
-                            return Err(block_not_found(format!(
-                                "headers len for block {n} is {}, expected 1",
-                                headers.len()
-                            )));
-                        }
-
-                        let MaybeSignedBlockHeader { header, signatures } =
-                            headers.into_iter().next().expect("len is 1");
-
-                        if header.number != n {
-                            return Err(block_not_found("block number mismatch"));
-                        }
-
-                        if signatures.len() != 1 {
-                            return Err(block_not_found("expected 1 block header signature"));
-                        }
-
-                        let signature = signatures.into_iter().next().expect("len is 1");
-
-                        cache.clear_if_reorg(&header);
-
-                        let block_hash = header.hash;
-
-                        let mut transactions = p2p_client
-                            .transactions(header.hash, 1)
-                            .await
-                            .map_err(|error| {
-                                block_not_found(format!(
-                                    "getting transactions failed: block {n}: {error}",
-                                ))
-                            })?;
-
-                        let transactions = transactions.remove(&block_hash).ok_or_else(|| {
-                            block_not_found(format!("no peers with transactions for block {n}",))
-                        })?;
-
-                        let receipts =
-                            p2p_client.receipts(header.hash, 1).await.map_err(|error| {
-                                block_not_found(format!(
-                                    "getting receipts failed: block {n}: {error}",
-                                ))
-                            })?;
-
-                        use crate::p2p_network::client::types::Receipt;
-
-                        let mut receipts = receipts
-                            .into_iter()
-                            .map(|(k, v)| {
-                                v.into_iter()
-                                    .map(Receipt::try_from)
-                                    .collect::<Result<Vec<_>, _>>()
-                                    .map(|r| (k, r))
-                            })
-                            .collect::<Result<HashMap<_, _>, _>>()
-                            .map_err(|error| {
-                                block_not_found(format!(
-                                    "failed to parse receipts for block {n}: {error}",
-                                ))
-                            })?;
-
-                        let receipts = receipts.remove(&block_hash).ok_or_else(|| {
-                            block_not_found(format!("no peers with receipts for block {n}",))
-                        })?;
-
-                        debug_assert_eq!(transactions.len(), receipts.len());
-
-                        // let mut events =
-                        //     p2p_client.event(header.hash, 1).await.map_err(|error| {
-                        //         block_not_found(format!(
-                        //             "getting events failed: block {n}: {error}",
-                        //         ))
-                        //     })?;
-
-                        // let events = events.remove(&block_hash).ok_or_else(|| {
-                        //     block_not_found(format!("no peers with events for block {n}",))
-                        // })?;
-
-                        let block = gw::Block {
-                            block_hash: header.hash,
-                            block_number: header.number,
-                            eth_l1_gas_price: Some(header.eth_l1_gas_price),
-                            strk_l1_gas_price: None,
-                            parent_block_hash: header.parent_hash,
-                            sequencer_address: Some(header.sequencer_address),
-                            state_commitment: header.state_commitment,
-                            // FIXME
-                            status: gw::Status::AcceptedOnL2,
-                            timestamp: header.timestamp,
-                            transaction_receipts: receipts.into_iter().map(|_| todo!()).collect(),
-                            transactions: transactions.into_iter().map(|_| todo!()).collect(),
-                            starknet_version: header.starknet_version,
-                        };
-
-                        cache.insert_block_and_signature(block.clone(), signature);
-
-                        Ok(block.into())
-                    }
-                    BlockId::Latest => {
-                        unreachable!("GatewayApi.head() is used in sync and sync status instead")
-                    }
-                    BlockId::Hash(_) => unreachable!("not used in sync"),
-                    BlockId::Pending => {
-                        unreachable!("pending should be disabled when p2p is enabled")
-                    }
+            } => match block {
+                BlockId::Number(_) => {
+                    todo!()
                 }
-            }
+                BlockId::Latest => {
+                    unreachable!("GatewayApi.head() is used in sync and sync status instead")
+                }
+                BlockId::Hash(_) => unreachable!("not used in sync"),
+                BlockId::Pending => {
+                    unreachable!("pending should be disabled when p2p is enabled")
+                }
+            },
         }
     }
 
@@ -417,107 +306,8 @@ impl GatewayApi for HybridClient {
         self.as_sequencer().transaction(transaction_hash).await
     }
 
-    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
-        use error::block_not_found;
-
-        match self {
-            HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
-            HybridClient::NonPropagatingP2P {
-                p2p_client, cache, ..
-            } => match block {
-                BlockId::Hash(hash) => {
-                    let mut state_updates =
-                        p2p_client.state_updates(hash, 1).await.map_err(|error| {
-                            block_not_found(format!(
-                                "No peers with state update for block {hash}: {error}"
-                            ))
-                        })?;
-
-                    if state_updates.len() != 1 {
-                        return Err(block_not_found(format!(
-                            "State updates len is {}, expected 1",
-                            state_updates.len()
-                        )));
-                    }
-
-                    let StateUpdateWithDefinitions {
-                        block_hash,
-                        state_update,
-                        classes,
-                    } = state_updates.swap_remove(0);
-
-                    if block_hash != hash {
-                        return Err(block_not_found("Block hash mismatch"));
-                    }
-
-                    let mut declared_cairo_classes = HashSet::new();
-                    let mut declared_sierra_classes = HashMap::new();
-                    let mut class_definitions = HashMap::new();
-                    let mut casm_definitions = HashMap::new();
-
-                    for class in classes {
-                        match class {
-                            Class::Cairo0(c0) => {
-                                let jh = tokio::task::spawn_blocking(move || {
-                                    cairo_hash_and_def_from_dto(c0)
-                                });
-                                let (class_hash, class_def) = jh
-                                    .await
-                                    .map_err(block_not_found)?
-                                    .map_err(block_not_found)?;
-                                declared_cairo_classes.insert(class_hash);
-                                class_definitions.insert(class_hash, class_def);
-                            }
-                            Class::Cairo1(c1) => {
-                                let jh = tokio::task::spawn_blocking(move || {
-                                    sierra_defs_and_hashes_from_dto(c1)
-                                });
-                                let (sierra_hash, sierra_def, casm_hash, casm) = jh
-                                    .await
-                                    .map_err(block_not_found)?
-                                    .map_err(block_not_found)?;
-                                declared_sierra_classes.insert(sierra_hash, casm_hash);
-                                let class_hash = ClassHash(sierra_hash.0);
-                                class_definitions.insert(class_hash, sierra_def);
-                                casm_definitions.insert(class_hash, casm);
-                            }
-                        }
-                    }
-
-                    cache.insert_definitions(hash, class_definitions, casm_definitions);
-
-                    let state_commitment =
-                        cache.get_state_commitment(block_hash).unwrap_or_default();
-
-                    Ok(StateUpdate {
-                        block_hash,
-                        // Luckily this field is only used when polling pending which is disabled with p2p
-                        parent_state_commitment: StateCommitment::default(),
-                        state_commitment,
-                        contract_updates: state_update
-                            .contract_updates
-                            .into_iter()
-                            .map(|(k, v)| {
-                                (
-                                    k,
-                                    ContractUpdate {
-                                        storage: v.storage,
-                                        // It does not matter if we mark class updates as "deploy" or "replace"
-                                        // as the way those updates are inserted into our storage is "deploy/replace-agnostic"
-                                        class: v.class.map(ContractClassUpdate::Deploy),
-                                        nonce: v.nonce,
-                                    },
-                                )
-                            })
-                            .collect(),
-                        system_contract_updates: state_update.system_contract_updates,
-                        declared_cairo_classes,
-                        declared_sierra_classes,
-                    })
-                }
-                _ => unreachable!("not used in sync"),
-            },
-        }
+    async fn state_update(&self, _: BlockId) -> Result<StateUpdate, SequencerError> {
+        todo!()
     }
 
     async fn eth_contract_addresses(&self) -> Result<gw::EthContractAddresses, SequencerError> {
@@ -598,7 +388,7 @@ impl GatewayApi for HybridClient {
 }
 
 fn cairo_hash_and_def_from_dto(c0: Cairo0Class) -> anyhow::Result<(ClassHash, Vec<u8>)> {
-    let from_dto = |x: Vec<p2p_proto::state::EntryPoint>| {
+    let from_dto = |x: Vec<p2p_proto::class::EntryPoint>| {
         x.into_iter()
             .map(|e| SelectorAndOffset {
                 selector: EntryPoint(e.selector),
@@ -646,7 +436,7 @@ fn cairo_hash_and_def_from_dto(c0: Cairo0Class) -> anyhow::Result<(ClassHash, Ve
 fn sierra_defs_and_hashes_from_dto(
     c1: Cairo1Class,
 ) -> Result<(SierraHash, Vec<u8>, CasmHash, Vec<u8>), SequencerError> {
-    let from_dto = |x: Vec<p2p_proto::state::SierraEntryPoint>| {
+    let from_dto = |x: Vec<p2p_proto::class::SierraEntryPoint>| {
         x.into_iter()
             .map(|e| SelectorAndFunctionIndex {
                 selector: EntryPoint(e.selector),

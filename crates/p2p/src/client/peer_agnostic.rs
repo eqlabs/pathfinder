@@ -12,27 +12,23 @@ use libp2p::PeerId;
 use p2p_proto::class::{Class, ClassesRequest};
 use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::event::EventsRequest;
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::header::BlockHeadersRequest;
 use p2p_proto::receipt::{Receipt, ReceiptsRequest};
 use p2p_proto::state::StateDiffsRequest;
 use p2p_proto::transaction::TransactionsRequest;
+use pathfinder_common::transaction::{
+    DeployAccountTransactionV0V1, DeployAccountTransactionV3, TransactionVariant,
+};
+use pathfinder_common::{event::Event, StateUpdate};
 use pathfinder_common::{
-    event::Event,
-    transaction::{DeployAccountTransactionV0V1, DeployAccountTransactionV3, TransactionVariant},
     BlockHash, BlockNumber, ContractAddress, SignedBlockHeader, TransactionHash,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::sync::RwLock;
 
 use crate::client::peer_aware;
-use crate::client::types::{
-    MaybeSignedBlockHeader, RawDeployAccountTransaction, StateUpdateWithDefinitions,
-};
+use crate::client::types::RawDeployAccountTransaction;
 use crate::sync::protocol;
-
-mod parse;
-
-use parse::ParserState;
 
 /// Data received from a specific peer.
 #[derive(Debug)]
@@ -118,13 +114,15 @@ impl Client {
         stop: BlockNumber,
         reverse: bool,
     ) -> impl futures::Stream<Item = PeerData<SignedBlockHeader>> {
-        let (mut start, stop, direction) = match reverse {
-            true => (stop, start, Direction::Backward),
-            false => (start, stop, Direction::Forward),
-        };
-        let (_, dummy_stream) = futures::channel::mpsc::channel(0);
-        dummy_stream
         // FIXME
+        // Keep compiler happy
+        let (_, rx) = futures::channel::mpsc::channel(0);
+        rx
+        // let (mut start, stop, direction) = match reverse {
+        //     true => (stop, start, Direction::Backward),
+        //     false => (start, stop, Direction::Forward),
+        // };
+
         // async_stream::stream! {
         //     // Loop which refreshes peer set once we exhaust it.
         //     loop {
@@ -257,25 +255,6 @@ async fn compute_contract_addresses(
     });
     let computed = jh.await.context("task ended unexpectedly")?;
     Ok(computed)
-}
-
-async fn parse<P: Default + ParserState>(
-    peer: &PeerId,
-    mut receiver: mpsc::Receiver<P::Dto>,
-) -> Option<P::Out> {
-    let mut state = P::default();
-
-    while let Some(response) = receiver.next().await {
-        if let Err(error) = state.advance(response) {
-            tracing::debug!(from=%peer, %error, "{} response parsing", std::any::type_name::<P::Dto>());
-            break;
-        }
-    }
-
-    state.take_parsed().or_else(|| {
-        tracing::debug!(from=%peer, "empty response or unexpected end of response");
-        None
-    })
 }
 
 #[derive(Clone, Debug)]

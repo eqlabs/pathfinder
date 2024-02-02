@@ -1,112 +1,21 @@
 //! Workaround for the orphan rule - implement conversion fns for types ourside our crate.
-use p2p_proto::common::{Address, Hash, Merkle, Patricia};
+use p2p_proto::common::{Address, Hash};
 use p2p_proto::receipt::EthereumAddress;
 use p2p_proto::receipt::{
     execution_resources::BuiltinCounter, DeclareTransactionReceipt,
     DeployAccountTransactionReceipt, DeployTransactionReceipt, ExecutionResources,
     InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1, ReceiptCommon,
 };
-use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
 use p2p_proto::transaction::{AccountSignature, ResourceBounds};
 use pathfinder_common::receipt::Receipt as CommonReceipt;
 use pathfinder_common::transaction::DataAvailabilityMode;
 use pathfinder_common::transaction::Transaction as CommonTransaction;
-use pathfinder_common::{
-    event::Event, state_update::ContractUpdate, transaction::ResourceBound,
-    transaction::Transaction, BlockHeader, StateUpdate,
-};
-use pathfinder_common::{
-    AccountDeploymentDataElem, PaymasterDataElem, StateCommitment, TransactionHash,
-};
+use pathfinder_common::{event::Event, transaction::ResourceBound, transaction::Transaction};
+use pathfinder_common::{AccountDeploymentDataElem, PaymasterDataElem, TransactionHash};
 use pathfinder_crypto::Felt;
-use std::time::{Duration, SystemTime};
 
 pub trait ToProto<T> {
     fn to_proto(self) -> T;
-}
-
-impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
-    fn to_proto(self) -> p2p_proto::block::BlockHeader {
-        const ZERO_MERKLE: Merkle = Merkle {
-            n_leaves: 0,
-            root: Hash(Felt::ZERO),
-        };
-        const ZERO_PATRICIA: Patricia = Patricia {
-            height: 0,
-            root: Hash(Felt::ZERO),
-        };
-        p2p_proto::block::BlockHeader {
-            parent_hash: Hash(self.parent_hash.0),
-            number: self.number.get(),
-            time: SystemTime::UNIX_EPOCH // FIXME Dunno how to convert
-                .checked_add(Duration::from_secs(self.timestamp.get()))
-                .unwrap(),
-            sequencer_address: Address(self.sequencer_address.0),
-            // FIXME: calculate the merkles et al.
-            state_diffs: ZERO_MERKLE,
-            state: ZERO_PATRICIA,
-            proof_fact: Hash(Felt::ZERO),
-            transactions: ZERO_MERKLE,
-            events: ZERO_MERKLE,
-            receipts: ZERO_MERKLE,
-            // FIXME extra fields added to make sync work
-            hash: Hash(self.hash.0),
-            gas_price: self.eth_l1_gas_price.0.to_be_bytes().into(),
-            starknet_version: self.starknet_version.take_inner(),
-            state_commitment: (self.state_commitment != StateCommitment::ZERO)
-                .then_some(Hash(self.state_commitment.0)),
-        }
-    }
-}
-
-impl ToProto<p2p_proto::state::StateDiff> for StateUpdate {
-    fn to_proto(self) -> p2p_proto::state::StateDiff {
-        StateDiff {
-            domain: 0, // FIXME there will initially be 2 trees, dunno which id is which
-            contract_diffs: self
-                .system_contract_updates
-                .into_iter()
-                .map(|(address, update)| {
-                    let address = Address(address.0);
-                    let values = update
-                        .storage
-                        .into_iter()
-                        .map(|(storage_address, storage_value)| ContractStoredValue {
-                            key: storage_address.0,
-                            value: storage_value.0,
-                        })
-                        .collect();
-                    ContractDiff {
-                        address,
-                        nonce: None,
-                        class_hash: None,
-                        values,
-                    }
-                })
-                .chain(self.contract_updates.into_iter().map(|(address, update)| {
-                    let address = Address(address.0);
-                    let ContractUpdate {
-                        storage,
-                        class,
-                        nonce,
-                    } = update;
-                    let values = storage
-                        .into_iter()
-                        .map(|(storage_address, storage_value)| ContractStoredValue {
-                            key: storage_address.0,
-                            value: storage_value.0,
-                        })
-                        .collect();
-                    ContractDiff {
-                        address,
-                        nonce: nonce.map(|n| n.0),
-                        class_hash: class.map(|c| c.class_hash().0),
-                        values,
-                    }
-                }))
-                .collect(),
-        }
-    }
 }
 
 impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
@@ -174,7 +83,7 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 class_hash: Hash(x.class_hash.0),
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
-                address: Address(x.contract_address.0),
+                // address: Address(x.contract_address.0), FIXME
                 // Only these two values are allowed in storage
                 version: if x.version.is_zero() { 0 } else { 1 },
             }),
@@ -186,7 +95,7 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
                 address_salt: x.contract_address_salt.0,
-                constructor_calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
             }),
             DeployAccountV3(x) => proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
                 signature: AccountSignature {
@@ -320,11 +229,12 @@ impl ToProto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt)
                             .output_builtin
                             .try_into()
                             .unwrap(),
-                        segment_arena: e
-                            .builtin_instance_counter
-                            .segment_arena_builtin
-                            .try_into()
-                            .unwrap(),
+                        // FIXME
+                        // segment_arena: e
+                        //     .builtin_instance_counter
+                        //     .segment_arena_builtin
+                        //     .try_into()
+                        //     .unwrap(),
                     },
                     steps: e.n_steps.try_into().unwrap(),
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
