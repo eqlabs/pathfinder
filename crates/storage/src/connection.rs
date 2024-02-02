@@ -259,14 +259,9 @@ impl<'inner> Transaction<'inner> {
         &self,
         filter: &EventFilter,
         max_blocks_to_scan: NonZeroUsize,
-        max_uncached_bloom_filters_to_load: NonZeroUsize,
+        max_bloom_filters_to_load: NonZeroUsize,
     ) -> Result<PageOfEvents, EventFilterError> {
-        event::get_events(
-            self,
-            filter,
-            max_blocks_to_scan,
-            max_uncached_bloom_filters_to_load,
-        )
+        event::get_events(self, filter, max_blocks_to_scan, max_bloom_filters_to_load)
     }
 
     pub fn insert_sierra_class(
@@ -569,7 +564,7 @@ impl<'inner> Transaction<'inner> {
         reorg_counter::increment_reorg_counter(self)
     }
 
-    fn reorg_counter(&self) -> anyhow::Result<ReorgCounter> {
+    pub fn reorg_counter(&self) -> anyhow::Result<ReorgCounter> {
         reorg_counter::reorg_counter(self)
     }
 

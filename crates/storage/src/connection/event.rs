@@ -93,7 +93,7 @@ pub(super) fn get_events(
     tx: &Transaction<'_>,
     filter: &EventFilter,
     max_blocks_to_scan: NonZeroUsize,
-    max_uncached_bloom_filters_to_load: NonZeroUsize,
+    max_bloom_filters_to_load: NonZeroUsize,
 ) -> Result<PageOfEvents, EventFilterError> {
     if filter.page_size > PAGE_SIZE_LIMIT {
         return Err(EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT));
@@ -179,7 +179,7 @@ pub(super) fn get_events(
         block_number += 1;
 
         // Check if we've reached our Bloom filter load limit
-        if bloom_filters_loaded >= max_uncached_bloom_filters_to_load.get() {
+        if bloom_filters_loaded >= max_bloom_filters_to_load.get() {
             tracing::trace!("Bloom filter limit reached");
             break ScanResult::ContinueFrom(block_number);
         }
@@ -214,7 +214,7 @@ pub(super) fn get_events(
             });
         }
         ScanResult::ContinueFrom(block_number) => {
-            // We've reached a search limit without filling the page.
+            // We've scanned MAX_BLOCKS_TO_SCAN blocks and still haven't found enough events.
             // We'll need to continue from the next block.
             return Ok(PageOfEvents {
                 events: emitted_events,
@@ -332,7 +332,7 @@ fn continuation_token(
             offset: number_of_events_in_last_block,
         }
     } else {
-        // the page contains events from the same block
+        // the page contains events form the same block
         ContinuationToken {
             block_number: previous_token.block_number,
             offset: previous_token.offset + events.len(),

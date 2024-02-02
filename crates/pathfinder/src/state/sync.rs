@@ -848,10 +848,6 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .context("Latest block number is none during reorg")?
             .0;
 
-        transaction
-            .increment_reorg_counter()
-            .context("Incrementing reorg counter")?;
-
         // Purge each block one at a time.
         //
         // This is done 1-by-1 to allow sending the reorg'd block data

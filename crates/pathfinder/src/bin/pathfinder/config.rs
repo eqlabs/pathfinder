@@ -228,13 +228,13 @@ This should only be enabled for debugging purposes as it adds substantial proces
     get_events_max_blocks_to_scan: std::num::NonZeroUsize,
 
     #[arg(
-        long = "rpc.get-events-max-uncached-bloom-filters-to-load",
+        long = "rpc.get-events-max-bloom-filters-to-load",
         long_help = "The number of Bloom filters to load for events when querying for events. \
             This limit is used to prevent queries from taking too long.",
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_BLOOM_FILTERS_TO_LOAD",
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOOM_FILTERS_TO_LOAD",
         default_value = "100000"
     )]
-    get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
+    get_events_max_bloom_filters_to_load: std::num::NonZeroUsize,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -519,7 +519,7 @@ pub struct Config {
     pub gateway_api_key: Option<String>,
     pub event_bloom_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
+    pub get_events_max_bloom_filters_to_load: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -699,8 +699,7 @@ impl Config {
             gateway_api_key: cli.gateway_api_key,
             event_bloom_filter_cache_size: cli.event_bloom_filter_cache_size,
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
-            get_events_max_uncached_bloom_filters_to_load: cli
-                .get_events_max_uncached_bloom_filters_to_load,
+            get_events_max_bloom_filters_to_load: cli.get_events_max_bloom_filters_to_load,
         }
     }
 }
