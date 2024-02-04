@@ -158,7 +158,7 @@ acl = private
 You can then download a compressed database using the command:
 
 ```shell
-rclone copy -P pathfinder-snapshots:pathfinder-snapshots/testnet_0.9.0_880310.sqlite.zst .
+rclone copy -P pathfinder-snapshots:pathfinder-snapshots/testnet_0.9.0_880310.sqlite.zst
 ```
 
 ### Uncompressing database snapshots
