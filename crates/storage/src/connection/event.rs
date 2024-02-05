@@ -487,7 +487,10 @@ mod tests {
             },
         ];
 
-        let mut connection = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = connection.transaction().unwrap();
 
         tx.insert_block_header(&header).unwrap();

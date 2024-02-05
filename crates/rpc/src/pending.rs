@@ -123,7 +123,7 @@ mod tests {
         let (sender, receiver) = tokio::sync::watch::channel(Default::default());
         let uut = PendingWatcher::new(receiver);
 
-        let mut storage = pathfinder_storage::Storage::in_memory()
+        let mut storage = pathfinder_storage::StorageBuilder::in_memory()
             .unwrap()
             .connection()
             .unwrap();
@@ -169,7 +169,7 @@ mod tests {
         let (_sender, receiver) = tokio::sync::watch::channel(Default::default());
         let uut = PendingWatcher::new(receiver);
 
-        let mut storage = pathfinder_storage::Storage::in_memory()
+        let mut storage = pathfinder_storage::StorageBuilder::in_memory()
             .unwrap()
             .connection()
             .unwrap();

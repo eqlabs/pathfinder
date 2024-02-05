@@ -31,13 +31,11 @@ pub(super) fn reorg_counter(tx: &Transaction<'_>) -> anyhow::Result<ReorgCounter
 
 #[cfg(test)]
 mod tests {
-    use crate::Storage;
-
     use super::*;
 
     #[test]
     fn empty_is_zero() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -47,7 +45,7 @@ mod tests {
 
     #[test]
     fn increment() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 

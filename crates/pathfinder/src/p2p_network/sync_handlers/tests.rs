@@ -46,7 +46,7 @@ mod boundary_conditions {
     use p2p_proto::receipt::ReceiptsRequest;
     use p2p_proto::state::StateDiffsRequest;
     use p2p_proto::transaction::TransactionsRequest;
-    use pathfinder_storage::Storage;
+    use pathfinder_storage::StorageBuilder;
     use rand::Rng;
     use rstest::rstest;
 
@@ -77,7 +77,7 @@ mod boundary_conditions {
                 #[case(invalid_start())]
                 #[tokio::test]
                 async fn $name(#[case] iteration: Iteration) {
-                    let storage = Storage::in_memory().unwrap();
+                    let storage = StorageBuilder::in_memory().unwrap();
                     let (tx, mut rx) = mpsc::channel(0);
                     let _jh = tokio::spawn($uut_name(storage, $request { iteration }, tx));
                     assert_eq!(rx.next().await.unwrap(), Default::default());
@@ -501,13 +501,13 @@ mod prop {
     mod fixtures {
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
         use pathfinder_storage::fake::{with_n_blocks_and_rng, Block};
-        use pathfinder_storage::Storage;
+        use pathfinder_storage::{Storage, StorageBuilder};
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 
         pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, Vec<Block>) {
             use rand::SeedableRng;
-            let storage = Storage::in_memory().unwrap();
+            let storage = StorageBuilder::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
             let initializer =

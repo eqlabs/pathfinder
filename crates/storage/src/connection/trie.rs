@@ -229,8 +229,6 @@ mod macros {
                     for idx in removed {
                         stmt.execute(params![idx]).context("Deleting node")?;
                     }
-
-
                     Ok(())
                 }
 
@@ -574,7 +572,10 @@ mod tests {
 
     #[test]
     fn class_roots() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
@@ -609,7 +610,10 @@ mod tests {
 
     #[test]
     fn storage_roots() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
@@ -644,7 +648,10 @@ mod tests {
 
     #[test]
     fn contract_roots() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let c1 = contract_address_bytes!(b"first");
@@ -1012,7 +1019,10 @@ mod tests {
 
     #[test]
     fn contract_state_hash() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let contract = contract_address_bytes!(b"address");

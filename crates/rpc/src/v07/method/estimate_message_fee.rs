@@ -29,7 +29,7 @@ mod tests {
     use pathfinder_common::prelude::*;
     use pathfinder_common::BlockId;
     use pathfinder_common::L1DataAvailabilityMode;
-    use pathfinder_storage::{JournalMode, Storage};
+    use pathfinder_storage::StorageBuilder;
     use primitive_types::H160;
 
     use crate::context::RpcContext;
@@ -50,7 +50,8 @@ mod tests {
         let mut db_path = dir.path().to_path_buf();
         db_path.push("db.sqlite");
 
-        let storage = Storage::migrate(db_path, JournalMode::WAL, 1)
+        let storage = StorageBuilder::file(db_path)
+            .migrate()
             .expect("storage")
             .create_pool(std::num::NonZeroU32::new(1).expect("one"))
             .expect("storage");
