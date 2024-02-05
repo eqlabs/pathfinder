@@ -88,24 +88,6 @@ pub struct Config {
     pub bootstrap: BootstrapConfig,
 }
 
-impl Config {
-    pub fn new(
-        max_inbound_direct_peers: usize,
-        max_inbound_relay_peers: usize,
-        bootstrap: BootstrapConfig,
-    ) -> Self {
-        Self {
-            direct_connection_timeout: Duration::from_secs(30),
-            relay_connection_timeout: Duration::from_secs(10),
-            max_inbound_direct_peers,
-            max_inbound_relayed_peers: max_inbound_relay_peers,
-            ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-            bootstrap,
-            eviction_timeout: Duration::from_secs(15 * 60),
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct BootstrapConfig {
     pub start_offset: Duration,

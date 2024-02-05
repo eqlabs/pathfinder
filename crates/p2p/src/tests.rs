@@ -82,7 +82,15 @@ impl TestPeer {
 impl Default for TestPeer {
     fn default() -> Self {
         Self::new(
-            Config::new(10, 10, Default::default()),
+            Config {
+                direct_connection_timeout: Duration::from_secs(30),
+                relay_connection_timeout: Duration::from_secs(10),
+                max_inbound_direct_peers: 10,
+                max_inbound_relayed_peers: 10,
+                ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+                bootstrap: Default::default(),
+                eviction_timeout: Duration::from_secs(15 * 60),
+            },
             Keypair::generate_ed25519(),
         )
     }
