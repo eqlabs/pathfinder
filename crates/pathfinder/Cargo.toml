@@ -29,7 +29,6 @@ fake = { workspace = true }
 futures = { workspace = true }
 ipnet = { workspace = true }
 lazy_static = { workspace = true }
-lru = "0.11.1"
 metrics = { workspace = true }
 metrics-exporter-prometheus = "0.11.0"
 mimalloc = { version = "0.1.39", default-features = false }
