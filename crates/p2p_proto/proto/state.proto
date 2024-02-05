@@ -10,11 +10,12 @@ message ContractStoredValue {
 }
 
 message ContractDiff {
-    starknet.common.Address          address    = 1;
-    optional starknet.common.Felt252 nonce      = 2;
-    optional starknet.common.Felt252 class_hash = 3;  // can change for replace_class or new contract
-    repeated ContractStoredValue     values     = 4;
-    uint32                           domain     = 5;  // volition state domain
+    starknet.common.Address          address     = 1;
+    optional starknet.common.Felt252 nonce       = 2;  // Present only if the nonce was updated
+    optional starknet.common.Felt252 class_hash  = 3;  // Present only if the contract was deployed or replaced in this block.
+    optional bool                    is_replaced = 4;  // Present only if the contract was deployed or replaced, in order to determine whether the contract was deployed or replaced.
+    repeated ContractStoredValue     values      = 5;
+    uint32                           domain      = 6;  // volition state domain
 }
 
 message StateDiffsRequest {

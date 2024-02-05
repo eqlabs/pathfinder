@@ -138,6 +138,7 @@ message Transaction
         InvokeV3        invoke_v3         = 10;
         L1HandlerV0     l1_handler        = 11;
     }
+    starknet.common.Hash transaction_hash = 12;
 }
 
 // TBD: can support a flag to return tx hashes only, good for standalone mempool to remove them,
