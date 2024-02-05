@@ -51,13 +51,10 @@ async fn main() -> anyhow::Result<()> {
 
 async fn serve() -> anyhow::Result<()> {
     let database_path = std::env::args().nth(1).unwrap();
-    let storage = pathfinder_storage::Storage::migrate(
-        database_path.into(),
-        pathfinder_storage::JournalMode::WAL,
-        1,
-    )?
-    .create_pool(NonZeroU32::new(10).unwrap())
-    .unwrap();
+    let storage = pathfinder_storage::StorageBuilder::file(database_path.into())
+        .migrate()?
+        .create_pool(NonZeroU32::new(10).unwrap())
+        .unwrap();
 
     let chain = {
         let mut connection = storage.connection()?;

@@ -4,7 +4,6 @@ use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, StarknetVersion};
 use pathfinder_crypto::Felt;
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
-use pathfinder_storage::{JournalMode, Storage};
 use starknet_gateway_types::reply::{Block, GasPrices, Status};
 
 /// Verify block hashes in a pathfinder database.
@@ -24,7 +23,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     let database_path = std::env::args().nth(2).unwrap();
-    let storage = Storage::migrate(database_path.into(), JournalMode::WAL, 1)?
+    let storage = pathfinder_storage::StorageBuilder::file(database_path.into())
+        .migrate()?
         .create_pool(NonZeroU32::new(1).unwrap())
         .unwrap();
     let mut db = storage

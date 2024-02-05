@@ -5,7 +5,7 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
 use pathfinder_executor::ExecutionState;
-use pathfinder_storage::{BlockId, JournalMode, Storage};
+use pathfinder_storage::{BlockId, Storage};
 use rayon::prelude::*;
 
 // The Cairo VM allocates felts on the stack, so during execution it's making
@@ -31,7 +31,8 @@ fn main() -> anyhow::Result<()> {
     let n_cpus = rayon::current_num_threads();
 
     let database_path = std::env::args().nth(1).unwrap();
-    let storage = Storage::migrate(database_path.into(), JournalMode::WAL, 1)?
+    let storage = pathfinder_storage::StorageBuilder::file(database_path.into())
+        .migrate()?
         .create_pool(NonZeroU32::new(n_cpus as u32 * 2).unwrap())?;
     let mut db = storage
         .connection()

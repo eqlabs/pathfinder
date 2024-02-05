@@ -2088,7 +2088,10 @@ mod tests {
 
         let body = transactions.into_iter().zip(receipts).collect::<Vec<_>>();
 
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let db_tx = db.transaction().unwrap();
 
         db_tx.insert_block_header(&header).unwrap();

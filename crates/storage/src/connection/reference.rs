@@ -25,13 +25,11 @@ pub(super) fn l1_l2_pointer(tx: &Transaction<'_>) -> anyhow::Result<Option<Block
 
 #[cfg(test)]
 mod tests {
-    use crate::Storage;
-
     use super::*;
 
     #[test]
     fn empty_is_none() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -41,7 +39,7 @@ mod tests {
 
     #[test]
     fn update_overwrites() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 

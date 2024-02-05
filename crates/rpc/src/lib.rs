@@ -246,7 +246,7 @@ pub mod test_utils {
     use pathfinder_common::transaction::*;
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::TransactionData;
-    use pathfinder_storage::{BlockId, Storage};
+    use pathfinder_storage::{BlockId, Storage, StorageBuilder};
     use primitive_types::H160;
     use starknet_gateway_types::reply::GasPrices;
     use std::collections::HashMap;
@@ -255,7 +255,7 @@ pub mod test_utils {
     pub fn setup_storage() -> Storage {
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let db_txn = connection.transaction().unwrap();
 

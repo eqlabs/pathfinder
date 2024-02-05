@@ -1193,7 +1193,7 @@ mod tests {
     use pathfinder_common::{macro_prelude::*, BlockCommitmentSignature};
     use pathfinder_crypto::Felt;
     use pathfinder_rpc::SyncState;
-    use pathfinder_storage::Storage;
+    use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::reply::Block;
     use starknet_gateway_types::reply::{self, GasPrices};
     use std::sync::Arc;
@@ -1279,7 +1279,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn block_updates() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1324,7 +1324,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn reorg() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1372,7 +1372,7 @@ mod tests {
         // A bug caused reorg'd block numbers to be skipped. This
         // was due to the expected block number not being updated
         // when handling the reorg.
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1427,7 +1427,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn reorg_to_genesis() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1462,7 +1462,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn new_cairo_contract() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
@@ -1500,7 +1500,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn new_sierra_contract() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
@@ -1540,7 +1540,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn consumer_should_ignore_duplicate_blocks() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
 

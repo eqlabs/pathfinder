@@ -215,7 +215,6 @@ mod tests {
     use pathfinder_common::{
         felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, GasPrice, StateUpdate,
     };
-    use pathfinder_storage::{JournalMode, Storage};
     use primitive_types::H160;
     use serde::Deserialize;
     use starknet_gateway_test_fixtures::class_definitions::{
@@ -300,7 +299,8 @@ mod tests {
         let mut db_path = dir.path().to_path_buf();
         db_path.push("db.sqlite");
 
-        let storage = Storage::migrate(db_path, JournalMode::WAL, 1)
+        let storage = pathfinder_storage::StorageBuilder::file(db_path)
+            .migrate()
             .expect("storage")
             .create_pool(std::num::NonZeroU32::new(1).expect("one"))
             .expect("storage");

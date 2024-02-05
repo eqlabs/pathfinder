@@ -73,7 +73,7 @@ mod tests {
     use crate::Connection;
 
     fn setup() -> (Connection, Vec<BlockHeader>, Vec<BlockCommitmentSignature>) {
-        let storage = crate::Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 

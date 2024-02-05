@@ -459,7 +459,7 @@ mod tests {
 
     /// Add some dummy state updates to the context for testing
     fn context_with_state_updates() -> (Vec<types::StateUpdate>, RpcContext) {
-        let storage = pathfinder_storage::Storage::in_memory().unwrap();
+        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
 
         let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
             .into_iter()

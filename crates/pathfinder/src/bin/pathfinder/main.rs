@@ -108,12 +108,12 @@ async fn async_main() -> anyhow::Result<()> {
 
     // Setup and verify database
 
-    let storage_manager = Storage::migrate(
-        pathfinder_context.database.clone(),
-        config.sqlite_wal,
-        config.event_bloom_filter_cache_size.get(),
-    )
-    .unwrap();
+    let storage_manager =
+        pathfinder_storage::StorageBuilder::file(pathfinder_context.database.clone())
+            .journal_mode(config.sqlite_wal)
+            .bloom_filter_cache_size(config.event_bloom_filter_cache_size.get())
+            .prune_merkle_tries(config.prune_merkle_tries)
+            .migrate()?;
     let sync_storage = storage_manager
         // 5 is enough for normal sync operations, and then `available_parallelism` for
         // the rayon thread pool workers to use.
