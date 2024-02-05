@@ -33,6 +33,10 @@ impl HashChain {
             Felt::from_be_slice(&self.count.to_be_bytes()).expect("usize is smaller than 251-bits");
         pedersen_hash(self.hash, count)
     }
+
+    pub fn single(value: Felt) -> Felt {
+        Self::default().chain_update(value).finalize()
+    }
 }
 
 #[cfg(test)]

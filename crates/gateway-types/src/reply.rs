@@ -785,14 +785,13 @@ pub mod transaction {
                     entry_point_selector,
                     nonce,
                     calldata,
-                    version,
                 }) => Self::L1Handler(self::L1HandlerTransaction {
                     contract_address,
                     entry_point_selector,
                     nonce,
                     calldata,
                     transaction_hash,
-                    version,
+                    version: TransactionVersion::ZERO,
                 }),
             }
         }
@@ -1019,14 +1018,14 @@ pub mod transaction {
                     nonce,
                     calldata,
                     transaction_hash: _,
-                    version,
+                    // This should always be zero.
+                    version: _,
                 }) => TransactionVariant::L1Handler(
                     pathfinder_common::transaction::L1HandlerTransaction {
                         contract_address,
                         entry_point_selector,
                         nonce,
                         calldata,
-                        version,
                     },
                 ),
             };

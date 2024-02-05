@@ -4,7 +4,6 @@ use anyhow::Context;
 use pathfinder_common::{BlockNumber, ChainId};
 use pathfinder_storage::{JournalMode, Storage};
 use rayon::prelude::*;
-use starknet_gateway_types::transaction_hash::{verify, VerifyResult};
 
 /// Verify transaction hashes in a pathfinder database.
 ///
@@ -62,14 +61,14 @@ fn main() -> anyhow::Result<()> {
         transactions
             .par_iter()
             .enumerate()
-            .for_each(|(i, (txn, _))| match verify(txn, chain_id) {
-                VerifyResult::Match => {}
-                VerifyResult::Mismatch(calculated) => println!(
-                    "Mismatch: block {block_number} idx {i} expected {} calculated {} full_txn\n{}",
-                    txn.hash(),
-                    calculated,
-                    serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
-                ),
+            .for_each(|(i, (gw_txn, _))| {
+                let txn = pathfinder_common::transaction::Transaction::from(gw_txn.clone());
+                if !txn.verify_hash(chain_id) {
+                    println!(
+                        "Mismatch: block {block_number} idx {i}. Full_txn\n{}",
+                        serde_json::to_string(&gw_txn).unwrap_or(">Failed to deserialize<".into())
+                    );
+                }
             });
     }
 

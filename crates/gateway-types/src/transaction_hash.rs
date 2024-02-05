@@ -12,13 +12,11 @@ use pathfinder_common::{
     TransactionNonce, TransactionVersion,
 };
 
-use crate::class_hash::truncated_keccak;
 use pathfinder_common::ChainId;
 use pathfinder_crypto::{
     hash::{HashChain, PoseidonHasher},
     Felt,
 };
-use sha3::{Digest, Keccak256};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum VerifyResult {
@@ -177,13 +175,6 @@ fn compute_declare_v3_hash(txn: &DeclareTransactionV3, chain_id: ChainId) -> Tra
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash), and `sn_keccak` is [Starknet Keccak](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#Starknet-keccak)
 fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> TransactionHash {
-    lazy_static::lazy_static!(
-        static ref CONSTRUCTOR: EntryPoint = {
-            let mut keccak = Keccak256::default();
-            keccak.update(b"constructor");
-            EntryPoint(truncated_keccak(<[u8; 32]>::from(keccak.finalize())))};
-    );
-
     let constructor_params_hash = {
         let hh = txn.constructor_calldata.iter().fold(
             HashChain::default(),
@@ -199,7 +190,7 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> Transactio
         b"deploy",
         txn.version,
         txn.contract_address,
-        Some(*CONSTRUCTOR),
+        Some(EntryPoint::CONSTRUCTOR),
         constructor_params_hash,
         None,
         chain_id,
@@ -213,7 +204,7 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> Transactio
         legacy_compute_txn_hash(
             b"deploy",
             txn.contract_address,
-            Some(*CONSTRUCTOR),
+            Some(EntryPoint::CONSTRUCTOR),
             constructor_params_hash,
             chain_id,
             None,
@@ -567,9 +558,9 @@ pub fn compute_v3_txn_hash(
     resource_bounds: ResourceBounds,
 ) -> TransactionHash {
     let fee_fields_hash = hash_fee_related_fields(&tip, &resource_bounds);
-    let da_mode_concatenation = ((nonce_data_availability_mode as u64)
+    let da_mode_concatenation = (u64::from(nonce_data_availability_mode)
         << DA_AVAILABILITY_MODE_BITS)
-        + fee_data_availability_mode as u64;
+        + u64::from(fee_data_availability_mode);
 
     let mut h: PoseidonHasher = PoseidonHasher::new();
     h.write(

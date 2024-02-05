@@ -6147,6 +6147,7 @@ dependencies = [
  "pathfinder-crypto",
  "primitive-types",
  "rand",
+ "rstest",
  "semver",
  "serde",
  "serde_json",

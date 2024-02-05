@@ -260,7 +260,10 @@ impl Serialize for L1HandlerHelper<'_> {
         S: serde::Serializer,
     {
         let mut s = serializer.serialize_struct("L1Handler", 6)?;
-        s.serialize_field("version", &TransactionVersionHelper(&self.0.version))?;
+        s.serialize_field(
+            "version",
+            &TransactionVersionHelper(&TransactionVersion::ZERO),
+        )?;
         s.serialize_field("type", "L1_HANDLER")?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("contract_address", &self.0.contract_address)?;
@@ -639,7 +642,6 @@ mod tests {
                 entry_point_selector: entry_point!("0xdead"),
                 nonce: transaction_nonce!("0xaabbcc"),
                 calldata: vec![call_param!("0xfff1"), call_param!("0xfff0")],
-                version: TransactionVersion::TWO,
             }
             .into();
 
@@ -649,7 +651,7 @@ mod tests {
                 "entry_point_selector": "0xdead",
                 "nonce": "0xaabbcc",
                 "calldata": ["0xfff1","0xfff0"],
-                "version": "0x2",
+                "version": "0x0",
             });
             let uut = Transaction(original);
             let result = serde_json::to_value(uut).unwrap();

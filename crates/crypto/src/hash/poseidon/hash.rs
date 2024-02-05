@@ -64,6 +64,12 @@ impl PoseidonHasher {
         }
     }
 
+    /// Same as [Self::write] but returns self to enable chaining writes.
+    pub fn chain(mut self, msg: MontFelt) -> Self {
+        self.write(msg);
+        self
+    }
+
     /// Finish and return hash
     pub fn finish(mut self) -> MontFelt {
         // Apply padding
