@@ -13,7 +13,7 @@ base64 = { workspace = true }
 bincode = "2.0.0-rc.3"
 bitvec = { workspace = true }
 bloomfilter = "1.0.12"
-cached = "0.44.0"
+cached = { workspace = true }
 const_format = { workspace = true }
 data-encoding = "2.4.0"
 fake = { workspace = true }

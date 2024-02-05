@@ -6088,7 +6088,6 @@ dependencies = [
  "http",
  "ipnet",
  "lazy_static",
- "lru 0.11.1",
  "metrics",
  "metrics-exporter-prometheus",
  "mimalloc",

@@ -7,7 +7,6 @@
 //! "proper" p2p node which only syncs via p2p.
 
 use anyhow::Context;
-use lru::LruCache;
 use p2p::client::types::{BlockHeader, MaybeSignedBlockHeader, StateUpdateWithDefinitions};
 use p2p::{client::peer_agnostic, HeadRx};
 use p2p_proto::state::{Cairo0Class, Cairo1Class, Class};
@@ -32,8 +31,7 @@ use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, Select
 use starknet_gateway_types::trace;
 use starknet_gateway_types::{error::SequencerError, reply::Block};
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
-use std::num::NonZeroUsize;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 pub mod types;
@@ -59,9 +57,12 @@ pub enum HybridClient {
     },
 }
 
+/// We only need to cache 2 blocks: the last one and its parent.
+const CACHE_SIZE: usize = 2;
+
 #[derive(Clone, Debug)]
 pub struct Cache {
-    inner: Arc<Mutex<LruCache<BlockHash, CacheEntry>>>,
+    inner: Arc<Mutex<VecDeque<CacheEntry>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -75,8 +76,7 @@ pub struct CacheEntry {
 impl Default for Cache {
     fn default() -> Self {
         Self {
-            // We only need 2 blocks: the last one and its parent
-            inner: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(2).unwrap()))),
+            inner: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }
@@ -86,55 +86,56 @@ impl Cache {
         let locked = self.inner.lock().unwrap();
         locked
             .iter()
-            .find_map(|(_, v)| (v.block.block_number == number).then_some(v.block.clone()))
+            .find_map(|v| (v.block.block_number == number).then_some(v.block.clone()))
     }
 
     fn get_signature(&self, block_hash: BlockHash) -> Option<BlockSignature> {
         let locked = self.inner.lock().unwrap();
-        locked.peek(&block_hash).map(|entry| BlockSignature {
-            // Not used in sync
-            block_number: entry.block.block_number,
-            // Only this field is used in sync
-            signature: [
-                BlockCommitmentSignatureElem(entry.signature.r.0),
-                BlockCommitmentSignatureElem(entry.signature.s.0),
-            ],
-            // Not used in sync
-            signature_input: gw::BlockSignatureInput {
-                block_hash,
-                state_diff_commitment: StateDiffCommitment::default(), // This is fine
-            },
+        locked.iter().find_map(|entry| {
+            (entry.block.block_hash == block_hash).then_some(BlockSignature {
+                // Not used in sync
+                block_number: entry.block.block_number,
+                // Only this field is used in sync
+                signature: [
+                    BlockCommitmentSignatureElem(entry.signature.r.0),
+                    BlockCommitmentSignatureElem(entry.signature.s.0),
+                ],
+                // Not used in sync
+                signature_input: gw::BlockSignatureInput {
+                    block_hash,
+                    state_diff_commitment: StateDiffCommitment::default(), // This is fine
+                },
+            })
         })
     }
 
     fn get_state_commitment(&self, block_hash: BlockHash) -> Option<StateCommitment> {
         let locked = self.inner.lock().unwrap();
-        locked
-            .peek(&block_hash)
-            .map(|entry| entry.block.state_commitment)
+        locked.iter().find_map(|entry| {
+            (entry.block.block_hash == block_hash).then_some(entry.block.state_commitment)
+        })
     }
 
     fn get_definition(&self, class_hash: ClassHash) -> Option<Vec<u8>> {
         let locked = self.inner.lock().unwrap();
         locked
             .iter()
-            .find_map(|(_, v)| v.class_definitions.get(&class_hash).cloned())
+            .find_map(|entry| entry.class_definitions.get(&class_hash).cloned())
     }
 
     fn get_casm(&self, class_hash: ClassHash) -> Option<Vec<u8>> {
         let locked = self.inner.lock().unwrap();
         locked
             .iter()
-            .find_map(|(_, v)| v.casm_definitions.get(&class_hash).cloned())
+            .find_map(|entry| entry.casm_definitions.get(&class_hash).cloned())
     }
 
     fn clear_if_reorg(&self, header: &BlockHeader) {
         if let Some(parent_number) = header.number.get().checked_sub(1) {
             let mut locked = self.inner.lock().unwrap();
-            if let Some(cached_parent_hash) = locked
-                .iter()
-                .find_map(|(k, v)| (v.block.block_number.get() == parent_number).then_some(k))
-            {
+            if let Some(cached_parent_hash) = locked.iter().find_map(|entry| {
+                (entry.block.block_number.get() == parent_number).then_some(entry.block.block_hash)
+            }) {
                 // If there's a reorg, purge the cache or we'll be stuck
                 //
                 // There's a risk we'll falsely reorg to genesis if all other peers get disconnected
@@ -149,15 +150,15 @@ impl Cache {
 
     fn insert_block_and_signature(&self, block: Block, signature: BlockCommitmentSignature) {
         let mut locked_inner = self.inner.lock().unwrap();
-        locked_inner.put(
-            block.block_hash,
-            CacheEntry {
-                block,
-                signature,
-                class_definitions: Default::default(),
-                casm_definitions: Default::default(),
-            },
-        );
+        locked_inner.push_front(CacheEntry {
+            block,
+            signature,
+            class_definitions: Default::default(),
+            casm_definitions: Default::default(),
+        });
+        if locked_inner.len() > CACHE_SIZE {
+            locked_inner.pop_back();
+        }
     }
 
     fn insert_definitions(
@@ -168,7 +169,8 @@ impl Cache {
     ) {
         let mut locked = self.inner.lock().unwrap();
         let entry = locked
-            .peek_mut(&block_hash)
+            .iter_mut()
+            .find(|entry| entry.block.block_hash == block_hash)
             .expect("block is already cached");
         entry.class_definitions = class_definitions;
         entry.casm_definitions = casm_definitions;
