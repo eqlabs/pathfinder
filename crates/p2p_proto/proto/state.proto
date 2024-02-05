@@ -26,9 +26,7 @@ message StateDiffsRequest {
 message StateDiffsResponse {
     // All of the messages related to a block need to be sent before a message from the next block is sent.
     oneof state_diff_message {
-        ContractDiff            contract_diff     = 1; // Multiple contract diffs for the same contract may appear continuously if the diff is too large.
-        starknet.common.Address deployed_contract = 2;
-        starknet.common.Address replaced_contract = 3;
-        starknet.common.Fin     fin               = 4; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its state diff.
+        ContractDiff        contract_diff = 1; // Multiple contract diffs for the same contract may appear continuously if the diff is too large.
+        starknet.common.Fin fin           = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its state diff.
     }
 }

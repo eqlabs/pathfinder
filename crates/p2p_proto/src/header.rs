@@ -7,18 +7,22 @@ use std::time::{Duration, SystemTime};
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::header::SignedBlockHeader")]
 pub struct SignedBlockHeader {
+    pub block_hash: Hash,
     pub parent_hash: Hash,
     pub number: u64,
     pub time: SystemTime,
     pub sequencer_address: Address,
-    pub state_diffs: Merkle,
+    pub state_diff_commitment: Hash,
     pub state: Patricia,
-    pub classes: Merkle,
     pub transactions: Merkle,
     pub events: Merkle,
     pub receipts: Merkle,
     pub protocol_version: String,
     pub gas_price: Felt,
+    pub num_storage_diffs: u64,
+    pub num_nonce_updates: u64,
+    pub num_declared_classes: u64,
+    pub num_deployed_contracts: u64,
     pub signatures: Vec<ConsensusSignature>,
 }
 
@@ -76,18 +80,22 @@ impl TryFromProtobuf<::prost_types::Timestamp> for SystemTime {
 impl<T> Dummy<T> for SignedBlockHeader {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
+            block_hash: Faker.fake_with_rng(rng),
             time: SystemTime::now(),
             parent_hash: Faker.fake_with_rng(rng),
             number: Faker.fake_with_rng(rng),
             sequencer_address: Faker.fake_with_rng(rng),
-            state_diffs: Faker.fake_with_rng(rng),
+            state_diff_commitment: Faker.fake_with_rng(rng),
             state: Faker.fake_with_rng(rng),
-            classes: Faker.fake_with_rng(rng),
             transactions: Faker.fake_with_rng(rng),
             events: Faker.fake_with_rng(rng),
             receipts: Faker.fake_with_rng(rng),
             protocol_version: Faker.fake_with_rng(rng),
             gas_price: Faker.fake_with_rng(rng),
+            num_storage_diffs: Faker.fake_with_rng(rng),
+            num_nonce_updates: Faker.fake_with_rng(rng),
+            num_declared_classes: Faker.fake_with_rng(rng),
+            num_deployed_contracts: Faker.fake_with_rng(rng),
             signatures: Faker.fake_with_rng(rng),
         }
     }

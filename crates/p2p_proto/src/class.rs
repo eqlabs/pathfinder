@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::common::Iteration;
+use crate::common::{Hash, Iteration};
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
@@ -114,8 +114,16 @@ impl<T> Dummy<T> for Cairo1Class {
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum Class {
-    Cairo0 { class: Cairo0Class, domain: u32 },
-    Cairo1 { class: Cairo1Class, domain: u32 },
+    Cairo0 {
+        class: Cairo0Class,
+        domain: u32,
+        class_hash: Hash,
+    },
+    Cairo1 {
+        class: Cairo1Class,
+        domain: u32,
+        class_hash: Hash,
+    },
 }
 
 impl ToProtobuf<proto::class::Class> for Class {
@@ -123,13 +131,23 @@ impl ToProtobuf<proto::class::Class> for Class {
         use proto::class::class::Class::{Cairo0, Cairo1};
         use proto::class::Class;
         match self {
-            Self::Cairo0 { class, domain } => Class {
+            Self::Cairo0 {
+                class,
+                domain,
+                class_hash,
+            } => Class {
                 class: Some(Cairo0(class.to_protobuf())),
                 domain,
+                class_hash: Some(class_hash.to_protobuf()),
             },
-            Self::Cairo1 { class, domain } => Class {
+            Self::Cairo1 {
+                class,
+                domain,
+                class_hash,
+            } => Class {
                 class: Some(Cairo1(class.to_protobuf())),
                 domain,
+                class_hash: Some(class_hash.to_protobuf()),
             },
         }
     }
@@ -141,14 +159,20 @@ impl TryFromProtobuf<proto::class::Class> for Class {
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::class::class::Class::{Cairo0, Cairo1};
+        let class_hash = TryFromProtobuf::try_from_protobuf(
+            proto_field(input.class_hash, field_name)?,
+            field_name,
+        )?;
         Ok(match proto_field(input.class, field_name)? {
             Cairo0(c) => Self::Cairo0 {
                 class: Cairo0Class::try_from_protobuf(c, field_name)?,
                 domain: input.domain,
+                class_hash,
             },
             Cairo1(c) => Self::Cairo1 {
                 class: Cairo1Class::try_from_protobuf(c, field_name)?,
                 domain: input.domain,
+                class_hash,
             },
         })
     }

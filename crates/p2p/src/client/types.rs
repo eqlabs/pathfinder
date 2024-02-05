@@ -148,17 +148,17 @@ impl From<DeployAccountTransactionV3> for RawDeployAccountTransactionV3 {
     }
 }
 
-impl TryFromDto<p2p_proto::transaction::Transaction> for RawTransactionVariant {
+impl TryFromDto<p2p_proto::transaction::TransactionVariant> for RawTransactionVariant {
     /// ## Important
     ///
     /// This conversion does not compute deployed contract address for deploy account transactions
     /// ([`TransactionVariant::DeployAccountV0V1`] and [`TransactionVariant::DeployAccountV3`]),
     /// filling it with a zero address instead. The caller is responsible for performing the computation after the conversion succeeds.
-    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
+    fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        use p2p_proto::transaction::Transaction::*;
+        use p2p_proto::transaction::TransactionVariant::*;
 
         Ok(match dto {
             DeclareV0(x) => RawTransactionVariant::NonDeployAccount(
