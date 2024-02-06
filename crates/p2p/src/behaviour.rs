@@ -484,6 +484,13 @@ impl Behaviour {
         self.peers.iter()
     }
 
+    pub fn num_outbound_peers(&self) -> usize {
+        self.peers
+            .iter()
+            .filter(|(_, peer)| peer.is_outbound())
+            .count()
+    }
+
     /// Number of inbound non-relayed peers.
     fn num_inbound_direct_peers(&self) -> usize {
         self.peers

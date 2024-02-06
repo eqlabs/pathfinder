@@ -357,7 +357,7 @@ Example:
         long_help = "The maximum number of inbound direct (non-relayed) connections.",
         value_name = "MAX_INBOUND_DIRECT_CONNECTIONS",
         env = "PATHFINDER_MAX_INBOUND_DIRECT_CONNECTIONS",
-        default_value = "35"
+        default_value = "30"
     )]
     max_inbound_direct_connections: u32,
 
@@ -366,9 +366,18 @@ Example:
         long_help = "The maximum number of inbound relayed connections.",
         value_name = "MAX_INBOUND_RELAYED_CONNECTIONS",
         env = "PATHFINDER_MAX_INBOUND_RELAYED_CONNECTIONS",
-        default_value = "15"
+        default_value = "30"
     )]
     max_inbound_relayed_connections: u32,
+
+    #[arg(
+        long = "p2p.low-watermark",
+        long_help = "The minimum number of outbound peers to maintain. If the number of outbound peers drops below this number, the node will attempt to connect to more peers.",
+        value_name = "LOW_WATERMARK",
+        env = "PATHFINDER_LOW_WATERMARK",
+        default_value = "20"
+    )]
+    low_watermark: u32,
 
     #[arg(
         long = "p2p.ip-whitelist",
@@ -550,6 +559,7 @@ pub struct P2PConfig {
     pub max_inbound_direct_connections: usize,
     pub max_inbound_relayed_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
+    pub low_watermark: usize,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -642,6 +652,7 @@ impl P2PConfig {
             bootstrap_addresses: parse_multiaddr_vec(args.bootstrap_addresses),
             predefined_peers: parse_multiaddr_vec(args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
+            low_watermark: 0,
         }
     }
 }
