@@ -32,9 +32,10 @@ pub struct StateDiffsRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum StateDiffsResponse {
     ContractDiff(ContractDiff),
+    #[default]
     Fin,
 }
 

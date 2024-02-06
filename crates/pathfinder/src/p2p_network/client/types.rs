@@ -47,7 +47,7 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                         ec_op_builtin: common.execution_resources.builtins.ec_op.into(),
                         keccak_builtin: common.execution_resources.builtins.keccak.into(),
                         poseidon_builtin: common.execution_resources.builtins.poseidon.into(),
-                        segment_arena_builtin: todo!(),
+                        segment_arena_builtin: 0,
                     },
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),

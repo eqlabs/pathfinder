@@ -184,9 +184,10 @@ pub struct ClassesRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum ClassesResponse {
     Class(Class),
+    #[default]
     Fin,
 }
 

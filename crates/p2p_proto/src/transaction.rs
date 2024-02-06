@@ -188,9 +188,10 @@ pub struct TransactionsRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum TransactionsResponse {
     Transaction(Transaction),
+    #[default]
     Fin,
 }
 

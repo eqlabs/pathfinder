@@ -2,14 +2,17 @@ use anyhow::Context;
 use p2p::client::peer_agnostic;
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr};
 use p2p::{HeadRx, HeadTx};
-use pathfinder_common::ChainId;
+use p2p_proto::header::BlockHeadersResponse;
+use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
 use tracing::Instrument;
 
 pub mod client;
 mod sync_handlers;
 
-use sync_handlers::{get_events, get_headers, get_receipts, get_transactions};
+use sync_handlers::{
+    get_classes, get_events, get_headers, get_receipts, get_state_diffs, get_transactions,
+};
 
 // Silence clippy
 pub type P2PNetworkHandle = (peer_agnostic::Client, HeadRx, tokio::task::JoinHandle<()>);
@@ -139,12 +142,12 @@ async fn handle_p2p_event(
         p2p::Event::InboundClassesSyncRequest {
             request, channel, ..
         } => {
-            todo!()
+            get_classes(storage, request, channel).await?;
         }
         p2p::Event::InboundStateDiffsSyncRequest {
             request, channel, ..
         } => {
-            todo!()
+            get_state_diffs(storage, request, channel).await?;
         }
         p2p::Event::InboundTransactionsSyncRequest {
             request, channel, ..
@@ -163,7 +166,34 @@ async fn handle_p2p_event(
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");
-            todo!()
+            use p2p_proto::header::NewBlock;
+
+            let new_head = match new_block {
+                NewBlock::Id(id) => {
+                    BlockNumber::new(id.number).and_then(|n| Some((n, BlockHash(id.hash.0))))
+                }
+                NewBlock::Header(BlockHeadersResponse::Header(hdr)) => BlockNumber::new(hdr.number)
+                    .and_then(|n| Some((n, BlockHash(hdr.block_hash.0)))),
+                NewBlock::Header(BlockHeadersResponse::Fin) => None,
+            };
+
+            match new_head {
+                Some((new_height, new_hash)) => {
+                    tx.send_if_modified(|head| -> bool {
+                        let current_height = head.unwrap_or_default().0;
+
+                        if new_height > current_height {
+                            *head = Some((new_height, new_hash));
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                }
+                None => {
+                    tracing::warn!("Received block propagation without a valid head")
+                }
+            }
         }
         p2p::Event::SyncPeerConnected { .. } | p2p::Event::Test(_) => { /* Ignore me */ }
     }

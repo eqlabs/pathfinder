@@ -14,6 +14,7 @@ use pathfinder_common::{event::Event, transaction::ResourceBound, transaction::T
 use pathfinder_common::{AccountDeploymentDataElem, PaymasterDataElem, TransactionHash};
 use pathfinder_crypto::Felt;
 
+/// Convert pathfinder common (ie. core) type to a p2p dto type
 pub trait ToProto<T> {
     fn to_proto(self) -> T;
 }
@@ -187,7 +188,6 @@ impl ToProto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt)
     fn to_proto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         let revert_reason = self.1.revert_reason().unwrap_or_default();
-
         let common = ReceiptCommon {
             transaction_hash: Hash(self.1.transaction_hash.0),
             actual_fee: self.1.actual_fee.unwrap_or_default().0,
@@ -238,12 +238,6 @@ impl ToProto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt)
                             .output_builtin
                             .try_into()
                             .unwrap(),
-                        // FIXME
-                        // segment_arena: e
-                        //     .builtin_instance_counter
-                        //     .segment_arena_builtin
-                        //     .try_into()
-                        //     .unwrap(),
                     },
                     steps: e.n_steps.try_into().unwrap(),
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
@@ -288,7 +282,7 @@ impl ToProto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt)
 impl ToProto<p2p_proto::event::Event> for (TransactionHash, Event) {
     fn to_proto(self) -> p2p_proto::event::Event {
         p2p_proto::event::Event {
-            transaction_hash: Hash(self.0 .0),
+            transaction_hash: p2p_proto::common::Hash(self.0 .0),
             from_address: self.1.from_address.0,
             keys: self.1.keys.into_iter().map(|k| k.0).collect(),
             data: self.1.data.into_iter().map(|d| d.0).collect(),

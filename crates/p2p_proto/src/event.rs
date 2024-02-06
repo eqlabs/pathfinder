@@ -19,9 +19,10 @@ pub struct EventsRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum EventsResponse {
     Event(Event),
+    #[default]
     Fin,
 }
 

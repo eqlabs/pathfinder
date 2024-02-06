@@ -38,9 +38,10 @@ pub struct BlockHeadersRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum BlockHeadersResponse {
     Header(Box<SignedBlockHeader>),
+    #[default]
     Fin,
 }
 

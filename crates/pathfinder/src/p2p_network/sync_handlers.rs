@@ -1,10 +1,15 @@
 use anyhow::Context;
 use futures::channel::mpsc;
 use futures::SinkExt;
-use p2p_proto::common::{BlockId, BlockNumberOrHash, Direction, Hash, Iteration, Step};
+use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
+use p2p_proto::common::{
+    Address, BlockNumberOrHash, ConsensusSignature, Direction, Hash, Iteration, Merkle, Patricia,
+    Step,
+};
 use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHeader};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
@@ -28,10 +33,28 @@ const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 pub async fn get_headers(
     storage: Storage,
     request: BlockHeadersRequest,
-    mut tx: mpsc::Sender<BlockHeadersResponse>,
+    tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
-    let response = spawn_blocking_get(request, storage, blocking::get_headers).await?;
-    tx.send(response).await.context("Sending response")
+    let responses = spawn_blocking_get(request, storage, blocking::get_headers).await?;
+    send(tx, responses).await
+}
+
+pub async fn get_classes(
+    storage: Storage,
+    request: ClassesRequest,
+    tx: mpsc::Sender<ClassesResponse>,
+) -> anyhow::Result<()> {
+    let responses = spawn_blocking_get(request, storage, blocking::get_classes).await?;
+    send(tx, responses).await
+}
+
+pub async fn get_state_diffs(
+    storage: Storage,
+    request: StateDiffsRequest,
+    tx: mpsc::Sender<StateDiffsResponse>,
+) -> anyhow::Result<()> {
+    let responses = spawn_blocking_get(request, storage, blocking::get_state_diffs).await?;
+    send(tx, responses).await
 }
 
 pub async fn get_transactions(
@@ -67,8 +90,22 @@ pub(crate) mod blocking {
     pub(crate) fn get_headers(
         tx: Transaction<'_>,
         request: BlockHeadersRequest,
-    ) -> anyhow::Result<BlockHeadersResponse> {
-        todo!()
+    ) -> anyhow::Result<Vec<BlockHeadersResponse>> {
+        iterate(tx, request.iteration, get_header)
+    }
+
+    pub(crate) fn get_classes(
+        tx: Transaction<'_>,
+        request: ClassesRequest,
+    ) -> anyhow::Result<Vec<ClassesResponse>> {
+        iterate(tx, request.iteration, get_classes_for_block)
+    }
+
+    pub(crate) fn get_state_diffs(
+        tx: Transaction<'_>,
+        request: StateDiffsRequest,
+    ) -> anyhow::Result<Vec<StateDiffsResponse>> {
+        iterate(tx, request.iteration, get_state_diff)
     }
 
     pub(crate) fn get_transactions(
@@ -99,8 +136,50 @@ fn get_header(
     parts: &mut Vec<BlockHeadersResponse>,
 ) -> anyhow::Result<bool> {
     if let Some(header) = tx.block_header(block_number.into())? {
-        let hash = Hash(header.hash.0);
-        todo!();
+        if let Some(signature) = tx.signature(block_number.into())? {
+            parts.push(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
+                block_hash: Hash(header.hash.0),
+                parent_hash: Hash(header.parent_hash.0),
+                number: header.number.get(),
+                time: todo!(),
+                sequencer_address: Address(header.sequencer_address.0),
+                state_diff_commitment: todo!(),
+                state: Patricia {
+                    height: 251,
+                    root: Hash(header.state_commitment.0),
+                },
+                transactions: Merkle {
+                    n_leaves: header
+                        .transaction_count
+                        .try_into()
+                        .context("invalid transaction count")?,
+                    root: Hash(header.transaction_commitment.0),
+                },
+                events: Merkle {
+                    n_leaves: header
+                        .event_count
+                        .try_into()
+                        .context("invalid event count")?,
+                    root: Hash(header.event_commitment.0),
+                },
+                receipts: Merkle {
+                    n_leaves: todo!(),
+                    root: todo!(),
+                },
+                protocol_version: header.starknet_version.take_inner(),
+                gas_price: todo!(),
+                num_storage_diffs: todo!(),
+                num_nonce_updates: todo!(),
+                num_declared_classes: todo!(),
+                num_deployed_contracts: todo!(),
+                signatures: vec![ConsensusSignature {
+                    r: signature.r.0,
+                    s: signature.s.0,
+                }],
+            })));
+        }
+
+        parts.push(BlockHeadersResponse::Fin);
 
         Ok(true)
     } else {
@@ -143,12 +222,11 @@ fn get_transactions_for_block(
         return Ok(false);
     };
 
-    let id = Some(BlockId {
-        number: block_number.get(),
-        hash: Hash(block_hash.0),
-    });
-
-    todo!();
+    responses.extend(txn_data.into_iter().map(|(gw_txn, _)| {
+        TransactionsResponse::Transaction(
+            pathfinder_common::transaction::Transaction::from(gw_txn).to_proto(),
+        )
+    }));
 
     Ok(true)
 }
@@ -166,12 +244,12 @@ fn get_receipts_for_block(
         return Ok(false);
     };
 
-    let id = Some(BlockId {
-        number: block_number.get(),
-        hash: Hash(block_hash.0),
-    });
-
-    todo!();
+    responses.extend(
+        txn_data
+            .into_iter()
+            .map(ToProto::to_proto)
+            .map(ReceiptsResponse::Receipt),
+    );
 
     Ok(true)
 }
@@ -189,33 +267,66 @@ fn get_events_for_block(
         return Ok(false);
     };
 
-    let items = txn_data
-        .into_iter()
-        .flat_map(|(_, r)| {
-            std::iter::repeat(r.transaction_hash)
-                .zip(r.events)
-                .map(ToProto::to_proto)
-        })
-        .collect::<Vec<_>>();
-
-    let id = Some(BlockId {
-        number: block_number.get(),
-        hash: Hash(block_hash.0),
-    });
-
-    todo!();
+    responses.extend(txn_data.into_iter().flat_map(|(_, r)| {
+        std::iter::repeat(r.transaction_hash)
+            .zip(r.events)
+            .map(ToProto::to_proto)
+            .map(EventsResponse::Event)
+    }));
 
     Ok(true)
 }
 
-/// `block_handler` returns Ok(true) if the iteration should continue and is
-/// responsible for delimiting block data with `Fin::ok()` marker.
-fn iterate<T>(
+/// Assupmtions:
+/// - `block_handler` returns Ok(true) if the iteration should continue.
+/// - T::default() always returns the `Fin` variant of the implementing type.
+fn iterate<T: Default>(
     tx: Transaction<'_>,
     iteration: Iteration,
     block_handler: impl Fn(&Transaction<'_>, BlockNumber, &mut Vec<T>) -> anyhow::Result<bool>,
 ) -> anyhow::Result<Vec<T>> {
-    todo!()
+    let Iteration {
+        start,
+        direction,
+        limit,
+        step,
+    } = iteration;
+
+    if limit == 0 {
+        return Ok(vec![T::default()]);
+    }
+
+    let mut block_number = match get_start_block_number(start, &tx)? {
+        Some(x) => x,
+        None => {
+            return Ok(vec![T::default()]);
+        }
+    };
+
+    let mut responses = Vec::new();
+
+    for i in 0..limit.min(MAX_BLOCKS_COUNT) {
+        if block_handler(&tx, block_number, &mut responses)? {
+            // Block data retrieved successfully
+        } else {
+            // No such block
+            break;
+        }
+
+        if i < limit - 1 {
+            block_number = match get_next_block_number(block_number, step, direction) {
+                Some(x) => x,
+                None => {
+                    // Out of range block number value
+                    break;
+                }
+            };
+        }
+    }
+
+    responses.push(T::default());
+
+    Ok(responses)
 }
 
 fn get_start_block_number(

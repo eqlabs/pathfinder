@@ -316,7 +316,7 @@ pub(crate) mod transaction {
         pub ec_op_builtin: u64,
         pub keccak_builtin: u64,
         pub poseidon_builtin: u64,
-        pub segment_arena_builtin: u64,
+        pub segment_arena_builtin: u64, // TODO REMOVE (?)
     }
 
     impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {

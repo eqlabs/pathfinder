@@ -386,6 +386,11 @@ impl<'inner> Transaction<'inner> {
         class::casm_definition_at_with_block_number(self, block_id, class_hash)
     }
 
+    /// Returns hashes of Cairo and Sierra classes declared at a given block.
+    pub fn declared_classes_at(&self, block: BlockId) -> anyhow::Result<Vec<ClassHash>> {
+        state_update::declared_classes_at(self, block)
+    }
+
     pub fn contract_class_hash(
         &self,
         block_id: BlockId,
