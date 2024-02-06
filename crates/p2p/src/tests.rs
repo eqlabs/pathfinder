@@ -20,7 +20,7 @@ use rstest::rstest;
 use tokio::task::JoinHandle;
 
 use crate::peers::Peer;
-use crate::{BootstrapConfig, Config, Event, EventReceiver, TestEvent};
+use crate::{BootstrapConfig, Config, Event, EventReceiver, RateLimit, TestEvent};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -83,14 +83,18 @@ impl Default for TestPeer {
     fn default() -> Self {
         Self::new(
             Config {
-                direct_connection_timeout: Duration::from_secs(30),
-                relay_connection_timeout: Duration::from_secs(10),
+                direct_connection_timeout: Duration::from_secs(0),
+                relay_connection_timeout: Duration::from_secs(0),
                 max_inbound_direct_peers: 10,
                 max_inbound_relayed_peers: 10,
                 low_watermark: 10,
                 ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
                 bootstrap: Default::default(),
                 eviction_timeout: Duration::from_secs(15 * 60),
+                inbound_connections_rate_limit: RateLimit {
+                    max: 1000,
+                    interval: Duration::from_secs(1),
+                },
             },
             Keypair::generate_ed25519(),
         )
@@ -246,6 +250,10 @@ async fn periodic_bootstrap() {
             start_offset: Duration::from_secs(1),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
     };
     let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -352,7 +360,7 @@ async fn reconnect_too_quickly() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
     let cfg = Config {
         direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_millis(500),
+        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
@@ -362,6 +370,10 @@ async fn reconnect_too_quickly() {
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
     };
 
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -448,7 +460,7 @@ async fn duplicate_connection() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
     let cfg = Config {
         direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_millis(500),
+        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
@@ -459,6 +471,10 @@ async fn duplicate_connection() {
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
     };
     let keypair = Keypair::generate_ed25519();
     let mut peer1 = TestPeer::new(cfg.clone(), keypair.clone());
@@ -530,7 +546,7 @@ async fn max_inbound_connections() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
     let cfg = Config {
         direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_millis(500),
+        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
         max_inbound_relayed_peers: 0,
@@ -541,6 +557,10 @@ async fn max_inbound_connections() {
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -647,8 +667,8 @@ async fn max_inbound_connections() {
 #[test_log::test(tokio::test)]
 async fn ip_whitelist() {
     let cfg = Config {
-        direct_connection_timeout: Duration::from_millis(50),
-        relay_connection_timeout: Duration::from_millis(50),
+        direct_connection_timeout: Duration::from_secs(0),
+        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
@@ -659,6 +679,10 @@ async fn ip_whitelist() {
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -675,8 +699,8 @@ async fn ip_whitelist() {
 
     // Start another peer accepting connections from 127.0.0.1.
     let cfg = Config {
-        direct_connection_timeout: Duration::from_millis(50),
-        relay_connection_timeout: Duration::from_millis(50),
+        direct_connection_timeout: Duration::from_secs(0),
+        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
@@ -687,6 +711,10 @@ async fn ip_whitelist() {
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
     };
     let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
@@ -696,6 +724,60 @@ async fn ip_whitelist() {
     // Connection can be opened because peer3 allows connections from 127.0.0.1.
     let result = peer2.client.dial(peer3.peer_id, addr3.clone()).await;
     assert!(result.is_ok());
+}
+
+/// Check that inbound connections get rate limited.
+#[test_log::test(tokio::test)]
+async fn rate_limit() {
+    const RATE_LIMIT_INTERVAL: Duration = Duration::from_secs(1);
+
+    let cfg = Config {
+        direct_connection_timeout: Duration::from_secs(0),
+        relay_connection_timeout: Duration::from_secs(0),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+        max_inbound_direct_peers: 10,
+        max_inbound_relayed_peers: 10,
+        // Don't open connections automatically.
+        low_watermark: 0,
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            start_offset: Duration::from_secs(10),
+        },
+        eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 2,
+            interval: RATE_LIMIT_INTERVAL,
+        },
+    };
+
+    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let peer3 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let peer4 = TestPeer::new(cfg, Keypair::generate_ed25519());
+
+    let addr1 = peer1.start_listening().await.unwrap();
+    tracing::info!(%peer1.peer_id, %addr1);
+
+    consume_events(peer1.event_receiver);
+    consume_events(peer2.event_receiver);
+    consume_events(peer3.event_receiver);
+    consume_events(peer4.event_receiver);
+
+    // Two connections can be opened, but the third one is rate limited.
+
+    peer2
+        .client
+        .dial(peer1.peer_id, addr1.clone())
+        .await
+        .unwrap();
+    peer3
+        .client
+        .dial(peer1.peer_id, addr1.clone())
+        .await
+        .unwrap();
+
+    let result = peer4.client.dial(peer1.peer_id, addr1.clone()).await;
+    assert!(result.is_err());
 }
 
 #[rstest]
