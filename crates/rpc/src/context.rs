@@ -5,7 +5,6 @@ use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_executor::TraceCache;
 use pathfinder_storage::Storage;
-use starknet_gateway_client::test_utils::GATEWAY_TIMEOUT;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -56,12 +55,16 @@ impl RpcContext {
         }
     }
 
+    #[cfg(test)]
     pub fn for_tests() -> Self {
         Self::for_tests_on(pathfinder_common::Chain::GoerliTestnet)
     }
 
+    #[cfg(test)]
     pub fn for_tests_on(chain: pathfinder_common::Chain) -> Self {
         use pathfinder_common::Chain;
+        use starknet_gateway_client::test_utils::GATEWAY_TIMEOUT;
+
         let (chain_id, sequencer) = match chain {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet(GATEWAY_TIMEOUT)),
             Chain::GoerliTestnet => (
@@ -120,6 +123,7 @@ impl RpcContext {
         }
     }
 
+    #[cfg(test)]
     pub async fn for_tests_with_pending() -> Self {
         // This is a bit silly with the arc in and out, but since its for tests the ergonomics of
         // having Arc also constructed is nice.
