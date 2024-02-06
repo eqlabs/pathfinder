@@ -82,6 +82,9 @@ pub struct Config {
     pub max_inbound_direct_peers: usize,
     /// Maximum number of relayed peers.
     pub max_inbound_relayed_peers: usize,
+    /// The minimum number of peers to maintain. If the number of outbound peers drops below this
+    /// number, the node will attempt to connect to more peers.
+    pub low_watermark: usize,
     /// How long to prevent evicted peers from reconnecting.
     pub eviction_timeout: Duration,
     pub ip_whitelist: Vec<IpNet>,
@@ -98,7 +101,7 @@ impl Default for BootstrapConfig {
     fn default() -> Self {
         Self {
             start_offset: Duration::from_secs(5),
-            period: Duration::from_secs(10 * 60),
+            period: Duration::from_secs(2 * 60),
         }
     }
 }
@@ -216,7 +219,7 @@ pub enum Event {
 #[derive(Debug)]
 pub enum TestEvent {
     NewListenAddress(Multiaddr),
-    PeriodicBootstrapCompleted(Result<PeerId, PeerId>),
+    KademliaBootstrapCompleted(Result<PeerId, PeerId>),
     StartProvidingCompleted(Result<RecordKey, RecordKey>),
     ConnectionEstablished { outbound: bool, remote: PeerId },
     ConnectionClosed { remote: PeerId },

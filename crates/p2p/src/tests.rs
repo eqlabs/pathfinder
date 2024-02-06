@@ -87,6 +87,7 @@ impl Default for TestPeer {
                 relay_connection_timeout: Duration::from_secs(10),
                 max_inbound_direct_peers: 10,
                 max_inbound_relayed_peers: 10,
+                low_watermark: 10,
                 ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
                 bootstrap: Default::default(),
                 eviction_timeout: Duration::from_secs(15 * 60),
@@ -232,23 +233,23 @@ async fn disconnect() {
 async fn periodic_bootstrap() {
     let _ = env_logger::builder().is_test(true).try_init();
 
-    // TODO figure out how to make this test run using tokio::time::pause()
-    // instead of arbitrary short delays
+    const BOOTSTRAP_PERIOD: Duration = Duration::from_millis(500);
     let cfg = Config {
         direct_connection_timeout: Duration::from_secs(0),
         relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        low_watermark: 3,
         bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
+            period: BOOTSTRAP_PERIOD,
             start_offset: Duration::from_secs(1),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
     };
     let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut peer2 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
 
     let mut boot_addr = boot.start_listening().await.unwrap();
     boot_addr.push(Protocol::P2p(boot.peer_id));
@@ -265,10 +266,14 @@ async fn periodic_bootstrap() {
         .dial(boot.peer_id, boot_addr.clone())
         .await
         .unwrap();
-    peer2.client.dial(boot.peer_id, boot_addr).await.unwrap();
+    peer2
+        .client
+        .dial(boot.peer_id, boot_addr.clone())
+        .await
+        .unwrap();
 
-    let filter_periodic_bootstrap = |event| match event {
-        Event::Test(TestEvent::PeriodicBootstrapCompleted(_)) => Some(()),
+    let filter_kademlia_bootstrap = |event| match event {
+        Event::Test(TestEvent::KademliaBootstrapCompleted(_)) => Some(()),
         _ => None,
     };
 
@@ -276,25 +281,69 @@ async fn periodic_bootstrap() {
 
     let peer_id2 = peer2.peer_id;
 
-    let mut peer2_added_to_dht_of_peer1 =
-        filter_events(peer1.event_receiver, move |event| match event {
+    let peer2_added_to_dht_of_peer1 =
+        wait_for_event(&mut peer1.event_receiver, move |event| match event {
             Event::Test(TestEvent::PeerAddedToDHT { remote }) if remote == peer_id2 => Some(()),
             _ => None,
         });
-    let mut peer2_bootstrap_done = filter_events(peer2.event_receiver, filter_periodic_bootstrap);
 
-    tokio::join!(peer2_added_to_dht_of_peer1.recv(), async {
-        peer2_bootstrap_done.recv().await;
-        peer2_bootstrap_done.recv().await;
+    tokio::join!(peer2_added_to_dht_of_peer1, async {
+        wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap).await;
+        wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap).await;
     });
 
-    let boot_dht = boot.client.for_test().get_peers_from_dht().await;
-    let dht1 = peer1.client.for_test().get_peers_from_dht().await;
-    let dht2 = peer2.client.for_test().get_peers_from_dht().await;
+    consume_events(peer1.event_receiver);
 
-    assert_eq!(boot_dht, [peer1.peer_id, peer2.peer_id].into());
-    assert_eq!(dht1, [boot.peer_id, peer2.peer_id].into());
-    assert_eq!(dht2, [boot.peer_id, peer1.peer_id].into());
+    assert_eq!(
+        boot.client.for_test().get_peers_from_dht().await,
+        [peer1.peer_id, peer2.peer_id].into()
+    );
+    assert_eq!(
+        peer1.client.for_test().get_peers_from_dht().await,
+        [boot.peer_id, peer2.peer_id].into()
+    );
+    assert_eq!(
+        peer2.client.for_test().get_peers_from_dht().await,
+        [boot.peer_id, peer1.peer_id].into()
+    );
+
+    // The peer keeps attempting the bootstrap because the low watermark is not reached, but there
+    // are no new peers to connect to.
+
+    wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap).await;
+
+    assert_eq!(
+        boot.client.for_test().get_peers_from_dht().await,
+        [peer1.peer_id, peer2.peer_id].into()
+    );
+    assert_eq!(
+        peer1.client.for_test().get_peers_from_dht().await,
+        [boot.peer_id, peer2.peer_id].into()
+    );
+    assert_eq!(
+        peer2.client.for_test().get_peers_from_dht().await,
+        [boot.peer_id, peer1.peer_id].into()
+    );
+
+    // Start a new peer and connect it to the bootstrap peer. The new peer should be added to the
+    // DHT of the other peers during next bootstrap period.
+    let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let addr3 = peer3.start_listening().await.unwrap();
+
+    consume_events(peer3.event_receiver);
+    exhaust_events(&mut peer2.event_receiver).await;
+
+    peer2.client.dial(peer3.peer_id, addr3).await.unwrap();
+
+    // The low watermark is reached for peer2, so no more bootstrap attempts are made.
+
+    let timeout = tokio::time::timeout(
+        BOOTSTRAP_PERIOD,
+        wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap),
+    )
+    .await;
+
+    assert!(timeout.is_err());
 }
 
 /// Test that if a peer attempts to reconnect too quickly, the connection is closed.
@@ -307,9 +356,9 @@ async fn reconnect_too_quickly() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        low_watermark: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
-            // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
@@ -403,9 +452,10 @@ async fn duplicate_connection() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        // Don't open connections automatically.
+        low_watermark: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
-            // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
@@ -484,9 +534,10 @@ async fn max_inbound_connections() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
         max_inbound_relayed_peers: 0,
+        // Don't open connections automatically.
+        low_watermark: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
-            // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
@@ -601,9 +652,10 @@ async fn ip_whitelist() {
         ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        // Don't open connections automatically.
+        low_watermark: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
-            // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
@@ -628,9 +680,10 @@ async fn ip_whitelist() {
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        // Don't open connections automatically.
+        low_watermark: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
-            // Bootstrapping can cause redials, so set the offset to a high value.
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),

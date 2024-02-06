@@ -4,7 +4,9 @@ use std::fmt::Debug;
 use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identify;
-use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
+use libp2p::kad::{
+    self, BootstrapError, BootstrapOk, ProgressStep, QueryId, QueryInfo, QueryResult,
+};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
@@ -23,10 +25,10 @@ use crate::behaviour;
 #[cfg(test)]
 use crate::test_utils;
 use crate::Config;
-use crate::{BootstrapConfig, Command, EmptyResultSender, Event, TestCommand, TestEvent};
+use crate::{Command, EmptyResultSender, Event, TestCommand, TestEvent};
 
 pub struct MainLoop {
-    bootstrap_cfg: BootstrapConfig,
+    cfg: crate::Config,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
@@ -40,6 +42,8 @@ pub struct MainLoop {
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
     chain_id: ChainId,
+    /// Ongoing Kademlia bootstrap query.
+    ongoing_bootstrap: Option<QueryId>,
     _pending_test_queries: TestQueries,
 }
 
@@ -81,7 +85,7 @@ impl MainLoop {
         chain_id: ChainId,
     ) -> Self {
         Self {
-            bootstrap_cfg: cfg.bootstrap,
+            cfg,
             swarm,
             command_receiver,
             event_sender,
@@ -89,15 +93,16 @@ impl MainLoop {
             pending_sync_requests: Default::default(),
             pending_queries: Default::default(),
             chain_id,
+            ongoing_bootstrap: None,
             _pending_test_queries: Default::default(),
         }
     }
 
     pub async fn run(mut self) {
         // Delay bootstrap so that by the time we attempt it we've connected to the bootstrap node
-        let bootstrap_start = tokio::time::Instant::now() + self.bootstrap_cfg.start_offset;
+        let bootstrap_start = tokio::time::Instant::now() + self.cfg.bootstrap.start_offset;
         let mut bootstrap_interval =
-            tokio::time::interval_at(bootstrap_start, self.bootstrap_cfg.period);
+            tokio::time::interval_at(bootstrap_start, self.cfg.bootstrap.period);
 
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
@@ -154,8 +159,24 @@ impl MainLoop {
                     );
                 }
                 _ = bootstrap_interval_tick => {
-                    tracing::debug!("Doing periodical bootstrap");
-                    _ = self.swarm.behaviour_mut().kademlia_mut().bootstrap();
+                    tracing::debug!("Checking low watermark");
+                    if let Some(query_id) = self.ongoing_bootstrap {
+                        match self.swarm.behaviour_mut().kademlia_mut().query_mut(&query_id) {
+                            Some(mut query) if matches!(query.info(), QueryInfo::Bootstrap {
+                                step: ProgressStep { last: false, .. }, .. }
+                            ) => {
+                                tracing::debug!("Previous bootstrap still in progress, aborting it");
+                                query.finish();
+                                continue;
+                            }
+                            _ => self.ongoing_bootstrap = None,
+                        }
+                    }
+                    if self.swarm.behaviour_mut().num_outbound_peers() < self.cfg.low_watermark {
+                        if let Ok(query_id) = self.swarm.behaviour_mut().kademlia_mut().bootstrap() {
+                            self.ongoing_bootstrap = Some(query_id);
+                        }
+                    }
                 }
                 command = self.command_receiver.recv() => {
                     match command {
@@ -339,9 +360,10 @@ impl MainLoop {
                                         Err(peer)
                                     }
                                 };
+                                self.ongoing_bootstrap = None;
                                 send_test_event(
                                     &self.event_sender,
-                                    TestEvent::PeriodicBootstrapCompleted(result),
+                                    TestEvent::KademliaBootstrapCompleted(result),
                                 )
                                 .await;
                             }

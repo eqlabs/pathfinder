@@ -26,6 +26,10 @@ impl Peer {
         matches!(self.direction, Direction::Inbound)
     }
 
+    pub fn is_outbound(&self) -> bool {
+        matches!(self.direction, Direction::Outbound)
+    }
+
     pub fn is_relayed(&self) -> bool {
         self.addr
             .as_ref()

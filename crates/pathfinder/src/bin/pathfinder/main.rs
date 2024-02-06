@@ -386,6 +386,7 @@ async fn start_p2p(
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers: config.max_inbound_direct_connections,
             max_inbound_relayed_peers: config.max_inbound_relayed_connections,
+            low_watermark: config.low_watermark,
             ip_whitelist: config.ip_whitelist,
             bootstrap: Default::default(),
             eviction_timeout: Duration::from_secs(15 * 60),
