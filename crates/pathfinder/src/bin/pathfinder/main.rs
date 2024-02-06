@@ -348,7 +348,7 @@ async fn start_p2p(
     use p2p::libp2p::identity::Keypair;
     use pathfinder_lib::p2p_network::{client::HybridClient, P2PContext};
     use serde::Deserialize;
-    use std::path::Path;
+    use std::{path::Path, time::Duration};
     use zeroize::Zeroizing;
 
     #[derive(Clone, Deserialize)]
@@ -381,11 +381,15 @@ async fn start_p2p(
     };
 
     let context = P2PContext {
-        cfg: p2p::Config::new(
-            config.max_inbound_direct_connections,
-            config.max_inbound_relayed_connections,
-            Default::default(),
-        ),
+        cfg: p2p::Config {
+            direct_connection_timeout: Duration::from_secs(30),
+            relay_connection_timeout: Duration::from_secs(10),
+            max_inbound_direct_peers: config.max_inbound_direct_connections,
+            max_inbound_relayed_peers: config.max_inbound_relayed_connections,
+            ip_whitelist: config.ip_whitelist,
+            bootstrap: Default::default(),
+            eviction_timeout: Duration::from_secs(15 * 60),
+        },
         chain_id,
         storage,
         proxy: config.proxy,

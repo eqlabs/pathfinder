@@ -549,6 +549,7 @@ pub struct P2PConfig {
     pub predefined_peers: Vec<Multiaddr>,
     pub max_inbound_direct_connections: usize,
     pub max_inbound_relayed_connections: usize,
+    pub ip_whitelist: Vec<IpNet>,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -640,6 +641,7 @@ impl P2PConfig {
             listen_on: args.listen_on,
             bootstrap_addresses: parse_multiaddr_vec(args.bootstrap_addresses),
             predefined_peers: parse_multiaddr_vec(args.predefined_peers),
+            ip_whitelist: args.ip_whitelist,
         }
     }
 }
