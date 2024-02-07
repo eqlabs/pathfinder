@@ -36,14 +36,24 @@ impl TestPeer {
     #[must_use]
     pub fn new(cfg: Config, keypair: Keypair) -> Self {
         let peer_id = keypair.public().to_peer_id();
-        let (client, event_receiver, main_loop) =
+        let (client, mut event_receiver, main_loop) =
             crate::new(keypair.clone(), cfg, ChainId::GOERLI_TESTNET);
+
+        // Ensure that the channel keeps being polled to move the main loop forward.
+        // Store the polled events into a buffered channel instead.
+        let (buf_sender, buf_receiver) = tokio::sync::mpsc::channel(1024);
+        tokio::spawn(async move {
+            while let Some(event) = event_receiver.recv().await {
+                buf_sender.send(event).await.unwrap();
+            }
+        });
+
         let main_loop_jh = tokio::spawn(main_loop.run());
         Self {
             keypair,
             peer_id,
             client,
-            event_receiver,
+            event_receiver: buf_receiver,
             main_loop_jh,
         }
     }
@@ -87,6 +97,7 @@ impl Default for TestPeer {
                 relay_connection_timeout: Duration::from_secs(0),
                 max_inbound_direct_peers: 10,
                 max_inbound_relayed_peers: 10,
+                max_outbound_peers: 10,
                 low_watermark: 10,
                 ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
                 bootstrap: Default::default(),
@@ -244,6 +255,7 @@ async fn periodic_bootstrap() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        max_outbound_peers: 10,
         low_watermark: 3,
         bootstrap: BootstrapConfig {
             period: BOOTSTRAP_PERIOD,
@@ -280,7 +292,7 @@ async fn periodic_bootstrap() {
         .await
         .unwrap();
 
-    let filter_kademlia_bootstrap = |event| match event {
+    let filter_kademlia_bootstrap_completed = |event| match event {
         Event::Test(TestEvent::KademliaBootstrapCompleted(_)) => Some(()),
         _ => None,
     };
@@ -296,8 +308,16 @@ async fn periodic_bootstrap() {
         });
 
     tokio::join!(peer2_added_to_dht_of_peer1, async {
-        wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap).await;
-        wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap).await;
+        wait_for_event(
+            &mut peer2.event_receiver,
+            filter_kademlia_bootstrap_completed,
+        )
+        .await;
+        wait_for_event(
+            &mut peer2.event_receiver,
+            filter_kademlia_bootstrap_completed,
+        )
+        .await;
     });
 
     consume_events(peer1.event_receiver);
@@ -318,7 +338,11 @@ async fn periodic_bootstrap() {
     // The peer keeps attempting the bootstrap because the low watermark is not reached, but there
     // are no new peers to connect to.
 
-    wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap).await;
+    wait_for_event(
+        &mut peer2.event_receiver,
+        filter_kademlia_bootstrap_completed,
+    )
+    .await;
 
     assert_eq!(
         boot.client.for_test().get_peers_from_dht().await,
@@ -333,21 +357,34 @@ async fn periodic_bootstrap() {
         [boot.peer_id, peer1.peer_id].into()
     );
 
-    // Start a new peer and connect it to the bootstrap peer. The new peer should be added to the
-    // DHT of the other peers during next bootstrap period.
+    // Start a new peer and connect to the other peers, immediately reaching the low watermark.
     let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
-    let addr3 = peer3.start_listening().await.unwrap();
 
-    consume_events(peer3.event_receiver);
-    exhaust_events(&mut peer2.event_receiver).await;
+    peer3
+        .client
+        .dial(boot.peer_id, boot_addr.clone())
+        .await
+        .unwrap();
+    peer3
+        .client
+        .dial(peer1.peer_id, addr1.clone())
+        .await
+        .unwrap();
+    peer3
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
 
-    peer2.client.dial(peer3.peer_id, addr3).await.unwrap();
+    exhaust_events(&mut peer3.event_receiver).await;
 
-    // The low watermark is reached for peer2, so no more bootstrap attempts are made.
-
+    // The low watermark is reached for peer3, so no more bootstrap attempts are made.
     let timeout = tokio::time::timeout(
-        BOOTSTRAP_PERIOD,
-        wait_for_event(&mut peer2.event_receiver, filter_kademlia_bootstrap),
+        BOOTSTRAP_PERIOD + Duration::from_millis(100),
+        wait_for_event(&mut peer3.event_receiver, |event| match event {
+            Event::Test(TestEvent::KademliaBootstrapStarted) => Some(()),
+            _ => None,
+        }),
     )
     .await;
 
@@ -364,6 +401,7 @@ async fn reconnect_too_quickly() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        max_outbound_peers: 10,
         low_watermark: 0,
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
@@ -464,6 +502,7 @@ async fn duplicate_connection() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
         bootstrap: BootstrapConfig {
@@ -550,6 +589,7 @@ async fn max_inbound_connections() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
         max_inbound_relayed_peers: 0,
+        max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
         bootstrap: BootstrapConfig {
@@ -655,12 +695,142 @@ async fn max_inbound_connections() {
 
     peer1
         .client
-        .dial(peer4.peer_id, dbg!(addr4.clone()))
+        .dial(peer4.peer_id, addr4.clone())
         .await
         .unwrap();
 
     peer_1_connection_established.recv().await;
     peer_4_connection_established.recv().await;
+}
+
+/// Ensure that outbound peers marked as not useful get evicted if new outbound connections
+/// are attempted.
+#[test_log::test(tokio::test)]
+async fn outbound_peer_eviction() {
+    const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
+    let cfg = Config {
+        direct_connection_timeout: CONNECTION_TIMEOUT,
+        relay_connection_timeout: Duration::from_secs(0),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+        max_inbound_direct_peers: 2,
+        max_inbound_relayed_peers: 0,
+        max_outbound_peers: 2,
+        // Don't open connections automatically.
+        low_watermark: 0,
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            start_offset: Duration::from_secs(10),
+        },
+        eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
+    };
+
+    let mut peer = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut outbound1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut outbound2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut outbound3 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut outbound4 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let inbound1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let inbound2 = TestPeer::new(cfg, Keypair::generate_ed25519());
+
+    let peer_addr = peer.start_listening().await.unwrap();
+    tracing::info!(%peer.peer_id, %peer_addr);
+    let outbound_addr1 = outbound1.start_listening().await.unwrap();
+    tracing::info!(%outbound1.peer_id, %outbound_addr1);
+    let outbound_addr2 = outbound2.start_listening().await.unwrap();
+    tracing::info!(%outbound2.peer_id, %outbound_addr2);
+    let outbound_addr3 = outbound3.start_listening().await.unwrap();
+    tracing::info!(%outbound3.peer_id, %outbound_addr3);
+    let outbound_addr4 = outbound4.start_listening().await.unwrap();
+    tracing::info!(%outbound4.peer_id, %outbound_addr4);
+
+    consume_events(outbound1.event_receiver);
+    consume_events(outbound2.event_receiver);
+    consume_events(outbound3.event_receiver);
+    consume_events(outbound4.event_receiver);
+    consume_events(inbound1.event_receiver);
+
+    // Open one inbound connection. This connection is never touched.
+    inbound1
+        .client
+        .dial(peer.peer_id, peer_addr.clone())
+        .await
+        .unwrap();
+
+    // We can open two connections because the limit is 2.
+    peer.client
+        .dial(outbound1.peer_id, outbound_addr1.clone())
+        .await
+        .unwrap();
+    peer.client
+        .dial(outbound2.peer_id, outbound_addr2.clone())
+        .await
+        .unwrap();
+
+    exhaust_events(&mut peer.event_receiver).await;
+
+    // Trying to open another one fails, because no peers are marked as not useful, and hence no
+    // peer can be evicted.
+    let result = peer
+        .client
+        .dial(outbound3.peer_id, outbound_addr3.clone())
+        .await;
+    assert!(result.is_err());
+
+    let peers = peer.connected().await;
+    assert_eq!(peers.len(), 3);
+    assert!(peers.contains_key(&outbound1.peer_id));
+    assert!(peers.contains_key(&outbound2.peer_id));
+    assert!(peers.contains_key(&inbound1.peer_id));
+
+    // Mark one of the connected peers as not useful.
+    peer.client.not_useful(outbound1.peer_id).await;
+
+    // Now the connection to outbound3 can be opened, because outbound1 is marked as not useful and will be
+    // evicted.
+    peer.client
+        .dial(outbound3.peer_id, outbound_addr3.clone())
+        .await
+        .unwrap();
+
+    // No longer connected to outbound1.
+    let peers = peer.connected().await;
+    assert_eq!(peers.len(), 3);
+    assert!(!peers.contains_key(&outbound1.peer_id));
+    assert!(peers.contains_key(&outbound2.peer_id));
+    assert!(peers.contains_key(&outbound3.peer_id));
+    assert!(peers.contains_key(&inbound1.peer_id));
+
+    // Ensure that outbound1 actually got disconnected.
+    wait_for_event(&mut peer.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == outbound1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await
+    .unwrap();
+
+    // The limit is reached again, so no new connections can be opened.
+    let result = peer
+        .client
+        .dial(outbound4.peer_id, outbound_addr4.clone())
+        .await;
+    assert!(result.is_err());
+
+    // Inbound connections can still be opened.
+    inbound2.client.dial(peer.peer_id, peer_addr).await.unwrap();
+
+    let peers = peer.connected().await;
+    assert_eq!(peers.len(), 4);
+    assert!(!peers.contains_key(&outbound1.peer_id));
+    assert!(peers.contains_key(&outbound2.peer_id));
+    assert!(peers.contains_key(&outbound3.peer_id));
+    assert!(peers.contains_key(&inbound1.peer_id));
+    assert!(peers.contains_key(&inbound2.peer_id));
 }
 
 /// Test that peers can only connect if they are whitelisted.
@@ -672,6 +842,7 @@ async fn ip_whitelist() {
         ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
         bootstrap: BootstrapConfig {
@@ -704,6 +875,7 @@ async fn ip_whitelist() {
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
         bootstrap: BootstrapConfig {
@@ -737,6 +909,7 @@ async fn rate_limit() {
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 10,
+        max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
         bootstrap: BootstrapConfig {

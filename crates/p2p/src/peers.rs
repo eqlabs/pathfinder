@@ -48,7 +48,8 @@ impl Peer {
 
     pub fn connected_at(&self) -> Option<Instant> {
         match self.connectivity {
-            Connectivity::Connected { connected_at } => Some(connected_at),
+            Connectivity::Connected { connected_at, .. } => Some(connected_at),
+            Connectivity::Disconnecting { connected_at, .. } => connected_at,
             Connectivity::Disconnected { connected_at, .. } => connected_at,
             Connectivity::Dialing => None,
         }
@@ -61,6 +62,10 @@ pub enum Connectivity {
     Connected {
         /// When the peer was connected.
         connected_at: Instant,
+    },
+    Disconnecting {
+        /// When the peer was connected, if he was connected.
+        connected_at: Option<Instant>,
     },
     Disconnected {
         /// When the peer was connected, if he was connected.

@@ -179,6 +179,18 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    /// Mark a peer as not useful.
+    ///
+    /// These peers will be candidates for outbound peer eviction.
+    pub async fn not_useful(&self, peer_id: PeerId) {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::NotUseful { peer_id, sender })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(&self) -> test_utils::Client {
         test_utils::Client::new(self.sender.clone())

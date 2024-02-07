@@ -371,6 +371,15 @@ Example:
     max_inbound_relayed_connections: u32,
 
     #[arg(
+        long = "p2p.max-outbound-connections",
+        long_help = "The maximum number of outbound connections.",
+        value_name = "MAX_OUTBOUND_CONNECTIONS",
+        env = "PATHFINDER_MAX_OUTBOUND_CONNECTIONS",
+        default_value = "50"
+    )]
+    max_outbound_connections: u32,
+
+    #[arg(
         long = "p2p.low-watermark",
         long_help = "The minimum number of outbound peers to maintain. If the number of outbound peers drops below this number, the node will attempt to connect to more peers.",
         value_name = "LOW_WATERMARK",
@@ -558,6 +567,7 @@ pub struct P2PConfig {
     pub predefined_peers: Vec<Multiaddr>,
     pub max_inbound_direct_connections: usize,
     pub max_inbound_relayed_connections: usize,
+    pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
     pub low_watermark: usize,
 }
@@ -646,6 +656,7 @@ impl P2PConfig {
                 .max_inbound_relayed_connections
                 .try_into()
                 .unwrap(),
+            max_outbound_connections: args.max_outbound_connections.try_into().unwrap(),
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
             listen_on: args.listen_on,

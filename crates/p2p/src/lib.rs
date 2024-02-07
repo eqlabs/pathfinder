@@ -43,7 +43,11 @@ pub use behaviour::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
 pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
 
-    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair, chain_id, cfg.clone());
+    let (command_sender, command_receiver) = mpsc::channel(1);
+    let client = Client::new(command_sender, local_peer_id);
+
+    let (behaviour, relay_transport) =
+        behaviour::Behaviour::new(&keypair, chain_id, client.clone(), cfg.clone());
 
     let swarm = Swarm::new(
         transport::create(&keypair, relay_transport),
@@ -61,11 +65,10 @@ pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventRe
         swarm::Config::with_tokio_executor().with_idle_connection_timeout(Duration::MAX),
     );
 
-    let (command_sender, command_receiver) = mpsc::channel(1);
     let (event_sender, event_receiver) = mpsc::channel(1);
 
     (
-        Client::new(command_sender, local_peer_id),
+        client,
         event_receiver,
         MainLoop::new(swarm, command_receiver, event_sender, cfg, chain_id),
     )
@@ -78,10 +81,12 @@ pub struct Config {
     pub direct_connection_timeout: Duration,
     /// A relayed peer can only connect once in this period.
     pub relay_connection_timeout: Duration,
-    /// Maximum number of direct (non-relayed) peers.
+    /// Maximum number of direct (non-relayed) inbound peers.
     pub max_inbound_direct_peers: usize,
-    /// Maximum number of relayed peers.
+    /// Maximum number of relayed inbound peers.
     pub max_inbound_relayed_peers: usize,
+    /// Maximum number of outbound peers.
+    pub max_outbound_peers: usize,
     /// The minimum number of peers to maintain. If the number of outbound peers drops below this
     /// number, the node will attempt to connect to more peers.
     pub low_watermark: usize,
@@ -175,6 +180,10 @@ enum Command {
         new_block: NewBlock,
         sender: EmptyResultSender,
     },
+    NotUseful {
+        peer_id: PeerId,
+        sender: oneshot::Sender<()>,
+    },
     /// For testing purposes only
     _Test(TestCommand),
 }
@@ -226,6 +235,7 @@ pub enum Event {
 #[derive(Debug)]
 pub enum TestEvent {
     NewListenAddress(Multiaddr),
+    KademliaBootstrapStarted,
     KademliaBootstrapCompleted(Result<PeerId, PeerId>),
     StartProvidingCompleted(Result<RecordKey, RecordKey>),
     ConnectionEstablished { outbound: bool, remote: PeerId },
