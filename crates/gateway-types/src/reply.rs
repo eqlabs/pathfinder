@@ -276,6 +276,16 @@ pub mod transaction {
         }
     }
 
+    impl From<pathfinder_common::receipt::ExecutionResources> for ExecutionResources {
+        fn from(value: pathfinder_common::receipt::ExecutionResources) -> Self {
+            Self {
+                builtin_instance_counter: value.builtin_instance_counter.into(),
+                n_steps: value.n_steps,
+                n_memory_holes: value.n_memory_holes,
+            }
+        }
+    }
+
     impl<T> Dummy<T> for ExecutionResources {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
@@ -307,6 +317,34 @@ pub mod transaction {
         fn from(value: BuiltinCounters) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
             let BuiltinCounters {
+                output_builtin,
+                pedersen_builtin,
+                range_check_builtin,
+                ecdsa_builtin,
+                bitwise_builtin,
+                ec_op_builtin,
+                keccak_builtin,
+                poseidon_builtin,
+                segment_arena_builtin,
+            } = value;
+            Self {
+                output_builtin,
+                pedersen_builtin,
+                range_check_builtin,
+                ecdsa_builtin,
+                bitwise_builtin,
+                ec_op_builtin,
+                keccak_builtin,
+                poseidon_builtin,
+                segment_arena_builtin,
+            }
+        }
+    }
+
+    impl From<pathfinder_common::receipt::BuiltinCounters> for BuiltinCounters {
+        fn from(value: pathfinder_common::receipt::BuiltinCounters) -> Self {
+            // Use deconstruction to ensure these structs remain in-sync.
+            let pathfinder_common::receipt::BuiltinCounters {
                 output_builtin,
                 pedersen_builtin,
                 range_check_builtin,
@@ -402,6 +440,21 @@ pub mod transaction {
         }
     }
 
+    impl From<pathfinder_common::receipt::L2ToL1Message> for L2ToL1Message {
+        fn from(value: pathfinder_common::receipt::L2ToL1Message) -> Self {
+            let pathfinder_common::receipt::L2ToL1Message {
+                from_address,
+                payload,
+                to_address,
+            } = value;
+            Self {
+                from_address,
+                payload,
+                to_address,
+            }
+        }
+    }
+
     #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum ExecutionStatus {
@@ -432,6 +485,41 @@ pub mod transaction {
         /// Only present if status is [ExecutionStatus::Reverted].
         #[serde(default)]
         pub revert_error: Option<String>,
+    }
+
+    impl From<pathfinder_common::receipt::Receipt> for Receipt {
+        fn from(value: pathfinder_common::receipt::Receipt) -> Self {
+            let pathfinder_common::receipt::Receipt {
+                actual_fee,
+                events,
+                execution_resources,
+                l2_to_l1_messages,
+                execution_status,
+                transaction_hash,
+                transaction_index,
+            } = value;
+
+            let (execution_status, revert_error) = match execution_status {
+                pathfinder_common::receipt::ExecutionStatus::Succeeded => {
+                    (ExecutionStatus::Succeeded, None)
+                }
+                pathfinder_common::receipt::ExecutionStatus::Reverted { reason } => {
+                    (ExecutionStatus::Reverted, Some(reason))
+                }
+            };
+
+            Self {
+                actual_fee,
+                events,
+                execution_resources: execution_resources.map(Into::into),
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
+                transaction_hash,
+                transaction_index,
+                execution_status,
+                revert_error,
+            }
+        }
     }
 
     impl From<Receipt> for pathfinder_common::receipt::Receipt {
