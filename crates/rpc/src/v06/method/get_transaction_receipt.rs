@@ -74,11 +74,11 @@ pub async fn get_transaction_receipt_impl(
 
         Ok(types::MaybePendingTransactionReceipt::Normal(
             types::TransactionReceipt::with_block_data(
-                receipt,
+                receipt.into(),
                 finality_status,
                 block_hash,
                 block_number,
-                transaction,
+                transaction.into(),
             ),
         ))
     });

@@ -10,9 +10,10 @@ mod reference;
 mod reorg_counter;
 mod signature;
 mod state_update;
-mod transaction;
+pub(crate) mod transaction;
 mod trie;
 
+use pathfinder_common::receipt::Receipt;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 
@@ -26,15 +27,11 @@ pub use transaction::TransactionStatus;
 
 pub use trie::{Child, Node, StoredNode};
 
-use pathfinder_common::{
-    BlockCommitmentSignature, BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment,
-    ClassCommitmentLeafHash, ClassHash, ContractAddress, ContractNonce, ContractRoot,
-    ContractStateHash, SierraHash, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
-    TransactionHash,
-};
+use pathfinder_common::*;
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::EthereumStateUpdate;
-use starknet_gateway_types::reply::transaction as gateway;
+
+use pathfinder_common::transaction::Transaction as StarknetTransaction;
 
 use crate::BlockId;
 
@@ -189,7 +186,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         block_hash: BlockHash,
         block_number: BlockNumber,
-        transaction_data: &[(gateway::Transaction, gateway::Receipt)],
+        transaction_data: &[(StarknetTransaction, Receipt)],
     ) -> anyhow::Result<()> {
         transaction::insert_transactions(self, block_hash, block_number, transaction_data)
     }
@@ -204,14 +201,14 @@ impl<'inner> Transaction<'inner> {
     pub fn transaction(
         &self,
         hash: TransactionHash,
-    ) -> anyhow::Result<Option<gateway::Transaction>> {
+    ) -> anyhow::Result<Option<StarknetTransaction>> {
         transaction::transaction(self, hash)
     }
 
     pub fn transaction_with_receipt(
         &self,
         hash: TransactionHash,
-    ) -> anyhow::Result<Option<(gateway::Transaction, gateway::Receipt, BlockHash)>> {
+    ) -> anyhow::Result<Option<(StarknetTransaction, Receipt, BlockHash)>> {
         transaction::transaction_with_receipt(self, hash)
     }
 
@@ -219,28 +216,25 @@ impl<'inner> Transaction<'inner> {
         &self,
         block: BlockId,
         index: usize,
-    ) -> anyhow::Result<Option<gateway::Transaction>> {
+    ) -> anyhow::Result<Option<StarknetTransaction>> {
         transaction::transaction_at_block(self, block, index)
     }
 
     pub fn transaction_data_for_block(
         &self,
         block: BlockId,
-    ) -> anyhow::Result<Option<Vec<(gateway::Transaction, gateway::Receipt)>>> {
+    ) -> anyhow::Result<Option<Vec<(StarknetTransaction, Receipt)>>> {
         transaction::transaction_data_for_block(self, block)
     }
 
     pub fn transactions_for_block(
         &self,
         block: BlockId,
-    ) -> anyhow::Result<Option<Vec<gateway::Transaction>>> {
+    ) -> anyhow::Result<Option<Vec<StarknetTransaction>>> {
         transaction::transactions_for_block(self, block)
     }
 
-    pub fn receipts_for_block(
-        &self,
-        block: BlockId,
-    ) -> anyhow::Result<Option<Vec<gateway::Receipt>>> {
+    pub fn receipts_for_block(&self, block: BlockId) -> anyhow::Result<Option<Vec<Receipt>>> {
         transaction::receipts_for_block(self, block)
     }
 

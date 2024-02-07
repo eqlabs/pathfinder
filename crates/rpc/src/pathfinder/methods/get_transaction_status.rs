@@ -1,6 +1,5 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use starknet_gateway_types::reply::transaction::ExecutionStatus;
 use starknet_gateway_types::reply::PendingBlock;
 
 use crate::context::RpcContext;
@@ -43,7 +42,7 @@ pub async fn get_transaction_status(
             return anyhow::Ok(None);
         };
 
-        if receipt.execution_status == ExecutionStatus::Reverted {
+        if receipt.is_reverted() {
             return Ok(Some(TransactionStatus::Reverted));
         }
 
@@ -78,7 +77,9 @@ pub async fn get_transaction_status(
 fn pending_status(pending: &PendingBlock, tx_hash: &TransactionHash) -> Option<TransactionStatus> {
     pending.transaction_receipts.iter().find_map(|rx| {
         if &rx.transaction_hash == tx_hash {
-            if rx.execution_status == ExecutionStatus::Reverted {
+            if rx.execution_status
+                == starknet_gateway_types::reply::transaction::ExecutionStatus::Reverted
+            {
                 Some(TransactionStatus::Reverted)
             } else {
                 Some(TransactionStatus::AcceptedOnL2)

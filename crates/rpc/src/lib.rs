@@ -206,20 +206,15 @@ impl Default for SyncState {
 pub mod test_utils {
     use crate::pending::PendingData;
     use pathfinder_common::event::Event;
-    use pathfinder_common::{macro_prelude::*, Fee};
-    use pathfinder_common::{
-        BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
-        GasPrice, SierraHash, StarknetVersion, StateUpdate, TransactionIndex, TransactionVersion,
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
+    use pathfinder_common::receipt::{
+        BuiltinCounters, ExecutionResources, ExecutionStatus, L2ToL1Message, Receipt,
     };
-    use pathfinder_crypto::Felt;
+    use pathfinder_common::transaction::*;
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::H160;
-    use starknet_gateway_types::reply::transaction::{
-        BuiltinCounters, DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
-        InvokeTransactionV0, Receipt, Transaction,
-    };
-    use starknet_gateway_types::reply::transaction::{ExecutionStatus, L2ToL1Message};
     use std::collections::HashMap;
 
     // Creates storage for tests
@@ -441,20 +436,15 @@ pub mod test_utils {
             .insert_state_update(header2.number, &state_update2)
             .unwrap();
 
-        let txn0_hash = transaction_hash_bytes!(b"txn 0");
         // TODO introduce other types of transactions too
-        let txn0 = InvokeTransactionV0 {
-            calldata: vec![],
-            sender_address: contract0_addr,
-            entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: EntryPoint(Felt::ZERO),
-            max_fee: pathfinder_common::Fee::ZERO,
-            signature: vec![],
-            transaction_hash: txn0_hash,
+        let txn0 = Transaction {
+            hash: transaction_hash_bytes!(b"txn 0"),
+            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                sender_address: contract0_addr,
+                ..Default::default()
+            }),
         };
         let mut receipt0 = Receipt {
-            actual_fee: None,
-            events: vec![],
             execution_resources: Some(ExecutionResources {
                 builtin_instance_counter: BuiltinCounters {
                     output_builtin: 33,
@@ -464,49 +454,41 @@ pub mod test_utils {
                 n_memory_holes: 5,
                 n_steps: 10,
             }),
-            l1_to_l2_consumed_message: None,
-            l2_to_l1_messages: vec![],
-            transaction_hash: txn0_hash,
-            transaction_index: TransactionIndex::new_or_panic(0),
-            execution_status: Default::default(),
-            revert_error: Default::default(),
+            transaction_hash: txn0.hash,
+            ..Default::default()
         };
-        let txn1_hash = transaction_hash_bytes!(b"txn 1");
-        let txn2_hash = transaction_hash_bytes!(b"txn 2");
-        let txn3_hash = transaction_hash_bytes!(b"txn 3");
-        let txn4_hash = transaction_hash_bytes!(b"txn 4 ");
-        let txn5_hash = transaction_hash_bytes!(b"txn 5");
-        let txn6_hash = transaction_hash_bytes!(b"txn 6");
-        let txn_reverted_hash = transaction_hash_bytes!(b"txn reverted");
 
-        let mut txn1 = txn0.clone();
-        let mut txn2 = txn0.clone();
-        let mut txn3 = txn0.clone();
-        let mut txn4 = txn0.clone();
-        let mut txn6 = txn0.clone();
-        let mut txn_reverted = txn0.clone();
-        txn1.transaction_hash = txn1_hash;
-        txn1.sender_address = contract1_addr;
-        txn2.transaction_hash = txn2_hash;
-        txn2.sender_address = contract1_addr;
-        txn3.transaction_hash = txn3_hash;
-        txn3.sender_address = contract1_addr;
-        txn4.transaction_hash = txn4_hash;
-        txn6.sender_address = contract1_addr;
-        txn6.transaction_hash = txn6_hash;
-        txn_reverted.transaction_hash = txn_reverted_hash;
-
-        txn4.sender_address = ContractAddress::new_or_panic(Felt::ZERO);
-        let mut txn5 = txn4.clone();
-        txn5.transaction_hash = txn5_hash;
-        let txn0 = Transaction::Invoke(txn0.into());
-        let txn1 = Transaction::Invoke(txn1.into());
-        let txn2 = Transaction::Invoke(txn2.into());
-        let txn3 = Transaction::Invoke(txn3.into());
-        let txn4 = Transaction::Invoke(txn4.into());
-        let txn5 = Transaction::Invoke(txn5.into());
-        let txn6 = Transaction::Invoke(txn6.into());
-        let txn_reverted = Transaction::Invoke(txn_reverted.into());
+        let txn1 = Transaction {
+            hash: transaction_hash_bytes!(b"txn 1"),
+            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                sender_address: contract1_addr,
+                ..Default::default()
+            }),
+        };
+        let txn2 = Transaction {
+            hash: transaction_hash_bytes!(b"txn 2"),
+            ..txn1.clone()
+        };
+        let txn3 = Transaction {
+            hash: transaction_hash_bytes!(b"txn 3"),
+            ..txn1.clone()
+        };
+        let txn4 = Transaction {
+            hash: transaction_hash_bytes!(b"txn 4"),
+            variant: TransactionVariant::InvokeV0(Default::default()),
+        };
+        let txn5 = Transaction {
+            hash: transaction_hash_bytes!(b"txn 5"),
+            ..txn1.clone()
+        };
+        let txn6 = Transaction {
+            hash: transaction_hash_bytes!(b"txn 6"),
+            ..txn1.clone()
+        };
+        let txn_reverted = Transaction {
+            hash: transaction_hash_bytes!(b"txn reverted"),
+            ..txn1.clone()
+        };
         let mut receipt1 = receipt0.clone();
         let mut receipt2 = receipt0.clone();
         let mut receipt3 = receipt0.clone();
@@ -530,15 +512,16 @@ pub mod test_utils {
             from_address: contract_address_bytes!(b"event 0 from addr"),
             keys: vec![event_key_bytes!(b"event 0 key")],
         }];
-        receipt1.transaction_hash = txn1_hash;
-        receipt2.transaction_hash = txn2_hash;
-        receipt3.transaction_hash = txn3_hash;
-        receipt4.transaction_hash = txn4_hash;
-        receipt5.transaction_hash = txn5_hash;
-        receipt6.transaction_hash = txn6_hash;
-        receipt_reverted.transaction_hash = txn_reverted_hash;
-        receipt_reverted.execution_status = ExecutionStatus::Reverted;
-        receipt_reverted.revert_error = Some("Reverted because".to_owned());
+        receipt1.transaction_hash = txn1.hash;
+        receipt2.transaction_hash = txn2.hash;
+        receipt3.transaction_hash = txn3.hash;
+        receipt4.transaction_hash = txn4.hash;
+        receipt5.transaction_hash = txn5.hash;
+        receipt6.transaction_hash = txn6.hash;
+        receipt_reverted.transaction_hash = txn_reverted.hash;
+        receipt_reverted.execution_status = ExecutionStatus::Reverted {
+            reason: "Reverted because".to_owned(),
+        };
 
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
@@ -584,36 +567,33 @@ pub mod test_utils {
         .unwrap();
 
         let transactions: Vec<Transaction> = vec![
-            InvokeTransaction::V0(InvokeTransactionV0 {
-                calldata: vec![],
-                sender_address: contract_address_bytes!(b"pending contract addr 0"),
-                entry_point_selector: entry_point_bytes!(b"entry point 0"),
-                entry_point_type: Some(EntryPointType::External),
-                max_fee: Fee::ZERO,
-                signature: vec![],
-                transaction_hash: transaction_hash_bytes!(b"pending tx hash 0"),
-            })
-            .into(),
-            DeployTransaction {
-                contract_address: contract_address!("0x1122355"),
-                contract_address_salt: contract_address_salt_bytes!(b"salty"),
-                class_hash: class_hash_bytes!(b"pending class hash 1"),
-                constructor_calldata: vec![],
-                transaction_hash: transaction_hash_bytes!(b"pending tx hash 1"),
-                version: TransactionVersion::ZERO,
-            }
-            .into(),
-            // Will be a reverted txn.
-            InvokeTransaction::V0(InvokeTransactionV0 {
-                calldata: vec![],
-                sender_address: contract_address_bytes!(b"pending contract addr 0"),
-                entry_point_selector: entry_point_bytes!(b"entry point 0"),
-                entry_point_type: Some(EntryPointType::External),
-                max_fee: Fee::ZERO,
-                signature: vec![],
-                transaction_hash: transaction_hash_bytes!(b"pending reverted"),
-            })
-            .into(),
+            Transaction {
+                hash: transaction_hash_bytes!(b"pending tx hash 0"),
+                variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    sender_address: contract_address_bytes!(b"pending contract addr 0"),
+                    entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                    entry_point_type: Some(EntryPointType::External),
+                    ..Default::default()
+                }),
+            },
+            Transaction {
+                hash: transaction_hash_bytes!(b"pending tx hash 1"),
+                variant: TransactionVariant::Deploy(DeployTransaction {
+                    contract_address: contract_address!("0x1122355"),
+                    contract_address_salt: contract_address_salt_bytes!(b"salty"),
+                    class_hash: class_hash_bytes!(b"pending class hash 1"),
+                    ..Default::default()
+                }),
+            },
+            Transaction {
+                hash: transaction_hash_bytes!(b"pending reverted"),
+                variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    sender_address: contract_address_bytes!(b"pending contract addr 0"),
+                    entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                    entry_point_type: Some(EntryPointType::External),
+                    ..Default::default()
+                }),
+            },
         ];
 
         let transaction_receipts = vec![
@@ -639,51 +619,31 @@ pub mod test_utils {
                         keys: vec![event_key_bytes!(b"pending key 2")],
                     },
                 ],
-                execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: Default::default(),
-                    n_memory_holes: 0,
-                    n_steps: 0,
-                }),
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: vec![],
-                transaction_hash: transactions[0].hash(),
+                execution_resources: Some(ExecutionResources::default()),
+                transaction_hash: transactions[0].hash,
                 transaction_index: TransactionIndex::new_or_panic(0),
-                execution_status: Default::default(),
-                revert_error: Default::default(),
+                ..Default::default()
             },
             Receipt {
-                actual_fee: None,
-                events: vec![],
-                execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: Default::default(),
-                    n_memory_holes: 0,
-                    n_steps: 0,
-                }),
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: vec![],
-                transaction_hash: transactions[1].hash(),
+                execution_resources: Some(ExecutionResources::default()),
+                transaction_hash: transactions[1].hash,
                 transaction_index: TransactionIndex::new_or_panic(1),
-                execution_status: Default::default(),
-                revert_error: Default::default(),
+                ..Default::default()
             },
             // Reverted and without events
             Receipt {
-                actual_fee: None,
-                events: vec![],
-                execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: Default::default(),
-                    n_memory_holes: 0,
-                    n_steps: 0,
-                }),
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: vec![],
-                transaction_hash: transactions[2].hash(),
+                execution_resources: Some(ExecutionResources::default()),
+                transaction_hash: transactions[2].hash,
                 transaction_index: TransactionIndex::new_or_panic(2),
-                execution_status:
-                    starknet_gateway_types::reply::transaction::ExecutionStatus::Reverted,
-                revert_error: Some("Reverted!".to_owned()),
+                execution_status: ExecutionStatus::Reverted {
+                    reason: "Reverted!".to_owned(),
+                },
+                ..Default::default()
             },
         ];
+
+        let transactions = transactions.into_iter().map(Into::into).collect();
+        let transaction_receipts = transaction_receipts.into_iter().map(Into::into).collect();
 
         let block = starknet_gateway_types::reply::PendingBlock {
             eth_l1_gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),

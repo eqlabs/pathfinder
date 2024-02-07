@@ -43,6 +43,7 @@ pub async fn get_transaction_by_hash_impl(
         db_tx
             .transaction(input.transaction_hash)
             .context("Reading transaction from database")
+            .map(|x| x.map(Into::into))
     });
 
     jh.await.context("Database read panic or shutting down")?

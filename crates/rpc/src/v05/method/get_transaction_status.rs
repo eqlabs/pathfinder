@@ -70,6 +70,15 @@ impl From<starknet_gateway_types::reply::transaction::ExecutionStatus> for Execu
     }
 }
 
+impl From<pathfinder_common::receipt::ExecutionStatus> for ExecutionStatus {
+    fn from(value: pathfinder_common::receipt::ExecutionStatus) -> Self {
+        match value {
+            pathfinder_common::receipt::ExecutionStatus::Succeeded => Self::Succeeded,
+            pathfinder_common::receipt::ExecutionStatus::Reverted { .. } => Self::Reverted,
+        }
+    }
+}
+
 crate::error::generate_rpc_error_subset!(GetTransactionStatusError: TxnHashNotFound);
 
 pub async fn get_transaction_status(

@@ -555,7 +555,7 @@ mod prop {
                     (
                         h.number,
                         h.hash,
-                        tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t)).variant.into()).collect::<Vec<_>>()
+                        tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t.into())).variant.into()).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -605,7 +605,7 @@ mod prop {
                     (
                         h.number,
                         h.hash,
-                        tr.into_iter().map(|(_, r)| r.into()).collect::<Vec<_>>()
+                        tr.into_iter().map(|(_, r)| starknet_gateway_types::reply::transaction::Receipt::from(r).into()).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler

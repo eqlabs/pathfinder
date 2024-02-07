@@ -190,7 +190,10 @@ pub async fn trace_block_transactions(
 
                 let transactions = db
                     .transactions_for_block(block_id)?
-                    .context("Transaction data missing")?;
+                    .context("Transaction data missing")?
+                    .into_iter()
+                    .map(Into::into)
+                    .collect::<Vec<_>>();
 
                 (header, transactions, context.cache.clone())
             }
@@ -278,7 +281,7 @@ pub(crate) mod tests {
     use pathfinder_common::{
         block_hash, felt, BlockHeader, ChainId, GasPrice, SierraHash, TransactionIndex,
     };
-    use starknet_gateway_types::reply::transaction::{ExecutionStatus, Receipt};
+    use starknet_gateway_types::reply::transaction::{ExecutionStatus, Receipt, Transaction};
 
     use super::*;
 
@@ -358,9 +361,18 @@ pub(crate) mod tests {
                 next_block_header.hash,
                 next_block_header.number,
                 &[
-                    (transactions[0].clone().into(), dummy_receipt.clone()),
-                    (transactions[1].clone().into(), dummy_receipt.clone()),
-                    (transactions[2].clone().into(), dummy_receipt.clone()),
+                    (
+                        Transaction::from(transactions[0].clone()).into(),
+                        dummy_receipt.clone().into(),
+                    ),
+                    (
+                        Transaction::from(transactions[1].clone()).into(),
+                        dummy_receipt.clone().into(),
+                    ),
+                    (
+                        Transaction::from(transactions[2].clone()).into(),
+                        dummy_receipt.clone().into(),
+                    ),
                 ],
             )?;
             tx.commit()?;

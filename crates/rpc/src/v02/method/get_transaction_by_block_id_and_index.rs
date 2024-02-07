@@ -57,7 +57,7 @@ pub async fn get_transaction_by_block_id_and_index_impl(
             .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
-            Some(transaction) => Ok(transaction),
+            Some(transaction) => Ok(transaction.into()),
             None => {
                 // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                 // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
