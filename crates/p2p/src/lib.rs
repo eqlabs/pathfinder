@@ -89,6 +89,13 @@ pub struct Config {
     pub eviction_timeout: Duration,
     pub ip_whitelist: Vec<IpNet>,
     pub bootstrap: BootstrapConfig,
+    pub inbound_connections_rate_limit: RateLimit,
+}
+
+#[derive(Debug, Clone)]
+pub struct RateLimit {
+    pub max: usize,
+    pub interval: Duration,
 }
 
 #[derive(Copy, Clone, Debug)]

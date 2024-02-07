@@ -390,6 +390,10 @@ async fn start_p2p(
             ip_whitelist: config.ip_whitelist,
             bootstrap: Default::default(),
             eviction_timeout: Duration::from_secs(15 * 60),
+            inbound_connections_rate_limit: p2p::RateLimit {
+                max: 10,
+                interval: Duration::from_secs(1),
+            },
         },
         chain_id,
         storage,

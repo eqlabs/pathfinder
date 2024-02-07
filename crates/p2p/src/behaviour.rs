@@ -81,13 +81,13 @@ impl NetworkBehaviour for Behaviour {
         // and peers connecting over a relay.
         if is_relayed {
             if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
-                tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
+                tracing::debug!(%peer, %connection_id, "Too many inbound relay peers, closing");
                 return Err(ConnectionDenied::new(anyhow!(
                     "too many inbound relay peers"
                 )));
             }
         } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
-            tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
+            tracing::debug!(%peer, %connection_id, "Too many inbound direct peers, closing");
             return Err(ConnectionDenied::new(anyhow!(
                 "too many inbound direct peers"
             )));
@@ -217,6 +217,22 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<(), ConnectionDenied> {
+        // Apply rate limiting to inbound connections.
+        let rate_limit_interval =
+            Instant::now() - self.cfg.inbound_connections_rate_limit.interval..Instant::now();
+        let num_connected = self
+            .peers()
+            .filter(|(_, peer)| peer.is_inbound())
+            .filter_map(|(_, peer)| peer.connected_at())
+            .filter(|t| rate_limit_interval.contains(t))
+            .count();
+        if num_connected >= self.cfg.inbound_connections_rate_limit.max {
+            tracing::debug!(%connection_id, %remote_addr, "Too many inbound connections, closing");
+            return Err(ConnectionDenied::new(anyhow!(
+                "too many inbound connections"
+            )));
+        }
+
         // Extract the IP address of the peer from his multiaddr.
         let peer_ip = remote_addr.iter().find_map(|p| match p {
             Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
@@ -237,7 +253,7 @@ impl NetworkBehaviour for Behaviour {
             .iter()
             .any(|net| net.contains(&peer_ip))
         {
-            tracing::debug!(%peer_ip, %connection_id, "Disconnected peer not in IP whitelist");
+            tracing::debug!(%peer_ip, %connection_id, "Peer not in IP whitelist, disconnecting");
             return Err(ConnectionDenied::new(anyhow!("peer not in IP whitelist")));
         }
 
