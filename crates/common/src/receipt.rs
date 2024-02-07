@@ -11,6 +11,19 @@ pub struct Receipt {
     pub transaction_index: TransactionIndex,
 }
 
+impl Receipt {
+    pub fn is_reverted(&self) -> bool {
+        matches!(self.execution_status, ExecutionStatus::Reverted { .. })
+    }
+
+    pub fn revert_reason(&self) -> Option<String> {
+        match &self.execution_status {
+            ExecutionStatus::Succeeded => None,
+            ExecutionStatus::Reverted { reason } => Some(reason.clone()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct L2ToL1Message {
     pub from_address: ContractAddress,
