@@ -46,6 +46,7 @@ impl Peer {
         })
     }
 
+    /// The connection time of the peer, if he is connected.
     pub fn connected_at(&self) -> Option<Instant> {
         match self.connectivity {
             Connectivity::Connected { connected_at, .. } => Some(connected_at),

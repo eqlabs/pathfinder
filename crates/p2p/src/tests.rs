@@ -833,6 +833,97 @@ async fn outbound_peer_eviction() {
     assert!(peers.contains_key(&inbound2.peer_id));
 }
 
+/// Ensure that evicted peers can't reconnect too quickly.
+#[test_log::test(tokio::test)]
+async fn evicted_peer_reconnection() {
+    let cfg = Config {
+        direct_connection_timeout: Duration::from_secs(0),
+        relay_connection_timeout: Duration::from_secs(0),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+        max_inbound_direct_peers: 1000,
+        max_inbound_relayed_peers: 0,
+        max_outbound_peers: 1,
+        // Don't open connections automatically.
+        low_watermark: 0,
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            start_offset: Duration::from_secs(10),
+        },
+        eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
+    };
+
+    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
+
+    let addr1 = peer1.start_listening().await.unwrap();
+    tracing::info!(%peer1.peer_id, %addr1);
+    let addr2 = peer2.start_listening().await.unwrap();
+    tracing::info!(%peer2.peer_id, %addr2);
+    let addr3 = peer3.start_listening().await.unwrap();
+    tracing::info!(%peer3.peer_id, %addr3);
+
+    // Connect peer1 to peer2, then to peer3. Because the outbound connection limit is 1, peer2 will
+    // be evicted when peer1 connects to peer3.
+    peer1
+        .client
+        .dial(peer2.peer_id, addr2.clone())
+        .await
+        .unwrap();
+    peer1.client.not_useful(peer2.peer_id).await;
+    peer1.client.dial(peer3.peer_id, addr3).await.unwrap();
+
+    // Check that peer2 got evicted.
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer2.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    // Mark peer3 as not useful, and hence a candidate for eviction.
+    peer1.client.not_useful(peer3.peer_id).await;
+
+    // Try to reconnect too quickly.
+    let result = peer1.client.dial(peer2.peer_id, addr2.clone()).await;
+    assert!(result.is_err());
+
+    exhaust_events(&mut peer2.event_receiver).await;
+
+    // In this case there is no peer ID when connecting, so the connection gets closed after being
+    // established.
+    peer2
+        .client
+        .dial(peer1.peer_id, addr1.clone())
+        .await
+        .unwrap();
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+
+    // peer2 can be reconnected after a timeout.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    // peer3 gets evicted.
+    wait_for_event(&mut peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer3.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+}
+
 /// Test that peers can only connect if they are whitelisted.
 #[test_log::test(tokio::test)]
 async fn ip_whitelist() {

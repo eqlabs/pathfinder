@@ -79,6 +79,7 @@ impl NetworkBehaviour for Behaviour {
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         self.check_duplicate_connection(peer)?;
+        self.prevent_evicted_peer_reconnections(peer)?;
 
         // Is the peer connecting over a relay?
         let is_relayed = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
@@ -115,6 +116,7 @@ impl NetworkBehaviour for Behaviour {
         role_override: Endpoint,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         self.check_duplicate_connection(peer)?;
+        self.prevent_evicted_peer_reconnections(peer)?;
         self.inner
             .handle_established_outbound_connection(connection_id, peer, addr, role_override)
     }
@@ -299,6 +301,17 @@ impl NetworkBehaviour for Behaviour {
             return Err(ConnectionDenied::new(anyhow!("reconnect too quickly")));
         }
 
+        // Attempt to extract peer ID from the multiaddr.
+        let peer_id = remote_addr.iter().find_map(|p| match p {
+            Protocol::P2p(id) => Some(id),
+            _ => None,
+        });
+
+        // If we can extract the peer ID, prevent evicted peers from reconnecting too quickly.
+        if let Some(peer_id) = peer_id {
+            self.prevent_evicted_peer_reconnections(peer_id)?;
+        }
+
         // Limit the number of inbound peer connections. Different limits apply to direct peers
         // and peers connecting over a relay.
         //
@@ -338,6 +351,8 @@ impl NetworkBehaviour for Behaviour {
             if effective_role.is_dialer() {
                 // This really is an outbound connection, and not a connection that requires
                 // hole-punching.
+
+                self.prevent_evicted_peer_reconnections(peer_id)?;
 
                 self.evict_outbound_peer()?;
 
@@ -525,6 +540,31 @@ impl Behaviour {
         });
 
         Ok(())
+    }
+
+    /// Prevent evicted peers from reconnecting too quickly.
+    fn prevent_evicted_peer_reconnections(&self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
+        let timeout = if cfg!(test) {
+            Duration::from_secs(1)
+        } else {
+            Duration::from_secs(30)
+        };
+        match self.peers.get(peer_id) {
+            Some(Peer {
+                evicted: true,
+                connectivity:
+                    Connectivity::Disconnected {
+                        disconnected_at, ..
+                    },
+                ..
+            }) if disconnected_at.elapsed() < timeout => {
+                tracing::debug!(%peer_id, "Evicted peer attempting to reconnect too quickly, disconnecting");
+                Err(ConnectionDenied::new(anyhow!(
+                    "evicted peer reconnecting too quickly"
+                )))
+            }
+            _ => Ok(()),
+        }
     }
 
     pub fn not_useful(&mut self, peer_id: PeerId) {
