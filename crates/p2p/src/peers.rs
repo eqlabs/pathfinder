@@ -148,7 +148,7 @@ impl PeerSet {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct KeyedNetworkGroup(pub [u8; 32]);
 
 impl KeyedNetworkGroup {

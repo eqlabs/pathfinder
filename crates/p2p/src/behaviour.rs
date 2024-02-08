@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -30,7 +31,7 @@ use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
-use std::task;
+use std::{cmp, task};
 
 pub const IDENTIFY_PROTOCOL_NAME: &str = "/starknet/id/1.0.0";
 
@@ -83,13 +84,19 @@ impl NetworkBehaviour for Behaviour {
         // Limit the number of inbound peer connections. Different limits apply to direct peers
         // and peers connecting over a relay.
         if is_relayed {
-            if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
-                tracing::debug!(%peer, %connection_id, "Too many inbound relay peers, closing");
-                return Err(ConnectionDenied::new("too many inbound relay peers"));
+            if self.inbound_relayed_peers().count() >= self.cfg.max_inbound_relayed_peers {
+                self.evict_inbound_peer(
+                    self.inbound_relayed_peers()
+                        .map(|(peer_id, peer)| (peer_id, peer.clone()))
+                        .collect(),
+                )?;
             }
-        } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
-            tracing::debug!(%peer, %connection_id, "Too many inbound direct peers, closing");
-            return Err(ConnectionDenied::new("too many inbound direct peers"));
+        } else if self.inbound_direct_peers().count() >= self.cfg.max_inbound_direct_peers {
+            self.evict_inbound_peer(
+                self.inbound_direct_peers()
+                    .map(|(peer_id, peer)| (peer_id, peer.clone()))
+                    .collect(),
+            )?;
         }
 
         // Disconnect peers without an IP address.
@@ -338,6 +345,8 @@ impl NetworkBehaviour for Behaviour {
             self.prevent_evicted_peer_reconnections(peer_id)?;
         }
 
+        drop(recent_peers);
+
         // Limit the number of inbound peer connections. Different limits apply to direct peers
         // and peers connecting over a relay.
         //
@@ -348,16 +357,21 @@ impl NetworkBehaviour for Behaviour {
         // The check must be repeated when the connection is established due to race conditions,
         // since multiple peers may be attempting to connect at the same time.
         if is_relayed {
-            if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
-                tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
-                return Err(ConnectionDenied::new("too many inbound relay peers"));
+            if self.inbound_relayed_peers().count() >= self.cfg.max_inbound_relayed_peers {
+                self.evict_inbound_peer(
+                    self.inbound_relayed_peers()
+                        .map(|(peer_id, peer)| (peer_id, peer.clone()))
+                        .collect(),
+                )?;
             }
-        } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
-            tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
-            return Err(ConnectionDenied::new("too many inbound direct peers"));
+        } else if self.inbound_direct_peers().count() >= self.cfg.max_inbound_direct_peers {
+            self.evict_inbound_peer(
+                self.inbound_direct_peers()
+                    .map(|(peer_id, peer)| (peer_id, peer.clone()))
+                    .collect(),
+            )?;
         }
 
-        drop(recent_peers);
         self.inner
             .handle_pending_inbound_connection(connection_id, local_addr, remote_addr)
     }
@@ -376,7 +390,9 @@ impl NetworkBehaviour for Behaviour {
 
                 self.prevent_evicted_peer_reconnections(peer_id)?;
 
-                self.evict_outbound_peer()?;
+                if self.outbound_peers().count() >= self.cfg.max_outbound_peers {
+                    self.evict_outbound_peer()?;
+                }
 
                 self.peers.upsert(
                     peer_id,
@@ -537,12 +553,12 @@ impl Behaviour {
         Ok(())
     }
 
-    /// Evict an outbound peer if the maximum number of outbound peers has been reached.
+    /// Evict an outbound peer to make space for a new outbound connection.
+    ///
+    /// Only peers which are flagged as not useful are considered for eviction.
+    /// If there are no such peers, the incoming connection gets denied.
     fn evict_outbound_peer(&mut self) -> Result<(), ConnectionDenied> {
         let mut candidates: Vec<_> = self.outbound_peers().collect();
-        if candidates.len() < self.cfg.max_outbound_peers {
-            return Ok(());
-        }
 
         // Only peers which are flagged as not useful are considered for eviction.
         candidates.retain(|(_, peer)| !peer.useful);
@@ -557,13 +573,142 @@ impl Behaviour {
             hasher.finalize()
         });
         let (peer_id, _) = candidates.pop().ok_or_else(|| {
-            tracing::debug!("Outbound peer limit reached, but no peers could be evicted");
+            tracing::debug!(
+                "Outbound peer limit reached, but no peers could be evicted, disconnecting"
+            );
             ConnectionDenied::new("outbound peer limit reached and no peers could be evicted")
         })?;
         drop(candidates);
 
         // Disconnect the evicted peer.
         tracing::debug!(%peer_id, "Evicting outbound peer");
+        self.peers.update(peer_id, |peer| {
+            peer.connectivity = Connectivity::Disconnecting {
+                connected_at: peer.connected_at(),
+            };
+            peer.evicted = true;
+        });
+        tokio::spawn({
+            let swarm = self.swarm.clone();
+            async move {
+                if let Err(e) = swarm.disconnect(peer_id).await {
+                    tracing::debug!(%peer_id, %e, "Failed to disconnect evicted peer");
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Disconnect an inbound peer to make space for a new inbound connection.
+    ///
+    /// This method is written with the goal of not allowing an attacker to
+    /// control which peers are evicted, so that the attacker cannot eclipse
+    /// our node.
+    ///
+    /// If no peer can be evicted, the incoming connection gets denied.
+    fn evict_inbound_peer(
+        &mut self,
+        mut candidates: HashMap<PeerId, Peer>,
+    ) -> Result<(), ConnectionDenied> {
+        // Group the peers by the keyed network group, and pick 4 groups
+        // with the smallest value (which is deterministic, but unpredictable
+        // by the attacker). Pick one peer from each group, and protect that
+        // peer from eviction. For the attacker to circumvent this step, he
+        // would need to be able to allocate very specific IPs, and he would
+        // need to be able to predict which prefixes we are going to protect,
+        // which is impossible. The goal is to ensure we are connected to a
+        // diverse set of IP addresses.
+
+        // Group the peers by keyed network group.
+        let mut grouped = HashMap::<KeyedNetworkGroup, Vec<PeerId>>::new();
+        for (&peer_id, peer) in candidates.iter() {
+            grouped
+                .entry(peer.keyed_network_group.expect("peer is connected"))
+                .or_default()
+                .push(peer_id);
+        }
+        let grouped = grouped;
+
+        // Pick the peers to protect.
+        let mut sorted: Vec<_> = grouped.iter().collect();
+        sorted.sort_by_key(|&(group, _)| group);
+        for (_, peers) in sorted.iter().take(4) {
+            // Pick the peer with the smallest SHA3(eviction_secret || peer_id) value and protect
+            // it from eviction. This is deterministic but unpredictable by any outside observer.
+            if let Some(peer_id) = peers.iter().min_by_key(|peer_id| {
+                use sha3::{Digest, Sha3_256};
+                let mut hasher = Sha3_256::default();
+                self.secret.hash_into(&mut hasher);
+                hasher.update(peer_id.to_bytes());
+                hasher.finalize()
+            }) {
+                candidates.remove(peer_id);
+            }
+        }
+
+        // Protect 8 peers with the lowest minimum ping time. To circumvent this
+        // step, the attacker would have to be able to run nodes that are
+        // geographically closer to us than these peers, which is difficult to do.
+        let mut ping_times: Vec<_> = candidates
+            .iter()
+            .filter_map(|(&peer_id, peer)| peer.min_ping.map(|ping| (peer_id, ping)))
+            .collect();
+        ping_times.sort_by_key(|&(_, ping)| ping);
+        for (peer_id, _) in ping_times.iter().take(8) {
+            candidates.remove(peer_id);
+        }
+
+        // TODO Move this into a separate issue and link it here.
+        // TODO Save 4 nodes that have most recently gossiped valid transactions,
+        // and 8 nodes that have most recently gossiped a valid new head (or any
+        // other block if we are still syncing).
+
+        // Of the remaining nodes, protect half of them which have been connected
+        // for the longest time.
+        let mut connected_at: Vec<_> = candidates
+            .iter()
+            .map(|(&peer_id, peer)| (peer_id, peer.connected_at().expect("peer is connected")))
+            .collect();
+        connected_at.sort_by_key(|&(_, connected_at)| cmp::Reverse(connected_at));
+        for (peer_id, _) in connected_at.iter().take(candidates.len() / 2) {
+            candidates.remove(peer_id);
+        }
+
+        // Finally, evict the youngest peer in the most populous group.
+        // This is achieved by sorting all the nodes by a) total number
+        // of connected nodes which share their keyed network, breaking
+        // ties with b) keyed network group (in reverse order, since we
+        // use regular order in the first step of the eviction algorithm),
+        // breaking ties with c) connection time. Evict the first peer
+        // after sorting.
+        let mut candidates: Vec<_> = candidates.into_iter().collect();
+        candidates.sort_by(|(_, a), (_, b)| {
+            match grouped[&a.keyed_network_group.expect("peer is connected")]
+                .len()
+                .cmp(&grouped[&b.keyed_network_group.expect("peer is connected")].len())
+            {
+                cmp::Ordering::Equal => match cmp::Reverse(a.keyed_network_group)
+                    .cmp(&cmp::Reverse(b.keyed_network_group))
+                {
+                    cmp::Ordering::Equal => a
+                        .connected_at()
+                        .expect("peer is connected")
+                        .cmp(&b.connected_at().expect("peer is connected")),
+                    other => other,
+                },
+                other => other,
+            }
+        });
+        let (peer_id, _) = candidates.into_iter().next().ok_or_else(|| {
+            tracing::debug!(
+                "Inbound peer limit reached, but no peers could be evicted, disconnecting"
+            );
+            ConnectionDenied::new("inbound peer limit reached and no peers could be evicted")
+        })?;
+
+        // Disconnect the evicted peer.
+        tracing::debug!(%peer_id, "Evicting inbound peer");
         self.peers.update(peer_id, |peer| {
             peer.connectivity = Connectivity::Disconnecting {
                 connected_at: peer.connected_at(),
@@ -666,20 +811,18 @@ impl Behaviour {
             .filter(|(_, peer)| peer.is_connected() && peer.is_outbound())
     }
 
-    /// Number of inbound non-relayed peers.
-    fn num_inbound_direct_peers(&self) -> usize {
+    /// Inbound non-relayed peers connected to us.
+    fn inbound_direct_peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
         self.peers
             .iter()
             .filter(|(_, peer)| peer.is_connected() && peer.is_inbound() && !peer.is_relayed())
-            .count()
     }
 
-    /// Number of inbound relayed peers.
-    fn num_inbound_relayed_peers(&self) -> usize {
+    /// Inbound relayed peers connected to us.
+    fn inbound_relayed_peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
         self.peers
             .iter()
             .filter(|(_, peer)| peer.is_connected() && peer.is_inbound() && peer.is_relayed())
-            .count()
     }
 }
 
