@@ -95,14 +95,14 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::types as simplified;
-    use crate::p2p_network::client::types::Receipt;
+    use crate::p2p_network::client::types::{self as simplified, cairo_def_from_dto};
+    use crate::p2p_network::client::types::{sierra_defs_from_dto, Receipt};
     use crate::p2p_network::sync_handlers;
     use crate::p2p_network::sync_handlers::def_into_dto;
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::types::{self as p2p_types, RawTransactionVariant, TryFromDto};
-    use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest};
+    use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockId, BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
@@ -112,8 +112,8 @@ mod prop {
     use pathfinder_common::event::Event;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber,
-        TransactionHash,
+        BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber, ClassHash,
+        SierraHash, TransactionHash,
     };
     use proptest::prelude::*;
     use std::collections::{BTreeSet, HashMap};
@@ -292,7 +292,65 @@ mod prop {
         }
     }
 
+    TODO: get_headers, get_state_diffs
+
     */
+
+    proptest! {
+        #[test]
+        fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+            // Compute the overlapping set between the db and the request
+            // These are the events that we expect to be read from the db
+            // Grouped by block number
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(h, _, _, _, cairo_defs, sierra_defs)|
+                    (
+                        // Block number
+                        h.number,
+                        // List of tuples (Cairo class hash, Cairo definition bytes)
+                        cairo_defs,
+                        // List of tuples (Sierra class hash, Sierra definition bytes, Casm definition bytes)
+                        sierra_defs
+                    )
+            ).collect::<Vec<_>>();
+            // Run the handler
+            let request = ClassesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
+            let mut responses = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_classes(storage, request, tx);
+                let (_, response) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                response
+            });
+
+            // Make sure the last reply is Fin
+            assert_eq!(responses.pop().unwrap(), ClassesResponse::Fin);
+
+            // Check the rest
+            let mut actual_cairo = Vec::new();
+            let mut actual_sierra = Vec::new();
+
+            responses.into_iter().for_each(|response| match response {
+                ClassesResponse::Class(Class::Cairo0 { class, domain: _, class_hash }) => {
+                    actual_cairo.push((ClassHash(class_hash.0), cairo_def_from_dto(class).unwrap()));
+                },
+                ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash }) => {
+                    let (sierra_def, casm_def) = sierra_defs_from_dto(class).unwrap();
+                    actual_sierra.push((SierraHash(class_hash.0), sierra_def, casm_def));
+                },
+                _ => panic!("unexpected response"),
+            });
+
+            for expected_for_block in expected {
+                let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
+                let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<Vec<_>>();
+
+                prop_assert_eq_sorted!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq_sorted!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
+            }
+        }
+    }
 
     mod workaround {
         use pathfinder_common::transaction::{
