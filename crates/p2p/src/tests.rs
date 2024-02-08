@@ -703,13 +703,12 @@ async fn max_inbound_connections() {
     peer_4_connection_established.recv().await;
 }
 
-/// Ensure that outbound peers marked as not useful get evicted if new outbound connections
+/// Ensure that outbound peers marked as not useful get evicted if new inbound connections
 /// are attempted.
 #[test_log::test(tokio::test)]
 async fn outbound_peer_eviction() {
-    const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
     let cfg = Config {
-        direct_connection_timeout: CONNECTION_TIMEOUT,
+        direct_connection_timeout: Duration::from_secs(0),
         relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
@@ -831,6 +830,92 @@ async fn outbound_peer_eviction() {
     assert!(peers.contains_key(&outbound3.peer_id));
     assert!(peers.contains_key(&inbound1.peer_id));
     assert!(peers.contains_key(&inbound2.peer_id));
+}
+
+/// Ensure that inbound peers get evicted if new outbound connections
+/// are attempted.
+#[test_log::test(tokio::test)]
+async fn inbound_peer_eviction() {
+    let cfg = Config {
+        direct_connection_timeout: Duration::from_secs(0),
+        relay_connection_timeout: Duration::from_secs(0),
+        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+        max_inbound_direct_peers: 25,
+        max_inbound_relayed_peers: 0,
+        max_outbound_peers: 100,
+        // Don't open connections automatically.
+        low_watermark: 0,
+        bootstrap: BootstrapConfig {
+            period: Duration::from_millis(500),
+            start_offset: Duration::from_secs(10),
+        },
+        eviction_timeout: Duration::from_secs(15 * 60),
+        inbound_connections_rate_limit: RateLimit {
+            max: 1000,
+            interval: Duration::from_secs(1),
+        },
+    };
+
+    let mut peer = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let inbound_peers = (0..26)
+        .map(|_| TestPeer::new(cfg.clone(), Keypair::generate_ed25519()))
+        .collect::<Vec<_>>();
+    let mut outbound1 = TestPeer::new(cfg, Keypair::generate_ed25519());
+
+    let peer_addr = peer.start_listening().await.unwrap();
+    tracing::info!(%peer.peer_id, %peer_addr);
+    let outbound_addr1 = outbound1.start_listening().await.unwrap();
+    tracing::info!(%outbound1.peer_id, %outbound_addr1);
+
+    // Open one outbound connection. This connection is never touched.
+    peer.client
+        .dial(outbound1.peer_id, outbound_addr1.clone())
+        .await
+        .unwrap();
+
+    // We can open 25 connections because the limit is 25.
+    for inbound_peer in inbound_peers.iter().take(25) {
+        inbound_peer
+            .client
+            .dial(peer.peer_id, peer_addr.clone())
+            .await
+            .unwrap();
+    }
+
+    let connected = peer.connected().await;
+    // 25 inbound and 1 outbound peer.
+    assert_eq!(connected.len(), 26);
+    assert!(connected.contains_key(&outbound1.peer_id));
+
+    exhaust_events(&mut peer.event_receiver).await;
+
+    // Trying to open another one causes an eviction.
+    inbound_peers
+        .last()
+        .unwrap()
+        .client
+        .dial(peer.peer_id, peer_addr.clone())
+        .await
+        .unwrap();
+
+    // Ensure that a peer got disconnected.
+    let disconnected = wait_for_event(&mut peer.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote, .. })
+            if inbound_peers.iter().take(25).any(|p| p.peer_id == remote) =>
+        {
+            Some(remote)
+        }
+        _ => None,
+    })
+    .await
+    .unwrap();
+
+    let connected = peer.connected().await;
+    // 25 inbound and 1 outbound peer.
+    assert_eq!(connected.len(), 26);
+    assert!(!connected.contains_key(&disconnected));
+    assert!(connected.contains_key(&inbound_peers.last().unwrap().peer_id));
+    assert!(connected.contains_key(&outbound1.peer_id));
 }
 
 /// Ensure that evicted peers can't reconnect too quickly.
