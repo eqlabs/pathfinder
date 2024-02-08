@@ -5,12 +5,16 @@ use std::{
 };
 
 use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
+use sha3::{Digest, Sha3_256};
+
+use crate::secret::Secret;
 
 #[derive(Debug, Clone)]
 pub struct Peer {
     pub connectivity: Connectivity,
     pub direction: Direction,
     pub addr: Option<Multiaddr>,
+    pub keyed_network_group: Option<KeyedNetworkGroup>,
     pub evicted: bool,
     pub useful: bool,
     // TODO are we still able to maintain info about peers' sync heads?
@@ -138,5 +142,20 @@ impl PeerSet {
                 _ => Some((*peer_id, peer)),
             }
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct KeyedNetworkGroup(pub [u8; 32]);
+
+impl KeyedNetworkGroup {
+    pub fn new(secret: &Secret, addr: IpAddr) -> Self {
+        let mut hasher = Sha3_256::default();
+        secret.hash_into(&mut hasher);
+        match addr {
+            IpAddr::V4(ip) => hasher.update(&ip.octets()[..2]),
+            IpAddr::V6(ip) => hasher.update(&ip.octets()[..4]),
+        }
+        Self(hasher.finalize().into())
     }
 }

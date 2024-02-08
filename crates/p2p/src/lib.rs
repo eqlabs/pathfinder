@@ -24,6 +24,7 @@ mod behaviour;
 pub mod client;
 mod main_loop;
 mod peers;
+mod secret;
 mod sync;
 #[cfg(test)]
 mod test_utils;

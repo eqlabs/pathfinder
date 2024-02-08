@@ -3,10 +3,10 @@ use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
-use crate::peers::{Connectivity, Direction, Peer};
+use crate::peers::{Connectivity, Direction, KeyedNetworkGroup, Peer};
+use crate::secret::Secret;
 use crate::sync::codec;
 use crate::{peers::PeerSet, Config};
-use anyhow::anyhow;
 use libp2p::core::Endpoint;
 use libp2p::dcutr;
 use libp2p::gossipsub::{self, IdentTopic, MessageAuthenticity, MessageId};
@@ -42,11 +42,7 @@ pub struct Behaviour {
     cfg: Config,
     peers: PeerSet,
     swarm: crate::Client,
-    /// Secret value used in the peer eviction process.
-    ///
-    /// This value is used to pick the peer to be evicted in a deterministic, but
-    /// unpredictable way.
-    eviction_secret: [u8; 32],
+    secret: Secret,
     inner: Inner,
 }
 
@@ -89,16 +85,15 @@ impl NetworkBehaviour for Behaviour {
         if is_relayed {
             if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
                 tracing::debug!(%peer, %connection_id, "Too many inbound relay peers, closing");
-                return Err(ConnectionDenied::new(anyhow!(
-                    "too many inbound relay peers"
-                )));
+                return Err(ConnectionDenied::new("too many inbound relay peers"));
             }
         } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
             tracing::debug!(%peer, %connection_id, "Too many inbound direct peers, closing");
-            return Err(ConnectionDenied::new(anyhow!(
-                "too many inbound direct peers"
-            )));
+            return Err(ConnectionDenied::new("too many inbound direct peers"));
         }
+
+        // Disconnect peers without an IP address.
+        Self::get_ip(remote_addr)?;
 
         self.inner.handle_established_inbound_connection(
             connection_id,
@@ -117,6 +112,10 @@ impl NetworkBehaviour for Behaviour {
     ) -> Result<THandler<Self>, ConnectionDenied> {
         self.check_duplicate_connection(peer)?;
         self.prevent_evicted_peer_reconnections(peer)?;
+
+        // Disconnect peers without an IP address.
+        Self::get_ip(addr)?;
+
         self.inner
             .handle_established_outbound_connection(connection_id, peer, addr, role_override)
     }
@@ -126,6 +125,42 @@ impl NetworkBehaviour for Behaviour {
             FromSwarm::ConnectionEstablished(ConnectionEstablished {
                 peer_id, endpoint, ..
             }) => {
+                let direction = if endpoint.is_dialer() {
+                    Direction::Outbound
+                } else {
+                    Direction::Inbound
+                };
+
+                // Disconnect peers without an IP address.
+                let Ok(peer_ip) = Self::get_ip(endpoint.get_remote_address()) else {
+                    tracing::debug!(%peer_id, "Peer has no IP address, disconnecting");
+                    self.peers.upsert(
+                        peer_id,
+                        |peer| {
+                            peer.connectivity = Connectivity::Disconnecting {
+                                connected_at: Some(Instant::now()),
+                            };
+                        },
+                        || Peer {
+                            connectivity: Connectivity::Disconnecting {
+                                connected_at: Some(Instant::now()),
+                            },
+                            direction,
+                            addr: None,
+                            keyed_network_group: None,
+                            evicted: false,
+                            useful: true,
+                        },
+                    );
+                    let swarm = self.swarm.clone();
+                    tokio::spawn(async move {
+                        if let Err(err) = swarm.disconnect(peer_id).await {
+                            tracing::debug!(%peer_id, %err, "Failed to disconnect peer");
+                        }
+                    });
+                    return;
+                };
+
                 self.peers.upsert(
                     peer_id,
                     |peer| {
@@ -133,17 +168,16 @@ impl NetworkBehaviour for Behaviour {
                             connected_at: Instant::now(),
                         };
                         peer.addr = Some(endpoint.get_remote_address().clone());
+                        peer.keyed_network_group =
+                            Some(KeyedNetworkGroup::new(&self.secret, peer_ip));
                     },
                     || Peer {
                         connectivity: Connectivity::Connected {
                             connected_at: Instant::now(),
                         },
-                        direction: if endpoint.is_dialer() {
-                            Direction::Outbound
-                        } else {
-                            Direction::Inbound
-                        },
+                        direction,
                         addr: Some(endpoint.get_remote_address().clone()),
+                        keyed_network_group: Some(KeyedNetworkGroup::new(&self.secret, peer_ip)),
                         evicted: false,
                         useful: true,
                     },
@@ -172,6 +206,7 @@ impl NetworkBehaviour for Behaviour {
                             },
                             direction: Direction::Outbound,
                             addr: None,
+                            keyed_network_group: None,
                             evicted: false,
                             useful: true,
                         },
@@ -236,23 +271,11 @@ impl NetworkBehaviour for Behaviour {
             .count();
         if num_connected >= self.cfg.inbound_connections_rate_limit.max {
             tracing::debug!(%connection_id, %remote_addr, "Too many inbound connections, closing");
-            return Err(ConnectionDenied::new(anyhow!(
-                "too many inbound connections"
-            )));
+            return Err(ConnectionDenied::new("too many inbound connections"));
         }
 
-        // Extract the IP address of the peer from his multiaddr.
-        let peer_ip = remote_addr.iter().find_map(|p| match p {
-            Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
-            Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
-            _ => None,
-        });
-
-        // If the peer has no IP address, disconnect.
-        let Some(peer_ip) = peer_ip else {
-            tracing::debug!(%connection_id, "Disconnected peer without IP");
-            return Err(ConnectionDenied::new(anyhow!("peer without IP")));
-        };
+        // Extract the peer IP from the multiaddr, or disconnect the peer if he doesn't have one.
+        let peer_ip = Self::get_ip(remote_addr)?;
 
         // If the peer is not in the IP whitelist, disconnect.
         if !self
@@ -262,7 +285,7 @@ impl NetworkBehaviour for Behaviour {
             .any(|net| net.contains(&peer_ip))
         {
             tracing::debug!(%peer_ip, %connection_id, "Peer not in IP whitelist, disconnecting");
-            return Err(ConnectionDenied::new(anyhow!("peer not in IP whitelist")));
+            return Err(ConnectionDenied::new("peer not in IP whitelist"));
         }
 
         // Is the peer connecting over a relay?
@@ -298,7 +321,7 @@ impl NetworkBehaviour for Behaviour {
         // reconnect too quickly. Close the connection.
         if recent_peers.any(|ip| ip == peer_ip) {
             tracing::debug!(%connection_id, "Peer attempted to reconnect too quickly, closing");
-            return Err(ConnectionDenied::new(anyhow!("reconnect too quickly")));
+            return Err(ConnectionDenied::new("reconnect too quickly"));
         }
 
         // Attempt to extract peer ID from the multiaddr.
@@ -324,15 +347,11 @@ impl NetworkBehaviour for Behaviour {
         if is_relayed {
             if self.num_inbound_relayed_peers() >= self.cfg.max_inbound_relayed_peers {
                 tracing::debug!(%connection_id, "Too many inbound relay peers, closing");
-                return Err(ConnectionDenied::new(anyhow!(
-                    "too many inbound relay peers"
-                )));
+                return Err(ConnectionDenied::new("too many inbound relay peers"));
             }
         } else if self.num_inbound_direct_peers() >= self.cfg.max_inbound_direct_peers {
             tracing::debug!(%connection_id, "Too many inbound direct peers, closing");
-            return Err(ConnectionDenied::new(anyhow!(
-                "too many inbound direct peers"
-            )));
+            return Err(ConnectionDenied::new("too many inbound direct peers"));
         }
 
         drop(recent_peers);
@@ -370,6 +389,7 @@ impl NetworkBehaviour for Behaviour {
                         connectivity: Connectivity::Dialing,
                         direction: Direction::Outbound,
                         addr: None,
+                        keyed_network_group: None,
                         evicted: false,
                         useful: true,
                     },
@@ -440,7 +460,7 @@ impl Behaviour {
                 peers: PeerSet::new(cfg.eviction_timeout),
                 cfg,
                 swarm,
-                eviction_secret: identity.derive_secret(b"eviction").unwrap(),
+                secret: Secret::new(identity),
                 inner: Inner {
                     relay,
                     autonat: autonat::Behaviour::new(peer_id, Default::default()),
@@ -482,15 +502,16 @@ impl Behaviour {
         Ok(())
     }
 
+    /// Only allow one connection per peer. If the peer is already connected, close the new
+    /// connection.
     fn check_duplicate_connection(&mut self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
-        // Only allow one connection per peer.
         if self
             .peers
             .get(peer_id)
             .map_or(false, |peer| peer.is_connected())
         {
             tracing::debug!(%peer_id, "Peer already connected, closing");
-            return Err(ConnectionDenied::new(anyhow!("duplicate connection")));
+            return Err(ConnectionDenied::new("duplicate connection"));
         }
         Ok(())
     }
@@ -510,15 +531,13 @@ impl Behaviour {
         candidates.sort_by_key(|(peer_id, _)| {
             use sha3::{Digest, Sha3_256};
             let mut hasher = Sha3_256::default();
-            hasher.update(self.eviction_secret);
+            self.secret.hash_into(&mut hasher);
             hasher.update(peer_id.to_bytes());
             hasher.finalize()
         });
         let (peer_id, _) = candidates.pop().ok_or_else(|| {
             tracing::debug!("Outbound peer limit reached, but no peers could be evicted");
-            ConnectionDenied::new(anyhow!(
-                "outbound peer limit reached and no peers could be evicted"
-            ))
+            ConnectionDenied::new("outbound peer limit reached and no peers could be evicted")
         })?;
         drop(candidates);
 
@@ -559,12 +578,26 @@ impl Behaviour {
                 ..
             }) if disconnected_at.elapsed() < timeout => {
                 tracing::debug!(%peer_id, "Evicted peer attempting to reconnect too quickly, disconnecting");
-                Err(ConnectionDenied::new(anyhow!(
-                    "evicted peer reconnecting too quickly"
-                )))
+                Err(ConnectionDenied::new(
+                    "evicted peer reconnecting too quickly",
+                ))
             }
             _ => Ok(()),
         }
+    }
+
+    /// Get the IP address from a multiaddr, or disconnect the peer if it doesn't have one.
+    fn get_ip(addr: &Multiaddr) -> Result<IpAddr, ConnectionDenied> {
+        addr.iter()
+            .find_map(|p| match p {
+                Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+                Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                tracing::debug!(%addr, "Peer has no IP address, disconnecting");
+                ConnectionDenied::new("peer has no IP")
+            })
     }
 
     pub fn not_useful(&mut self, peer_id: PeerId) {
