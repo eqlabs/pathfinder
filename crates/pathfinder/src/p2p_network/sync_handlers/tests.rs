@@ -96,6 +96,7 @@ mod boundary_conditions {
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
     use crate::p2p_network::client::types as simplified;
+    use crate::p2p_network::client::types::Receipt;
     use crate::p2p_network::sync_handlers;
     use crate::p2p_network::sync_handlers::def_into_dto;
     use futures::channel::mpsc;
@@ -103,11 +104,11 @@ mod prop {
     use p2p::client::types::{self as p2p_types, RawTransactionVariant, TryFromDto};
     use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest};
     use p2p_proto::common::{BlockId, BlockNumberOrHash, Iteration};
-    use p2p_proto::event::EventsRequest;
+    use p2p_proto::event::{EventsRequest, EventsResponse};
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-    use p2p_proto::receipt::ReceiptsRequest;
+    use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
     use p2p_proto::state::StateDiffsRequest;
-    use p2p_proto::transaction::TransactionsRequest;
+    use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
     use pathfinder_common::event::Event;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
@@ -291,26 +292,35 @@ mod prop {
         }
     }
 
+    */
+
     mod workaround {
-        use pathfinder_common::{TransactionNonce, TransactionVersion};
-        use starknet_gateway_types::reply::transaction as gw;
+        use pathfinder_common::transaction::{
+            EntryPointType, InvokeTransactionV0, L1HandlerTransaction, Transaction,
+            TransactionVariant,
+        };
+        use pathfinder_common::TransactionNonce;
 
         // Align with the deserialization workaround to avoid false negative mismatches
-        pub fn for_legacy_l1_handlers(tx: gw::Transaction) -> gw::Transaction {
-            match tx {
-                gw::Transaction::Invoke(gw::InvokeTransaction::V0(tx))
-                    if tx.entry_point_type == Some(gw::EntryPointType::L1Handler) =>
-                {
-                    gw::Transaction::L1Handler(gw::L1HandlerTransaction {
-                        contract_address: tx.sender_address,
-                        entry_point_selector: tx.entry_point_selector,
+        pub fn for_legacy_l1_handlers(tx: Transaction) -> Transaction {
+            match tx.variant {
+                TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    entry_point_type,
+                    calldata,
+                    sender_address,
+                    entry_point_selector,
+                    max_fee: _,
+                    signature: _,
+                }) if entry_point_type == Some(EntryPointType::L1Handler) => Transaction {
+                    variant: TransactionVariant::L1Handler(L1HandlerTransaction {
+                        contract_address: sender_address,
+                        entry_point_selector,
                         nonce: TransactionNonce::ZERO,
-                        calldata: tx.calldata,
-                        transaction_hash: tx.transaction_hash,
-                        version: TransactionVersion::ZERO,
-                    })
-                }
-                x => x,
+                        calldata,
+                    }),
+                    hash: tx.hash,
+                },
+                _ => tx,
             }
         }
     }
@@ -322,45 +332,40 @@ mod prop {
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
             // Compute the overlapping set between the db and the request
             // These are the transactions that we expect to be read from the db
+            // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(h, _, tr, _, _, _)|
                     (
+                        // Block number
                         h.number,
-                        h.hash,
-                        tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t)).variant.into()).collect::<Vec<_>>()
+                        // List of tuples (Transaction hash, Raw transaction variant)
+                        tr.into_iter().map(|(t, _)| {
+                            let txn = Transaction::from(workaround::for_legacy_l1_handlers(t));
+                            (txn.hash, RawTransactionVariant::from(txn.variant))
+                        }).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = Runtime::new().unwrap().block_on(async {
+            let mut responses = Runtime::new().unwrap().block_on(async {
                 let (tx, rx) = mpsc::channel(0);
                 let getter_fut = sync_handlers::get_transactions(storage, request, tx);
-                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
-                replies
+                let (_, responses) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                responses
             });
-            // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start and zero limit are tested in boundary_conditions::
-            if expected.is_empty() {
-                prop_assert_eq_sorted!(replies.len(), 1);
-                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
-            } else {
-                // Group replies by block, it is assumed that transactions per block are small enough to fit under the 1MiB limit
-                // This means that there are 2 replies per block: [[transactions-0, fin-0], [transactions-1, fin-1], ...]
-                let actual = replies.chunks_exact(2).map(|replies | {
-                    assert_eq!(replies[0].id, replies[1].id);
-                    // Make sure block data is delimited
-                    assert_eq!(replies[1].kind, TransactionsResponseKind::Fin(Fin::ok()));
-                    // Extract transactions
-                    let transactions = replies[0].kind.clone().into_transactions().unwrap().items;
-                    let BlockId { number, hash } = replies[0].id.unwrap();
-                    (
-                        BlockNumber::new(number).unwrap(),
-                        BlockHash(hash.0),
-                        transactions.into_iter().map(|t| RawTransactionVariant::try_from_dto(t).unwrap()).collect::<Vec<_>>()
-                    )
-                }).collect::<Vec<_>>();
 
-                prop_assert_eq_sorted!(actual, expected);
+            // Make sure the last reply is Fin
+            assert_eq!(responses.pop().unwrap(), TransactionsResponse::Fin);
+
+            // Check the rest
+            let mut actual = responses.into_iter().map(|response| match response {
+                TransactionsResponse::Transaction(txn) => (TransactionHash(txn.hash.0), RawTransactionVariant::try_from_dto(txn.variant).unwrap()),
+                _ => panic!("unexpected response"),
+            }).collect::<Vec<_>>();
+
+            for expected_for_block in expected {
+                let actual_for_block = actual.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
+                prop_assert_eq_sorted!(expected_for_block.1, actual_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }
@@ -372,45 +377,37 @@ mod prop {
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
             // Compute the overlapping set between the db and the request
             // These are the receipts that we expect to be read from the db
+            // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(h, _, tr, _, _, _)|
                     (
+                        // Block number
                         h.number,
-                        h.hash,
-                        tr.into_iter().map(|(_, r)| r.into()).collect::<Vec<_>>()
+                        // List of receipts
+                        tr.into_iter().map(|(_, r)| simplified::Receipt::from(r)).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
             let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = Runtime::new().unwrap().block_on(async {
+            let mut responses = Runtime::new().unwrap().block_on(async {
                 let (tx, rx) = mpsc::channel(0);
                 let getter_fut = sync_handlers::get_receipts(storage, request, tx);
-                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
-                replies
+                let (_, responses) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                responses
             });
-            // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start and zero limit are tested in boundary_conditions::
-            if expected.is_empty() {
-                prop_assert_eq_sorted!(replies.len(), 1);
-                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
-            } else {
-                // Group replies by block, it is assumed that receipts per block small enough to fit under the 1MiB limit
-                // This means that there are 2 replies per block: [[receipts-0, fin-0], [receipts-1, fin-1], ...]
-                let actual = replies.chunks_exact(2).map(|replies | {
-                    assert_eq!(replies[0].id, replies[1].id);
-                    // Make sure block data is delimited
-                    assert_eq!(replies[1].kind, ReceiptsResponseKind::Fin(Fin::ok()));
-                    // Extract receipts
-                    let receipts = replies[0].kind.clone().into_receipts().unwrap().items;
-                    let BlockId { number, hash } = replies[0].id.unwrap();
-                    (
-                        BlockNumber::new(number).unwrap(),
-                        BlockHash(hash.0),
-                        receipts.into_iter().map(|r| simplified::Receipt::try_from(r).unwrap()).collect::<Vec<_>>()
-                    )
-                }).collect::<Vec<_>>();
 
-                prop_assert_eq_sorted!(actual, expected);
+            // Make sure the last reply is Fin
+            assert_eq!(responses.pop().unwrap(), ReceiptsResponse::Fin);
+
+            // Check the rest
+            let mut actual = responses.into_iter().map(|response| match response {
+                ReceiptsResponse::Receipt(receipt) => simplified::Receipt::try_from(receipt).unwrap(),
+                _ => panic!("unexpected response"),
+            }).collect::<Vec<_>>();
+
+            for expected_for_block in expected {
+                let actual_for_block = actual.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
+                prop_assert_eq_sorted!(expected_for_block.1, actual_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }
@@ -422,54 +419,41 @@ mod prop {
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
             // Compute the overlapping set between the db and the request
             // These are the events that we expect to be read from the db
-            // Extract tuples (block_number, block_hash, [events{txn#1}, events{txn#2}, ...])
+            // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, tr, _, _, _)|{
-                    let events = tr.into_iter().map(|(_, r)| (r.transaction_hash, r.events)).collect::<HashMap<_, Vec<_>>>();
+                .map(|(h, _, tr, _, _, _)|
                     (
+                        // Block number
                         h.number,
-                        h.hash,
-                        events
-                    )}
+                        // List of tuples (Transaction hash, Event)
+                        tr.into_iter().flat_map(|(_, r)| r.events.into_iter().map(move |event| (r.transaction_hash, event)))
+                            .collect::<Vec<(TransactionHash, Event)>>()
+                    )
             ).collect::<Vec<_>>();
             // Run the handler
             let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = Runtime::new().unwrap().block_on(async {
+            let mut responses = Runtime::new().unwrap().block_on(async {
                 let (tx, rx) = mpsc::channel(0);
                 let getter_fut = sync_handlers::get_events(storage, request, tx);
-                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
-                replies
+                let (_, response) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                response
             });
-            // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start and zero limit are tested in boundary_conditions::
-            if expected.is_empty() {
-                prop_assert_eq_sorted!(replies.len(), 1);
-                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
-            } else {
-                // Group replies by block, it is assumed that events per block small enough to fit under the 1MiB limit
-                // This means that there are 2 replies per block: [[events-0, fin-0], [events-1, fin-1], ...]
-                let actual = replies.chunks_exact(2).map(|replies | {
-                    assert_eq!(replies[0].id, replies[1].id);
-                    // Make sure block data is delimited
-                    assert_eq!(replies[1].kind, EventsResponseKind::Fin(Fin::ok()));
-                    let BlockId { number, hash } = replies[0].id.unwrap();
-                    // Extract events
-                    let mut events = HashMap::<_, Vec<_>>::new();
-                    replies[0].kind.clone().into_events().unwrap().items.into_iter().for_each(|e| {
-                        events.entry(TransactionHash(e.transaction_hash.0)).or_default().push(Event::try_from_dto(e).unwrap());
-                    });
-                    (
-                        BlockNumber::new(number).unwrap(),
-                        BlockHash(hash.0),
-                        events
-                    )
-                }).collect::<Vec<_>>();
 
-                prop_assert_eq_sorted!(actual, expected);
+            // Make sure the last reply is Fin
+            assert_eq!(responses.pop().unwrap(), EventsResponse::Fin);
+
+            // Check the rest
+            let mut actual = responses.into_iter().map(|response| match response {
+                EventsResponse::Event(event) => (TransactionHash(event.transaction_hash.0), Event::try_from_dto(event).unwrap()),
+                _ => panic!("unexpected response"),
+            }).collect::<Vec<_>>();
+
+            for expected_for_block in expected {
+                let actual_for_block = actual.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
+                prop_assert_eq_sorted!(expected_for_block.1, actual_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }
-    */
 
     /// Fixtures for prop tests
     mod fixtures {

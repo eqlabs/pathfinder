@@ -15,12 +15,12 @@ use pathfinder_common::{AccountDeploymentDataElem, PaymasterDataElem, Transactio
 use pathfinder_crypto::Felt;
 
 /// Convert pathfinder common (ie. core) type to a p2p dto type
-pub trait ToProto<T> {
-    fn to_proto(self) -> T;
+pub trait ToDto<T> {
+    fn to_dto(self) -> T;
 }
 
-impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
-    fn to_proto(self) -> p2p_proto::transaction::Transaction {
+impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
+    fn to_dto(self) -> p2p_proto::transaction::Transaction {
         use p2p_proto::transaction as proto;
         use pathfinder_common::transaction::TransactionVariant::*;
 
@@ -61,8 +61,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce: x.nonce.0,
                 compiled_class_hash: x.compiled_class_hash.0,
                 resource_bounds: ResourceBounds {
-                    l1_gas: x.resource_bounds.l1_gas.to_proto(),
-                    l2_gas: x.resource_bounds.l2_gas.to_proto(),
+                    l1_gas: x.resource_bounds.l1_gas.to_dto(),
+                    l2_gas: x.resource_bounds.l2_gas.to_dto(),
                 },
                 tip: x.tip.0.into(),
                 paymaster_data: Address(
@@ -77,8 +77,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                         .unwrap_or(&AccountDeploymentDataElem::ZERO)
                         .0,
                 ), // TODO
-                nonce_domain: x.nonce_data_availability_mode.to_proto(),
-                fee_domain: x.fee_data_availability_mode.to_proto(),
+                nonce_domain: x.nonce_data_availability_mode.to_dto(),
+                fee_domain: x.fee_data_availability_mode.to_dto(),
             }),
             Deploy(x) => proto::TransactionVariant::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
@@ -110,8 +110,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                     address_salt: x.contract_address_salt.0,
                     calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
                     resource_bounds: ResourceBounds {
-                        l1_gas: x.resource_bounds.l1_gas.to_proto(),
-                        l2_gas: x.resource_bounds.l2_gas.to_proto(),
+                        l1_gas: x.resource_bounds.l1_gas.to_dto(),
+                        l2_gas: x.resource_bounds.l2_gas.to_dto(),
                     },
                     tip: x.tip.0.into(),
                     paymaster_data: Address(
@@ -120,8 +120,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                             .unwrap_or(&PaymasterDataElem::ZERO)
                             .0,
                     ), // TODO
-                    nonce_domain: x.nonce_data_availability_mode.to_proto(),
-                    fee_domain: x.fee_data_availability_mode.to_proto(),
+                    nonce_domain: x.nonce_data_availability_mode.to_dto(),
+                    fee_domain: x.fee_data_availability_mode.to_dto(),
                 })
             }
             InvokeV0(x) => proto::TransactionVariant::InvokeV0(proto::InvokeV0 {
@@ -149,8 +149,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                 },
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
                 resource_bounds: ResourceBounds {
-                    l1_gas: x.resource_bounds.l1_gas.to_proto(),
-                    l2_gas: x.resource_bounds.l2_gas.to_proto(),
+                    l1_gas: x.resource_bounds.l1_gas.to_dto(),
+                    l2_gas: x.resource_bounds.l2_gas.to_dto(),
                 },
                 tip: x.tip.0.into(),
                 paymaster_data: Address(
@@ -165,8 +165,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
                         .unwrap_or(&AccountDeploymentDataElem::ZERO)
                         .0,
                 ), // TODO
-                nonce_domain: x.nonce_data_availability_mode.to_proto(),
-                fee_domain: x.fee_data_availability_mode.to_proto(),
+                nonce_domain: x.nonce_data_availability_mode.to_dto(),
+                fee_domain: x.fee_data_availability_mode.to_dto(),
                 nonce: x.nonce.0,
             }),
             L1Handler(x) => proto::TransactionVariant::L1HandlerV0(proto::L1HandlerV0 {
@@ -184,8 +184,8 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
     }
 }
 
-impl ToProto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
-    fn to_proto(self) -> p2p_proto::receipt::Receipt {
+impl ToDto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
+    fn to_dto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         let revert_reason = self.1.revert_reason().unwrap_or_default();
         let common = ReceiptCommon {
@@ -279,8 +279,8 @@ impl ToProto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt)
     }
 }
 
-impl ToProto<p2p_proto::event::Event> for (TransactionHash, Event) {
-    fn to_proto(self) -> p2p_proto::event::Event {
+impl ToDto<p2p_proto::event::Event> for (TransactionHash, Event) {
+    fn to_dto(self) -> p2p_proto::event::Event {
         p2p_proto::event::Event {
             transaction_hash: p2p_proto::common::Hash(self.0 .0),
             from_address: self.1.from_address.0,
@@ -290,8 +290,8 @@ impl ToProto<p2p_proto::event::Event> for (TransactionHash, Event) {
     }
 }
 
-impl ToProto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
-    fn to_proto(self) -> p2p_proto::transaction::ResourceLimits {
+impl ToDto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
+    fn to_dto(self) -> p2p_proto::transaction::ResourceLimits {
         p2p_proto::transaction::ResourceLimits {
             max_amount: self.max_amount.0.into(),
             max_price_per_unit: self.max_price_per_unit.0.into(),
@@ -299,8 +299,8 @@ impl ToProto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
     }
 }
 
-impl ToProto<String> for DataAvailabilityMode {
-    fn to_proto(self) -> String {
+impl ToDto<String> for DataAvailabilityMode {
+    fn to_dto(self) -> String {
         match self {
             DataAvailabilityMode::L1 => "L1".to_owned(),
             DataAvailabilityMode::L2 => "L2".to_owned(),

@@ -3,21 +3,30 @@ use p2p_proto::receipt::{
     InvokeTransactionReceipt, L1HandlerTransactionReceipt,
 };
 use pathfinder_common::{
-    receipt::{BuiltinCounters, ExecutionResources, L2ToL1Message},
+    receipt::{BuiltinCounters, ExecutionResources, ExecutionStatus, L2ToL1Message},
     ContractAddress, EthereumAddress, Fee, L2ToL1MessagePayloadElem, TransactionHash,
 };
 
-/// Represents a simplified receipt (events and execution status excluded).
-///
-/// This type is not in the `p2p` to avoid `p2p` dependence on `starknet_gateway_types`.
-#[derive(Clone, Debug, PartialEq)]
+/// Represents a simplified [`pathfinder_common::receipt::Receipt`] (events and transaction index excluded).
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct Receipt {
-    pub transaction_hash: TransactionHash,
-    pub actual_fee: Fee,
-    pub execution_resources: ExecutionResources,
+    pub actual_fee: Option<Fee>,
+    pub execution_resources: Option<ExecutionResources>,
     pub l2_to_l1_messages: Vec<L2ToL1Message>,
-    // Empty means not reverted
-    pub revert_error: String,
+    pub execution_status: ExecutionStatus,
+    pub transaction_hash: TransactionHash,
+}
+
+impl From<pathfinder_common::receipt::Receipt> for Receipt {
+    fn from(x: pathfinder_common::receipt::Receipt) -> Self {
+        Self {
+            transaction_hash: x.transaction_hash,
+            actual_fee: x.actual_fee,
+            execution_resources: x.execution_resources,
+            l2_to_l1_messages: x.l2_to_l1_messages,
+            execution_status: x.execution_status,
+        }
+    }
 }
 
 impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
@@ -36,8 +45,8 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
                 transaction_hash: TransactionHash(common.transaction_hash.0),
-                actual_fee: Fee(common.actual_fee),
-                execution_resources: ExecutionResources {
+                actual_fee: Some(Fee(common.actual_fee)),
+                execution_resources: Some(ExecutionResources {
                     builtin_instance_counter: BuiltinCounters {
                         output_builtin: common.execution_resources.builtins.output.into(),
                         pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
@@ -51,7 +60,7 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                     },
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
-                },
+                }),
                 l2_to_l1_messages: common
                     .messages_sent
                     .into_iter()
@@ -65,7 +74,13 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                         to_address: EthereumAddress(x.to_address.0),
                     })
                     .collect(),
-                revert_error: common.revert_reason,
+                execution_status: if common.revert_reason.is_empty() {
+                    ExecutionStatus::Succeeded
+                } else {
+                    ExecutionStatus::Reverted {
+                        reason: common.revert_reason,
+                    }
+                },
             }),
         }
     }

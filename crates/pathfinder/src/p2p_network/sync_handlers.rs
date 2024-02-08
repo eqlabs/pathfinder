@@ -11,7 +11,7 @@ use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHe
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
-use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
 use starknet_gateway_types::class_definition;
@@ -20,7 +20,7 @@ pub mod conv;
 #[cfg(test)]
 mod tests;
 
-use conv::ToProto;
+use conv::ToDto;
 
 #[cfg(not(test))]
 const MAX_BLOCKS_COUNT: u64 = 100;
@@ -187,26 +187,124 @@ fn get_header(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(test, derive(fake::Dummy))]
-enum ClassId {
-    Cairo(ClassHash),
-    Sierra(SierraHash, CasmHash),
-}
-
-impl ClassId {
-    pub fn class_hash(&self) -> ClassHash {
-        match self {
-            ClassId::Cairo(class_hash) => *class_hash,
-            ClassId::Sierra(sierra_hash, _) => ClassHash(sierra_hash.0),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 enum ClassDefinition {
     Cairo(Vec<u8>),
     Sierra { sierra: Vec<u8>, casm: Vec<u8> },
+}
+
+fn get_classes_for_block(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<ClassesResponse>,
+) -> anyhow::Result<bool> {
+    let get_definition =
+        |block_number: BlockNumber, class_hash| -> anyhow::Result<ClassDefinition> {
+            let definition = tx
+                .class_definition_at(block_number.into(), class_hash)?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Class definition {} not found at block {}",
+                        class_hash,
+                        block_number
+                    )
+                })?;
+            let casm_definition = tx.casm_definition(class_hash)?;
+            Ok(match casm_definition {
+                Some(casm) => ClassDefinition::Sierra {
+                    sierra: definition,
+                    casm,
+                },
+                None => ClassDefinition::Cairo(definition),
+            })
+        };
+
+    let declared_classes = tx.declared_classes_at(block_number.into())?;
+    let mut classes = Vec::new();
+
+    for class_hash in declared_classes {
+        let class_definition = get_definition(block_number, class_hash)?;
+
+        let class: Class = match class_definition {
+            ClassDefinition::Cairo(definition) => {
+                let cairo_class =
+                    serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
+                Class::Cairo0 {
+                    class: def_into_dto::cairo(cairo_class),
+                    domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
+                }
+            }
+            ClassDefinition::Sierra { sierra, casm } => {
+                let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
+
+                Class::Cairo1 {
+                    class: def_into_dto::sierra(sierra_class, casm),
+                    domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
+                }
+            }
+        };
+        classes.push(ClassesResponse::Class(class));
+    }
+
+    responses.extend(classes);
+
+    Ok(true)
+}
+
+fn get_state_diff(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<StateDiffsResponse>,
+) -> anyhow::Result<bool> {
+    let Some(state_diff) = tx.state_update(block_number.into())? else {
+        return Ok(false);
+    };
+
+    state_diff
+        .contract_updates
+        .into_iter()
+        .for_each(|(address, update)| {
+            responses.push(StateDiffsResponse::ContractDiff(ContractDiff {
+                address: Address(address.0),
+                nonce: update.nonce.map(|n| n.0),
+                class_hash: update.class.as_ref().map(|c| c.class_hash().0),
+                is_replaced: update.class.map(|c| c.is_replaced()),
+                values: update
+                    .storage
+                    .into_iter()
+                    .map(|(k, v)| ContractStoredValue {
+                        key: k.0,
+                        value: v.0,
+                    })
+                    .collect(),
+                domain: 0, // TODO
+            }))
+        });
+
+    state_diff
+        .system_contract_updates
+        .into_iter()
+        .for_each(|(address, update)| {
+            responses.push(StateDiffsResponse::ContractDiff(ContractDiff {
+                address: Address(address.0),
+                nonce: None,
+                class_hash: None,
+                is_replaced: None,
+                values: update
+                    .storage
+                    .into_iter()
+                    .map(|(k, v)| ContractStoredValue {
+                        key: k.0,
+                        value: v.0,
+                    })
+                    .collect(),
+                domain: 0, // TODO
+            }))
+        });
+
+    Ok(true)
 }
 
 fn get_transactions_for_block(
@@ -214,17 +312,13 @@ fn get_transactions_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<TransactionsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(block_hash) = tx.block_hash(block_number.into())? else {
-        return Ok(false);
-    };
-
     let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
 
     responses.extend(txn_data.into_iter().map(|(gw_txn, _)| {
         TransactionsResponse::Transaction(
-            pathfinder_common::transaction::Transaction::from(gw_txn).to_proto(),
+            pathfinder_common::transaction::Transaction::from(gw_txn).to_dto(),
         )
     }));
 
@@ -236,10 +330,6 @@ fn get_receipts_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<ReceiptsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(block_hash) = tx.block_hash(block_number.into())? else {
-        return Ok(false);
-    };
-
     let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
@@ -247,7 +337,7 @@ fn get_receipts_for_block(
     responses.extend(
         txn_data
             .into_iter()
-            .map(ToProto::to_proto)
+            .map(ToDto::to_dto)
             .map(ReceiptsResponse::Receipt),
     );
 
@@ -259,10 +349,6 @@ fn get_events_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<EventsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(block_hash) = tx.block_hash(block_number.into())? else {
-        return Ok(false);
-    };
-
     let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
@@ -270,7 +356,7 @@ fn get_events_for_block(
     responses.extend(txn_data.into_iter().flat_map(|(_, r)| {
         std::iter::repeat(r.transaction_hash)
             .zip(r.events)
-            .map(ToProto::to_proto)
+            .map(ToDto::to_dto)
             .map(EventsResponse::Event)
     }));
 

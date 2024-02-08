@@ -386,7 +386,7 @@ pub(crate) mod transaction {
                 ec_op_builtin: rng.next_u32() as u64,
                 keccak_builtin: rng.next_u32() as u64,
                 poseidon_builtin: rng.next_u32() as u64,
-                segment_arena_builtin: rng.next_u32() as u64,
+                segment_arena_builtin: 0, // Not used in p2p
             }
         }
     }

@@ -230,7 +230,7 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for RawTransactionVa
             ),
             Deploy(x) => RawTransactionVariant::NonDeployAccount(
                 NonDeployAccountTransaction::Deploy(DeployTransaction {
-                    contract_address: todo!(), // ContractAddress(x.address.0), FIXME
+                    contract_address: ContractAddress::ZERO, // FIXME: compute deployed contract address
                     contract_address_salt: ContractAddressSalt(x.address_salt),
                     class_hash: ClassHash(x.class_hash.0),
                     constructor_calldata: x.calldata.into_iter().map(ConstructorParam).collect(),
