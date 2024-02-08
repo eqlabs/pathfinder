@@ -148,6 +148,7 @@ impl NetworkBehaviour for Behaviour {
                             direction,
                             addr: None,
                             keyed_network_group: None,
+                            min_ping: None,
                             evicted: false,
                             useful: true,
                         },
@@ -178,6 +179,7 @@ impl NetworkBehaviour for Behaviour {
                         direction,
                         addr: Some(endpoint.get_remote_address().clone()),
                         keyed_network_group: Some(KeyedNetworkGroup::new(&self.secret, peer_ip)),
+                        min_ping: None,
                         evicted: false,
                         useful: true,
                     },
@@ -205,6 +207,7 @@ impl NetworkBehaviour for Behaviour {
                                 disconnected_at: Instant::now(),
                             },
                             direction: Direction::Outbound,
+                            min_ping: None,
                             addr: None,
                             keyed_network_group: None,
                             evicted: false,
@@ -390,6 +393,7 @@ impl NetworkBehaviour for Behaviour {
                         direction: Direction::Outbound,
                         addr: None,
                         keyed_network_group: None,
+                        min_ping: None,
                         evicted: false,
                         useful: true,
                     },
@@ -500,6 +504,23 @@ impl Behaviour {
     pub fn subscribe_topic(&mut self, topic: &IdentTopic) -> anyhow::Result<()> {
         self.inner.gossipsub.subscribe(topic)?;
         Ok(())
+    }
+
+    /// Notify the behaviour of a ping event.
+    pub fn pinged(&mut self, event: ping::Event) {
+        match event.result {
+            Ok(duration) => {
+                self.peers.update(event.peer, |peer| {
+                    peer.min_ping = Some(match peer.min_ping {
+                        Some(min_ping) => min_ping.min(duration),
+                        None => duration,
+                    });
+                });
+            }
+            Err(err) => {
+                tracing::debug!(%err, peer_id = %event.peer, "Ping failed");
+            }
+        }
     }
 
     /// Only allow one connection per peer. If the peer is already connected, close the new
