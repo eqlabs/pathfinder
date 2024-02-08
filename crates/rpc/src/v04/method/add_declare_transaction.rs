@@ -350,9 +350,11 @@ mod tests {
 
             #[test]
             fn unexpected_error_message() {
-                use starknet_gateway_types::error::{StarknetError, StarknetErrorCode, KnownStarknetErrorCode};
-                let starknet_error = SequencerError::StarknetError(StarknetError { 
-                    code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded), 
+                use starknet_gateway_types::error::{
+                    KnownStarknetErrorCode, StarknetError, StarknetErrorCode,
+                };
+                let starknet_error = SequencerError::StarknetError(StarknetError {
+                    code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded),
                     message: "StarkNet Alpha throughput limit reached, please wait a few minutes and try again.".to_string() 
                 });
 
