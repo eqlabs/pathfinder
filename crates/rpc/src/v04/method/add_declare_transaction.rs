@@ -347,6 +347,28 @@ mod tests {
                 };
                 assert_eq!(input, expected);
             }
+
+            #[test]
+            fn unexpected_error_message() {
+                use starknet_gateway_types::error::{StarknetError, StarknetErrorCode, KnownStarknetErrorCode};
+                let starknet_error = SequencerError::StarknetError(StarknetError { 
+                    code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded), 
+                    message: "StarkNet Alpha throughput limit reached, please wait a few minutes and try again.".to_string() 
+                });
+
+                let error = AddDeclareTransactionError::from(starknet_error);
+                let error = crate::error::ApplicationError::from(error);
+                let error = crate::jsonrpc::RpcError::from(error);
+                let error = serde_json::to_value(error).unwrap();
+
+                let expected = json!({
+                    "code": 63,
+                    "message": "An unexpected error occurred",
+                    "data": "StarkNet Alpha throughput limit reached, please wait a few minutes and try again."
+                });
+
+                assert_eq!(error, expected);
+            }
         }
 
         mod v2 {
