@@ -61,13 +61,9 @@ fn main() -> anyhow::Result<()> {
         transactions
             .par_iter()
             .enumerate()
-            .for_each(|(i, (gw_txn, _))| {
-                let txn = pathfinder_common::transaction::Transaction::from(gw_txn.clone());
+            .for_each(|(i, (txn, _))| {
                 if !txn.verify_hash(chain_id) {
-                    println!(
-                        "Mismatch: block {block_number} idx {i}. Full_txn\n{}",
-                        serde_json::to_string(&gw_txn).unwrap_or(">Failed to deserialize<".into())
-                    );
+                    println!("Mismatch: block {block_number} idx {i}. Full_txn\n{txn:?}",);
                 }
             });
     }

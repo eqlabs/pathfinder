@@ -2,10 +2,11 @@ use std::num::NonZeroU32;
 
 use anyhow::Context;
 use mimalloc::MiMalloc;
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
 use pathfinder_executor::ExecutionState;
 use pathfinder_storage::{BlockId, JournalMode, Storage};
-use starknet_gateway_types::reply::transaction::{Receipt, Transaction};
 
 // Due to the amount of JSON parsing that gets done during execution we use an alternate
 // allocator here: mimalloc. According to benchmarks re_execute performs roughly 25% better
@@ -143,8 +144,8 @@ fn execute(storage: Storage, chain_id: ChainId, rx: crossbeam_channel::Receiver<
 
         let transactions = work
             .transactions
-            .iter()
-            .map(|tx| pathfinder_rpc::compose_executor_transaction(tx, &db_tx))
+            .into_iter()
+            .map(|tx| pathfinder_rpc::compose_executor_transaction(&tx.into(), &db_tx))
             .collect::<Result<Vec<_>, _>>();
 
         let transactions = match transactions {

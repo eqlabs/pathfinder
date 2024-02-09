@@ -184,7 +184,7 @@ pub fn extract_roundkeys() -> Vec<[BigUint; 3]> {
     let mut at_keys = false;
     let mut line_ctr = 0;
     let mut buffer: [BigUint; 3] = [BigUint::default(), BigUint::default(), BigUint::default()];
-    for line in lines.flatten() {
+    for line in lines.map_while(Result::ok) {
         // Skip until reaching RoundKeys
         if line.contains("RoundKeys") {
             at_keys = true;

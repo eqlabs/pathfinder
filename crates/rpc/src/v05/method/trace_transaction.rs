@@ -169,13 +169,16 @@ pub async fn trace_transaction(
                     .context("Fetching transaction data")?
                     .context("Transaction data missing")?;
 
-                return Ok(LocalExecution::Unsupported(transaction));
+                return Ok(LocalExecution::Unsupported(transaction.into()));
             }
 
             let transactions = db
                 .transactions_for_block(header.number.into())
                 .context("Fetching block transactions")?
-                .context("Block transactions missing")?;
+                .context("Block transactions missing")?
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<_>>();
 
             (header, transactions.clone(), context.cache.clone())
         };

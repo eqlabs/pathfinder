@@ -172,7 +172,7 @@ pub struct Tip(pub u64);
 pub struct ResourcePricePerUnit(pub u128);
 
 /// Starknet transaction version.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct TransactionVersion(pub Felt);
 
 impl TransactionVersion {

@@ -385,10 +385,11 @@ mod tests {
     use crate::test_utils;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::receipt::Receipt;
     use pathfinder_common::{BlockHeader, BlockTimestamp, EntryPoint, Fee};
 
+    use pathfinder_common::transaction as common;
     use pathfinder_crypto::Felt;
-    use starknet_gateway_types::reply::transaction as gateway_tx;
 
     lazy_static::lazy_static!(
         static ref MAX_BLOCKS_TO_SCAN: NonZeroUsize = NonZeroUsize::new(100).unwrap();
@@ -455,62 +456,44 @@ mod tests {
 
         // Note: hashes are reverse ordered to trigger the sorting bug.
         let transactions = vec![
-            gateway_tx::Transaction::Invoke(gateway_tx::InvokeTransaction::V0(
-                gateway_tx::InvokeTransactionV0 {
+            common::Transaction {
+                hash: transaction_hash!("0xF"),
+                variant: common::TransactionVariant::InvokeV0(common::InvokeTransactionV0 {
                     calldata: vec![],
                     // Only required because event insert rejects if this is None
                     sender_address: ContractAddress::new_or_panic(Felt::ZERO),
-                    entry_point_type: Some(gateway_tx::EntryPointType::External),
+                    entry_point_type: Some(common::EntryPointType::External),
                     entry_point_selector: EntryPoint(Felt::ZERO),
                     max_fee: Fee::ZERO,
                     signature: vec![],
-                    transaction_hash: transaction_hash!("0xF"),
-                },
-            )),
-            gateway_tx::Transaction::Invoke(gateway_tx::InvokeTransaction::V0(
-                gateway_tx::InvokeTransactionV0 {
+                }),
+            },
+            common::Transaction {
+                hash: transaction_hash!("0x1"),
+                variant: common::TransactionVariant::InvokeV0(common::InvokeTransactionV0 {
                     calldata: vec![],
                     // Only required because event insert rejects if this is None
                     sender_address: ContractAddress::new_or_panic(Felt::ZERO),
-                    entry_point_type: Some(gateway_tx::EntryPointType::External),
+                    entry_point_type: Some(common::EntryPointType::External),
                     entry_point_selector: EntryPoint(Felt::ZERO),
                     max_fee: Fee::ZERO,
                     signature: vec![],
-                    transaction_hash: transaction_hash!("0x1"),
-                },
-            )),
+                }),
+            },
         ];
 
         let receipts = vec![
-            gateway_tx::Receipt {
-                actual_fee: None,
+            Receipt {
                 events: expected_events[..3].to_vec(),
-                execution_resources: Some(gateway_tx::ExecutionResources {
-                    builtin_instance_counter: Default::default(),
-                    n_steps: 0,
-                    n_memory_holes: 0,
-                }),
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: Vec::new(),
-                transaction_hash: transactions[0].hash(),
+                transaction_hash: transactions[0].hash,
                 transaction_index: pathfinder_common::TransactionIndex::new_or_panic(0),
-                execution_status: Default::default(),
-                revert_error: Default::default(),
+                ..Default::default()
             },
-            gateway_tx::Receipt {
-                actual_fee: None,
+            Receipt {
                 events: expected_events[3..].to_vec(),
-                execution_resources: Some(gateway_tx::ExecutionResources {
-                    builtin_instance_counter: Default::default(),
-                    n_steps: 0,
-                    n_memory_holes: 0,
-                }),
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: Vec::new(),
-                transaction_hash: transactions[1].hash(),
+                transaction_hash: transactions[1].hash,
                 transaction_index: pathfinder_common::TransactionIndex::new_or_panic(1),
-                execution_status: Default::default(),
-                revert_error: Default::default(),
+                ..Default::default()
             },
         ];
 

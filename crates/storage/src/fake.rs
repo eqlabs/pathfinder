@@ -1,17 +1,18 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::transaction as common;
 use pathfinder_common::{
     BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
 };
 use rand::Rng;
-use starknet_gateway_types::reply::transaction as gw;
 
 pub type StorageInitializer = Vec<StorageInitializerItem>;
 
 pub type StorageInitializerItem = (
     BlockHeader,
     BlockCommitmentSignature,
-    Vec<(gw::Transaction, gw::Receipt)>,
+    Vec<(common::Transaction, Receipt)>,
     StateUpdate,
     Vec<(ClassHash, Vec<u8>)>,           // Cairo 0 definitions
     Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
@@ -77,8 +78,10 @@ pub mod init {
 
     use super::StorageInitializer;
     use fake::{Fake, Faker};
+    use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
+    use pathfinder_common::transaction as common;
     use pathfinder_common::ContractAddress;
     use pathfinder_common::{
         state_update::ContractClassUpdate, BlockHash, BlockHeader, BlockNumber, StateCommitment,
@@ -86,7 +89,6 @@ pub mod init {
     };
     use rand::Rng;
     use starknet_gateway_types::class_definition;
-    use starknet_gateway_types::reply::transaction as gw;
 
     /// Create fake blocks and state updates with __limited consistency guarantees__:
     /// - block headers:
@@ -127,25 +129,28 @@ pub mod init {
                 StateCommitment::calculate(header.storage_commitment, header.class_commitment);
 
             // There must be at least 1 transaction per block
-            let transactions_and_receipts = fake_non_empty_with_rng::<Vec<_>, gw::Transaction>(rng)
-                .into_iter()
-                .enumerate()
-                .map(|(i, t)| {
-                    let transaction_hash = t.hash();
-                    (
-                        t,
-                        gw::Receipt {
-                            transaction_hash,
-                            transaction_index: TransactionIndex::new_or_panic(
-                                i.try_into().expect("u64 is at least as wide as usize"),
-                            ),
-                            l1_to_l2_consumed_message: None,
-                            events: fake_non_empty_with_rng(rng),
-                            ..Faker.fake_with_rng(rng)
-                        },
-                    )
-                })
-                .collect::<Vec<_>>();
+            let transactions_and_receipts = fake_non_empty_with_rng::<
+                Vec<_>,
+                crate::connection::transaction::dto::Transaction,
+            >(rng)
+            .into_iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let t: common::Transaction = t.into();
+                let transaction_hash = t.hash;
+
+                let r: Receipt = crate::connection::transaction::dto::Receipt {
+                    transaction_hash,
+                    transaction_index: TransactionIndex::new_or_panic(
+                        i.try_into().expect("u64 is at least as wide as usize"),
+                    ),
+                    events: fake_non_empty_with_rng(rng),
+                    ..Faker.fake_with_rng(rng)
+                }
+                .into();
+                (t, r)
+            })
+            .collect::<Vec<_>>();
 
             header.transaction_count = transactions_and_receipts.len();
             header.event_count = transactions_and_receipts

@@ -8,7 +8,9 @@ use p2p_proto::receipt::{
 };
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
 use p2p_proto::transaction::{AccountSignature, ResourceBounds};
+use pathfinder_common::receipt::Receipt as CommonReceipt;
 use pathfinder_common::transaction::DataAvailabilityMode;
+use pathfinder_common::transaction::Transaction as CommonTransaction;
 use pathfinder_common::{
     event::Event, state_update::ContractUpdate, transaction::ResourceBound,
     transaction::Transaction, BlockHeader, StateUpdate,
@@ -17,7 +19,6 @@ use pathfinder_common::{
     AccountDeploymentDataElem, PaymasterDataElem, StateCommitment, TransactionHash,
 };
 use pathfinder_crypto::Felt;
-use starknet_gateway_types::reply::transaction as gw;
 use std::time::{Duration, SystemTime};
 
 pub trait ToProto<T> {
@@ -264,9 +265,11 @@ impl ToProto<p2p_proto::transaction::Transaction> for Transaction {
     }
 }
 
-impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
+impl ToProto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
     fn to_proto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
+        let revert_reason = self.1.revert_reason().unwrap_or_default();
+
         let common = ReceiptCommon {
             transaction_hash: Hash(self.1.transaction_hash.0),
             actual_fee: self.1.actual_fee.unwrap_or_default().0,
@@ -281,7 +284,7 @@ impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
                 })
                 .collect(),
             execution_resources: {
-                let e = self.1.execution_resources.unwrap_or_default();
+                let e = self.1.execution_resources.clone().unwrap_or_default();
                 // Assumption: the values are small enough to fit into u32
                 ExecutionResources {
                     builtins: BuiltinCounter {
@@ -327,21 +330,35 @@ impl ToProto<p2p_proto::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
                 }
             },
-            revert_reason: self.1.revert_error.unwrap_or_default(),
+            revert_reason,
         };
 
-        match self.0 {
-            gw::Transaction::Declare(_) => Declare(DeclareTransactionReceipt { common }),
-            gw::Transaction::Deploy(x) => Deploy(DeployTransactionReceipt {
+        use pathfinder_common::transaction::TransactionVariant;
+        match self.0.variant {
+            TransactionVariant::DeclareV0(_)
+            | TransactionVariant::DeclareV1(_)
+            | TransactionVariant::DeclareV2(_)
+            | TransactionVariant::DeclareV3(_) => Declare(DeclareTransactionReceipt { common }),
+            TransactionVariant::Deploy(x) => Deploy(DeployTransactionReceipt {
                 common,
                 contract_address: x.contract_address.0,
             }),
-            gw::Transaction::DeployAccount(x) => DeployAccount(DeployAccountTransactionReceipt {
-                common,
-                contract_address: x.contract_address().0,
-            }),
-            gw::Transaction::Invoke(_) => Invoke(InvokeTransactionReceipt { common }),
-            gw::Transaction::L1Handler(_) => L1Handler(L1HandlerTransactionReceipt {
+            TransactionVariant::DeployAccountV0V1(x) => {
+                DeployAccount(DeployAccountTransactionReceipt {
+                    common,
+                    contract_address: x.contract_address.0,
+                })
+            }
+            TransactionVariant::DeployAccountV3(x) => {
+                DeployAccount(DeployAccountTransactionReceipt {
+                    common,
+                    contract_address: x.contract_address.0,
+                })
+            }
+            TransactionVariant::InvokeV0(_)
+            | TransactionVariant::InvokeV1(_)
+            | TransactionVariant::InvokeV3(_) => Invoke(InvokeTransactionReceipt { common }),
+            TransactionVariant::L1Handler(_) => L1Handler(L1HandlerTransactionReceipt {
                 common,
                 msg_hash: Hash(Felt::ZERO), // TODO what is this
             }),

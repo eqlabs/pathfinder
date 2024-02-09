@@ -2,18 +2,13 @@ use crate::EmittedEvent;
 
 use super::Storage;
 use pathfinder_common::macro_prelude::*;
-use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
-    ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
-    EventKey, Fee, GasPrice, SequencerAddress, StorageCommitment, TransactionCommitment,
-    TransactionHash, TransactionIndex, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+use pathfinder_common::receipt::{ExecutionResources, Receipt};
+use pathfinder_common::transaction::{
+    DeclareTransactionV0V1, DeployTransaction, EntryPointType, InvokeTransactionV0, Transaction,
+    TransactionVariant,
 };
+use pathfinder_common::*;
 use pathfinder_crypto::Felt;
-use starknet_gateway_types::reply::transaction::{
-    self, DeclareTransaction, DeclareTransactionV0V1, DeployTransaction, EntryPointType,
-    InvokeTransaction, InvokeTransactionV0, Receipt,
-};
 
 pub const NUM_BLOCKS: usize = 4;
 pub const TRANSACTIONS_PER_BLOCK: usize = 15;
@@ -53,11 +48,11 @@ pub(crate) fn create_blocks() -> [BlockHeader; NUM_BLOCKS] {
 }
 
 /// Creates a set of test transactions and receipts.
-pub(crate) fn create_transactions_and_receipts(
-) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
+pub(crate) fn create_transactions_and_receipts() -> [(Transaction, Receipt); NUM_TRANSACTIONS] {
     let transactions = (0..NUM_TRANSACTIONS).map(|i| match i % TRANSACTIONS_PER_BLOCK {
-        x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
-            transaction::Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
+        x if x < INVOKE_TRANSACTIONS_PER_BLOCK => Transaction {
+            hash: TransactionHash(Felt::from_hex_str(&"4".repeat(i + 3)).unwrap()),
+            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
                 calldata: vec![CallParam(Felt::from_hex_str(&"0".repeat(i + 3)).unwrap())],
                 sender_address: ContractAddress::new_or_panic(
                     Felt::from_hex_str(&"1".repeat(i + 3)).unwrap(),
@@ -72,44 +67,47 @@ pub(crate) fn create_transactions_and_receipts(
                 signature: vec![TransactionSignatureElem(
                     Felt::from_hex_str(&"3".repeat(i + 3)).unwrap(),
                 )],
-                transaction_hash: TransactionHash(Felt::from_hex_str(&"4".repeat(i + 3)).unwrap()),
-            }))
-        }
+            }),
+        },
         x if (INVOKE_TRANSACTIONS_PER_BLOCK
             ..INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK)
             .contains(&x) =>
         {
-            transaction::Transaction::Deploy(DeployTransaction {
-                contract_address: ContractAddress::new_or_panic(
-                    Felt::from_hex_str(&"5".repeat(i + 3)).unwrap(),
-                ),
-                contract_address_salt: ContractAddressSalt(
-                    Felt::from_hex_str(&"6".repeat(i + 3)).unwrap(),
-                ),
-                class_hash: ClassHash(Felt::from_hex_str(&"7".repeat(i + 3)).unwrap()),
-                constructor_calldata: vec![ConstructorParam(
-                    Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
-                )],
-                transaction_hash: TransactionHash(Felt::from_hex_str(&"9".repeat(i + 3)).unwrap()),
-                version: TransactionVersion::ZERO,
-            })
+            Transaction {
+                hash: TransactionHash(Felt::from_hex_str(&"9".repeat(i + 3)).unwrap()),
+                variant: TransactionVariant::Deploy(DeployTransaction {
+                    contract_address: ContractAddress::new_or_panic(
+                        Felt::from_hex_str(&"5".repeat(i + 3)).unwrap(),
+                    ),
+                    contract_address_salt: ContractAddressSalt(
+                        Felt::from_hex_str(&"6".repeat(i + 3)).unwrap(),
+                    ),
+                    class_hash: ClassHash(Felt::from_hex_str(&"7".repeat(i + 3)).unwrap()),
+                    constructor_calldata: vec![ConstructorParam(
+                        Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
+                    )],
+                    version: TransactionVersion::ZERO,
+                }),
+            }
         }
-        _ => transaction::Transaction::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {
-            class_hash: ClassHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
-            max_fee: Fee::ZERO,
-            nonce: TransactionNonce(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap()),
-            sender_address: ContractAddress::new_or_panic(
-                Felt::from_hex_str(&"c".repeat(i + 3)).unwrap(),
-            ),
-            signature: vec![TransactionSignatureElem(
-                Felt::from_hex_str(&"d".repeat(i + 3)).unwrap(),
-            )],
-            transaction_hash: TransactionHash(Felt::from_hex_str(&"e".repeat(i + 3)).unwrap()),
-        })),
+        _ => Transaction {
+            hash: TransactionHash(Felt::from_hex_str(&"e".repeat(i + 3)).unwrap()),
+            variant: TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+                class_hash: ClassHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+                max_fee: Fee::ZERO,
+                nonce: TransactionNonce(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap()),
+                sender_address: ContractAddress::new_or_panic(
+                    Felt::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                ),
+                signature: vec![TransactionSignatureElem(
+                    Felt::from_hex_str(&"d".repeat(i + 3)).unwrap(),
+                )],
+            }),
+        },
     });
 
     let tx_receipt = transactions.enumerate().map(|(i, tx)| {
-        let receipt = transaction::Receipt {
+        let receipt = Receipt {
             actual_fee: None,
             events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
                 vec![pathfinder_common::event::Event {
@@ -125,17 +123,14 @@ pub(crate) fn create_transactions_and_receipts(
             } else {
                 vec![]
             },
-            execution_resources: Some(transaction::ExecutionResources {
+            execution_resources: Some(ExecutionResources {
                 builtin_instance_counter: Default::default(),
                 n_steps: i as u64 + 987,
                 n_memory_holes: i as u64 + 1177,
             }),
-            l1_to_l2_consumed_message: None,
-            l2_to_l1_messages: Vec::new(),
-            transaction_hash: tx.hash(),
+            transaction_hash: tx.hash,
             transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
-            execution_status: Default::default(),
-            revert_error: Default::default(),
+            ..Default::default()
         };
 
         (tx, receipt)
@@ -147,7 +142,7 @@ pub(crate) fn create_transactions_and_receipts(
 /// Creates a set of emitted events from given blocks and transactions.
 pub(crate) fn extract_events(
     blocks: &[BlockHeader],
-    transactions_and_receipts: &[(transaction::Transaction, transaction::Receipt)],
+    transactions_and_receipts: &[(Transaction, Receipt)],
 ) -> Vec<EmittedEvent> {
     transactions_and_receipts
         .iter()
@@ -163,7 +158,7 @@ pub(crate) fn extract_events(
                     keys: event.keys.clone(),
                     block_hash: block.hash,
                     block_number: block.number,
-                    transaction_hash: txn.hash(),
+                    transaction_hash: txn.hash,
                 })
             } else {
                 None
