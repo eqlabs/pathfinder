@@ -74,11 +74,11 @@ pub async fn get_transaction_receipt_impl(
 
         Ok(types::MaybePendingTransactionReceipt::Normal(
             types::TransactionReceipt::with_block_data(
-                receipt.into(),
+                receipt,
                 finality_status,
                 block_hash,
                 block_number,
-                transaction.into(),
+                transaction,
             ),
         ))
     });
@@ -282,7 +282,6 @@ pub mod types {
         }
     }
 
-    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
     #[serde_as]
     #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
@@ -308,7 +307,6 @@ pub mod types {
         pub keccak_builtin_applications: u64,
     }
 
-    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
     #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct ExecutionResourcesPropertiesV06 {

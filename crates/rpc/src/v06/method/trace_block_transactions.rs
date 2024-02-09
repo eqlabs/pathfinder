@@ -125,7 +125,7 @@ pub(crate) fn map_gateway_trace(
                 ExecuteInvocation::RevertedReason { revert_reason }
             } else {
                 function_invocation
-                    .map(|invocation| ExecuteInvocation::FunctionInvocation(invocation.into()))
+                    .map(ExecuteInvocation::FunctionInvocation)
                     .unwrap_or_else(|| ExecuteInvocation::Empty)
             },
             fee_transfer_invocation,
@@ -133,11 +133,9 @@ pub(crate) fn map_gateway_trace(
             state_diff,
         }),
         TransactionVariant::L1Handler(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
-            function_invocation: function_invocation
-                .ok_or(TraceConversionError(
-                    "function_invocation is missing from trace response",
-                ))?
-                .into(),
+            function_invocation: function_invocation.ok_or(TraceConversionError(
+                "function_invocation is missing from trace response",
+            ))?,
             state_diff,
         }),
     })
@@ -351,18 +349,9 @@ pub(crate) mod tests {
                 next_block_header.hash,
                 next_block_header.number,
                 &[
-                    (
-                        Transaction::from(transactions[0].clone()).into(),
-                        dummy_receipt.clone().into(),
-                    ),
-                    (
-                        Transaction::from(transactions[1].clone()).into(),
-                        dummy_receipt.clone().into(),
-                    ),
-                    (
-                        Transaction::from(transactions[2].clone()).into(),
-                        dummy_receipt.clone().into(),
-                    ),
+                    (transactions[0].clone(), dummy_receipt.clone()),
+                    (transactions[1].clone(), dummy_receipt.clone()),
+                    (transactions[2].clone(), dummy_receipt.clone()),
                 ],
             )?;
             tx.commit()?;

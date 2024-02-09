@@ -781,7 +781,6 @@ async fn l2_update(
             .transactions
             .into_iter()
             .zip(block.transaction_receipts.into_iter())
-            .map(|(t, r)| (t.into(), r.into()))
             .collect::<Vec<_>>();
 
         transaction

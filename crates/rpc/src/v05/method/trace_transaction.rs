@@ -169,7 +169,7 @@ pub async fn trace_transaction(
                     .context("Fetching transaction data")?
                     .context("Transaction data missing")?;
 
-                return Ok(LocalExecution::Unsupported(transaction.into()));
+                return Ok(LocalExecution::Unsupported(transaction));
             }
 
             let transactions = db

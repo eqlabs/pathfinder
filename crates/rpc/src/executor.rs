@@ -140,7 +140,7 @@ pub(crate) fn map_broadcasted_transaction(
         has_query_version,
     )?;
 
-    return Ok(tx);
+    Ok(tx)
 }
 
 fn map_transaction_variant(

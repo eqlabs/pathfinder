@@ -358,10 +358,8 @@ fn resolve_block(
         .context("Reading transactions from database")?
         .context("Transaction data missing")?;
 
-    let (transactions, transaction_receipts): (Vec<_>, Vec<_>) = transactions_receipts
-        .into_iter()
-        .map(|(t, r)| (t.into(), r.into()))
-        .unzip();
+    let (transactions, transaction_receipts): (Vec<_>, Vec<_>) =
+        transactions_receipts.into_iter().unzip();
 
     let block_status = tx
         .block_is_l1_accepted(header.number.into())
