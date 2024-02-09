@@ -128,8 +128,8 @@ pub async fn simulate_transactions(
 
         let transactions = input
             .transactions
-            .iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
+            .into_iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
         let txs =
@@ -137,8 +137,7 @@ pub async fn simulate_transactions(
 
         match txs
             .iter()
-            .filter_map(pathfinder_executor::types::TransactionSimulation::revert_reason)
-            .next()
+            .find_map(pathfinder_executor::types::TransactionSimulation::revert_reason)
         {
             Some(revert_reason) => Err(SimulateTransactionError::ContractErrorV05 {
                 revert_error: revert_reason.to_owned(),

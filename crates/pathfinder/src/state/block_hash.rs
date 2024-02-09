@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
     StarknetVersion, StateCommitment, TransactionCommitment, TransactionSignatureElem,
@@ -9,10 +11,7 @@ use pathfinder_crypto::{
     Felt,
 };
 use pathfinder_merkle_tree::TransactionOrEventTree;
-use starknet_gateway_types::reply::{
-    transaction::{Receipt, Transaction},
-    Block,
-};
+use starknet_gateway_types::reply::Block;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
@@ -369,15 +368,21 @@ fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Fel
         static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
     );
 
-    let signature_hash = match tx {
-        Transaction::Invoke(tx) => calculate_signature_hash(tx.signature()),
-        Transaction::Deploy(_)
-        | Transaction::DeployAccount(_)
-        | Transaction::Declare(_)
-        | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
+    let signature_hash = match &tx.variant {
+        TransactionVariant::InvokeV0(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::InvokeV1(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::InvokeV3(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeclareV0(_)
+        | TransactionVariant::DeclareV1(_)
+        | TransactionVariant::DeclareV2(_)
+        | TransactionVariant::DeclareV3(_)
+        | TransactionVariant::Deploy(_)
+        | TransactionVariant::DeployAccountV0V1(_)
+        | TransactionVariant::DeployAccountV3(_)
+        | TransactionVariant::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 
-    pedersen_hash(tx.hash().0, signature_hash)
+    pedersen_hash(tx.hash.0, signature_hash)
 }
 
 /// Compute the combined hash of the transaction hash and the signature.
@@ -394,14 +399,20 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
         static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
     );
 
-    let signature_hash = match tx {
-        Transaction::Invoke(tx) => calculate_signature_hash(tx.signature()),
-        Transaction::Declare(tx) => calculate_signature_hash(tx.signature()),
-        Transaction::DeployAccount(tx) => calculate_signature_hash(tx.signature()),
-        Transaction::Deploy(_) | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
+    let signature_hash = match &tx.variant {
+        TransactionVariant::InvokeV0(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeclareV0(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeclareV1(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeclareV2(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeclareV3(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeployAccountV0V1(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeployAccountV3(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::InvokeV1(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::InvokeV3(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::Deploy(_) | TransactionVariant::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 
-    pedersen_hash(tx.hash().0, signature_hash)
+    pedersen_hash(tx.hash.0, signature_hash)
 }
 
 fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
@@ -485,12 +496,9 @@ fn number_of_events_in_block(block: &Block) -> usize {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+    use pathfinder_common::felt;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt, Fee};
-    use starknet_gateway_types::reply::{
-        transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
-        Block,
-    };
+    use pathfinder_common::transaction::{EntryPointType, InvokeTransactionV0};
 
     #[test]
     fn test_event_hash() {
@@ -521,18 +529,19 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
-            calldata: vec![],
-            sender_address: contract_address!("0xdeadbeef"),
-            entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: entry_point!("0xe"),
-            max_fee: Fee::ZERO,
-            signature: vec![
-                transaction_signature_elem!("0x2"),
-                transaction_signature_elem!("0x3"),
-            ],
-            transaction_hash: transaction_hash!("0x1"),
-        }));
+        let transaction = Transaction {
+            hash: transaction_hash!("0x1"),
+            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                sender_address: contract_address!("0xdeadbeef"),
+                entry_point_type: Some(EntryPointType::External),
+                entry_point_selector: entry_point!("0xe"),
+                signature: vec![
+                    transaction_signature_elem!("0x2"),
+                    transaction_signature_elem!("0x3"),
+                ],
+                ..Default::default()
+            }),
+        };
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_single_tx_hash_with_signature(1, [2, 3], hash_function=pedersen_hash))`

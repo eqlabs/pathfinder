@@ -32,8 +32,10 @@ pub struct Block {
     pub state_commitment: StateCommitment,
     pub status: Status,
     pub timestamp: BlockTimestamp,
-    pub transaction_receipts: Vec<transaction::Receipt>,
-    pub transactions: Vec<transaction::Transaction>,
+    #[serde_as(as = "Vec<transaction::Receipt>")]
+    pub transaction_receipts: Vec<pathfinder_common::receipt::Receipt>,
+    #[serde_as(as = "Vec<transaction::Transaction>")]
+    pub transactions: Vec<pathfinder_common::transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
@@ -56,8 +58,10 @@ pub struct PendingBlock {
     pub sequencer_address: SequencerAddress,
     pub status: Status,
     pub timestamp: BlockTimestamp,
-    pub transaction_receipts: Vec<transaction::Receipt>,
-    pub transactions: Vec<transaction::Transaction>,
+    #[serde_as(as = "Vec<transaction::Receipt>")]
+    pub transaction_receipts: Vec<pathfinder_common::receipt::Receipt>,
+    #[serde_as(as = "Vec<transaction::Transaction>")]
+    pub transactions: Vec<pathfinder_common::transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
@@ -90,14 +94,14 @@ impl MaybePendingBlock {
         }
     }
 
-    pub fn transactions(&self) -> &[transaction::Transaction] {
+    pub fn transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
         match self {
             MaybePendingBlock::Block(b) => &b.transactions,
             MaybePendingBlock::Pending(p) => &p.transactions,
         }
     }
 
-    pub fn receipts(&self) -> &[transaction::Receipt] {
+    pub fn receipts(&self) -> &[pathfinder_common::receipt::Receipt] {
         match self {
             MaybePendingBlock::Block(b) => &b.transaction_receipts,
             MaybePendingBlock::Pending(p) => &p.transaction_receipts,
@@ -487,6 +491,29 @@ pub mod transaction {
         pub revert_error: Option<String>,
     }
 
+    impl<'de> serde_with::DeserializeAs<'de, pathfinder_common::receipt::Receipt> for Receipt {
+        fn deserialize_as<D>(
+            deserializer: D,
+        ) -> Result<pathfinder_common::receipt::Receipt, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            Self::deserialize(deserializer).map(Into::into)
+        }
+    }
+
+    impl serde_with::SerializeAs<pathfinder_common::receipt::Receipt> for Receipt {
+        fn serialize_as<S>(
+            source: &pathfinder_common::receipt::Receipt,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Self::from(source.clone()).serialize(serializer)
+        }
+    }
+
     impl From<pathfinder_common::receipt::Receipt> for Receipt {
         fn from(value: pathfinder_common::receipt::Receipt) -> Self {
             let pathfinder_common::receipt::Receipt {
@@ -756,6 +783,31 @@ pub mod transaction {
             };
 
             Ok(tx)
+        }
+    }
+
+    impl<'de> serde_with::DeserializeAs<'de, pathfinder_common::transaction::Transaction>
+        for Transaction
+    {
+        fn deserialize_as<D>(
+            deserializer: D,
+        ) -> Result<pathfinder_common::transaction::Transaction, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            Self::deserialize(deserializer).map(Into::into)
+        }
+    }
+
+    impl serde_with::SerializeAs<pathfinder_common::transaction::Transaction> for Transaction {
+        fn serialize_as<S>(
+            source: &pathfinder_common::transaction::Transaction,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Self::from(source.clone()).serialize(serializer)
         }
     }
 

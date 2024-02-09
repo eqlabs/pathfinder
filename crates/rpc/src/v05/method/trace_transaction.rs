@@ -101,7 +101,7 @@ pub async fn trace_transaction(
     #[allow(clippy::large_enum_variant)]
     enum LocalExecution {
         Success(TransactionTrace),
-        Unsupported(starknet_gateway_types::reply::transaction::Transaction),
+        Unsupported(pathfinder_common::transaction::Transaction),
     }
 
     let span = tracing::Span::current();
@@ -124,7 +124,7 @@ pub async fn trace_transaction(
             .block
             .transactions
             .iter()
-            .find(|tx| tx.hash() == input.transaction_hash)
+            .find(|tx| tx.hash == input.transaction_hash)
         {
             let header = pending.header();
 

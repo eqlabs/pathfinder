@@ -12,7 +12,6 @@ use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     error::SequencerError,
     reply::{Block, Status},
-    transaction_hash::verify,
 };
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -536,16 +535,17 @@ async fn download_block(
             let (send, recv) = tokio::sync::oneshot::channel();
 
             rayon::spawn(move || {
-                let result = block.transactions.par_iter().enumerate().try_for_each(|(i, txn)| {
-                        match verify(txn, chain_id) {
-                            starknet_gateway_types::transaction_hash::VerifyResult::Match => {}
-                            starknet_gateway_types::transaction_hash::VerifyResult::Mismatch(actual) =>
-                                anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i} expected {} calculated {}",
-                                    txn.hash(),
-                                    actual),
+                let result = block
+                    .transactions
+                    .par_iter()
+                    .enumerate()
+                    .try_for_each(|(i, txn)| {
+                        if !txn.verify_hash(chain_id) {
+                            anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
                         };
                         Ok(())
-                    }).map(|_| block);
+                    })
+                    .map(|_| block);
 
                 let _ = send.send(result);
             });

@@ -1,19 +1,17 @@
 use anyhow::Context;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockId, TransactionHash};
 use pathfinder_executor::{ExecutionState, TraceCache, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
 
+use super::simulate_transactions::dto::TransactionTrace;
 use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
 use crate::v05::method::simulate_transactions::dto::{
     DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
 };
 use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
-
-use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
-
-use super::simulate_transactions::dto::TransactionTrace;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -85,22 +83,26 @@ impl From<TransactionExecutionError> for TraceBlockTransactionsError {
 }
 
 pub(crate) fn map_gateway_trace(
-    transaction: GatewayTransaction,
+    transaction: Transaction,
     trace: GatewayTxTrace,
 ) -> TransactionTrace {
-    match transaction {
-        GatewayTransaction::Declare(_) => TransactionTrace::Declare(DeclareTxnTrace {
+    use pathfinder_common::transaction::TransactionVariant;
+    match transaction.variant {
+        TransactionVariant::DeclareV0(_)
+        | TransactionVariant::DeclareV1(_)
+        | TransactionVariant::DeclareV2(_)
+        | TransactionVariant::DeclareV3(_) => TransactionTrace::Declare(DeclareTxnTrace {
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
-        GatewayTransaction::Deploy(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
+        TransactionVariant::Deploy(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
             constructor_invocation: trace.function_invocation.map(Into::into),
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
-        GatewayTransaction::DeployAccount(_) => {
+        TransactionVariant::DeployAccountV0V1(_) | TransactionVariant::DeployAccountV3(_) => {
             TransactionTrace::DeployAccount(DeployAccountTxnTrace {
                 constructor_invocation: trace.function_invocation.map(Into::into),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
@@ -108,7 +110,9 @@ pub(crate) fn map_gateway_trace(
                 state_diff: None,
             })
         }
-        GatewayTransaction::Invoke(_) => TransactionTrace::Invoke(InvokeTxnTrace {
+        TransactionVariant::InvokeV0(_)
+        | TransactionVariant::InvokeV1(_)
+        | TransactionVariant::InvokeV3(_) => TransactionTrace::Invoke(InvokeTxnTrace {
             execute_invocation: if let Some(revert_reason) = trace.revert_error {
                 ExecuteInvocation::RevertedReason { revert_reason }
             } else {
@@ -121,7 +125,7 @@ pub(crate) fn map_gateway_trace(
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
-        GatewayTransaction::L1Handler(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
+        TransactionVariant::L1Handler(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
             function_invocation: trace.function_invocation.map(Into::into),
             state_diff: None,
         }),
@@ -134,7 +138,7 @@ pub async fn trace_block_transactions(
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
     enum LocalExecution {
         Success(Vec<Trace>),
-        Unsupported(Vec<GatewayTransaction>),
+        Unsupported(Vec<Transaction>),
     }
 
     let span = tracing::Span::current();
@@ -242,7 +246,7 @@ pub async fn trace_block_transactions(
                     .into_iter()
                     .zip(transactions.into_iter())
                     .map(|(trace, tx)| {
-                        let transaction_hash = tx.hash();
+                        let transaction_hash = tx.hash;
                         let trace_root = map_gateway_trace(tx, trace);
 
                         Trace {
@@ -257,11 +261,11 @@ pub async fn trace_block_transactions(
 
 #[cfg(test)]
 pub(crate) mod tests {
-
+    use pathfinder_common::receipt::Receipt;
+    use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        block_hash, felt, BlockHeader, ChainId, GasPrice, SierraHash, TransactionIndex,
+        block_hash, felt, BlockHeader, GasPrice, SierraHash, TransactionIndex,
     };
-    use starknet_gateway_types::reply::transaction::{ExecutionStatus, Receipt, Transaction};
 
     use super::*;
 
@@ -280,12 +284,13 @@ pub(crate) mod tests {
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
-            fixtures::input::declare(account_contract_address),
+            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
             fixtures::input::universal_deployer(
                 account_contract_address,
                 universal_deployer_address,
-            ),
-            fixtures::input::invoke(account_contract_address),
+            )
+            .into_common(context.chain_id),
+            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
         ];
 
         let traces = vec![
@@ -327,54 +332,34 @@ pub(crate) mod tests {
             tx.insert_block_header(&next_block_header)?;
 
             let dummy_receipt: Receipt = Receipt {
-                actual_fee: None,
-                events: vec![],
-                execution_resources: None,
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: vec![],
                 transaction_hash: TransactionHash(felt!("0x1")),
                 transaction_index: TransactionIndex::new_or_panic(0),
-                execution_status: ExecutionStatus::default(),
-                revert_error: None,
+                ..Default::default()
             };
             tx.insert_transaction_data(
                 next_block_header.hash,
                 next_block_header.number,
-                &[
-                    (
-                        Transaction::from(transactions[0].clone()).into(),
-                        dummy_receipt.clone().into(),
-                    ),
-                    (
-                        Transaction::from(transactions[1].clone()).into(),
-                        dummy_receipt.clone().into(),
-                    ),
-                    (
-                        Transaction::from(transactions[2].clone()).into(),
-                        dummy_receipt.clone().into(),
-                    ),
-                ],
+                transactions
+                    .iter()
+                    .cloned()
+                    .map(|t| (t, dummy_receipt.clone()))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
             )?;
             tx.commit()?;
 
             next_block_header
         };
 
-        let traces = vec![
-            Trace {
-                transaction_hash: transactions[0]
-                    .transaction_hash(ChainId::GOERLI_TESTNET, Some(fixtures::SIERRA_HASH)),
-                trace_root: traces[0].clone(),
-            },
-            Trace {
-                transaction_hash: transactions[1].transaction_hash(ChainId::GOERLI_TESTNET, None),
-                trace_root: traces[1].clone(),
-            },
-            Trace {
-                transaction_hash: transactions[2].transaction_hash(ChainId::GOERLI_TESTNET, None),
-                trace_root: traces[2].clone(),
-            },
-        ];
+        let traces = transactions
+            .into_iter()
+            .map(|t| t.hash)
+            .zip(traces.into_iter())
+            .map(|(hash, trace)| Trace {
+                transaction_hash: hash,
+                trace_root: trace,
+            })
+            .collect();
 
         Ok((context, next_block_header, traces))
     }
@@ -407,13 +392,14 @@ pub(crate) mod tests {
         ) = setup_storage().await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
-        let transactions = vec![
-            fixtures::input::declare(account_contract_address),
+        let transactions: Vec<Transaction> = vec![
+            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
             fixtures::input::universal_deployer(
                 account_contract_address,
                 universal_deployer_address,
-            ),
-            fixtures::input::invoke(account_contract_address),
+            )
+            .into_common(context.chain_id),
+            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
         ];
 
         let traces = vec![
@@ -444,16 +430,10 @@ pub(crate) mod tests {
                 fixtures::CASM_DEFINITION,
             )?;
 
-            let dummy_receipt: Receipt = Receipt {
-                actual_fee: None,
-                events: vec![],
-                execution_resources: None,
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: vec![],
+            let dummy_receipt = Receipt {
                 transaction_hash: TransactionHash(felt!("0x1")),
                 transaction_index: TransactionIndex::new_or_panic(0),
-                execution_status: ExecutionStatus::default(),
-                revert_error: None,
+                ..Default::default()
             };
 
             let transaction_receipts =
@@ -489,16 +469,15 @@ pub(crate) mod tests {
 
         let traces = vec![
             Trace {
-                transaction_hash: transactions[0]
-                    .transaction_hash(ChainId::GOERLI_TESTNET, Some(fixtures::SIERRA_HASH)),
+                transaction_hash: transactions[0].hash,
                 trace_root: traces[0].clone(),
             },
             Trace {
-                transaction_hash: transactions[1].transaction_hash(ChainId::GOERLI_TESTNET, None),
+                transaction_hash: transactions[1].hash,
                 trace_root: traces[1].clone(),
             },
             Trace {
-                transaction_hash: transactions[2].transaction_hash(ChainId::GOERLI_TESTNET, None),
+                transaction_hash: transactions[2].hash,
                 trace_root: traces[2].clone(),
             },
         ];

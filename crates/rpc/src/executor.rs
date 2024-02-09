@@ -1,12 +1,11 @@
-use anyhow::Context;
-use pathfinder_crypto::Felt;
-use starknet_api::core::PatriciaKey;
-
 use crate::v02::types::request::BroadcastedDeployAccountTransaction;
-
-use super::v02::types::request::BroadcastedTransaction;
+use crate::v02::types::request::BroadcastedInvokeTransaction;
+use crate::v02::types::request::BroadcastedTransaction;
+use anyhow::Context;
+use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::ChainId;
 use pathfinder_executor::IntoStarkFelt;
+use starknet_api::core::PatriciaKey;
 
 pub enum ExecutionStateError {
     BlockNotFound,
@@ -26,256 +25,239 @@ pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,
     chain_id: ChainId,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
-    match transaction {
-        BroadcastedTransaction::Declare(tx) => match tx {
-            crate::v02::types::request::BroadcastedDeclareTransaction::V0(tx) => {
-                let class_hash = tx.contract_class.class_hash()?.hash();
+    use crate::v02::types::request::BroadcastedDeclareTransaction;
 
-                let transaction_hash = transaction.transaction_hash(chain_id, Some(class_hash));
+    let contract_class = match &transaction {
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(tx)) => {
+            let contract_class_json = tx
+                .contract_class
+                .serialize_to_json()
+                .context("Serializing Cairo class to JSON")?;
 
-                let version = tx.version;
+            let contract_class =
+                pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
-                let contract_class_json = tx
-                    .contract_class
-                    .serialize_to_json()
-                    .context("Serializing Cairo class to JSON")?;
+            Some(contract_class)
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
+            let contract_class_json = tx
+                .contract_class
+                .serialize_to_json()
+                .context("Serializing Cairo class to JSON")?;
 
-                let contract_class =
-                    pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
+            let contract_class =
+                pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
-                let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(Felt::ZERO.into_starkfelt()),
-                    class_hash: starknet_api::core::ClassHash(class_hash.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                };
+            Some(contract_class)
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
+            let casm_contract_definition =
+                pathfinder_compiler::compile_to_casm_with_latest_compiler(
+                    &tx.contract_class
+                        .serialize_to_json()
+                        .context("Serializing Sierra class definition")?,
+                )
+                .context("Compiling Sierra class definition to CASM")?;
 
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V0(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    Some(contract_class),
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
-                Ok(tx)
-            }
-            crate::v02::types::request::BroadcastedDeclareTransaction::V1(tx) => {
-                let class_hash = tx.contract_class.class_hash()?.hash();
+            let casm_contract_definition =
+                pathfinder_executor::parse_casm_definition(casm_contract_definition)
+                    .context("Parsing CASM contract definition")?;
+            Some(casm_contract_definition)
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
+            let casm_contract_definition =
+                pathfinder_compiler::compile_to_casm_with_latest_compiler(
+                    &tx.contract_class
+                        .serialize_to_json()
+                        .context("Serializing Sierra class definition")?,
+                )
+                .context("Compiling Sierra class definition to CASM")?;
 
-                let transaction_hash = transaction.transaction_hash(chain_id, Some(class_hash));
+            let casm_contract_definition =
+                pathfinder_executor::parse_casm_definition(casm_contract_definition)
+                    .context("Parsing CASM contract definition")?;
+            Some(casm_contract_definition)
+        }
+        BroadcastedTransaction::Invoke(_) | BroadcastedTransaction::DeployAccount(_) => None,
+    };
 
-                let version = tx.version;
+    let deployed_address = match &transaction {
+        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V0V1(tx)) => {
+            Some(starknet_api::core::ContractAddress(
+                PatriciaKey::try_from(tx.deployed_contract_address().0.into_starkfelt())
+                    .expect("No sender address overflow expected"),
+            ))
+        }
+        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(tx)) => {
+            Some(starknet_api::core::ContractAddress(
+                PatriciaKey::try_from(tx.deployed_contract_address().0.into_starkfelt())
+                    .expect("No sender address overflow expected"),
+            ))
+        }
+        BroadcastedTransaction::Declare(_) | BroadcastedTransaction::Invoke(_) => None,
+    };
 
-                let contract_class_json = tx
-                    .contract_class
-                    .serialize_to_json()
-                    .context("Serializing Cairo class to JSON")?;
+    let has_query_version = match &transaction {
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V0V1(tx)) => {
+            tx.version.has_query_version()
+        }
+        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(tx)) => {
+            tx.version.has_query_version()
+        }
+    };
 
-                let contract_class =
-                    pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
+    let transaction = transaction.clone().into_common(chain_id);
+    let transaction_hash = transaction.hash;
+    let transaction = map_transaction_variant(transaction.variant)?;
 
-                let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    class_hash: starknet_api::core::ClassHash(class_hash.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                };
+    let tx = pathfinder_executor::Transaction::from_api(
+        transaction,
+        starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
+        contract_class,
+        None,
+        deployed_address,
+        has_query_version,
+    )?;
 
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V1(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    Some(contract_class),
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
-                Ok(tx)
-            }
-            crate::v02::types::request::BroadcastedDeclareTransaction::V2(tx) => {
-                let sierra_class_hash = tx.contract_class.class_hash()?.hash();
+    return Ok(tx);
+}
 
-                let transaction_hash =
-                    transaction.transaction_hash(chain_id, Some(sierra_class_hash));
+fn map_transaction_variant(
+    variant: TransactionVariant,
+) -> anyhow::Result<starknet_api::transaction::Transaction> {
+    match variant {
+        TransactionVariant::DeclareV0(tx) => {
+            let tx = starknet_api::transaction::DeclareTransactionV0V1 {
+                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
+                )),
+                signature: starknet_api::transaction::TransactionSignature(
+                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                ),
+                nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+                sender_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
+            };
 
-                let version = tx.version;
+            Ok(starknet_api::transaction::Transaction::Declare(
+                starknet_api::transaction::DeclareTransaction::V0(tx),
+            ))
+        }
+        TransactionVariant::DeclareV1(tx) => {
+            let tx = starknet_api::transaction::DeclareTransactionV0V1 {
+                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
+                )),
+                signature: starknet_api::transaction::TransactionSignature(
+                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                ),
+                nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+                sender_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
+            };
 
-                let casm_contract_definition =
-                    pathfinder_compiler::compile_to_casm_with_latest_compiler(
-                        &tx.contract_class
-                            .serialize_to_json()
-                            .context("Serializing Sierra class definition")?,
-                    )
-                    .context("Compiling Sierra class definition to CASM")?;
+            Ok(starknet_api::transaction::Transaction::Declare(
+                starknet_api::transaction::DeclareTransaction::V1(tx),
+            ))
+        }
+        TransactionVariant::DeclareV2(tx) => {
+            let tx = starknet_api::transaction::DeclareTransactionV2 {
+                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
+                )),
+                signature: starknet_api::transaction::TransactionSignature(
+                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                ),
+                nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+                sender_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
+                compiled_class_hash: starknet_api::core::CompiledClassHash(
+                    tx.compiled_class_hash.0.into_starkfelt(),
+                ),
+            };
 
-                let casm_contract_definition =
-                    pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                        .context("Parsing CASM contract definition")?;
+            Ok(starknet_api::transaction::Transaction::Declare(
+                starknet_api::transaction::DeclareTransaction::V2(tx),
+            ))
+        }
+        TransactionVariant::DeclareV3(tx) => {
+            let tx = starknet_api::transaction::DeclareTransactionV3 {
+                resource_bounds: map_resource_bounds(tx.resource_bounds)?,
+                tip: starknet_api::transaction::Tip(tx.tip.0),
+                signature: starknet_api::transaction::TransactionSignature(
+                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                ),
+                nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
+                compiled_class_hash: starknet_api::core::CompiledClassHash(
+                    tx.compiled_class_hash.0.into_starkfelt(),
+                ),
+                sender_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
+                nonce_data_availability_mode: tx
+                    .nonce_data_availability_mode
+                    .into_starkfelt()
+                    .try_into()?,
+                fee_data_availability_mode: tx
+                    .fee_data_availability_mode
+                    .into_starkfelt()
+                    .try_into()?,
+                paymaster_data: starknet_api::transaction::PaymasterData(
+                    tx.paymaster_data
+                        .iter()
+                        .map(|p| p.0.into_starkfelt())
+                        .collect(),
+                ),
+                account_deployment_data: starknet_api::transaction::AccountDeploymentData(
+                    tx.account_deployment_data
+                        .iter()
+                        .map(|a| a.0.into_starkfelt())
+                        .collect(),
+                ),
+            };
 
-                let tx = starknet_api::transaction::DeclareTransactionV2 {
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    class_hash: starknet_api::core::ClassHash(sierra_class_hash.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    compiled_class_hash: starknet_api::core::CompiledClassHash(
-                        tx.compiled_class_hash.0.into_starkfelt(),
-                    ),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V2(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    Some(casm_contract_definition),
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
-
-                Ok(tx)
-            }
-            crate::v02::types::request::BroadcastedDeclareTransaction::V3(tx) => {
-                let sierra_class_hash = tx.contract_class.class_hash()?.hash();
-
-                let transaction_hash =
-                    transaction.transaction_hash(chain_id, Some(sierra_class_hash));
-
-                let version = tx.version;
-
-                let casm_contract_definition =
-                    pathfinder_compiler::compile_to_casm_with_latest_compiler(
-                        &tx.contract_class
-                            .serialize_to_json()
-                            .context("Serializing Sierra class definition")?,
-                    )
-                    .context("Compiling Sierra class definition to CASM")?;
-
-                let casm_contract_definition =
-                    pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                        .context("Parsing CASM contract definition")?;
-
-                let resource_bounds = map_broadcasted_resource_bounds(tx.resource_bounds)?;
-
-                let tx = starknet_api::transaction::DeclareTransactionV3 {
-                    resource_bounds,
-                    tip: starknet_api::transaction::Tip(tx.tip.0),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
-                    fee_data_availability_mode: tx.fee_data_availability_mode.into(),
-                    paymaster_data: starknet_api::transaction::PaymasterData(
-                        tx.paymaster_data
-                            .iter()
-                            .map(|p| p.0.into_starkfelt())
-                            .collect(),
-                    ),
-                    class_hash: starknet_api::core::ClassHash(sierra_class_hash.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    compiled_class_hash: starknet_api::core::CompiledClassHash(
-                        tx.compiled_class_hash.0.into_starkfelt(),
-                    ),
-                    account_deployment_data: starknet_api::transaction::AccountDeploymentData(
-                        tx.account_deployment_data
-                            .iter()
-                            .map(|a| a.0.into_starkfelt())
-                            .collect(),
-                    ),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V3(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    Some(casm_contract_definition),
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
-
-                Ok(tx)
-            }
-        },
-        BroadcastedTransaction::Invoke(tx) => match tx {
-            crate::v02::types::request::BroadcastedInvokeTransaction::V0(tx) => {
-                let transaction_hash = transaction.transaction_hash(chain_id, None);
-
-                let version = tx.version;
-
-                let tx = starknet_api::transaction::InvokeTransactionV0 {
-                    // TODO: maybe we should store tx.max_fee as u128 internally?
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    contract_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    entry_point_selector: starknet_api::core::EntryPointSelector(
-                        tx.entry_point_selector.0.into_starkfelt(),
-                    ),
-                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
-                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
-                    )),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Invoke(
-                        starknet_api::transaction::InvokeTransaction::V0(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    None,
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
-
-                Ok(tx)
-            }
-            crate::v02::types::request::BroadcastedInvokeTransaction::V1(tx) => {
-                let transaction_hash = transaction.transaction_hash(chain_id, None);
-
-                let version = tx.version;
-
-                let tx = starknet_api::transaction::InvokeTransactionV1 {
-                    // TODO: maybe we should store tx.max_fee as u128 internally?
+            Ok(starknet_api::transaction::Transaction::Declare(
+                starknet_api::transaction::DeclareTransaction::V3(tx),
+            ))
+        }
+        TransactionVariant::Deploy(_) => {
+            anyhow::bail!("Deploy transactions are not yet supported in blockifier")
+        }
+        TransactionVariant::DeployAccountV0V1(tx) => {
+            let tx = starknet_api::transaction::DeployAccountTransaction::V1(
+                starknet_api::transaction::DeployAccountTransactionV1 {
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
@@ -283,146 +265,6 @@ pub(crate) fn map_broadcasted_transaction(
                         tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                     ),
                     nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
-                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
-                    )),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Invoke(
-                        starknet_api::transaction::InvokeTransaction::V1(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    None,
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
-
-                Ok(tx)
-            }
-            crate::v02::types::request::BroadcastedInvokeTransaction::V3(tx) => {
-                let transaction_hash = transaction.transaction_hash(chain_id, None);
-
-                let version = tx.version;
-                let resource_bounds = map_broadcasted_resource_bounds(tx.resource_bounds)?;
-
-                let tx = starknet_api::transaction::InvokeTransactionV3 {
-                    resource_bounds,
-                    tip: starknet_api::transaction::Tip(tx.tip.0),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
-                    fee_data_availability_mode: tx.fee_data_availability_mode.into(),
-                    paymaster_data: starknet_api::transaction::PaymasterData(
-                        tx.paymaster_data
-                            .iter()
-                            .map(|p| p.0.into_starkfelt())
-                            .collect(),
-                    ),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
-                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
-                    )),
-                    account_deployment_data: starknet_api::transaction::AccountDeploymentData(
-                        tx.account_deployment_data
-                            .iter()
-                            .map(|a| a.0.into_starkfelt())
-                            .collect(),
-                    ),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Invoke(
-                        starknet_api::transaction::InvokeTransaction::V3(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    None,
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
-
-                Ok(tx)
-            }
-        },
-        BroadcastedTransaction::DeployAccount(tx) => match tx {
-            BroadcastedDeployAccountTransaction::V0V1(tx) => {
-                let transaction_hash = transaction.transaction_hash(chain_id, None);
-
-                let version = tx.version;
-
-                let deployed_contract_address = tx.deployed_contract_address();
-
-                let tx = starknet_api::transaction::DeployAccountTransaction::V1(
-                    starknet_api::transaction::DeployAccountTransactionV1 {
-                        max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                            tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                        )),
-                        signature: starknet_api::transaction::TransactionSignature(
-                            tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                        ),
-                        nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                        class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-
-                        contract_address_salt: starknet_api::transaction::ContractAddressSalt(
-                            tx.contract_address_salt.0.into_starkfelt(),
-                        ),
-                        constructor_calldata: starknet_api::transaction::Calldata(
-                            std::sync::Arc::new(
-                                tx.constructor_calldata
-                                    .iter()
-                                    .map(|c| c.0.into_starkfelt())
-                                    .collect(),
-                            ),
-                        ),
-                    },
-                );
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::DeployAccount(tx),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    None,
-                    None,
-                    Some(starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(deployed_contract_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    )),
-                    version.has_query_version(),
-                )?;
-
-                Ok(tx)
-            }
-            BroadcastedDeployAccountTransaction::V3(tx) => {
-                let transaction_hash = transaction.transaction_hash(chain_id, None);
-
-                let version = tx.version;
-                let resource_bounds = map_broadcasted_resource_bounds(tx.resource_bounds)?;
-
-                let tx = starknet_api::transaction::DeployAccountTransactionV3 {
-                    resource_bounds,
-                    tip: starknet_api::transaction::Tip(tx.tip.0),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
-                    fee_data_availability_mode: tx.fee_data_availability_mode.into(),
-                    paymaster_data: starknet_api::transaction::PaymasterData(
-                        tx.paymaster_data
-                            .iter()
-                            .map(|p| p.0.into_starkfelt())
-                            .collect(),
-                    ),
                     class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
 
                     contract_address_salt: starknet_api::transaction::ContractAddressSalt(
@@ -434,184 +276,16 @@ pub(crate) fn map_broadcasted_transaction(
                             .map(|c| c.0.into_starkfelt())
                             .collect(),
                     )),
-                };
+                },
+            );
 
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::DeployAccount(
-                        starknet_api::transaction::DeployAccountTransaction::V3(tx),
-                    ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    None,
-                    None,
-                    None,
-                    version.has_query_version(),
-                )?;
+            Ok(starknet_api::transaction::Transaction::DeployAccount(tx))
+        }
+        TransactionVariant::DeployAccountV3(tx) => {
+            let resource_bounds = map_resource_bounds(tx.resource_bounds)?;
 
-                Ok(tx)
-            }
-        },
-    }
-}
-
-fn map_broadcasted_resource_bounds(
-    r: super::v02::types::ResourceBounds,
-) -> Result<starknet_api::transaction::ResourceBoundsMapping, starknet_api::StarknetApiError> {
-    use starknet_api::transaction::{Resource, ResourceBounds};
-
-    let bounds = vec![
-        (
-            Resource::L1Gas,
-            ResourceBounds {
-                max_amount: r.l1_gas.max_amount.0,
-                max_price_per_unit: r.l1_gas.max_price_per_unit.0,
-            },
-        ),
-        (
-            Resource::L2Gas,
-            ResourceBounds {
-                max_amount: r.l2_gas.max_amount.0,
-                max_price_per_unit: r.l2_gas.max_price_per_unit.0,
-            },
-        ),
-    ];
-
-    bounds.try_into()
-}
-
-/// Build the executor transaction out of the gateway one
-/// while pulling necessary data from the DB along the way.
-pub fn compose_executor_transaction(
-    transaction: &starknet_gateway_types::reply::transaction::Transaction,
-    db_transaction: &pathfinder_storage::Transaction<'_>,
-) -> anyhow::Result<pathfinder_executor::Transaction> {
-    use starknet_api::hash::StarkFelt;
-
-    let tx_hash = starknet_api::transaction::TransactionHash(transaction.hash().0.into_starkfelt());
-
-    tracing::trace!(%tx_hash, "Converting transaction");
-
-    match transaction {
-        starknet_gateway_types::reply::transaction::Transaction::Declare(tx) => match tx {
-            starknet_gateway_types::reply::transaction::DeclareTransaction::V0(tx) => {
-                let class_definition = db_transaction
-                    .class_definition(tx.class_hash)?
-                    .context("Fetching class definition")?;
-
-                let contract_class =
-                    pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
-
-                let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V0(tx),
-                    ),
-                    tx_hash,
-                    Some(contract_class),
-                    None,
-                    None,
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-            starknet_gateway_types::reply::transaction::DeclareTransaction::V1(tx) => {
-                let class_definition = db_transaction
-                    .class_definition(tx.class_hash)?
-                    .context("Fetching class definition")?;
-
-                let contract_class =
-                    pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
-
-                let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V1(tx),
-                    ),
-                    tx_hash,
-                    Some(contract_class),
-                    None,
-                    None,
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-            starknet_gateway_types::reply::transaction::DeclareTransaction::V2(tx) => {
-                let casm_definition = db_transaction
-                    .casm_definition(tx.class_hash)?
-                    .context("Fetching class definition")?;
-
-                let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
-
-                let tx = starknet_api::transaction::DeclareTransactionV2 {
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    compiled_class_hash: starknet_api::core::CompiledClassHash(
-                        tx.compiled_class_hash.0.into_starkfelt(),
-                    ),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V2(tx),
-                    ),
-                    tx_hash,
-                    Some(contract_class),
-                    None,
-                    None,
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-            starknet_gateway_types::reply::transaction::DeclareTransaction::V3(tx) => {
-                let casm_definition = db_transaction
-                    .casm_definition(tx.class_hash)?
-                    .context("Fetching class definition")?;
-
-                let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
-
-                let resource_bounds = map_gw_resource_bounds(tx.resource_bounds)?;
-
-                let tx = starknet_api::transaction::DeclareTransactionV3 {
+            let tx = starknet_api::transaction::DeployAccountTransaction::V3(
+                starknet_api::transaction::DeployAccountTransactionV3 {
                     resource_bounds,
                     tip: starknet_api::transaction::Tip(tx.tip.0),
                     signature: starknet_api::transaction::TransactionSignature(
@@ -619,236 +293,14 @@ pub fn compose_executor_transaction(
                     ),
                     nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                     class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-                    compiled_class_hash: starknet_api::core::CompiledClassHash(
-                        tx.compiled_class_hash.0.into_starkfelt(),
+                    contract_address_salt: starknet_api::transaction::ContractAddressSalt(
+                        tx.contract_address_salt.0.into_starkfelt(),
                     ),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    nonce_data_availability_mode: tx
-                        .nonce_data_availability_mode
-                        .into_starkfelt()
-                        .try_into()?,
-                    fee_data_availability_mode: tx
-                        .fee_data_availability_mode
-                        .into_starkfelt()
-                        .try_into()?,
-                    paymaster_data: starknet_api::transaction::PaymasterData(
-                        tx.paymaster_data
+                    constructor_calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                        tx.constructor_calldata
                             .iter()
-                            .map(|p| p.0.into_starkfelt())
+                            .map(|c| c.0.into_starkfelt())
                             .collect(),
-                    ),
-                    account_deployment_data: starknet_api::transaction::AccountDeploymentData(
-                        tx.account_deployment_data
-                            .iter()
-                            .map(|a| a.0.into_starkfelt())
-                            .collect(),
-                    ),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V3(tx),
-                    ),
-                    tx_hash,
-                    Some(contract_class),
-                    None,
-                    None,
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-        },
-        starknet_gateway_types::reply::transaction::Transaction::Deploy(_) => Err(anyhow::anyhow!(
-            "Deploy transactions are not yet supported in blockifier"
-        )),
-        starknet_gateway_types::reply::transaction::Transaction::DeployAccount(tx) => match tx {
-            starknet_gateway_types::reply::transaction::DeployAccountTransaction::V0V1(tx) => {
-                let contract_address = starknet_api::core::ContractAddress(
-                    PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
-                        .expect("No contract address overflow expected"),
-                );
-
-                let tx = starknet_api::transaction::DeployAccountTransaction::V1(
-                    starknet_api::transaction::DeployAccountTransactionV1 {
-                        max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                            tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                        )),
-                        signature: starknet_api::transaction::TransactionSignature(
-                            tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                        ),
-                        nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                        class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-
-                        contract_address_salt: starknet_api::transaction::ContractAddressSalt(
-                            tx.contract_address_salt.0.into_starkfelt(),
-                        ),
-                        constructor_calldata: starknet_api::transaction::Calldata(
-                            std::sync::Arc::new(
-                                tx.constructor_calldata
-                                    .iter()
-                                    .map(|c| c.0.into_starkfelt())
-                                    .collect(),
-                            ),
-                        ),
-                    },
-                );
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::DeployAccount(tx),
-                    tx_hash,
-                    None,
-                    None,
-                    Some(contract_address),
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-            starknet_gateway_types::reply::transaction::DeployAccountTransaction::V3(tx) => {
-                let contract_address = starknet_api::core::ContractAddress(
-                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                        .expect("No contract address overflow expected"),
-                );
-
-                let resource_bounds = map_gw_resource_bounds(tx.resource_bounds)?;
-
-                let tx = starknet_api::transaction::DeployAccountTransaction::V3(
-                    starknet_api::transaction::DeployAccountTransactionV3 {
-                        resource_bounds,
-                        tip: starknet_api::transaction::Tip(tx.tip.0),
-                        signature: starknet_api::transaction::TransactionSignature(
-                            tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                        ),
-                        nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                        class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-                        contract_address_salt: starknet_api::transaction::ContractAddressSalt(
-                            tx.contract_address_salt.0.into_starkfelt(),
-                        ),
-                        constructor_calldata: starknet_api::transaction::Calldata(
-                            std::sync::Arc::new(
-                                tx.constructor_calldata
-                                    .iter()
-                                    .map(|c| c.0.into_starkfelt())
-                                    .collect(),
-                            ),
-                        ),
-                        nonce_data_availability_mode: tx
-                            .nonce_data_availability_mode
-                            .into_starkfelt()
-                            .try_into()?,
-                        fee_data_availability_mode: tx
-                            .fee_data_availability_mode
-                            .into_starkfelt()
-                            .try_into()?,
-                        paymaster_data: starknet_api::transaction::PaymasterData(
-                            tx.paymaster_data
-                                .iter()
-                                .map(|p| p.0.into_starkfelt())
-                                .collect(),
-                        ),
-                    },
-                );
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::DeployAccount(tx),
-                    tx_hash,
-                    None,
-                    None,
-                    Some(contract_address),
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-        },
-
-        starknet_gateway_types::reply::transaction::Transaction::Invoke(tx) => match tx {
-            starknet_gateway_types::reply::transaction::InvokeTransaction::V0(tx) => {
-                let tx = starknet_api::transaction::InvokeTransactionV0 {
-                    // TODO: maybe we should store tx.max_fee as u128 internally?
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    contract_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    entry_point_selector: starknet_api::core::EntryPointSelector(
-                        tx.entry_point_selector.0.into_starkfelt(),
-                    ),
-                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
-                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
-                    )),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Invoke(
-                        starknet_api::transaction::InvokeTransaction::V0(tx),
-                    ),
-                    tx_hash,
-                    None,
-                    None,
-                    None,
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-            starknet_gateway_types::reply::transaction::InvokeTransaction::V1(tx) => {
-                let tx = starknet_api::transaction::InvokeTransactionV1 {
-                    // TODO: maybe we should store tx.max_fee as u128 internally?
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
-                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
-                    )),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
-                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
-                    )),
-                };
-
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Invoke(
-                        starknet_api::transaction::InvokeTransaction::V1(tx),
-                    ),
-                    tx_hash,
-                    None,
-                    None,
-                    None,
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-            starknet_gateway_types::reply::transaction::InvokeTransaction::V3(tx) => {
-                let resource_bounds = map_gw_resource_bounds(tx.resource_bounds)?;
-
-                let tx = starknet_api::transaction::InvokeTransactionV3 {
-                    resource_bounds,
-                    tip: starknet_api::transaction::Tip(tx.tip.0),
-                    signature: starknet_api::transaction::TransactionSignature(
-                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
-                    nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
-                    sender_address: starknet_api::core::ContractAddress(
-                        PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
-                            .expect("No sender address overflow expected"),
-                    ),
-                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
-                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
                     )),
                     nonce_data_availability_mode: tx
                         .nonce_data_availability_mode
@@ -864,34 +316,105 @@ pub fn compose_executor_transaction(
                             .map(|p| p.0.into_starkfelt())
                             .collect(),
                     ),
-                    account_deployment_data: starknet_api::transaction::AccountDeploymentData(
-                        tx.account_deployment_data
-                            .iter()
-                            .map(|a| a.0.into_starkfelt())
-                            .collect(),
-                    ),
-                };
+                },
+            );
 
-                let tx = pathfinder_executor::Transaction::from_api(
-                    starknet_api::transaction::Transaction::Invoke(
-                        starknet_api::transaction::InvokeTransaction::V3(tx),
-                    ),
-                    tx_hash,
-                    None,
-                    None,
-                    None,
-                    false,
-                )?;
-
-                Ok(tx)
-            }
-        },
-        starknet_gateway_types::reply::transaction::Transaction::L1Handler(tx) => {
-            let tx = starknet_api::transaction::L1HandlerTransaction {
-                version: starknet_api::transaction::TransactionVersion(
-                    StarkFelt::new(tx.version.0.to_be_bytes())
-                        .expect("No transaction version overflow expected"),
+            Ok(starknet_api::transaction::Transaction::DeployAccount(tx))
+        }
+        TransactionVariant::InvokeV0(tx) => {
+            let tx = starknet_api::transaction::InvokeTransactionV0 {
+                // TODO: maybe we should store tx.max_fee as u128 internally?
+                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
+                )),
+                signature: starknet_api::transaction::TransactionSignature(
+                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
+                contract_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
+                entry_point_selector: starknet_api::core::EntryPointSelector(
+                    tx.entry_point_selector.0.into_starkfelt(),
+                ),
+                calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                    tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
+                )),
+            };
+
+            Ok(starknet_api::transaction::Transaction::Invoke(
+                starknet_api::transaction::InvokeTransaction::V0(tx),
+            ))
+        }
+        TransactionVariant::InvokeV1(tx) => {
+            let tx = starknet_api::transaction::InvokeTransactionV1 {
+                // TODO: maybe we should store tx.max_fee as u128 internally?
+                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                    tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
+                )),
+                signature: starknet_api::transaction::TransactionSignature(
+                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                ),
+                nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                sender_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
+                calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                    tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
+                )),
+            };
+
+            Ok(starknet_api::transaction::Transaction::Invoke(
+                starknet_api::transaction::InvokeTransaction::V1(tx),
+            ))
+        }
+        TransactionVariant::InvokeV3(tx) => {
+            let resource_bounds = map_resource_bounds(tx.resource_bounds)?;
+
+            let tx = starknet_api::transaction::InvokeTransactionV3 {
+                resource_bounds,
+                tip: starknet_api::transaction::Tip(tx.tip.0),
+                signature: starknet_api::transaction::TransactionSignature(
+                    tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                ),
+                nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
+                sender_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
+                calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                    tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
+                )),
+                nonce_data_availability_mode: tx
+                    .nonce_data_availability_mode
+                    .into_starkfelt()
+                    .try_into()?,
+                fee_data_availability_mode: tx
+                    .fee_data_availability_mode
+                    .into_starkfelt()
+                    .try_into()?,
+                paymaster_data: starknet_api::transaction::PaymasterData(
+                    tx.paymaster_data
+                        .iter()
+                        .map(|p| p.0.into_starkfelt())
+                        .collect(),
+                ),
+                account_deployment_data: starknet_api::transaction::AccountDeploymentData(
+                    tx.account_deployment_data
+                        .iter()
+                        .map(|a| a.0.into_starkfelt())
+                        .collect(),
+                ),
+            };
+
+            Ok(starknet_api::transaction::Transaction::Invoke(
+                starknet_api::transaction::InvokeTransaction::V3(tx),
+            ))
+        }
+        TransactionVariant::L1Handler(tx) => {
+            let tx = starknet_api::transaction::L1HandlerTransaction {
+                version: starknet_api::transaction::TransactionVersion::ZERO,
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                 contract_address: starknet_api::core::ContractAddress(
                     PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
@@ -905,22 +428,114 @@ pub fn compose_executor_transaction(
                 )),
             };
 
-            let tx = pathfinder_executor::Transaction::from_api(
-                starknet_api::transaction::Transaction::L1Handler(tx),
-                tx_hash,
-                None,
-                Some(starknet_api::transaction::Fee(1_000_000_000_000)),
-                None,
-                false,
-            )?;
-
-            Ok(tx)
+            Ok(starknet_api::transaction::Transaction::L1Handler(tx))
         }
     }
 }
 
-fn map_gw_resource_bounds(
-    r: starknet_gateway_types::reply::transaction::ResourceBounds,
+/// Build the executor transaction out of the gateway one
+/// while pulling necessary data from the DB along the way.
+pub fn compose_executor_transaction(
+    transaction: &pathfinder_common::transaction::Transaction,
+    db_transaction: &pathfinder_storage::Transaction<'_>,
+) -> anyhow::Result<pathfinder_executor::Transaction> {
+    let tx_hash = starknet_api::transaction::TransactionHash(transaction.hash.0.into_starkfelt());
+
+    let contract_class = match &transaction.variant {
+        TransactionVariant::DeclareV0(tx) => {
+            let class_definition = db_transaction
+                .class_definition(tx.class_hash)?
+                .context("Fetching class definition")?;
+
+            let contract_class =
+                pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
+            Some(contract_class)
+        }
+        TransactionVariant::DeclareV1(tx) => {
+            let class_definition = db_transaction
+                .class_definition(tx.class_hash)?
+                .context("Fetching class definition")?;
+
+            let contract_class =
+                pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
+            Some(contract_class)
+        }
+        TransactionVariant::DeclareV2(tx) => {
+            let casm_definition = db_transaction
+                .casm_definition(tx.class_hash)?
+                .context("Fetching class definition")?;
+
+            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            Some(contract_class)
+        }
+        TransactionVariant::DeclareV3(tx) => {
+            let casm_definition = db_transaction
+                .casm_definition(tx.class_hash)?
+                .context("Fetching class definition")?;
+
+            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            Some(contract_class)
+        }
+        TransactionVariant::Deploy(_)
+        | TransactionVariant::DeployAccountV0V1(_)
+        | TransactionVariant::DeployAccountV3(_)
+        | TransactionVariant::InvokeV0(_)
+        | TransactionVariant::InvokeV1(_)
+        | TransactionVariant::InvokeV3(_)
+        | TransactionVariant::L1Handler(_) => None,
+    };
+
+    let deployed_address = match &transaction.variant {
+        TransactionVariant::DeployAccountV0V1(tx) => {
+            let contract_address = starknet_api::core::ContractAddress(
+                PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
+                    .expect("No contract address overflow expected"),
+            );
+
+            Some(contract_address)
+        }
+        TransactionVariant::DeployAccountV3(tx) => {
+            let contract_address = starknet_api::core::ContractAddress(
+                PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
+                    .expect("No contract address overflow expected"),
+            );
+
+            Some(contract_address)
+        }
+        TransactionVariant::DeclareV0(_)
+        | TransactionVariant::DeclareV1(_)
+        | TransactionVariant::DeclareV2(_)
+        | TransactionVariant::DeclareV3(_)
+        | TransactionVariant::Deploy(_)
+        | TransactionVariant::InvokeV0(_)
+        | TransactionVariant::InvokeV1(_)
+        | TransactionVariant::InvokeV3(_)
+        | TransactionVariant::L1Handler(_) => None,
+    };
+
+    let paid_fee_on_l1 = match &transaction.variant {
+        TransactionVariant::L1Handler(_) => Some(starknet_api::transaction::Fee(1_000_000_000_000)),
+        _ => None,
+    };
+
+    tracing::trace!(%tx_hash, "Converting transaction");
+
+    let transaction = map_transaction_variant(transaction.variant.clone())?;
+
+    let tx = pathfinder_executor::Transaction::from_api(
+        transaction,
+        tx_hash,
+        contract_class,
+        paid_fee_on_l1,
+        deployed_address,
+        false,
+    )?;
+
+    Ok(tx)
+}
+
+fn map_resource_bounds(
+    r: pathfinder_common::transaction::ResourceBounds,
 ) -> Result<starknet_api::transaction::ResourceBoundsMapping, starknet_api::StarknetApiError> {
     use starknet_api::transaction::{Resource, ResourceBounds};
 

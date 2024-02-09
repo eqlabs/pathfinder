@@ -376,8 +376,8 @@ impl GatewayApi for HybridClient {
                             // FIXME
                             status: gw::Status::AcceptedOnL2,
                             timestamp: header.timestamp,
-                            transaction_receipts: receipts,
-                            transactions,
+                            transaction_receipts: receipts.into_iter().map(Into::into).collect(),
+                            transactions: transactions.into_iter().map(Into::into).collect(),
                             starknet_version: header.starknet_version,
                         };
 

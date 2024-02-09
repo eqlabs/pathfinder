@@ -100,7 +100,7 @@ mod types {
         pub fn from_sequencer(block: starknet_gateway_types::reply::MaybePendingBlock) -> Self {
             Self {
                 status: block.status().into(),
-                transactions: block.transactions().iter().map(|t| t.hash()).collect(),
+                transactions: block.transactions().iter().map(|t| t.hash).collect(),
                 header: crate::v06::types::BlockHeader::from_sequencer(block),
             }
         }

@@ -131,8 +131,8 @@ pub async fn simulate_transactions(
 
         let transactions = input
             .transactions
-            .iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
+            .into_iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
         let txs =
