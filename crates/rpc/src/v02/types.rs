@@ -472,7 +472,7 @@ pub mod request {
                     TransactionVariant::DeclareV1(DeclareTransactionV0V1 {
                         class_hash,
                         max_fee: declare.max_fee,
-                        nonce: Default::default(),
+                        nonce: declare.nonce,
                         signature: declare.signature,
                         sender_address: declare.sender_address,
                     })
@@ -482,7 +482,7 @@ pub mod request {
                     TransactionVariant::DeclareV2(DeclareTransactionV2 {
                         class_hash,
                         max_fee: declare.max_fee,
-                        nonce: TransactionNonce::default(),
+                        nonce: declare.nonce,
                         sender_address: declare.sender_address,
                         signature: declare.signature,
                         compiled_class_hash: declare.compiled_class_hash,
@@ -492,7 +492,7 @@ pub mod request {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
                     TransactionVariant::DeclareV3(DeclareTransactionV3 {
                         class_hash,
-                        nonce: TransactionNonce::default(),
+                        nonce: declare.nonce,
                         sender_address: declare.sender_address,
                         signature: declare.signature,
                         compiled_class_hash: declare.compiled_class_hash,
@@ -552,7 +552,7 @@ pub mod request {
                 }
                 BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(invoke)) => {
                     TransactionVariant::InvokeV3(InvokeTransactionV3 {
-                        nonce: TransactionNonce::default(),
+                        nonce: invoke.nonce,
                         sender_address: invoke.sender_address,
                         signature: invoke.signature,
                         nonce_data_availability_mode: invoke.nonce_data_availability_mode.into(),
