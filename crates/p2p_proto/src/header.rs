@@ -2,7 +2,7 @@ use crate::common::{Address, BlockId, ConsensusSignature, Hash, Iteration, Merkl
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::header::SignedBlockHeader")]

@@ -134,7 +134,7 @@ pub(crate) mod blocking {
 fn get_header(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    parts: &mut Vec<BlockHeadersResponse>,
+    responses: &mut Vec<BlockHeadersResponse>,
 ) -> anyhow::Result<bool> {
     if let Some(header) = tx.block_header(block_number.into())? {
         if let Some(signature) = tx.signature(block_number.into())? {
@@ -142,7 +142,8 @@ fn get_header(
                 .transaction_count
                 .try_into()
                 .context("invalid transaction count")?;
-            parts.push(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
+
+            responses.push(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
                 block_hash: Hash(header.hash.0),
                 parent_hash: Hash(header.parent_hash.0),
                 number: header.number.get(),
@@ -180,8 +181,6 @@ fn get_header(
                 }],
             })));
         }
-
-        parts.push(BlockHeadersResponse::Fin);
 
         Ok(true)
     } else {

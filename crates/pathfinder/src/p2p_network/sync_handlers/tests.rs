@@ -95,13 +95,15 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::types::{self as simplified, cairo_def_from_dto};
-    use crate::p2p_network::client::types::{sierra_defs_from_dto, Receipt};
+    use crate::p2p_network::client::conv::{
+        cairo_def_from_dto, sierra_defs_from_dto, Receipt as P2PReceipt,
+        SignedBlockHeader as P2PSignedBlockHeader,
+    };
     use crate::p2p_network::sync_handlers;
     use crate::p2p_network::sync_handlers::def_into_dto;
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p::client::types::{self as p2p_types, RawTransactionVariant, TryFromDto};
+    use p2p::client::types::{RawTransactionVariant, TryFromDto};
     use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockId, BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -117,12 +119,12 @@ mod prop {
     };
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber, ClassHash,
-        ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue, TransactionHash,
+        ClassHash, ContractAddress, ContractNonce, SierraHash, SignedBlockHeader, StorageAddress,
+        StorageValue, TransactionHash,
     };
     use pathfinder_crypto::Felt;
     use proptest::prelude::*;
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::HashMap;
     use tokio::runtime::Runtime;
 
     #[macro_export]
@@ -155,8 +157,6 @@ mod prop {
         }};
     }
 
-    /*
-
     proptest! {
         #[test]
         fn get_headers((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
@@ -165,142 +165,32 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|(h, s, _, _, _, _)| (h.into(), s)).collect::<Vec<_>>();
+                .into_iter().map(|(h, s, _, _, _, _)| P2PSignedBlockHeader::from((h, s)) ).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            // Reusing the runtime does not yield any performance gains
-            let parts = Runtime::new().unwrap().block_on(async {
-                let (tx, mut rx) = mpsc::channel(0);
+            let mut responses = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
                 let getter_fut = sync_handlers::get_headers(storage, request, tx);
-
                 // Waiting for both futures to run to completion is faster than spawning the getter
                 // and awaiting the receiver (almost 1s for 100 iterations on Ryzen 3700X).
                 // BTW, we cannot just await the getter and then the receiver
                 // as there is backpressure (channel size 0) and we would deadlock.
-                let (_, ret) = tokio::join!(getter_fut, rx.next());
-
-                let BlockHeadersResponse { parts } = ret.unwrap();
-                parts
-            });
-            // Empty reply in the test is only possible if the request does not overlap with storage
-            // Invalid start and zero limit are tested in boundary_conditions::
-            if expected.is_empty() {
-                prop_assert_eq_sorted!(parts.len(), 1);
-                prop_assert_eq_sorted!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
-            } else {
-                // Group reply parts by block: [[hdr-0, fin-0], [hdr-1, fin-1], ...]
-                let actual = parts.chunks_exact(3).map(|chunk| {
-                    // Make sure block data is delimited
-                    assert_eq!(chunk[2], BlockHeadersResponsePart::Fin(Fin::ok()));
-                    // Extract the header
-                    let h = p2p_types::BlockHeader::try_from(chunk[0].clone().into_header().unwrap()).unwrap();
-                    // Extract the signature
-                    let s = chunk[1].clone().into_signatures().unwrap();
-                    assert_eq!(s.signatures.len(), 1);
-                    let s = s.signatures.into_iter().next().unwrap();
-                    let s = BlockCommitmentSignature {
-                        r: BlockCommitmentSignatureElem(s.r),
-                        s: BlockCommitmentSignatureElem(s.s),
-                    };
-                    (h, s)
-                }).collect::<Vec<_>>();
-
-                prop_assert_eq_sorted!(actual, expected);
-            }
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn get_bodies((num_blocks, db_seed, start_block, limit, step, direction) in strategy::composite()) {
-            use crate::p2p_network::sync_handlers::class_definition::{Cairo, Sierra};
-
-            // Fake storage with a given number of blocks
-            let (storage, in_db) = fixtures::storage_with_seed(db_seed, num_blocks);
-            // Get the overlapping set between the db and the request
-            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction);
-            // Extract the expected state updates, definitions and classes from the overlapping set
-            // in a form digestable for this test
-            let expected = expected.into_iter()
-                .map(|(header, _, _, state_update, cairo_defs, sierra_defs)|
-                    (
-                        // block number and hash
-                        (header.number, header.hash),
-                        (
-                            // "simplified" state update, without an explicit list of declared and replaced classes
-                            state_update.clone().into(),
-                            // Cairo0 class definitions, parsed into p2p DTOs
-                            cairo_defs.into_iter().map(|(_, d)| {
-                                let def = serde_json::from_slice::<Cairo<'_>>(&d).unwrap();
-                                def_into_dto::cairo(def)
-                            }).collect(),
-                            // Cairo1 (Sierra) class definitions, parsed into p2p DTOs
-                            sierra_defs.into_iter().map(|(_, s, c)| {
-                                let def = serde_json::from_slice::<Sierra<'_>>(&s).unwrap();
-                                def_into_dto::sierra(def, c)
-                            }).collect()
-                        )
-                    )
-                ).collect::<HashMap<_, (p2p_types::StateUpdate, BTreeSet<Cairo0Class>, BTreeSet<Cairo1Class>)>>();
-            // Run the handler
-            let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = Runtime::new().unwrap().block_on(async {
-                let (tx, rx) = mpsc::channel(0);
-                let getter_fut = sync_handlers::get_bodies(storage, request, tx);
-                let (_, replies) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
-                replies
+                let (_, response) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                response
             });
 
-            // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start and zero limit are tested in boundary_conditions::
-            if expected.is_empty() {
-                prop_assert_eq_sorted!(replies.len(), 1);
-                prop_assert_eq_sorted!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
-            } else {
-                // Collect replies into a set of (block_number, state_update, definitions)
-                let mut actual = HashMap::new();
-                let mut block_id = None;
+            // Make sure the last reply is Fin
+            assert_eq!(responses.pop().unwrap(), BlockHeadersResponse::Fin);
 
-                for reply in replies {
-                    match reply.body_message {
-                        BlockBodyMessage::Diff(d) => {
-                            let BlockId { number, hash } = reply.id.unwrap();
-                            block_id = Some((BlockNumber::new(number).unwrap(), BlockHash(hash.0)));
+            // Check the rest
+            let actual = responses.into_iter().map(|response| match response {
+                BlockHeadersResponse::Header(hdr) => P2PSignedBlockHeader::try_from(*hdr).unwrap(),
+                _ => panic!("unexpected response"),
+            }).collect::<Vec<_>>();
 
-                            let state_update = p2p_types::StateUpdate::from(d);
-                            actual.insert(block_id.unwrap(), (state_update, BTreeSet::new(), BTreeSet::new()));
-                        },
-                        BlockBodyMessage::Classes(c) => {
-                            // Classes coming after a state diff should be for the same block
-                            let entry = actual.get_mut(&block_id.expect("Classes follow Diff so current block id should be set")).unwrap();
-                            c.classes.into_iter().for_each(|c| {
-                                match c {
-                                    Class::Cairo0(cairo) => entry.1.insert(cairo),
-                                    Class::Cairo1(sierra) => entry.2.insert(sierra),
-                                };
-                            });
-                        },
-                        BlockBodyMessage::Fin(f) => {
-                            match f.error {
-                                // We either managed to fit the entire range or we hit the internal limit
-                                None | Some(Error::TooMuch) => assert!(actual.contains_key(&block_id.unwrap())),
-                                // Either the request yielded nothing or was only partially successful
-                                Some(Error::Unknown) => {},
-                                Some(_) => panic!("unexpected error"),
-                            }
-                        }
-                        _ => unimplemented!(),
-                    }
-                }
-
-                prop_assert_eq_sorted!(actual, expected);
-            }
+            prop_assert_eq_sorted!(actual, expected);
         }
     }
-
-    TODO: get_headers, get_state_diffs
-
-    */
 
     proptest! {
         #[test]
@@ -521,7 +411,7 @@ mod prop {
                         // Block number
                         h.number,
                         // List of receipts
-                        tr.into_iter().map(|(_, r)| simplified::Receipt::from(r)).collect::<Vec<_>>()
+                        tr.into_iter().map(|(_, r)| P2PReceipt::from(r)).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -538,7 +428,7 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                ReceiptsResponse::Receipt(receipt) => simplified::Receipt::try_from(receipt).unwrap(),
+                ReceiptsResponse::Receipt(receipt) => P2PReceipt::try_from(receipt).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 

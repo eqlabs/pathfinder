@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use anyhow::Context;
+use anyhow::{Context, Ok};
 use p2p_proto::{
     class::{Cairo0Class, Cairo1Class},
     receipt::{
@@ -9,8 +9,11 @@ use p2p_proto::{
     },
 };
 use pathfinder_common::{
-    ByteCodeOffset, CasmHash, ClassHash, ContractAddress, EntryPoint, EthereumAddress, Fee,
-    L2ToL1MessagePayloadElem, SierraHash, TransactionHash,
+    receipt::{BuiltinCounters, ExecutionResources, ExecutionStatus, L2ToL1Message},
+    BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp,
+    ByteCodeOffset, CasmHash, ClassHash, ContractAddress, EntryPoint, EthereumAddress,
+    EventCommitment, Fee, GasPrice, L2ToL1MessagePayloadElem, SequencerAddress, SierraHash,
+    StarknetVersion, StateCommitment, TransactionCommitment, TransactionHash,
 };
 use pathfinder_crypto::Felt;
 use serde::Deserialize;
@@ -22,29 +25,106 @@ use starknet_gateway_types::{
     request::contract::{SelectorAndFunctionIndex, SelectorAndOffset},
 };
 
-/// Represents a simplified receipt (events and execution status excluded).
-///
-/// This type is not in the `p2p` to avoid `p2p` dependence on `starknet_gateway_types`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Receipt {
-    pub transaction_hash: TransactionHash,
-    pub actual_fee: Fee,
-    pub execution_resources: gw::ExecutionResources,
-    pub l1_to_l2_consumed_message: Option<gw::L1ToL2Message>,
-    pub l2_to_l1_messages: Vec<gw::L2ToL1Message>,
-    // Empty means not reverted
-    pub revert_error: String,
+/// Represents a simplified [`pathfinder_common::SignedBlockHeader`], ie. excluding class commitment and storage commitment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedBlockHeader {
+    pub hash: BlockHash,
+    pub parent_hash: BlockHash,
+    pub number: BlockNumber,
+    pub timestamp: BlockTimestamp,
+    pub eth_l1_gas_price: GasPrice,
+    pub sequencer_address: SequencerAddress,
+    pub starknet_version: StarknetVersion,
+    pub event_commitment: EventCommitment,
+    pub state_commitment: StateCommitment,
+    pub transaction_commitment: TransactionCommitment,
+    pub transaction_count: usize,
+    pub event_count: usize,
+    pub signature: BlockCommitmentSignature,
 }
 
-impl From<starknet_gateway_types::reply::transaction::Receipt> for Receipt {
-    fn from(r: starknet_gateway_types::reply::transaction::Receipt) -> Self {
+impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
+    type Error = anyhow::Error;
+
+    fn try_from(dto: p2p_proto::header::SignedBlockHeader) -> Result<Self, Self::Error> {
+        anyhow::ensure!(dto.signatures.len() == 1, "expected exactly one signature");
+        let signature = dto
+            .signatures
+            .into_iter()
+            .map(|sig| BlockCommitmentSignature {
+                r: BlockCommitmentSignatureElem(sig.r),
+                s: BlockCommitmentSignatureElem(sig.s),
+            })
+            .next()
+            .expect("exactly one element");
+        Ok(SignedBlockHeader {
+            hash: BlockHash(dto.block_hash.0),
+            parent_hash: BlockHash(dto.parent_hash.0),
+            number: BlockNumber::new(dto.number)
+                .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
+            timestamp: BlockTimestamp::new(dto.time)
+                .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
+            eth_l1_gas_price: dto.gas_price.into(),
+            sequencer_address: SequencerAddress(dto.sequencer_address.0),
+            starknet_version: dto.protocol_version.into(),
+            event_commitment: EventCommitment(dto.events.root.0),
+            state_commitment: StateCommitment(dto.state.root.0),
+            transaction_commitment: TransactionCommitment(dto.transactions.root.0),
+            transaction_count: dto.transactions.n_leaves.try_into()?,
+            event_count: dto.events.n_leaves.try_into()?,
+            signature,
+        })
+    }
+}
+
+impl
+    From<(
+        pathfinder_common::BlockHeader,
+        pathfinder_common::BlockCommitmentSignature,
+    )> for SignedBlockHeader
+{
+    fn from(
+        (header, signature): (
+            pathfinder_common::BlockHeader,
+            pathfinder_common::BlockCommitmentSignature,
+        ),
+    ) -> Self {
         Self {
-            transaction_hash: TransactionHash(r.transaction_hash.0),
-            actual_fee: r.actual_fee.unwrap_or_default(),
-            execution_resources: r.execution_resources.unwrap_or_default(),
-            l1_to_l2_consumed_message: r.l1_to_l2_consumed_message,
-            l2_to_l1_messages: r.l2_to_l1_messages,
-            revert_error: r.revert_error.unwrap_or_default(),
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            sequencer_address: header.sequencer_address,
+            starknet_version: header.starknet_version,
+            event_commitment: header.event_commitment,
+            state_commitment: header.state_commitment,
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header.transaction_count,
+            event_count: header.event_count,
+            signature,
+        }
+    }
+}
+
+/// Represents a simplified [`pathfinder_common::receipt::Receipt`] (events and transaction index excluded).
+#[derive(Clone, Default, Debug, PartialEq)]
+pub struct Receipt {
+    pub actual_fee: Option<Fee>,
+    pub execution_resources: Option<ExecutionResources>,
+    pub l2_to_l1_messages: Vec<L2ToL1Message>,
+    pub execution_status: ExecutionStatus,
+    pub transaction_hash: TransactionHash,
+}
+
+impl From<pathfinder_common::receipt::Receipt> for Receipt {
+    fn from(x: pathfinder_common::receipt::Receipt) -> Self {
+        Self {
+            transaction_hash: x.transaction_hash,
+            actual_fee: x.actual_fee,
+            execution_resources: x.execution_resources,
+            l2_to_l1_messages: x.l2_to_l1_messages,
+            execution_status: x.execution_status,
         }
     }
 }
@@ -65,9 +145,9 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
                 transaction_hash: TransactionHash(common.transaction_hash.0),
-                actual_fee: Fee(common.actual_fee),
-                execution_resources: gw::ExecutionResources {
-                    builtin_instance_counter: gw::BuiltinCounters {
+                actual_fee: Some(Fee(common.actual_fee)),
+                execution_resources: Some(ExecutionResources {
+                    builtin_instance_counter: BuiltinCounters {
                         output_builtin: common.execution_resources.builtins.output.into(),
                         pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
                         range_check_builtin: common.execution_resources.builtins.range_check.into(),
@@ -80,12 +160,11 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                     },
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
-                },
-                l1_to_l2_consumed_message: None,
+                }),
                 l2_to_l1_messages: common
                     .messages_sent
                     .into_iter()
-                    .map(|x| gw::L2ToL1Message {
+                    .map(|x| L2ToL1Message {
                         from_address: ContractAddress(x.from_address),
                         payload: x
                             .payload
@@ -95,7 +174,13 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                         to_address: EthereumAddress(x.to_address.0),
                     })
                     .collect(),
-                revert_error: common.revert_reason,
+                execution_status: if common.revert_reason.is_empty() {
+                    ExecutionStatus::Succeeded
+                } else {
+                    ExecutionStatus::Reverted {
+                        reason: common.revert_reason,
+                    }
+                },
             }),
         }
     }

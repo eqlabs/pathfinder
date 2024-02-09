@@ -31,7 +31,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
-pub mod types;
+pub mod conv;
 
 /// Hybrid, as it uses either p2p or the gateway depending on role and api call
 #[derive(Clone, Debug)]
