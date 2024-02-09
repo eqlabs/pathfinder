@@ -565,7 +565,7 @@ pub(crate) mod dto {
             };
 
             Self {
-                actual_fee: value.actual_fee.clone(),
+                actual_fee: value.actual_fee,
                 events: value.events.clone(),
                 execution_resources: value.execution_resources.as_ref().map(Into::into),
                 // We don't care about this field anymore.

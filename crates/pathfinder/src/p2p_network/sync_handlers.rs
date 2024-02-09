@@ -269,7 +269,7 @@ fn get_transactions_for_block(
         kind: TransactionsResponseKind::Transactions(Transactions {
             items: txn_data
                 .into_iter()
-                .map(|(txn, _)| pathfinder_common::transaction::Transaction::from(txn).to_proto())
+                .map(|(txn, _)| txn.to_proto())
                 .collect(),
         }),
     });
