@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use pathfinder_common::{
-    felt, BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress,
-    TransactionHash, TransactionNonce, TransactionVersion,
+    BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress, TransactionNonce,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, IntoStarkFelt};
@@ -156,27 +155,37 @@ fn create_executor_transaction(
     input: EstimateMessageFeeInput,
     chain_id: ChainId,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
-    let transaction_hash = calculate_transaction_hash(&input, chain_id);
-
-    // prepend sender address to calldata
-    let sender_address = Felt::from_be_slice(input.message.from_address.0.as_bytes())
-        .expect("Ethereum address is 160 bits");
-    let calldata = std::iter::once(pathfinder_common::CallParam(sender_address))
+    let from_address =
+        Felt::from_be_slice(input.message.from_address.0.as_bytes()).expect("This cannot overflow");
+    let calldata = std::iter::once(CallParam(from_address))
         .chain(input.message.payload)
-        .map(|p| p.0.into_starkfelt())
         .collect();
+    let transaction = pathfinder_common::transaction::L1HandlerTransaction {
+        contract_address: input.message.to_address,
+        entry_point_selector: input.message.entry_point_selector,
+        nonce: TransactionNonce::ZERO,
+        calldata,
+    };
+
+    let transaction_hash = transaction.calculate_hash(chain_id);
 
     let tx = starknet_api::transaction::L1HandlerTransaction {
-        version: starknet_api::transaction::TransactionVersion(felt!("0x1").into_starkfelt()),
-        nonce: starknet_api::core::Nonce(Felt::ZERO.into_starkfelt()),
+        version: starknet_api::transaction::TransactionVersion::ZERO,
+        nonce: starknet_api::core::Nonce(starknet_api::hash::StarkFelt::ZERO),
         contract_address: starknet_api::core::ContractAddress(
-            PatriciaKey::try_from(input.message.to_address.0.into_starkfelt())
+            PatriciaKey::try_from(transaction.contract_address.0.into_starkfelt())
                 .expect("A ContractAddress should be the right size"),
         ),
         entry_point_selector: starknet_api::core::EntryPointSelector(
             input.message.entry_point_selector.0.into_starkfelt(),
         ),
-        calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
+        calldata: starknet_api::transaction::Calldata(Arc::new(
+            transaction
+                .calldata
+                .into_iter()
+                .map(|x| x.0.into_starkfelt())
+                .collect(),
+        )),
     };
 
     let transaction = pathfinder_executor::Transaction::from_api(
@@ -188,32 +197,6 @@ fn create_executor_transaction(
         false,
     )?;
     Ok(transaction)
-}
-
-fn calculate_transaction_hash(
-    input: &EstimateMessageFeeInput,
-    chain_id: ChainId,
-) -> TransactionHash {
-    let call_params_hash = {
-        let mut hh = pathfinder_crypto::hash::HashChain::default();
-        hh = input.message.payload.iter().fold(hh, |mut hh, call_param| {
-            hh.update(call_param.0);
-            hh
-        });
-        hh.finalize()
-    };
-
-    starknet_gateway_types::transaction_hash::compute_txn_hash(
-        b"l1_handler",
-        TransactionVersion::ONE,
-        input.message.to_address,
-        Some(input.message.entry_point_selector),
-        call_params_hash,
-        None,
-        chain_id,
-        TransactionNonce::ZERO,
-        None,
-    )
 }
 
 #[cfg(test)]

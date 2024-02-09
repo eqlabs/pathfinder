@@ -21,24 +21,6 @@ impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
     }
 }
 
-impl From<ResourceBounds> for starknet_gateway_types::reply::transaction::ResourceBounds {
-    fn from(resource_bounds: ResourceBounds) -> Self {
-        Self {
-            l1_gas: resource_bounds.l1_gas.into(),
-            l2_gas: resource_bounds.l2_gas.into(),
-        }
-    }
-}
-
-impl From<starknet_gateway_types::reply::transaction::ResourceBounds> for ResourceBounds {
-    fn from(resource_bounds: starknet_gateway_types::reply::transaction::ResourceBounds) -> Self {
-        Self {
-            l1_gas: resource_bounds.l1_gas.into(),
-            l2_gas: resource_bounds.l2_gas.into(),
-        }
-    }
-}
-
 #[serde_as]
 #[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ResourceBound {
@@ -50,24 +32,6 @@ pub struct ResourceBound {
 
 impl From<ResourceBound> for pathfinder_common::transaction::ResourceBound {
     fn from(resource_bound: ResourceBound) -> Self {
-        Self {
-            max_amount: resource_bound.max_amount,
-            max_price_per_unit: resource_bound.max_price_per_unit,
-        }
-    }
-}
-
-impl From<ResourceBound> for starknet_gateway_types::reply::transaction::ResourceBound {
-    fn from(resource_bound: ResourceBound) -> Self {
-        Self {
-            max_amount: resource_bound.max_amount,
-            max_price_per_unit: resource_bound.max_price_per_unit,
-        }
-    }
-}
-
-impl From<starknet_gateway_types::reply::transaction::ResourceBound> for ResourceBound {
-    fn from(resource_bound: starknet_gateway_types::reply::transaction::ResourceBound) -> Self {
         Self {
             max_amount: resource_bound.max_amount,
             max_price_per_unit: resource_bound.max_price_per_unit,
@@ -91,17 +55,6 @@ impl From<DataAvailabilityMode> for pathfinder_common::transaction::DataAvailabi
     }
 }
 
-impl From<DataAvailabilityMode>
-    for starknet_gateway_types::reply::transaction::DataAvailabilityMode
-{
-    fn from(data_availability_mode: DataAvailabilityMode) -> Self {
-        match data_availability_mode {
-            DataAvailabilityMode::L1 => Self::L1,
-            DataAvailabilityMode::L2 => Self::L2,
-        }
-    }
-}
-
 impl From<DataAvailabilityMode> for starknet_api::data_availability::DataAvailabilityMode {
     fn from(value: DataAvailabilityMode) -> Self {
         match value {
@@ -111,27 +64,13 @@ impl From<DataAvailabilityMode> for starknet_api::data_availability::DataAvailab
     }
 }
 
-impl From<starknet_gateway_types::reply::transaction::DataAvailabilityMode>
-    for DataAvailabilityMode
-{
-    fn from(
-        data_availability_mode: starknet_gateway_types::reply::transaction::DataAvailabilityMode,
-    ) -> Self {
-        match data_availability_mode {
-            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L1 => Self::L1,
-            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L2 => Self::L2,
-        }
-    }
-}
-
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use pathfinder_common::{
         AccountDeploymentDataElem, CallParam, CasmHash, ChainId, ClassHash, ContractAddress,
-        ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip, TransactionHash,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
-    use pathfinder_crypto::hash::PoseidonHasher;
     use serde::Deserialize;
     use serde_with::serde_as;
 
@@ -293,40 +232,6 @@ pub mod request {
         pub sender_address: ContractAddress,
     }
 
-    impl BroadcastedDeclareTransactionV3 {
-        pub fn transaction_hash(
-            &self,
-            chain_id: ChainId,
-            class_hash: ClassHash,
-        ) -> TransactionHash {
-            let declare_specific_data = [
-                self.account_deployment_data
-                    .iter()
-                    .fold(PoseidonHasher::new(), |mut hh, e| {
-                        hh.write(e.0.into());
-                        hh
-                    })
-                    .finish()
-                    .into(),
-                class_hash.0,
-                self.compiled_class_hash.0,
-            ];
-            starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
-                b"declare",
-                self.version,
-                self.sender_address,
-                chain_id,
-                self.nonce,
-                &declare_specific_data,
-                self.tip,
-                &self.paymaster_data,
-                self.nonce_data_availability_mode.into(),
-                self.fee_data_availability_mode.into(),
-                self.resource_bounds.into(),
-            )
-        }
-    }
-
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[cfg_attr(
         any(test, feature = "rpc-full-serde"),
@@ -429,36 +334,6 @@ pub mod request {
                 self.constructor_calldata.iter().copied(),
                 &self.contract_address_salt,
                 &self.class_hash,
-            )
-        }
-
-        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
-            let sender_address = self.deployed_contract_address();
-
-            let deploy_account_specific_data = [
-                self.constructor_calldata
-                    .iter()
-                    .fold(PoseidonHasher::new(), |mut hh, e| {
-                        hh.write(e.0.into());
-                        hh
-                    })
-                    .finish()
-                    .into(),
-                self.class_hash.0,
-                self.contract_address_salt.0,
-            ];
-            starknet_gateway_types::transaction_hash::compute_v3_txn_hash(
-                b"deploy_account",
-                self.version,
-                sender_address,
-                chain_id,
-                self.nonce,
-                &deploy_account_specific_data,
-                self.tip,
-                &self.paymaster_data,
-                self.nonce_data_availability_mode.into(),
-                self.fee_data_availability_mode.into(),
-                self.resource_bounds.into(),
             )
         }
     }

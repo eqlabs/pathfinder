@@ -59,17 +59,6 @@ pub enum ExecutionStatus {
     Reverted,
 }
 
-// Conversion for status from receipts.
-impl From<starknet_gateway_types::reply::transaction::ExecutionStatus> for ExecutionStatus {
-    fn from(value: starknet_gateway_types::reply::transaction::ExecutionStatus) -> Self {
-        use starknet_gateway_types::reply::transaction::ExecutionStatus;
-        match value {
-            ExecutionStatus::Succeeded => Self::Succeeded,
-            ExecutionStatus::Reverted => Self::Reverted,
-        }
-    }
-}
-
 impl From<pathfinder_common::receipt::ExecutionStatus> for ExecutionStatus {
     fn from(value: pathfinder_common::receipt::ExecutionStatus) -> Self {
         match value {

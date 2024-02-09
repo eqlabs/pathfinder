@@ -3,9 +3,9 @@ use p2p_proto::receipt::{
     InvokeTransactionReceipt, L1HandlerTransactionReceipt,
 };
 use pathfinder_common::{
+    receipt::{BuiltinCounters, ExecutionResources, L2ToL1Message},
     ContractAddress, EthereumAddress, Fee, L2ToL1MessagePayloadElem, TransactionHash,
 };
-use starknet_gateway_types::reply::transaction as gw;
 
 /// Represents a simplified receipt (events and execution status excluded).
 ///
@@ -14,24 +14,10 @@ use starknet_gateway_types::reply::transaction as gw;
 pub struct Receipt {
     pub transaction_hash: TransactionHash,
     pub actual_fee: Fee,
-    pub execution_resources: gw::ExecutionResources,
-    pub l1_to_l2_consumed_message: Option<gw::L1ToL2Message>,
-    pub l2_to_l1_messages: Vec<gw::L2ToL1Message>,
+    pub execution_resources: ExecutionResources,
+    pub l2_to_l1_messages: Vec<L2ToL1Message>,
     // Empty means not reverted
     pub revert_error: String,
-}
-
-impl From<starknet_gateway_types::reply::transaction::Receipt> for Receipt {
-    fn from(r: starknet_gateway_types::reply::transaction::Receipt) -> Self {
-        Self {
-            transaction_hash: TransactionHash(r.transaction_hash.0),
-            actual_fee: r.actual_fee.unwrap_or_default(),
-            execution_resources: r.execution_resources.unwrap_or_default(),
-            l1_to_l2_consumed_message: r.l1_to_l2_consumed_message,
-            l2_to_l1_messages: r.l2_to_l1_messages,
-            revert_error: r.revert_error.unwrap_or_default(),
-        }
-    }
 }
 
 impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
@@ -51,8 +37,8 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
                 transaction_hash: TransactionHash(common.transaction_hash.0),
                 actual_fee: Fee(common.actual_fee),
-                execution_resources: gw::ExecutionResources {
-                    builtin_instance_counter: gw::BuiltinCounters {
+                execution_resources: ExecutionResources {
+                    builtin_instance_counter: BuiltinCounters {
                         output_builtin: common.execution_resources.builtins.output.into(),
                         pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
                         range_check_builtin: common.execution_resources.builtins.range_check.into(),
@@ -70,11 +56,10 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
                 },
-                l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: common
                     .messages_sent
                     .into_iter()
-                    .map(|x| gw::L2ToL1Message {
+                    .map(|x| L2ToL1Message {
                         from_address: ContractAddress(x.from_address),
                         payload: x
                             .payload

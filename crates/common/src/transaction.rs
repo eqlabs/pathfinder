@@ -266,42 +266,6 @@ pub struct L1HandlerTransaction {
     pub calldata: Vec<CallParam>,
 }
 
-impl L1HandlerTransaction {
-    pub fn calculate_message_hash(&self) -> H256 {
-        use sha3::{Digest, Keccak256};
-
-        let Some((from_address, payload)) = self.calldata.split_first() else {
-            // This would indicate a pretty severe error in the L1 transaction.
-            // But since we haven't encoded this during serialization, this could in
-            // theory mess us up here.
-            //
-            // We should incorporate this into the deserialization instead. Returning an
-            // error here is unergonomic and far too late.
-            return H256::zero();
-        };
-
-        let mut hash = Keccak256::new();
-
-        // This is an ethereum address
-        hash.update(from_address.0.as_be_bytes());
-        hash.update(self.contract_address.0.as_be_bytes());
-        hash.update(self.nonce.0.as_be_bytes());
-        hash.update(self.entry_point_selector.0.as_be_bytes());
-
-        // Pad the u64 to 32 bytes to match a felt.
-        hash.update([0u8; 24]);
-        hash.update((payload.len() as u64).to_be_bytes());
-
-        for elem in payload {
-            hash.update(elem.0.as_be_bytes());
-        }
-
-        let hash = <[u8; 32]>::from(hash.finalize());
-
-        hash.into()
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EntryPointType {
     External,
@@ -472,7 +436,41 @@ impl InvokeTransactionV0 {
 }
 
 impl L1HandlerTransaction {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    pub fn calculate_message_hash(&self) -> H256 {
+        use sha3::{Digest, Keccak256};
+
+        let Some((from_address, payload)) = self.calldata.split_first() else {
+            // This would indicate a pretty severe error in the L1 transaction.
+            // But since we haven't encoded this during serialization, this could in
+            // theory mess us up here.
+            //
+            // We should incorporate this into the deserialization instead. Returning an
+            // error here is unergonomic and far too late.
+            return H256::zero();
+        };
+
+        let mut hash = Keccak256::new();
+
+        // This is an ethereum address
+        hash.update(from_address.0.as_be_bytes());
+        hash.update(self.contract_address.0.as_be_bytes());
+        hash.update(self.nonce.0.as_be_bytes());
+        hash.update(self.entry_point_selector.0.as_be_bytes());
+
+        // Pad the u64 to 32 bytes to match a felt.
+        hash.update([0u8; 24]);
+        hash.update((payload.len() as u64).to_be_bytes());
+
+        for elem in payload {
+            hash.update(elem.0.as_be_bytes());
+        }
+
+        let hash = <[u8; 32]>::from(hash.finalize());
+
+        hash.into()
+    }
+
+    pub fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
         PreV3Hasher {
             prefix: felt_bytes!(b"l1_handler"),
             version: TransactionVersion::ZERO,

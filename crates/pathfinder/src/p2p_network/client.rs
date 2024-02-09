@@ -11,11 +11,10 @@ use p2p::client::types::{BlockHeader, MaybeSignedBlockHeader, StateUpdateWithDef
 use p2p::{client::peer_agnostic, HeadRx};
 use p2p_proto::state::{Cairo0Class, Cairo1Class, Class};
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
-use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
     BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockId, BlockNumber,
     ByteCodeOffset, CasmHash, ClassHash, EntryPoint, SierraHash, StateCommitment,
-    StateDiffCommitment, StateUpdate, TransactionHash, TransactionIndex,
+    StateDiffCommitment, StateUpdate, TransactionHash,
 };
 use pathfinder_crypto::Felt;
 use serde::Deserialize;
@@ -316,54 +315,16 @@ impl GatewayApi for HybridClient {
 
                         debug_assert_eq!(transactions.len(), receipts.len());
 
-                        let mut events =
-                            p2p_client.event(header.hash, 1).await.map_err(|error| {
-                                block_not_found(format!(
-                                    "getting events failed: block {n}: {error}",
-                                ))
-                            })?;
+                        // let mut events =
+                        //     p2p_client.event(header.hash, 1).await.map_err(|error| {
+                        //         block_not_found(format!(
+                        //             "getting events failed: block {n}: {error}",
+                        //         ))
+                        //     })?;
 
-                        let mut events = events.remove(&block_hash).ok_or_else(|| {
-                            block_not_found(format!("no peers with events for block {n}",))
-                        })?;
-
-                        // TODO: assume order is the same because proto::transaction does not carry transaction hash
-                        let (transactions, receipts): (Vec<_>, Vec<_>) = transactions
-                            .into_iter()
-                            .zip(receipts)
-                            .enumerate()
-                            .map(|(i, (t, r))| {
-                                let (execution_status, revert_error) = if r.revert_error.is_empty()
-                                {
-                                    (gw::transaction::ExecutionStatus::Succeeded, None)
-                                } else {
-                                    (
-                                        gw::transaction::ExecutionStatus::Reverted,
-                                        Some(r.revert_error),
-                                    )
-                                };
-
-                                (
-                                    gw::transaction::Transaction::from(Transaction {
-                                        hash: r.transaction_hash,
-                                        variant: t,
-                                    }),
-                                    gw::transaction::Receipt {
-                                        actual_fee: Some(r.actual_fee),
-                                        events: events
-                                            .remove(&r.transaction_hash)
-                                            .unwrap_or_default(),
-                                        execution_resources: Some(r.execution_resources),
-                                        l1_to_l2_consumed_message: r.l1_to_l2_consumed_message,
-                                        l2_to_l1_messages: r.l2_to_l1_messages,
-                                        transaction_hash: r.transaction_hash,
-                                        transaction_index: TransactionIndex::new_or_panic(i as u64),
-                                        execution_status,
-                                        revert_error,
-                                    },
-                                )
-                            })
-                            .unzip();
+                        // let events = events.remove(&block_hash).ok_or_else(|| {
+                        //     block_not_found(format!("no peers with events for block {n}",))
+                        // })?;
 
                         let block = gw::Block {
                             block_hash: header.hash,
@@ -376,8 +337,8 @@ impl GatewayApi for HybridClient {
                             // FIXME
                             status: gw::Status::AcceptedOnL2,
                             timestamp: header.timestamp,
-                            transaction_receipts: receipts.into_iter().map(Into::into).collect(),
-                            transactions: transactions.into_iter().map(Into::into).collect(),
+                            transaction_receipts: receipts.into_iter().map(|_| todo!()).collect(),
+                            transactions: transactions.into_iter().map(|_| todo!()).collect(),
                             starknet_version: header.starknet_version,
                         };
 

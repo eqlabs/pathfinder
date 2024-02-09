@@ -8,6 +8,8 @@ use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+pub use transaction::DataAvailabilityMode;
+
 /// Used to deserialize replies to Starknet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
@@ -212,7 +214,7 @@ pub mod transaction_status {
 }
 
 /// Types used when deserializing L2 transaction related data.
-pub mod transaction {
+pub(crate) mod transaction {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
         AccountDeploymentDataElem, CallParam, CasmHash, ClassHash, ConstructorParam,
