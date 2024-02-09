@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Context;
-use futures::{channel::mpsc, StreamExt};
+use futures::StreamExt;
 use libp2p::PeerId;
 use p2p_proto::class::{Class, ClassesRequest};
 use p2p_proto::common::{Direction, Iteration};
@@ -194,7 +194,7 @@ impl Client {
 
 // TODO
 /// Does not block the current thread.
-async fn compute_contract_addresses(
+async fn _compute_contract_addresses(
     deploy_account: HashMap<BlockHash, Vec<super::types::RawDeployAccountTransaction>>,
 ) -> anyhow::Result<Vec<(BlockHash, Vec<TransactionVariant>)>> {
     let jh = tokio::task::spawn_blocking(move || {

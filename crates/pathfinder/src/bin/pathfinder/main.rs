@@ -6,11 +6,9 @@ use mimalloc::MiMalloc;
 
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
+use pathfinder_lib::monitoring::{self};
+use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
-use pathfinder_lib::{
-    monitoring::{self},
-    state,
-};
 use pathfinder_rpc::context::WebsocketContext;
 use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
@@ -207,13 +205,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None => rpc_server,
     };
 
-    let (p2p_handle, sequencer) = start_p2p(
-        pathfinder_context.network_id,
-        p2p_storage,
-        pathfinder_context.gateway,
-        config.p2p,
-    )
-    .await?;
+    let (p2p_handle, gossiper) =
+        start_p2p(pathfinder_context.network_id, p2p_storage, config.p2p).await?;
 
     let sync_context = SyncContext {
         storage: sync_storage,
@@ -221,7 +214,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         chain: pathfinder_context.network,
         chain_id: pathfinder_context.network_id,
         core_address: pathfinder_context.l1_core_address,
-        sequencer,
+        sequencer: pathfinder_context.gateway,
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
         pending_data: tx_pending,
@@ -231,6 +224,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
+        gossiper,
     };
 
     let sync_handle = if config.is_sync_enabled {
@@ -339,14 +333,10 @@ fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
 async fn start_p2p(
     chain_id: ChainId,
     storage: Storage,
-    sequencer: starknet_gateway_client::Client,
     config: config::P2PConfig,
-) -> anyhow::Result<(
-    tokio::task::JoinHandle<()>,
-    pathfinder_lib::p2p_network::client::HybridClient,
-)> {
+) -> anyhow::Result<(tokio::task::JoinHandle<()>, state::Gossiper)> {
     use p2p::libp2p::identity::Keypair;
-    use pathfinder_lib::p2p_network::{client::HybridClient, P2PContext};
+    use pathfinder_lib::p2p_network::P2PContext;
     use serde::Deserialize;
     use std::{path::Path, time::Duration};
     use zeroize::Zeroizing;
@@ -405,25 +395,21 @@ async fn start_p2p(
         predefined_peers: config.predefined_peers,
     };
 
-    let (p2p_client, head_receiver, p2p_handle) =
+    let (p2p_client, _head_receiver, p2p_handle) =
         pathfinder_lib::p2p_network::start(context).await?;
 
-    Ok((
-        p2p_handle,
-        HybridClient::new(config.proxy, p2p_client, sequencer, head_receiver),
-    ))
+    Ok((p2p_handle, state::Gossiper::new(p2p_client)))
 }
 
 #[cfg(not(feature = "p2p"))]
 async fn start_p2p(
     _: ChainId,
     _: Storage,
-    sequencer: starknet_gateway_client::Client,
     _: config::P2PConfig,
-) -> anyhow::Result<(tokio::task::JoinHandle<()>, starknet_gateway_client::Client)> {
-    let join_handle = tokio::task::spawn(async move { futures::future::pending().await });
+) -> anyhow::Result<(tokio::task::JoinHandle<()>, state::Gossiper)> {
+    let join_handle = tokio::task::spawn(futures::future::pending());
 
-    Ok((join_handle, sequencer))
+    Ok((join_handle, Default::default()))
 }
 
 /// Spawns the monitoring task at the given address.

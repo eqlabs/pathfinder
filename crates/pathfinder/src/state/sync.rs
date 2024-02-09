@@ -20,7 +20,7 @@ use pathfinder_rpc::{
 };
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
-use starknet_gateway_client::{GatewayApi, GossipApi};
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::Block;
 use starknet_gateway_types::reply::PendingBlock;
 
@@ -80,6 +80,7 @@ pub struct SyncContext<G, E> {
     pub block_cache_size: usize,
     pub restart_delay: Duration,
     pub verify_tree_hashes: bool,
+    pub gossiper: Gossiper,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -111,6 +112,38 @@ where
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Gossiper {
+    #[cfg(feature = "p2p")]
+    p2p_client: Option<p2p::client::peer_agnostic::Client>,
+}
+
+impl Gossiper {
+    #[cfg(feature = "p2p")]
+    pub fn new(p2p_client: p2p::client::peer_agnostic::Client) -> Self {
+        Self {
+            p2p_client: Some(p2p_client),
+        }
+    }
+
+    async fn propagate_head(&self, _block_number: BlockNumber, _block_hash: BlockHash) {
+        #[cfg(feature = "p2p")]
+        {
+            use p2p_proto::common::{BlockId, Hash};
+
+            if let Some(p2p_client) = &self.p2p_client {
+                _ = p2p_client
+                    .propagate_new_head(BlockId {
+                        number: _block_number.get(),
+                        hash: Hash(_block_hash.0),
+                    })
+                    .await
+                    .map_err(|error| tracing::warn!(%error, "Propagating head failed"));
+            }
+        }
+    }
+}
+
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     context: SyncContext<SequencerClient, Ethereum>,
@@ -119,7 +152,7 @@ pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
 ) -> anyhow::Result<()>
 where
     Ethereum: EthereumApi + Clone + Send + 'static,
-    SequencerClient: GatewayApi + GossipApi + Clone + Send + Sync + 'static,
+    SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
     L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
@@ -149,6 +182,7 @@ where
         block_cache_size,
         restart_delay,
         verify_tree_hashes: _,
+        gossiper,
     } = context;
 
     let mut db_conn = storage
@@ -181,6 +215,7 @@ where
         starting_block_hash,
         starting_block_num,
         head_poll_interval,
+        gossiper,
     ));
 
     // Start L1 producer task. Clone the event sender so that the channel remains open
@@ -584,10 +619,11 @@ async fn latest_n_blocks(
 /// propagates latest head after every change or otherwise every 2 minutes.
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
-    sequencer: impl GatewayApi + GossipApi,
+    sequencer: impl GatewayApi,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
     poll_interval: Duration,
+    gossiper: Gossiper,
 ) -> anyhow::Result<()> {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
     let mut last_propagated = Instant::now();
@@ -608,7 +644,7 @@ async fn update_sync_status_latest(
                         metrics::gauge!("current_block", starting.number.get() as f64);
                         metrics::gauge!("highest_block", latest.number.get() as f64);
 
-                        propagate_head(&sequencer, &mut last_propagated, latest).await;
+                        propagate_head(&gossiper, &mut last_propagated, latest).await;
 
                         tracing::debug!(
                             status=%sync_status,
@@ -621,7 +657,7 @@ async fn update_sync_status_latest(
 
                             metrics::gauge!("highest_block", latest.number.get() as f64);
 
-                            propagate_head(&sequencer, &mut last_propagated, latest).await;
+                            propagate_head(&gossiper, &mut last_propagated, latest).await;
 
                             tracing::debug!(
                                 %status,
@@ -633,7 +669,7 @@ async fn update_sync_status_latest(
 
                 // duplicate_cache_time for gossipsub defaults to 1 minute
                 if last_propagated.elapsed() > Duration::from_secs(120) {
-                    propagate_head(&sequencer, &mut last_propagated, latest).await;
+                    propagate_head(&gossiper, &mut last_propagated, latest).await;
                 }
             }
             Err(e) => {
@@ -645,11 +681,7 @@ async fn update_sync_status_latest(
     }
 }
 
-async fn propagate_head(
-    gossiper: &impl GossipApi,
-    last_propagated: &mut Instant,
-    head: NumberedBlock,
-) {
+async fn propagate_head(gossiper: &Gossiper, last_propagated: &mut Instant, head: NumberedBlock) {
     _ = gossiper.propagate_head(head.number, head.hash).await;
     *last_propagated = Instant::now();
 }

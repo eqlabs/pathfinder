@@ -21,7 +21,6 @@ use serde_json::value::RawValue;
 use starknet_gateway_types::{
     class_definition::{self, SierraEntryPoints},
     class_hash::from_parts::{compute_cairo_class_hash, compute_sierra_class_hash},
-    reply::transaction as gw,
     request::contract::{SelectorAndFunctionIndex, SelectorAndOffset},
 };
 
