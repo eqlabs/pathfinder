@@ -107,14 +107,20 @@ mod prop {
     use p2p_proto::event::{EventsRequest, EventsResponse};
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
     use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
-    use p2p_proto::state::StateDiffsRequest;
+    use p2p_proto::state::{
+        ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse,
+    };
     use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
     use pathfinder_common::event::Event;
+    use pathfinder_common::state_update::{
+        ContractClassUpdate, ContractUpdate, SystemContractUpdate,
+    };
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
         BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber, ClassHash,
-        SierraHash, TransactionHash,
+        ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue, TransactionHash,
     };
+    use pathfinder_crypto::Felt;
     use proptest::prelude::*;
     use std::collections::{BTreeSet, HashMap};
     use tokio::runtime::Runtime;
@@ -298,11 +304,84 @@ mod prop {
 
     proptest! {
         #[test]
+        fn get_state_diffs((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+            // Compute the overlapping set between the db and the request
+            // These are the items that we expect to be read from the db
+            // Grouped by block number
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(h, _, _, state_update, _, _)|
+                    (
+                        h.number, // Block number
+                        state_update.contract_updates,
+                        state_update.system_contract_updates,
+                    )
+            ).collect::<Vec<_>>();
+            // Run the handler
+            let request = StateDiffsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
+            let mut responses = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_state_diffs(storage, request, tx);
+                let (_, response) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                response
+            });
+
+            // Make sure the last reply is Fin
+            assert_eq!(responses.pop().unwrap(), StateDiffsResponse::Fin);
+
+            let mut actual_contract_updates = Vec::new();
+            let mut actual_system_contract_updates = Vec::new();
+
+            // Check the rest
+            responses.into_iter().for_each(|response| match response {
+                StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, is_replaced, values, domain: _ }) => {
+                    if address.0 == Felt::from_u64(1) {
+                        actual_system_contract_updates.push(
+                            (
+                                ContractAddress(address.0),
+                                SystemContractUpdate {
+                                    storage: values.into_iter().map(
+                                        |ContractStoredValue { key, value }| (StorageAddress(key), StorageValue(value))).collect()}
+                            ));
+                    } else {
+                        let class = match (class_hash, is_replaced) {
+                            (Some(hash), Some(true)) => Some(ContractClassUpdate::Replace(ClassHash(hash))),
+                            (Some(hash), Some(false)) => Some(ContractClassUpdate::Deploy(ClassHash(hash))),
+                            (None, None) => None,
+                            _ => panic!("unexpected response"),
+                        };
+                        actual_contract_updates.push(
+                            (
+                                ContractAddress(address.0),
+                                ContractUpdate {
+                                    storage: values.into_iter().map(|ContractStoredValue { key, value }|
+                                        (StorageAddress(key), StorageValue(value))).collect(),
+                                    class,
+                                    nonce: nonce.map(ContractNonce)}
+                            ));
+                    }
+
+                },
+                _ => panic!("unexpected response"),
+            });
+
+            for expected_for_block in expected {
+                let actual_contract_updates_for_block = actual_contract_updates.drain(..expected_for_block.1.len()).collect::<HashMap<_,_>>();
+                let actual_system_contract_updates_for_block = actual_system_contract_updates.drain(..expected_for_block.2.len()).collect::<HashMap<_,_>>();
+                prop_assert_eq_sorted!(expected_for_block.1, actual_contract_updates_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq_sorted!(expected_for_block.2, actual_system_contract_updates_for_block, "block number: {}", expected_for_block.0);
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
         fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
             // Compute the overlapping set between the db and the request
-            // These are the events that we expect to be read from the db
+            // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(h, _, _, _, cairo_defs, sierra_defs)|
@@ -476,7 +555,7 @@ mod prop {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
             // Compute the overlapping set between the db and the request
-            // These are the events that we expect to be read from the db
+            // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(h, _, tr, _, _, _)|
