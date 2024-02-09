@@ -10,7 +10,7 @@ pub struct SignedBlockHeader {
     pub block_hash: Hash,
     pub parent_hash: Hash,
     pub number: u64,
-    pub time: SystemTime,
+    pub time: u64,
     pub sequencer_address: Address,
     pub state_diff_commitment: Hash,
     pub state: Patricia,
@@ -45,44 +45,14 @@ pub enum BlockHeadersResponse {
     Fin,
 }
 
-impl ToProtobuf<::prost_types::Timestamp> for SystemTime {
-    fn to_protobuf(self) -> ::prost_types::Timestamp {
-        self.into()
-    }
-}
-
-impl TryFromProtobuf<::prost_types::Timestamp> for SystemTime {
-    fn try_from_protobuf(
-        input: ::prost_types::Timestamp,
-        field_name: &'static str,
-    ) -> Result<Self, std::io::Error> {
-        let secs = input.seconds.try_into().map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid secs in Timestamp {field_name}: {e}"),
-            )
-        })?;
-        let nanos = input.nanos.try_into().map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid nanos in Timestamp {field_name}: {e}"),
-            )
-        })?;
-
-        Self::UNIX_EPOCH
-            .checked_add(Duration::new(secs, nanos))
-            .ok_or(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid Timestamp {field_name}"),
-            ))
-    }
-}
-
 impl<T> Dummy<T> for SignedBlockHeader {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
             block_hash: Faker.fake_with_rng(rng),
-            time: SystemTime::now(),
+            time: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             parent_hash: Faker.fake_with_rng(rng),
             number: Faker.fake_with_rng(rng),
             sequencer_address: Faker.fake_with_rng(rng),

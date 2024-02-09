@@ -12,6 +12,7 @@ use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_crypto::Felt;
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
 use starknet_gateway_types::class_definition;
@@ -137,22 +138,23 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = tx.block_header(block_number.into())? {
         if let Some(signature) = tx.signature(block_number.into())? {
+            let txn_count = header
+                .transaction_count
+                .try_into()
+                .context("invalid transaction count")?;
             parts.push(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
                 block_hash: Hash(header.hash.0),
                 parent_hash: Hash(header.parent_hash.0),
                 number: header.number.get(),
-                time: todo!(),
+                time: header.timestamp.get(),
                 sequencer_address: Address(header.sequencer_address.0),
-                state_diff_commitment: todo!(),
+                state_diff_commitment: Hash(Felt::ZERO), // TODO
                 state: Patricia {
                     height: 251,
                     root: Hash(header.state_commitment.0),
                 },
                 transactions: Merkle {
-                    n_leaves: header
-                        .transaction_count
-                        .try_into()
-                        .context("invalid transaction count")?,
+                    n_leaves: txn_count,
                     root: Hash(header.transaction_commitment.0),
                 },
                 events: Merkle {
@@ -163,15 +165,15 @@ fn get_header(
                     root: Hash(header.event_commitment.0),
                 },
                 receipts: Merkle {
-                    n_leaves: todo!(),
-                    root: todo!(),
+                    n_leaves: txn_count,
+                    root: Hash(Felt::ZERO), // TODO
                 },
                 protocol_version: header.starknet_version.take_inner(),
-                gas_price: todo!(),
-                num_storage_diffs: todo!(),
-                num_nonce_updates: todo!(),
-                num_declared_classes: todo!(),
-                num_deployed_contracts: todo!(),
+                gas_price: Felt::from_u128(header.eth_l1_gas_price.0),
+                num_storage_diffs: 0,      // TODO
+                num_nonce_updates: 0,      // TODO
+                num_declared_classes: 0,   // TODO
+                num_deployed_contracts: 0, // TODO
                 signatures: vec![ConsensusSignature {
                     r: signature.r.0,
                     s: signature.s.0,
