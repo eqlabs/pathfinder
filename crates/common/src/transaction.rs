@@ -1,6 +1,7 @@
 use pathfinder_crypto::hash::HashChain as PedersenHasher;
 use pathfinder_crypto::hash::PoseidonHasher;
 use pathfinder_crypto::Felt;
+use primitive_types::H256;
 
 use crate::felt_bytes;
 use crate::prelude::*;
@@ -19,6 +20,22 @@ impl Transaction {
     #[must_use = "Should act on verification result"]
     pub fn verify_hash(&self, chain_id: ChainId) -> bool {
         self.variant.verify_hash(chain_id, self.hash)
+    }
+
+    pub fn version(&self) -> TransactionVersion {
+        match &self.variant {
+            TransactionVariant::DeclareV0(_) => TransactionVersion::ZERO,
+            TransactionVariant::DeclareV1(_) => TransactionVersion::ONE,
+            TransactionVariant::DeclareV2(_) => TransactionVersion::TWO,
+            TransactionVariant::DeclareV3(_) => TransactionVersion::THREE,
+            TransactionVariant::Deploy(tx) => tx.version,
+            TransactionVariant::DeployAccountV0V1(tx) => tx.version,
+            TransactionVariant::DeployAccountV3(_) => TransactionVersion::THREE,
+            TransactionVariant::InvokeV0(_) => TransactionVersion::ZERO,
+            TransactionVariant::InvokeV1(_) => TransactionVersion::ONE,
+            TransactionVariant::InvokeV3(_) => TransactionVersion::THREE,
+            TransactionVariant::L1Handler(_) => TransactionVersion::ZERO,
+        }
     }
 }
 
@@ -62,7 +79,7 @@ impl TransactionVariant {
         false
     }
 
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    pub fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
         match self {
             TransactionVariant::DeclareV0(tx) => tx.calculate_hash_v0(chain_id),
             TransactionVariant::DeclareV1(tx) => tx.calculate_hash_v1(chain_id),
@@ -247,6 +264,42 @@ pub struct L1HandlerTransaction {
     pub entry_point_selector: EntryPoint,
     pub nonce: TransactionNonce,
     pub calldata: Vec<CallParam>,
+}
+
+impl L1HandlerTransaction {
+    pub fn calculate_message_hash(&self) -> H256 {
+        use sha3::{Digest, Keccak256};
+
+        let Some((from_address, payload)) = self.calldata.split_first() else {
+            // This would indicate a pretty severe error in the L1 transaction.
+            // But since we haven't encoded this during serialization, this could in
+            // theory mess us up here.
+            //
+            // We should incorporate this into the deserialization instead. Returning an
+            // error here is unergonomic and far too late.
+            return H256::zero();
+        };
+
+        let mut hash = Keccak256::new();
+
+        // This is an ethereum address
+        hash.update(from_address.0.as_be_bytes());
+        hash.update(self.contract_address.0.as_be_bytes());
+        hash.update(self.nonce.0.as_be_bytes());
+        hash.update(self.entry_point_selector.0.as_be_bytes());
+
+        // Pad the u64 to 32 bytes to match a felt.
+        hash.update([0u8; 24]);
+        hash.update((payload.len() as u64).to_be_bytes());
+
+        for elem in payload {
+            hash.update(elem.0.as_be_bytes());
+        }
+
+        let hash = <[u8; 32]>::from(hash.finalize());
+
+        hash.into()
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

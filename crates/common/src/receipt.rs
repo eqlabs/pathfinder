@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub actual_fee: Option<Fee>,
     pub events: Vec<crate::event::Event>,
@@ -24,21 +24,21 @@ impl Receipt {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct L2ToL1Message {
     pub from_address: ContractAddress,
     pub payload: Vec<L2ToL1MessagePayloadElem>,
     pub to_address: EthereumAddress,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExecutionResources {
     pub builtin_instance_counter: BuiltinCounters,
     pub n_steps: u64,
     pub n_memory_holes: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BuiltinCounters {
     pub output_builtin: u64,
     pub pedersen_builtin: u64,
@@ -51,7 +51,7 @@ pub struct BuiltinCounters {
     pub segment_arena_builtin: u64,
 }
 
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub enum ExecutionStatus {
     // This must be the default as pre v0.12.1 receipts did not contain this value and
     // were always success as reverted did not exist.
