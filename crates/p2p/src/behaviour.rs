@@ -75,6 +75,9 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
+        // Disconnect peers without an IP address.
+        Self::get_ip(remote_addr)?;
+
         self.check_duplicate_connection(peer)?;
         self.prevent_evicted_peer_reconnections(peer)?;
 
@@ -99,9 +102,6 @@ impl NetworkBehaviour for Behaviour {
             )?;
         }
 
-        // Disconnect peers without an IP address.
-        Self::get_ip(remote_addr)?;
-
         self.inner.handle_established_inbound_connection(
             connection_id,
             peer,
@@ -117,11 +117,11 @@ impl NetworkBehaviour for Behaviour {
         addr: &Multiaddr,
         role_override: Endpoint,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        self.check_duplicate_connection(peer)?;
-        self.prevent_evicted_peer_reconnections(peer)?;
-
         // Disconnect peers without an IP address.
         Self::get_ip(addr)?;
+
+        self.check_duplicate_connection(peer)?;
+        self.prevent_evicted_peer_reconnections(peer)?;
 
         self.inner
             .handle_established_outbound_connection(connection_id, peer, addr, role_override)
@@ -556,7 +556,7 @@ impl Behaviour {
     /// Evict an outbound peer to make space for a new outbound connection.
     ///
     /// Only peers which are flagged as not useful are considered for eviction.
-    /// If there are no such peers, the incoming connection gets denied.
+    /// If there are no such peers, the outgoing connection gets denied.
     fn evict_outbound_peer(&mut self) -> Result<(), ConnectionDenied> {
         let mut candidates: Vec<_> = self.outbound_peers().collect();
 
@@ -659,8 +659,7 @@ impl Behaviour {
             candidates.remove(peer_id);
         }
 
-        // TODO Move this into a separate issue and link it here.
-        // TODO Save 4 nodes that have most recently gossiped valid transactions,
+        // TODO #1754: Save 4 nodes that have most recently gossiped valid transactions,
         // and 8 nodes that have most recently gossiped a valid new head (or any
         // other block if we are still syncing).
 
@@ -676,8 +675,8 @@ impl Behaviour {
         }
 
         // Finally, evict the youngest peer in the most populous group.
-        // This is achieved by sorting all the nodes by a) total number
-        // of connected nodes which share their keyed network, breaking
+        // This is achieved by sorting all the peers by a) total number
+        // of connected peers which share their keyed network, breaking
         // ties with b) keyed network group (in reverse order, since we
         // use regular order in the first step of the eviction algorithm),
         // breaking ties with c) connection time. Evict the first peer

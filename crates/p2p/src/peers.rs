@@ -148,6 +148,12 @@ impl PeerSet {
     }
 }
 
+/// A network group that is keyed by a secret, calculated as SHA3(secret || 16 bit prefix for IPv4
+/// or 32 bit prefix for IPv6 addresses).
+///
+/// For a given secret and IP address, the network group is deterministic, but unpredictable
+/// by the attacker. The keyed network group is used to ensure that our node is connected to a
+/// diverse set of IP addresses.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct KeyedNetworkGroup(pub [u8; 32]);
 

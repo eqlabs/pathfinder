@@ -703,7 +703,7 @@ async fn max_inbound_connections() {
     peer_4_connection_established.recv().await;
 }
 
-/// Ensure that outbound peers marked as not useful get evicted if new inbound connections
+/// Ensure that outbound peers marked as not useful get evicted if new outbound connections
 /// are attempted.
 #[test_log::test(tokio::test)]
 async fn outbound_peer_eviction() {
@@ -832,7 +832,7 @@ async fn outbound_peer_eviction() {
     assert!(peers.contains_key(&inbound2.peer_id));
 }
 
-/// Ensure that inbound peers get evicted if new outbound connections
+/// Ensure that inbound peers get evicted if new inbound connections
 /// are attempted.
 #[test_log::test(tokio::test)]
 async fn inbound_peer_eviction() {
