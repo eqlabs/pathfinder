@@ -20,7 +20,6 @@ impl From<BlockifierTransactionExecutionError> for CallError {
         use BlockifierTransactionExecutionError::*;
         match value {
             ContractConstructorExecutionFailed(e)
-            | EntryPointExecutionError(e)
             | ExecutionError(e)
             | ValidateTransactionError(e) => match e {
                 BlockifierEntryPointExecutionError::PreExecutionError(

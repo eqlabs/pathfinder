@@ -24,7 +24,14 @@ pub fn estimate(
         let _span = tracing::debug_span!("estimate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
 
         let fee_type = &super::transaction::fee_type(&transaction);
-        let gas_price: U256 = block_context.gas_prices.get_by_fee_type(fee_type).into();
+
+        // FIXME: data gas price
+        let gas_price: U256 = block_context
+            .block_info()
+            .gas_prices
+            .get_gas_price_by_fee_type(fee_type)
+            .get()
+            .into();
         let unit = match fee_type {
             blockifier::transaction::objects::FeeType::Strk => PriceUnit::Fri,
             blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
