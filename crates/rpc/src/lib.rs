@@ -648,6 +648,8 @@ pub mod test_utils {
         let block = starknet_gateway_types::reply::PendingBlock {
             eth_l1_gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
             strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk gas price").unwrap()),
+            eth_l1_data_gas_price: Some(GasPrice::from_be_slice(b"data gas price").unwrap()),
+            strk_l1_data_gas_price: Some(GasPrice::from_be_slice(b"strk data gas price").unwrap()),
             parent_hash: latest.hash,
             sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
             status: starknet_gateway_types::reply::Status::Pending,

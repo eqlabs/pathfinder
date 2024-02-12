@@ -1,8 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
     BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ContractAddress,
-    EthereumAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-    StateDiffCommitment,
+    EthereumAddress, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+    StateDiffCommitment, TransactionCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
@@ -18,13 +18,21 @@ pub struct Block {
     pub block_hash: BlockHash,
     pub block_number: BlockNumber,
     /// Excluded in blocks prior to Starknet 0.9
-    /// TODO: remove alias after Starknet 0.13.0 is deployed on all networks
+    // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default, alias = "gas_price")]
     pub eth_l1_gas_price: Option<GasPrice>,
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strk_l1_gas_price: Option<GasPrice>,
+    // Excluded in blocks prior to Starknet 0.13.1
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default)]
+    pub eth_l1_data_gas_price: Option<GasPrice>,
+    // Excluded in blocks prior to Starknet 0.13.1
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default)]
+    pub strk_l1_data_gas_price: Option<GasPrice>,
     pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to Starknet 0.8
     #[serde(default)]
@@ -41,13 +49,21 @@ pub struct Block {
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
+
+    // Introduced in v0.13.1
+    #[serde(default)]
+    pub transaction_commitment: Option<TransactionCommitment>,
+    #[serde(default)]
+    pub event_commitment: Option<EventCommitment>,
+    #[serde(default)]
+    pub l1_da_mode: Option<L1DataAvailabilityMode>,
 }
 
 #[serde_as]
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct PendingBlock {
-    /// TODO: remove alias after Starknet 0.13.0 is deployed on all networks
+    // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
     #[serde_as(as = "GasPriceAsHexStr")]
     #[serde(alias = "gas_price")]
     pub eth_l1_gas_price: GasPrice,
@@ -55,6 +71,14 @@ pub struct PendingBlock {
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
     pub strk_l1_gas_price: Option<GasPrice>,
+    // Excluded in blocks prior to Starknet 0.13.1
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default)]
+    pub eth_l1_data_gas_price: Option<GasPrice>,
+    // Excluded in blocks prior to Starknet 0.13.1
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default)]
+    pub strk_l1_data_gas_price: Option<GasPrice>,
     #[serde(rename = "parent_block_hash")]
     pub parent_hash: BlockHash,
     pub sequencer_address: SequencerAddress,
@@ -116,6 +140,24 @@ impl MaybePendingBlock {
             MaybePendingBlock::Pending(p) => p.status,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum L1DataAvailabilityMode {
+    #[default]
+    Calldata,
+    Blob,
+}
+
+#[serde_as]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GasPrices {
+    #[serde_as(as = "GasPriceAsHexStr")]
+    pub price_in_wei: GasPrice,
+    #[serde_as(as = "GasPriceAsHexStr")]
+    pub price_in_fri: GasPrice,
 }
 
 /// Block and transaction status values.

@@ -459,6 +459,8 @@ pub(crate) mod tests {
                 block: PendingBlock {
                     eth_l1_gas_price: last_block_header.eth_l1_gas_price,
                     strk_l1_gas_price: None,
+                    eth_l1_data_gas_price: None,
+                    strk_l1_data_gas_price: None,
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,

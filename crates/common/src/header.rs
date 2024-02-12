@@ -10,6 +10,8 @@ pub struct BlockHeader {
     pub timestamp: BlockTimestamp,
     pub eth_l1_gas_price: GasPrice,
     pub strk_l1_gas_price: GasPrice,
+    pub eth_l1_data_gas_price: GasPrice,
+    pub strk_l1_data_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub class_commitment: ClassCommitment,

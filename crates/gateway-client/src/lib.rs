@@ -818,6 +818,8 @@ mod tests {
                     block_number: BlockNumber::GENESIS,
                     eth_l1_gas_price: None,
                     strk_l1_gas_price: None,
+                    eth_l1_data_gas_price: None,
+                    strk_l1_data_gas_price: None,
                     parent_block_hash: BlockHash(Felt::ZERO),
                     sequencer_address: None,
                     state_commitment: pathfinder_common::StateCommitment(Felt::ZERO),

@@ -442,6 +442,8 @@ pub(crate) mod tests {
             let pending_block = starknet_gateway_types::reply::PendingBlock {
                 eth_l1_gas_price: GasPrice(1),
                 strk_l1_gas_price: Some(GasPrice(1)),
+                eth_l1_data_gas_price: Some(GasPrice(1)),
+                strk_l1_data_gas_price: Some(GasPrice(1)),
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,

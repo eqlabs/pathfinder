@@ -69,9 +69,12 @@
                         },
                         "event": {
                             "$ref": "#/components/schemas/BLOCK_HEADER"
-                        }  
+                        }
                     },
-                    "required": ["subscription", "event"]
+                    "required": [
+                        "subscription",
+                        "event"
+                    ]
                 }
             },
             "errors": [
@@ -103,6 +106,12 @@
                         "ref": "#/components/schemas/FELT"
                     },
                     "strk_l1_gas_price": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "eth_l1_data_gas_price": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "strk_l1_data_gas_price": {
                         "ref": "#/components/schemas/FELT"
                     },
                     "sequencer_address": {
@@ -174,7 +183,10 @@
                             "type": "string"
                         }
                     },
-                    "required": ["id", "reason"]
+                    "required": [
+                        "id",
+                        "reason"
+                    ]
                 }
             }
         }

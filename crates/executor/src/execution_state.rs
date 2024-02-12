@@ -125,8 +125,8 @@ impl<'tx> ExecutionState<'tx> {
             gas_prices: blockifier::block::GasPrices {
                 eth_l1_gas_price: self.header.eth_l1_gas_price.0.try_into()?,
                 strk_l1_gas_price: self.header.strk_l1_gas_price.0.try_into()?,
-                eth_l1_data_gas_price: todo!(),
-                strk_l1_data_gas_price: todo!(),
+                eth_l1_data_gas_price: self.header.eth_l1_data_gas_price.0.try_into()?,
+                strk_l1_data_gas_price: self.header.strk_l1_data_gas_price.0.try_into()?,
             },
             use_kzg_da: false,
         })

@@ -29,6 +29,8 @@ impl PendingData {
             timestamp: self.block.timestamp,
             eth_l1_gas_price: self.block.eth_l1_gas_price,
             strk_l1_gas_price: self.block.strk_l1_gas_price.unwrap_or_default(),
+            eth_l1_data_gas_price: self.block.eth_l1_data_gas_price.unwrap_or_default(),
+            strk_l1_data_gas_price: self.block.strk_l1_data_gas_price.unwrap_or_default(),
             sequencer_address: self.block.sequencer_address,
             starknet_version: self.block.starknet_version.clone(),
             // Pending block does not know what these are yet.
