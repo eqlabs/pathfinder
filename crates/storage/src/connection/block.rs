@@ -14,8 +14,8 @@ pub(super) fn insert_block_header(
     // Insert the header
     tx.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count)
-            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count)",
+                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count)
+            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
@@ -23,6 +23,8 @@ pub(super) fn insert_block_header(
             ":timestamp": &header.timestamp,
             ":eth_l1_gas_price": &header.eth_l1_gas_price.to_be_bytes().as_slice(),
             ":strk_l1_gas_price": &header.strk_l1_gas_price.to_be_bytes().as_slice(),
+            ":eth_l1_data_gas_price": &header.eth_l1_data_gas_price.to_be_bytes().as_slice(),
+            ":strk_l1_data_gas_price": &header.strk_l1_data_gas_price.to_be_bytes().as_slice(),
             ":sequencer_address": &header.sequencer_address,
             ":version_id": &version_id,
             ":transaction_commitment": &header.transaction_commitment,
@@ -296,6 +298,12 @@ pub(super) fn block_header(
         let strk_l1_gas_price = row
             .get_optional_gas_price("strk_l1_gas_price")?
             .unwrap_or(GasPrice::ZERO);
+        let eth_l1_data_gas_price = row
+            .get_optional_gas_price("eth_l1_data_gas_price")?
+            .unwrap_or(GasPrice::ZERO);
+        let strk_l1_data_gas_price = row
+            .get_optional_gas_price("strk_l1_data_gas_price")?
+            .unwrap_or(GasPrice::ZERO);
         let sequencer_address = row.get_sequencer_address("sequencer_address")?;
         let transaction_commitment = row.get_transaction_commitment("transaction_commitment")?;
         let event_commitment = row.get_event_commitment("event_commitment")?;
@@ -311,6 +319,8 @@ pub(super) fn block_header(
             timestamp,
             eth_l1_gas_price,
             strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
             sequencer_address,
             class_commitment,
             event_commitment,
@@ -379,6 +389,7 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
+    use pretty_assertions_sorted::assert_eq;
 
     use super::*;
     use crate::Connection;
@@ -403,6 +414,8 @@ mod tests {
             timestamp: BlockTimestamp::new_or_panic(10),
             eth_l1_gas_price: GasPrice(32),
             strk_l1_gas_price: GasPrice(33),
+            eth_l1_data_gas_price: GasPrice(34),
+            strk_l1_data_gas_price: GasPrice(35),
             sequencer_address: sequencer_address_bytes!(b"sequencer address genesis"),
             starknet_version: StarknetVersion::default(),
             class_commitment,
@@ -552,6 +565,7 @@ mod tests {
 
     mod next_ancestor {
         use super::*;
+        use pretty_assertions_sorted::assert_eq;
 
         #[test]
         fn empty_chain_returns_none() {
@@ -613,6 +627,7 @@ mod tests {
 
     mod next_ancestor_without_parent {
         use super::*;
+        use pretty_assertions_sorted::assert_eq;
 
         #[test]
         fn empty_chain_returns_none() {

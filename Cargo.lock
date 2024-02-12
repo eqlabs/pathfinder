@@ -6348,6 +6348,7 @@ dependencies = [
  "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-serde",
+ "pretty_assertions_sorted",
  "primitive-types",
  "r2d2",
  "r2d2_sqlite",
