@@ -303,6 +303,12 @@ impl MainLoop {
                 }
             }
             // ===========================
+            // Pings
+            // ===========================
+            SwarmEvent::Behaviour(behaviour::Event::Ping(event)) => {
+                self.swarm.behaviour_mut().pinged(event);
+            }
+            // ===========================
             // Block propagation
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Gossipsub(gossipsub::Event::Message {

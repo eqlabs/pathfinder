@@ -5,12 +5,19 @@ use std::{
 };
 
 use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
+use sha3::{Digest, Sha3_256};
+
+use crate::secret::Secret;
 
 #[derive(Debug, Clone)]
 pub struct Peer {
     pub connectivity: Connectivity,
     pub direction: Direction,
     pub addr: Option<Multiaddr>,
+    pub keyed_network_group: Option<KeyedNetworkGroup>,
+    /// All peers send and receive periodic pings. This field holds the smallest ping time from all the
+    /// pings sent and received from this peer.
+    pub min_ping: Option<Duration>,
     pub evicted: bool,
     pub useful: bool,
     // TODO are we still able to maintain info about peers' sync heads?
@@ -138,5 +145,26 @@ impl PeerSet {
                 _ => Some((*peer_id, peer)),
             }
         })
+    }
+}
+
+/// A network group that is keyed by a secret, calculated as SHA3(secret || 16 bit prefix for IPv4
+/// or 32 bit prefix for IPv6 addresses).
+///
+/// For a given secret and IP address, the network group is deterministic, but unpredictable
+/// by the attacker. The keyed network group is used to ensure that our node is connected to a
+/// diverse set of IP addresses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct KeyedNetworkGroup(pub [u8; 32]);
+
+impl KeyedNetworkGroup {
+    pub fn new(secret: &Secret, addr: IpAddr) -> Self {
+        let mut hasher = Sha3_256::default();
+        secret.hash_into(&mut hasher);
+        match addr {
+            IpAddr::V4(ip) => hasher.update(&ip.octets()[..2]),
+            IpAddr::V6(ip) => hasher.update(&ip.octets()[..4]),
+        }
+        Self(hasher.finalize().into())
     }
 }
