@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use anyhow::Context;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockId, TransactionIndex};
-use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -18,7 +18,7 @@ crate::error::generate_rpc_error_subset!(
 pub async fn get_transaction_by_block_id_and_index_impl(
     context: RpcContext,
     input: GetTransactionByBlockIdAndIndexInput,
-) -> Result<GatewayTransaction, GetTransactionByBlockIdAndIndexError> {
+) -> Result<Transaction, GetTransactionByBlockIdAndIndexError> {
     let index: usize = input
         .index
         .get()
@@ -57,7 +57,7 @@ pub async fn get_transaction_by_block_id_and_index_impl(
             .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
-            Some(transaction) => Ok(transaction.into()),
+            Some(transaction) => Ok(transaction),
             None => {
                 // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                 // at all. If no, then the block hash is invalid. If yes, then the index is invalid.

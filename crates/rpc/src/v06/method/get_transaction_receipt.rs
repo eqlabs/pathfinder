@@ -45,7 +45,7 @@ pub async fn get_transaction_receipt_impl(
             .transactions
             .iter()
             .zip(pending.block.transaction_receipts.iter())
-            .find_map(|(t, r)| (t.hash() == input.transaction_hash).then(|| (t.clone(), r.clone())))
+            .find_map(|(t, r)| (t.hash == input.transaction_hash).then(|| (t.clone(), r.clone())))
         {
             let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
@@ -74,11 +74,11 @@ pub async fn get_transaction_receipt_impl(
 
         Ok(types::MaybePendingTransactionReceipt::Normal(
             types::TransactionReceipt::with_block_data(
-                receipt.into(),
+                receipt,
                 finality_status,
                 block_hash,
                 block_number,
-                transaction.into(),
+                transaction,
             ),
         ))
     });
@@ -98,9 +98,6 @@ pub mod types {
     use primitive_types::H256;
     use serde::Serialize;
     use serde_with::serde_as;
-    use starknet_gateway_types::reply::transaction::{
-        BuiltinCounters, ExecutionResources, L2ToL1Message,
-    };
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -285,7 +282,6 @@ pub mod types {
         }
     }
 
-    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
     #[serde_as]
     #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
@@ -311,7 +307,6 @@ pub mod types {
         pub keccak_builtin_applications: u64,
     }
 
-    /// Similar to [`ExecutionResources`], with irrelevant properties stripped.
     #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct ExecutionResourcesPropertiesV06 {
@@ -356,11 +351,11 @@ pub mod types {
         }
     }
 
-    impl From<ExecutionResources> for ExecutionResourcesProperties {
-        fn from(value: ExecutionResources) -> Self {
-            let ExecutionResources {
+    impl From<pathfinder_common::receipt::ExecutionResources> for ExecutionResourcesProperties {
+        fn from(value: pathfinder_common::receipt::ExecutionResources) -> Self {
+            let pathfinder_common::receipt::ExecutionResources {
                 builtin_instance_counter:
-                    BuiltinCounters {
+                    pathfinder_common::receipt::BuiltinCounters {
                         // Absent from the OpenRPC spec
                         output_builtin: _,
                         pedersen_builtin,
@@ -399,15 +394,11 @@ pub mod types {
         Reverted,
     }
 
-    impl From<starknet_gateway_types::reply::transaction::ExecutionStatus> for ExecutionStatus {
-        fn from(value: starknet_gateway_types::reply::transaction::ExecutionStatus) -> Self {
+    impl From<pathfinder_common::receipt::ExecutionStatus> for ExecutionStatus {
+        fn from(value: pathfinder_common::receipt::ExecutionStatus) -> Self {
             match value {
-                starknet_gateway_types::reply::transaction::ExecutionStatus::Succeeded => {
-                    Self::Succeeded
-                }
-                starknet_gateway_types::reply::transaction::ExecutionStatus::Reverted => {
-                    Self::Reverted
-                }
+                pathfinder_common::receipt::ExecutionStatus::Succeeded => Self::Succeeded,
+                pathfinder_common::receipt::ExecutionStatus::Reverted { .. } => Self::Reverted,
             }
         }
     }
@@ -459,11 +450,11 @@ pub mod types {
 
     impl TransactionReceipt {
         pub fn with_block_data(
-            receipt: starknet_gateway_types::reply::transaction::Receipt,
+            receipt: pathfinder_common::receipt::Receipt,
             finality_status: FinalityStatus,
             block_hash: BlockHash,
             block_number: BlockNumber,
-            transaction: starknet_gateway_types::reply::transaction::Transaction,
+            transaction: pathfinder_common::transaction::Transaction,
         ) -> Self {
             let fee_amount = receipt.actual_fee.unwrap_or_default();
             let fee_unit = match transaction.version() {
@@ -478,6 +469,8 @@ pub mod types {
                 unit: fee_unit,
             };
 
+            let revert_reason = receipt.revert_reason();
+
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
                 actual_fee,
@@ -486,30 +479,55 @@ pub mod types {
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
-                    .map(MessageToL1::from)
+                    .map(Into::into)
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
-                revert_reason: receipt.revert_error,
-                execution_resources: ExecutionResourcesProperties::from(
-                    receipt.execution_resources.unwrap_or_default(),
-                ),
+                revert_reason,
+                execution_resources: receipt.execution_resources.unwrap_or_default().into(),
                 execution_status: receipt.execution_status.into(),
                 finality_status,
             };
 
-            use starknet_gateway_types::reply::transaction::Transaction::*;
-            match transaction {
-                Declare(_) => Self::Declare(DeclareTransactionReceipt { common }),
-                Deploy(tx) => Self::Deploy(DeployTransactionReceipt {
+            use pathfinder_common::transaction::TransactionVariant;
+            match transaction.variant {
+                TransactionVariant::DeclareV0(_) => {
+                    Self::Declare(DeclareTransactionReceipt { common })
+                }
+                TransactionVariant::DeclareV1(_) => {
+                    Self::Declare(DeclareTransactionReceipt { common })
+                }
+                TransactionVariant::DeclareV2(_) => {
+                    Self::Declare(DeclareTransactionReceipt { common })
+                }
+                TransactionVariant::DeclareV3(_) => {
+                    Self::Declare(DeclareTransactionReceipt { common })
+                }
+                TransactionVariant::Deploy(tx) => Self::Deploy(DeployTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                DeployAccount(tx) => Self::DeployAccount(DeployAccountTransactionReceipt {
-                    common,
-                    contract_address: tx.contract_address(),
-                }),
-                Invoke(_) => Self::Invoke(InvokeTransactionReceipt { common }),
-                L1Handler(tx) => Self::L1Handler(L1HandlerTransactionReceipt {
+                TransactionVariant::DeployAccountV0V1(tx) => {
+                    Self::DeployAccount(DeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::DeployAccountV3(tx) => {
+                    Self::DeployAccount(DeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::InvokeV0(_) => {
+                    Self::Invoke(InvokeTransactionReceipt { common })
+                }
+                TransactionVariant::InvokeV1(_) => {
+                    Self::Invoke(InvokeTransactionReceipt { common })
+                }
+                TransactionVariant::InvokeV3(_) => {
+                    Self::Invoke(InvokeTransactionReceipt { common })
+                }
+                TransactionVariant::L1Handler(tx) => Self::L1Handler(L1HandlerTransactionReceipt {
                     common,
                     message_hash: tx.calculate_message_hash(),
                 }),
@@ -581,8 +599,8 @@ pub mod types {
 
     impl PendingTransactionReceipt {
         pub fn from(
-            receipt: starknet_gateway_types::reply::transaction::Receipt,
-            transaction: &starknet_gateway_types::reply::transaction::Transaction,
+            receipt: pathfinder_common::receipt::Receipt,
+            transaction: &pathfinder_common::transaction::Transaction,
         ) -> Self {
             let fee_amount = receipt.actual_fee.unwrap_or_default();
             let fee_unit = PriceUnit::for_transaction_version(&transaction.version());
@@ -592,16 +610,18 @@ pub mod types {
                 unit: fee_unit,
             };
 
+            let revert_reason = receipt.revert_reason();
+
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
                 actual_fee,
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
-                    .map(MessageToL1::from)
+                    .map(Into::into)
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
-                revert_reason: receipt.revert_error,
+                revert_reason,
                 execution_status: receipt.execution_status.into(),
                 execution_resources: ExecutionResourcesProperties::from(
                     receipt.execution_resources.unwrap_or_default(),
@@ -609,22 +629,51 @@ pub mod types {
                 finality_status: FinalityStatus::AcceptedOnL2,
             };
 
-            use starknet_gateway_types::reply::transaction::Transaction::*;
-            match transaction {
-                Declare(_) => Self::Declare(PendingDeclareTransactionReceipt { common }),
-                Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
+            use pathfinder_common::transaction::TransactionVariant;
+            match &transaction.variant {
+                TransactionVariant::DeclareV0(_) => {
+                    Self::Declare(PendingDeclareTransactionReceipt { common })
+                }
+                TransactionVariant::DeclareV1(_) => {
+                    Self::Declare(PendingDeclareTransactionReceipt { common })
+                }
+                TransactionVariant::DeclareV2(_) => {
+                    Self::Declare(PendingDeclareTransactionReceipt { common })
+                }
+                TransactionVariant::DeclareV3(_) => {
+                    Self::Declare(PendingDeclareTransactionReceipt { common })
+                }
+                TransactionVariant::Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                DeployAccount(tx) => Self::DeployAccount(PendingDeployAccountTransactionReceipt {
-                    common,
-                    contract_address: tx.contract_address(),
-                }),
-                Invoke(_) => Self::Invoke(PendingInvokeTransactionReceipt { common }),
-                L1Handler(tx) => Self::L1Handler(PendingL1HandlerTransactionReceipt {
-                    common,
-                    message_hash: tx.calculate_message_hash(),
-                }),
+                TransactionVariant::DeployAccountV0V1(tx) => {
+                    Self::DeployAccount(PendingDeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::DeployAccountV3(tx) => {
+                    Self::DeployAccount(PendingDeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::InvokeV0(_) => {
+                    Self::Invoke(PendingInvokeTransactionReceipt { common })
+                }
+                TransactionVariant::InvokeV1(_) => {
+                    Self::Invoke(PendingInvokeTransactionReceipt { common })
+                }
+                TransactionVariant::InvokeV3(_) => {
+                    Self::Invoke(PendingInvokeTransactionReceipt { common })
+                }
+                TransactionVariant::L1Handler(tx) => {
+                    Self::L1Handler(PendingL1HandlerTransactionReceipt {
+                        common,
+                        message_hash: tx.calculate_message_hash(),
+                    })
+                }
             }
         }
     }
@@ -642,12 +691,12 @@ pub mod types {
         pub payload: Vec<L2ToL1MessagePayloadElem>,
     }
 
-    impl MessageToL1 {
-        fn from(msg: L2ToL1Message) -> Self {
+    impl From<pathfinder_common::receipt::L2ToL1Message> for MessageToL1 {
+        fn from(value: pathfinder_common::receipt::L2ToL1Message) -> Self {
             Self {
-                from_address: msg.from_address,
-                to_address: msg.to_address,
-                payload: msg.payload,
+                from_address: value.from_address,
+                to_address: value.to_address,
+                payload: value.payload,
             }
         }
     }
@@ -711,9 +760,9 @@ mod tests {
     use super::types::ExecutionResourcesProperties;
     use super::*;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::receipt::{BuiltinCounters, ExecutionResources};
     use pathfinder_common::{BlockNumber, EthereumAddress};
     use primitive_types::H160;
-    use starknet_gateway_types::reply::transaction::{BuiltinCounters, ExecutionResources};
 
     mod parsing {
         use super::*;
@@ -881,7 +930,7 @@ mod tests {
             n_memory_holes: 10,
         };
 
-        let into = ExecutionResourcesProperties::from(original);
+        let into = ExecutionResourcesProperties::from(original.clone());
         let into = match into {
             ExecutionResourcesProperties::V06(x) => x,
             ExecutionResourcesProperties::V05(_) => panic!("Expected V06"),

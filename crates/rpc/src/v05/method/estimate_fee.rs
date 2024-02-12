@@ -131,8 +131,8 @@ pub async fn estimate_fee(
 
         let transactions = input
             .request
-            .iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(tx, context.chain_id))
+            .into_iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
         let result = pathfinder_executor::estimate(state, transactions, false)?;

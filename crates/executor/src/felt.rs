@@ -27,11 +27,11 @@ impl IntoStarkFelt for Felt {
     }
 }
 
-impl IntoStarkFelt for starknet_gateway_types::reply::transaction::DataAvailabilityMode {
+impl IntoStarkFelt for pathfinder_common::transaction::DataAvailabilityMode {
     fn into_starkfelt(self) -> StarkFelt {
         match self {
-            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L1 => StarkFelt::ZERO,
-            starknet_gateway_types::reply::transaction::DataAvailabilityMode::L2 => StarkFelt::ONE,
+            pathfinder_common::transaction::DataAvailabilityMode::L1 => StarkFelt::ZERO,
+            pathfinder_common::transaction::DataAvailabilityMode::L2 => StarkFelt::ONE,
         }
     }
 }

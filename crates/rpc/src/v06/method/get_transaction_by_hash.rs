@@ -11,9 +11,6 @@ pub async fn get_transaction_by_hash(
 ) -> Result<TransactionWithHash, GetTransactionByHashError> {
     v02_get_transaction_by_hash::get_transaction_by_hash_impl(context, input)
         .await?
-        .map(|x| {
-            let common_tx = pathfinder_common::transaction::Transaction::from(x);
-            common_tx.into()
-        })
+        .map(Into::into)
         .ok_or(GetTransactionByHashError::TxnHashNotFound)
 }

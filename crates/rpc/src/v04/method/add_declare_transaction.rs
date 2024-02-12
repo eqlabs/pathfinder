@@ -215,9 +215,20 @@ pub async fn add_declare_transaction(
                     add_transaction::Declare::V3(add_transaction::DeclareV3 {
                         signature: tx.signature,
                         nonce: tx.nonce,
-                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
-                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
-                        resource_bounds: tx.resource_bounds.into(),
+                        nonce_data_availability_mode:
+                            pathfinder_common::transaction::DataAvailabilityMode::from(
+                                tx.nonce_data_availability_mode,
+                            )
+                            .into(),
+                        fee_data_availability_mode:
+                            pathfinder_common::transaction::DataAvailabilityMode::from(
+                                tx.fee_data_availability_mode,
+                            )
+                            .into(),
+                        resource_bounds: pathfinder_common::transaction::ResourceBounds::from(
+                            tx.resource_bounds,
+                        )
+                        .into(),
                         tip: tx.tip,
                         paymaster_data: tx.paymaster_data,
                         contract_class: contract_definition,

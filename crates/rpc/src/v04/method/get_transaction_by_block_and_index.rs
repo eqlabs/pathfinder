@@ -11,8 +11,5 @@ pub async fn get_transaction_by_block_id_and_index(
 ) -> Result<TransactionWithHash, GetTransactionByBlockIdAndIndexError> {
     get_transaction_by_block_id_and_index_impl(context, input)
         .await
-        .map(|x| {
-            let common_tx = pathfinder_common::transaction::Transaction::from(x);
-            common_tx.into()
-        })
+        .map(Into::into)
 }

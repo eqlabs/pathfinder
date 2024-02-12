@@ -10,8 +10,6 @@ use pathfinder_common::{
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 
-use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
-
 /// Equivalent to the TXN type from the specification.
 #[derive(PartialEq, Debug, Clone, Eq)]
 pub struct Transaction(pub pathfinder_common::transaction::TransactionVariant);
@@ -30,12 +28,6 @@ impl From<pathfinder_common::transaction::Transaction> for TransactionWithHash {
             transaction_hash: value.hash,
             txn: Transaction(value.variant),
         }
-    }
-}
-
-impl From<GatewayTransaction> for TransactionWithHash {
-    fn from(value: GatewayTransaction) -> Self {
-        pathfinder_common::transaction::Transaction::from(value).into()
     }
 }
 

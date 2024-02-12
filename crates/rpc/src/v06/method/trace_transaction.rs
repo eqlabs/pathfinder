@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::TransactionHash;
 use pathfinder_executor::{ExecutionState, TraceCache, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
@@ -106,7 +107,7 @@ pub async fn trace_transaction(
     #[allow(clippy::large_enum_variant)]
     enum LocalExecution {
         Success(TransactionTrace),
-        Unsupported(starknet_gateway_types::reply::transaction::Transaction),
+        Unsupported(Transaction),
     }
 
     let span = tracing::Span::current();
@@ -129,7 +130,7 @@ pub async fn trace_transaction(
             .block
             .transactions
             .iter()
-            .find(|tx| tx.hash() == input.transaction_hash)
+            .find(|tx| tx.hash == input.transaction_hash)
         {
             let header = pending.header();
 
@@ -173,7 +174,7 @@ pub async fn trace_transaction(
                     .context("Fetching transaction data")?
                     .context("Transaction data missing")?;
 
-                return Ok(LocalExecution::Unsupported(transaction.into()));
+                return Ok(LocalExecution::Unsupported(transaction));
             }
 
             let transactions = db

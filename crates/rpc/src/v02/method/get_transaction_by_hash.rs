@@ -1,8 +1,7 @@
 use crate::context::RpcContext;
 use anyhow::Context;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::TransactionHash;
-
-use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -13,7 +12,7 @@ pub struct GetTransactionByHashInput {
 pub async fn get_transaction_by_hash_impl(
     context: RpcContext,
     input: GetTransactionByHashInput,
-) -> anyhow::Result<Option<GatewayTransaction>> {
+) -> anyhow::Result<Option<Transaction>> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
@@ -33,7 +32,7 @@ pub async fn get_transaction_by_hash_impl(
             .block
             .transactions
             .iter()
-            .find(|tx| tx.hash() == input.transaction_hash)
+            .find(|tx| tx.hash == input.transaction_hash)
             .cloned()
         {
             return Ok(Some(tx));

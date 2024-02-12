@@ -88,13 +88,13 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::transaction::{L1HandlerTransaction, Transaction, TransactionVariant};
     use pathfinder_common::{
         BlockHash, BlockNumber, BlockTimestamp, GasPrice, StarknetVersion, StateCommitment,
-        StateUpdate, TransactionVersion,
+        StateUpdate,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
-    use starknet_gateway_types::reply::transaction::L1HandlerTransaction;
     use starknet_gateway_types::reply::{Block, MaybePendingBlock, PendingBlock, Status};
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
@@ -129,16 +129,16 @@ mod tests {
             timestamp: BlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
             transactions: vec![
-                starknet_gateway_types::reply::transaction::Transaction::L1Handler(
+                pathfinder_common::transaction::Transaction{
+                    hash: transaction_hash!("0x22"),
+                    variant: pathfinder_common::transaction::TransactionVariant::L1Handler(
                     L1HandlerTransaction {
                         contract_address: contract_address!("0x1"),
                         entry_point_selector: entry_point!("0x55"),
                         nonce: transaction_nonce!("0x2"),
                         calldata: Vec::new(),
-                        transaction_hash: transaction_hash!("0x22"),
-                        version: TransactionVersion::ONE,
                     },
-                )
+                )}
             ],
             starknet_version: StarknetVersion::default(),
         };
@@ -192,33 +192,27 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         let mut b0 = PENDING_BLOCK.clone();
-        b0.transactions.push(
-            starknet_gateway_types::reply::transaction::Transaction::L1Handler(
-                L1HandlerTransaction {
-                    contract_address: contract_address!("0x1"),
-                    entry_point_selector: entry_point!("0x55"),
-                    nonce: transaction_nonce!("0x2"),
-                    calldata: Vec::new(),
-                    transaction_hash: transaction_hash!("0x22"),
-                    version: TransactionVersion::ONE,
-                },
-            ),
-        );
+        b0.transactions.push(Transaction {
+            hash: transaction_hash!("0x22"),
+            variant: TransactionVariant::L1Handler(L1HandlerTransaction {
+                contract_address: contract_address!("0x1"),
+                entry_point_selector: entry_point!("0x55"),
+                nonce: transaction_nonce!("0x2"),
+                calldata: Vec::new(),
+            }),
+        });
         let b0_copy = b0.clone();
 
         let mut b1 = b0.clone();
-        b1.transactions.push(
-            starknet_gateway_types::reply::transaction::Transaction::L1Handler(
-                L1HandlerTransaction {
-                    contract_address: contract_address!("0x1"),
-                    entry_point_selector: entry_point!("0x55"),
-                    nonce: transaction_nonce!("0x2"),
-                    calldata: Vec::new(),
-                    transaction_hash: transaction_hash!("0x22"),
-                    version: TransactionVersion::ONE,
-                },
-            ),
-        );
+        b1.transactions.push(Transaction {
+            hash: transaction_hash!("0x22"),
+            variant: TransactionVariant::L1Handler(L1HandlerTransaction {
+                contract_address: contract_address!("0x1"),
+                entry_point_selector: entry_point!("0x55"),
+                nonce: transaction_nonce!("0x2"),
+                calldata: Vec::new(),
+            }),
+        });
         let b1_copy = b1.clone();
 
         lazy_static::lazy_static!(
