@@ -1,8 +1,11 @@
 [package]
 name = "p2p_stream"
 description = "Extension of libp2p-request-response that allows for streaming responses to a single request."
-authors = ["Parity Technologies <admin@parity.io>", "Equilibrium Labs <info@equilibrium.co>"]
-version = "0.1.0"
+authors = [
+    "Parity Technologies <admin@parity.io>",
+    "Equilibrium Labs <info@equilibrium.co>",
+]
+version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }

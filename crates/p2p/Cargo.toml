@@ -1,6 +1,6 @@
 [package]
 name = "p2p"
-version = "0.1.0"
+version = { workspace = true }
 description = "Pathfinder P2P"
 authors = { workspace = true }
 edition = { workspace = true }

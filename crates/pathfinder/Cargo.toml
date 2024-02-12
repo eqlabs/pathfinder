@@ -1,6 +1,6 @@
 [package]
 name = "pathfinder"
-version = "0.10.3"
+version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
