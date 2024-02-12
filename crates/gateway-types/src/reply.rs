@@ -2249,6 +2249,9 @@ mod tests {
             // This is from integration starknet_version 0.13.0 and contains a new v3 declare transaction.
             serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319709).unwrap();
             serde_json::from_str::<MaybePendingBlock>(v0_13_0::block::PENDING).unwrap();
+            // This is from integration starknet_version 0.13.0 and contains data gas prices.
+            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_329543).unwrap();
+            serde_json::from_str::<MaybePendingBlock>(v0_13_1::block::PENDING).unwrap();
         }
 
         #[test]
