@@ -197,9 +197,8 @@ mod v1_1_1 {
 // This compiler is backwards compatible with v1.1.
 mod v2 {
     use anyhow::Context;
-    use casm_compiler_v2::allowed_libfuncs::{validate_compatible_sierra_version, ListSelector};
-    use casm_compiler_v2::casm_contract_class::CasmContractClass;
-    use casm_compiler_v2::contract_class::ContractClass;
+    use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
+    use cairo_lang_starknet_classes::contract_class::ContractClass;
 
     use super::FeederGatewayContractClass;
 
@@ -222,15 +221,17 @@ mod v2 {
             .try_into()
             .context("Converting to Sierra class")?;
 
-        validate_compatible_sierra_version(
-            &sierra_class,
-            ListSelector::ListName(
-                casm_compiler_v2::allowed_libfuncs::BUILTIN_ALL_LIBFUNCS_LIST.to_string(),
-            ),
-        )
-        .context("Validating Sierra class")?;
+        sierra_class
+            .validate_version_compatible(
+                cairo_lang_starknet_classes::allowed_libfuncs::ListSelector::ListName(
+                    cairo_lang_starknet_classes::allowed_libfuncs::BUILTIN_ALL_LIBFUNCS_LIST
+                        .to_string(),
+                ),
+            )
+            .context("Validating Sierra class")?;
 
-        let casm_class = CasmContractClass::from_contract_class(sierra_class, true)
+        // TODO: determine `max_bytecode_size`
+        let casm_class = CasmContractClass::from_contract_class(sierra_class, true, usize::MAX)
             .context("Compiling to CASM")?;
         let casm_definition = serde_json::to_vec(&casm_class)?;
 
@@ -312,7 +313,8 @@ mod tests {
                 serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_1_0_RC0_SIERRA)
                     .unwrap();
 
-            let _: casm_compiler_v2::contract_class::ContractClass = class.try_into().unwrap();
+            let _: cairo_lang_starknet_classes::contract_class::ContractClass =
+                class.try_into().unwrap();
         }
 
         #[test]
