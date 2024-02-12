@@ -77,57 +77,59 @@ impl Sync {
     ///
     /// No guarantees are made about any headers newer than the anchor.
     async fn sync_headers(&self, anchor: EthereumStateUpdate) -> anyhow::Result<()> {
-        while let Some(gap) =
-            headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
-                .await
-                .context("Finding next gap in header chain")?
-        {
-            use futures::StreamExt;
-            use futures::TryStreamExt;
+        // FIXME
+        todo!();
+        // while let Some(gap) =
+        //     headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
+        //         .await
+        //         .context("Finding next gap in header chain")?
+        // {
+        //     use futures::StreamExt;
+        //     use futures::TryStreamExt;
 
-            // TODO: create a tracing scope for this gap start, stop.
+        //     // TODO: create a tracing scope for this gap start, stop.
 
-            tracing::info!("Syncing headers");
+        //     tracing::info!("Syncing headers");
 
-            // TODO: consider .inspect_ok(tracing::trace!) for each stage.
-            let result = self
-                .p2p
-                .clone()
-                // TODO: consider buffering in the client to reduce request latency.
-                .header_stream(gap.head, gap.tail, true)
-                .scan((gap.head, gap.head_hash, false), headers::check_continuity)
-                // TODO: rayon scope this.
-                .and_then(headers::verify)
-                // chunk so that persisting to storage can be batched.
-                .try_chunks(1024)
-                // TODO: Pull out remaining data from try_chunks error.
-                //       try_chunks::Error is a tuple of Err(data, error) so we
-                //       should re-stream that as Ok(data), Err(error). Right now
-                //       we just map to Err(error).
-                .map_err(|e| e.1)
-                .and_then(|x| headers::persist(x, self.storage.clone()))
-                .inspect_ok(|x| tracing::info!(tail=%x.data.header.number, "Header chunk synced"))
-                // Drive stream to completion.
-                .try_fold((), |_state, _x| std::future::ready(Ok(())))
-                .await;
+        //     // TODO: consider .inspect_ok(tracing::trace!) for each stage.
+        //     let result = self
+        //         .p2p
+        //         .clone()
+        //         // TODO: consider buffering in the client to reduce request latency.
+        //         .header_stream(gap.head, gap.tail, true)
+        //         .scan((gap.head, gap.head_hash, false), headers::check_continuity)
+        //         // TODO: rayon scope this.
+        //         .and_then(headers::verify)
+        //         // chunk so that persisting to storage can be batched.
+        //         .try_chunks(1024)
+        //         // TODO: Pull out remaining data from try_chunks error.
+        //         //       try_chunks::Error is a tuple of Err(data, error) so we
+        //         //       should re-stream that as Ok(data), Err(error). Right now
+        //         //       we just map to Err(error).
+        //         .map_err(|e| e.1)
+        //         .and_then(|x| headers::persist(x, self.storage.clone()))
+        //         .inspect_ok(|x| tracing::info!(tail=%x.data.header.number, "Header chunk synced"))
+        //         // Drive stream to completion.
+        //         .try_fold((), |_state, _x| std::future::ready(Ok(())))
+        //         .await;
 
-            match result {
-                Ok(()) => {
-                    tracing::info!("Syncing headers complete");
-                }
-                Err(error) => {
-                    if let Some(peer_data) = error.peer_id_and_data() {
-                        // TODO: punish peer.
-                        tracing::debug!(
-                            peer=%peer_data.peer, block=%peer_data.data.header.number, %error,
-                            "Error while streaming headers"
-                        );
-                    } else {
-                        tracing::debug!(%error, "Error while streaming headers");
-                    }
-                }
-            }
-        }
+        //     match result {
+        //         Ok(()) => {
+        //             tracing::info!("Syncing headers complete");
+        //         }
+        //         Err(error) => {
+        //             if let Some(peer_data) = error.peer_id_and_data() {
+        //                 // TODO: punish peer.
+        //                 tracing::debug!(
+        //                     peer=%peer_data.peer, block=%peer_data.data.header.number, %error,
+        //                     "Error while streaming headers"
+        //                 );
+        //             } else {
+        //                 tracing::debug!(%error, "Error while streaming headers");
+        //             }
+        //         }
+        //     }
+        // }
         Ok(())
     }
 }

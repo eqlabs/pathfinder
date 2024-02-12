@@ -365,8 +365,8 @@ fn get_events_for_block(
 }
 
 /// Assupmtions:
-/// - `block_handler` returns Ok(true) if the iteration should continue.
-/// - T::default() always returns the `Fin` variant of the implementing type.
+/// - `block_handler` returns `Ok(true)` if the iteration should continue.
+/// - `T::default()` always returns the `Fin` variant of the implementing type.
 fn iterate<T: Default>(
     tx: Transaction<'_>,
     iteration: Iteration,

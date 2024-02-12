@@ -9,9 +9,11 @@ use pathfinder_common::transaction::{
     ResourceBound, ResourceBounds, TransactionVariant,
 };
 use pathfinder_common::{
-    AccountDeploymentDataElem, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, EntryPoint, EventData, EventKey, Fee, PaymasterDataElem, Tip,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    AccountDeploymentDataElem, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
+    BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
+    ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
+    PaymasterDataElem, SequencerAddress, StarknetVersion, StateCommitment, Tip,
+    TransactionCommitment, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 
 /// We don't want to introduce circular dependencies between crates
@@ -20,6 +22,88 @@ pub trait TryFromDto<T> {
     fn try_from_dto(dto: T) -> anyhow::Result<Self>
     where
         Self: Sized;
+}
+
+/// Represents a simplified [`pathfinder_common::SignedBlockHeader`], ie. excluding class commitment and storage commitment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedBlockHeader {
+    pub hash: BlockHash,
+    pub parent_hash: BlockHash,
+    pub number: BlockNumber,
+    pub timestamp: BlockTimestamp,
+    pub eth_l1_gas_price: GasPrice,
+    pub sequencer_address: SequencerAddress,
+    pub starknet_version: StarknetVersion,
+    pub event_commitment: EventCommitment,
+    pub state_commitment: StateCommitment,
+    pub transaction_commitment: TransactionCommitment,
+    pub transaction_count: usize,
+    pub event_count: usize,
+    pub signature: BlockCommitmentSignature,
+}
+
+impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
+    type Error = anyhow::Error;
+
+    fn try_from(dto: p2p_proto::header::SignedBlockHeader) -> Result<Self, Self::Error> {
+        anyhow::ensure!(dto.signatures.len() == 1, "expected exactly one signature");
+        let signature = dto
+            .signatures
+            .into_iter()
+            .map(|sig| BlockCommitmentSignature {
+                r: BlockCommitmentSignatureElem(sig.r),
+                s: BlockCommitmentSignatureElem(sig.s),
+            })
+            .next()
+            .expect("exactly one element");
+        Ok(SignedBlockHeader {
+            hash: BlockHash(dto.block_hash.0),
+            parent_hash: BlockHash(dto.parent_hash.0),
+            number: BlockNumber::new(dto.number)
+                .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
+            timestamp: BlockTimestamp::new(dto.time)
+                .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
+            eth_l1_gas_price: dto.gas_price.into(),
+            sequencer_address: SequencerAddress(dto.sequencer_address.0),
+            starknet_version: dto.protocol_version.into(),
+            event_commitment: EventCommitment(dto.events.root.0),
+            state_commitment: StateCommitment(dto.state.root.0),
+            transaction_commitment: TransactionCommitment(dto.transactions.root.0),
+            transaction_count: dto.transactions.n_leaves.try_into()?,
+            event_count: dto.events.n_leaves.try_into()?,
+            signature,
+        })
+    }
+}
+
+impl
+    From<(
+        pathfinder_common::BlockHeader,
+        pathfinder_common::BlockCommitmentSignature,
+    )> for SignedBlockHeader
+{
+    fn from(
+        (header, signature): (
+            pathfinder_common::BlockHeader,
+            pathfinder_common::BlockCommitmentSignature,
+        ),
+    ) -> Self {
+        Self {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            sequencer_address: header.sequencer_address,
+            starknet_version: header.starknet_version,
+            event_commitment: header.event_commitment,
+            state_commitment: header.state_commitment,
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header.transaction_count,
+            event_count: header.event_count,
+            signature,
+        }
+    }
 }
 
 /// Deployed contract address has not been computed for deploy account transactions.
