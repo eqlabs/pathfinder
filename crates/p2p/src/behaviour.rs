@@ -41,6 +41,12 @@ pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
 pub struct Behaviour {
     cfg: Config,
     peers: PeerSet,
+    swarm: crate::Client,
+    /// Secret value used in the peer eviction process.
+    ///
+    /// This value is used to pick the peer to be evicted in a deterministic, but
+    /// unpredictable way.
+    eviction_secret: [u8; 32],
     inner: Inner,
 }
 
@@ -332,6 +338,9 @@ impl NetworkBehaviour for Behaviour {
             if effective_role.is_dialer() {
                 // This really is an outbound connection, and not a connection that requires
                 // hole-punching.
+
+                self.evict_outbound_peer()?;
+
                 self.peers.upsert(
                     peer_id,
                     |peer| {
@@ -365,6 +374,7 @@ impl Behaviour {
     pub fn new(
         identity: &identity::Keypair,
         chain_id: ChainId,
+        swarm: crate::Client,
         cfg: Config,
     ) -> (Self, relay::client::Transport) {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
@@ -414,6 +424,8 @@ impl Behaviour {
             Self {
                 peers: PeerSet::new(cfg.eviction_timeout),
                 cfg,
+                swarm,
+                eviction_secret: identity.derive_secret(b"eviction").unwrap(),
                 inner: Inner {
                     relay,
                     autonat: autonat::Behaviour::new(peer_id, Default::default()),
@@ -468,6 +480,59 @@ impl Behaviour {
         Ok(())
     }
 
+    /// Evict an outbound peer if the maximum number of outbound peers has been reached.
+    fn evict_outbound_peer(&mut self) -> Result<(), ConnectionDenied> {
+        let mut candidates: Vec<_> = self.outbound_peers().collect();
+        if candidates.len() < self.cfg.max_outbound_peers {
+            return Ok(());
+        }
+
+        // Only peers which are flagged as not useful are considered for eviction.
+        candidates.retain(|(_, peer)| !peer.useful);
+
+        // The peer to be evicted is the one with the highest SHA3(eviction_secret || peer_id)
+        // value. This is deterministic but unpredictable by any outside observer.
+        candidates.sort_by_key(|(peer_id, _)| {
+            use sha3::{Digest, Sha3_256};
+            let mut hasher = Sha3_256::default();
+            hasher.update(self.eviction_secret);
+            hasher.update(peer_id.to_bytes());
+            hasher.finalize()
+        });
+        let (peer_id, _) = candidates.pop().ok_or_else(|| {
+            tracing::debug!("Outbound peer limit reached, but no peers could be evicted");
+            ConnectionDenied::new(anyhow!(
+                "outbound peer limit reached and no peers could be evicted"
+            ))
+        })?;
+        drop(candidates);
+
+        // Disconnect the evicted peer.
+        tracing::debug!(%peer_id, "Evicting outbound peer");
+        self.peers.update(peer_id, |peer| {
+            peer.connectivity = Connectivity::Disconnecting {
+                connected_at: peer.connected_at(),
+            };
+            peer.evicted = true;
+        });
+        tokio::spawn({
+            let swarm = self.swarm.clone();
+            async move {
+                if let Err(e) = swarm.disconnect(peer_id).await {
+                    tracing::debug!(%peer_id, %e, "Failed to disconnect evicted peer");
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    pub fn not_useful(&mut self, peer_id: PeerId) {
+        self.peers.update(peer_id, |peer| {
+            peer.useful = false;
+        });
+    }
+
     pub fn kademlia_mut(&mut self) -> &mut kad::Behaviour<MemoryStore> {
         &mut self.inner.kademlia
     }
@@ -500,18 +565,18 @@ impl Behaviour {
         self.peers.iter()
     }
 
-    pub fn num_outbound_peers(&self) -> usize {
+    /// Outbound peers connected to us.
+    pub fn outbound_peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
         self.peers
             .iter()
-            .filter(|(_, peer)| peer.is_outbound())
-            .count()
+            .filter(|(_, peer)| peer.is_connected() && peer.is_outbound())
     }
 
     /// Number of inbound non-relayed peers.
     fn num_inbound_direct_peers(&self) -> usize {
         self.peers
             .iter()
-            .filter(|(_, peer)| peer.is_inbound() && !peer.is_relayed())
+            .filter(|(_, peer)| peer.is_connected() && peer.is_inbound() && !peer.is_relayed())
             .count()
     }
 
@@ -519,7 +584,7 @@ impl Behaviour {
     fn num_inbound_relayed_peers(&self) -> usize {
         self.peers
             .iter()
-            .filter(|(_, peer)| peer.is_inbound() && peer.is_relayed())
+            .filter(|(_, peer)| peer.is_connected() && peer.is_inbound() && peer.is_relayed())
             .count()
     }
 }

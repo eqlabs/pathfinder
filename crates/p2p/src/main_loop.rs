@@ -172,9 +172,14 @@ impl MainLoop {
                             _ => self.ongoing_bootstrap = None,
                         }
                     }
-                    if self.swarm.behaviour_mut().num_outbound_peers() < self.cfg.low_watermark {
+                    if self.swarm.behaviour_mut().outbound_peers().count() < self.cfg.low_watermark {
                         if let Ok(query_id) = self.swarm.behaviour_mut().kademlia_mut().bootstrap() {
                             self.ongoing_bootstrap = Some(query_id);
+                            send_test_event(
+                                &self.event_sender,
+                                TestEvent::KademliaBootstrapStarted,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -229,6 +234,7 @@ impl MainLoop {
                 connection_id: _, // TODO consider tracking connection IDs for peers
                 ..
             } => {
+                tracing::debug!(%peer_id, "Connection closed");
                 if num_established == 0 {
                     send_test_event(
                         &self.event_sender,
@@ -856,6 +862,10 @@ impl MainLoop {
                 let data: Vec<u8> = new_block.to_protobuf().encode_to_vec();
                 let result = self.publish_data(topic, &data);
                 let _ = sender.send(result);
+            }
+            Command::NotUseful { peer_id, sender } => {
+                self.swarm.behaviour_mut().not_useful(peer_id);
+                let _ = sender.send(());
             }
             Command::_Test(command) => self.handle_test_command(command).await,
         };
