@@ -572,12 +572,14 @@ impl Behaviour {
             hasher.update(peer_id.to_bytes());
             hasher.finalize()
         });
-        let (peer_id, _) = candidates.pop().ok_or_else(|| {
+        let Some((peer_id, _)) = candidates.pop() else {
             tracing::debug!(
                 "Outbound peer limit reached, but no peers could be evicted, disconnecting"
             );
-            ConnectionDenied::new("outbound peer limit reached and no peers could be evicted")
-        })?;
+            return Err(ConnectionDenied::new(
+                "outbound peer limit reached and no peers could be evicted",
+            ));
+        };
         drop(candidates);
 
         // Disconnect the evicted peer.
@@ -699,12 +701,14 @@ impl Behaviour {
                 other => other,
             }
         });
-        let (peer_id, _) = candidates.into_iter().next().ok_or_else(|| {
+        let Some((peer_id, _)) = candidates.into_iter().next() else {
             tracing::debug!(
                 "Inbound peer limit reached, but no peers could be evicted, disconnecting"
             );
-            ConnectionDenied::new("inbound peer limit reached and no peers could be evicted")
-        })?;
+            return Err(ConnectionDenied::new(
+                "inbound peer limit reached and no peers could be evicted",
+            ));
+        };
 
         // Disconnect the evicted peer.
         tracing::debug!(%peer_id, "Evicting inbound peer");
