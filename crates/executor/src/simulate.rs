@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use anyhow::Context;
 use blockifier::{
     state::{cached_state::CachedState, errors::StateError, state_api::State},
     transaction::transaction_execution::Transaction,
@@ -32,7 +33,13 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub struct TraceCache(Arc<Mutex<SizedCache<BlockHash, Traces>>>);
+enum CacheItem {
+    Inflight(tokio::sync::broadcast::Sender<Traces>),
+    Cached(Traces),
+}
+
+#[derive(Debug, Clone)]
+pub struct TraceCache(Arc<Mutex<SizedCache<BlockHash, CacheItem>>>);
 
 type Traces = Vec<(TransactionHash, TransactionTrace)>;
 
@@ -126,11 +133,31 @@ pub fn trace(
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let cached = { cache.0.lock().unwrap().cache_get(&block_hash).cloned() };
-    if let Some(cached) = cached {
-        tracing::trace!(block=%block_hash, "trace cache hit");
-        return Ok(cached);
-    }
+    let sender = {
+        let mut cache = cache.0.lock().unwrap();
+        match cache.cache_get(&block_hash) {
+            Some(CacheItem::Cached(cached)) => {
+                tracing::trace!(block=%block_hash, "trace cache hit");
+                return Ok(cached.clone());
+            }
+            Some(CacheItem::Inflight(receiver)) => {
+                tracing::trace!(block=%block_hash, "trace already inflight");
+                let mut receiver = receiver.subscribe();
+                drop(cache);
+
+                let trace = receiver
+                    .blocking_recv()
+                    .context("Waiting for inflight trace")?;
+                return Ok(trace);
+            }
+            None => {
+                tracing::trace!(block=%block_hash, "trace cache miss");
+                let (sender, _receiver) = tokio::sync::broadcast::channel(1);
+                cache.cache_set(block_hash, CacheItem::Inflight(sender.clone()));
+                sender
+            }
+        }
+    };
 
     tracing::trace!(block=%block_hash, "trace cache miss");
     let mut traces = Vec::with_capacity(transactions.len());
@@ -154,11 +181,14 @@ pub fn trace(
         let trace = to_trace(tx_type, tx_info, state_diff);
         traces.push((hash, trace));
     }
+
+    let _ = sender.send(traces.clone());
+
     cache
         .0
         .lock()
         .unwrap()
-        .cache_set(block_hash, traces.clone());
+        .cache_set(block_hash, CacheItem::Cached(traces.clone()));
     Ok(traces)
 }
 

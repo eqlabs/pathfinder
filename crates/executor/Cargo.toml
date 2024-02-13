@@ -19,4 +19,5 @@ pathfinder-storage = { path = "../storage" }
 primitive-types = { workspace = true, features = ["serde"] }
 starknet-gateway-types = { path = "../gateway-types" }
 starknet_api = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }

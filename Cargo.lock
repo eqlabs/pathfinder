@@ -6224,6 +6224,7 @@ dependencies = [
  "primitive-types",
  "starknet-gateway-types",
  "starknet_api",
+ "tokio",
  "tracing",
 ]
 
