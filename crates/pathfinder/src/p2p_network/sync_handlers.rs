@@ -367,7 +367,7 @@ fn get_events_for_block(
 /// Assupmtions:
 /// - `block_handler` returns `Ok(true)` if the iteration should continue.
 /// - `T::default()` always returns the `Fin` variant of the implementing type.
-fn iterate<T: Default>(
+fn iterate<T: Default + std::fmt::Debug>(
     tx: Transaction<'_>,
     iteration: Iteration,
     block_handler: impl Fn(&Transaction<'_>, BlockNumber, &mut Vec<T>) -> anyhow::Result<bool>,
@@ -391,8 +391,9 @@ fn iterate<T: Default>(
     };
 
     let mut responses = Vec::new();
+    let limit = limit.min(MAX_BLOCKS_COUNT);
 
-    for i in 0..limit.min(MAX_BLOCKS_COUNT) {
+    for i in 0..limit {
         if block_handler(&tx, block_number, &mut responses)? {
             // Block data retrieved successfully
         } else {
