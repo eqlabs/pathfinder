@@ -6082,7 +6082,6 @@ dependencies = [
  "clap",
  "console-subscriber",
  "const-decoder",
- "crossbeam-channel",
  "fake",
  "flate2",
  "futures",
