@@ -138,7 +138,7 @@ impl StateReader for PathfinderStateReader<'_> {
             pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
 
         let _span =
-            tracing::debug_span!("get_storage_at", contract_address=%pathfinder_contract_address, %storage_key)
+            tracing::trace_span!("get_storage_at", contract_address=%pathfinder_contract_address, %storage_key)
                 .entered();
 
         tracing::trace!("Getting storage value");
@@ -166,7 +166,7 @@ impl StateReader for PathfinderStateReader<'_> {
             pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
 
         let _span =
-            tracing::debug_span!("get_nonce_at", contract_address=%pathfinder_contract_address)
+            tracing::trace_span!("get_nonce_at", contract_address=%pathfinder_contract_address)
                 .entered();
 
         tracing::trace!("Getting nonce for contract");
@@ -193,7 +193,7 @@ impl StateReader for PathfinderStateReader<'_> {
         let pathfinder_contract_address =
             pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
 
-        let _span = tracing::debug_span!("get_class_hash_at", contract_address=%pathfinder_contract_address).entered();
+        let _span = tracing::trace_span!("get_class_hash_at", contract_address=%pathfinder_contract_address).entered();
 
         tracing::trace!("Getting class hash at contract");
 
@@ -226,7 +226,7 @@ impl StateReader for PathfinderStateReader<'_> {
         let pathfinder_class_hash = ClassHash(class_hash.0.into_felt());
 
         let _span =
-            tracing::debug_span!("get_compiled_contract_class", class_hash=%pathfinder_class_hash)
+            tracing::trace_span!("get_compiled_contract_class", class_hash=%pathfinder_class_hash)
                 .entered();
 
         if let Some(entry) = GLOBAL_CACHE.get(class_hash)? {
