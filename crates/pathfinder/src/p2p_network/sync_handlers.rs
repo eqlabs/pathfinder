@@ -317,11 +317,11 @@ fn get_transactions_for_block(
         return Ok(false);
     };
 
-    responses.extend(txn_data.into_iter().map(|(gw_txn, _)| {
-        TransactionsResponse::Transaction(
-            pathfinder_common::transaction::Transaction::from(gw_txn).to_dto(),
-        )
-    }));
+    responses.extend(
+        txn_data
+            .into_iter()
+            .map(|(tnx, _)| TransactionsResponse::Transaction(tnx.to_dto())),
+    );
 
     Ok(true)
 }

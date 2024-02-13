@@ -10,6 +10,7 @@ pub mod proto {
     pub mod event {
         include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
     pub mod header {
         include!(concat!(env!("OUT_DIR"), "/starknet.header.rs"));
     }
@@ -19,6 +20,7 @@ pub mod proto {
     pub mod state {
         include!(concat!(env!("OUT_DIR"), "/starknet.state.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
     pub mod transaction {
         include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
     }

@@ -169,11 +169,10 @@ async fn handle_p2p_event(
             use p2p_proto::header::NewBlock;
 
             let new_head = match new_block {
-                NewBlock::Id(id) => {
-                    BlockNumber::new(id.number).and_then(|n| Some((n, BlockHash(id.hash.0))))
+                NewBlock::Id(id) => BlockNumber::new(id.number).map(|n| (n, BlockHash(id.hash.0))),
+                NewBlock::Header(BlockHeadersResponse::Header(hdr)) => {
+                    BlockNumber::new(hdr.number).map(|n| (n, BlockHash(hdr.block_hash.0)))
                 }
-                NewBlock::Header(BlockHeadersResponse::Header(hdr)) => BlockNumber::new(hdr.number)
-                    .and_then(|n| Some((n, BlockHash(hdr.block_hash.0)))),
                 NewBlock::Header(BlockHeadersResponse::Fin) => None,
             };
 

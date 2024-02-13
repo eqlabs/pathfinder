@@ -188,6 +188,7 @@ pub struct TransactionsRequest {
     pub iteration: Iteration,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum TransactionsResponse {
     Transaction(Transaction),

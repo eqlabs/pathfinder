@@ -100,12 +100,11 @@ mod prop {
         SignedBlockHeader as P2PSignedBlockHeader,
     };
     use crate::p2p_network::sync_handlers;
-    use crate::p2p_network::sync_handlers::def_into_dto;
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::types::{RawTransactionVariant, TryFromDto};
-    use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest, ClassesResponse};
-    use p2p_proto::common::{BlockId, BlockNumberOrHash, Iteration};
+    use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
+    use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
     use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
@@ -117,10 +116,9 @@ mod prop {
     use pathfinder_common::state_update::{
         ContractClassUpdate, ContractUpdate, SystemContractUpdate,
     };
-    use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        ClassHash, ContractAddress, ContractNonce, SierraHash, SignedBlockHeader, StorageAddress,
-        StorageValue, TransactionHash,
+        ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
+        TransactionHash,
     };
     use pathfinder_crypto::Felt;
     use proptest::prelude::*;
@@ -332,13 +330,13 @@ mod prop {
         pub fn for_legacy_l1_handlers(tx: Transaction) -> Transaction {
             match tx.variant {
                 TransactionVariant::InvokeV0(InvokeTransactionV0 {
-                    entry_point_type,
+                    entry_point_type: Some(EntryPointType::L1Handler),
                     calldata,
                     sender_address,
                     entry_point_selector,
                     max_fee: _,
                     signature: _,
-                }) if entry_point_type == Some(EntryPointType::L1Handler) => Transaction {
+                }) => Transaction {
                     variant: TransactionVariant::L1Handler(L1HandlerTransaction {
                         contract_address: sender_address,
                         entry_point_selector,
@@ -367,7 +365,7 @@ mod prop {
                         h.number,
                         // List of tuples (Transaction hash, Raw transaction variant)
                         tr.into_iter().map(|(t, _)| {
-                            let txn = Transaction::from(workaround::for_legacy_l1_handlers(t));
+                            let txn = workaround::for_legacy_l1_handlers(t);
                             (txn.hash, RawTransactionVariant::from(txn.variant))
                         }).collect::<Vec<_>>()
                     )
