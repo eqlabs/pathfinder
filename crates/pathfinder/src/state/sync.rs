@@ -1140,6 +1140,9 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: header.starknet_version,
+                l1_da_mode: None,
+                transaction_commitment: Some(header.transaction_commitment),
+                event_commitment: Some(header.event_commitment),
             });
 
             let signature = Box::new(BlockCommitmentSignature {

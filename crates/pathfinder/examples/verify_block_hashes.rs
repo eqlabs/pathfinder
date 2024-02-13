@@ -72,6 +72,9 @@ fn main() -> anyhow::Result<()> {
             transaction_receipts: receipts,
             transactions,
             starknet_version: StarknetVersion::default(),
+            l1_da_mode: None,
+            transaction_commitment: Some(header.transaction_commitment),
+            event_commitment: Some(header.event_commitment),
         };
         parent_block_hash = block_hash;
 

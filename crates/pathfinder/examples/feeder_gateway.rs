@@ -385,6 +385,9 @@ fn resolve_block(
         transaction_receipts,
         transactions,
         starknet_version: header.starknet_version,
+        l1_da_mode: None,
+        transaction_commitment: Some(header.transaction_commitment),
+        event_commitment: Some(header.event_commitment),
     })
 }
 

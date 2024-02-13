@@ -835,6 +835,9 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::default(),
+                l1_da_mode: None,
+                transaction_commitment: None,
+                event_commitment: None,
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: BLOCK0_HASH_V2,
@@ -851,6 +854,9 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 1),
+                l1_da_mode: None,
+                transaction_commitment: None,
+                event_commitment: None,
             };
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: BLOCK1_HASH,
@@ -867,6 +873,9 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 1),
+                l1_da_mode: None,
+                transaction_commitment: None,
+                event_commitment: None,
             };
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: BLOCK2_HASH,
@@ -883,6 +892,9 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 2),
+                l1_da_mode: None,
+                transaction_commitment: None,
+                event_commitment: None,
             };
 
             static ref STATE_UPDATE0: StateUpdate = {
@@ -1377,6 +1389,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    l1_da_mode: None,
+                    transaction_commitment: None,
+                    event_commitment: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1601,6 +1616,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    l1_da_mode: None,
+                    transaction_commitment: None,
+                    event_commitment: None,
                 };
                 let block2_v2 = reply::Block {
                     block_hash: BLOCK2_HASH_V2,
@@ -1623,6 +1641,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    l1_da_mode: None,
+                    transaction_commitment: None,
+                    event_commitment: None,
                 };
                 let block3 = reply::Block {
                     block_hash: BLOCK3_HASH,
@@ -1641,6 +1662,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    l1_da_mode: None,
+                    transaction_commitment: None,
+                    event_commitment: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1875,6 +1899,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    l1_da_mode: None,
+                    transaction_commitment: None,
+                    event_commitment: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -2062,6 +2089,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    l1_da_mode: None,
+                    transaction_commitment: None,
+                    event_commitment: None,
                 };
                 let block2 = reply::Block {
                     block_hash: BLOCK2_HASH,
@@ -2084,6 +2114,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    l1_da_mode: None,
+                    transaction_commitment: None,
+                    event_commitment: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts

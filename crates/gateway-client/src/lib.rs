@@ -828,6 +828,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    transaction_commitment: None,
+                    event_commitment: None,
+                    l1_da_mode: None,
                 }))
             },
         );

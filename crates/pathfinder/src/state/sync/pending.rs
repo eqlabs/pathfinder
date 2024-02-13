@@ -96,7 +96,7 @@ mod tests {
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
 
     lazy_static::lazy_static!(
-        pub static ref NEXT_BLOCK: Block = Block{
+        pub static ref NEXT_BLOCK: Block = Block {
             block_hash: block_hash!("0xabcd"),
             block_number: BlockNumber::new_or_panic(1),
             eth_l1_gas_price: None,
@@ -111,6 +111,9 @@ mod tests {
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),
+            l1_da_mode: None,
+            transaction_commitment: None,
+            event_commitment: None,
         };
 
         pub static ref PENDING_UPDATE: StateUpdate = {
