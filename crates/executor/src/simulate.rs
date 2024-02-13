@@ -145,9 +145,7 @@ pub fn trace(
                 let mut receiver = receiver.resubscribe();
                 drop(cache);
 
-                let trace = receiver
-                    .blocking_recv()
-                    .context("Trace error")?;
+                let trace = receiver.blocking_recv().context("Trace error")?;
                 return Ok(trace);
             }
             None => {
@@ -182,13 +180,10 @@ pub fn trace(
         traces.push((hash, trace));
     }
 
+    // Lock the cache before sending to avoid race conditions between senders and receivers.
+    let mut cache = cache.0.lock().unwrap();
     let _ = sender.send(traces.clone());
-
-    cache
-        .0
-        .lock()
-        .unwrap()
-        .cache_set(block_hash, CacheItem::Cached(traces.clone()));
+    cache.cache_set(block_hash, CacheItem::Cached(traces.clone()));
     Ok(traces)
 }
 
