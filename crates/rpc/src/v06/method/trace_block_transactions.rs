@@ -15,19 +15,19 @@ use pathfinder_common::transaction::Transaction;
 
 use super::simulate_transactions::dto::TransactionTrace;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct TraceBlockTransactionsInput {
     block_id: BlockId,
 }
 
-#[derive(Debug, Serialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Eq, PartialEq, Clone)]
 pub struct Trace {
     pub transaction_hash: TransactionHash,
     pub trace_root: TransactionTrace,
 }
 
-#[derive(Debug, Serialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Eq, PartialEq, Clone)]
 pub struct TraceBlockTransactionsOutput(pub Vec<Trace>);
 
 #[derive(Debug)]
@@ -275,6 +275,7 @@ pub(crate) mod tests {
     use pathfinder_common::{
         block_hash, felt, receipt::Receipt, BlockHeader, GasPrice, SierraHash, TransactionIndex,
     };
+    use tokio::task::JoinSet;
 
     use super::*;
 
@@ -388,6 +389,33 @@ pub(crate) mod tests {
         let expected = TraceBlockTransactionsOutput(traces);
 
         pretty_assertions_sorted::assert_eq!(output, expected);
+        Ok(())
+    }
+
+    /// Test that multiple requests for the same block return correctly. This checks that the
+    /// trace request coalescing doesn't do anything unexpected.
+    #[tokio::test]
+    async fn test_request_coalescing() -> anyhow::Result<()> {
+        const NUM_REQUESTS: usize = 1000;
+
+        let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
+
+        let input = TraceBlockTransactionsInput {
+            block_id: next_block_header.hash.into(),
+        };
+        let mut joins = JoinSet::new();
+        for _ in 0..NUM_REQUESTS {
+            let input = input.clone();
+            let context = context.clone();
+            joins.spawn(async move { trace_block_transactions(context, input).await.unwrap() });
+        }
+        let mut outputs = Vec::new();
+        while let Some(output) = joins.join_next().await {
+            outputs.push(output.unwrap());
+        }
+        let expected = vec![TraceBlockTransactionsOutput(traces); NUM_REQUESTS];
+
+        pretty_assertions_sorted::assert_eq!(outputs, expected);
         Ok(())
     }
 
