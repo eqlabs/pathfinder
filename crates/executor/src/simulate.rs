@@ -32,9 +32,9 @@ use super::{
     types::{FeeEstimate, TransactionSimulation, TransactionTrace},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum CacheItem {
-    Inflight(tokio::sync::broadcast::Sender<Traces>),
+    Inflight(tokio::sync::broadcast::Receiver<Traces>),
     Cached(Traces),
 }
 
@@ -142,18 +142,18 @@ pub fn trace(
             }
             Some(CacheItem::Inflight(receiver)) => {
                 tracing::trace!(block=%block_hash, "trace already inflight");
-                let mut receiver = receiver.subscribe();
+                let mut receiver = receiver.resubscribe();
                 drop(cache);
 
                 let trace = receiver
                     .blocking_recv()
-                    .context("Waiting for inflight trace")?;
+                    .context("Trace error")?;
                 return Ok(trace);
             }
             None => {
                 tracing::trace!(block=%block_hash, "trace cache miss");
-                let (sender, _receiver) = tokio::sync::broadcast::channel(1);
-                cache.cache_set(block_hash, CacheItem::Inflight(sender.clone()));
+                let (sender, receiver) = tokio::sync::broadcast::channel(1);
+                cache.cache_set(block_hash, CacheItem::Inflight(receiver));
                 sender
             }
         }
