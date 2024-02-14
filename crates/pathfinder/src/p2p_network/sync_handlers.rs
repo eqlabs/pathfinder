@@ -1,6 +1,6 @@
 use anyhow::Context;
 use futures::channel::mpsc;
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
     Address, BlockNumberOrHash, ConsensusSignature, Direction, Hash, Iteration, Merkle, Patricia,
@@ -36,8 +36,7 @@ pub async fn get_headers(
     request: BlockHeadersRequest,
     tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, blocking::get_headers).await?;
-    send(tx, responses).await
+    spawn_blocking_get(request, storage, blocking::get_headers, tx).await
 }
 
 pub async fn get_classes(
@@ -45,8 +44,7 @@ pub async fn get_classes(
     request: ClassesRequest,
     tx: mpsc::Sender<ClassesResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, blocking::get_classes).await?;
-    send(tx, responses).await
+    spawn_blocking_get(request, storage, blocking::get_classes, tx).await
 }
 
 pub async fn get_state_diffs(
@@ -54,8 +52,7 @@ pub async fn get_state_diffs(
     request: StateDiffsRequest,
     tx: mpsc::Sender<StateDiffsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, blocking::get_state_diffs).await?;
-    send(tx, responses).await
+    spawn_blocking_get(request, storage, blocking::get_state_diffs, tx).await
 }
 
 pub async fn get_transactions(
@@ -63,8 +60,7 @@ pub async fn get_transactions(
     request: TransactionsRequest,
     tx: mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, blocking::get_transactions).await?;
-    send(tx, responses).await
+    spawn_blocking_get(request, storage, blocking::get_transactions, tx).await
 }
 
 pub async fn get_receipts(
@@ -72,8 +68,7 @@ pub async fn get_receipts(
     request: ReceiptsRequest,
     tx: mpsc::Sender<ReceiptsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, blocking::get_receipts).await?;
-    send(tx, responses).await
+    spawn_blocking_get(request, storage, blocking::get_receipts, tx).await
 }
 
 pub async fn get_events(
@@ -81,69 +76,74 @@ pub async fn get_events(
     request: EventsRequest,
     tx: mpsc::Sender<EventsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, blocking::get_events).await?;
-    send(tx, responses).await
+    spawn_blocking_get(request, storage, blocking::get_events, tx).await
 }
 
 pub(crate) mod blocking {
     use super::*;
 
     pub(crate) fn get_headers(
-        tx: Transaction<'_>,
+        db_tx: Transaction<'_>,
         request: BlockHeadersRequest,
-    ) -> anyhow::Result<Vec<BlockHeadersResponse>> {
-        iterate(tx, request.iteration, get_header)
+        tx: flume::Sender<BlockHeadersResponse>,
+    ) -> anyhow::Result<()> {
+        iterate(db_tx, request.iteration, get_header, tx)
     }
 
     pub(crate) fn get_classes(
-        tx: Transaction<'_>,
+        db_tx: Transaction<'_>,
         request: ClassesRequest,
-    ) -> anyhow::Result<Vec<ClassesResponse>> {
-        iterate(tx, request.iteration, get_classes_for_block)
+        tx: flume::Sender<ClassesResponse>,
+    ) -> anyhow::Result<()> {
+        iterate(db_tx, request.iteration, get_classes_for_block, tx)
     }
 
     pub(crate) fn get_state_diffs(
-        tx: Transaction<'_>,
+        db_tx: Transaction<'_>,
         request: StateDiffsRequest,
-    ) -> anyhow::Result<Vec<StateDiffsResponse>> {
-        iterate(tx, request.iteration, get_state_diff)
+        tx: flume::Sender<StateDiffsResponse>,
+    ) -> anyhow::Result<()> {
+        iterate(db_tx, request.iteration, get_state_diff, tx)
     }
 
     pub(crate) fn get_transactions(
-        tx: Transaction<'_>,
+        db_tx: Transaction<'_>,
         request: TransactionsRequest,
-    ) -> anyhow::Result<Vec<TransactionsResponse>> {
-        iterate(tx, request.iteration, get_transactions_for_block)
+        tx: flume::Sender<TransactionsResponse>,
+    ) -> anyhow::Result<()> {
+        iterate(db_tx, request.iteration, get_transactions_for_block, tx)
     }
 
     pub(crate) fn get_receipts(
-        tx: Transaction<'_>,
+        db_tx: Transaction<'_>,
         request: ReceiptsRequest,
-    ) -> anyhow::Result<Vec<ReceiptsResponse>> {
-        iterate(tx, request.iteration, get_receipts_for_block)
+        tx: flume::Sender<ReceiptsResponse>,
+    ) -> anyhow::Result<()> {
+        iterate(db_tx, request.iteration, get_receipts_for_block, tx)
     }
 
     pub(crate) fn get_events(
-        tx: Transaction<'_>,
+        db_tx: Transaction<'_>,
         request: EventsRequest,
-    ) -> anyhow::Result<Vec<EventsResponse>> {
-        iterate(tx, request.iteration, get_events_for_block)
+        tx: flume::Sender<EventsResponse>,
+    ) -> anyhow::Result<()> {
+        iterate(db_tx, request.iteration, get_events_for_block, tx)
     }
 }
 
 fn get_header(
-    tx: &Transaction<'_>,
+    db_tx: &Transaction<'_>,
     block_number: BlockNumber,
-    responses: &mut Vec<BlockHeadersResponse>,
+    tx: &flume::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<bool> {
-    if let Some(header) = tx.block_header(block_number.into())? {
-        if let Some(signature) = tx.signature(block_number.into())? {
+    if let Some(header) = db_tx.block_header(block_number.into())? {
+        if let Some(signature) = db_tx.signature(block_number.into())? {
             let txn_count = header
                 .transaction_count
                 .try_into()
                 .context("invalid transaction count")?;
 
-            responses.push(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
+            tx.send(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
                 block_hash: Hash(header.hash.0),
                 parent_hash: Hash(header.parent_hash.0),
                 number: header.number.get(),
@@ -179,13 +179,14 @@ fn get_header(
                     r: signature.r.0,
                     s: signature.s.0,
                 }],
-            })));
-        }
+            })))
+            .map_err(|_| anyhow::anyhow!("Sending header"))?;
 
-        Ok(true)
-    } else {
-        Ok(false)
+            return Ok(true);
+        }
     }
+
+    Ok(false)
 }
 
 #[derive(Debug, Clone)]
@@ -195,13 +196,13 @@ enum ClassDefinition {
 }
 
 fn get_classes_for_block(
-    tx: &Transaction<'_>,
+    db_tx: &Transaction<'_>,
     block_number: BlockNumber,
-    responses: &mut Vec<ClassesResponse>,
+    tx: &flume::Sender<ClassesResponse>,
 ) -> anyhow::Result<bool> {
     let get_definition =
         |block_number: BlockNumber, class_hash| -> anyhow::Result<ClassDefinition> {
-            let definition = tx
+            let definition = db_tx
                 .class_definition_at(block_number.into(), class_hash)?
                 .ok_or_else(|| {
                     anyhow::anyhow!(
@@ -210,7 +211,7 @@ fn get_classes_for_block(
                         block_number
                     )
                 })?;
-            let casm_definition = tx.casm_definition(class_hash)?;
+            let casm_definition = db_tx.casm_definition(class_hash)?;
             Ok(match casm_definition {
                 Some(casm) => ClassDefinition::Sierra {
                     sierra: definition,
@@ -220,8 +221,9 @@ fn get_classes_for_block(
             })
         };
 
-    let declared_classes = tx.declared_classes_at(block_number.into())?;
-    let mut classes = Vec::new();
+    let Some(declared_classes) = db_tx.declared_classes_at(block_number.into())? else {
+        return Ok(false);
+    };
 
     for class_hash in declared_classes {
         let class_definition = get_definition(block_number, class_hash)?;
@@ -246,132 +248,126 @@ fn get_classes_for_block(
                 }
             }
         };
-        classes.push(ClassesResponse::Class(class));
-    }
 
-    responses.extend(classes);
+        tx.send(ClassesResponse::Class(class))
+            .map_err(|_| anyhow::anyhow!("Sending class"))?;
+    }
 
     Ok(true)
 }
 
 fn get_state_diff(
-    tx: &Transaction<'_>,
+    db_tx: &Transaction<'_>,
     block_number: BlockNumber,
-    responses: &mut Vec<StateDiffsResponse>,
+    tx: &flume::Sender<StateDiffsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(state_diff) = tx.state_update(block_number.into())? else {
+    let Some(state_diff) = db_tx.state_update(block_number.into())? else {
         return Ok(false);
     };
 
-    state_diff
-        .contract_updates
-        .into_iter()
-        .for_each(|(address, update)| {
-            responses.push(StateDiffsResponse::ContractDiff(ContractDiff {
-                address: Address(address.0),
-                nonce: update.nonce.map(|n| n.0),
-                class_hash: update.class.as_ref().map(|c| c.class_hash().0),
-                is_replaced: update.class.map(|c| c.is_replaced()),
-                values: update
-                    .storage
-                    .into_iter()
-                    .map(|(k, v)| ContractStoredValue {
-                        key: k.0,
-                        value: v.0,
-                    })
-                    .collect(),
-                domain: 0, // TODO
-            }))
-        });
+    for (address, update) in state_diff.contract_updates {
+        tx.send(StateDiffsResponse::ContractDiff(ContractDiff {
+            address: Address(address.0),
+            nonce: update.nonce.map(|n| n.0),
+            class_hash: update.class.as_ref().map(|c| c.class_hash().0),
+            is_replaced: update.class.map(|c| c.is_replaced()),
+            values: update
+                .storage
+                .into_iter()
+                .map(|(k, v)| ContractStoredValue {
+                    key: k.0,
+                    value: v.0,
+                })
+                .collect(),
+            domain: 0, // TODO
+        }))
+        .map_err(|_| anyhow::anyhow!("Sending state diff"))?;
+    }
 
-    state_diff
-        .system_contract_updates
-        .into_iter()
-        .for_each(|(address, update)| {
-            responses.push(StateDiffsResponse::ContractDiff(ContractDiff {
-                address: Address(address.0),
-                nonce: None,
-                class_hash: None,
-                is_replaced: None,
-                values: update
-                    .storage
-                    .into_iter()
-                    .map(|(k, v)| ContractStoredValue {
-                        key: k.0,
-                        value: v.0,
-                    })
-                    .collect(),
-                domain: 0, // TODO
-            }))
-        });
+    for (address, update) in state_diff.system_contract_updates {
+        tx.send(StateDiffsResponse::ContractDiff(ContractDiff {
+            address: Address(address.0),
+            nonce: None,
+            class_hash: None,
+            is_replaced: None,
+            values: update
+                .storage
+                .into_iter()
+                .map(|(k, v)| ContractStoredValue {
+                    key: k.0,
+                    value: v.0,
+                })
+                .collect(),
+            domain: 0, // TODO
+        }))
+        .map_err(|_| anyhow::anyhow!("Sending state diff"))?;
+    }
 
     Ok(true)
 }
 
 fn get_transactions_for_block(
-    tx: &Transaction<'_>,
+    db_tx: &Transaction<'_>,
     block_number: BlockNumber,
-    responses: &mut Vec<TransactionsResponse>,
+    tx: &flume::Sender<TransactionsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+    let Some(txn_data) = db_tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
 
-    responses.extend(
-        txn_data
-            .into_iter()
-            .map(|(tnx, _)| TransactionsResponse::Transaction(tnx.to_dto())),
-    );
+    for (txn, _) in txn_data {
+        tx.send(TransactionsResponse::Transaction(txn.to_dto()))
+            .map_err(|_| anyhow::anyhow!("Sending transaction"))?;
+    }
 
     Ok(true)
 }
 
 fn get_receipts_for_block(
-    tx: &Transaction<'_>,
+    db_tx: &Transaction<'_>,
     block_number: BlockNumber,
-    responses: &mut Vec<ReceiptsResponse>,
+    tx: &flume::Sender<ReceiptsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+    let Some(txn_data) = db_tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
 
-    responses.extend(
-        txn_data
-            .into_iter()
-            .map(ToDto::to_dto)
-            .map(ReceiptsResponse::Receipt),
-    );
+    for tr in txn_data {
+        tx.send(ReceiptsResponse::Receipt(tr.to_dto()))
+            .map_err(|_| anyhow::anyhow!("Sending receipt"))?;
+    }
 
     Ok(true)
 }
 
 fn get_events_for_block(
-    tx: &Transaction<'_>,
+    db_tx: &Transaction<'_>,
     block_number: BlockNumber,
-    responses: &mut Vec<EventsResponse>,
+    tx: &flume::Sender<EventsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+    let Some(txn_data) = db_tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
 
-    responses.extend(txn_data.into_iter().flat_map(|(_, r)| {
-        std::iter::repeat(r.transaction_hash)
-            .zip(r.events)
-            .map(ToDto::to_dto)
-            .map(EventsResponse::Event)
-    }));
+    for (_, r) in txn_data {
+        for event in r.events {
+            tx.send(EventsResponse::Event((r.transaction_hash, event).to_dto()))
+                .map_err(|_| anyhow::anyhow!("Sending event"))?;
+        }
+    }
 
     Ok(true)
 }
 
 /// Assupmtions:
-/// - `block_handler` returns `Ok(true)` if the iteration should continue.
+/// - `block_handler` returns `Ok(true)` if the iteration should continue,
 /// - `T::default()` always returns the `Fin` variant of the implementing type.
 fn iterate<T: Default + std::fmt::Debug>(
-    tx: Transaction<'_>,
+    db_tx: Transaction<'_>,
     iteration: Iteration,
-    block_handler: impl Fn(&Transaction<'_>, BlockNumber, &mut Vec<T>) -> anyhow::Result<bool>,
-) -> anyhow::Result<Vec<T>> {
+    block_handler: impl Fn(&Transaction<'_>, BlockNumber, &flume::Sender<T>) -> anyhow::Result<bool>,
+    tx: flume::Sender<T>,
+) -> anyhow::Result<()> {
     let Iteration {
         start,
         direction,
@@ -380,26 +376,27 @@ fn iterate<T: Default + std::fmt::Debug>(
     } = iteration;
 
     if limit == 0 {
-        return Ok(vec![T::default()]);
+        tx.send(T::default())
+            .map_err(|_| anyhow::anyhow!("Sending Fin"))?;
+        return Ok(());
     }
 
-    let mut block_number = match get_start_block_number(start, &tx)? {
+    let mut block_number = match get_start_block_number(start, &db_tx)? {
         Some(x) => x,
         None => {
-            return Ok(vec![T::default()]);
+            tx.send(T::default())
+                .map_err(|_| anyhow::anyhow!("Sending Fin"))?;
+            return Ok(());
         }
     };
 
-    let mut responses = Vec::new();
     let limit = limit.min(MAX_BLOCKS_COUNT);
 
     for i in 0..limit {
-        if block_handler(&tx, block_number, &mut responses)? {
-            // Block data retrieved successfully
-        } else {
+        if !block_handler(&db_tx, block_number, &tx)? {
             // No such block
             break;
-        }
+        };
 
         if i < limit - 1 {
             block_number = match get_next_block_number(block_number, step, direction) {
@@ -408,13 +405,14 @@ fn iterate<T: Default + std::fmt::Debug>(
                     // Out of range block number value
                     break;
                 }
-            };
+            }
         }
     }
 
-    responses.push(T::default());
+    tx.send(T::default())
+        .map_err(|_| anyhow::anyhow!("Sending Fin"))?;
 
-    Ok(responses)
+    Ok(())
 }
 
 fn get_start_block_number(
@@ -427,41 +425,52 @@ fn get_start_block_number(
     })
 }
 
+/// Spawns a blocking task and forwards the result to the given channel.
+/// Bails out early if the database operation fails or sending fails.
+/// The `getter` function is expected to send partial results through the flume channel as soon as possible,
+/// ideally after each database read operation.
 async fn spawn_blocking_get<Request, Response, Getter>(
     request: Request,
     storage: Storage,
     getter: Getter,
-) -> anyhow::Result<Response>
+    mut tx: mpsc::Sender<Response>,
+) -> anyhow::Result<()>
 where
     Request: Send + 'static,
     Response: Send + 'static,
-    Getter: FnOnce(Transaction<'_>, Request) -> anyhow::Result<Response> + Send + 'static,
+    Getter: FnOnce(Transaction<'_>, Request, flume::Sender<Response>) -> anyhow::Result<()>
+        + Send
+        + 'static,
 {
     let span = tracing::Span::current();
 
-    tokio::task::spawn_blocking(move || {
-        let _g = span.enter();
-        let mut connection = storage
-            .connection()
-            .context("Opening database connection")?;
-        let tx = connection
-            .transaction()
-            .context("Creating database transaction")?;
-        getter(tx, request)
-    })
-    .await
-    .context("Database read panic or shutting down")?
-}
+    let (sync_tx, rx) = flume::bounded(0); // For backpressure
 
-async fn send<T>(mut tx: mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
-where
-    T: Send + 'static,
-    tokio::sync::mpsc::error::SendError<T>: Sync,
-{
-    for elem in seq {
-        tx.send(elem).await.context("Sending response")?;
-    }
+    let db_fut = async {
+        tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+            let mut connection = storage
+                .connection()
+                .context("Opening database connection")?;
+            let db_tx = connection
+                .transaction()
+                .context("Creating database transaction")?;
+            getter(db_tx, request, sync_tx)
+        })
+        .await
+        .context("Database read panic or shutting down")?
+        .context("Database read")
+    };
 
+    let fwd_fut = async move {
+        let mut rx = rx.into_stream();
+        while let Some(x) = rx.next().await {
+            tx.send(x).await.context("Sending item")?;
+        }
+        Ok::<_, anyhow::Error>(())
+    };
+    // Bail out early, either when db fails or sending fails
+    tokio::try_join!(db_fut, fwd_fut)?;
     Ok(())
 }
 

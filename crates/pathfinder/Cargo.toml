@@ -26,6 +26,7 @@ cairo-lang-starknet = "2.4.0"
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.10", optional = true }
 fake = { workspace = true }
+flume = "0.11.0"
 futures = { workspace = true }
 ipnet = { workspace = true }
 lazy_static = { workspace = true }

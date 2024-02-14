@@ -278,9 +278,9 @@ pub(super) fn state_update(
 pub(super) fn declared_classes_at(
     tx: &Transaction<'_>,
     block: BlockId,
-) -> anyhow::Result<Vec<ClassHash>> {
+) -> anyhow::Result<Option<Vec<ClassHash>>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
 
     let mut stmt = tx
@@ -305,7 +305,7 @@ pub(super) fn declared_classes_at(
         result.push(class_hash);
     }
 
-    Ok(result)
+    Ok(Some(result))
 }
 
 pub(super) fn storage_value(
