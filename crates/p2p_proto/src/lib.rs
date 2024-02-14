@@ -1,30 +1,26 @@
 #[allow(clippy::module_inception)]
 pub mod proto {
     #[allow(clippy::large_enum_variant)]
-    pub mod block {
-        include!(concat!(env!("OUT_DIR"), "/starknet.block.rs"));
+    pub mod class {
+        include!(concat!(env!("OUT_DIR"), "/starknet.class.rs"));
     }
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
-    pub mod consensus {
-        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
-    }
     pub mod event {
         include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     }
-    pub mod mempool {
-        include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
+    #[allow(clippy::large_enum_variant)]
+    pub mod header {
+        include!(concat!(env!("OUT_DIR"), "/starknet.header.rs"));
     }
     pub mod receipt {
         include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
     }
-    pub mod snapshot {
-        include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
-    }
     pub mod state {
         include!(concat!(env!("OUT_DIR"), "/starknet.state.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
     pub mod transaction {
         include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
     }
@@ -158,14 +154,21 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
     }
 }
 
+fn proto_field<T>(input: Option<T>, field_name: &'static str) -> Result<T, std::io::Error> {
+    input.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Missing field {field_name}"),
+        )
+    })
+}
+
 use p2p_proto_derive::*;
-pub mod block;
+pub mod class;
 pub mod common;
-pub mod consensus;
 pub mod consts;
 pub mod event;
-pub mod mempool;
+pub mod header;
 pub mod receipt;
-pub mod snapshot;
 pub mod state;
 pub mod transaction;

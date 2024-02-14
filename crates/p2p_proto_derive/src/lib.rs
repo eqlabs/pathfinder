@@ -101,7 +101,8 @@ fn iterate_to_protobuf(data: &Data) -> Result<proc_macro2::TokenStream, syn::Err
                     #(#recurse),*
                 })
             }
-            syn::Fields::Unnamed(_) | syn::Fields::Unit => {
+            syn::Fields::Unit => Ok(Default::default()),
+            syn::Fields::Unnamed(_) => {
                 Err(syn::Error::new(data.fields.span(), "expected named struct"))
             }
         },
@@ -170,7 +171,8 @@ fn iterate_try_from_protobuf(data: &Data) -> Result<proc_macro2::TokenStream, sy
                     #(#recurse),*
                 })
             }
-            syn::Fields::Unnamed(_) | syn::Fields::Unit => {
+            syn::Fields::Unit => Ok(Default::default()),
+            syn::Fields::Unnamed(_) => {
                 Err(syn::Error::new(data.fields.span(), "expected named struct"))
             }
         },

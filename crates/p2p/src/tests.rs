@@ -9,11 +9,11 @@ use futures::{SinkExt, StreamExt};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
-use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockHeadersRequest, BlockHeadersResponse, NewBlock,
-};
+use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
 use rstest::rstest;
@@ -1276,11 +1276,19 @@ define_test!(
 );
 
 define_test!(
-    sync_bodies,
-    BlockBodiesRequest,
-    BlockBodiesResponse,
-    InboundBodiesSyncRequest,
-    send_bodies_sync_request
+    sync_classes,
+    ClassesRequest,
+    ClassesResponse,
+    InboundClassesSyncRequest,
+    send_classes_sync_request
+);
+
+define_test!(
+    sync_state_diffs,
+    StateDiffsRequest,
+    StateDiffsResponse,
+    InboundStateDiffsSyncRequest,
+    send_state_diffs_sync_request
 );
 
 define_test!(

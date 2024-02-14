@@ -11,9 +11,11 @@ use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
-use p2p_proto::block::{BlockBodiesResponse, BlockHeadersResponse};
+use p2p_proto::class::ClassesResponse;
 use p2p_proto::event::EventsResponse;
+use p2p_proto::header::BlockHeadersResponse;
 use p2p_proto::receipt::ReceiptsResponse;
+use p2p_proto::state::StateDiffsResponse;
 use p2p_proto::transaction::TransactionsResponse;
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use p2p_stream::{self, OutboundRequestId};
@@ -53,9 +55,13 @@ struct PendingRequests {
         OutboundRequestId,
         oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
     >,
-    pub bodies: HashMap<
+    pub classes: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<BlockBodiesResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<ClassesResponse>>>,
+    >,
+    pub state_diffs: HashMap<
+        OutboundRequestId,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<StateDiffsResponse>>>,
     >,
     pub transactions: HashMap<
         OutboundRequestId,
@@ -318,9 +324,9 @@ impl MainLoop {
             })) => {
                 use prost::Message;
 
-                match p2p_proto::proto::block::NewBlock::decode(message.data.as_ref()) {
+                match p2p_proto::proto::header::NewBlock::decode(message.data.as_ref()) {
                     Ok(new_block) => {
-                        match p2p_proto::block::NewBlock::try_from_protobuf(new_block, "message") {
+                        match p2p_proto::header::NewBlock::try_from_protobuf(new_block, "message") {
                             Ok(new_block) => {
                                 tracing::trace!(
                                     "Gossipsub Message: [id={}][peer={}] {:?} ({} bytes)",
@@ -483,7 +489,7 @@ impl MainLoop {
                     .expect("Block sync request still to be pending")
                     .send(Ok(channel));
             }
-            SwarmEvent::Behaviour(behaviour::Event::BodiesSync(
+            SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
                 p2p_stream::Event::InboundRequest {
                     request_id,
                     request,
@@ -494,7 +500,7 @@ impl MainLoop {
                 tracing::debug!(?request, %peer, %request_id, "Received sync request");
 
                 self.event_sender
-                    .send(Event::InboundBodiesSyncRequest {
+                    .send(Event::InboundClassesSyncRequest {
                         from: peer,
                         request,
                         channel,
@@ -502,7 +508,7 @@ impl MainLoop {
                     .await
                     .expect("Event receiver not to be dropped");
             }
-            SwarmEvent::Behaviour(behaviour::Event::BodiesSync(
+            SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
                 p2p_stream::Event::OutboundRequestSentAwaitingResponses {
                     request_id,
                     peer,
@@ -513,7 +519,42 @@ impl MainLoop {
 
                 let _ = self
                     .pending_sync_requests
-                    .bodies
+                    .classes
+                    .remove(&request_id)
+                    .expect("Block sync request still to be pending")
+                    .send(Ok(channel));
+            }
+            SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
+                p2p_stream::Event::InboundRequest {
+                    request_id,
+                    request,
+                    peer,
+                    channel,
+                },
+            )) => {
+                tracing::debug!(?request, %peer, %request_id, "Received sync request");
+
+                self.event_sender
+                    .send(Event::InboundStateDiffsSyncRequest {
+                        from: peer,
+                        request,
+                        channel,
+                    })
+                    .await
+                    .expect("Event receiver not to be dropped");
+            }
+            SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
+                p2p_stream::Event::OutboundRequestSentAwaitingResponses {
+                    request_id,
+                    peer,
+                    channel,
+                },
+            )) => {
+                tracing::debug!(%peer, %request_id, "Sync request sent");
+
+                let _ = self
+                    .pending_sync_requests
+                    .state_diffs
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Ok(channel));
@@ -636,7 +677,7 @@ impl MainLoop {
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
             }
-            SwarmEvent::Behaviour(behaviour::Event::BodiesSync(
+            SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
@@ -644,7 +685,20 @@ impl MainLoop {
                 tracing::warn!(?request_id, ?error, "Outbound request failed");
                 let _ = self
                     .pending_sync_requests
-                    .bodies
+                    .classes
+                    .remove(&request_id)
+                    .expect("Block sync request still to be pending")
+                    .send(Err(error.into()));
+            }
+            SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
+                p2p_stream::Event::OutboundFailure {
+                    request_id, error, ..
+                },
+            )) => {
+                tracing::warn!(?request_id, ?error, "Outbound request failed");
+                let _ = self
+                    .pending_sync_requests
+                    .state_diffs
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
@@ -799,7 +853,7 @@ impl MainLoop {
                     .headers
                     .insert(request_id, sender);
             }
-            Command::SendBodiesSyncRequest {
+            Command::SendClassesSyncRequest {
                 peer_id,
                 request,
                 sender,
@@ -809,9 +863,27 @@ impl MainLoop {
                 let request_id = self
                     .swarm
                     .behaviour_mut()
-                    .bodies_sync_mut()
+                    .classes_sync_mut()
                     .send_request(&peer_id, request);
-                self.pending_sync_requests.bodies.insert(request_id, sender);
+                self.pending_sync_requests
+                    .classes
+                    .insert(request_id, sender);
+            }
+            Command::SendStateDiffsSyncRequest {
+                peer_id,
+                request,
+                sender,
+            } => {
+                tracing::debug!(?request, "Sending sync request");
+
+                let request_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .state_diffs_sync_mut()
+                    .send_request(&peer_id, request);
+                self.pending_sync_requests
+                    .state_diffs
+                    .insert(request_id, sender);
             }
             Command::SendTransactionsSyncRequest {
                 peer_id,

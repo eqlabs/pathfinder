@@ -30,12 +30,12 @@ message ConsensusSignature {
 message Merkle {
     uint32 n_leaves = 1;  // needed to know the height, so as to how many nodes to expect in a proof.
                           // and also when receiving all leaves, how many to expect
-    Hash root = 2;
+    Hash   root     = 2;
 }
 
 message Patricia {
     uint32 height = 1;
-    Hash root = 2;
+    Hash   root   = 2;
 }
 
 message BlockID {
@@ -45,7 +45,7 @@ message BlockID {
 
 message Iteration {
     enum Direction {
-        Forward = 0;
+        Forward  = 0;
         Backward = 1;
     }
     oneof start {
@@ -53,19 +53,11 @@ message Iteration {
         Hash   header       = 2;
     }
     Direction direction = 3;
-    uint64 limit = 4;
-    uint64 step = 5; // to allow interleaving from several nodes
+    uint64    limit     = 4;
+    uint64    step      = 5;  // to allow interleaving from several nodes
     // bool interleave = 6; // return results in any order of blocks, per block the messages should still be in the order specified
 }
 
 // mark the end of a stream of messages
 // TBD: may not be required if we open a stream per request.
-message Fin {
-    enum Error {
-        busy = 0;
-        too_much = 1;
-        unknown = 2;
-        pruned = 3;
-    }
-    optional Error error = 1;
-}
+message Fin {}

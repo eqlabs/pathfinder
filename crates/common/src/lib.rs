@@ -335,6 +335,14 @@ impl From<u64> for GasPrice {
     }
 }
 
+impl From<Felt> for GasPrice {
+    fn from(src: Felt) -> Self {
+        let mut bytes = [0u8; 16];
+        bytes.copy_from_slice(&src.as_be_bytes()[16..]);
+        Self(u128::from_be_bytes(bytes))
+    }
+}
+
 impl From<BlockNumber> for BlockId {
     fn from(number: BlockNumber) -> Self {
         Self::Number(number)

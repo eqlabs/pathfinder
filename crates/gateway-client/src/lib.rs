@@ -113,18 +113,6 @@ pub trait GatewayApi: Sync {
     }
 }
 
-/// This is a **temporary** measure to keep the sync logic unchanged
-///
-/// TODO remove when p2p friendly sync is implemented
-#[allow(unused_variables)]
-#[mockall::automock]
-#[async_trait::async_trait]
-pub trait GossipApi: Sync {
-    async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
-        // Intentionally does nothing for default impl
-    }
-}
-
 #[async_trait::async_trait]
 impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
@@ -573,12 +561,6 @@ impl GatewayApi for Client {
             .await
     }
 }
-
-#[async_trait::async_trait]
-impl GossipApi for Client {}
-
-#[async_trait::async_trait]
-impl GossipApi for () {}
 
 pub mod test_utils {
     use super::Client;

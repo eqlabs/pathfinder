@@ -1,21 +1,18 @@
 use anyhow::Context;
 use futures::channel::mpsc;
 use futures::SinkExt;
-use p2p_proto::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
-    BlockHeadersResponse, BlockHeadersResponsePart, Signatures,
-};
+use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
-    BlockId, BlockNumberOrHash, ConsensusSignature, Direction, Fin, Hash, Iteration, Step,
+    Address, BlockNumberOrHash, ConsensusSignature, Direction, Hash, Iteration, Merkle, Patricia,
+    Step,
 };
-use p2p_proto::consts::MAX_HEADERS_PER_MESSAGE;
-use p2p_proto::event::{Events, EventsRequest, EventsResponse, EventsResponseKind};
-use p2p_proto::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
-use p2p_proto::state::{Class, Classes};
-use p2p_proto::transaction::{
-    Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
-};
-use pathfinder_common::{BlockHash, BlockNumber, CasmHash, ClassHash, SierraHash};
+use p2p_proto::event::{EventsRequest, EventsResponse};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHeader};
+use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_crypto::Felt;
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
 use starknet_gateway_types::class_definition;
@@ -24,7 +21,7 @@ pub mod conv;
 #[cfg(test)]
 mod tests;
 
-use conv::ToProto;
+use conv::ToDto;
 
 #[cfg(not(test))]
 const MAX_BLOCKS_COUNT: u64 = 100;
@@ -34,27 +31,30 @@ const MAX_COUNT_IN_TESTS: u64 = 10;
 #[cfg(test)]
 const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
-const _: () = assert!(
-    MAX_BLOCKS_COUNT <= MAX_HEADERS_PER_MESSAGE as u64,
-    "All requested block headers, limited up to MAX_BLOCKS_COUNT should fit into one reply"
-);
-
 pub async fn get_headers(
     storage: Storage,
     request: BlockHeadersRequest,
-    mut tx: mpsc::Sender<BlockHeadersResponse>,
+    tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
-    let response = spawn_blocking_get(request, storage, blocking::get_headers).await?;
-    tx.send(response).await.context("Sending response")
+    let responses = spawn_blocking_get(request, storage, blocking::get_headers).await?;
+    send(tx, responses).await
 }
 
-// TODO consider batching db ops instead doing all in bulk if it's more performant
-pub async fn get_bodies(
+pub async fn get_classes(
     storage: Storage,
-    request: BlockBodiesRequest,
-    tx: mpsc::Sender<BlockBodiesResponse>,
+    request: ClassesRequest,
+    tx: mpsc::Sender<ClassesResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, blocking::get_bodies).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_classes).await?;
+    send(tx, responses).await
+}
+
+pub async fn get_state_diffs(
+    storage: Storage,
+    request: StateDiffsRequest,
+    tx: mpsc::Sender<StateDiffsResponse>,
+) -> anyhow::Result<()> {
+    let responses = spawn_blocking_get(request, storage, blocking::get_state_diffs).await?;
     send(tx, responses).await
 }
 
@@ -91,16 +91,22 @@ pub(crate) mod blocking {
     pub(crate) fn get_headers(
         tx: Transaction<'_>,
         request: BlockHeadersRequest,
-    ) -> anyhow::Result<BlockHeadersResponse> {
-        let parts = iterate(tx, request.iteration, get_header)?;
-        Ok(BlockHeadersResponse { parts })
+    ) -> anyhow::Result<Vec<BlockHeadersResponse>> {
+        iterate(tx, request.iteration, get_header)
     }
 
-    pub(crate) fn get_bodies(
+    pub(crate) fn get_classes(
         tx: Transaction<'_>,
-        request: BlockBodiesRequest,
-    ) -> anyhow::Result<Vec<BlockBodiesResponse>> {
-        iterate(tx, request.iteration, get_body)
+        request: ClassesRequest,
+    ) -> anyhow::Result<Vec<ClassesResponse>> {
+        iterate(tx, request.iteration, get_classes_for_block)
+    }
+
+    pub(crate) fn get_state_diffs(
+        tx: Transaction<'_>,
+        request: StateDiffsRequest,
+    ) -> anyhow::Result<Vec<StateDiffsResponse>> {
+        iterate(tx, request.iteration, get_state_diff)
     }
 
     pub(crate) fn get_transactions(
@@ -128,48 +134,57 @@ pub(crate) mod blocking {
 fn get_header(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    parts: &mut Vec<BlockHeadersResponsePart>,
+    responses: &mut Vec<BlockHeadersResponse>,
 ) -> anyhow::Result<bool> {
     if let Some(header) = tx.block_header(block_number.into())? {
-        let hash = Hash(header.hash.0);
-        parts.push(BlockHeadersResponsePart::Header(Box::new(
-            header.to_proto(),
-        )));
-
         if let Some(signature) = tx.signature(block_number.into())? {
-            parts.push(BlockHeadersResponsePart::Signatures(Signatures {
-                block: BlockId {
-                    number: block_number.get(),
-                    hash,
+            let txn_count = header
+                .transaction_count
+                .try_into()
+                .context("invalid transaction count")?;
+
+            responses.push(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
+                block_hash: Hash(header.hash.0),
+                parent_hash: Hash(header.parent_hash.0),
+                number: header.number.get(),
+                time: header.timestamp.get(),
+                sequencer_address: Address(header.sequencer_address.0),
+                state_diff_commitment: Hash(Felt::ZERO), // TODO
+                state: Patricia {
+                    height: 251,
+                    root: Hash(header.state_commitment.0),
                 },
+                transactions: Merkle {
+                    n_leaves: txn_count,
+                    root: Hash(header.transaction_commitment.0),
+                },
+                events: Merkle {
+                    n_leaves: header
+                        .event_count
+                        .try_into()
+                        .context("invalid event count")?,
+                    root: Hash(header.event_commitment.0),
+                },
+                receipts: Merkle {
+                    n_leaves: txn_count,
+                    root: Hash(Felt::ZERO), // TODO
+                },
+                protocol_version: header.starknet_version.take_inner(),
+                gas_price: Felt::from_u128(header.eth_l1_gas_price.0),
+                num_storage_diffs: 0,      // TODO
+                num_nonce_updates: 0,      // TODO
+                num_declared_classes: 0,   // TODO
+                num_deployed_contracts: 0, // TODO
                 signatures: vec![ConsensusSignature {
                     r: signature.r.0,
                     s: signature.s.0,
                 }],
-            }));
+            })));
         }
-
-        parts.push(BlockHeadersResponsePart::Fin(Fin::ok()));
 
         Ok(true)
     } else {
         Ok(false)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(test, derive(fake::Dummy))]
-enum ClassId {
-    Cairo(ClassHash),
-    Sierra(SierraHash, CasmHash),
-}
-
-impl ClassId {
-    pub fn class_hash(&self) -> ClassHash {
-        match self {
-            ClassId::Cairo(class_hash) => *class_hash,
-            ClassId::Sierra(sierra_hash, _) => ClassHash(sierra_hash.0),
-        }
     }
 }
 
@@ -179,37 +194,11 @@ enum ClassDefinition {
     Sierra { sierra: Vec<u8>, casm: Vec<u8> },
 }
 
-fn get_body(
+fn get_classes_for_block(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    responses: &mut Vec<BlockBodiesResponse>,
+    responses: &mut Vec<ClassesResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(state_diff) = tx.state_update(block_number.into())? else {
-        return Ok(false);
-    };
-
-    let new_classes = state_diff
-        .declared_cairo_classes
-        .iter()
-        .map(|&class_hash| ClassId::Cairo(class_hash))
-        .chain(
-            state_diff
-                .declared_sierra_classes
-                .iter()
-                .map(|(&sierra_hash, &casm_hash)| ClassId::Sierra(sierra_hash, casm_hash)),
-        )
-        .collect::<Vec<_>>();
-    let block_hash = state_diff.block_hash;
-    let id = Some(BlockId {
-        number: block_number.get(),
-        hash: Hash(block_hash.0),
-    });
-
-    responses.push(BlockBodiesResponse {
-        id,
-        body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
-    });
-
     let get_definition =
         |block_number: BlockNumber, class_hash| -> anyhow::Result<ClassDefinition> {
             let definition = tx
@@ -231,18 +220,91 @@ fn get_body(
             })
         };
 
-    classes(
-        block_number,
-        block_hash,
-        new_classes,
-        responses,
-        get_definition,
-    )?;
+    let declared_classes = tx.declared_classes_at(block_number.into())?;
+    let mut classes = Vec::new();
 
-    responses.push(BlockBodiesResponse {
-        id,
-        body_message: BlockBodyMessage::Fin(Fin::ok()),
-    });
+    for class_hash in declared_classes {
+        let class_definition = get_definition(block_number, class_hash)?;
+
+        let class: Class = match class_definition {
+            ClassDefinition::Cairo(definition) => {
+                let cairo_class =
+                    serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
+                Class::Cairo0 {
+                    class: def_into_dto::cairo(cairo_class),
+                    domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
+                }
+            }
+            ClassDefinition::Sierra { sierra, casm } => {
+                let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
+
+                Class::Cairo1 {
+                    class: def_into_dto::sierra(sierra_class, casm),
+                    domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
+                }
+            }
+        };
+        classes.push(ClassesResponse::Class(class));
+    }
+
+    responses.extend(classes);
+
+    Ok(true)
+}
+
+fn get_state_diff(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<StateDiffsResponse>,
+) -> anyhow::Result<bool> {
+    let Some(state_diff) = tx.state_update(block_number.into())? else {
+        return Ok(false);
+    };
+
+    state_diff
+        .contract_updates
+        .into_iter()
+        .for_each(|(address, update)| {
+            responses.push(StateDiffsResponse::ContractDiff(ContractDiff {
+                address: Address(address.0),
+                nonce: update.nonce.map(|n| n.0),
+                class_hash: update.class.as_ref().map(|c| c.class_hash().0),
+                is_replaced: update.class.map(|c| c.is_replaced()),
+                values: update
+                    .storage
+                    .into_iter()
+                    .map(|(k, v)| ContractStoredValue {
+                        key: k.0,
+                        value: v.0,
+                    })
+                    .collect(),
+                domain: 0, // TODO
+            }))
+        });
+
+    state_diff
+        .system_contract_updates
+        .into_iter()
+        .for_each(|(address, update)| {
+            responses.push(StateDiffsResponse::ContractDiff(ContractDiff {
+                address: Address(address.0),
+                nonce: None,
+                class_hash: None,
+                is_replaced: None,
+                values: update
+                    .storage
+                    .into_iter()
+                    .map(|(k, v)| ContractStoredValue {
+                        key: k.0,
+                        value: v.0,
+                    })
+                    .collect(),
+                domain: 0, // TODO
+            }))
+        });
+
     Ok(true)
 }
 
@@ -251,32 +313,15 @@ fn get_transactions_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<TransactionsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(block_hash) = tx.block_hash(block_number.into())? else {
-        return Ok(false);
-    };
-
     let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
 
-    let id = Some(BlockId {
-        number: block_number.get(),
-        hash: Hash(block_hash.0),
-    });
-
-    responses.push(TransactionsResponse {
-        id,
-        kind: TransactionsResponseKind::Transactions(Transactions {
-            items: txn_data
-                .into_iter()
-                .map(|(txn, _)| txn.to_proto())
-                .collect(),
-        }),
-    });
-    responses.push(TransactionsResponse {
-        id,
-        kind: TransactionsResponseKind::Fin(Fin::ok()),
-    });
+    responses.extend(
+        txn_data
+            .into_iter()
+            .map(|(tnx, _)| TransactionsResponse::Transaction(tnx.to_dto())),
+    );
 
     Ok(true)
 }
@@ -286,29 +331,16 @@ fn get_receipts_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<ReceiptsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(block_hash) = tx.block_hash(block_number.into())? else {
-        return Ok(false);
-    };
-
     let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
 
-    let id = Some(BlockId {
-        number: block_number.get(),
-        hash: Hash(block_hash.0),
-    });
-
-    responses.push(ReceiptsResponse {
-        id,
-        kind: ReceiptsResponseKind::Receipts(Receipts {
-            items: txn_data.into_iter().map(ToProto::to_proto).collect(),
-        }),
-    });
-    responses.push(ReceiptsResponse {
-        id,
-        kind: ReceiptsResponseKind::Fin(Fin::ok()),
-    });
+    responses.extend(
+        txn_data
+            .into_iter()
+            .map(ToDto::to_dto)
+            .map(ReceiptsResponse::Receipt),
+    );
 
     Ok(true)
 }
@@ -318,43 +350,24 @@ fn get_events_for_block(
     block_number: BlockNumber,
     responses: &mut Vec<EventsResponse>,
 ) -> anyhow::Result<bool> {
-    let Some(block_hash) = tx.block_hash(block_number.into())? else {
-        return Ok(false);
-    };
-
     let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
         return Ok(false);
     };
 
-    let items = txn_data
-        .into_iter()
-        .flat_map(|(_, r)| {
-            std::iter::repeat(r.transaction_hash)
-                .zip(r.events)
-                .map(ToProto::to_proto)
-        })
-        .collect::<Vec<_>>();
-
-    let id = Some(BlockId {
-        number: block_number.get(),
-        hash: Hash(block_hash.0),
-    });
-
-    responses.push(EventsResponse {
-        id,
-        kind: EventsResponseKind::Events(Events { items }),
-    });
-    responses.push(EventsResponse {
-        id,
-        kind: EventsResponseKind::Fin(Fin::ok()),
-    });
+    responses.extend(txn_data.into_iter().flat_map(|(_, r)| {
+        std::iter::repeat(r.transaction_hash)
+            .zip(r.events)
+            .map(ToDto::to_dto)
+            .map(EventsResponse::Event)
+    }));
 
     Ok(true)
 }
 
-/// `block_handler` returns Ok(true) if the iteration should continue and is
-/// responsible for delimiting block data with `Fin::ok()` marker.
-fn iterate<T: From<Fin>>(
+/// Assupmtions:
+/// - `block_handler` returns `Ok(true)` if the iteration should continue.
+/// - `T::default()` always returns the `Fin` variant of the implementing type.
+fn iterate<T: Default + std::fmt::Debug>(
     tx: Transaction<'_>,
     iteration: Iteration,
     block_handler: impl Fn(&Transaction<'_>, BlockNumber, &mut Vec<T>) -> anyhow::Result<bool>,
@@ -367,30 +380,24 @@ fn iterate<T: From<Fin>>(
     } = iteration;
 
     if limit == 0 {
-        return Ok(vec![T::from(Fin::ok())]);
+        return Ok(vec![T::default()]);
     }
 
     let mut block_number = match get_start_block_number(start, &tx)? {
         Some(x) => x,
         None => {
-            return Ok(vec![T::from(Fin::unknown())]);
+            return Ok(vec![T::default()]);
         }
     };
 
-    let (limit, mut ending_marker) = if limit > MAX_BLOCKS_COUNT {
-        (MAX_BLOCKS_COUNT, Some(Fin::too_much()))
-    } else {
-        (limit, None)
-    };
-
     let mut responses = Vec::new();
+    let limit = limit.min(MAX_BLOCKS_COUNT);
 
     for i in 0..limit {
         if block_handler(&tx, block_number, &mut responses)? {
-            // Block data retrieved successfully, `block_handler` should add `Fin::ok()` marker on its own
+            // Block data retrieved successfully
         } else {
             // No such block
-            ending_marker = Some(Fin::unknown());
             break;
         }
 
@@ -399,16 +406,13 @@ fn iterate<T: From<Fin>>(
                 Some(x) => x,
                 None => {
                     // Out of range block number value
-                    ending_marker = Some(Fin::unknown());
                     break;
                 }
             };
         }
     }
 
-    if let Some(end) = ending_marker {
-        responses.push(T::from(end));
-    }
+    responses.push(T::default());
 
     Ok(responses)
 }
@@ -421,47 +425,6 @@ fn get_start_block_number(
         BlockNumberOrHash::Number(n) => BlockNumber::new(n),
         BlockNumberOrHash::Hash(h) => tx.block_id(BlockHash(h.0).into())?.map(|(n, _)| n),
     })
-}
-
-fn classes(
-    block_number: BlockNumber,
-    block_hash: BlockHash,
-    new_class_ids: Vec<ClassId>,
-    responses: &mut Vec<BlockBodiesResponse>,
-    mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<ClassDefinition>,
-) -> anyhow::Result<()> {
-    let mut classes = Vec::new();
-
-    for class_id in new_class_ids {
-        let class_definition = class_definition_getter(block_number, class_id.class_hash())?;
-
-        let class: Class = match (class_id, class_definition) {
-            (ClassId::Cairo(_), ClassDefinition::Cairo(definition)) => {
-                let cairo_class =
-                    serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
-                Class::Cairo0(def_into_dto::cairo(cairo_class))
-            }
-            (ClassId::Sierra(_, _), ClassDefinition::Sierra { sierra, casm }) => {
-                let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
-                Class::Cairo1(def_into_dto::sierra(sierra_class, casm))
-            }
-            _ => anyhow::bail!("Class definition type mismatch"),
-        };
-        classes.push(class);
-    }
-
-    responses.push(BlockBodiesResponse {
-        id: Some(BlockId {
-            number: block_number.get(),
-            hash: Hash(block_hash.0),
-        }),
-        body_message: BlockBodyMessage::Classes(Classes {
-            domain: 0, // TODO
-            classes,
-        }),
-    });
-
-    Ok(())
 }
 
 async fn spawn_blocking_get<Request, Response, Getter>(
@@ -523,7 +486,7 @@ fn get_next_block_number(
 }
 
 mod def_into_dto {
-    use p2p_proto::state::{
+    use p2p_proto::class::{
         Cairo0Class, Cairo1Class, Cairo1EntryPoints, EntryPoint, SierraEntryPoint,
     };
     use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};

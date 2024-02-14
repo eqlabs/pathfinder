@@ -1,0 +1,53 @@
+syntax = "proto3";
+import "common.proto";
+import "state.proto";
+
+package starknet.header;
+
+// Note: commitments may change to be for the previous blocks like comet/tendermint
+// hash of block header sent to L1
+message SignedBlockHeader {
+    starknet.common.Hash                        block_hash             = 1; //  For the structure of the block hash, see https://docs.starknet.io/documentation/architecture_and_concepts/Network_Architecture/header/#block_hash
+    starknet.common.Hash                        parent_hash            = 2;
+    uint64                                      number                 = 3;
+    uint64                                      time                   = 4;   // Encoded in Unix time.
+    starknet.common.Address                     sequencer_address      = 5;
+    starknet.common.Hash                        state_diff_commitment  = 6;   //  The state diff commitment returned  by the Starknet Feeder Gateway.
+                                                             //  For more info, see https://community.starknet.io/t/introducing-p2p-authentication-and-mismatch-resolution-in-v0-12-2/97993
+    starknet.common.Patricia                    state                  = 7;   // hash of contract and class patricia tries. Same as in L1. Later more trees will be included
+    // The following merkles can be built on the fly while sequencing/validating txs.
+    starknet.common.Merkle                      transactions           = 8;   // By order of execution. TBD: required? the client can execute (powerful machine) and match state diff
+    starknet.common.Merkle                      events                 = 9;   // By order of issuance. TBD: in receipts?
+    starknet.common.Merkle                      receipts               = 10;  // By order of issuance.
+    string                                      protocol_version       = 11; // Starknet version
+    starknet.common.Felt252                     gas_price              = 12;
+    uint64                                      num_storage_diffs      = 13;
+    uint64                                      num_nonce_updates      = 14;
+    uint64                                      num_declared_classes   = 15;  // Includes both Cairo 0 and Cairo 1.
+    uint64                                      num_deployed_contracts = 16;  // This includes the replaced classes too.
+    // for now, we assume a small consensus, so this fits in 1M. Else, these will be repeated and extracted from this message.
+    repeated starknet.common.ConsensusSignature signatures             = 17; //
+                                       // can be more explicit here about the signature structure as this is not part of account abstraction
+}
+
+// sent to all peers (except the ones this was received from, if any).
+// for a fraction of peers, also send the GetBlockHeaders response (as if they asked for it for this block)
+message NewBlock {
+    oneof maybe_full {
+        starknet.common.BlockID id     = 1;
+        BlockHeadersResponse    header = 2;
+    }
+}
+
+
+message BlockHeadersRequest {
+    starknet.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request.
+message BlockHeadersResponse {
+    oneof header_message {
+        SignedBlockHeader   header = 1;
+        starknet.common.Fin fin    = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its header.
+    }
+}

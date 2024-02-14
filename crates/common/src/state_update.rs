@@ -48,6 +48,10 @@ impl ContractClassUpdate {
             ContractClassUpdate::Replace(x) => *x,
         }
     }
+
+    pub fn is_replaced(&self) -> bool {
+        matches!(self, ContractClassUpdate::Replace(_))
+    }
 }
 
 impl StateUpdate {

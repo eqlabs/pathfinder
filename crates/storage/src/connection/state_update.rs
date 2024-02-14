@@ -7,6 +7,8 @@ use pathfinder_common::{
 
 use crate::{prelude::*, BlockId};
 
+use super::block::block_id;
+
 /// Inserts a canonical [StateUpdate] into storage.
 pub(super) fn insert_state_update(
     tx: &Transaction<'_>,
@@ -271,6 +273,39 @@ pub(super) fn state_update(
     }
 
     Ok(Some(state_update))
+}
+
+pub(super) fn declared_classes_at(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Vec<ClassHash>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(Vec::new());
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(r"SELECT hash FROM class_definitions WHERE block_number = ?")
+        .context("Preparing class declaration query statement")?;
+
+    let mut declared_classes = stmt
+        .query_map(params![&block_number], |row| {
+            let class_hash: ClassHash = row.get_class_hash(0)?;
+            Ok(class_hash)
+        })
+        .context("Querying class declarations")?;
+
+    let mut result = Vec::new();
+
+    while let Some(class_hash) = declared_classes
+        .next()
+        .transpose()
+        .context("Iterating over class declaration query rows")?
+    {
+        result.push(class_hash);
+    }
+
+    Ok(result)
 }
 
 pub(super) fn storage_value(
