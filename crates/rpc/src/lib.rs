@@ -215,6 +215,7 @@ pub mod test_utils {
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::H160;
+    use starknet_gateway_types::reply::GasPrices;
     use std::collections::HashMap;
 
     // Creates storage for tests
@@ -453,6 +454,7 @@ pub mod test_utils {
                 },
                 n_memory_holes: 5,
                 n_steps: 10,
+                data_availability: None,
             }),
             transaction_hash: txn0.hash,
             ..Default::default()
@@ -648,8 +650,11 @@ pub mod test_utils {
         let block = starknet_gateway_types::reply::PendingBlock {
             eth_l1_gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
             strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk gas price").unwrap()),
-            eth_l1_data_gas_price: Some(GasPrice::from_be_slice(b"data gas price").unwrap()),
-            strk_l1_data_gas_price: Some(GasPrice::from_be_slice(b"strk data gas price").unwrap()),
+            l1_gas_price: None,
+            l1_data_gas_price: Some(GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"data gas price").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk data gas price").unwrap(),
+            }),
             parent_hash: latest.hash,
             sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
             status: starknet_gateway_types::reply::Status::Pending,

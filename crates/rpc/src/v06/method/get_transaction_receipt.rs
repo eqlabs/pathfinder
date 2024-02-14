@@ -369,6 +369,7 @@ pub mod types {
                     },
                 n_steps,
                 n_memory_holes,
+                ..
             } = value;
 
             Self::V06(ExecutionResourcesPropertiesV06 {
@@ -854,6 +855,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
+                            data_availability: None,
                         }
                         .into(),
                     }
@@ -904,6 +906,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
+                            data_availability: None,
                         }
                         .into(),
                     }
@@ -928,6 +931,7 @@ mod tests {
             },
             n_steps: 9,
             n_memory_holes: 10,
+            data_availability: None,
         };
 
         let into = ExecutionResourcesProperties::from(original.clone());

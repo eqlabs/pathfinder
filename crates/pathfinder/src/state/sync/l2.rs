@@ -617,6 +617,7 @@ mod tests {
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::BlockCommitmentSignature;
         use pathfinder_common::StateUpdate;
+        use starknet_gateway_types::reply::GasPrices;
 
         use super::super::{sync, BlockValidationMode, SyncEvent};
         use assert_matches::assert_matches;
@@ -825,8 +826,11 @@ mod tests {
                 block_number: BLOCK0_NUMBER,
                 eth_l1_gas_price: Some(GasPrice::ZERO),
                 strk_l1_gas_price: Some(GasPrice::ZERO),
-                eth_l1_data_gas_price: Some(GasPrice::ZERO),
-                strk_l1_data_gas_price: Some(GasPrice::ZERO),
+                l1_gas_price: None,
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei:GasPrice::ZERO,
+                    price_in_fri:GasPrice::ZERO,
+                }),
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::ZERO)),
                 state_commitment: GLOBAL_ROOT0,
@@ -844,8 +848,11 @@ mod tests {
                 block_number: BLOCK0_NUMBER,
                 eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
                 strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 0 v2").unwrap()),
-                eth_l1_data_gas_price: Some(GasPrice::from_be_slice(b"data gas price 0 v2").unwrap()),
-                strk_l1_data_gas_price: Some(GasPrice::from_be_slice(b"data strk price 0 v2").unwrap()),
+                l1_gas_price: None,
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei: GasPrice::from_be_slice(b"data gas price 0 v2").unwrap(),
+                    price_in_fri: GasPrice::from_be_slice(b"data strk price 0 v2").unwrap(),
+                }),
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_commitment: GLOBAL_ROOT0_V2,
@@ -863,8 +870,11 @@ mod tests {
                 block_number: BLOCK1_NUMBER,
                 eth_l1_gas_price: Some(GasPrice::from(1)),
                 strk_l1_gas_price: Some(GasPrice::from(1)),
-                eth_l1_data_gas_price: Some(GasPrice::from(1)),
-                strk_l1_data_gas_price: Some(GasPrice::from(1)),
+                l1_gas_price: None,
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei: GasPrice::from(1),
+                    price_in_fri: GasPrice::from(1),
+                }),
                 parent_block_hash: BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
                 state_commitment: GLOBAL_ROOT1,
@@ -882,8 +892,11 @@ mod tests {
                 block_number: BLOCK2_NUMBER,
                 eth_l1_gas_price: Some(GasPrice::from(2)),
                 strk_l1_gas_price: Some(GasPrice::from(2)),
-                eth_l1_data_gas_price: Some(GasPrice::from(2)),
-                strk_l1_data_gas_price: Some(GasPrice::from(2)),
+                l1_gas_price: None,
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei: GasPrice::from(2),
+                    price_in_fri: GasPrice::from(2),
+                }),
                 parent_block_hash: BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
                 state_commitment: GLOBAL_ROOT2,
@@ -1373,12 +1386,11 @@ mod tests {
                     block_number: BLOCK1_NUMBER,
                     eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 1 v2").unwrap()),
-                    eth_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data gas price 1 v2").unwrap(),
-                    ),
-                    strk_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data strk price 1 v2").unwrap(),
-                    ),
+                    l1_gas_price: None,
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"data gas price 1 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"data strk price 1 v2").unwrap(),
+                    }),
                     parent_block_hash: BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -1600,12 +1612,11 @@ mod tests {
                     block_number: BLOCK1_NUMBER,
                     eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 1 v2").unwrap()),
-                    eth_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data gas price 1 v2").unwrap(),
-                    ),
-                    strk_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data strk price 1 v2").unwrap(),
-                    ),
+                    l1_gas_price: None,
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"data gas price 1 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"data strk price 1 v2").unwrap(),
+                    }),
                     parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -1625,12 +1636,11 @@ mod tests {
                     block_number: BLOCK2_NUMBER,
                     eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 2 v2").unwrap()),
-                    eth_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data gas price 2 v2").unwrap(),
-                    ),
-                    strk_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data strk price 2 v2").unwrap(),
-                    ),
+                    l1_gas_price: None,
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"data gas price 2 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"data strk price 2 v2").unwrap(),
+                    }),
                     parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
@@ -1650,8 +1660,11 @@ mod tests {
                     block_number: BLOCK3_NUMBER,
                     eth_l1_gas_price: Some(GasPrice::from(3)),
                     strk_l1_gas_price: Some(GasPrice::from(3)),
-                    eth_l1_data_gas_price: Some(GasPrice::from(3)),
-                    strk_l1_data_gas_price: Some(GasPrice::from(3)),
+                    l1_gas_price: None,
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: GasPrice::from(3),
+                        price_in_fri: GasPrice::from(3),
+                    }),
                     parent_block_hash: BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 3").unwrap(),
@@ -1883,12 +1896,11 @@ mod tests {
                     block_number: BLOCK2_NUMBER,
                     eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 2 v2").unwrap()),
-                    eth_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data gas price 2 v2").unwrap(),
-                    ),
-                    strk_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data strk price 2 v2").unwrap(),
-                    ),
+                    l1_gas_price: None,
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"data gas price 2 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"data strk price 2 v2").unwrap(),
+                    }),
                     parent_block_hash: BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
@@ -2073,12 +2085,11 @@ mod tests {
                     block_number: BLOCK1_NUMBER,
                     eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 1 v2").unwrap()),
-                    eth_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data gas price 1 v2").unwrap(),
-                    ),
-                    strk_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data strk price 1 v2").unwrap(),
-                    ),
+                    l1_gas_price: None,
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"data gas price 1 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"data strk price 1 v2").unwrap(),
+                    }),
                     parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -2098,12 +2109,11 @@ mod tests {
                     block_number: BLOCK2_NUMBER,
                     eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
                     strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 2").unwrap()),
-                    eth_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data gas price 2").unwrap(),
-                    ),
-                    strk_l1_data_gas_price: Some(
-                        GasPrice::from_be_slice(b"data strk price 2").unwrap(),
-                    ),
+                    l1_gas_price: None,
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"data gas price 2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"data strk price 2").unwrap(),
+                    }),
                     parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 2").unwrap(),

@@ -266,6 +266,7 @@ pub(crate) mod tests {
     use pathfinder_common::{
         block_hash, felt, BlockHeader, GasPrice, SierraHash, TransactionIndex,
     };
+    use starknet_gateway_types::reply::GasPrices;
 
     use super::*;
 
@@ -442,8 +443,11 @@ pub(crate) mod tests {
             let pending_block = starknet_gateway_types::reply::PendingBlock {
                 eth_l1_gas_price: GasPrice(1),
                 strk_l1_gas_price: Some(GasPrice(1)),
-                eth_l1_data_gas_price: Some(GasPrice(1)),
-                strk_l1_data_gas_price: Some(GasPrice(1)),
+                l1_gas_price: None,
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei: GasPrice(1),
+                    price_in_fri: GasPrice(1),
+                }),
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,

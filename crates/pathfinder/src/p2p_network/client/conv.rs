@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use anyhow::{Context, Ok};
+use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
 use p2p_proto::{
     class::{Cairo0Class, Cairo1Class},
     receipt::{
@@ -159,6 +160,7 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
                     },
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
+                    data_availability: None,
                 }),
                 l2_to_l1_messages: common
                     .messages_sent
@@ -298,8 +300,6 @@ pub fn sierra_defs_and_hashes_from_dto(
         .context("compute sierra clash hash")?
         .0,
     );
-
-    use cairo_lang_starknet::casm_contract_class::CasmContractClass;
 
     let ccc: CasmContractClass =
         serde_json::from_slice(&compiled).context("deserialize casm class")?;
