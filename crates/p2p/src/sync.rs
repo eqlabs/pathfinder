@@ -39,11 +39,13 @@ pub(crate) mod codec {
     use super::protocol;
     use async_trait::async_trait;
     use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-    use p2p_proto::consts::MESSAGE_SIZE_LIMIT;
     use p2p_proto::{class, event, header, proto, receipt, state, transaction};
     use p2p_proto::{ToProtobuf, TryFromProtobuf};
     use p2p_stream::Codec;
     use std::marker::PhantomData;
+
+    pub const _1MIB: usize = 1024 * 1024;
+    pub const _4MIB: usize = 4 * _1MIB;
 
     pub type Headers = SyncCodec<
         protocol::Headers,
@@ -51,6 +53,7 @@ pub(crate) mod codec {
         header::BlockHeadersResponse,
         proto::header::BlockHeadersRequest,
         proto::header::BlockHeadersResponse,
+        _1MIB,
     >;
 
     pub type StateDiffs = SyncCodec<
@@ -59,6 +62,7 @@ pub(crate) mod codec {
         state::StateDiffsResponse,
         proto::state::StateDiffsRequest,
         proto::state::StateDiffsResponse,
+        _1MIB,
     >;
 
     pub type Classes = SyncCodec<
@@ -67,6 +71,7 @@ pub(crate) mod codec {
         class::ClassesResponse,
         proto::class::ClassesRequest,
         proto::class::ClassesResponse,
+        _4MIB,
     >;
 
     pub type Transactions = SyncCodec<
@@ -75,6 +80,7 @@ pub(crate) mod codec {
         transaction::TransactionsResponse,
         proto::transaction::TransactionsRequest,
         proto::transaction::TransactionsResponse,
+        _1MIB,
     >;
 
     pub type Receipts = SyncCodec<
@@ -83,6 +89,7 @@ pub(crate) mod codec {
         receipt::ReceiptsResponse,
         proto::receipt::ReceiptsRequest,
         proto::receipt::ReceiptsResponse,
+        _1MIB,
     >;
 
     pub type Events = SyncCodec<
@@ -91,22 +98,23 @@ pub(crate) mod codec {
         event::EventsResponse,
         proto::event::EventsRequest,
         proto::event::EventsResponse,
+        _1MIB,
     >;
 
     #[derive(Clone, Debug)]
-    pub struct SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp>(
+    pub struct SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize>(
         PhantomData<(Protocol, Req, Resp, ProstReq, ProstResp)>,
     );
 
-    impl<A, B, C, D, E> Default for SyncCodec<A, B, C, D, E> {
+    impl<A, B, C, D, E, const F: usize> Default for SyncCodec<A, B, C, D, E, F> {
         fn default() -> Self {
             Self(Default::default())
         }
     }
 
     #[async_trait]
-    impl<Protocol, Req, Resp, ProstReq, ProstResp> Codec
-        for SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp>
+    impl<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> Codec
+        for SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>
     where
         Protocol: AsRef<str> + Send + Clone,
         Req: TryFromProtobuf<ProstReq> + ToProtobuf<ProstReq> + Send,
@@ -128,9 +136,7 @@ pub(crate) mod codec {
         {
             let mut buf = Vec::new();
 
-            io.take(MESSAGE_SIZE_LIMIT as u64)
-                .read_to_end(&mut buf)
-                .await?;
+            io.take(_1MIB as u64).read_to_end(&mut buf).await?;
 
             let prost_dto = ProstReq::decode(buf.as_ref())?;
             let dto = Req::try_from_protobuf(prost_dto, std::any::type_name::<ProstReq>())?;
@@ -150,12 +156,12 @@ pub(crate) mod codec {
                 .await
                 .map_err(Into::<std::io::Error>::into)?;
 
-            if encoded_len > MESSAGE_SIZE_LIMIT {
+            if encoded_len > RESPONSE_SIZE_LIMIT {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!(
                         "Encoded length {} exceeds the maximum buffer size {}",
-                        encoded_len, MESSAGE_SIZE_LIMIT
+                        encoded_len, RESPONSE_SIZE_LIMIT
                     ),
                 ));
             }
