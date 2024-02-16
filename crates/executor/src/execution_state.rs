@@ -123,10 +123,38 @@ impl<'tx> ExecutionState<'tx> {
                     .expect("Sequencer address overflow"),
             ),
             gas_prices: blockifier::block::GasPrices {
-                eth_l1_gas_price: self.header.eth_l1_gas_price.0.try_into()?,
-                strk_l1_gas_price: self.header.strk_l1_gas_price.0.try_into()?,
-                eth_l1_data_gas_price: self.header.eth_l1_data_gas_price.0.try_into()?,
-                strk_l1_data_gas_price: self.header.strk_l1_data_gas_price.0.try_into()?,
+                eth_l1_gas_price: if self.header.eth_l1_gas_price.0 == 0 {
+                    // Bad API design - the genesis block has 0 gas price, but
+                    // blockifier doesn't allow for it. This isn't critical for
+                    // consensus, so we just use 1.
+                    1.try_into().unwrap()
+                } else {
+                    self.header.eth_l1_gas_price.0.try_into().unwrap()
+                },
+                strk_l1_gas_price: if self.header.strk_l1_gas_price.0 == 0 {
+                    // Bad API design - the genesis block has 0 gas price, but
+                    // blockifier doesn't allow for it. This isn't critical for
+                    // consensus, so we just use 1.
+                    1.try_into().unwrap()
+                } else {
+                    self.header.strk_l1_gas_price.0.try_into().unwrap()
+                },
+                eth_l1_data_gas_price: if self.header.eth_l1_data_gas_price.0 == 0 {
+                    // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
+                    // blockifier doesn't allow for it. This value is ignored for those
+                    // transactions.
+                    1.try_into().unwrap()
+                } else {
+                    self.header.eth_l1_data_gas_price.0.try_into().unwrap()
+                },
+                strk_l1_data_gas_price: if self.header.strk_l1_data_gas_price.0 == 0 {
+                    // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
+                    // blockifier doesn't allow for it. This value is ignored for those
+                    // transactions.
+                    1.try_into().unwrap()
+                } else {
+                    self.header.strk_l1_data_gas_price.0.try_into().unwrap()
+                },
             },
             use_kzg_da: false,
         })

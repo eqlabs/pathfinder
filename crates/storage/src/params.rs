@@ -113,23 +113,6 @@ pub trait RowExt {
 
     fn get_optional_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&[u8]>>;
 
-    fn get_optional_u128<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<u128>> {
-        let blob = self.get_optional_blob(index)?;
-        match blob {
-            Some(blob) => {
-                if blob.len() > 16 {
-                    return Err(
-                        rusqlite::types::FromSqlError::Other("blob too large".into()).into(),
-                    );
-                }
-                let mut arr = [0; 16];
-                arr.copy_from_slice(blob);
-                Ok(Some(u128::from_be_bytes(arr)))
-            }
-            None => Ok(None),
-        }
-    }
-
     fn get_felt<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<Felt> {
         let blob = self.get_blob(index)?;
         let felt = Felt::from_be_slice(blob)

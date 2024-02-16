@@ -652,8 +652,8 @@ pub mod test_utils {
             strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk gas price").unwrap()),
             l1_gas_price: None,
             l1_data_gas_price: Some(GasPrices {
-                price_in_wei: GasPrice::from_be_slice(b"data gas price").unwrap(),
-                price_in_fri: GasPrice::from_be_slice(b"strk data gas price").unwrap(),
+                price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
             }),
             parent_hash: latest.hash,
             sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
