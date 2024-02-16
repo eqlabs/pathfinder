@@ -31,6 +31,12 @@ pub trait TryFromDto<T> {
 /// Represents a simplified [`pathfinder_common::SignedBlockHeader`], ie. excluding class commitment and storage commitment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedBlockHeader {
+    pub header: BlockHeader,
+    pub signature: BlockCommitmentSignature,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockHeader {
     pub hash: BlockHash,
     pub parent_hash: BlockHash,
     pub number: BlockNumber,
@@ -47,7 +53,20 @@ pub struct SignedBlockHeader {
     pub transaction_count: usize,
     pub event_count: usize,
     pub l1_da_mode: L1DataAvailabilityMode,
-    pub signature: BlockCommitmentSignature,
+}
+
+impl SignedBlockHeader {
+    pub fn verify_signature(&self) -> bool {
+        // TODO
+        true
+    }
+}
+
+impl BlockHeader {
+    pub fn verify_hash(&self) -> bool {
+        // TODO
+        true
+    }
 }
 
 impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
@@ -65,24 +84,26 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             .next()
             .expect("exactly one element");
         Ok(SignedBlockHeader {
-            hash: BlockHash(dto.block_hash.0),
-            parent_hash: BlockHash(dto.parent_hash.0),
-            number: BlockNumber::new(dto.number)
-                .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
-            timestamp: BlockTimestamp::new(dto.time)
-                .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
-            eth_l1_gas_price: GasPrice(dto.gas_price_wei),
-            strk_l1_gas_price: GasPrice(dto.gas_price_fri),
-            eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
-            strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
-            sequencer_address: SequencerAddress(dto.sequencer_address.0),
-            starknet_version: dto.protocol_version.into(),
-            event_commitment: EventCommitment(dto.events.root.0),
-            state_commitment: StateCommitment(dto.state.root.0),
-            transaction_commitment: TransactionCommitment(dto.transactions.root.0),
-            transaction_count: dto.transactions.n_leaves.try_into()?,
-            event_count: dto.events.n_leaves.try_into()?,
-            l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
+            header: BlockHeader {
+                hash: BlockHash(dto.block_hash.0),
+                parent_hash: BlockHash(dto.parent_hash.0),
+                number: BlockNumber::new(dto.number)
+                    .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
+                timestamp: BlockTimestamp::new(dto.time)
+                    .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
+                eth_l1_gas_price: GasPrice(dto.gas_price_wei),
+                strk_l1_gas_price: GasPrice(dto.gas_price_fri),
+                eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
+                strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
+                sequencer_address: SequencerAddress(dto.sequencer_address.0),
+                starknet_version: dto.protocol_version.into(),
+                event_commitment: EventCommitment(dto.events.root.0),
+                state_commitment: StateCommitment(dto.state.root.0),
+                transaction_commitment: TransactionCommitment(dto.transactions.root.0),
+                transaction_count: dto.transactions.n_leaves.try_into()?,
+                event_count: dto.events.n_leaves.try_into()?,
+                l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
+            },
             signature,
         })
     }
@@ -101,22 +122,24 @@ impl
         ),
     ) -> Self {
         Self {
-            hash: header.hash,
-            parent_hash: header.parent_hash,
-            number: header.number,
-            timestamp: header.timestamp,
-            eth_l1_gas_price: header.eth_l1_gas_price,
-            strk_l1_gas_price: header.strk_l1_gas_price,
-            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-            sequencer_address: header.sequencer_address,
-            starknet_version: header.starknet_version,
-            event_commitment: header.event_commitment,
-            state_commitment: header.state_commitment,
-            transaction_commitment: header.transaction_commitment,
-            transaction_count: header.transaction_count,
-            event_count: header.event_count,
-            l1_da_mode: header.l1_da_mode,
+            header: BlockHeader {
+                hash: header.hash,
+                parent_hash: header.parent_hash,
+                number: header.number,
+                timestamp: header.timestamp,
+                eth_l1_gas_price: header.eth_l1_gas_price,
+                strk_l1_gas_price: header.strk_l1_gas_price,
+                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+                sequencer_address: header.sequencer_address,
+                starknet_version: header.starknet_version,
+                event_commitment: header.event_commitment,
+                state_commitment: header.state_commitment,
+                transaction_commitment: header.transaction_commitment,
+                transaction_count: header.transaction_count,
+                event_count: header.event_count,
+                l1_da_mode: header.l1_da_mode,
+            },
             signature,
         }
     }

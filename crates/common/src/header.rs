@@ -24,7 +24,9 @@ pub struct BlockHeader {
     pub l1_da_mode: L1DataAvailabilityMode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Dummy, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Default, Dummy, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum L1DataAvailabilityMode {
     #[default]

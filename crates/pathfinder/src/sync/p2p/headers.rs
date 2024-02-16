@@ -1,7 +1,7 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
-use p2p::PeerData;
-use pathfinder_common::{BlockHash, BlockNumber, SignedBlockHeader};
+use p2p::{client::types::SignedBlockHeader, PeerData};
+use pathfinder_common::{BlockHash, BlockNumber, ClassCommitment, StorageCommitment};
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
@@ -142,6 +142,9 @@ pub(super) async fn verify(signed_header: PeerData<SignedBlockHeader>) -> Signed
     .expect("Task should not crash")
 }
 
+/// # FIXME
+/// class and storage commitments are 0 here
+///
 /// Writes the headers to storage.
 pub(super) async fn persist(
     mut signed_headers: Vec<PeerData<SignedBlockHeader>>,
@@ -154,8 +157,27 @@ pub(super) async fn persist(
         let tx = db.transaction().context("Creating database transaction")?;
 
         for SignedBlockHeader { header, signature } in signed_headers.iter().map(|x| &x.data) {
-            tx.insert_block_header(header)
-                .context("Persisting block header")?;
+            tx.insert_block_header(&pathfinder_common::BlockHeader {
+                hash: header.hash,
+                parent_hash: header.parent_hash,
+                number: header.number,
+                timestamp: header.timestamp,
+                eth_l1_gas_price: header.eth_l1_gas_price,
+                strk_l1_gas_price: header.strk_l1_gas_price,
+                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+                sequencer_address: header.sequencer_address,
+                starknet_version: header.starknet_version.clone(),
+                class_commitment: ClassCommitment::ZERO,
+                event_commitment: header.event_commitment,
+                state_commitment: header.state_commitment,
+                storage_commitment: StorageCommitment::ZERO,
+                transaction_commitment: header.transaction_commitment,
+                transaction_count: header.transaction_count,
+                event_count: header.event_count,
+                l1_da_mode: header.l1_da_mode,
+            })
+            .context("Persisting block header")?;
             tx.insert_signature(header.number, signature)
                 .context("Persisting block signature")?;
         }
