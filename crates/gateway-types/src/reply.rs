@@ -20,17 +20,33 @@ pub struct Block {
     pub block_hash: BlockHash,
     pub block_number: BlockNumber,
 
-    /// Excluded in blocks prior to Starknet 0.9
+    /// Excluded in blocks prior to Starknet 0.9.
+    ///
+    /// This field is an implementation detail. Use the `eth_l1_gas_price`
+    /// method instead of using this field directly.
     // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default, alias = "gas_price")]
-    pub eth_l1_gas_price: Option<GasPrice>,
+    #[serde(default, alias = "gas_price", rename = "eth_l1_gas_price")]
+    #[doc(hidden)]
+    pub eth_l1_gas_price_implementation_detail: Option<GasPrice>,
+    /// This field is an implementation detail. Use the `strk_l1_gas_price`
+    /// method instead of using this field directly.
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strk_l1_gas_price: Option<GasPrice>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "strk_l1_gas_price"
+    )]
+    pub strk_l1_gas_price_implementation_detail: Option<GasPrice>,
 
+    /// Excluded in blocks prior to Starknet 0.13.1.
     pub l1_data_gas_price: Option<GasPrices>,
-    pub l1_gas_price: Option<GasPrices>,
+    /// Excluded in blocks prior to Starknet 0.13.1.
+    ///
+    /// This field is an implementation detail. Use the `eth_l1_gas_price` and
+    /// `strk_l1_gas_price` methods instead.
+    #[serde(rename = "l1_gas_price")]
+    pub l1_gas_price_implementation_detail: Option<GasPrices>,
 
     pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to Starknet 0.8
@@ -58,21 +74,50 @@ pub struct Block {
     pub l1_da_mode: Option<L1DataAvailabilityMode>,
 }
 
+impl Block {
+    pub fn eth_l1_gas_price(&self) -> Option<GasPrice> {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_wei)
+            .or(self.eth_l1_gas_price_implementation_detail)
+    }
+
+    pub fn strk_l1_gas_price(&self) -> Option<GasPrice> {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_fri)
+            .or(self.strk_l1_gas_price_implementation_detail)
+    }
+}
+
 #[serde_as]
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct PendingBlock {
+    /// Excluded in blocks prior to Starknet 0.9.
+    ///
+    /// This field is an implementation detail. Use the `eth_l1_gas_price`
+    /// method instead of using this field directly.
     // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
-    #[serde_as(as = "GasPriceAsHexStr")]
-    #[serde(alias = "gas_price")]
-    pub eth_l1_gas_price: GasPrice,
-    // Excluded in blocks prior to Starknet 0.13.0
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default)]
-    pub strk_l1_gas_price: Option<GasPrice>,
+    #[serde(default, alias = "gas_price", rename = "eth_l1_gas_price")]
+    pub eth_l1_gas_price_implementation_detail: Option<GasPrice>,
+    /// This field is an implementation detail. Use the `strk_l1_gas_price`
+    /// method instead of using this field directly.
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "strk_l1_gas_price"
+    )]
+    pub strk_l1_gas_price_implementation_detail: Option<GasPrice>,
 
+    /// Excluded in blocks prior to Starknet 0.13.1.
     pub l1_data_gas_price: Option<GasPrices>,
-    pub l1_gas_price: Option<GasPrices>,
+    /// Excluded in blocks prior to Starknet 0.13.1.
+    ///
+    /// This field is an implementation detail. Use the `strk_l1_gas_price`
+    /// method instead of using this field directly.
+    #[serde(rename = "l1_gas_price")]
+    pub l1_gas_price_implementation_detail: Option<GasPrices>,
 
     #[serde(rename = "parent_block_hash")]
     pub parent_hash: BlockHash,
@@ -86,6 +131,21 @@ pub struct PendingBlock {
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
+}
+
+impl PendingBlock {
+    pub fn eth_l1_gas_price(&self) -> GasPrice {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_wei)
+            .or(self.eth_l1_gas_price_implementation_detail)
+            .expect("missing L1 gas price")
+    }
+
+    pub fn strk_l1_gas_price(&self) -> Option<GasPrice> {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_fri)
+            .or(self.strk_l1_gas_price_implementation_detail)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

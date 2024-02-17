@@ -457,10 +457,12 @@ pub(crate) mod tests {
         ) -> PendingData {
             PendingData {
                 block: PendingBlock {
-                    eth_l1_gas_price: last_block_header.eth_l1_gas_price,
-                    strk_l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        last_block_header.eth_l1_gas_price,
+                    ),
+                    strk_l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: None,
-                    l1_gas_price: None,
+                    l1_gas_price_implementation_detail: None,
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,

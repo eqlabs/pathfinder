@@ -824,9 +824,9 @@ mod tests {
             static ref BLOCK0: reply::Block = reply::Block {
                 block_hash: BLOCK0_HASH,
                 block_number: BLOCK0_NUMBER,
-                eth_l1_gas_price: Some(GasPrice::ZERO),
-                strk_l1_gas_price: Some(GasPrice::ZERO),
-                l1_gas_price: None,
+                eth_l1_gas_price_implementation_detail: Some(GasPrice::ZERO),
+                strk_l1_gas_price_implementation_detail: Some(GasPrice::ZERO),
+                l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
                     price_in_wei:GasPrice::ZERO,
                     price_in_fri:GasPrice::ZERO,
@@ -846,9 +846,9 @@ mod tests {
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: BLOCK0_HASH_V2,
                 block_number: BLOCK0_NUMBER,
-                eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
-                strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 0 v2").unwrap()),
-                l1_gas_price: None,
+                eth_l1_gas_price_implementation_detail: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
+                strk_l1_gas_price_implementation_detail: Some(GasPrice::from_be_slice(b"strk price 0 v2").unwrap()),
+                l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
                     price_in_wei: GasPrice::from_be_slice(b"datgasprice 0 v2").unwrap(),
                     price_in_fri: GasPrice::from_be_slice(b"datstrkpric 0 v2").unwrap(),
@@ -868,9 +868,9 @@ mod tests {
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: BLOCK1_HASH,
                 block_number: BLOCK1_NUMBER,
-                eth_l1_gas_price: Some(GasPrice::from(1)),
-                strk_l1_gas_price: Some(GasPrice::from(1)),
-                l1_gas_price: None,
+                eth_l1_gas_price_implementation_detail: Some(GasPrice::from(1)),
+                strk_l1_gas_price_implementation_detail: Some(GasPrice::from(1)),
+                l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
                     price_in_wei: GasPrice::from(1),
                     price_in_fri: GasPrice::from(1),
@@ -890,9 +890,9 @@ mod tests {
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: BLOCK2_HASH,
                 block_number: BLOCK2_NUMBER,
-                eth_l1_gas_price: Some(GasPrice::from(2)),
-                strk_l1_gas_price: Some(GasPrice::from(2)),
-                l1_gas_price: None,
+                eth_l1_gas_price_implementation_detail: Some(GasPrice::from(2)),
+                strk_l1_gas_price_implementation_detail: Some(GasPrice::from(2)),
+                l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
                     price_in_wei: GasPrice::from(2),
                     price_in_fri: GasPrice::from(2),
@@ -1384,9 +1384,13 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
-                    eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 1 v2").unwrap()),
-                    l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
+                    ),
+                    strk_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
+                    ),
+                    l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: Some(GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 1 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 1 v2").unwrap(),
@@ -1610,9 +1614,13 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
-                    eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 1 v2").unwrap()),
-                    l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
+                    ),
+                    strk_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
+                    ),
+                    l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: Some(GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 1 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 1 v2").unwrap(),
@@ -1634,9 +1642,13 @@ mod tests {
                 let block2_v2 = reply::Block {
                     block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
-                    eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 2 v2").unwrap()),
-                    l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"gas price 2 v2").unwrap(),
+                    ),
+                    strk_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"strk price 2 v2").unwrap(),
+                    ),
+                    l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: Some(GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 2 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 2 v2").unwrap(),
@@ -1658,9 +1670,9 @@ mod tests {
                 let block3 = reply::Block {
                     block_hash: BLOCK3_HASH,
                     block_number: BLOCK3_NUMBER,
-                    eth_l1_gas_price: Some(GasPrice::from(3)),
-                    strk_l1_gas_price: Some(GasPrice::from(3)),
-                    l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(GasPrice::from(3)),
+                    strk_l1_gas_price_implementation_detail: Some(GasPrice::from(3)),
+                    l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: Some(GasPrices {
                         price_in_wei: GasPrice::from(3),
                         price_in_fri: GasPrice::from(3),
@@ -1894,9 +1906,13 @@ mod tests {
                 let block2_v2 = reply::Block {
                     block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
-                    eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 2 v2").unwrap()),
-                    l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"gas price 2 v2").unwrap(),
+                    ),
+                    strk_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"strk price 2 v2").unwrap(),
+                    ),
+                    l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: Some(GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 2 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 2 v2").unwrap(),
@@ -2083,9 +2099,13 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
-                    eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 1 v2").unwrap()),
-                    l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
+                    ),
+                    strk_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
+                    ),
+                    l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: Some(GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 1 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 1 v2").unwrap(),
@@ -2107,9 +2127,13 @@ mod tests {
                 let block2 = reply::Block {
                     block_hash: BLOCK2_HASH,
                     block_number: BLOCK2_NUMBER,
-                    eth_l1_gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
-                    strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk price 2").unwrap()),
-                    l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"gas price 2").unwrap(),
+                    ),
+                    strk_l1_gas_price_implementation_detail: Some(
+                        GasPrice::from_be_slice(b"strk price 2").unwrap(),
+                    ),
+                    l1_gas_price_implementation_detail: None,
                     l1_data_gas_price: Some(GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 2").unwrap(),

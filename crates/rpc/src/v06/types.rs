@@ -72,8 +72,8 @@ impl BlockHeader {
                     // Default value for cairo <0.8.0 is 0
                     .unwrap_or(SequencerAddress(Felt::ZERO)),
                 l1_gas_price: ResourcePrice {
-                    price_in_fri: block.strk_l1_gas_price.unwrap_or_default(),
-                    price_in_wei: block.eth_l1_gas_price.unwrap_or_default(),
+                    price_in_fri: block.strk_l1_gas_price().unwrap_or_default(),
+                    price_in_wei: block.eth_l1_gas_price().unwrap_or_default(),
                 },
                 starknet_version: block.starknet_version,
             },
@@ -85,8 +85,8 @@ impl BlockHeader {
                 timestamp: pending.timestamp,
                 sequencer_address: pending.sequencer_address,
                 l1_gas_price: ResourcePrice {
-                    price_in_fri: pending.strk_l1_gas_price.unwrap_or_default(),
-                    price_in_wei: pending.eth_l1_gas_price,
+                    price_in_fri: pending.strk_l1_gas_price().unwrap_or_default(),
+                    price_in_wei: pending.eth_l1_gas_price(),
                 },
                 starknet_version: pending.starknet_version,
             },

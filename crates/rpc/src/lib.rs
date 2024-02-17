@@ -648,9 +648,13 @@ pub mod test_utils {
         let transaction_receipts = transaction_receipts.into_iter().map(Into::into).collect();
 
         let block = starknet_gateway_types::reply::PendingBlock {
-            eth_l1_gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
-            strk_l1_gas_price: Some(GasPrice::from_be_slice(b"strk gas price").unwrap()),
-            l1_gas_price: None,
+            eth_l1_gas_price_implementation_detail: Some(
+                GasPrice::from_be_slice(b"gas price").unwrap(),
+            ),
+            strk_l1_gas_price_implementation_detail: Some(
+                GasPrice::from_be_slice(b"strk gas price").unwrap(),
+            ),
+            l1_gas_price_implementation_detail: None,
             l1_data_gas_price: Some(GasPrices {
                 price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
                 price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),

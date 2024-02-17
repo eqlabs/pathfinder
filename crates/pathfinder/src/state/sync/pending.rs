@@ -99,9 +99,9 @@ mod tests {
         pub static ref NEXT_BLOCK: Block = Block {
             block_hash: block_hash!("0xabcd"),
             block_number: BlockNumber::new_or_panic(1),
-            eth_l1_gas_price: None,
-            strk_l1_gas_price: None,
-            l1_gas_price: None,
+            eth_l1_gas_price_implementation_detail: None,
+            strk_l1_gas_price_implementation_detail: None,
+            l1_gas_price_implementation_detail: None,
             l1_data_gas_price: None,
             parent_block_hash: PARENT_HASH,
             sequencer_address: None,
@@ -121,9 +121,9 @@ mod tests {
         };
 
         pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
-            eth_l1_gas_price: GasPrice(11),
-            strk_l1_gas_price: None,
-            l1_gas_price: None,
+            eth_l1_gas_price_implementation_detail: Some(GasPrice(11)),
+            strk_l1_gas_price_implementation_detail: None,
+            l1_gas_price_implementation_detail: None,
             l1_data_gas_price: None,
             parent_hash: NEXT_BLOCK.parent_block_hash,
             sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),

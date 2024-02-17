@@ -780,9 +780,9 @@ async fn l2_update(
             number: block.block_number,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
-            eth_l1_gas_price: block.eth_l1_gas_price.unwrap_or(GasPrice::ZERO),
+            eth_l1_gas_price: block.eth_l1_gas_price().unwrap_or(GasPrice::ZERO),
             // Default value for Starknet <0.13.0 is zero
-            strk_l1_gas_price: block.strk_l1_gas_price.unwrap_or(GasPrice::ZERO),
+            strk_l1_gas_price: block.strk_l1_gas_price().unwrap_or(GasPrice::ZERO),
             // Default value for Starknet <0.13.1 is zero
             eth_l1_data_gas_price: block
                 .l1_data_gas_price
@@ -1134,9 +1134,9 @@ mod tests {
             let block = Box::new(reply::Block {
                 block_hash: header.hash,
                 block_number: header.number,
-                eth_l1_gas_price: Some(header.eth_l1_gas_price),
-                strk_l1_gas_price: Some(header.strk_l1_gas_price),
-                l1_gas_price: None,
+                eth_l1_gas_price_implementation_detail: Some(header.eth_l1_gas_price),
+                strk_l1_gas_price_implementation_detail: Some(header.strk_l1_gas_price),
+                l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
                     price_in_wei: header.eth_l1_data_gas_price,
                     price_in_fri: header.strk_l1_data_gas_price,

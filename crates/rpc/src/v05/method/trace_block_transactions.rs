@@ -441,9 +441,9 @@ pub(crate) mod tests {
                 vec![dummy_receipt.clone(), dummy_receipt.clone(), dummy_receipt];
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
-                eth_l1_gas_price: GasPrice(1),
-                strk_l1_gas_price: Some(GasPrice(1)),
-                l1_gas_price: None,
+                eth_l1_gas_price_implementation_detail: Some(GasPrice(1)),
+                strk_l1_gas_price_implementation_detail: Some(GasPrice(1)),
+                l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
                     price_in_wei: GasPrice(1),
                     price_in_fri: GasPrice(1),
