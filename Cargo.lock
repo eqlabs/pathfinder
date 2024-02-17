@@ -879,9 +879,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.5.0-rc.0"
+version = "0.5.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fcbbfed0fe22d2dfbb9cda105b2eacb05cb420fb855d6ba71cb7d8c06d5ceca"
+checksum = "c15e4988ff074f3402a7ee245461bb3834fd631df73d8f62b0729a326d0be53b"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -2645,6 +2645,7 @@ dependencies = [
  "itertools 0.11.0",
  "num-bigint",
  "num-traits 0.2.17",
+ "parity-scale-codec",
  "schemars",
  "serde",
 ]
@@ -6272,6 +6273,7 @@ dependencies = [
  "assert_matches",
  "axum",
  "base64 0.13.1",
+ "blockifier",
  "bytes",
  "flate2",
  "futures",

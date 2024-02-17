@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use blockifier::{
     context::TransactionContext,
-    execution::entry_point::{CallEntryPoint, EntryPointExecutionContext, ExecutionResources},
+    execution::entry_point::{CallEntryPoint, EntryPointExecutionContext},
     transaction::objects::{DeprecatedTransactionInfo, TransactionInfo},
     versioned_constants::VersionedConstants,
 };
+use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
 use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
 use starknet_api::core::PatriciaKey;
 

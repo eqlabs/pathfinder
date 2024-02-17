@@ -225,7 +225,7 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             events,
             messages,
             result,
-            execution_resources: call_info.vm_resources.into(),
+            execution_resources: call_info.resources.into(),
         }
     }
 }
