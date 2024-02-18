@@ -43,8 +43,8 @@ zstd = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
+pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
 tempfile = "3.6"
 test-log = { workspace = true }
 tracing-subscriber = { workspace = true }
-pretty_assertions_sorted = { workspace = true }
