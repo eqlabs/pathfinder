@@ -25,11 +25,16 @@ pub fn estimate(
 
         let fee_type = &super::transaction::fee_type(&transaction);
 
-        // FIXME: data gas price
         let gas_price: U256 = block_context
             .block_info()
             .gas_prices
             .get_gas_price_by_fee_type(fee_type)
+            .get()
+            .into();
+        let data_gas_price: U256 = block_context
+            .block_info()
+            .gas_prices
+            .get_data_gas_price_by_fee_type(fee_type)
             .get()
             .into();
         let unit = match fee_type {
@@ -67,6 +72,8 @@ pub fn estimate(
                 fees.push(FeeEstimate {
                     gas_consumed: U256::from(tx_info.actual_fee.0) / gas_price.max(1.into()),
                     gas_price,
+                    data_gas_consumed: U256::from(tx_info.da_gas.l1_data_gas),
+                    data_gas_price,
                     overall_fee: tx_info.actual_fee.0.into(),
                     unit,
                 });
