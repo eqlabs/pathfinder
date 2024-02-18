@@ -694,7 +694,7 @@ pub(crate) mod tests {
 
         let result = simulate_transactions(context, input).await.unwrap();
 
-        const DECLARE_GAS_CONSUMED: u64 = 1666;
+        const DECLARE_GAS_CONSUMED: u64 = 17116;
         use super::dto::*;
         use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
 
@@ -762,7 +762,7 @@ pub(crate) mod tests {
                             storage_entries: vec![
                                 StorageEntry {
                                     key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff97e")
+                                    value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffbd24")
                                 },
                                 StorageEntry {
                                     key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
