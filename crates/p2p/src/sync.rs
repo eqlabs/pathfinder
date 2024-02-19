@@ -44,8 +44,8 @@ pub(crate) mod codec {
     use p2p_stream::Codec;
     use std::marker::PhantomData;
 
-    pub const _1MIB: usize = 1024 * 1024;
-    pub const _4MIB: usize = 4 * _1MIB;
+    pub const ONE_MIB: usize = 1024 * 1024;
+    pub const FOUR_MIB: usize = 4 * ONE_MIB;
 
     pub type Headers = SyncCodec<
         protocol::Headers,
@@ -53,7 +53,7 @@ pub(crate) mod codec {
         header::BlockHeadersResponse,
         proto::header::BlockHeadersRequest,
         proto::header::BlockHeadersResponse,
-        _1MIB,
+        ONE_MIB,
     >;
 
     pub type StateDiffs = SyncCodec<
@@ -62,7 +62,7 @@ pub(crate) mod codec {
         state::StateDiffsResponse,
         proto::state::StateDiffsRequest,
         proto::state::StateDiffsResponse,
-        _1MIB,
+        ONE_MIB,
     >;
 
     pub type Classes = SyncCodec<
@@ -71,7 +71,7 @@ pub(crate) mod codec {
         class::ClassesResponse,
         proto::class::ClassesRequest,
         proto::class::ClassesResponse,
-        _4MIB,
+        FOUR_MIB,
     >;
 
     pub type Transactions = SyncCodec<
@@ -80,7 +80,7 @@ pub(crate) mod codec {
         transaction::TransactionsResponse,
         proto::transaction::TransactionsRequest,
         proto::transaction::TransactionsResponse,
-        _1MIB,
+        ONE_MIB,
     >;
 
     pub type Receipts = SyncCodec<
@@ -89,7 +89,7 @@ pub(crate) mod codec {
         receipt::ReceiptsResponse,
         proto::receipt::ReceiptsRequest,
         proto::receipt::ReceiptsResponse,
-        _1MIB,
+        ONE_MIB,
     >;
 
     pub type Events = SyncCodec<
@@ -98,7 +98,7 @@ pub(crate) mod codec {
         event::EventsResponse,
         proto::event::EventsRequest,
         proto::event::EventsResponse,
-        _1MIB,
+        ONE_MIB,
     >;
 
     #[derive(Clone, Debug)]
@@ -136,7 +136,7 @@ pub(crate) mod codec {
         {
             let mut buf = Vec::new();
 
-            io.take(_1MIB as u64).read_to_end(&mut buf).await?;
+            io.take(ONE_MIB as u64).read_to_end(&mut buf).await?;
 
             let prost_dto = ProstReq::decode(buf.as_ref())?;
             let dto = Req::try_from_protobuf(prost_dto, std::any::type_name::<ProstReq>())?;
