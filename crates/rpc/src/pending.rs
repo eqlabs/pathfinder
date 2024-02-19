@@ -50,6 +50,7 @@ impl PendingData {
             transaction_commitment: Default::default(),
             transaction_count: Default::default(),
             event_count: Default::default(),
+            l1_da_mode: self.block.l1_da_mode.map(Into::into).unwrap_or_default(),
         }
     }
 }

@@ -5,9 +5,10 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         r"
 ALTER TABLE block_headers ADD COLUMN eth_l1_data_gas_price BLOB DEFAULT NULL;
 ALTER TABLE block_headers ADD COLUMN strk_l1_data_gas_price BLOB DEFAULT NULL;
+ALTER TABLE block_headers ADD COLUMN l1_da_mode INTEGER DEFAULT 0;
 ",
     )
-    .context("Creating block_signatures table")?;
+    .context("Adding new columns to block_headers")?;
 
     Ok(())
 }

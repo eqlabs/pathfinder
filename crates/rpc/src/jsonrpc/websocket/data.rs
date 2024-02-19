@@ -203,6 +203,7 @@ impl serde::Serialize for BlockHeader {
             transaction_commitment,
             transaction_count,
             event_count,
+            l1_da_mode,
         } = &self.0;
 
         let mut map = serializer.serialize_map(Some(15))?;
@@ -224,6 +225,7 @@ impl serde::Serialize for BlockHeader {
         map.serialize_entry("transaction_commitment", &transaction_commitment)?;
         map.serialize_entry("transaction_count", &transaction_count)?;
         map.serialize_entry("event_count", &event_count)?;
+        map.serialize_entry("l1_da_mode", &l1_da_mode)?;
 
         map.end()
     }

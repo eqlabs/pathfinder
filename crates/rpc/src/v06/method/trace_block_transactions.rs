@@ -275,7 +275,7 @@ pub(crate) mod tests {
     use pathfinder_common::{
         block_hash, felt, receipt::Receipt, BlockHeader, GasPrice, SierraHash, TransactionIndex,
     };
-    use starknet_gateway_types::reply::GasPrices;
+    use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
     use tokio::task::JoinSet;
 
     use super::*;
@@ -495,6 +495,7 @@ pub(crate) mod tests {
                 transaction_receipts,
                 transactions: transactions.iter().cloned().map(Into::into).collect(),
                 starknet_version: last_block_header.starknet_version,
+                l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
             };
 
             tx.commit()?;

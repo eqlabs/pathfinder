@@ -90,7 +90,7 @@ mod tests {
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
-    use starknet_gateway_types::reply::{Block, PendingBlock, Status};
+    use starknet_gateway_types::reply::{Block, L1DataAvailabilityMode, PendingBlock, Status};
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
@@ -143,6 +143,7 @@ mod tests {
                 )}
             ],
             starknet_version: StarknetVersion::default(),
+            l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
         };
     );
 

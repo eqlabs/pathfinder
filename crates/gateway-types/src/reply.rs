@@ -131,6 +131,8 @@ pub struct PendingBlock {
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
+    #[serde(default)]
+    pub l1_da_mode: Option<L1DataAvailabilityMode>,
 }
 
 impl PendingBlock {
@@ -203,6 +205,24 @@ pub enum L1DataAvailabilityMode {
     #[default]
     Calldata,
     Blob,
+}
+
+impl From<L1DataAvailabilityMode> for pathfinder_common::L1DataAvailabilityMode {
+    fn from(value: L1DataAvailabilityMode) -> Self {
+        match value {
+            L1DataAvailabilityMode::Calldata => Self::Calldata,
+            L1DataAvailabilityMode::Blob => Self::Blob,
+        }
+    }
+}
+
+impl From<pathfinder_common::L1DataAvailabilityMode> for L1DataAvailabilityMode {
+    fn from(value: pathfinder_common::L1DataAvailabilityMode) -> Self {
+        match value {
+            pathfinder_common::L1DataAvailabilityMode::Calldata => Self::Calldata,
+            pathfinder_common::L1DataAvailabilityMode::Blob => Self::Blob,
+        }
+    }
 }
 
 #[serde_as]

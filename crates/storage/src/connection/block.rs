@@ -14,8 +14,8 @@ pub(super) fn insert_block_header(
     // Insert the header
     tx.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count)
-            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count)",
+                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode)
+            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
@@ -33,6 +33,7 @@ pub(super) fn insert_block_header(
             ":transaction_count": &header.transaction_count.try_into_sql_int()?,
             ":event_count": &header.event_count.try_into_sql_int()?,
             ":state_commitment": &header.state_commitment,
+            ":l1_da_mode": &header.l1_da_mode,
         },
     ).context("Inserting block header")?;
 
@@ -312,6 +313,7 @@ pub(super) fn block_header(
         let event_count: usize = row.get("event_count")?;
         let transaction_count: usize = row.get("transaction_count")?;
         let state_commitment = row.get_state_commitment("state_commitment")?;
+        let l1_da_mode = row.get_l1_da_mode("l1_da_mode")?;
 
         let header = BlockHeader {
             hash,
@@ -330,6 +332,7 @@ pub(super) fn block_header(
             starknet_version,
             transaction_count,
             event_count,
+            l1_da_mode,
             // TODO: store block hash in-line.
             // This gets filled in by a separate query, but really should get stored as a column in
             // order to support truncated history.
@@ -389,6 +392,7 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
+    use pathfinder_common::L1DataAvailabilityMode;
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
@@ -425,6 +429,7 @@ mod tests {
             transaction_commitment: transaction_commitment_bytes!(b"tx commitment genesis"),
             transaction_count: 37,
             event_count: 40,
+            l1_da_mode: L1DataAvailabilityMode::Blob,
         };
         let header1 = genesis
             .child_builder()
@@ -437,6 +442,7 @@ mod tests {
             .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 1"))
             .with_calculated_state_commitment()
             .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 1"))
+            .with_l1_da_mode(L1DataAvailabilityMode::Calldata)
             .finalize_with_hash(block_hash_bytes!(b"block 1 hash"));
 
         let header2 = header1
@@ -450,6 +456,7 @@ mod tests {
             .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 2"))
             .with_calculated_state_commitment()
             .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
+            .with_l1_da_mode(L1DataAvailabilityMode::Blob)
             .finalize_with_hash(block_hash_bytes!(b"block 2 hash"));
 
         let headers = vec![genesis, header1, header2];

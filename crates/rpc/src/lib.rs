@@ -666,6 +666,7 @@ pub mod test_utils {
             transaction_receipts,
             transactions,
             starknet_version: StarknetVersion::new(0, 11, 0),
+            l1_da_mode: Some(starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata),
         };
 
         let contract1 = contract_address_bytes!(b"pending contract 1 address");

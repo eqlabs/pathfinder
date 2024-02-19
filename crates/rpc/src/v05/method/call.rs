@@ -188,7 +188,7 @@ mod tests {
         use starknet_gateway_test_fixtures::class_definitions::{
             CONTRACT_DEFINITION, CONTRACT_DEFINITION_CLASS_HASH,
         };
-        use starknet_gateway_types::reply::PendingBlock;
+        use starknet_gateway_types::reply::{L1DataAvailabilityMode, PendingBlock};
 
         async fn test_context() -> (
             RpcContext,
@@ -401,6 +401,7 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
+                    l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
                 }
                 .into(),
                 state_update: state_update.into(),

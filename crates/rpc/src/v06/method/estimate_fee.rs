@@ -264,7 +264,7 @@ pub(crate) mod tests {
         };
 
         use pathfinder_common::felt;
-        use starknet_gateway_types::reply::PendingBlock;
+        use starknet_gateway_types::reply::{L1DataAvailabilityMode, PendingBlock};
 
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
@@ -470,6 +470,7 @@ pub(crate) mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
+                    l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
                 }
                 .into(),
                 state_update: state_update.into(),

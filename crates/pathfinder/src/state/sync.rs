@@ -804,6 +804,7 @@ async fn l2_update(
             transaction_commitment,
             transaction_count,
             event_count,
+            l1_da_mode: block.l1_da_mode.map(Into::into).unwrap_or_default(),
         };
 
         transaction

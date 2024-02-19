@@ -140,6 +140,13 @@
                     },
                     "event_count": {
                         "type": "integer"
+                    },
+                    "l1_da_mode": {
+                        "type": "string",
+                        "enum": [
+                            "BLOB",
+                            "CALLDATA"
+                        ]
                     }
                 },
                 "required": [

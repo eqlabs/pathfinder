@@ -21,6 +21,15 @@ pub struct BlockHeader {
     pub transaction_commitment: TransactionCommitment,
     pub transaction_count: usize,
     pub event_count: usize,
+    pub l1_da_mode: L1DataAvailabilityMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Dummy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum L1DataAvailabilityMode {
+    #[default]
+    Calldata,
+    Blob,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -147,6 +156,11 @@ impl BlockHeaderBuilder {
 
     pub fn with_event_count(mut self, event_count: usize) -> Self {
         self.0.event_count = event_count;
+        self
+    }
+
+    pub fn with_l1_da_mode(mut self, l1_da_mode: L1DataAvailabilityMode) -> Self {
+        self.0.l1_da_mode = l1_da_mode;
         self
     }
 
