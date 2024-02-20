@@ -17,7 +17,7 @@ async fn all_counter_types_including_tags() {
     with_method(
         "get_block",
         |client, x| async move {
-            let _ = client.block(x).await;
+            let _ = client.block_deprecated(x).await;
         },
         (v0_9_0::block::GENESIS.to_owned(), 200),
     )
@@ -25,7 +25,7 @@ async fn all_counter_types_including_tags() {
     with_method(
         "get_state_update",
         |client, x| async move {
-            let _ = client.state_update(x).await;
+            let _ = client.state_update_deprecated(x).await;
         },
         (v0_11_0::state_update::GENESIS.to_owned(), 200),
     )
