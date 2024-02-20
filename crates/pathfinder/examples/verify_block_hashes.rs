@@ -5,7 +5,7 @@ use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, StarknetVersion}
 use pathfinder_crypto::Felt;
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use pathfinder_storage::{JournalMode, Storage};
-use starknet_gateway_types::reply::{Block, Status};
+use starknet_gateway_types::reply::{Block, GasPrices, Status};
 
 /// Verify block hashes in a pathfinder database.
 ///
@@ -60,8 +60,13 @@ fn main() -> anyhow::Result<()> {
         let block = Block {
             block_hash: header.hash,
             block_number: header.number,
-            eth_l1_gas_price: Some(header.eth_l1_gas_price),
-            strk_l1_gas_price: None,
+            eth_l1_gas_price_implementation_detail: Some(header.eth_l1_gas_price),
+            strk_l1_gas_price_implementation_detail: Some(header.strk_l1_gas_price),
+            l1_gas_price_implementation_detail: None,
+            l1_data_gas_price: Some(GasPrices {
+                price_in_wei: header.eth_l1_data_gas_price,
+                price_in_fri: header.strk_l1_data_gas_price,
+            }),
             parent_block_hash,
             sequencer_address: Some(header.sequencer_address),
             state_commitment: header.state_commitment,
@@ -70,6 +75,9 @@ fn main() -> anyhow::Result<()> {
             transaction_receipts: receipts,
             transactions,
             starknet_version: StarknetVersion::default(),
+            l1_da_mode: None,
+            transaction_commitment: Some(header.transaction_commitment),
+            event_commitment: Some(header.event_commitment),
         };
         parent_block_hash = block_hash;
 

@@ -70,7 +70,7 @@ impl BlockHeader {
                     .sequencer_address
                     // Default value for cairo <0.8.0 is 0
                     .unwrap_or(SequencerAddress(Felt::ZERO)),
-                l1_gas_price: block.eth_l1_gas_price.unwrap_or_default().into(),
+                l1_gas_price: block.eth_l1_gas_price().unwrap_or_default().into(),
                 starknet_version: block.starknet_version,
             },
             MaybePendingBlock::Pending(pending) => Self {
@@ -80,7 +80,7 @@ impl BlockHeader {
                 new_root: None,
                 timestamp: pending.timestamp,
                 sequencer_address: pending.sequencer_address,
-                l1_gas_price: pending.eth_l1_gas_price.into(),
+                l1_gas_price: pending.eth_l1_gas_price().into(),
                 starknet_version: pending.starknet_version,
             },
         }

@@ -816,8 +816,10 @@ mod tests {
                 Ok::<_, Infallible>(warp::reply::json(&Block {
                     block_hash: BlockHash(Felt::ZERO),
                     block_number: BlockNumber::GENESIS,
-                    eth_l1_gas_price: None,
-                    strk_l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: None,
+                    strk_l1_gas_price_implementation_detail: None,
+                    l1_data_gas_price: None,
+                    l1_gas_price_implementation_detail: None,
                     parent_block_hash: BlockHash(Felt::ZERO),
                     sequencer_address: None,
                     state_commitment: pathfinder_common::StateCommitment(Felt::ZERO),
@@ -826,6 +828,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
+                    transaction_commitment: None,
+                    event_commitment: None,
+                    l1_da_mode: None,
                 }))
             },
         );

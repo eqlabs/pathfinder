@@ -4,9 +4,10 @@ use pathfinder_common::{
     CallParam, CallResultValue, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash,
     ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot,
     ContractStateHash, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
-    L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress,
-    SierraHash, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
-    TransactionCommitment, TransactionHash, TransactionNonce, TransactionSignatureElem,
+    L1DataAvailabilityMode, L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem,
+    SequencerAddress, SierraHash, StarknetVersion, StateCommitment, StorageAddress,
+    StorageCommitment, StorageValue, TransactionCommitment, TransactionHash, TransactionNonce,
+    TransactionSignatureElem,
 };
 use pathfinder_crypto::Felt;
 use rusqlite::types::{FromSqlError, ToSqlOutput};
@@ -39,6 +40,16 @@ impl ToSql for StarknetVersion {
     fn to_sql(&self) -> ToSqlOutput<'_> {
         use rusqlite::types::ValueRef;
         ToSqlOutput::Borrowed(ValueRef::Text(self.as_str().as_bytes()))
+    }
+}
+
+impl ToSql for L1DataAvailabilityMode {
+    fn to_sql(&self) -> ToSqlOutput<'_> {
+        let value = match self {
+            L1DataAvailabilityMode::Calldata => 0,
+            L1DataAvailabilityMode::Blob => 1,
+        };
+        ToSqlOutput::Owned(rusqlite::types::Value::Integer(value))
     }
 }
 
@@ -267,6 +278,24 @@ pub trait RowExt {
     ) -> rusqlite::Result<crate::ReorgCounter> {
         let num = self.get_i64(index)?;
         Ok(crate::ReorgCounter::new(num))
+    }
+
+    fn get_l1_da_mode<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<L1DataAvailabilityMode> {
+        let num = self.get_i64(index)?;
+        let mode = match num {
+            0 => L1DataAvailabilityMode::Calldata,
+            1 => L1DataAvailabilityMode::Blob,
+            _ => {
+                return Err(rusqlite::types::FromSqlError::Other(
+                    anyhow::anyhow!("invalid L1 data availability mode {num}").into(),
+                )
+                .into())
+            }
+        };
+        Ok(mode)
     }
 
     row_felt_wrapper!(get_block_hash, BlockHash);

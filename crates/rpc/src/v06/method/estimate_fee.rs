@@ -264,7 +264,7 @@ pub(crate) mod tests {
         };
 
         use pathfinder_common::felt;
-        use starknet_gateway_types::reply::PendingBlock;
+        use starknet_gateway_types::reply::{L1DataAvailabilityMode, PendingBlock};
 
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
@@ -409,37 +409,37 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 2768.into(),
+                gas_consumed: 26571.into(),
                 gas_price: 1.into(),
-                overall_fee: 2768.into(),
+                overall_fee: 26571.into(),
                 unit: PriceUnit::Wei,
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 3020.into(),
+                gas_consumed: 3008.into(),
                 gas_price: 1.into(),
-                overall_fee: 3020.into(),
+                overall_fee: 3008.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_expected = FeeEstimate {
-                gas_consumed: 1674.into(),
+                gas_consumed: 1664.into(),
                 gas_price: 1.into(),
-                overall_fee: 1674.into(),
+                overall_fee: 1664.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v0_expected = FeeEstimate {
-                gas_consumed: 880.into(),
+                gas_consumed: 872.into(),
                 gas_price: 1.into(),
-                overall_fee: 880.into(),
+                overall_fee: 872.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v3_expected = FeeEstimate {
-                gas_consumed: 1674.into(),
+                gas_consumed: 1664.into(),
                 // STRK gas price is 2
                 gas_price: 2.into(),
-                overall_fee: 3348.into(),
+                overall_fee: 3328.into(),
                 unit: PriceUnit::Fri,
             };
-            assert_eq!(
+            pretty_assertions_sorted::assert_eq!(
                 result,
                 vec![
                     declare_expected,
@@ -457,8 +457,12 @@ pub(crate) mod tests {
         ) -> PendingData {
             PendingData {
                 block: PendingBlock {
-                    eth_l1_gas_price: last_block_header.eth_l1_gas_price,
-                    strk_l1_gas_price: None,
+                    eth_l1_gas_price_implementation_detail: Some(
+                        last_block_header.eth_l1_gas_price,
+                    ),
+                    strk_l1_gas_price_implementation_detail: None,
+                    l1_data_gas_price: None,
+                    l1_gas_price_implementation_detail: None,
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,
@@ -466,6 +470,7 @@ pub(crate) mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
+                    l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
                 }
                 .into(),
                 state_update: state_update.into(),

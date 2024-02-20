@@ -12,6 +12,8 @@ use super::felt::IntoFelt;
 pub struct FeeEstimate {
     pub gas_consumed: primitive_types::U256,
     pub gas_price: primitive_types::U256,
+    pub data_gas_consumed: primitive_types::U256,
+    pub data_gas_price: primitive_types::U256,
     pub overall_fee: primitive_types::U256,
     pub unit: PriceUnit,
 }
@@ -225,7 +227,7 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             events,
             messages,
             result,
-            execution_resources: call_info.vm_resources.into(),
+            execution_resources: call_info.resources.into(),
         }
     }
 }

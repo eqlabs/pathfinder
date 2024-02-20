@@ -1,14 +1,16 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
     BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ContractAddress,
-    EthereumAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-    StateDiffCommitment,
+    EthereumAddress, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+    StateDiffCommitment, TransactionCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 pub use transaction::DataAvailabilityMode;
+
+// TODO Make all the gas price fields private and expose getters
 
 /// Used to deserialize replies to Starknet block requests.
 #[serde_as]
@@ -17,14 +19,35 @@ pub use transaction::DataAvailabilityMode;
 pub struct Block {
     pub block_hash: BlockHash,
     pub block_number: BlockNumber,
-    /// Excluded in blocks prior to Starknet 0.9
-    /// TODO: remove alias after Starknet 0.13.0 is deployed on all networks
+
+    /// Excluded in blocks prior to Starknet 0.9.
+    ///
+    /// This field is an implementation detail. Use the `eth_l1_gas_price`
+    /// method instead of using this field directly.
+    // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default, alias = "gas_price")]
-    pub eth_l1_gas_price: Option<GasPrice>,
+    #[serde(default, alias = "gas_price", rename = "eth_l1_gas_price")]
+    #[doc(hidden)]
+    pub eth_l1_gas_price_implementation_detail: Option<GasPrice>,
+    /// This field is an implementation detail. Use the `strk_l1_gas_price`
+    /// method instead of using this field directly.
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strk_l1_gas_price: Option<GasPrice>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "strk_l1_gas_price"
+    )]
+    pub strk_l1_gas_price_implementation_detail: Option<GasPrice>,
+
+    /// Excluded in blocks prior to Starknet 0.13.1.
+    pub l1_data_gas_price: Option<GasPrices>,
+    /// Excluded in blocks prior to Starknet 0.13.1.
+    ///
+    /// This field is an implementation detail. Use the `eth_l1_gas_price` and
+    /// `strk_l1_gas_price` methods instead.
+    #[serde(rename = "l1_gas_price")]
+    pub l1_gas_price_implementation_detail: Option<GasPrices>,
+
     pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to Starknet 0.8
     #[serde(default)]
@@ -41,20 +64,61 @@ pub struct Block {
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
+
+    // Introduced in v0.13.1
+    #[serde(default)]
+    pub transaction_commitment: Option<TransactionCommitment>,
+    #[serde(default)]
+    pub event_commitment: Option<EventCommitment>,
+    #[serde(default)]
+    pub l1_da_mode: Option<L1DataAvailabilityMode>,
+}
+
+impl Block {
+    pub fn eth_l1_gas_price(&self) -> Option<GasPrice> {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_wei)
+            .or(self.eth_l1_gas_price_implementation_detail)
+    }
+
+    pub fn strk_l1_gas_price(&self) -> Option<GasPrice> {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_fri)
+            .or(self.strk_l1_gas_price_implementation_detail)
+    }
 }
 
 #[serde_as]
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct PendingBlock {
-    /// TODO: remove alias after Starknet 0.13.0 is deployed on all networks
-    #[serde_as(as = "GasPriceAsHexStr")]
-    #[serde(alias = "gas_price")]
-    pub eth_l1_gas_price: GasPrice,
-    // Excluded in blocks prior to Starknet 0.13.0
+    /// Excluded in blocks prior to Starknet 0.9.
+    ///
+    /// This field is an implementation detail. Use the `eth_l1_gas_price`
+    /// method instead of using this field directly.
+    // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default)]
-    pub strk_l1_gas_price: Option<GasPrice>,
+    #[serde(default, alias = "gas_price", rename = "eth_l1_gas_price")]
+    pub eth_l1_gas_price_implementation_detail: Option<GasPrice>,
+    /// This field is an implementation detail. Use the `strk_l1_gas_price`
+    /// method instead of using this field directly.
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "strk_l1_gas_price"
+    )]
+    pub strk_l1_gas_price_implementation_detail: Option<GasPrice>,
+
+    /// Excluded in blocks prior to Starknet 0.13.1.
+    pub l1_data_gas_price: Option<GasPrices>,
+    /// Excluded in blocks prior to Starknet 0.13.1.
+    ///
+    /// This field is an implementation detail. Use the `strk_l1_gas_price`
+    /// method instead of using this field directly.
+    #[serde(rename = "l1_gas_price")]
+    pub l1_gas_price_implementation_detail: Option<GasPrices>,
+
     #[serde(rename = "parent_block_hash")]
     pub parent_hash: BlockHash,
     pub sequencer_address: SequencerAddress,
@@ -67,6 +131,23 @@ pub struct PendingBlock {
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
+    #[serde(default)]
+    pub l1_da_mode: Option<L1DataAvailabilityMode>,
+}
+
+impl PendingBlock {
+    pub fn eth_l1_gas_price(&self) -> GasPrice {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_wei)
+            .or(self.eth_l1_gas_price_implementation_detail)
+            .expect("missing L1 gas price")
+    }
+
+    pub fn strk_l1_gas_price(&self) -> Option<GasPrice> {
+        self.l1_gas_price_implementation_detail
+            .map(|p| p.price_in_fri)
+            .or(self.strk_l1_gas_price_implementation_detail)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -116,6 +197,42 @@ impl MaybePendingBlock {
             MaybePendingBlock::Pending(p) => p.status,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum L1DataAvailabilityMode {
+    #[default]
+    Calldata,
+    Blob,
+}
+
+impl From<L1DataAvailabilityMode> for pathfinder_common::L1DataAvailabilityMode {
+    fn from(value: L1DataAvailabilityMode) -> Self {
+        match value {
+            L1DataAvailabilityMode::Calldata => Self::Calldata,
+            L1DataAvailabilityMode::Blob => Self::Blob,
+        }
+    }
+}
+
+impl From<pathfinder_common::L1DataAvailabilityMode> for L1DataAvailabilityMode {
+    fn from(value: pathfinder_common::L1DataAvailabilityMode) -> Self {
+        match value {
+            pathfinder_common::L1DataAvailabilityMode::Calldata => Self::Calldata,
+            pathfinder_common::L1DataAvailabilityMode::Blob => Self::Blob,
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GasPrices {
+    #[serde_as(as = "GasPriceAsHexStr")]
+    pub price_in_wei: GasPrice,
+    #[serde_as(as = "GasPriceAsHexStr")]
+    pub price_in_fri: GasPrice,
 }
 
 /// Block and transaction status values.
@@ -270,6 +387,7 @@ pub(crate) mod transaction {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
+        pub data_availability: Option<ExecutionDataAvailability>,
     }
 
     impl From<ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
@@ -278,6 +396,7 @@ pub(crate) mod transaction {
                 builtin_instance_counter: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
+                data_availability: value.data_availability.map(Into::into),
             }
         }
     }
@@ -288,6 +407,32 @@ pub(crate) mod transaction {
                 builtin_instance_counter: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
+                data_availability: value.data_availability.map(Into::into),
+            }
+        }
+    }
+
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct ExecutionDataAvailability {
+        pub l1_gas: u128,
+        pub l1_data_gas: u128,
+    }
+
+    impl From<ExecutionDataAvailability> for pathfinder_common::receipt::ExecutionDataAvailability {
+        fn from(value: ExecutionDataAvailability) -> Self {
+            Self {
+                l1_gas: value.l1_gas,
+                l1_data_gas: value.l1_data_gas,
+            }
+        }
+    }
+
+    impl From<pathfinder_common::receipt::ExecutionDataAvailability> for ExecutionDataAvailability {
+        fn from(value: pathfinder_common::receipt::ExecutionDataAvailability) -> Self {
+            Self {
+                l1_gas: value.l1_gas,
+                l1_data_gas: value.l1_data_gas,
             }
         }
     }
@@ -298,6 +443,10 @@ pub(crate) mod transaction {
                 builtin_instance_counter: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
+                data_availability: Some(ExecutionDataAvailability {
+                    l1_gas: rng.next_u32() as u128,
+                    l1_data_gas: rng.next_u32() as u128,
+                }),
             }
         }
     }
@@ -2249,6 +2398,9 @@ mod tests {
             // This is from integration starknet_version 0.13.0 and contains a new v3 declare transaction.
             serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319709).unwrap();
             serde_json::from_str::<MaybePendingBlock>(v0_13_0::block::PENDING).unwrap();
+            // This is from integration starknet_version 0.13.0 and contains data gas prices.
+            serde_json::from_str::<crate::reply::Block>(integration::block::NUMBER_329543).unwrap();
+            serde_json::from_str::<MaybePendingBlock>(v0_13_1::block::PENDING).unwrap();
         }
 
         #[test]

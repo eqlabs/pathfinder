@@ -36,6 +36,13 @@ pub struct ExecutionResources {
     pub builtin_instance_counter: BuiltinCounters,
     pub n_steps: u64,
     pub n_memory_holes: u64,
+    pub data_availability: Option<ExecutionDataAvailability>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExecutionDataAvailability {
+    pub l1_gas: u128,
+    pub l1_data_gas: u128,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

@@ -385,6 +385,8 @@ pub(crate) mod dto {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
+        pub l1_gas: Option<u128>,
+        pub l1_data_gas: Option<u128>,
     }
 
     impl From<&ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
@@ -393,6 +395,15 @@ pub(crate) mod dto {
                 builtin_instance_counter: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
+                data_availability: match (value.l1_gas, value.l1_data_gas) {
+                    (Some(l1_gas), Some(l1_data_gas)) => {
+                        Some(pathfinder_common::receipt::ExecutionDataAvailability {
+                            l1_gas,
+                            l1_data_gas,
+                        })
+                    }
+                    _ => None,
+                },
             }
         }
     }
@@ -403,6 +414,8 @@ pub(crate) mod dto {
                 builtin_instance_counter: (&value.builtin_instance_counter).into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
+                l1_gas: value.data_availability.as_ref().map(|x| x.l1_gas),
+                l1_data_gas: value.data_availability.as_ref().map(|x| x.l1_data_gas),
             }
         }
     }
@@ -413,6 +426,8 @@ pub(crate) mod dto {
                 builtin_instance_counter: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
+                l1_gas: Some(rng.next_u32() as u128),
+                l1_data_gas: Some(rng.next_u32() as u128),
             }
         }
     }

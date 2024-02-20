@@ -780,9 +780,19 @@ async fn l2_update(
             number: block.block_number,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
-            eth_l1_gas_price: block.eth_l1_gas_price.unwrap_or(GasPrice::ZERO),
+            eth_l1_gas_price: block.eth_l1_gas_price().unwrap_or(GasPrice::ZERO),
             // Default value for Starknet <0.13.0 is zero
-            strk_l1_gas_price: block.strk_l1_gas_price.unwrap_or(GasPrice::ZERO),
+            strk_l1_gas_price: block.strk_l1_gas_price().unwrap_or(GasPrice::ZERO),
+            // Default value for Starknet <0.13.1 is zero
+            eth_l1_data_gas_price: block
+                .l1_data_gas_price
+                .map(|x| x.price_in_wei)
+                .unwrap_or(GasPrice::ZERO),
+            // Default value for Starknet <0.13.1 is zero
+            strk_l1_data_gas_price: block
+                .l1_data_gas_price
+                .map(|x| x.price_in_fri)
+                .unwrap_or(GasPrice::ZERO),
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
@@ -794,6 +804,7 @@ async fn l2_update(
             transaction_commitment,
             transaction_count,
             event_count,
+            l1_da_mode: block.l1_da_mode.map(Into::into).unwrap_or_default(),
         };
 
         transaction
@@ -1082,8 +1093,8 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
-    use starknet_gateway_types::reply;
     use starknet_gateway_types::reply::Block;
+    use starknet_gateway_types::reply::{self, GasPrices};
     use std::sync::Arc;
 
     /// Generate some arbitrary block chain data from genesis onwards.
@@ -1124,8 +1135,13 @@ mod tests {
             let block = Box::new(reply::Block {
                 block_hash: header.hash,
                 block_number: header.number,
-                eth_l1_gas_price: Some(header.eth_l1_gas_price),
-                strk_l1_gas_price: Some(header.strk_l1_gas_price),
+                eth_l1_gas_price_implementation_detail: Some(header.eth_l1_gas_price),
+                strk_l1_gas_price_implementation_detail: Some(header.strk_l1_gas_price),
+                l1_gas_price_implementation_detail: None,
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei: header.eth_l1_data_gas_price,
+                    price_in_fri: header.strk_l1_data_gas_price,
+                }),
                 parent_block_hash: header.parent_hash,
                 sequencer_address: Some(header.sequencer_address),
                 state_commitment: header.state_commitment,
@@ -1134,6 +1150,9 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: header.starknet_version,
+                l1_da_mode: None,
+                transaction_commitment: Some(header.transaction_commitment),
+                event_commitment: Some(header.event_commitment),
             });
 
             let signature = Box::new(BlockCommitmentSignature {

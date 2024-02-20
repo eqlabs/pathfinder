@@ -127,6 +127,7 @@ pub(crate) fn create_transactions_and_receipts() -> [(Transaction, Receipt); NUM
                 builtin_instance_counter: Default::default(),
                 n_steps: i as u64 + 987,
                 n_memory_holes: i as u64 + 1177,
+                data_availability: None,
             }),
             transaction_hash: tx.hash,
             transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),

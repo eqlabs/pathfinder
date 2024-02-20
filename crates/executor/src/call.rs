@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
 use blockifier::{
-    execution::entry_point::{CallEntryPoint, EntryPointExecutionContext, ExecutionResources},
-    transaction::objects::{AccountTransactionContext, DeprecatedAccountTransactionContext},
+    context::TransactionContext,
+    execution::entry_point::{CallEntryPoint, EntryPointExecutionContext},
+    transaction::objects::{DeprecatedTransactionInfo, TransactionInfo},
+    versioned_constants::VersionedConstants,
 };
+use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
 use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
 use starknet_api::core::PatriciaKey;
 
@@ -36,15 +39,17 @@ pub fn call(
         entry_point_type: starknet_api::deprecated_contract_class::EntryPointType::External,
         entry_point_selector,
         calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
-        initial_gas: blockifier::abi::constants::INITIAL_GAS_COST,
+        initial_gas: VersionedConstants::latest_constants().gas_cost("initial_gas_cost"),
         call_type: blockifier::execution::entry_point::CallType::Call,
         ..Default::default()
     };
 
     let mut resources = ExecutionResources::default();
     let mut context = EntryPointExecutionContext::new_invoke(
-        &block_context,
-        &AccountTransactionContext::Deprecated(DeprecatedAccountTransactionContext::default()),
+        Arc::new(TransactionContext {
+            block_context,
+            tx_info: TransactionInfo::Deprecated(DeprecatedTransactionInfo::default()),
+        }),
         false,
     )?;
 

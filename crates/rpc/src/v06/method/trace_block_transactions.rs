@@ -275,6 +275,7 @@ pub(crate) mod tests {
     use pathfinder_common::{
         block_hash, felt, receipt::Receipt, BlockHeader, GasPrice, SierraHash, TransactionIndex,
     };
+    use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
     use tokio::task::JoinSet;
 
     use super::*;
@@ -480,8 +481,13 @@ pub(crate) mod tests {
             let transaction_receipts = vec![dummy_receipt; 3];
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
-                eth_l1_gas_price: GasPrice(1),
-                strk_l1_gas_price: Some(GasPrice(1)),
+                eth_l1_gas_price_implementation_detail: Some(GasPrice(1)),
+                strk_l1_gas_price_implementation_detail: Some(GasPrice(1)),
+                l1_gas_price_implementation_detail: None,
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei: GasPrice(1),
+                    price_in_fri: GasPrice(1),
+                }),
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,
@@ -489,6 +495,7 @@ pub(crate) mod tests {
                 transaction_receipts,
                 transactions: transactions.iter().cloned().map(Into::into).collect(),
                 starknet_version: last_block_header.starknet_version,
+                l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
             };
 
             tx.commit()?;

@@ -86,7 +86,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
 
     fn get_compiled_contract_class(
         &mut self,
-        class_hash: &starknet_api::core::ClassHash,
+        class_hash: starknet_api::core::ClassHash,
     ) -> blockifier::state::state_api::StateResult<
         blockifier::execution::contract_class::ContractClass,
     > {
@@ -141,7 +141,7 @@ mod tests {
 
         fn get_compiled_contract_class(
             &mut self,
-            _class_hash: &starknet_api::core::ClassHash,
+            _class_hash: starknet_api::core::ClassHash,
         ) -> blockifier::state::state_api::StateResult<
             blockifier::execution::contract_class::ContractClass,
         > {

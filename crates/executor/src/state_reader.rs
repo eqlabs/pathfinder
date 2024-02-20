@@ -219,7 +219,7 @@ impl StateReader for PathfinderStateReader<'_> {
 
     fn get_compiled_contract_class(
         &mut self,
-        class_hash: &starknet_api::core::ClassHash,
+        class_hash: starknet_api::core::ClassHash,
     ) -> blockifier::state::state_api::StateResult<
         blockifier::execution::contract_class::ContractClass,
     > {
@@ -229,7 +229,7 @@ impl StateReader for PathfinderStateReader<'_> {
             tracing::trace_span!("get_compiled_contract_class", class_hash=%pathfinder_class_hash)
                 .entered();
 
-        if let Some(entry) = GLOBAL_CACHE.get(class_hash)? {
+        if let Some(entry) = GLOBAL_CACHE.get(&class_hash)? {
             if let Some(reader_block_number) = self.block_number {
                 if entry.height <= reader_block_number {
                     tracing::trace!("Global class cache hit");
@@ -239,10 +239,10 @@ impl StateReader for PathfinderStateReader<'_> {
         }
 
         let (definition_block_number, contract_class) =
-            self.non_cached_compiled_contract_class(pathfinder_class_hash, class_hash)?;
+            self.non_cached_compiled_contract_class(pathfinder_class_hash, &class_hash)?;
 
         if let Some(block_number) = definition_block_number {
-            GLOBAL_CACHE.set(*class_hash, contract_class.clone(), block_number)?;
+            GLOBAL_CACHE.set(class_hash, contract_class.clone(), block_number)?;
         }
 
         Ok(contract_class)

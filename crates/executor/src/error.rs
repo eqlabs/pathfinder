@@ -20,7 +20,6 @@ impl From<BlockifierTransactionExecutionError> for CallError {
         use BlockifierTransactionExecutionError::*;
         match value {
             ContractConstructorExecutionFailed(e)
-            | EntryPointExecutionError(e)
             | ExecutionError(e)
             | ValidateTransactionError(e) => match e {
                 BlockifierEntryPointExecutionError::PreExecutionError(
@@ -106,18 +105,7 @@ impl TransactionExecutionError {
     pub fn new(transaction_index: usize, error: BlockifierTransactionExecutionError) -> Self {
         Self::ExecutionError {
             transaction_index,
-            error: match &error {
-                // Some variants don't propagate their child's error so we do this manually until it is
-                // fixed in the blockifier. We have a test to ensure we don't miss fix.
-                BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(x) => {
-                    format!("{error} {x}")
-                }
-                BlockifierTransactionExecutionError::ExecutionError(x) => format!("{error} {x}"),
-                BlockifierTransactionExecutionError::ValidateTransactionError(x) => {
-                    format!("{error} {x}")
-                }
-                other => other.to_string(),
-            },
+            error: error.to_string(),
         }
     }
 }
@@ -135,7 +123,7 @@ mod tests {
         #[test]
         fn contract_constructor_execution_failed() {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
-            let expected = format!("Contract constructor execution has failed. {child}");
+            let expected = format!("Contract constructor execution has failed: {child}");
 
             let err =
                 BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(child);
@@ -151,7 +139,7 @@ mod tests {
         #[test]
         fn execution_error() {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
-            let expected = format!("Transaction execution has failed. {child}");
+            let expected = format!("Transaction execution has failed: {child}");
 
             let err = BlockifierTransactionExecutionError::ExecutionError(child);
             let err = TransactionExecutionError::new(0, err);
@@ -166,7 +154,7 @@ mod tests {
         #[test]
         fn validate_transaction_error() {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
-            let expected = format!("Transaction validation has failed. {child}");
+            let expected = format!("Transaction validation has failed: {child}");
 
             let err = BlockifierTransactionExecutionError::ValidateTransactionError(child);
             let err = TransactionExecutionError::new(0, err);

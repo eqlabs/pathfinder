@@ -90,17 +90,19 @@ mod tests {
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
-    use starknet_gateway_types::reply::{Block, PendingBlock, Status};
+    use starknet_gateway_types::reply::{Block, L1DataAvailabilityMode, PendingBlock, Status};
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
 
     lazy_static::lazy_static!(
-        pub static ref NEXT_BLOCK: Block = Block{
+        pub static ref NEXT_BLOCK: Block = Block {
             block_hash: block_hash!("0xabcd"),
             block_number: BlockNumber::new_or_panic(1),
-            eth_l1_gas_price: None,
-            strk_l1_gas_price: None,
+            eth_l1_gas_price_implementation_detail: None,
+            strk_l1_gas_price_implementation_detail: None,
+            l1_gas_price_implementation_detail: None,
+            l1_data_gas_price: None,
             parent_block_hash: PARENT_HASH,
             sequencer_address: None,
             state_commitment: PARENT_ROOT,
@@ -109,6 +111,9 @@ mod tests {
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),
+            l1_da_mode: None,
+            transaction_commitment: None,
+            event_commitment: None,
         };
 
         pub static ref PENDING_UPDATE: StateUpdate = {
@@ -116,8 +121,10 @@ mod tests {
         };
 
         pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
-            eth_l1_gas_price: GasPrice(11),
-            strk_l1_gas_price: None,
+            eth_l1_gas_price_implementation_detail: Some(GasPrice(11)),
+            strk_l1_gas_price_implementation_detail: None,
+            l1_gas_price_implementation_detail: None,
+            l1_data_gas_price: None,
             parent_hash: NEXT_BLOCK.parent_block_hash,
             sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
             status: Status::Pending,
@@ -136,6 +143,7 @@ mod tests {
                 )}
             ],
             starknet_version: StarknetVersion::default(),
+            l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
         };
     );
 

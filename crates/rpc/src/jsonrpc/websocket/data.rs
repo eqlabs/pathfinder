@@ -192,6 +192,8 @@ impl serde::Serialize for BlockHeader {
             timestamp,
             eth_l1_gas_price,
             strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
             sequencer_address,
             starknet_version,
             class_commitment,
@@ -201,6 +203,7 @@ impl serde::Serialize for BlockHeader {
             transaction_commitment,
             transaction_count,
             event_count,
+            l1_da_mode,
         } = &self.0;
 
         let mut map = serializer.serialize_map(Some(15))?;
@@ -211,6 +214,8 @@ impl serde::Serialize for BlockHeader {
         map.serialize_entry("timestamp", &timestamp)?;
         map.serialize_entry("eth_l1_gas_price", &eth_l1_gas_price)?;
         map.serialize_entry("strk_l1_gas_price", &strk_l1_gas_price)?;
+        map.serialize_entry("eth_l1_data_gas_price", &eth_l1_data_gas_price)?;
+        map.serialize_entry("strk_l1_data_gas_price", &strk_l1_data_gas_price)?;
         map.serialize_entry("sequencer_address", &sequencer_address)?;
         map.serialize_entry("starknet_version", &starknet_version)?;
         map.serialize_entry("class_commitment", &class_commitment)?;
@@ -220,6 +225,7 @@ impl serde::Serialize for BlockHeader {
         map.serialize_entry("transaction_commitment", &transaction_commitment)?;
         map.serialize_entry("transaction_count", &transaction_count)?;
         map.serialize_entry("event_count", &event_count)?;
+        map.serialize_entry("l1_da_mode", &l1_da_mode)?;
 
         map.end()
     }

@@ -67,7 +67,19 @@ pub fn simulate(
         let transaction_declared_deprecated_class_hash =
             transaction_declared_deprecated_class(&transaction);
         let fee_type = &super::transaction::fee_type(&transaction);
-        let gas_price: U256 = block_context.gas_prices.get_by_fee_type(fee_type).into();
+
+        let gas_price: U256 = block_context
+            .block_info()
+            .gas_prices
+            .get_gas_price_by_fee_type(fee_type)
+            .get()
+            .into();
+        let data_gas_price: U256 = block_context
+            .block_info()
+            .gas_prices
+            .get_data_gas_price_by_fee_type(fee_type)
+            .get()
+            .into();
         let unit = match fee_type {
             blockifier::transaction::objects::FeeType::Strk => PriceUnit::Fri,
             blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
@@ -108,6 +120,8 @@ pub fn simulate(
                     fee_estimation: FeeEstimate {
                         gas_consumed: U256::from(tx_info.actual_fee.0) / gas_price.max(1.into()),
                         gas_price,
+                        data_gas_consumed: U256::from(tx_info.da_gas.l1_data_gas),
+                        data_gas_price,
                         overall_fee: tx_info.actual_fee.0.into(),
                         unit,
                     },
