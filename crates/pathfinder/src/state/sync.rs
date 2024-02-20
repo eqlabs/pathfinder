@@ -4,11 +4,9 @@ pub mod l2;
 mod pending;
 
 use anyhow::Context;
-use pathfinder_common::{
-    BlockCommitmentSignature, BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId,
-    ClassCommitment, ClassHash, EventCommitment, GasPrice, SequencerAddress, SierraHash,
-    StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
-};
+use pathfinder_common::prelude::*;
+use pathfinder_common::BlockCommitmentSignature;
+use pathfinder_common::Chain;
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -62,7 +60,7 @@ pub enum SyncEvent {
         casm_hash: CasmHash,
     },
     /// A new L2 pending update was polled.
-    Pending(Box<(PendingBlock, StateUpdate)>),
+    Pending((Arc<PendingBlock>, Arc<StateUpdate>)),
 }
 
 pub struct SyncContext<G, E> {
@@ -565,8 +563,8 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 
                 if pending.0.parent_hash == hash {
                     let data = PendingData {
-                        block: pending.0.into(),
-                        state_update: pending.1.into(),
+                        block: pending.0,
+                        state_update: pending.1,
                         number: number + 1,
                     };
                     pending_data.send_replace(data);

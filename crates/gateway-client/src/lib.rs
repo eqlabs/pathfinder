@@ -3,6 +3,7 @@ use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, Chain, ClassHash, StateUpdate, TransactionHash,
 };
 use reqwest::Url;
+use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::trace::{BlockTrace, TransactionTrace};
 use starknet_gateway_types::{error::SequencerError, reply, request};
 use std::{fmt::Debug, result::Result, time::Duration};
@@ -14,6 +15,10 @@ mod metrics;
 #[mockall::automock]
 #[async_trait::async_trait]
 pub trait GatewayApi: Sync {
+    async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
+        unimplemented!();
+    }
+
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         unimplemented!();
     }
@@ -115,6 +120,10 @@ pub trait GatewayApi: Sync {
 
 #[async_trait::async_trait]
 impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
+    async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
+        self.as_ref().pending_block().await
+    }
+
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.as_ref().block(block).await
     }
@@ -348,6 +357,26 @@ impl Client {
 
 #[async_trait::async_trait]
 impl GatewayApi for Client {
+    #[tracing::instrument(skip(self))]
+    async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
+        #[derive(Clone, Debug, serde::Deserialize)]
+        struct Dto {
+            pub block: PendingBlock,
+            pub state_update: starknet_gateway_types::reply::StateUpdate,
+        }
+
+        let result: Dto = self
+            .feeder_gateway_request()
+            .get_state_update()
+            .with_block(BlockId::Pending)
+            .add_param("includeBlock", "true")
+            .with_retry(self.retry)
+            .get()
+            .await?;
+
+        Ok((result.block, result.state_update.into()))
+    }
+
     #[tracing::instrument(skip(self))]
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.block_with_retry_behaviour(block, self.retry).await

@@ -1,9 +1,9 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use pathfinder_common::BlockHash;
-use pathfinder_common::BlockId;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::MaybePendingBlock;
 use tokio::time::Instant;
 
 use crate::state::sync::SyncEvent;
@@ -30,16 +30,9 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         let t_fetch = Instant::now();
 
         let (block, state_update) = sequencer
-            .state_update_with_block(BlockId::Pending)
+            .pending_block()
             .await
             .context("Downloading pending block and state update")?;
-
-        // The sequencer sometimes returns full blocks, ignore these.
-        let MaybePendingBlock::Pending(block) = block else {
-            tracing::trace!("Full block received");
-            tokio::time::sleep_until(t_fetch + poll_interval).await;
-            continue;
-        };
 
         // Use the transaction count as a proxy for freshness of the pending data.
         //
@@ -69,8 +62,10 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
             prev_tx_count = block.transactions.len();
             prev_hash = block.parent_hash;
             tracing::trace!("Emitting a pending update");
+            let block = Arc::new(block);
+            let state_update = Arc::new(state_update);
             tx_event
-                .send(SyncEvent::Pending(Box::new((block, state_update))))
+                .send(SyncEvent::Pending((block, state_update)))
                 .await
                 .context("Event channel closed")?;
         }
@@ -95,7 +90,7 @@ mod tests {
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
-    use starknet_gateway_types::reply::{Block, MaybePendingBlock, PendingBlock, Status};
+    use starknet_gateway_types::reply::{Block, PendingBlock, Status};
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
@@ -154,13 +149,8 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         sequencer
-            .expect_state_update_with_block()
-            .returning(move |_| {
-                Ok((
-                    MaybePendingBlock::Pending(PENDING_BLOCK.clone()),
-                    PENDING_UPDATE.clone(),
-                ))
-            });
+            .expect_pending_block()
+            .returning(|| Ok((PENDING_BLOCK.clone(), PENDING_UPDATE.clone())));
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
@@ -178,7 +168,7 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result, SyncEvent::Pending(x) if x.0 == *PENDING_BLOCK && x.1 == *PENDING_UPDATE);
+        assert_matches!(result, SyncEvent::Pending(x) if *x.0 == *PENDING_BLOCK && *x.1 == *PENDING_UPDATE);
     }
 
     #[tokio::test]
@@ -219,20 +209,18 @@ mod tests {
             static ref COUNT: std::sync::Mutex<usize>  = Default::default();
         );
 
-        sequencer
-            .expect_state_update_with_block()
-            .returning(move |_| {
-                let mut count = COUNT.lock().unwrap();
-                *count += 1;
+        sequencer.expect_pending_block().returning(move || {
+            let mut count = COUNT.lock().unwrap();
+            *count += 1;
 
-                let block = match *count {
-                    1 => MaybePendingBlock::Pending(b0_copy.clone()),
-                    2 => MaybePendingBlock::Pending(PENDING_BLOCK.clone()),
-                    _ => MaybePendingBlock::Pending(b1_copy.clone()),
-                };
+            let block = match *count {
+                1 => b0_copy.clone(),
+                2 => PENDING_BLOCK.clone(),
+                _ => b1_copy.clone(),
+            };
 
-                Ok((block, PENDING_UPDATE.clone()))
-            });
+            Ok((block, PENDING_UPDATE.clone()))
+        });
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
@@ -250,13 +238,13 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result1, SyncEvent::Pending(x) if x.0 == b0 && x.1 == *PENDING_UPDATE);
+        assert_matches!(result1, SyncEvent::Pending(x) if *x.0 == b0 && *x.1 == *PENDING_UPDATE);
 
         let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
             .await
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result2, SyncEvent::Pending(x) if x.0 == b1 && x.1 == *PENDING_UPDATE);
+        assert_matches!(result2, SyncEvent::Pending(x) if *x.0 == b1 && *x.1 == *PENDING_UPDATE);
     }
 }
