@@ -15,9 +15,9 @@ use pathfinder_common::{
     AccountDeploymentDataElem, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
     BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, EntryPoint, EthereumAddress, EventCommitment, EventData, EventKey, Fee,
-    GasPrice, L2ToL1MessagePayloadElem, PaymasterDataElem, SequencerAddress, StarknetVersion,
-    StateCommitment, Tip, TransactionCommitment, TransactionHash, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    GasPrice, L1DataAvailabilityMode, L2ToL1MessagePayloadElem, PaymasterDataElem,
+    SequencerAddress, StarknetVersion, StateCommitment, Tip, TransactionCommitment,
+    TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use pathfinder_crypto::Felt;
 
@@ -37,6 +37,9 @@ pub struct SignedBlockHeader {
     pub number: BlockNumber,
     pub timestamp: BlockTimestamp,
     pub eth_l1_gas_price: GasPrice,
+    pub strk_l1_gas_price: GasPrice,
+    pub eth_l1_data_gas_price: GasPrice,
+    pub strk_l1_data_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub event_commitment: EventCommitment,
@@ -44,6 +47,7 @@ pub struct SignedBlockHeader {
     pub transaction_commitment: TransactionCommitment,
     pub transaction_count: usize,
     pub event_count: usize,
+    pub l1_da_mode: L1DataAvailabilityMode,
     pub signature: BlockCommitmentSignature,
 }
 
@@ -68,7 +72,10 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
             timestamp: BlockTimestamp::new(dto.time)
                 .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
-            eth_l1_gas_price: todo!(),
+            eth_l1_gas_price: GasPrice(dto.gas_price_wei),
+            strk_l1_gas_price: GasPrice(dto.gas_price_fri),
+            eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
+            strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
             sequencer_address: SequencerAddress(dto.sequencer_address.0),
             starknet_version: dto.protocol_version.into(),
             event_commitment: EventCommitment(dto.events.root.0),
@@ -76,6 +83,7 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             transaction_commitment: TransactionCommitment(dto.transactions.root.0),
             transaction_count: dto.transactions.n_leaves.try_into()?,
             event_count: dto.events.n_leaves.try_into()?,
+            l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             signature,
         })
     }
@@ -99,6 +107,9 @@ impl
             number: header.number,
             timestamp: header.timestamp,
             eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
             sequencer_address: header.sequencer_address,
             starknet_version: header.starknet_version,
             event_commitment: header.event_commitment,
@@ -106,6 +117,7 @@ impl
             transaction_commitment: header.transaction_commitment,
             transaction_count: header.transaction_count,
             event_count: header.event_count,
+            l1_da_mode: header.l1_da_mode,
             signature,
         }
     }
@@ -571,5 +583,18 @@ impl TryFromDto<String> for DataAvailabilityMode {
             "L2" => Ok(Self::L2),
             _ => anyhow::bail!("Invalid data availability mode"),
         }
+    }
+}
+
+impl TryFromDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode {
+    fn try_from_dto(dto: p2p_proto::common::L1DataAvailabilityMode) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        Ok(match dto {
+            Calldata => Self::Calldata,
+            Blob => Self::Blob,
+        })
     }
 }
