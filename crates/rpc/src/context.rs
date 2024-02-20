@@ -1,4 +1,3 @@
-use crate::gas_price;
 pub use crate::jsonrpc::websocket::WebsocketContext;
 use crate::pending::PendingData;
 use crate::pending::PendingWatcher;
@@ -27,7 +26,6 @@ pub struct RpcContext {
     pub pending_data: PendingWatcher,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
-    pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
     pub config: RpcConfig,
@@ -51,7 +49,6 @@ impl RpcContext {
             sync_status,
             chain_id,
             pending_data,
-            eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             websocket: None,
             config,

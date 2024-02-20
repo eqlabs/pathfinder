@@ -3,7 +3,6 @@ pub mod context;
 mod error;
 mod executor;
 mod felt;
-pub mod gas_price;
 mod jsonrpc;
 pub mod middleware;
 mod pathfinder;
