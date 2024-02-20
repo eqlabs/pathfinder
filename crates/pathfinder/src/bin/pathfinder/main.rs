@@ -660,18 +660,16 @@ async fn verify_database(
         match (network, db_network) {
             (Chain::Custom, _) => {
                 // Verify against gateway.
-                let gateway_block = gateway_client
-                    .block(BlockNumber::GENESIS.into())
+                let (_, gateway_hash) = gateway_client
+                    .block_header(BlockNumber::GENESIS.into())
                     .await
-                    .context("Downloading genesis block from gateway for database verification")?
-                    .as_block()
-                    .context("Genesis block should not be pending")?;
+                    .context("Downloading genesis block from gateway for database verification")?;
 
                 anyhow::ensure!(
-                    database_genesis == gateway_block.block_hash,
+                    database_genesis == gateway_hash,
                     "Database genesis block does not match gateway. {} != {}",
                     database_genesis,
-                    gateway_block.block_hash
+                    gateway_hash
                 );
             }
             (network, db_network) => anyhow::ensure!(

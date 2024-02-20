@@ -69,7 +69,7 @@ impl Cached {
         match self
             .gateway
             // Don't indefinitely retry as this could block the RPC request.
-            .block_without_retry(pathfinder_common::BlockId::Pending)
+            .block_without_retry_deprecated(pathfinder_common::BlockId::Pending)
             .await
         {
             Ok(block) => match block {

@@ -19,11 +19,14 @@ pub trait GatewayApi: Sync {
         unimplemented!();
     }
 
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
+    async fn block_deprecated(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
         unimplemented!();
     }
 
-    async fn block_without_retry(
+    async fn block_without_retry_deprecated(
         &self,
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
@@ -58,7 +61,7 @@ pub trait GatewayApi: Sync {
         unimplemented!();
     }
 
-    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
+    async fn state_update_deprecated(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
         unimplemented!();
     }
 
@@ -124,15 +127,18 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         self.as_ref().pending_block().await
     }
 
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.as_ref().block(block).await
-    }
-
-    async fn block_without_retry(
+    async fn block_deprecated(
         &self,
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.as_ref().block_without_retry(block).await
+        self.as_ref().block_deprecated(block).await
+    }
+
+    async fn block_without_retry_deprecated(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        self.as_ref().block_without_retry_deprecated(block).await
     }
 
     async fn block_header(
@@ -163,8 +169,8 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         self.as_ref().transaction(transaction_hash).await
     }
 
-    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
-        self.as_ref().state_update(block).await
+    async fn state_update_deprecated(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
+        self.as_ref().state_update_deprecated(block).await
     }
 
     async fn state_update_with_block(
@@ -338,7 +344,7 @@ impl Client {
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
-            .block(BlockNumber::GENESIS.into())
+            .block_deprecated(BlockNumber::GENESIS.into())
             .await?
             .as_block()
             .expect("Genesis block should not be pending")
@@ -378,12 +384,15 @@ impl GatewayApi for Client {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
+    async fn block_deprecated(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.block_with_retry_behaviour(block, self.retry).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn block_without_retry(
+    async fn block_without_retry_deprecated(
         &self,
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
@@ -458,7 +467,7 @@ impl GatewayApi for Client {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
+    async fn state_update_deprecated(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
         let state_update: reply::StateUpdate = self
             .feeder_gateway_request()
             .get_state_update()
@@ -832,7 +841,7 @@ mod tests {
         let url = Url::parse(&url).unwrap();
         let client = Client::with_base_url(url).unwrap();
 
-        let _ = client.block(BlockId::Latest).await;
+        let _ = client.block_deprecated(BlockId::Latest).await;
         shutdown_tx.send(()).unwrap();
         server_handle.await.unwrap();
     }
@@ -853,11 +862,11 @@ mod tests {
                 ),
             ]);
             let by_hash = client
-                .block(BlockId::from(GENESIS_BLOCK_HASH))
+                .block_deprecated(BlockId::from(GENESIS_BLOCK_HASH))
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockId::from(GENESIS_BLOCK_NUMBER))
+                .block_deprecated(BlockId::from(GENESIS_BLOCK_NUMBER))
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -876,14 +885,14 @@ mod tests {
                 ),
             ]);
             let by_hash = client
-                .block(
+                .block_deprecated(
                     block_hash!("040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746")
                         .into(),
                 )
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockNumber::new_or_panic(231579).into())
+                .block_deprecated(BlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -901,7 +910,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=latest",
                 (v0_9_0::block::NUMBER_231579, 200),
             )]);
-            client.block(BlockId::Latest).await.unwrap();
+            client.block_deprecated(BlockId::Latest).await.unwrap();
         }
 
         #[tokio::test]
@@ -910,7 +919,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=pending",
                 (v0_9_0::block::PENDING, 200),
             )]);
-            client.block(BlockId::Pending).await.unwrap();
+            client.block_deprecated(BlockId::Pending).await.unwrap();
         }
 
         #[test_log::test(tokio::test)]
@@ -920,7 +929,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_HASH))
+                .block_deprecated(BlockId::from(INVALID_BLOCK_HASH))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -936,7 +945,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_NUMBER))
+                .block_deprecated(BlockId::from(INVALID_BLOCK_NUMBER))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -963,7 +972,7 @@ mod tests {
             let expected_version = StarknetVersion::new(0, 9, 1);
 
             let version = client
-                .block(BlockNumber::new_or_panic(300000).into())
+                .block_deprecated(BlockNumber::new_or_panic(300000).into())
                 .await
                 .unwrap()
                 .as_block()
@@ -971,7 +980,7 @@ mod tests {
                 .starknet_version;
             assert_eq!(version, expected_version);
 
-            let block = client.block(BlockId::Pending).await.unwrap();
+            let block = client.block_deprecated(BlockId::Pending).await.unwrap();
             assert_matches!(block, MaybePendingBlock::Pending(_));
         }
     }
@@ -1071,11 +1080,11 @@ mod tests {
                 ),
             ]);
             let by_number = client
-                .state_update(BlockId::from(GENESIS_BLOCK_NUMBER))
+                .state_update_deprecated(BlockId::from(GENESIS_BLOCK_NUMBER))
                 .await
                 .unwrap();
             let by_hash = client
-                .state_update(BlockId::from(GENESIS_BLOCK_HASH))
+                .state_update_deprecated(BlockId::from(GENESIS_BLOCK_HASH))
                 .await
                 .unwrap();
 
@@ -1095,11 +1104,11 @@ mod tests {
                 ),
             ]);
             let by_number = client
-                .state_update(BlockNumber::new_or_panic(315700).into())
+                .state_update_deprecated(BlockNumber::new_or_panic(315700).into())
                 .await
                 .unwrap();
             let by_hash = client
-                .state_update(
+                .state_update_deprecated(
                     block_hash!("017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03")
                         .into(),
                 )
@@ -1120,7 +1129,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .state_update(BlockId::from(INVALID_BLOCK_NUMBER))
+                .state_update_deprecated(BlockId::from(INVALID_BLOCK_NUMBER))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1136,7 +1145,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .state_update(BlockId::from(INVALID_BLOCK_HASH))
+                .state_update_deprecated(BlockId::from(INVALID_BLOCK_HASH))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1151,7 +1160,10 @@ mod tests {
                 "/feeder_gateway/get_state_update?blockNumber=latest",
                 (v0_11_0::state_update::NUMBER_315700, 200),
             )]);
-            client.state_update(BlockId::Latest).await.unwrap();
+            client
+                .state_update_deprecated(BlockId::Latest)
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
@@ -1160,7 +1172,10 @@ mod tests {
                 "/feeder_gateway/get_state_update?blockNumber=pending",
                 (v0_11_0::state_update::PENDING, 200),
             )]);
-            client.state_update(BlockId::Pending).await.unwrap();
+            client
+                .state_update_deprecated(BlockId::Pending)
+                .await
+                .unwrap();
         }
     }
 
