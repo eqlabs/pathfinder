@@ -103,6 +103,7 @@ pub struct ReceiptsRequest {
     pub iteration: Iteration,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum ReceiptsResponse {
     Receipt(Receipt),

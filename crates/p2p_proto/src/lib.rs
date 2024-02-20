@@ -14,6 +14,7 @@ pub mod proto {
     pub mod header {
         include!(concat!(env!("OUT_DIR"), "/starknet.header.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
     pub mod receipt {
         include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
     }
