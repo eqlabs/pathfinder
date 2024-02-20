@@ -176,7 +176,14 @@ pub mod v0_13_0 {
 
 pub mod v0_13_1 {
     pub mod block {
-        pub const PENDING: &str = str_fixture!("0.13.0/block/pending.json");
+        pub const PENDING: &str = str_fixture!("0.13.1/block/pending.json");
+    }
+
+    pub mod state_update_with_block {
+        pub const SEPOLIA_INTEGRATION_NUMBER_9703: &str =
+            str_fixture!("0.13.1/state_update_with_block/sepolia_integration_9703.json");
+        pub const SEPOLIA_INTEGRATION_PENDING: &str =
+            str_fixture!("0.13.1/state_update_with_block/sepolia_integration_pending.json");
     }
 }
 
