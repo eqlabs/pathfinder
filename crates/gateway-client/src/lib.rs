@@ -64,8 +64,8 @@ pub trait GatewayApi: Sync {
 
     async fn state_update_with_block(
         &self,
-        block: BlockId,
-    ) -> Result<(reply::MaybePendingBlock, StateUpdate), SequencerError> {
+        block: BlockNumber,
+    ) -> Result<(reply::Block, StateUpdate), SequencerError> {
         unimplemented!();
     }
 
@@ -169,8 +169,8 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 
     async fn state_update_with_block(
         &self,
-        block: BlockId,
-    ) -> Result<(reply::MaybePendingBlock, StateUpdate), SequencerError> {
+        block: BlockNumber,
+    ) -> Result<(reply::Block, StateUpdate), SequencerError> {
         self.as_ref().state_update_with_block(block).await
     }
 
@@ -479,9 +479,15 @@ impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn state_update_with_block(
         &self,
-        block: BlockId,
-    ) -> Result<(reply::MaybePendingBlock, StateUpdate), SequencerError> {
-        let result: reply::StateUpdateWithBlock = self
+        block: BlockNumber,
+    ) -> Result<(reply::Block, StateUpdate), SequencerError> {
+        #[derive(serde::Deserialize)]
+        struct Dto {
+            block: reply::Block,
+            state_update: reply::StateUpdate,
+        }
+
+        let result: Dto = self
             .feeder_gateway_request()
             .get_state_update()
             .with_block(block)
@@ -1155,18 +1161,6 @@ mod tests {
                 (v0_11_0::state_update::PENDING, 200),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
-        }
-
-        #[tokio::test]
-        async fn pending_with_block() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=pending&includeBlock=true",
-                (v0_12_2::state_update::PENDING_WITH_BLOCK, 200),
-            )]);
-            client
-                .state_update_with_block(BlockId::Pending)
-                .await
-                .unwrap();
         }
     }
 

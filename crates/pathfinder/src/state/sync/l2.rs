@@ -439,14 +439,12 @@ async fn download_block(
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
-    use starknet_gateway_types::{
-        error::KnownStarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
-    };
+    use starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound;
 
-    let result = sequencer.state_update_with_block(block_number.into()).await;
+    let result = sequencer.state_update_with_block(block_number).await;
 
     let result = match result {
-        Ok((MaybePendingBlock::Block(block), state_update)) => {
+        Ok((block, state_update)) => {
             let block = Box::new(block);
             let state_update = Box::new(state_update);
 
@@ -494,9 +492,6 @@ async fn download_block(
                     block.status
                 )),
             }
-        }
-        Ok((MaybePendingBlock::Pending(_), _)) => {
-            anyhow::bail!("Sequencer returned `pending` block")
         }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
             // This would occur if we queried past the head of the chain. We now need to check that
@@ -936,8 +931,8 @@ mod tests {
         fn expect_state_update_with_block(
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
-            block: BlockId,
-            returned_result: Result<(reply::MaybePendingBlock, StateUpdate), SequencerError>,
+            block: BlockNumber,
+            returned_result: Result<(reply::Block, StateUpdate), SequencerError>,
         ) {
             use mockall::predicate::eq;
 
@@ -1017,8 +1012,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1036,8 +1031,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((BLOCK1.clone().into(), STATE_UPDATE1.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1055,7 +1050,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
+                    BLOCK2_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1105,8 +1100,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((BLOCK1.clone().into(), STATE_UPDATE1.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1125,7 +1120,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
+                    BLOCK2_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1189,8 +1184,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((block.into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((block, STATE_UPDATE0.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1231,8 +1226,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1251,7 +1246,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
+                    BLOCK1_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1275,8 +1270,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0_V2.clone().into(), STATE_UPDATE0_V2.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0_V2.clone(), STATE_UPDATE0_V2.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1295,7 +1290,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
+                    BLOCK1_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1374,8 +1369,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1393,8 +1388,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((BLOCK1.clone().into(), STATE_UPDATE1.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1412,8 +1407,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((BLOCK2.clone().into(), STATE_UPDATE2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((BLOCK2.clone(), STATE_UPDATE2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1425,7 +1420,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK3_NUMBER.into(),
+                    BLOCK3_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1448,14 +1443,14 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((block1_v2.clone().into(), STATE_UPDATE1_V2.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((block1_v2.clone(), STATE_UPDATE1_V2.clone())),
                 );
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0_V2.clone().into(), STATE_UPDATE0_V2.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0_V2.clone(), STATE_UPDATE0_V2.clone())),
                 );
 
                 // Once the L2 sync task has found where reorg occurred,
@@ -1464,8 +1459,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0_V2.clone().into(), STATE_UPDATE0_V2.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0_V2.clone(), STATE_UPDATE0_V2.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1483,8 +1478,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((block1_v2.clone().into(), STATE_UPDATE1_V2.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((block1_v2.clone(), STATE_UPDATE1_V2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1498,7 +1493,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
+                    BLOCK2_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1624,8 +1619,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1643,8 +1638,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((BLOCK1.clone().into(), STATE_UPDATE1.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1662,8 +1657,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((BLOCK2.clone().into(), STATE_UPDATE2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((BLOCK2.clone(), STATE_UPDATE2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1675,8 +1670,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK3_NUMBER.into(),
-                    Ok((block3.clone().into(), STATE_UPDATE3.clone())),
+                    BLOCK3_NUMBER,
+                    Ok((block3.clone(), STATE_UPDATE3.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1688,7 +1683,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK4_NUMBER.into(),
+                    BLOCK4_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1711,20 +1706,20 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((block2_v2.clone().into(), STATE_UPDATE2_V2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((block2_v2.clone(), STATE_UPDATE2_V2.clone())),
                 );
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((block1_v2.clone().into(), STATE_UPDATE1_V2.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((block1_v2.clone(), STATE_UPDATE1_V2.clone())),
                 );
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
@@ -1732,8 +1727,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((block1_v2.clone().into(), STATE_UPDATE1_V2.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((block1_v2.clone(), STATE_UPDATE1_V2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1745,8 +1740,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((block2_v2.clone().into(), STATE_UPDATE2_V2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((block2_v2.clone(), STATE_UPDATE2_V2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1758,7 +1753,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK3_NUMBER.into(),
+                    BLOCK3_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1852,8 +1847,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1871,8 +1866,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((BLOCK1.clone().into(), STATE_UPDATE1.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -1890,8 +1885,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((BLOCK2.clone().into(), STATE_UPDATE2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((BLOCK2.clone(), STATE_UPDATE2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1903,7 +1898,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK3_NUMBER.into(),
+                    BLOCK3_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -1926,8 +1921,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((BLOCK1.clone().into(), STATE_UPDATE1.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
@@ -1935,8 +1930,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((block2_v2.clone().into(), STATE_UPDATE2_V2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((block2_v2.clone(), STATE_UPDATE2_V2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -1949,7 +1944,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK3_NUMBER.into(),
+                    BLOCK3_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -2049,8 +2044,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -2069,8 +2064,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((BLOCK1.clone().into(), STATE_UPDATE1.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
                 expect_class_by_hash(
                     &mut mock,
@@ -2088,8 +2083,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((block2.clone().into(), STATE_UPDATE2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((block2.clone(), STATE_UPDATE2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -2103,8 +2098,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
@@ -2112,8 +2107,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK1_NUMBER.into(),
-                    Ok((block1_v2.clone().into(), STATE_UPDATE1_V2.clone())),
+                    BLOCK1_NUMBER,
+                    Ok((block1_v2.clone(), STATE_UPDATE1_V2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -2125,8 +2120,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK2_NUMBER.into(),
-                    Ok((block2.clone().into(), STATE_UPDATE2.clone())),
+                    BLOCK2_NUMBER,
+                    Ok((block2.clone(), STATE_UPDATE2.clone())),
                 );
                 expect_signature(
                     &mut mock,
@@ -2139,7 +2134,7 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK3_NUMBER.into(),
+                    BLOCK3_NUMBER,
                     Err(block_not_found()),
                 );
                 expect_signature(
@@ -2201,8 +2196,8 @@ mod tests {
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
-                    BLOCK0_NUMBER.into(),
-                    Ok((BLOCK0.clone().into(), STATE_UPDATE0.clone())),
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
                 expect_signature(
                     &mut mock,
