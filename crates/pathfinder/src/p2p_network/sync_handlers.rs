@@ -170,11 +170,15 @@ fn get_header(
                     root: Hash(Felt::ZERO), // TODO
                 },
                 protocol_version: header.starknet_version.take_inner(),
-                gas_price: Felt::from_u128(header.eth_l1_gas_price.0),
+                gas_price_fri: todo!(),
+                gas_price_wei: todo!(),
+                data_gas_price_fri: todo!(),
+                data_gas_price_wei: todo!(),
                 num_storage_diffs: 0,      // TODO
                 num_nonce_updates: 0,      // TODO
                 num_declared_classes: 0,   // TODO
                 num_deployed_contracts: 0, // TODO
+                l1_data_availability_mode: todo!(),
                 signatures: vec![ConsensusSignature {
                     r: signature.r.0,
                     s: signature.s.0,

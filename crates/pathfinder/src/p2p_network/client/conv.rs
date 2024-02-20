@@ -64,7 +64,7 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
             timestamp: BlockTimestamp::new(dto.time)
                 .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
-            eth_l1_gas_price: dto.gas_price.into(),
+            eth_l1_gas_price: todo!(),
             sequencer_address: SequencerAddress(dto.sequencer_address.0),
             starknet_version: dto.protocol_version.into(),
             event_commitment: EventCommitment(dto.events.root.0),

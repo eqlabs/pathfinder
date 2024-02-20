@@ -202,7 +202,8 @@ impl ToDto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
                 })
                 .collect(),
             execution_resources: {
-                let e = self.1.execution_resources.clone().unwrap_or_default();
+                let e = self.1.execution_resources.unwrap_or_default();
+                let da = e.data_availability.unwrap_or_default();
                 // Assumption: the values are small enough to fit into u32
                 ExecutionResources {
                     builtins: BuiltinCounter {
@@ -241,6 +242,8 @@ impl ToDto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
                     },
                     steps: e.n_steps.try_into().unwrap(),
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
+                    l1_gas: da.l1_gas.into(),
+                    l1_data_gas: da.l1_data_gas.into(),
                 }
             },
             revert_reason,

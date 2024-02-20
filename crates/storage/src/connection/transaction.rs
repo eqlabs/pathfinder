@@ -422,12 +422,18 @@ pub(crate) mod dto {
 
     impl<T> Dummy<T> for ExecutionResources {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let (l1_gas, l1_data_gas) = if rng.gen() {
+                (Some(rng.next_u32() as u128), Some(rng.next_u32() as u128))
+            } else {
+                (None, None)
+            };
+
             Self {
                 builtin_instance_counter: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                l1_gas: Some(rng.next_u32() as u128),
-                l1_data_gas: Some(rng.next_u32() as u128),
+                l1_gas,
+                l1_data_gas,
             }
         }
     }

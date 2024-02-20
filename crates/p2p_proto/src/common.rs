@@ -27,7 +27,7 @@ pub struct ConsensusSignature {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
 #[protobuf(name = "crate::proto::common::Merkle")]
 pub struct Merkle {
-    pub n_leaves: u32,
+    pub n_leaves: u64,
     pub root: Hash,
 }
 
@@ -46,6 +46,12 @@ pub struct BlockId {
     pub number: u64,
     #[rename(header)]
     pub hash: Hash,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+pub enum L1DataAvailabilityMode {
+    Calldata,
+    Blob,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -154,6 +160,26 @@ impl Display for BlockId {
     }
 }
 
+impl ToProtobuf<i32> for L1DataAvailabilityMode {
+    fn to_protobuf(self) -> i32 {
+        use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        match self {
+            L1DataAvailabilityMode::Calldata => Calldata as i32,
+            L1DataAvailabilityMode::Blob => Blob as i32,
+        }
+    }
+}
+
+impl TryFromProtobuf<i32> for L1DataAvailabilityMode {
+    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+        use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        Ok(match TryFrom::try_from(input)? {
+            Calldata => L1DataAvailabilityMode::Calldata,
+            Blob => L1DataAvailabilityMode::Blob,
+        })
+    }
+}
+
 impl ToProtobuf<proto::common::PeerId> for PeerId {
     fn to_protobuf(self) -> proto::common::PeerId {
         proto::common::PeerId {
@@ -174,6 +200,24 @@ impl TryFromProtobuf<proto::common::PeerId> for PeerId {
             )
         })?;
         Ok(peer_id)
+    }
+}
+
+impl ToProtobuf<proto::common::Uint128> for u128 {
+    fn to_protobuf(self) -> proto::common::Uint128 {
+        proto::common::Uint128 {
+            low: (self & 0xFFFF_FFFF_FFFF_FFFF) as u64,
+            high: (self >> 64) as u64,
+        }
+    }
+}
+
+impl TryFromProtobuf<proto::common::Uint128> for u128 {
+    fn try_from_protobuf(
+        input: proto::common::Uint128,
+        _: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        Ok((input.high as u128) << 64 | input.low as u128)
     }
 }
 

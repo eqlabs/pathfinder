@@ -23,6 +23,8 @@ pub struct ExecutionResources {
     pub builtins: execution_resources::BuiltinCounter,
     pub steps: u32,
     pub memory_holes: u32,
+    pub l1_gas: Felt,
+    pub l1_data_gas: Felt,
 }
 
 pub mod execution_resources {
