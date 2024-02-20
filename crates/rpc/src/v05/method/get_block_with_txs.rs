@@ -42,7 +42,7 @@ pub async fn get_block_with_txs(
                     .block;
                 let block = (*block).clone();
 
-                return Ok(types::Block::from_sequencer(block.into()));
+                return Ok(types::Block::from_sequencer_pending(block));
             }
             other => other.try_into().expect("Only pending cast should fail"),
         };
@@ -116,16 +116,18 @@ mod types {
         }
 
         /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
-        pub fn from_sequencer(block: starknet_gateway_types::reply::MaybePendingBlock) -> Self {
+        pub fn from_sequencer_pending(
+            pending: starknet_gateway_types::reply::PendingBlock,
+        ) -> Self {
             Self {
-                status: block.status().into(),
-                transactions: block
-                    .transactions()
+                status: pending.status.into(),
+                transactions: pending
+                    .transactions
                     .iter()
                     .cloned()
                     .map(Into::into)
                     .collect(),
-                header: crate::v05::types::BlockHeader::from_sequencer(block),
+                header: crate::v05::types::BlockHeader::from_sequencer_pending(pending),
             }
         }
     }

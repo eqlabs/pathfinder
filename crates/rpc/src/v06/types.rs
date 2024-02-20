@@ -7,7 +7,6 @@ use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, SequencerAddress, StarknetVersion, StateCommitment,
 };
 use pathfinder_common::{GasPrice, TransactionVersion};
-use pathfinder_crypto::Felt;
 use serde::Serialize;
 use serde_with::{serde_as, skip_serializing_none};
 
@@ -57,39 +56,20 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
 }
 
 impl BlockHeader {
-    /// Constructs [BlockHeader] from [sequencer's block representation](starknet_gateway_types::reply::Block)
-    pub fn from_sequencer(block: starknet_gateway_types::reply::MaybePendingBlock) -> Self {
-        use starknet_gateway_types::reply::MaybePendingBlock;
-        match block {
-            MaybePendingBlock::Block(block) => Self {
-                block_hash: Some(block.block_hash),
-                parent_hash: block.parent_block_hash,
-                block_number: Some(block.block_number),
-                new_root: Some(block.state_commitment),
-                timestamp: block.timestamp,
-                sequencer_address: block
-                    .sequencer_address
-                    // Default value for cairo <0.8.0 is 0
-                    .unwrap_or(SequencerAddress(Felt::ZERO)),
-                l1_gas_price: ResourcePrice {
-                    price_in_fri: block.strk_l1_gas_price().unwrap_or_default(),
-                    price_in_wei: block.eth_l1_gas_price().unwrap_or_default(),
-                },
-                starknet_version: block.starknet_version,
+    /// Constructs [BlockHeader] from [sequencer's pending block representation](starknet_gateway_types::reply::PendingBlock)
+    pub fn from_sequencer_pending(pending: starknet_gateway_types::reply::PendingBlock) -> Self {
+        Self {
+            block_hash: None,
+            parent_hash: pending.parent_hash,
+            block_number: None,
+            new_root: None,
+            timestamp: pending.timestamp,
+            sequencer_address: pending.sequencer_address,
+            l1_gas_price: ResourcePrice {
+                price_in_fri: pending.strk_l1_gas_price().unwrap_or_default(),
+                price_in_wei: pending.eth_l1_gas_price(),
             },
-            MaybePendingBlock::Pending(pending) => Self {
-                block_hash: None,
-                parent_hash: pending.parent_hash,
-                block_number: None,
-                new_root: None,
-                timestamp: pending.timestamp,
-                sequencer_address: pending.sequencer_address,
-                l1_gas_price: ResourcePrice {
-                    price_in_fri: pending.strk_l1_gas_price().unwrap_or_default(),
-                    price_in_wei: pending.eth_l1_gas_price(),
-                },
-                starknet_version: pending.starknet_version,
-            },
+            starknet_version: pending.starknet_version,
         }
     }
 }
