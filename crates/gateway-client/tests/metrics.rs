@@ -8,7 +8,6 @@ use pathfinder_common::{BlockId, BlockNumber};
 use pretty_assertions_sorted::assert_eq;
 use starknet_gateway_client::test_utils::{response_from, setup_with_varied_responses};
 use starknet_gateway_client::{Client, GatewayApi};
-use starknet_gateway_test_fixtures::{v0_11_0, v0_9_0};
 use starknet_gateway_types::error::KnownStarknetErrorCode;
 use std::future::Future;
 
@@ -17,17 +16,13 @@ async fn all_counter_types_including_tags() {
     with_method(
         "get_block",
         |client, x| async move {
-            let _ = client.block_deprecated(x).await;
+            let _ = client.block_header(x).await;
         },
-        (v0_9_0::block::GENESIS.to_owned(), 200),
-    )
-    .await;
-    with_method(
-        "get_state_update",
-        |client, x| async move {
-            let _ = client.state_update_deprecated(x).await;
-        },
-        (v0_11_0::state_update::GENESIS.to_owned(), 200),
+        (
+            r#"{"block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b", "block_number": 0}"#
+                .to_owned(),
+            200,
+        ),
     )
     .await;
 }
@@ -39,7 +34,7 @@ where
 {
     use pathfinder_common::test_utils::metrics::{FakeRecorder, ScopedRecorderGuard};
 
-    let recorder = FakeRecorder::new_for(&["get_block", "get_state_update"]);
+    let recorder = FakeRecorder::new_for(&["get_block"]);
     let handle = recorder.handle();
 
     // Automatically deregister the recorder
@@ -61,15 +56,15 @@ where
 
     let (_jh, client) = setup_with_varied_responses([
         (
-            format!("/feeder_gateway/{method_name}?blockNumber=123"),
+            format!("/feeder_gateway/{method_name}?blockNumber=123&headerOnly=true"),
             responses.clone(),
         ),
         (
-            format!("/feeder_gateway/{method_name}?blockNumber=latest"),
+            format!("/feeder_gateway/{method_name}?blockNumber=latest&headerOnly=true"),
             responses.clone(),
         ),
         (
-            format!("/feeder_gateway/{method_name}?blockNumber=pending"),
+            format!("/feeder_gateway/{method_name}?blockNumber=pending&headerOnly=true"),
             responses,
         ),
     ]);

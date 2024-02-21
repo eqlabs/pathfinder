@@ -150,55 +150,6 @@ impl PendingBlock {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum MaybePendingBlock {
-    Block(Block),
-    Pending(PendingBlock),
-}
-
-impl From<Block> for MaybePendingBlock {
-    fn from(block: Block) -> Self {
-        MaybePendingBlock::Block(block)
-    }
-}
-
-impl From<PendingBlock> for MaybePendingBlock {
-    fn from(pending: PendingBlock) -> Self {
-        MaybePendingBlock::Pending(pending)
-    }
-}
-
-impl MaybePendingBlock {
-    pub fn as_block(self) -> Option<Block> {
-        match self {
-            MaybePendingBlock::Block(block) => Some(block),
-            MaybePendingBlock::Pending(_) => None,
-        }
-    }
-
-    pub fn transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
-        match self {
-            MaybePendingBlock::Block(b) => &b.transactions,
-            MaybePendingBlock::Pending(p) => &p.transactions,
-        }
-    }
-
-    pub fn receipts(&self) -> &[pathfinder_common::receipt::Receipt] {
-        match self {
-            MaybePendingBlock::Block(b) => &b.transaction_receipts,
-            MaybePendingBlock::Pending(p) => &p.transaction_receipts,
-        }
-    }
-
-    pub fn status(&self) -> Status {
-        match self {
-            MaybePendingBlock::Block(b) => b.status,
-            MaybePendingBlock::Pending(p) => p.status,
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum L1DataAvailabilityMode {
@@ -2249,13 +2200,6 @@ pub mod state_update {
     }
 }
 
-/// Used to deserialize replies to `get_state_update&includeBlock=true`.
-#[derive(Clone, Debug, Deserialize)]
-pub struct StateUpdateWithBlock {
-    pub block: MaybePendingBlock,
-    pub state_update: StateUpdate,
-}
-
 /// Used to deserialize replies to Starknet Ethereum contract requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
@@ -2380,27 +2324,27 @@ mod tests {
 
         #[test]
         fn block() {
-            use super::super::MaybePendingBlock;
+            use super::super::{Block, PendingBlock};
 
             // Mainnet block 192 contains an L1_HANDLER transaction without a nonce.
-            serde_json::from_str::<MaybePendingBlock>(old::block::NUMBER_192).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::GENESIS).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::NUMBER_1716).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::PENDING).unwrap();
+            serde_json::from_str::<Block>(old::block::NUMBER_192).unwrap();
+            serde_json::from_str::<Block>(v0_8_2::block::GENESIS).unwrap();
+            serde_json::from_str::<Block>(v0_8_2::block::NUMBER_1716).unwrap();
+            serde_json::from_str::<PendingBlock>(v0_8_2::block::PENDING).unwrap();
             // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216591).unwrap();
+            serde_json::from_str::<Block>(integration::block::NUMBER_216591).unwrap();
             // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216171).unwrap();
+            serde_json::from_str::<Block>(integration::block::NUMBER_216171).unwrap();
             // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_228457).unwrap();
+            serde_json::from_str::<Block>(integration::block::NUMBER_228457).unwrap();
             // This is from integration starknet_version 0.13.0 and contains new v3 invoke and deploy account transactions.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319693).unwrap();
+            serde_json::from_str::<Block>(integration::block::NUMBER_319693).unwrap();
             // This is from integration starknet_version 0.13.0 and contains a new v3 declare transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_319709).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_13_0::block::PENDING).unwrap();
+            serde_json::from_str::<Block>(integration::block::NUMBER_319709).unwrap();
+            serde_json::from_str::<PendingBlock>(v0_13_0::block::PENDING).unwrap();
             // This is from integration starknet_version 0.13.0 and contains data gas prices.
-            serde_json::from_str::<crate::reply::Block>(integration::block::NUMBER_329543).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_13_1::block::PENDING).unwrap();
+            serde_json::from_str::<Block>(integration::block::NUMBER_329543).unwrap();
+            serde_json::from_str::<PendingBlock>(v0_13_1::block::PENDING).unwrap();
         }
 
         #[test]

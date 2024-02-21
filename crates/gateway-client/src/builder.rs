@@ -606,7 +606,7 @@ mod tests {
     }
 
     mod invalid_starknet_error_variant {
-        use crate::Client;
+        use crate::{Client, GatewayApi};
         use http::response::Builder;
         use warp::Filter;
 
@@ -625,7 +625,10 @@ mod tests {
             let client = Client::with_base_url(url)
                 .unwrap()
                 .disable_retry_for_tests();
-            let error = client.chain().await.unwrap_err();
+            let error = client
+                .block_header(pathfinder_common::BlockId::Latest)
+                .await
+                .unwrap_err();
             assert_eq!(
                 error.to_string(),
                 "error decoding response body: invalid error variant"

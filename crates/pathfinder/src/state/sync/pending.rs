@@ -13,7 +13,7 @@ use crate::state::sync::SyncEvent;
 ///
 /// This disconnect is detected whenever
 /// - `pending.parent_hash != head`, or
-/// - `pending` is a fully formed block and not [PendingBlock](starknet_gateway_types::reply::MaybePendingBlock::Pending), or
+/// - `pending` is a fully formed block and not [PendingBlock](starknet_gateway_types::reply::PendingBlock), or
 /// - the state update parent root does not match head.
 ///
 /// A full block or full state update can be returned from this function if it is encountered during polling.
