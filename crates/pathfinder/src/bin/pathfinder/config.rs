@@ -394,6 +394,7 @@ Example:
         long_help = "Comma separated list of IP addresses or IP address ranges (in CIDR) to whitelist for incoming connections. If not provided, all incoming connections are allowed.",
         value_name = "LIST",
         default_value = "0.0.0.0/0,::/0",
+        value_delimiter = ',',
         env = "IP_WHITELIST"
     )]
     ip_whitelist: Vec<IpNet>,
@@ -650,6 +651,33 @@ impl P2PConfig {
                         .exit()
                 })
         };
+
+        if (1..25).contains(&args.max_inbound_direct_connections) {
+            Cli::command()
+                .error(
+                    ErrorKind::ValueValidation,
+                    "p2p.max-inbound-direct-connections must be zero or at least 25",
+                )
+                .exit()
+        }
+
+        if (1..25).contains(&args.max_inbound_relayed_connections) {
+            Cli::command()
+                .error(
+                    ErrorKind::ValueValidation,
+                    "p2p.max-inbound-relayed-connections must be zero or at least 25",
+                )
+                .exit()
+        }
+
+        if args.low_watermark > args.max_outbound_connections {
+            Cli::command()
+                .error(
+                    ErrorKind::ValueValidation,
+                    "p2p.low-watermark must be less than or equal to p2p.max_outbound_connections",
+                )
+                .exit()
+        }
 
         Self {
             max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
