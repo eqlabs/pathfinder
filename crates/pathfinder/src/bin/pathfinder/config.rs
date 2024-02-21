@@ -673,7 +673,7 @@ impl P2PConfig {
             Cli::command()
                 .error(
                     ErrorKind::ValueValidation,
-                    "p2p.low-watermark must be less than or equal to max_outbound_connections",
+                    "p2p.low-watermark must be less than or equal to p2p.max_outbound_connections",
                 )
                 .exit()
         }
