@@ -1,7 +1,8 @@
-use crate::common::{Address, BlockId, ConsensusSignature, Hash, Iteration, Merkle, Patricia};
+use crate::common::{
+    Address, BlockId, ConsensusSignature, Hash, Iteration, L1DataAvailabilityMode, Merkle, Patricia,
+};
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 use fake::{Dummy, Fake, Faker};
-use pathfinder_crypto::Felt;
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -18,7 +19,11 @@ pub struct SignedBlockHeader {
     pub events: Merkle,
     pub receipts: Merkle,
     pub protocol_version: String,
-    pub gas_price: Felt,
+    pub gas_price_fri: u128,
+    pub gas_price_wei: u128,
+    pub data_gas_price_fri: u128,
+    pub data_gas_price_wei: u128,
+    pub l1_data_availability_mode: L1DataAvailabilityMode,
     pub num_storage_diffs: u64,
     pub num_nonce_updates: u64,
     pub num_declared_classes: u64,
@@ -62,7 +67,11 @@ impl<T> Dummy<T> for SignedBlockHeader {
             events: Faker.fake_with_rng(rng),
             receipts: Faker.fake_with_rng(rng),
             protocol_version: Faker.fake_with_rng(rng),
-            gas_price: Faker.fake_with_rng(rng),
+            gas_price_fri: Faker.fake_with_rng(rng),
+            gas_price_wei: Faker.fake_with_rng(rng),
+            data_gas_price_fri: Faker.fake_with_rng(rng),
+            data_gas_price_wei: Faker.fake_with_rng(rng),
+            l1_data_availability_mode: Faker.fake_with_rng(rng),
             num_storage_diffs: Faker.fake_with_rng(rng),
             num_nonce_updates: Faker.fake_with_rng(rng),
             num_declared_classes: Faker.fake_with_rng(rng),

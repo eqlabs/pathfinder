@@ -23,6 +23,8 @@ pub struct ExecutionResources {
     pub builtins: execution_resources::BuiltinCounter,
     pub steps: u32,
     pub memory_holes: u32,
+    pub l1_gas: Felt,
+    pub l1_data_gas: Felt,
 }
 
 pub mod execution_resources {
@@ -101,6 +103,7 @@ pub struct ReceiptsRequest {
     pub iteration: Iteration,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum ReceiptsResponse {
     Receipt(Receipt),

@@ -95,17 +95,18 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::conv::{
-        cairo_def_from_dto, sierra_defs_from_dto, SignedBlockHeader as P2PSignedBlockHeader,
-    };
+    use crate::p2p_network::client::conv::{cairo_def_from_dto, sierra_defs_from_dto};
     use crate::p2p_network::sync_handlers;
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p::client::types::{RawTransactionVariant, TryFromDto};
+    use p2p::client::types::{
+        RawTransactionVariant, Receipt, SignedBlockHeader as P2PSignedBlockHeader, TryFromDto,
+    };
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
+    use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
     use p2p_proto::state::{
         ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse,
     };
@@ -393,48 +394,47 @@ mod prop {
         }
     }
 
-    // FIXME: commented out until data_availability gets added to P2P receipt protobuf
-    // proptest! {
-    //     #[test]
-    //     fn get_receipts((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
-    //         // Fake storage with a given number of blocks
-    //         let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-    //         // Compute the overlapping set between the db and the request
-    //         // These are the receipts that we expect to be read from the db
-    //         // Grouped by block number
-    //         let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-    //             .map(|(h, _, tr, _, _, _)|
-    //                 (
-    //                     // Block number
-    //                     h.number,
-    //                     // List of receipts
-    //                     tr.into_iter().map(|(_, r)| P2PReceipt::from(r)).collect::<Vec<_>>()
-    //                 )
-    //         ).collect::<Vec<_>>();
-    //         // Run the handler
-    //         let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-    //         let mut responses = Runtime::new().unwrap().block_on(async {
-    //             let (tx, rx) = mpsc::channel(0);
-    //             let getter_fut = sync_handlers::get_receipts(storage, request, tx);
-    //             let (_, responses) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
-    //             responses
-    //         });
+    proptest! {
+        #[test]
+        fn get_receipts((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+            // Compute the overlapping set between the db and the request
+            // These are the receipts that we expect to be read from the db
+            // Grouped by block number
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(h, _, tr, _, _, _)|
+                    (
+                        // Block number
+                        h.number,
+                        // List of receipts
+                        tr.into_iter().map(|(_, r)| Receipt::from(r)).collect::<Vec<_>>()
+                    )
+            ).collect::<Vec<_>>();
+            // Run the handler
+            let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
+            let mut responses = Runtime::new().unwrap().block_on(async {
+                let (tx, rx) = mpsc::channel(0);
+                let getter_fut = sync_handlers::get_receipts(storage, request, tx);
+                let (_, responses) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
+                responses
+            });
 
-    //         // Make sure the last reply is Fin
-    //         assert_eq!(responses.pop().unwrap(), ReceiptsResponse::Fin);
+            // Make sure the last reply is Fin
+            assert_eq!(responses.pop().unwrap(), ReceiptsResponse::Fin);
 
-    //         // Check the rest
-    //         let mut actual = responses.into_iter().map(|response| match response {
-    //             ReceiptsResponse::Receipt(receipt) => P2PReceipt::try_from(receipt).unwrap(),
-    //             _ => panic!("unexpected response"),
-    //         }).collect::<Vec<_>>();
+            // Check the rest
+            let mut actual = responses.into_iter().map(|response| match response {
+                ReceiptsResponse::Receipt(receipt) => Receipt::try_from(receipt).unwrap(),
+                _ => panic!("unexpected response"),
+            }).collect::<Vec<_>>();
 
-    //         for expected_for_block in expected {
-    //             let actual_for_block = actual.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
-    //             prop_assert_eq_sorted!(expected_for_block.1, actual_for_block, "block number: {}", expected_for_block.0);
-    //         }
-    //     }
-    // }
+            for expected_for_block in expected {
+                let actual_for_block = actual.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
+                prop_assert_eq_sorted!(expected_for_block.1, actual_for_block, "block number: {}", expected_for_block.0);
+            }
+        }
+    }
 
     proptest! {
         #[test]

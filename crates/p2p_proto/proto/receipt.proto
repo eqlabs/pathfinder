@@ -26,9 +26,11 @@ message Receipt {
       uint32 output      = 8;
     }
 
-    BuiltinCounter builtins     = 1;
-    uint32         steps        = 2;
-    uint32         memory_holes = 3;
+    BuiltinCounter builtins = 1;
+    uint32 steps = 2;
+    uint32 memory_holes = 3;
+    starknet.common.Felt252 l1_gas = 4;
+    starknet.common.Felt252 l1_data_gas = 5;
   }
 
   message Common {

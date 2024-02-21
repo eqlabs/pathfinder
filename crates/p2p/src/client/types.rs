@@ -2,6 +2,9 @@
 //!
 //! Also includes some "bridging" types which should eventually be removed
 use pathfinder_common::event::Event;
+use pathfinder_common::receipt::{
+    BuiltinCounters, ExecutionDataAvailability, ExecutionResources, ExecutionStatus, L2ToL1Message,
+};
 use pathfinder_common::transaction::{
     DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
     DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
@@ -11,10 +14,12 @@ use pathfinder_common::transaction::{
 use pathfinder_common::{
     AccountDeploymentDataElem, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
     BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
-    PaymasterDataElem, SequencerAddress, StarknetVersion, StateCommitment, Tip,
-    TransactionCommitment, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    ContractAddressSalt, EntryPoint, EthereumAddress, EventCommitment, EventData, EventKey, Fee,
+    GasPrice, L1DataAvailabilityMode, L2ToL1MessagePayloadElem, PaymasterDataElem,
+    SequencerAddress, StarknetVersion, StateCommitment, Tip, TransactionCommitment,
+    TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
+use pathfinder_crypto::Felt;
 
 /// We don't want to introduce circular dependencies between crates
 /// and we need to work around for the orphan rule - implement conversion fns for types ourside our crate.
@@ -32,6 +37,9 @@ pub struct SignedBlockHeader {
     pub number: BlockNumber,
     pub timestamp: BlockTimestamp,
     pub eth_l1_gas_price: GasPrice,
+    pub strk_l1_gas_price: GasPrice,
+    pub eth_l1_data_gas_price: GasPrice,
+    pub strk_l1_data_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub event_commitment: EventCommitment,
@@ -39,6 +47,7 @@ pub struct SignedBlockHeader {
     pub transaction_commitment: TransactionCommitment,
     pub transaction_count: usize,
     pub event_count: usize,
+    pub l1_da_mode: L1DataAvailabilityMode,
     pub signature: BlockCommitmentSignature,
 }
 
@@ -63,7 +72,10 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
             timestamp: BlockTimestamp::new(dto.time)
                 .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
-            eth_l1_gas_price: dto.gas_price.into(),
+            eth_l1_gas_price: GasPrice(dto.gas_price_wei),
+            strk_l1_gas_price: GasPrice(dto.gas_price_fri),
+            eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
+            strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
             sequencer_address: SequencerAddress(dto.sequencer_address.0),
             starknet_version: dto.protocol_version.into(),
             event_commitment: EventCommitment(dto.events.root.0),
@@ -71,6 +83,7 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             transaction_commitment: TransactionCommitment(dto.transactions.root.0),
             transaction_count: dto.transactions.n_leaves.try_into()?,
             event_count: dto.events.n_leaves.try_into()?,
+            l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             signature,
         })
     }
@@ -94,6 +107,9 @@ impl
             number: header.number,
             timestamp: header.timestamp,
             eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
             sequencer_address: header.sequencer_address,
             starknet_version: header.starknet_version,
             event_commitment: header.event_commitment,
@@ -101,7 +117,103 @@ impl
             transaction_commitment: header.transaction_commitment,
             transaction_count: header.transaction_count,
             event_count: header.event_count,
+            l1_da_mode: header.l1_da_mode,
             signature,
+        }
+    }
+}
+
+/// Represents a simplified [`pathfinder_common::receipt::Receipt`] (events and transaction index excluded).
+#[derive(Clone, Default, Debug, PartialEq)]
+pub struct Receipt {
+    pub actual_fee: Option<Fee>,
+    pub execution_resources: Option<ExecutionResources>,
+    pub l2_to_l1_messages: Vec<L2ToL1Message>,
+    pub execution_status: ExecutionStatus,
+    pub transaction_hash: TransactionHash,
+}
+
+impl From<pathfinder_common::receipt::Receipt> for Receipt {
+    fn from(x: pathfinder_common::receipt::Receipt) -> Self {
+        Self {
+            transaction_hash: x.transaction_hash,
+            actual_fee: x.actual_fee,
+            execution_resources: x.execution_resources,
+            l2_to_l1_messages: x.l2_to_l1_messages,
+            execution_status: x.execution_status,
+        }
+    }
+}
+
+impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
+    type Error = anyhow::Error;
+
+    fn try_from(proto: p2p_proto::receipt::Receipt) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
+        use p2p_proto::receipt::{
+            DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
+            InvokeTransactionReceipt, L1HandlerTransactionReceipt,
+        };
+        match proto {
+            Invoke(InvokeTransactionReceipt { common })
+            | Declare(DeclareTransactionReceipt { common })
+            | L1Handler(L1HandlerTransactionReceipt { common, .. })
+            | Deploy(DeployTransactionReceipt { common, .. })
+            | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => {
+                let data_availability = (common.execution_resources.l1_gas != Felt::ZERO
+                    || common.execution_resources.l1_data_gas != Felt::ZERO)
+                    .then_some(ExecutionDataAvailability {
+                        l1_gas: GasPrice::from(common.execution_resources.l1_gas).0,
+                        l1_data_gas: GasPrice::from(common.execution_resources.l1_data_gas).0,
+                    });
+                Ok(Self {
+                    transaction_hash: TransactionHash(common.transaction_hash.0),
+                    actual_fee: Some(Fee(common.actual_fee)),
+                    execution_resources: Some(ExecutionResources {
+                        builtin_instance_counter: BuiltinCounters {
+                            output_builtin: common.execution_resources.builtins.output.into(),
+                            pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
+                            range_check_builtin: common
+                                .execution_resources
+                                .builtins
+                                .range_check
+                                .into(),
+                            ecdsa_builtin: common.execution_resources.builtins.ecdsa.into(),
+                            bitwise_builtin: common.execution_resources.builtins.bitwise.into(),
+                            ec_op_builtin: common.execution_resources.builtins.ec_op.into(),
+                            keccak_builtin: common.execution_resources.builtins.keccak.into(),
+                            poseidon_builtin: common.execution_resources.builtins.poseidon.into(),
+                            segment_arena_builtin: 0,
+                        },
+                        n_steps: common.execution_resources.steps.into(),
+                        n_memory_holes: common.execution_resources.memory_holes.into(),
+                        data_availability,
+                    }),
+                    l2_to_l1_messages: common
+                        .messages_sent
+                        .into_iter()
+                        .map(|x| L2ToL1Message {
+                            from_address: ContractAddress(x.from_address),
+                            payload: x
+                                .payload
+                                .into_iter()
+                                .map(L2ToL1MessagePayloadElem)
+                                .collect(),
+                            to_address: EthereumAddress(x.to_address.0),
+                        })
+                        .collect(),
+                    execution_status: if common.revert_reason.is_empty() {
+                        ExecutionStatus::Succeeded
+                    } else {
+                        ExecutionStatus::Reverted {
+                            reason: common.revert_reason,
+                        }
+                    },
+                })
+            }
         }
     }
 }
@@ -471,5 +583,18 @@ impl TryFromDto<String> for DataAvailabilityMode {
             "L2" => Ok(Self::L2),
             _ => anyhow::bail!("Invalid data availability mode"),
         }
+    }
+}
+
+impl TryFromDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode {
+    fn try_from_dto(dto: p2p_proto::common::L1DataAvailabilityMode) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        Ok(match dto {
+            Calldata => Self::Calldata,
+            Blob => Self::Blob,
+        })
     }
 }

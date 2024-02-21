@@ -1,4 +1,5 @@
 //! Workaround for the orphan rule - implement conversion fns for types ourside our crate.
+use p2p_proto::class::{Cairo0Class, Cairo1Class, Cairo1EntryPoints, EntryPoint, SierraEntryPoint};
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::receipt::EthereumAddress;
 use p2p_proto::receipt::{
@@ -7,12 +8,15 @@ use p2p_proto::receipt::{
     InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1, ReceiptCommon,
 };
 use p2p_proto::transaction::{AccountSignature, ResourceBounds};
-use pathfinder_common::receipt::Receipt as CommonReceipt;
+use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::DataAvailabilityMode;
-use pathfinder_common::transaction::Transaction as CommonTransaction;
 use pathfinder_common::{event::Event, transaction::ResourceBound, transaction::Transaction};
-use pathfinder_common::{AccountDeploymentDataElem, PaymasterDataElem, TransactionHash};
+use pathfinder_common::{
+    AccountDeploymentDataElem, L1DataAvailabilityMode, PaymasterDataElem, TransactionHash,
+};
 use pathfinder_crypto::Felt;
+use starknet_gateway_types::class_definition::{Cairo, Sierra};
+use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
 
 /// Convert pathfinder common (ie. core) type to a p2p dto type
 pub trait ToDto<T> {
@@ -184,7 +188,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
     }
 }
 
-impl ToDto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
+impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
     fn to_dto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         let revert_reason = self.1.revert_reason().unwrap_or_default();
@@ -202,7 +206,8 @@ impl ToDto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
                 })
                 .collect(),
             execution_resources: {
-                let e = self.1.execution_resources.clone().unwrap_or_default();
+                let e = self.1.execution_resources.unwrap_or_default();
+                let da = e.data_availability.unwrap_or_default();
                 // Assumption: the values are small enough to fit into u32
                 ExecutionResources {
                     builtins: BuiltinCounter {
@@ -241,6 +246,8 @@ impl ToDto<p2p_proto::receipt::Receipt> for (CommonTransaction, CommonReceipt) {
                     },
                     steps: e.n_steps.try_into().unwrap(),
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
+                    l1_gas: da.l1_gas.into(),
+                    l1_data_gas: da.l1_data_gas.into(),
                 }
             },
             revert_reason,
@@ -305,5 +312,81 @@ impl ToDto<String> for DataAvailabilityMode {
             DataAvailabilityMode::L1 => "L1".to_owned(),
             DataAvailabilityMode::L2 => "L2".to_owned(),
         }
+    }
+}
+
+impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode {
+    fn to_dto(self) -> p2p_proto::common::L1DataAvailabilityMode {
+        use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        match self {
+            L1DataAvailabilityMode::Calldata => Calldata,
+            L1DataAvailabilityMode::Blob => Blob,
+        }
+    }
+}
+
+pub fn sierra_def_into_dto(sierra: Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class {
+    let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
+        selector: x.selector.0,
+        index: x.function_idx,
+    };
+
+    let entry_points = Cairo1EntryPoints {
+        externals: sierra
+            .entry_points_by_type
+            .external
+            .into_iter()
+            .map(into_dto)
+            .collect(),
+        l1_handlers: sierra
+            .entry_points_by_type
+            .l1_handler
+            .into_iter()
+            .map(into_dto)
+            .collect(),
+        constructors: sierra
+            .entry_points_by_type
+            .constructor
+            .into_iter()
+            .map(into_dto)
+            .collect(),
+    };
+
+    Cairo1Class {
+        abi: sierra.abi.as_bytes().to_owned(),
+        program: sierra.sierra_program,
+        entry_points,
+        compiled, // TODO not sure if encoding in storage and dto is the same
+        contract_class_version: sierra.contract_class_version.into(),
+    }
+}
+
+pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
+    let into_dto = |x: SelectorAndOffset| EntryPoint {
+        selector: x.selector.0,
+        offset: x.offset.0,
+    };
+
+    Cairo0Class {
+        abi: cairo.abi.get().as_bytes().to_owned(),
+        externals: cairo
+            .entry_points_by_type
+            .external
+            .into_iter()
+            .map(into_dto)
+            .collect(),
+        l1_handlers: cairo
+            .entry_points_by_type
+            .l1_handler
+            .into_iter()
+            .map(into_dto)
+            .collect(),
+        constructors: cairo
+            .entry_points_by_type
+            .constructor
+            .into_iter()
+            .map(into_dto)
+            .collect(),
+        program: cairo.program.get().as_bytes().to_owned(),
     }
 }

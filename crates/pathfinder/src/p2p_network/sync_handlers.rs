@@ -23,6 +23,8 @@ mod tests;
 
 use conv::ToDto;
 
+use self::conv::{cairo_def_into_dto, sierra_def_into_dto};
+
 #[cfg(not(test))]
 const MAX_BLOCKS_COUNT: u64 = 100;
 
@@ -170,11 +172,15 @@ fn get_header(
                     root: Hash(Felt::ZERO), // TODO
                 },
                 protocol_version: header.starknet_version.take_inner(),
-                gas_price: Felt::from_u128(header.eth_l1_gas_price.0),
+                gas_price_wei: header.eth_l1_gas_price.0,
+                gas_price_fri: header.strk_l1_gas_price.0,
+                data_gas_price_wei: header.eth_l1_data_gas_price.0,
+                data_gas_price_fri: header.strk_l1_data_gas_price.0,
                 num_storage_diffs: 0,      // TODO
                 num_nonce_updates: 0,      // TODO
                 num_declared_classes: 0,   // TODO
                 num_deployed_contracts: 0, // TODO
+                l1_data_availability_mode: header.l1_da_mode.to_dto(),
                 signatures: vec![ConsensusSignature {
                     r: signature.r.0,
                     s: signature.s.0,
@@ -231,7 +237,7 @@ fn get_classes_for_block(
                 let cairo_class =
                     serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
                 Class::Cairo0 {
-                    class: def_into_dto::cairo(cairo_class),
+                    class: cairo_def_into_dto(cairo_class),
                     domain: 0, // TODO
                     class_hash: Hash(class_hash.0),
                 }
@@ -240,7 +246,7 @@ fn get_classes_for_block(
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
 
                 Class::Cairo1 {
-                    class: def_into_dto::sierra(sierra_class, casm),
+                    class: sierra_def_into_dto(sierra_class, casm),
                     domain: 0, // TODO
                     class_hash: Hash(class_hash.0),
                 }
@@ -482,78 +488,5 @@ fn get_next_block_number(
             .get()
             .checked_sub(step.into_inner())
             .and_then(BlockNumber::new),
-    }
-}
-
-mod def_into_dto {
-    use p2p_proto::class::{
-        Cairo0Class, Cairo1Class, Cairo1EntryPoints, EntryPoint, SierraEntryPoint,
-    };
-    use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
-
-    pub fn sierra(sierra: super::class_definition::Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class {
-        let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
-            selector: x.selector.0,
-            index: x.function_idx,
-        };
-
-        let entry_points = Cairo1EntryPoints {
-            externals: sierra
-                .entry_points_by_type
-                .external
-                .into_iter()
-                .map(into_dto)
-                .collect(),
-            l1_handlers: sierra
-                .entry_points_by_type
-                .l1_handler
-                .into_iter()
-                .map(into_dto)
-                .collect(),
-            constructors: sierra
-                .entry_points_by_type
-                .constructor
-                .into_iter()
-                .map(into_dto)
-                .collect(),
-        };
-
-        Cairo1Class {
-            abi: sierra.abi.as_bytes().to_owned(),
-            program: sierra.sierra_program,
-            entry_points,
-            compiled, // TODO not sure if encoding in storage and dto is the same
-            contract_class_version: sierra.contract_class_version.into(),
-        }
-    }
-
-    pub fn cairo(cairo: super::class_definition::Cairo<'_>) -> Cairo0Class {
-        let into_dto = |x: SelectorAndOffset| EntryPoint {
-            selector: x.selector.0,
-            offset: x.offset.0,
-        };
-
-        Cairo0Class {
-            abi: cairo.abi.get().as_bytes().to_owned(),
-            externals: cairo
-                .entry_points_by_type
-                .external
-                .into_iter()
-                .map(into_dto)
-                .collect(),
-            l1_handlers: cairo
-                .entry_points_by_type
-                .l1_handler
-                .into_iter()
-                .map(into_dto)
-                .collect(),
-            constructors: cairo
-                .entry_points_by_type
-                .constructor
-                .into_iter()
-                .map(into_dto)
-                .collect(),
-            program: cairo.program.get().as_bytes().to_owned(),
-        }
     }
 }
