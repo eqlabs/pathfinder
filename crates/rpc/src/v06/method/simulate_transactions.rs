@@ -828,7 +828,7 @@ pub(crate) mod tests {
                             messages: vec![],
                             result: vec![felt!("0x1")],
                             execution_resources: ExecutionResources {
-                                steps: 525,
+                                steps: 936,
                                 memory_holes: 59,
                                 range_check_builtin_applications: 21,
                                 pedersen_builtin_applications: 4,
@@ -1050,7 +1050,7 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     execution_resources: ExecutionResources {
-                        steps: 525,
+                        steps: 936,
                         memory_holes: 59,
                         range_check_builtin_applications: 21,
                         pedersen_builtin_applications: 4,
@@ -1322,9 +1322,10 @@ pub(crate) mod tests {
                                 *DEPLOYED_CONTRACT_ADDRESS.get(),
                             ],
                             execution_resources: ExecutionResources {
-                                steps: 125,
+                                steps: 1120,
                                 memory_holes: 2,
-                                range_check_builtin_applications: 2,
+                                range_check_builtin_applications: 20,
+                                pedersen_builtin_applications: 7,
                                 ..Default::default()
                             },
                         }
@@ -1354,9 +1355,10 @@ pub(crate) mod tests {
                         *DEPLOYED_CONTRACT_ADDRESS.get(),
                     ],
                     execution_resources: ExecutionResources {
-                        steps: 164,
+                        steps: 1850,
                         memory_holes: 2,
-                        range_check_builtin_applications: 3,
+                        range_check_builtin_applications: 40,
+                        pedersen_builtin_applications: 7,
                         ..Default::default()
                     },
                 }
@@ -1397,7 +1399,7 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     execution_resources: ExecutionResources {
-                        steps: 525,
+                        steps: 936,
                         memory_holes: 59,
                         range_check_builtin_applications: 21,
                         pedersen_builtin_applications: 4,
@@ -1574,7 +1576,7 @@ pub(crate) mod tests {
                         messages: vec![],
                         result: vec![test_storage_value.0],
                         execution_resources: ExecutionResources {
-                            steps: 78,
+                            steps: 122,
                             range_check_builtin_applications: 2,
                             ..Default::default()
                         },
@@ -1595,8 +1597,8 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![test_storage_value.0],
                     execution_resources: ExecutionResources {
-                        steps: 117,
-                        range_check_builtin_applications: 3,
+                        steps: 852,
+                        range_check_builtin_applications: 22,
                         ..Default::default()
                     },
                 }
@@ -1636,7 +1638,7 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     execution_resources: ExecutionResources {
-                        steps: 525,
+                        steps: 936,
                         memory_holes: 59,
                         range_check_builtin_applications: 21,
                         pedersen_builtin_applications: 4,
