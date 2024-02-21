@@ -4,7 +4,7 @@ use crate::prelude::*;
 pub struct Receipt {
     pub actual_fee: Option<Fee>,
     pub events: Vec<crate::event::Event>,
-    pub execution_resources: Option<ExecutionResources>,
+    pub execution_resources: ExecutionResources,
     pub l2_to_l1_messages: Vec<L2ToL1Message>,
     pub execution_status: ExecutionStatus,
     pub transaction_hash: TransactionHash,
@@ -36,7 +36,7 @@ pub struct ExecutionResources {
     pub builtin_instance_counter: BuiltinCounters,
     pub n_steps: u64,
     pub n_memory_holes: u64,
-    pub data_availability: Option<ExecutionDataAvailability>,
+    pub data_availability: ExecutionDataAvailability,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

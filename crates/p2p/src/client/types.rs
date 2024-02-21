@@ -19,7 +19,6 @@ use pathfinder_common::{
     SequencerAddress, StarknetVersion, StateCommitment, Tip, TransactionCommitment,
     TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
-use pathfinder_crypto::Felt;
 
 /// We don't want to introduce circular dependencies between crates
 /// and we need to work around for the orphan rule - implement conversion fns for types ourside our crate.
@@ -127,7 +126,7 @@ impl
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Receipt {
     pub actual_fee: Option<Fee>,
-    pub execution_resources: Option<ExecutionResources>,
+    pub execution_resources: ExecutionResources,
     pub l2_to_l1_messages: Vec<L2ToL1Message>,
     pub execution_status: ExecutionStatus,
     pub transaction_hash: TransactionHash,
@@ -162,58 +161,49 @@ impl TryFrom<p2p_proto::receipt::Receipt> for Receipt {
             | Declare(DeclareTransactionReceipt { common })
             | L1Handler(L1HandlerTransactionReceipt { common, .. })
             | Deploy(DeployTransactionReceipt { common, .. })
-            | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => {
-                let data_availability = (common.execution_resources.l1_gas != Felt::ZERO
-                    || common.execution_resources.l1_data_gas != Felt::ZERO)
-                    .then_some(ExecutionDataAvailability {
+            | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
+                transaction_hash: TransactionHash(common.transaction_hash.0),
+                actual_fee: Some(Fee(common.actual_fee)),
+                execution_resources: ExecutionResources {
+                    builtin_instance_counter: BuiltinCounters {
+                        output_builtin: common.execution_resources.builtins.output.into(),
+                        pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
+                        range_check_builtin: common.execution_resources.builtins.range_check.into(),
+                        ecdsa_builtin: common.execution_resources.builtins.ecdsa.into(),
+                        bitwise_builtin: common.execution_resources.builtins.bitwise.into(),
+                        ec_op_builtin: common.execution_resources.builtins.ec_op.into(),
+                        keccak_builtin: common.execution_resources.builtins.keccak.into(),
+                        poseidon_builtin: common.execution_resources.builtins.poseidon.into(),
+                        segment_arena_builtin: 0,
+                    },
+                    n_steps: common.execution_resources.steps.into(),
+                    n_memory_holes: common.execution_resources.memory_holes.into(),
+                    data_availability: ExecutionDataAvailability {
                         l1_gas: GasPrice::from(common.execution_resources.l1_gas).0,
                         l1_data_gas: GasPrice::from(common.execution_resources.l1_data_gas).0,
-                    });
-                Ok(Self {
-                    transaction_hash: TransactionHash(common.transaction_hash.0),
-                    actual_fee: Some(Fee(common.actual_fee)),
-                    execution_resources: Some(ExecutionResources {
-                        builtin_instance_counter: BuiltinCounters {
-                            output_builtin: common.execution_resources.builtins.output.into(),
-                            pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
-                            range_check_builtin: common
-                                .execution_resources
-                                .builtins
-                                .range_check
-                                .into(),
-                            ecdsa_builtin: common.execution_resources.builtins.ecdsa.into(),
-                            bitwise_builtin: common.execution_resources.builtins.bitwise.into(),
-                            ec_op_builtin: common.execution_resources.builtins.ec_op.into(),
-                            keccak_builtin: common.execution_resources.builtins.keccak.into(),
-                            poseidon_builtin: common.execution_resources.builtins.poseidon.into(),
-                            segment_arena_builtin: 0,
-                        },
-                        n_steps: common.execution_resources.steps.into(),
-                        n_memory_holes: common.execution_resources.memory_holes.into(),
-                        data_availability,
-                    }),
-                    l2_to_l1_messages: common
-                        .messages_sent
-                        .into_iter()
-                        .map(|x| L2ToL1Message {
-                            from_address: ContractAddress(x.from_address),
-                            payload: x
-                                .payload
-                                .into_iter()
-                                .map(L2ToL1MessagePayloadElem)
-                                .collect(),
-                            to_address: EthereumAddress(x.to_address.0),
-                        })
-                        .collect(),
-                    execution_status: if common.revert_reason.is_empty() {
-                        ExecutionStatus::Succeeded
-                    } else {
-                        ExecutionStatus::Reverted {
-                            reason: common.revert_reason,
-                        }
                     },
-                })
-            }
+                },
+                l2_to_l1_messages: common
+                    .messages_sent
+                    .into_iter()
+                    .map(|x| L2ToL1Message {
+                        from_address: ContractAddress(x.from_address),
+                        payload: x
+                            .payload
+                            .into_iter()
+                            .map(L2ToL1MessagePayloadElem)
+                            .collect(),
+                        to_address: EthereumAddress(x.to_address.0),
+                    })
+                    .collect(),
+                execution_status: if common.revert_reason.is_empty() {
+                    ExecutionStatus::Succeeded
+                } else {
+                    ExecutionStatus::Reverted {
+                        reason: common.revert_reason,
+                    }
+                },
+            }),
         }
     }
 }

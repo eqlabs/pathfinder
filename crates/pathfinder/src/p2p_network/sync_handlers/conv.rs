@@ -206,8 +206,8 @@ impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
                 })
                 .collect(),
             execution_resources: {
-                let e = self.1.execution_resources.unwrap_or_default();
-                let da = e.data_availability.unwrap_or_default();
+                let e = self.1.execution_resources;
+                let da = e.data_availability;
                 // Assumption: the values are small enough to fit into u32
                 ExecutionResources {
                     builtins: BuiltinCounter {

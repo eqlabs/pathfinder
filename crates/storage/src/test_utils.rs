@@ -2,7 +2,7 @@ use crate::EmittedEvent;
 
 use super::Storage;
 use pathfinder_common::macro_prelude::*;
-use pathfinder_common::receipt::{ExecutionResources, Receipt};
+use pathfinder_common::receipt::{ExecutionDataAvailability, ExecutionResources, Receipt};
 use pathfinder_common::transaction::{
     DeclareTransactionV0V1, DeployTransaction, EntryPointType, InvokeTransactionV0, Transaction,
     TransactionVariant,
@@ -123,12 +123,15 @@ pub(crate) fn create_transactions_and_receipts() -> [(Transaction, Receipt); NUM
             } else {
                 vec![]
             },
-            execution_resources: Some(ExecutionResources {
+            execution_resources: ExecutionResources {
                 builtin_instance_counter: Default::default(),
                 n_steps: i as u64 + 987,
                 n_memory_holes: i as u64 + 1177,
-                data_availability: None,
-            }),
+                data_availability: ExecutionDataAvailability {
+                    l1_gas: i as u128 + 124,
+                    l1_data_gas: i as u128 + 457,
+                },
+            },
             transaction_hash: tx.hash,
             transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
             ..Default::default()

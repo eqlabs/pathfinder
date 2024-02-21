@@ -451,7 +451,7 @@ pub mod test_utils {
             }),
         };
         let mut receipt0 = Receipt {
-            execution_resources: Some(ExecutionResources {
+            execution_resources: ExecutionResources {
                 builtin_instance_counter: BuiltinCounters {
                     output_builtin: 33,
                     pedersen_builtin: 32,
@@ -459,8 +459,8 @@ pub mod test_utils {
                 },
                 n_memory_holes: 5,
                 n_steps: 10,
-                data_availability: None,
-            }),
+                data_availability: Default::default(),
+            },
             transaction_hash: txn0.hash,
             ..Default::default()
         };
@@ -626,20 +626,20 @@ pub mod test_utils {
                         keys: vec![event_key_bytes!(b"pending key 2")],
                     },
                 ],
-                execution_resources: Some(ExecutionResources::default()),
+                execution_resources: ExecutionResources::default(),
                 transaction_hash: transactions[0].hash,
                 transaction_index: TransactionIndex::new_or_panic(0),
                 ..Default::default()
             },
             Receipt {
-                execution_resources: Some(ExecutionResources::default()),
+                execution_resources: ExecutionResources::default(),
                 transaction_hash: transactions[1].hash,
                 transaction_index: TransactionIndex::new_or_panic(1),
                 ..Default::default()
             },
             // Reverted and without events
             Receipt {
-                execution_resources: Some(ExecutionResources::default()),
+                execution_resources: ExecutionResources::default(),
                 transaction_hash: transactions[2].hash,
                 transaction_index: TransactionIndex::new_or_panic(2),
                 execution_status: ExecutionStatus::Reverted {
