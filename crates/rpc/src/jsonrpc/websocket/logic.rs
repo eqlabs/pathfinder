@@ -127,7 +127,11 @@ async fn read(
 
     loop {
         let request = match receiver.next().await {
-            Some(Ok(x)) => x.into_data(),
+            Some(Ok(Message::Text(x))) => x.into_bytes(),
+            Some(Ok(Message::Binary(x))) => x,
+            Some(Ok(Message::Ping(_)))
+            | Some(Ok(Message::Pong(_)))
+            | Some(Ok(Message::Close(_))) => continue,
             // Both of these are client disconnects according to the axum example
             // https://docs.rs/axum/0.6.20/axum/extract/ws/index.html#example
             Some(Err(e)) => {
