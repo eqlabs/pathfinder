@@ -6273,7 +6273,6 @@ dependencies = [
  "assert_matches",
  "axum",
  "base64 0.13.1",
- "blockifier",
  "bytes",
  "flate2",
  "futures",

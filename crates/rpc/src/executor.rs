@@ -3,10 +3,9 @@ use crate::v02::types::request::BroadcastedInvokeTransaction;
 use crate::v02::types::request::BroadcastedTransaction;
 use crate::v02::types::SierraContractClass;
 use anyhow::Context;
-use blockifier::transaction::transactions::ClassInfo;
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::ChainId;
-use pathfinder_executor::IntoStarkFelt;
+use pathfinder_executor::{ClassInfo, IntoStarkFelt};
 use starknet_api::core::PatriciaKey;
 
 pub enum ExecutionStateError {

@@ -22,4 +22,5 @@ pub use simulate::{simulate, trace, TraceCache};
 // re-export blockifier transaction type since it's exposed on our API
 pub use blockifier::transaction::account_transaction::AccountTransaction;
 pub use blockifier::transaction::transaction_execution::Transaction;
+pub use blockifier::transaction::transactions::ClassInfo;
 pub use transaction::transaction_hash;
