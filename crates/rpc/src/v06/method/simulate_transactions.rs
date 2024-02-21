@@ -669,9 +669,9 @@ pub(crate) mod tests {
             SimulatedTransaction {
                 fee_estimation:
                     FeeEstimate {
-                        gas_consumed: 2213.into(),
+                        gas_consumed: 2222.into(),
                         gas_price: 1.into(),
-                        overall_fee: 2213.into(),
+                        overall_fee: 2222.into(),
                         unit: PriceUnit::Wei,
                     }
                 ,
@@ -783,7 +783,7 @@ pub(crate) mod tests {
 
         let result = simulate_transactions(context, input).await.unwrap();
 
-        const DECLARE_GAS_CONSUMED: u64 = 17116;
+        const DECLARE_GAS_CONSUMED: u64 = 1666;
         use super::dto::*;
         use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
 
@@ -828,9 +828,9 @@ pub(crate) mod tests {
                             messages: vec![],
                             result: vec![felt!("0x1")],
                             execution_resources: ExecutionResources {
-                                steps: 1354,
+                                steps: 525,
                                 memory_holes: 59,
-                                range_check_builtin_applications: 31,
+                                range_check_builtin_applications: 21,
                                 pedersen_builtin_applications: 4,
                                 ..Default::default()
                             },
@@ -863,7 +863,7 @@ pub(crate) mod tests {
                             storage_entries: vec![
                                 StorageEntry {
                                     key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                                    value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffbd24")
+                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff97e")
                                 },
                                 StorageEntry {
                                     key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -910,7 +910,7 @@ pub(crate) mod tests {
             use super::dto::*;
             use super::*;
 
-            const DECLARE_GAS_CONSUMED: u64 = 26571;
+            const DECLARE_GAS_CONSUMED: u64 = 2768;
 
             pub fn declare(
                 account_contract_address: ContractAddress,
@@ -1006,7 +1006,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9835")
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff530")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1050,9 +1050,9 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     execution_resources: ExecutionResources {
-                        steps: 1354,
+                        steps: 525,
                         memory_holes: 59,
-                        range_check_builtin_applications: 31,
+                        range_check_builtin_applications: 21,
                         pedersen_builtin_applications: 4,
                         ..Default::default()
                     },
@@ -1081,7 +1081,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3008;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3020;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -1207,7 +1207,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff8c75")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe964")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1322,10 +1322,9 @@ pub(crate) mod tests {
                                 *DEPLOYED_CONTRACT_ADDRESS.get(),
                             ],
                             execution_resources: ExecutionResources {
-                                steps: 1262,
+                                steps: 125,
                                 memory_holes: 2,
-                                range_check_builtin_applications: 23,
-                                pedersen_builtin_applications: 7,
+                                range_check_builtin_applications: 2,
                                 ..Default::default()
                             },
                         }
@@ -1355,10 +1354,9 @@ pub(crate) mod tests {
                         *DEPLOYED_CONTRACT_ADDRESS.get(),
                     ],
                     execution_resources: ExecutionResources {
-                        steps: 2061,
+                        steps: 164,
                         memory_holes: 2,
-                        range_check_builtin_applications: 44,
-                        pedersen_builtin_applications: 7,
+                        range_check_builtin_applications: 3,
                         ..Default::default()
                     },
                 }
@@ -1399,16 +1397,16 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     execution_resources: ExecutionResources {
-                        steps: 1354,
+                        steps: 525,
                         memory_holes: 59,
-                        range_check_builtin_applications: 31,
+                        range_check_builtin_applications: 21,
                         pedersen_builtin_applications: 4,
                         ..Default::default()
                     },
                 }
             }
 
-            const INVOKE_GAS_CONSUMED: u64 = 1664;
+            const INVOKE_GAS_CONSUMED: u64 = 1674;
 
             pub fn invoke(
                 account_contract_address: ContractAddress,
@@ -1516,7 +1514,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff85f5")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe2da")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1576,8 +1574,8 @@ pub(crate) mod tests {
                         messages: vec![],
                         result: vec![test_storage_value.0],
                         execution_resources: ExecutionResources {
-                            steps: 165,
-                            range_check_builtin_applications: 3,
+                            steps: 78,
+                            range_check_builtin_applications: 2,
                             ..Default::default()
                         },
                     }],
@@ -1597,8 +1595,8 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![test_storage_value.0],
                     execution_resources: ExecutionResources {
-                        steps: 964,
-                        range_check_builtin_applications: 24,
+                        steps: 117,
+                        range_check_builtin_applications: 3,
                         ..Default::default()
                     },
                 }
@@ -1638,9 +1636,9 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     execution_resources: ExecutionResources {
-                        steps: 1354,
+                        steps: 525,
                         memory_holes: 59,
-                        range_check_builtin_applications: 31,
+                        range_check_builtin_applications: 21,
                         pedersen_builtin_applications: 4,
                         ..Default::default()
                     },
