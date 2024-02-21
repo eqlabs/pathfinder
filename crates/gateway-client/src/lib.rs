@@ -1,7 +1,5 @@
 //! Starknet L2 sequencer client.
-use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, Chain, ClassHash, StateUpdate, TransactionHash,
-};
+use pathfinder_common::{BlockHash, BlockId, BlockNumber, ClassHash, StateUpdate, TransactionHash};
 use reqwest::Url;
 use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::trace::{BlockTrace, TransactionTrace};
@@ -286,23 +284,6 @@ impl Client {
             self.feeder_gateway.clone(),
             self.api_key.clone(),
         )
-    }
-
-    /// Returns the [network chain](Chain) this client is operating on.
-    pub async fn chain(&self) -> anyhow::Result<Chain> {
-        use pathfinder_common::consts::{
-            GOERLI_INTEGRATION_GENESIS_HASH, GOERLI_TESTNET_GENESIS_HASH, MAINNET_GENESIS_HASH,
-        };
-        let (_, genesis_hash) = self.block_header(BlockNumber::GENESIS.into()).await?;
-
-        match genesis_hash {
-            testnet if testnet == GOERLI_TESTNET_GENESIS_HASH => Ok(Chain::GoerliTestnet),
-            mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
-            integration if integration == GOERLI_INTEGRATION_GENESIS_HASH => {
-                Ok(Chain::GoerliIntegration)
-            }
-            other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
-        }
     }
 }
 
@@ -1375,102 +1356,6 @@ mod tests {
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::BlockNotFound.into())
             );
-        }
-    }
-
-    mod chain {
-        use crate::Client;
-        use pathfinder_common::Chain;
-
-        #[derive(Copy, Clone, PartialEq, Eq)]
-        /// Used by [setup_server] to determine which block to return.
-        enum TargetChain {
-            Testnet,
-            Mainnet,
-            Invalid,
-        }
-
-        /// Creates a [starknet_gateway_client::Client] where the endpoint is either the real feeder gateway,
-        /// or a local warp server. A local server is created if:
-        /// - SEQUENCER_TESTS_LIVE_API is not set, __or__
-        /// - `target == TargetChain::Invalid`
-        ///
-        /// The local server only supports the `feeder_gateway/get_block?blockNumber=0` queries.
-        fn setup_server(target: TargetChain) -> (Option<tokio::task::JoinHandle<()>>, Client) {
-            use warp::http::{Response, StatusCode};
-            use warp::Filter;
-
-            // `TargetChain::Invalid` always uses the local server setup as the Sequencer
-            // won't return an invalid genesis block.
-            if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some()
-                && target != TargetChain::Invalid
-            {
-                match target {
-                    TargetChain::Mainnet => (None, Client::mainnet().disable_retry_for_tests()),
-                    TargetChain::Testnet => {
-                        (None, Client::goerli_testnet().disable_retry_for_tests())
-                    }
-                    // Escaped above already
-                    TargetChain::Invalid => unreachable!(),
-                }
-            } else {
-                #[derive(serde::Deserialize, serde::Serialize)]
-                #[serde(deny_unknown_fields)]
-                struct Params {
-                    #[serde(rename = "blockNumber")]
-                    block_number: u64,
-                    #[serde(rename = "headerOnly")]
-                    header_only: bool,
-                }
-
-                let filter = warp::get()
-                    .and(warp::path("feeder_gateway"))
-                    .and(warp::path("get_block"))
-                    .and(warp::query::<Params>())
-                    .map(move |params: Params| match params.block_number {
-                        0 => {
-                            let data = match target {
-                                TargetChain::Testnet => r#"{"block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b", "block_number": 0}"#.to_owned(),
-                                TargetChain::Mainnet => r#"{"block_hash": "0x047C3637B57C2B079B93C61539950C17E868A28F46CDEF28F88521067F21E943", "block_number": 0}"#.to_owned(),
-                                TargetChain::Invalid => r#"{"block_hash": "0x11111a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b", "block_number": 0}"#.to_owned(),
-                            };
-                            Response::new(data)
-                        }
-                        _ => Response::builder()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body("Only supports genesis block request".to_owned())
-                            .unwrap(),
-                    });
-
-                let (addr, serve_fut) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
-                let server_handle = tokio::spawn(serve_fut);
-                let client =
-                    Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap())
-                        .unwrap()
-                        .disable_retry_for_tests();
-
-                (Some(server_handle), client)
-            }
-        }
-
-        #[tokio::test]
-        async fn testnet() {
-            let (_server_handle, sequencer) = setup_server(TargetChain::Testnet);
-            let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, Chain::GoerliTestnet);
-        }
-
-        #[tokio::test]
-        async fn mainnet() {
-            let (_server_handle, sequencer) = setup_server(TargetChain::Mainnet);
-            let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, Chain::Mainnet);
-        }
-
-        #[tokio::test]
-        async fn invalid() {
-            let (_server_handle, sequencer) = setup_server(TargetChain::Invalid);
-            sequencer.chain().await.unwrap_err();
         }
     }
 
