@@ -210,28 +210,28 @@ pub struct Client {
 }
 
 impl Client {
-    /// Creates a [Client] for [Chain::Mainnet].
+    /// Creates a [Client] for [pathfinder_common::Chain::Mainnet].
     pub fn mainnet() -> Self {
         Self::with_base_url(Url::parse("https://alpha-mainnet.starknet.io/").unwrap()).unwrap()
     }
 
-    /// Creates a [Client] for [Chain::GoerliTestnet].
+    /// Creates a [Client] for [pathfinder_common::Chain::GoerliTestnet].
     pub fn goerli_testnet() -> Self {
         Self::with_base_url(Url::parse("https://alpha4.starknet.io/").unwrap()).unwrap()
     }
 
-    /// Creates a [Client] for [Chain::GoerliIntegration].
+    /// Creates a [Client] for [pathfinder_common::Chain::GoerliIntegration].
     pub fn goerli_integration() -> Self {
         Self::with_base_url(Url::parse("https://external.integration.starknet.io").unwrap())
             .unwrap()
     }
 
-    /// Creates a [Client] for [Chain::SepoliaTestnet].
+    /// Creates a [Client] for [pathfinder_common::Chain::SepoliaTestnet].
     pub fn sepolia_testnet() -> Self {
         Self::with_base_url(Url::parse("https://alpha-sepolia.starknet.io/").unwrap()).unwrap()
     }
 
-    /// Creates a [Client] for [Chain::SepoliaIntegration].
+    /// Creates a [Client] for [pathfinder_common::Chain::SepoliaIntegration].
     pub fn sepolia_integration() -> Self {
         Self::with_base_url(Url::parse("https://integration-sepolia.starknet.io/").unwrap())
             .unwrap()
