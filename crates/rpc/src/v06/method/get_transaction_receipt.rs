@@ -470,7 +470,7 @@ pub mod types {
                 unit: fee_unit,
             };
 
-            let revert_reason = receipt.revert_reason();
+            let revert_reason = receipt.revert_reason().map(|x| x.to_owned());
 
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -611,7 +611,7 @@ pub mod types {
                 unit: fee_unit,
             };
 
-            let revert_reason = receipt.revert_reason();
+            let revert_reason = receipt.revert_reason().map(|x| x.to_owned());
 
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
