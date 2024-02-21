@@ -484,7 +484,7 @@ pub mod types {
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
                 revert_reason,
-                execution_resources: receipt.execution_resources.unwrap_or_default().into(),
+                execution_resources: receipt.execution_resources.into(),
                 execution_status: receipt.execution_status.into(),
                 finality_status,
             };
@@ -624,9 +624,7 @@ pub mod types {
                 events: receipt.events.into_iter().map(Event::from).collect(),
                 revert_reason,
                 execution_status: receipt.execution_status.into(),
-                execution_resources: ExecutionResourcesProperties::from(
-                    receipt.execution_resources.unwrap_or_default(),
-                ),
+                execution_resources: receipt.execution_resources.into(),
                 finality_status: FinalityStatus::AcceptedOnL2,
             };
 
@@ -855,7 +853,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: None,
+                            data_availability: Default::default(),
                         }
                         .into(),
                     }
@@ -906,7 +904,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: None,
+                            data_availability: Default::default(),
                         }
                         .into(),
                     }
@@ -931,7 +929,7 @@ mod tests {
             },
             n_steps: 9,
             n_memory_holes: 10,
-            data_availability: None,
+            data_availability: Default::default(),
         };
 
         let into = ExecutionResourcesProperties::from(original.clone());

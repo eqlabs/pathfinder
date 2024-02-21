@@ -385,6 +385,7 @@ pub(crate) mod dto {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
+        // TODO make these mandatory once some new release makes resyncing necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
     }
@@ -397,12 +398,12 @@ pub(crate) mod dto {
                 n_memory_holes: value.n_memory_holes,
                 data_availability: match (value.l1_gas, value.l1_data_gas) {
                     (Some(l1_gas), Some(l1_data_gas)) => {
-                        Some(pathfinder_common::receipt::ExecutionDataAvailability {
+                        pathfinder_common::receipt::ExecutionDataAvailability {
                             l1_gas,
                             l1_data_gas,
-                        })
+                        }
                     }
-                    _ => None,
+                    _ => Default::default(),
                 },
             }
         }
@@ -414,8 +415,8 @@ pub(crate) mod dto {
                 builtin_instance_counter: (&value.builtin_instance_counter).into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                l1_gas: value.data_availability.as_ref().map(|x| x.l1_gas),
-                l1_data_gas: value.data_availability.as_ref().map(|x| x.l1_data_gas),
+                l1_gas: Some(value.data_availability.l1_gas),
+                l1_data_gas: Some(value.data_availability.l1_data_gas),
             }
         }
     }
@@ -615,7 +616,7 @@ pub(crate) mod dto {
             Self {
                 actual_fee: value.actual_fee,
                 events: value.events.clone(),
-                execution_resources: value.execution_resources.as_ref().map(Into::into),
+                execution_resources: Some((&value.execution_resources).into()),
                 // We don't care about this field anymore.
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
@@ -647,7 +648,7 @@ pub(crate) mod dto {
             common::Receipt {
                 actual_fee,
                 events,
-                execution_resources: execution_resources.as_ref().map(Into::into),
+                execution_resources: (&execution_resources.unwrap_or_default()).into(),
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash,
                 transaction_index,

@@ -396,7 +396,7 @@ pub(crate) mod transaction {
                 builtin_instance_counter: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                data_availability: value.data_availability.map(Into::into),
+                data_availability: value.data_availability.unwrap_or_default().into(),
             }
         }
     }
@@ -407,7 +407,7 @@ pub(crate) mod transaction {
                 builtin_instance_counter: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                data_availability: value.data_availability.map(Into::into),
+                data_availability: Some(value.data_availability.into()),
             }
         }
     }
@@ -689,7 +689,7 @@ pub(crate) mod transaction {
             Self {
                 actual_fee,
                 events,
-                execution_resources: execution_resources.map(Into::into),
+                execution_resources: Some(execution_resources.into()),
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash,
@@ -720,7 +720,7 @@ pub(crate) mod transaction {
             common::Receipt {
                 actual_fee,
                 events,
-                execution_resources: execution_resources.map(Into::into),
+                execution_resources: execution_resources.unwrap_or_default().into(),
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash,
                 transaction_index,
