@@ -387,7 +387,7 @@ impl<'inner> Transaction<'inner> {
     }
 
     /// Returns hashes of Cairo and Sierra classes declared at a given block.
-    pub fn declared_classes_at(&self, block: BlockId) -> anyhow::Result<Vec<ClassHash>> {
+    pub fn declared_classes_at(&self, block: BlockId) -> anyhow::Result<Option<Vec<ClassHash>>> {
         state_update::declared_classes_at(self, block)
     }
 
