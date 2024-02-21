@@ -28,7 +28,7 @@ pub(crate) fn map_broadcasted_transaction(
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
     use crate::v02::types::request::BroadcastedDeclareTransaction;
 
-    let contract_class = match &transaction {
+    let class_info = match &transaction {
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(tx)) => {
             let contract_class_json = tx
                 .contract_class
@@ -38,11 +38,7 @@ pub(crate) fn map_broadcasted_transaction(
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
-            Some(ClassInfo {
-                contract_class,
-                sierra_program_length: 0,
-                abi_length: 0,
-            })
+            Some(ClassInfo::new(&contract_class, 0, 0)?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
             let contract_class_json = tx
@@ -53,11 +49,7 @@ pub(crate) fn map_broadcasted_transaction(
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
-            Some(ClassInfo {
-                contract_class,
-                sierra_program_length: 0,
-                abi_length: 0,
-            })
+            Some(ClassInfo::new(&contract_class, 0, 0)?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
             let casm_contract_definition =
@@ -71,11 +63,11 @@ pub(crate) fn map_broadcasted_transaction(
             let casm_contract_definition =
                 pathfinder_executor::parse_casm_definition(casm_contract_definition)
                     .context("Parsing CASM contract definition")?;
-            Some(ClassInfo {
-                contract_class: casm_contract_definition,
-                sierra_program_length: tx.contract_class.sierra_program.len(),
-                abi_length: tx.contract_class.abi.len(),
-            })
+            Some(ClassInfo::new(
+                &casm_contract_definition,
+                tx.contract_class.sierra_program.len(),
+                tx.contract_class.abi.len(),
+            )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
             let casm_contract_definition =
@@ -89,11 +81,11 @@ pub(crate) fn map_broadcasted_transaction(
             let casm_contract_definition =
                 pathfinder_executor::parse_casm_definition(casm_contract_definition)
                     .context("Parsing CASM contract definition")?;
-            Some(ClassInfo {
-                contract_class: casm_contract_definition,
-                sierra_program_length: tx.contract_class.sierra_program.len(),
-                abi_length: tx.contract_class.abi.len(),
-            })
+            Some(ClassInfo::new(
+                &casm_contract_definition,
+                tx.contract_class.sierra_program.len(),
+                tx.contract_class.abi.len(),
+            )?)
         }
         BroadcastedTransaction::Invoke(_) | BroadcastedTransaction::DeployAccount(_) => None,
     };
@@ -151,7 +143,7 @@ pub(crate) fn map_broadcasted_transaction(
     let tx = pathfinder_executor::Transaction::from_api(
         transaction,
         starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-        contract_class,
+        class_info,
         None,
         deployed_address,
         has_query_version,
@@ -458,7 +450,7 @@ pub fn compose_executor_transaction(
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
     let tx_hash = starknet_api::transaction::TransactionHash(transaction.hash.0.into_starkfelt());
 
-    let contract_class = match &transaction.variant {
+    let class_info = match &transaction.variant {
         TransactionVariant::DeclareV0(tx) => {
             let class_definition = db_transaction
                 .class_definition(tx.class_hash)?
@@ -466,11 +458,7 @@ pub fn compose_executor_transaction(
 
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
-            Some(ClassInfo {
-                contract_class,
-                sierra_program_length: 0,
-                abi_length: 0,
-            })
+            Some(ClassInfo::new(&contract_class, 0, 0)?)
         }
         TransactionVariant::DeclareV1(tx) => {
             let class_definition = db_transaction
@@ -479,11 +467,7 @@ pub fn compose_executor_transaction(
 
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
-            Some(ClassInfo {
-                contract_class,
-                sierra_program_length: 0,
-                abi_length: 0,
-            })
+            Some(ClassInfo::new(&contract_class, 0, 0)?)
         }
         TransactionVariant::DeclareV2(tx) => {
             let casm_definition = db_transaction
@@ -497,11 +481,11 @@ pub fn compose_executor_transaction(
                     .context("Deserializing class definition")?;
 
             let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
-            Some(ClassInfo {
-                contract_class,
-                sierra_program_length: class_definition.sierra_program.len(),
-                abi_length: class_definition.abi.len(),
-            })
+            Some(ClassInfo::new(
+                &contract_class,
+                class_definition.sierra_program.len(),
+                class_definition.abi.len(),
+            )?)
         }
         TransactionVariant::DeclareV3(tx) => {
             let casm_definition = db_transaction
@@ -515,11 +499,11 @@ pub fn compose_executor_transaction(
                     .context("Deserializing class definition")?;
 
             let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
-            Some(ClassInfo {
-                contract_class,
-                sierra_program_length: class_definition.sierra_program.len(),
-                abi_length: class_definition.abi.len(),
-            })
+            Some(ClassInfo::new(
+                &contract_class,
+                class_definition.sierra_program.len(),
+                class_definition.abi.len(),
+            )?)
         }
         TransactionVariant::Deploy(_)
         | TransactionVariant::DeployAccountV0V1(_)
@@ -570,7 +554,7 @@ pub fn compose_executor_transaction(
     let tx = pathfinder_executor::Transaction::from_api(
         transaction,
         tx_hash,
-        contract_class,
+        class_info,
         paid_fee_on_l1,
         deployed_address,
         false,
