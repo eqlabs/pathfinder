@@ -21,9 +21,7 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::sync::RwLock;
 
 use crate::client::peer_aware;
-use crate::client::types::{
-    RawDeployAccountTransaction, SignedBlockHeader as P2PSignedBlockHeader,
-};
+use crate::client::types::{RawDeployAccountTransaction, SignedBlockHeader};
 use crate::sync::protocol;
 
 /// Data received from a specific peer.
@@ -109,7 +107,7 @@ impl Client {
         start: BlockNumber,
         stop: BlockNumber,
         reverse: bool,
-    ) -> impl futures::Stream<Item = PeerData<P2PSignedBlockHeader>> {
+    ) -> impl futures::Stream<Item = PeerData<SignedBlockHeader>> {
         let (mut start, stop, direction) = match reverse {
             true => (stop, start, Direction::Backward),
             false => (start, stop, Direction::Forward),
@@ -147,7 +145,7 @@ impl Client {
 
                     while let Some(signed_header) = responses.next().await {
                         let signed_header = match signed_header {
-                            BlockHeadersResponse::Header(hdr) => match P2PSignedBlockHeader::try_from(*hdr) {
+                            BlockHeadersResponse::Header(hdr) => match SignedBlockHeader::try_from(*hdr) {
                                 Ok(hdr) => hdr,
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Header stream failed");
