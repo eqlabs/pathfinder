@@ -116,6 +116,16 @@ impl BlockHeaderBuilder {
         self
     }
 
+    pub fn with_eth_l1_data_gas_price(mut self, eth_l1_data_gas_price: GasPrice) -> Self {
+        self.0.eth_l1_data_gas_price = eth_l1_data_gas_price;
+        self
+    }
+
+    pub fn with_strk_l1_data_gas_price(mut self, strk_l1_data_gas_price: GasPrice) -> Self {
+        self.0.strk_l1_data_gas_price = strk_l1_data_gas_price;
+        self
+    }
+
     pub fn with_sequencer_address(mut self, sequencer_address: SequencerAddress) -> Self {
         self.0.sequencer_address = sequencer_address;
         self
