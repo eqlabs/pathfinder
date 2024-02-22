@@ -187,7 +187,9 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
                     if gas_diff > (actual_gas_consumed * 2 / 10)
                         || data_gas_diff > (actual_data_gas_consumed * 2 / 10)
                     {
-                        tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
+                        tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
+                    } else {
+                        tracing::debug!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation matches");
                     }
                 }
             }
