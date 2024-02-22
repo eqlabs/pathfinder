@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_executor::ExecutionState;
+use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 use serde_with::serde_as;
 
 use crate::{
@@ -127,7 +127,13 @@ pub async fn estimate_fee(
             }
         };
 
-        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            L1BlobDataAvailability::Disabled,
+        );
 
         let transactions = input
             .request

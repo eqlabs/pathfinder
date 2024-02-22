@@ -5,7 +5,7 @@ use pathfinder_common::{
     BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress, TransactionNonce,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{ExecutionState, IntoStarkFelt};
+use pathfinder_executor::{ExecutionState, IntoStarkFelt, L1BlobDataAvailability};
 use starknet_api::core::PatriciaKey;
 
 use crate::{context::RpcContext, error::ApplicationError, v06::method::estimate_fee::FeeEstimate};
@@ -129,7 +129,13 @@ pub(crate) async fn estimate_message_fee_impl(
             return Err(EstimateMessageFeeError::ContractNotFound);
         }
 
-        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            L1BlobDataAvailability::Disabled,
+        );
 
         let transaction = create_executor_transaction(input, context.chain_id)?;
 

@@ -10,7 +10,9 @@ use blockifier::{
     state::cached_state::{CachedState, GlobalContractCache},
     versioned_constants::VersionedConstants,
 };
-use pathfinder_common::{contract_address, BlockHeader, ChainId, ContractAddress, StateUpdate};
+use pathfinder_common::{
+    contract_address, BlockHeader, ChainId, ContractAddress, L1DataAvailabilityMode, StateUpdate,
+};
 use starknet_api::core::PatriciaKey;
 
 // NOTE: these are the same for _all_ networks
@@ -63,6 +65,7 @@ pub struct ExecutionState<'tx> {
     pub header: BlockHeader,
     execute_on_parent_state: bool,
     pending_state: Option<Arc<StateUpdate>>,
+    allow_use_kzg_data: bool,
 }
 
 impl<'tx> ExecutionState<'tx> {
@@ -196,7 +199,8 @@ impl<'tx> ExecutionState<'tx> {
                     self.header.strk_l1_data_gas_price.0.try_into().unwrap()
                 },
             },
-            use_kzg_da: false,
+            use_kzg_da: self.allow_use_kzg_data
+                && self.header.l1_da_mode == L1DataAvailabilityMode::Blob,
         })
     }
 
@@ -212,6 +216,7 @@ impl<'tx> ExecutionState<'tx> {
             header,
             pending_state,
             execute_on_parent_state: true,
+            allow_use_kzg_data: true,
         }
     }
 
@@ -220,6 +225,7 @@ impl<'tx> ExecutionState<'tx> {
         chain_id: ChainId,
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
+        l1_blob_data_availability: L1BlobDataAvailability,
     ) -> Self {
         Self {
             transaction,
@@ -227,6 +233,13 @@ impl<'tx> ExecutionState<'tx> {
             header,
             pending_state,
             execute_on_parent_state: false,
+            allow_use_kzg_data: l1_blob_data_availability == L1BlobDataAvailability::Enabled,
         }
     }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum L1BlobDataAvailability {
+    Disabled,
+    Enabled,
 }

@@ -5,7 +5,9 @@ use crate::{
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{types::TransactionSimulation, TransactionExecutionError};
+use pathfinder_executor::{
+    types::TransactionSimulation, L1BlobDataAvailability, TransactionExecutionError,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -126,8 +128,13 @@ pub async fn simulate_transactions(
             }
         };
 
-        let state =
-            pathfinder_executor::ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = pathfinder_executor::ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            L1BlobDataAvailability::Disabled,
+        );
 
         let transactions = input
             .transactions
