@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
-use blockifier::execution::call_info::OrderedL2ToL1Message;
+use blockifier::{
+    execution::call_info::OrderedL2ToL1Message, transaction::objects::TransactionExecutionInfo,
+};
 use pathfinder_common::{
     CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
 };
@@ -16,6 +18,37 @@ pub struct FeeEstimate {
     pub data_gas_price: primitive_types::U256,
     pub overall_fee: primitive_types::U256,
     pub unit: PriceUnit,
+}
+
+impl FeeEstimate {
+    /// Computes fee estimate from the transaction execution information.
+    ///
+    /// `TransactionExecutionInfo` contains two related fields:
+    /// - `TransactionExecutionInfo::actual_fee` is the overall cost of the transaction (in WEI/FRI)
+    /// - `TransactionExecutionInfo::da_gas` is the gas usage for _data availability_.
+    ///
+    /// The problem is that we have to return both `gas_usage` and `data_gas_usage` but we don't
+    /// directly have the value of `gas_usage` from the execution info, so we have to calculate
+    /// that from other fields.
+    pub(crate) fn from_tx_info_and_gas_price(
+        tx_info: &TransactionExecutionInfo,
+        gas_price: u128,
+        data_gas_price: u128,
+        unit: PriceUnit,
+    ) -> FeeEstimate {
+        let data_gas_consumed = tx_info.da_gas.l1_data_gas;
+        let data_gas_fee = data_gas_consumed.saturating_mul(data_gas_price);
+        let gas_consumed = tx_info.actual_fee.0.saturating_sub(data_gas_fee) / gas_price.max(1);
+
+        FeeEstimate {
+            gas_consumed: gas_consumed.into(),
+            gas_price: gas_price.into(),
+            data_gas_consumed: data_gas_consumed.into(),
+            data_gas_price: data_gas_price.into(),
+            overall_fee: tx_info.actual_fee.0.into(),
+            unit,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

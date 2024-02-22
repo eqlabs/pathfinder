@@ -8,7 +8,6 @@ use blockifier::{
     transaction::transaction_execution::Transaction,
     transaction::transactions::ExecutableTransaction,
 };
-use primitive_types::U256;
 
 pub fn estimate(
     mut execution_state: ExecutionState<'_>,
@@ -25,18 +24,16 @@ pub fn estimate(
 
         let fee_type = &super::transaction::fee_type(&transaction);
 
-        let gas_price: U256 = block_context
+        let gas_price = block_context
             .block_info()
             .gas_prices
             .get_gas_price_by_fee_type(fee_type)
-            .get()
-            .into();
-        let data_gas_price: U256 = block_context
+            .get();
+        let data_gas_price = block_context
             .block_info()
             .gas_prices
             .get_data_gas_price_by_fee_type(fee_type)
-            .get()
-            .into();
+            .get();
         let unit = match fee_type {
             blockifier::transaction::objects::FeeType::Strk => PriceUnit::Fri,
             blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
@@ -69,14 +66,12 @@ pub fn estimate(
 
                 tracing::trace!(actual_fee=%tx_info.actual_fee.0, actual_resources=?tx_info.actual_resources, "Transaction estimation finished");
 
-                fees.push(FeeEstimate {
-                    gas_consumed: U256::from(tx_info.actual_fee.0) / gas_price.max(1.into()),
+                fees.push(FeeEstimate::from_tx_info_and_gas_price(
+                    &tx_info,
                     gas_price,
-                    data_gas_consumed: U256::from(tx_info.da_gas.l1_data_gas),
                     data_gas_price,
-                    overall_fee: tx_info.actual_fee.0.into(),
                     unit,
-                });
+                ));
             }
             Err(error) => {
                 tracing::debug!(%error, %transaction_idx, "Transaction estimation failed");
