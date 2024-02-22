@@ -248,8 +248,6 @@ impl Client {
 
                         yield PeerData::new(peer, transaction);
                     }
-
-                    // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
                 }
             }
         }

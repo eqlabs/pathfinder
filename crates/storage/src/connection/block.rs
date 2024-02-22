@@ -388,6 +388,40 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
     Ok(block_number <= l1_l2)
 }
 
+pub(super) fn blocks_missing_transactions(
+    tx: &Transaction<'_>,
+    before_block: Option<BlockNumber>,
+    limit: u64,
+) -> anyhow::Result<Vec<(BlockNumber, u64)>> {
+    let before_block = before_block.unwrap_or(BlockNumber::MAX);
+
+    let mut stmt = tx
+        .inner()
+        .prepare(
+            "SELECT
+                block_headers.number,
+                block_headers.transaction_count
+            FROM block_headers
+            JOIN starknet_transactions ON starknet_transactions.block_hash = block_headers.hash
+            GROUP BY block_headers.hash
+            HAVING
+                COUNT(starknet_transactions.idx) <> block_headers.transaction_count AND
+                block_headers.number < ?
+            LIMIT ?;",
+        )
+        .context("Preparing blocks_missing_transactions query")?;
+
+    let mut rows = stmt
+        .query(params![&before_block, &limit])
+        .context("Executing blocks_missing_transactions")?;
+
+    let mut data = Vec::new();
+    while let Some(row) = rows.next()? {
+        data.push((row.get_block_number(0)?, row.get_i64(1)?.try_into()?));
+    }
+    Ok(data)
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
