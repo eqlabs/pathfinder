@@ -833,7 +833,6 @@ mod tests {
         "starknet_getTransactionByBlockIdAndIndex",
         "starknet_getTransactionByHash",
         "starknet_getTransactionReceipt",
-        "starknet_getBlockWithReceipts",
     ])]
     #[case::v0_7_trace("/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[
         "starknet_simulateTransactions",

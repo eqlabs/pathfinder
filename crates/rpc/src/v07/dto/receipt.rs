@@ -3,7 +3,9 @@ use serde::Serialize;
 
 use pathfinder_common::prelude::*;
 
-use crate::{v02::types::reply::BlockStatus, v06::method::get_transaction_receipt::types as v06};
+use crate::{
+    v02::types::reply::BlockStatus, v06::method::get_transaction_receipt::types as v06, PendingData,
+};
 
 #[derive(Serialize)]
 pub struct BlockWithReceipts {
@@ -22,9 +24,80 @@ pub struct PendingBlockWithReceipts {
     body: BlockBodyWithReceipts,
 }
 
+type CommonTransaction = pathfinder_common::transaction::Transaction;
+type CommonReceipt = pathfinder_common::receipt::Receipt;
+
+impl BlockWithReceipts {
+    pub fn from_common(
+        header: pathfinder_common::BlockHeader,
+        body: Vec<(CommonTransaction, CommonReceipt)>,
+        is_l1_accepted: bool,
+    ) -> Self {
+        let status = if is_l1_accepted {
+            BlockStatus::AcceptedOnL1
+        } else {
+            BlockStatus::AcceptedOnL2
+        };
+
+        // This is redundant with the above data, but the spec distinguishes
+        // between BlockStatus and transaction finality status still.
+        let finality_status = if is_l1_accepted {
+            v06::FinalityStatus::AcceptedOnL1
+        } else {
+            v06::FinalityStatus::AcceptedOnL2
+        };
+
+        let body = BlockBodyWithReceipts::from_common(body, finality_status);
+
+        Self {
+            status,
+            header: header.into(),
+            body,
+        }
+    }
+}
+
+impl From<PendingData> for PendingBlockWithReceipts {
+    fn from(value: PendingData) -> Self {
+        let body = value
+            .block
+            .transactions
+            .iter()
+            .zip(value.block.transaction_receipts.iter())
+            .map(|(t, r)| {
+                (
+                    CommonTransaction::from(t.clone()),
+                    CommonReceipt::from(r.clone()),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let body = BlockBodyWithReceipts::from_common(body, v06::FinalityStatus::AcceptedOnL2);
+
+        Self {
+            header: value.header().into(),
+            body,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct BlockBodyWithReceipts {
     transactions: Vec<TransactionWithReceipt>,
+}
+
+impl BlockBodyWithReceipts {
+    fn from_common(
+        value: Vec<(CommonTransaction, CommonReceipt)>,
+        finality_status: v06::FinalityStatus,
+    ) -> Self {
+        let transactions = value
+            .into_iter()
+            .map(|(t, r)| TransactionWithReceipt::from_common(t, r, finality_status))
+            .collect();
+
+        Self { transactions }
+    }
 }
 
 #[derive(Serialize)]
@@ -32,6 +105,21 @@ struct BlockBodyWithReceipts {
 struct TransactionWithReceipt {
     transaction: crate::v06::types::TransactionWithHash,
     receipt: PendingTxnReceipt,
+}
+
+impl TransactionWithReceipt {
+    fn from_common(
+        transaction: CommonTransaction,
+        receipt: CommonReceipt,
+        finality_status: v06::FinalityStatus,
+    ) -> Self {
+        let receipt = PendingTxnReceipt::from_common(&transaction, receipt, finality_status);
+
+        Self {
+            transaction: transaction.into(),
+            receipt,
+        }
+    }
 }
 
 #[serde_with::serde_as]
@@ -93,6 +181,44 @@ pub enum PendingTxnReceipt {
         #[serde(flatten)]
         common: PendingCommonReceiptProperties,
     },
+}
+
+impl PendingTxnReceipt {
+    fn from_common(
+        transaction: &CommonTransaction,
+        receipt: CommonReceipt,
+        finality_status: v06::FinalityStatus,
+    ) -> Self {
+        let common =
+            PendingCommonReceiptProperties::from_common(transaction, receipt, finality_status);
+
+        use pathfinder_common::transaction::TransactionVariant;
+        match &transaction.variant {
+            TransactionVariant::DeclareV0(_) => Self::Declare { common },
+            TransactionVariant::DeclareV1(_) => Self::Declare { common },
+            TransactionVariant::DeclareV2(_) => Self::Declare { common },
+            TransactionVariant::DeclareV3(_) => Self::Declare { common },
+            TransactionVariant::Deploy(tx) => Self::Deploy {
+                contract_address: tx.contract_address,
+                common,
+            },
+            TransactionVariant::DeployAccountV0V1(tx) => Self::DeployAccount {
+                contract_address: tx.contract_address,
+                common,
+            },
+            TransactionVariant::DeployAccountV3(tx) => Self::DeployAccount {
+                contract_address: tx.contract_address,
+                common,
+            },
+            TransactionVariant::InvokeV0(_) => Self::Invoke { common },
+            TransactionVariant::InvokeV1(_) => Self::Invoke { common },
+            TransactionVariant::InvokeV3(_) => Self::Invoke { common },
+            TransactionVariant::L1Handler(tx) => Self::L1Handler {
+                message_hash: tx.calculate_message_hash(),
+                common,
+            },
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -175,6 +301,40 @@ pub struct PendingCommonReceiptProperties {
     finality_status: v06::FinalityStatus,
 }
 
+impl PendingCommonReceiptProperties {
+    fn from_common(
+        transaction: &CommonTransaction,
+        receipt: CommonReceipt,
+        finality_status: v06::FinalityStatus,
+    ) -> Self {
+        let actual_fee = FeePayment {
+            amount: receipt.actual_fee.unwrap_or_default(),
+            unit: transaction.version().into(),
+        };
+
+        let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
+        let messages_sent = receipt
+            .l2_to_l1_messages
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let events = receipt.events.into_iter().map(Into::into).collect();
+        let execution_status = receipt.execution_status.into();
+        let execution_resources = receipt.execution_resources.into();
+
+        Self {
+            transaction_hash: transaction.hash,
+            actual_fee,
+            messages_sent,
+            events,
+            revert_reason,
+            execution_status,
+            execution_resources,
+            finality_status,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct FeePayment {
     amount: Fee,
@@ -186,6 +346,17 @@ struct FeePayment {
 pub enum PriceUnit {
     Wei,
     Fri,
+}
+
+impl From<TransactionVersion> for PriceUnit {
+    fn from(value: TransactionVersion) -> Self {
+        match value {
+            TransactionVersion::ZERO | TransactionVersion::ONE | TransactionVersion::TWO => {
+                PriceUnit::Wei
+            }
+            _ => PriceUnit::Fri,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,6 @@
 pub mod dto;
+pub mod method;
+
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
 #[rustfmt::skip]
@@ -33,9 +35,10 @@ pub fn register_routes() -> RpcRouterBuilder {
         // .register("starknet_getTransactionByHash"            , method::get_transaction_by_hash)
         // .register("starknet_getTransactionReceipt"           , method::get_transaction_receipt)
         // .register("starknet_simulateTransactions"            , method::simulate_transactions)
-        .register("starknet_specVersion"                     , || "0.7.0-rc0")
+        .register("starknet_specVersion",                         || "0.7.0-rc0")
         // .register("starknet_traceBlockTransactions"          , method::trace_block_transactions)
         // .register("starknet_traceTransaction"                , method::trace_transaction)
+        .register("starknet_getBlockWithReceipts",                method::get_block_with_receipts)
 
-        .register("pathfinder_getProof"                      , crate::pathfinder::methods::get_proof)
+        .register("pathfinder_getProof",                          crate::pathfinder::methods::get_proof)
 }

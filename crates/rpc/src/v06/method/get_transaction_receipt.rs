@@ -404,7 +404,7 @@ pub mod types {
         }
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub enum FinalityStatus {
