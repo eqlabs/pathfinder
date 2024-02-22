@@ -13,8 +13,5 @@ goose = "0.17.0"
 pathfinder-crypto = { path = "../crypto" }
 rand = "0.8.5"
 serde = { version = "1.0.160", features = ["derive"] }
-serde_json = { version = "1.0.96", features = [
-    "arbitrary_precision",
-    "raw_value",
-] }
+serde_json = { version = "1.0.113", features = ["arbitrary_precision"] }
 tokio = "1.24.2"

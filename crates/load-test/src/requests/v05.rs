@@ -8,7 +8,7 @@ use crate::types::{
     Block, ContractClass, FeeEstimate, StateUpdate, Transaction, TransactionReceipt,
 };
 
-type MethodResult<T> = Result<T, Box<goose::goose::TransactionError>>;
+pub type MethodResult<T> = Result<T, Box<goose::goose::TransactionError>>;
 
 pub async fn get_block_by_number(user: &mut GooseUser, block_number: u64) -> MethodResult<Block> {
     post_jsonrpc_request(
