@@ -3,7 +3,7 @@
 use anyhow::Context;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
-use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
+use pathfinder_common::{BlockHash, BlockNumber, TransactionHash, TransactionIndex};
 
 use crate::{prelude::*, BlockId};
 
@@ -237,14 +237,14 @@ pub(super) fn transaction_data_for_block(
 pub(super) fn transactions_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
-) -> anyhow::Result<Option<Vec<StarknetTransaction>>> {
+) -> anyhow::Result<Option<Vec<(StarknetTransaction, TransactionIndex)>>> {
     let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
 
     let mut stmt = tx
         .inner()
-        .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .prepare("SELECT tx, idx FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
         .context("Preparing statement")?;
 
     let mut rows = stmt
@@ -260,8 +260,13 @@ pub(super) fn transactions_for_block(
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction: dto::Transaction =
             serde_json::from_slice(&transaction).context("Deserializing transaction")?;
+        let idx = row.get_i64(1)?;
 
-        data.push(transaction.into());
+        data.push((
+            transaction.into(),
+            TransactionIndex::new(idx.try_into()?)
+                .ok_or_else(|| anyhow::anyhow!("Invalid transaction index"))?,
+        ));
     }
 
     Ok(Some(data))
@@ -2170,7 +2175,12 @@ mod tests {
         let (mut db, header, body) = setup();
         let tx = db.transaction().unwrap();
 
-        let expected = Some(body.into_iter().map(|(t, _)| t).collect::<Vec<_>>());
+        let expected = Some(
+            body.into_iter()
+                .enumerate()
+                .map(|(i, (t, _))| (t, TransactionIndex::new_or_panic(i.try_into().unwrap())))
+                .collect::<Vec<_>>(),
+        );
 
         let by_number = super::transactions_for_block(&tx, header.number.into()).unwrap();
         assert_eq!(by_number, expected);

@@ -388,7 +388,7 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
     Ok(block_number <= l1_l2)
 }
 
-pub(super) fn blocks_missing_transactions(
+pub(super) fn blocks_with_missing_transactions(
     tx: &Transaction<'_>,
     before_block: Option<BlockNumber>,
     limit: u64,
@@ -407,6 +407,7 @@ pub(super) fn blocks_missing_transactions(
             HAVING
                 COUNT(starknet_transactions.idx) <> block_headers.transaction_count AND
                 block_headers.number < ?
+            ORDER BY block_headers.number DESC
             LIMIT ?;",
         )
         .context("Preparing blocks_missing_transactions query")?;

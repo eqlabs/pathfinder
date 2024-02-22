@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_variables)]
 mod headers;
+mod transactions;
 
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber};
@@ -130,6 +131,18 @@ impl Sync {
         }
 
         Ok(())
+    }
+
+    /// Syncs all transactions in reverse chronological order, from the anchor point
+    /// back to genesis. Fills in any gaps left by previous header syncs.
+    ///
+    /// As sync goes backwards from a known L1 anchor block, this method can
+    /// guarantee that all sync'd headers are secured by L1.
+    ///
+    /// No guarantees are made about any headers newer than the anchor.
+    async fn sync_transactions(&self) -> anyhow::Result<()> {
+        //let mut before_block = None;
+        todo!()
     }
 }
 
