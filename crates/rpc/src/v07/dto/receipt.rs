@@ -21,3 +21,17 @@ impl From<pathfinder_common::receipt::ExecutionResources> for ComputationResourc
         })
     }
 }
+
+#[derive(Serialize)]
+pub struct ExecutionResources {
+    #[serde(flatten)]
+    computation_resources: ComputationResources,
+    data_availability: DataResources,
+}
+
+#[derive(Serialize)]
+/// An object embedded within EXECUTION_RESOURCES.
+struct DataResources {
+    l1_gas: u64,
+    l1_data_gas: u64,
+}
