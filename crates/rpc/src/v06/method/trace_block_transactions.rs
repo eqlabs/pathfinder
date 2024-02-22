@@ -305,15 +305,15 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output::declare(account_contract_address, &last_block_header)
+            fixtures::expected_output_0_13_0::declare(account_contract_address, &last_block_header)
                 .transaction_trace,
-            fixtures::expected_output::universal_deployer(
+            fixtures::expected_output_0_13_0::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output::invoke(
+            fixtures::expected_output_0_13_0::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,
@@ -445,15 +445,15 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output::declare(account_contract_address, &last_block_header)
+            fixtures::expected_output_0_13_0::declare(account_contract_address, &last_block_header)
                 .transaction_trace,
-            fixtures::expected_output::universal_deployer(
+            fixtures::expected_output_0_13_0::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output::invoke(
+            fixtures::expected_output_0_13_0::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,

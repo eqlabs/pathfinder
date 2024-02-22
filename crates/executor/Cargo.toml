@@ -17,6 +17,8 @@ pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage" }
 primitive-types = { workspace = true, features = ["serde"] }
+semver = { workspace = true }
+serde_json = { workspace = true }
 starknet-gateway-types = { path = "../gateway-types" }
 starknet_api = { workspace = true }
 tokio = { workspace = true }

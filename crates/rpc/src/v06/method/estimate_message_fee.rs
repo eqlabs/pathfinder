@@ -364,15 +364,15 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
-            gas_consumed: 16299.into(),
+            gas_consumed: 16302.into(),
             gas_price: 1.into(),
-            overall_fee: 16299.into(),
+            overall_fee: 16302.into(),
             unit: PriceUnit::Wei,
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");
         let result = estimate_message_fee(rpc, input()).await.expect("result");
-        pretty_assertions_sorted::assert_eq!(result, expected);
+        assert_eq!(result, expected);
     }
 
     #[tokio::test]

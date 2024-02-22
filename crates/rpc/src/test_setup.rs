@@ -10,6 +10,7 @@ use starknet_gateway_test_fixtures::class_definitions::{DUMMY_ACCOUNT, DUMMY_ACC
 use crate::context::RpcContext;
 
 pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
+    version: StarknetVersion,
     customize_state_update: F,
 ) -> (Storage, BlockHeader, ContractAddress, ContractAddress) {
     let storage = Storage::in_memory().unwrap();
@@ -20,6 +21,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
     let header = BlockHeader::builder()
         .with_number(BlockNumber::GENESIS)
         .with_timestamp(BlockTimestamp::new_or_panic(0))
+        .with_starknet_version(version.clone())
         .finalize_with_hash(BlockHash(felt!("0xb00")));
     tx.insert_block_header(&header).unwrap();
 
@@ -51,10 +53,12 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .with_timestamp(BlockTimestamp::new_or_panic(1))
         .with_eth_l1_gas_price(GasPrice(1))
         .with_strk_l1_gas_price(GasPrice(2))
+        .with_eth_l1_data_gas_price(GasPrice(1))
+        .with_strk_l1_data_gas_price(GasPrice(2))
         .with_sequencer_address(sequencer_address!(
             "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8"
         ))
-        .with_starknet_version(StarknetVersion::new(0, 13, 0))
+        .with_starknet_version(version)
         .finalize_with_hash(block1_hash);
     tx.insert_block_header(&header).unwrap();
 
@@ -92,8 +96,14 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
 }
 
 pub async fn test_context() -> (RpcContext, BlockHeader, ContractAddress, ContractAddress) {
+    test_context_with_starknet_version(StarknetVersion::new(0, 13, 0)).await
+}
+
+pub async fn test_context_with_starknet_version(
+    version: StarknetVersion,
+) -> (RpcContext, BlockHeader, ContractAddress, ContractAddress) {
     let (storage, header, account_contract_address, universal_deployer_address) =
-        test_storage(|state_update| state_update).await;
+        test_storage(version, |state_update| state_update).await;
 
     let context = RpcContext::for_tests().with_storage(storage);
 

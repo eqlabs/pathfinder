@@ -19,6 +19,44 @@ pub const ETH_FEE_TOKEN_ADDRESS: ContractAddress =
 pub const STRK_FEE_TOKEN_ADDRESS: ContractAddress =
     contract_address!("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 
+mod versioned_constants {
+    use pathfinder_common::StarknetVersion;
+
+    use super::VersionedConstants;
+
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_0: &[u8] =
+        include_bytes!("../resources/versioned_constants_13_0.json");
+
+    const STARKNET_VERSION_MATCHING_LATEST_BLOCKIFIER: semver::Version =
+        semver::Version::new(0, 13, 1);
+
+    lazy_static::lazy_static! {
+        pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: VersionedConstants =
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_0).unwrap();
+    }
+
+    pub(super) fn for_version(
+        version: &StarknetVersion,
+    ) -> anyhow::Result<&'static VersionedConstants> {
+        let versioned_constants = match version.parse_as_semver()? {
+            Some(version) => {
+                // Right now we only properly support two versions: 0.13.0 and 0.13.1.
+                // We use 0.13.0 for all blocks _before_ 0.13.1.
+                if version < STARKNET_VERSION_MATCHING_LATEST_BLOCKIFIER {
+                    &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0
+                } else {
+                    VersionedConstants::latest_constants()
+                }
+            }
+            // The default for blocks that don't have a version number.
+            // This is supposed to be the _oldest_ version we support.
+            None => &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0,
+        };
+
+        Ok(versioned_constants)
+    }
+}
+
 pub struct ExecutionState<'tx> {
     transaction: &'tx pathfinder_storage::Transaction<'tx>,
     pub chain_id: ChainId,
@@ -75,12 +113,14 @@ impl<'tx> ExecutionState<'tx> {
             None
         };
 
+        let versioned_constants = versioned_constants::for_version(&self.header.starknet_version)?;
+
         let block_context = pre_process_block(
             &mut cached_state,
             old_block_number_and_hash,
             block_info,
             chain_info,
-            VersionedConstants::latest_constants().to_owned(),
+            versioned_constants.to_owned(),
         )?;
 
         Ok((cached_state, block_context))
