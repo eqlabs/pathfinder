@@ -146,9 +146,9 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         }
     };
 
-    match pathfinder_executor::estimate(execution_state, transactions, false) {
-        Ok(fee_estimates) => {
-            for (estimate, receipt) in fee_estimates.iter().zip(work.receipts.iter()) {
+    match pathfinder_executor::simulate(execution_state, transactions, false, false) {
+        Ok(simulations) => {
+            for (simulation, receipt) in simulations.iter().zip(work.receipts.iter()) {
                 if let Some(actual_fee) = receipt.actual_fee {
                     let actual_fee =
                         u128::from_be_bytes(actual_fee.0.to_be_bytes()[16..].try_into().unwrap());
@@ -157,6 +157,8 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
                     if actual_fee == 0 {
                         continue;
                     }
+
+                    let estimate = &simulation.fee_estimation;
 
                     let (gas_price, data_gas_price) = match estimate.unit {
                         pathfinder_executor::types::PriceUnit::Wei => (
