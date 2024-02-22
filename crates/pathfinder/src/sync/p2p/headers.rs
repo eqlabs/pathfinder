@@ -1,7 +1,9 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
-use p2p::{client::types::SignedBlockHeader, PeerData};
-use pathfinder_common::{BlockHash, BlockNumber, ClassCommitment, StorageCommitment};
+use p2p::PeerData;
+use pathfinder_common::{
+    BlockHash, BlockNumber, ClassCommitment, SignedBlockHeader, StorageCommitment,
+};
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 

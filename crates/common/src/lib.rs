@@ -335,11 +335,18 @@ impl From<u64> for GasPrice {
     }
 }
 
-impl From<Felt> for GasPrice {
-    fn from(src: Felt) -> Self {
+impl TryFrom<Felt> for GasPrice {
+    type Error = anyhow::Error;
+
+    fn try_from(src: Felt) -> Result<Self, Self::Error> {
+        anyhow::ensure!(
+            src.as_be_bytes()[0..16] == [0; 16],
+            "Gas price fits into u128"
+        );
+
         let mut bytes = [0u8; 16];
         bytes.copy_from_slice(&src.as_be_bytes()[16..]);
-        Self(u128::from_be_bytes(bytes))
+        Ok(Self(u128::from_be_bytes(bytes)))
     }
 }
 
