@@ -85,9 +85,9 @@ fn main() -> anyhow::Result<()> {
         .par_bridge()
         .for_each_with(storage, |storage, block| execute(storage, chain_id, block));
 
-    let elapsed = start_time.elapsed().as_millis();
+    let elapsed = start_time.elapsed();
 
-    tracing::debug!(%num_transactions, %elapsed, "Finished");
+    tracing::info!(%num_transactions, ?elapsed, "Finished");
 
     Ok(())
 }
