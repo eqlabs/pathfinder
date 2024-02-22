@@ -71,7 +71,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                 .send(SyncEvent::Pending((block, state_update)))
                 .await
             {
-                tracing::error!("Event channel closed, this shouldn't happen: {}", e);
+                tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
                 break;
             }
         }
