@@ -3,7 +3,36 @@ use serde::Serialize;
 
 use pathfinder_common::prelude::*;
 
-use crate::v06::method::get_transaction_receipt::types as v06;
+use crate::{v02::types::reply::BlockStatus, v06::method::get_transaction_receipt::types as v06};
+
+#[derive(Serialize)]
+pub struct BlockWithReceipts {
+    status: BlockStatus,
+    #[serde(flatten)]
+    header: crate::v07::dto::header::Header,
+    #[serde(flatten)]
+    body: BlockBodyWithReceipts,
+}
+
+#[derive(Serialize)]
+pub struct PendingBlockWithReceipts {
+    #[serde(flatten)]
+    header: crate::v07::dto::header::PendingHeader,
+    #[serde(flatten)]
+    body: BlockBodyWithReceipts,
+}
+
+#[derive(Serialize)]
+struct BlockBodyWithReceipts {
+    transactions: Vec<TransactionWithReceipt>,
+}
+
+#[derive(Serialize)]
+// Inner type of block with receipts
+struct TransactionWithReceipt {
+    transaction: crate::v06::types::TransactionWithHash,
+    receipt: PendingTxnReceipt,
+}
 
 #[serde_with::serde_as]
 #[derive(Serialize)]
@@ -42,27 +71,27 @@ pub enum TxnReceipt {
 pub enum PendingTxnReceipt {
     Invoke {
         #[serde(flatten)]
-        common: CommonPendingReceiptProperties,
+        common: PendingCommonReceiptProperties,
     },
     L1Handler {
         #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
         message_hash: primitive_types::H256,
         #[serde(flatten)]
-        common: CommonPendingReceiptProperties,
+        common: PendingCommonReceiptProperties,
     },
     Declare {
         #[serde(flatten)]
-        common: CommonPendingReceiptProperties,
+        common: PendingCommonReceiptProperties,
     },
     Deploy {
         contract_address: ContractAddress,
         #[serde(flatten)]
-        common: CommonPendingReceiptProperties,
+        common: PendingCommonReceiptProperties,
     },
     DeployAccount {
         contract_address: ContractAddress,
         #[serde(flatten)]
-        common: CommonPendingReceiptProperties,
+        common: PendingCommonReceiptProperties,
     },
 }
 
@@ -120,30 +149,30 @@ impl From<pathfinder_common::receipt::ExecutionDataAvailability> for DataResourc
 
 #[derive(Serialize)]
 pub struct CommonReceiptProperties {
-    pub transaction_hash: TransactionHash,
-    pub actual_fee: FeePayment,
-    pub block_hash: BlockHash,
-    pub block_number: BlockNumber,
-    pub messages_sent: Vec<v06::MessageToL1>,
-    pub events: Vec<v06::Event>,
+    transaction_hash: TransactionHash,
+    actual_fee: FeePayment,
+    block_hash: BlockHash,
+    block_number: BlockNumber,
+    messages_sent: Vec<v06::MessageToL1>,
+    events: Vec<v06::Event>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub revert_reason: Option<String>,
-    pub execution_resources: ExecutionResources,
-    pub execution_status: v06::ExecutionStatus,
-    pub finality_status: v06::FinalityStatus,
+    revert_reason: Option<String>,
+    execution_resources: ExecutionResources,
+    execution_status: v06::ExecutionStatus,
+    finality_status: v06::FinalityStatus,
 }
 
 #[derive(Serialize)]
-pub struct CommonPendingReceiptProperties {
-    pub transaction_hash: TransactionHash,
-    pub actual_fee: FeePayment,
-    pub messages_sent: Vec<v06::MessageToL1>,
-    pub events: Vec<v06::Event>,
+pub struct PendingCommonReceiptProperties {
+    transaction_hash: TransactionHash,
+    actual_fee: FeePayment,
+    messages_sent: Vec<v06::MessageToL1>,
+    events: Vec<v06::Event>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub revert_reason: Option<String>,
-    pub execution_status: v06::ExecutionStatus,
-    pub execution_resources: ExecutionResources,
-    pub finality_status: v06::FinalityStatus,
+    revert_reason: Option<String>,
+    execution_status: v06::ExecutionStatus,
+    execution_resources: ExecutionResources,
+    finality_status: v06::FinalityStatus,
 }
 
 #[derive(Serialize)]
@@ -254,7 +283,7 @@ mod tests {
         });
 
         let uut = PendingTxnReceipt::Invoke {
-            common: CommonPendingReceiptProperties {
+            common: PendingCommonReceiptProperties {
                 transaction_hash: transaction_hash!("0x1"),
                 actual_fee: FeePayment {
                     amount: fee!("0x123"),
