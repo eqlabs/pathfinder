@@ -1,3 +1,4 @@
+pub mod dto;
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
 #[rustfmt::skip]
