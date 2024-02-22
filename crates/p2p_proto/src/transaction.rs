@@ -174,7 +174,6 @@ pub enum TransactionVariant {
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::Transaction")]
-
 pub struct Transaction {
     #[rename(transaction_hash)]
     pub hash: Hash,

@@ -5944,6 +5944,7 @@ dependencies = [
  "fake",
  "libp2p-identity",
  "p2p_proto_derive",
+ "pathfinder-common",
  "pathfinder-crypto",
  "pretty_assertions_sorted",
  "primitive-types",

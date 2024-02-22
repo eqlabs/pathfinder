@@ -9,8 +9,14 @@ use std::{
 use anyhow::Context;
 use futures::StreamExt;
 use libp2p::PeerId;
-use p2p_proto::common::{Direction, Iteration};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::{
+    common::{Direction, Iteration},
+    transaction::TransactionsRequest,
+};
+use p2p_proto::{
+    header::{BlockHeadersRequest, BlockHeadersResponse},
+    transaction::TransactionsResponse,
+};
 use pathfinder_common::{
     transaction::{DeployAccountTransactionV0V1, DeployAccountTransactionV3, TransactionVariant},
     BlockNumber,
@@ -20,9 +26,11 @@ use pathfinder_common::{BlockHash, ContractAddress};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::sync::RwLock;
 
-use crate::client::peer_aware;
 use crate::client::types::{RawDeployAccountTransaction, SignedBlockHeader};
+use crate::client::{peer_aware, types::TryFromDto};
 use crate::sync::protocol;
+
+use super::types::RawTransactionVariant;
 
 /// Data received from a specific peer.
 #[derive(Debug)]
@@ -166,6 +174,79 @@ impl Client {
                         };
 
                         yield PeerData::new(peer, signed_header);
+                    }
+
+                    // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
+                }
+            }
+        }
+    }
+
+    pub fn transaction_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        reverse: bool,
+    ) -> impl futures::Stream<Item = PeerData<(pathfinder_common::TransactionHash, RawTransactionVariant)>>
+    {
+        let (mut start, stop, direction) = match reverse {
+            true => (stop, start, Direction::Backward),
+            false => (start, stop, Direction::Forward),
+        };
+
+        async_stream::stream! {
+            // Loop which refreshes peer set once we exhaust it.
+            loop {
+                let peers = self
+                    .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
+                    .await;
+
+                // Attempt each peer.
+                'next_peer: for peer in peers {
+                    let limit = start.get().max(stop.get()) - start.get().min(stop.get());
+
+                    let request = TransactionsRequest {
+                        iteration: Iteration {
+                            start: start.get().into(),
+                            direction,
+                            limit,
+                            step: 1.into(),
+                        },
+                    };
+
+                    let mut responses = match self.inner.send_transactions_sync_request(peer, request).await
+                    {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // Failed to establish connection, try next peer.
+                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
+                            continue 'next_peer;
+                        }
+                    };
+
+                    while let Some(transaction) = responses.next().await {
+                        let transaction = match transaction {
+                            TransactionsResponse::Transaction(tx) => match RawTransactionVariant::try_from_dto(tx.variant) {
+                                Ok(variant) => (pathfinder_common::TransactionHash(tx.hash.0), variant),
+                                Err(error) => {
+                                    tracing::debug!(%peer, %error, "Transaction stream failed");
+                                    continue 'next_peer;
+                                },
+                            },
+                            TransactionsResponse::Fin => {
+                                tracing::debug!(%peer, "Transaction stream Fin");
+                                continue 'next_peer;
+                            }
+                        };
+
+                        start = match direction {
+                            Direction::Forward => start + 1,
+                            // unwrap_or_default is safe as this is the genesis edge case,
+                            // at which point the loop will complete at the end of this iteration.
+                            Direction::Backward => start.parent().unwrap_or_default(),
+                        };
+
+                        yield PeerData::new(peer, transaction);
                     }
 
                     // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
