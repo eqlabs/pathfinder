@@ -85,9 +85,9 @@ fn main() -> anyhow::Result<()> {
         .par_bridge()
         .for_each_with(storage, |storage, block| execute(storage, chain_id, block));
 
-    let elapsed = start_time.elapsed().as_millis();
+    let elapsed = start_time.elapsed();
 
-    tracing::debug!(%num_transactions, %elapsed, "Finished");
+    tracing::info!(%num_transactions, ?elapsed, "Finished");
 
     Ok(())
 }
@@ -95,6 +95,7 @@ fn main() -> anyhow::Result<()> {
 fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<ChainId> {
     use pathfinder_common::consts::{
         GOERLI_INTEGRATION_GENESIS_HASH, GOERLI_TESTNET_GENESIS_HASH, MAINNET_GENESIS_HASH,
+        SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
     };
 
     let (_, genesis_hash) = tx
@@ -106,6 +107,8 @@ fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chai
         MAINNET_GENESIS_HASH => ChainId::MAINNET,
         GOERLI_TESTNET_GENESIS_HASH => ChainId::GOERLI_TESTNET,
         GOERLI_INTEGRATION_GENESIS_HASH => ChainId::GOERLI_INTEGRATION,
+        SEPOLIA_TESTNET_GENESIS_HASH => ChainId::SEPOLIA_TESTNET,
+        SEPOLIA_INTEGRATION_GENESIS_HASH => ChainId::SEPOLIA_INTEGRATION,
         _ => anyhow::bail!("Unknown chain"),
     };
 
@@ -143,9 +146,9 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         }
     };
 
-    match pathfinder_executor::estimate(execution_state, transactions, false) {
-        Ok(fee_estimates) => {
-            for (estimate, receipt) in fee_estimates.iter().zip(work.receipts.iter()) {
+    match pathfinder_executor::simulate(execution_state, transactions, false, false) {
+        Ok(simulations) => {
+            for (simulation, receipt) in simulations.iter().zip(work.receipts.iter()) {
                 if let Some(actual_fee) = receipt.actual_fee {
                     let actual_fee =
                         u128::from_be_bytes(actual_fee.0.to_be_bytes()[16..].try_into().unwrap());
@@ -155,15 +158,38 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
                         continue;
                     }
 
-                    let gas_price = work.header.eth_l1_gas_price.0;
-                    let actual_gas_consumed = actual_fee / gas_price.max(1);
+                    let estimate = &simulation.fee_estimation;
+
+                    let (gas_price, data_gas_price) = match estimate.unit {
+                        pathfinder_executor::types::PriceUnit::Wei => (
+                            work.header.eth_l1_gas_price.0,
+                            work.header.eth_l1_data_gas_price.0,
+                        ),
+                        pathfinder_executor::types::PriceUnit::Fri => (
+                            work.header.strk_l1_gas_price.0,
+                            work.header.strk_l1_data_gas_price.0,
+                        ),
+                    };
+
+                    let actual_data_gas_consumed =
+                        receipt.execution_resources.data_availability.l1_data_gas;
+                    let actual_gas_consumed = (actual_fee
+                        - actual_data_gas_consumed.saturating_mul(data_gas_price))
+                        / gas_price.max(1);
 
                     let estimated_gas_consumed = estimate.gas_consumed.as_u128();
+                    let estimated_data_gas_consumed = estimate.data_gas_consumed.as_u128();
 
-                    let diff = actual_gas_consumed.abs_diff(estimated_gas_consumed);
+                    let gas_diff = actual_gas_consumed.abs_diff(estimated_gas_consumed);
+                    let data_gas_diff =
+                        actual_data_gas_consumed.abs_diff(estimated_data_gas_consumed);
 
-                    if diff > (actual_gas_consumed * 2 / 10) {
-                        tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
+                    if gas_diff > (actual_gas_consumed * 2 / 10)
+                        || data_gas_diff > (actual_data_gas_consumed * 2 / 10)
+                    {
+                        tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
+                    } else {
+                        tracing::debug!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation matches");
                     }
                 }
             }

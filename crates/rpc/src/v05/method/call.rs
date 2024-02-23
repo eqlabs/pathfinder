@@ -3,7 +3,7 @@ use crate::error::ApplicationError;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
-use pathfinder_executor::ExecutionState;
+use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 
 #[derive(Debug)]
 pub enum CallError {
@@ -109,7 +109,13 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
             }
         };
 
-        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            L1BlobDataAvailability::Disabled,
+        );
 
         let result = pathfinder_executor::call(
             state,

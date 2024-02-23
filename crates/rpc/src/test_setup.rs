@@ -53,8 +53,9 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .with_timestamp(BlockTimestamp::new_or_panic(1))
         .with_eth_l1_gas_price(GasPrice(1))
         .with_strk_l1_gas_price(GasPrice(2))
-        .with_eth_l1_data_gas_price(GasPrice(1))
+        .with_eth_l1_data_gas_price(GasPrice(2))
         .with_strk_l1_data_gas_price(GasPrice(2))
+        .with_l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
         .with_sequencer_address(sequencer_address!(
             "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8"
         ))
