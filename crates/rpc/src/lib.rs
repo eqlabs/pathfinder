@@ -41,7 +41,7 @@ use tower_http::ServiceBuilderExt;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub enum DefaultVersion {
     V05,
     V06,
