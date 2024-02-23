@@ -33,7 +33,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         // .register("starknet_getBlockWithTxs"                 , method::get_block_with_txs)
         // .register("starknet_getTransactionByBlockIdAndIndex" , method::get_transaction_by_block_id_and_index)
         // .register("starknet_getTransactionByHash"            , method::get_transaction_by_hash)
-        // .register("starknet_getTransactionReceipt"           , method::get_transaction_receipt)
+        .register("starknet_getTransactionReceipt",               method::get_transaction_receipt)
         // .register("starknet_simulateTransactions"            , method::simulate_transactions)
         .register("starknet_specVersion",                         || "0.7.0-rc0")
         // .register("starknet_traceBlockTransactions"          , method::trace_block_transactions)

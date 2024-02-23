@@ -183,8 +183,53 @@ pub enum PendingTxnReceipt {
     },
 }
 
+impl TxnReceipt {
+    pub fn from_common(
+        transaction: &CommonTransaction,
+        receipt: CommonReceipt,
+        block_hash: BlockHash,
+        block_number: BlockNumber,
+        finality_status: v06::FinalityStatus,
+    ) -> Self {
+        let common = CommonReceiptProperties::from_common(
+            transaction,
+            receipt,
+            block_hash,
+            block_number,
+            finality_status,
+        );
+
+        use pathfinder_common::transaction::TransactionVariant;
+        match &transaction.variant {
+            TransactionVariant::DeclareV0(_) => Self::Declare { common },
+            TransactionVariant::DeclareV1(_) => Self::Declare { common },
+            TransactionVariant::DeclareV2(_) => Self::Declare { common },
+            TransactionVariant::DeclareV3(_) => Self::Declare { common },
+            TransactionVariant::Deploy(tx) => Self::Deploy {
+                contract_address: tx.contract_address,
+                common,
+            },
+            TransactionVariant::DeployAccountV0V1(tx) => Self::DeployAccount {
+                contract_address: tx.contract_address,
+                common,
+            },
+            TransactionVariant::DeployAccountV3(tx) => Self::DeployAccount {
+                contract_address: tx.contract_address,
+                common,
+            },
+            TransactionVariant::InvokeV0(_) => Self::Invoke { common },
+            TransactionVariant::InvokeV1(_) => Self::Invoke { common },
+            TransactionVariant::InvokeV3(_) => Self::Invoke { common },
+            TransactionVariant::L1Handler(tx) => Self::L1Handler {
+                message_hash: tx.calculate_message_hash(),
+                common,
+            },
+        }
+    }
+}
+
 impl PendingTxnReceipt {
-    fn from_common(
+    pub fn from_common(
         transaction: &CommonTransaction,
         receipt: CommonReceipt,
         finality_status: v06::FinalityStatus,
@@ -299,6 +344,44 @@ pub struct PendingCommonReceiptProperties {
     execution_status: v06::ExecutionStatus,
     execution_resources: ExecutionResources,
     finality_status: v06::FinalityStatus,
+}
+
+impl CommonReceiptProperties {
+    fn from_common(
+        transaction: &CommonTransaction,
+        receipt: CommonReceipt,
+        block_hash: BlockHash,
+        block_number: BlockNumber,
+        finality_status: v06::FinalityStatus,
+    ) -> Self {
+        let actual_fee = FeePayment {
+            amount: receipt.actual_fee.unwrap_or_default(),
+            unit: transaction.version().into(),
+        };
+
+        let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
+        let messages_sent = receipt
+            .l2_to_l1_messages
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let events = receipt.events.into_iter().map(Into::into).collect();
+        let execution_status = receipt.execution_status.into();
+        let execution_resources = receipt.execution_resources.into();
+
+        Self {
+            transaction_hash: transaction.hash,
+            actual_fee,
+            messages_sent,
+            events,
+            revert_reason,
+            execution_status,
+            execution_resources,
+            finality_status,
+            block_hash,
+            block_number,
+        }
+    }
 }
 
 impl PendingCommonReceiptProperties {
