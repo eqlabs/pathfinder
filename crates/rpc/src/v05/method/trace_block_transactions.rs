@@ -177,7 +177,7 @@ pub async fn trace_block_transactions(
                     .transactions_for_block(block_id)?
                     .context("Transaction data missing")?
                     .into_iter()
-                    .map(|(tx, _)| tx)
+                    .map(Into::into)
                     .collect();
 
                 (header, transactions, context.cache.clone())

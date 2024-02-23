@@ -12,6 +12,10 @@ use tokio::task::spawn_blocking;
 
 use p2p::client::peer_agnostic::Client as P2PClient;
 
+use crate::state::block_hash::{
+    calculate_transaction_commitment, TransactionCommitmentFinalHashType,
+};
+
 /// Provides P2P sync capability for blocks secured by L1.
 pub struct Sync {
     storage: Storage,
@@ -160,10 +164,21 @@ impl Sync {
                     if transactions.data.len() != block.transaction_count {
                         continue;
                     }
-                    // TODO Check transaction commitment, could fetch this in blocks_without_transactions.
-                    // If commitment is invalid, continue.
-                    // This will have to wait until the client types are removed and we're using
-                    // pathfinder_common everywhere.
+                    let transaction_final_hash_type =
+                        TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
+                    let transaction_commitment = calculate_transaction_commitment(
+                        &transactions.data,
+                        transaction_final_hash_type,
+                    )?;
+                    if transaction_commitment != block.transaction_commitment {
+                        tracing::debug!(
+                            "Transaction commitment mismatch for block {}, trying next peer",
+                            block.number
+                        );
+                        continue;
+                    }
+
+                    last_block = Some(block.number);
 
                     let mut connection = self
                         .storage
@@ -172,19 +187,16 @@ impl Sync {
                     let db_transaction = connection
                         .transaction()
                         .context("Creating database transaction")?;
-                    /*
                     transactions::insert_transactions(
                         self.storage.clone(),
                         block,
-                        todo!("transactions.data once pathfinder_common is used everywhere"),
+                        transactions.data,
                     )
                     .await
                     .context("Inserting transactions")?;
-                    */
 
                     break;
                 }
-                last_block = Some(block.number);
             }
         }
     }

@@ -213,7 +213,7 @@ impl Client {
                     let mut transactions = Vec::new();
                     while let Some(transaction) = responses.next().await {
                         match transaction {
-                            TransactionsResponse::Transaction(tx) => match Transaction::try_from_dto(tx.variant) {
+                            TransactionsResponse::Transaction(tx) => match Transaction::try_from_dto(tx) {
                                 Ok(tx) => transactions.push(tx),
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Transaction stream failed");

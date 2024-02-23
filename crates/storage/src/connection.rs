@@ -238,7 +238,7 @@ impl<'inner> Transaction<'inner> {
     pub fn transactions_for_block(
         &self,
         block: BlockId,
-    ) -> anyhow::Result<Option<Vec<(StarknetTransaction, TransactionIndex)>>> {
+    ) -> anyhow::Result<Option<Vec<StarknetTransaction>>> {
         transaction::transactions_for_block(self, block)
     }
 
