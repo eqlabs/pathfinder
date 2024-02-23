@@ -16,10 +16,10 @@ impl Receipt {
         matches!(self.execution_status, ExecutionStatus::Reverted { .. })
     }
 
-    pub fn revert_reason(&self) -> Option<String> {
+    pub fn revert_reason(&self) -> Option<&str> {
         match &self.execution_status {
             ExecutionStatus::Succeeded => None,
-            ExecutionStatus::Reverted { reason } => Some(reason.clone()),
+            ExecutionStatus::Reverted { reason } => Some(reason.as_str()),
         }
     }
 }

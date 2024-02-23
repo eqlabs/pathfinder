@@ -404,7 +404,7 @@ pub mod types {
         }
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub enum FinalityStatus {
@@ -470,7 +470,7 @@ pub mod types {
                 unit: fee_unit,
             };
 
-            let revert_reason = receipt.revert_reason();
+            let revert_reason = receipt.revert_reason().map(|x| x.to_owned());
 
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -611,7 +611,7 @@ pub mod types {
                 unit: fee_unit,
             };
 
-            let revert_reason = receipt.revert_reason();
+            let revert_reason = receipt.revert_reason().map(|x| x.to_owned());
 
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
