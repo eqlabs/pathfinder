@@ -1,7 +1,7 @@
 mod add_declare_transaction;
 pub(crate) mod add_deploy_account_transaction;
 pub(crate) mod add_invoke_transaction;
-mod estimate_fee;
+pub(crate) mod estimate_fee;
 pub(crate) mod estimate_message_fee;
 mod get_block_with_tx_hashes;
 mod get_block_with_txs;

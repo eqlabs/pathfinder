@@ -27,7 +27,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         // .register("starknet_addDeclareTransaction"           , method::add_declare_transaction)
         // .register("starknet_addDeployAccountTransaction"     , method::add_deploy_account_transaction)
         // .register("starknet_addInvokeTransaction"            , method::add_invoke_transaction)
-        // .register("starknet_estimateFee"                     , method::estimate_fee)
+        .register("starknet_estimateFee",                         method::estimate_fee)
         // .register("starknet_estimateMessageFee"              , method::estimate_message_fee)
         .register("starknet_getBlockWithTxHashes",                method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs",                     method::get_block_with_txs)

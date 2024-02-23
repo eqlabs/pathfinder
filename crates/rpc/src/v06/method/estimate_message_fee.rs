@@ -88,6 +88,8 @@ pub async fn estimate_message_fee(
         gas_price: result.gas_price,
         overall_fee: result.overall_fee,
         unit: result.unit.into(),
+        data_gas_consumed: None,
+        data_gas_price: None,
     })
 }
 
@@ -374,6 +376,8 @@ mod tests {
             gas_price: 1.into(),
             overall_fee: 16302.into(),
             unit: PriceUnit::Wei,
+            data_gas_consumed: None,
+            data_gas_price: None,
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");
