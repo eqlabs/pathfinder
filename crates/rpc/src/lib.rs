@@ -1,5 +1,6 @@
 //! Starknet node JSON-RPC related modules.
 pub mod context;
+mod dto;
 mod error;
 mod executor;
 mod felt;
@@ -40,10 +41,22 @@ use tower_http::ServiceBuilderExt;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
+#[derive(Copy, Clone, Default)]
 pub enum DefaultVersion {
     V05,
     V06,
+    #[default]
     V07,
+}
+
+impl DefaultVersion {
+    fn to_str(&self) -> &'static str {
+        match self {
+            DefaultVersion::V05 => "v0.5",
+            DefaultVersion::V06 => "v0.6",
+            DefaultVersion::V07 => "v0.7",
+        }
+    }
 }
 
 pub struct RpcServer {

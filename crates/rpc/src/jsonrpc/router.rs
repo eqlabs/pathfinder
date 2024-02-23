@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
+use crate::dto::SerializeForVersion;
+use crate::DefaultVersion;
 use axum::async_trait;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -8,7 +10,6 @@ use axum::response::IntoResponse;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_json::value::RawValue;
 use serde_json::Value;
 use tracing::Instrument;
@@ -22,12 +23,12 @@ use crate::jsonrpc::response::{RpcResponse, RpcResult};
 pub struct RpcRouter {
     context: RpcContext,
     methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
-    version: &'static str,
+    version: DefaultVersion,
 }
 
 pub struct RpcRouterBuilder {
     methods: HashMap<&'static str, Box<dyn RpcMethod>>,
-    version: &'static str,
+    version: DefaultVersion,
 }
 
 impl RpcRouterBuilder {
@@ -63,7 +64,7 @@ impl RpcRouterBuilder {
         }
     }
 
-    fn new(version: &'static str) -> Self {
+    fn new(version: DefaultVersion) -> Self {
         RpcRouterBuilder {
             methods: Default::default(),
             version,
@@ -72,7 +73,7 @@ impl RpcRouterBuilder {
 }
 
 impl RpcRouter {
-    pub fn builder(version: &'static str) -> RpcRouterBuilder {
+    pub fn builder(version: DefaultVersion) -> RpcRouterBuilder {
         RpcRouterBuilder::new(version)
     }
 
@@ -98,9 +99,9 @@ impl RpcRouter {
             return Some(RpcResponse::method_not_found(request.id));
         };
 
-        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version);
+        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version.to_str());
 
-        let method = method.invoke(self.context.clone(), request.params);
+        let method = method.invoke(self.context.clone(), request.params, self.version);
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
         let output = match result {
@@ -114,7 +115,7 @@ impl RpcRouter {
         };
 
         if output.is_err() {
-            metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => self.version);
+            metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => self.version.to_str());
         }
 
         Some(RpcResponse {
@@ -236,7 +237,12 @@ pub async fn rpc_handler(
 
 #[axum::async_trait]
 pub trait RpcMethod: Send + Sync {
-    async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult;
+    async fn invoke<'a>(
+        &self,
+        state: RpcContext,
+        input: RawParams<'a>,
+        version: DefaultVersion,
+    ) -> RpcResult;
 }
 
 /// Utility trait which automates the serde of an RPC methods input and output.
@@ -270,7 +276,7 @@ where
 mod sealed {
     use std::marker::PhantomData;
 
-    use crate::jsonrpc::error::RpcError;
+    use crate::{jsonrpc::error::RpcError, DefaultVersion};
 
     use super::*;
 
@@ -297,7 +303,7 @@ mod sealed {
     where
         F: Fn(RpcContext, Input) -> Fut + Sync + Send + 'static,
         Input: DeserializeOwned + Send + Sync + 'static,
-        Output: Serialize + Send + Sync + 'static,
+        Output: SerializeForVersion + Send + Sync + 'static,
         Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -312,14 +318,22 @@ mod sealed {
             where
                 F: Fn(RpcContext, Input) -> Fut + Sync + Send,
                 Input: DeserializeOwned + Send + Sync,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    state: RpcContext,
+                    input: RawParams<'a>,
+                    version: DefaultVersion,
+                ) -> RpcResult {
                     let input = input.deserialize()?;
-                    let output = (self.f)(state, input).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)(state, input)
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(version)
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -338,7 +352,7 @@ mod sealed {
     where
         F: Fn(Input) -> Fut + Sync + Send + 'static,
         Input: DeserializeOwned + Sync + Send + 'static,
-        Output: Serialize + Sync + Send + 'static,
+        Output: SerializeForVersion + Sync + Send + 'static,
         Error: Into<RpcError> + Sync + Send + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -353,14 +367,22 @@ mod sealed {
             where
                 F: Fn(Input) -> Fut + Sync + Send,
                 Input: DeserializeOwned + Send + Sync,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    _state: RpcContext,
+                    input: RawParams<'a>,
+                    version: DefaultVersion,
+                ) -> RpcResult {
                     let input = input.deserialize()?;
-                    let output = (self.f)(input).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)(input)
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(version)
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -378,7 +400,7 @@ mod sealed {
     impl<'a, F, Output, Error, Fut> Sealed<(), ((), Output), ((), RpcContext)> for F
     where
         F: Fn(RpcContext) -> Fut + Sync + Send + 'static,
-        Output: Serialize + Sync + Send + 'static,
+        Output: SerializeForVersion + Sync + Send + 'static,
         Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -392,18 +414,26 @@ mod sealed {
             impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
             where
                 F: Fn(RpcContext) -> Fut + Sync + Send,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    state: RpcContext,
+                    input: RawParams<'a>,
+                    version: DefaultVersion,
+                ) -> RpcResult {
                     if !input.is_empty() {
                         return Err(RpcError::InvalidParams(
                             "This method takes no inputs".to_owned(),
                         ));
                     }
-                    let output = (self.f)(state).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)(state)
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(version)
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -421,7 +451,7 @@ mod sealed {
     impl<'a, F, Output, Error, Fut> Sealed<(), (), ((), Output)> for F
     where
         F: Fn() -> Fut + Sync + Send + 'static,
-        Output: Serialize + Sync + Send + 'static,
+        Output: SerializeForVersion + Sync + Send + 'static,
         Error: Into<RpcError> + Sync + Send + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -435,18 +465,26 @@ mod sealed {
             impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
             where
                 F: Fn() -> Fut + Sync + Send,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    _state: RpcContext,
+                    input: RawParams<'a>,
+                    version: DefaultVersion,
+                ) -> RpcResult {
                     if !input.is_empty() {
                         return Err(RpcError::InvalidParams(
                             "This method takes no inputs".to_owned(),
                         ));
                     }
-                    let output = (self.f)().await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)()
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(version)
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -475,14 +513,20 @@ mod sealed {
             where
                 F: Fn() -> &'static str + Sync + Send,
             {
-                async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    _state: RpcContext,
+                    input: RawParams<'a>,
+                    version: DefaultVersion,
+                ) -> RpcResult {
                     if !input.is_empty() {
                         return Err(RpcError::InvalidParams(
                             "This method takes no inputs".to_owned(),
                         ));
                     }
-                    let output = (self.f)();
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)()
+                        .serialize(version)
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
             Box::new(Helper { f: self })
@@ -566,6 +610,7 @@ where
 mod tests {
     use super::*;
     use serde::Deserialize;
+    use serde::Serialize;
     use serde_json::json;
 
     async fn spawn_server(router: RpcRouter) -> String {
@@ -638,7 +683,7 @@ mod tests {
                 ]))
             }
 
-            RpcRouter::builder("vTEST")
+            RpcRouter::builder(DefaultVersion::default())
                 .register("subtract", subtract)
                 .register("sum", sum)
                 .register("get_data", get_data)
@@ -799,7 +844,7 @@ mod tests {
                 "Success"
             }
 
-            RpcRouter::builder("vTest")
+            RpcRouter::builder(Default::default())
                 .register("panic", always_panic)
                 .register("success", always_success)
                 .build(RpcContext::for_tests())
@@ -844,7 +889,7 @@ mod tests {
             Ok(json!("Success"))
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -874,7 +919,7 @@ mod tests {
             Ok(json!("Success"))
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -911,7 +956,7 @@ mod tests {
             Ok(json!("Success"))
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -944,7 +989,7 @@ mod tests {
             "Success"
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -988,7 +1033,7 @@ mod tests {
             "Success"
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
