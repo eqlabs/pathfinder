@@ -182,18 +182,17 @@ impl Client {
         }
     }
 
+    // TODO I'm now realizing that in order to do anything useful, we have to get all transactions
+    // for a block. So this should really return Vec<Transaction> and I don't really need to fetch
+    // transaction counts from the DB because the transaction count should be either zero OR there
+    // all the transacations should be present (i.e. the transaction update should happen in a
+    // commitment which includes all the transactions).
     pub fn transaction_stream(
         self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        reverse: bool,
-    ) -> impl futures::Stream<Item = PeerData<(pathfinder_common::TransactionHash, RawTransactionVariant)>>
-    {
-        let (mut start, stop, direction) = match reverse {
-            true => (stop, start, Direction::Backward),
-            false => (start, stop, Direction::Forward),
-        };
-
+        block: BlockNumber,
+    ) -> impl futures::Stream<
+        Item = PeerData<Vec<(pathfinder_common::TransactionHash, RawTransactionVariant)>>,
+    > {
         async_stream::stream! {
             // Loop which refreshes peer set once we exhaust it.
             loop {
@@ -203,13 +202,11 @@ impl Client {
 
                 // Attempt each peer.
                 'next_peer: for peer in peers {
-                    let limit = start.get().max(stop.get()) - start.get().min(stop.get());
-
                     let request = TransactionsRequest {
                         iteration: Iteration {
-                            start: start.get().into(),
-                            direction,
-                            limit,
+                            start: block.get().into(),
+                            direction: Direction::Forward,
+                            limit: 1,
                             step: 1.into(),
                         },
                     };
@@ -224,10 +221,14 @@ impl Client {
                         }
                     };
 
+                    let mut transactions = Vec::new();
                     while let Some(transaction) = responses.next().await {
-                        let transaction = match transaction {
+                        match transaction {
                             TransactionsResponse::Transaction(tx) => match RawTransactionVariant::try_from_dto(tx.variant) {
-                                Ok(variant) => (pathfinder_common::TransactionHash(tx.hash.0), variant),
+                                Ok(variant) => transactions.push((
+                                    pathfinder_common::TransactionHash(tx.hash.0),
+                                    variant
+                                )),
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Transaction stream failed");
                                     continue 'next_peer;
@@ -235,18 +236,10 @@ impl Client {
                             },
                             TransactionsResponse::Fin => {
                                 tracing::debug!(%peer, "Transaction stream Fin");
+                                yield PeerData::new(peer, transactions);
                                 continue 'next_peer;
                             }
                         };
-
-                        start = match direction {
-                            Direction::Forward => start + 1,
-                            // unwrap_or_default is safe as this is the genesis edge case,
-                            // at which point the loop will complete at the end of this iteration.
-                            Direction::Backward => start.parent().unwrap_or_default(),
-                        };
-
-                        yield PeerData::new(peer, transaction);
                     }
                 }
             }

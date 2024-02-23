@@ -290,67 +290,15 @@ pub(super) fn block_header(
         BlockId::Hash(_) => format!("{BASE_SQL} WHERE hash = ?"),
     };
 
-    let parse_row = |row: &rusqlite::Row<'_>| {
-        let number = row.get_block_number("number")?;
-        let hash = row.get_block_hash("hash")?;
-        let storage_commitment = row.get_storage_commitment("storage_commitment")?;
-        let timestamp = row.get_timestamp("timestamp")?;
-        let eth_l1_gas_price = row.get_gas_price("eth_l1_gas_price")?;
-        let strk_l1_gas_price = row
-            .get_optional_gas_price("strk_l1_gas_price")?
-            .unwrap_or(GasPrice::ZERO);
-        let eth_l1_data_gas_price = row
-            .get_optional_gas_price("eth_l1_data_gas_price")?
-            .unwrap_or(GasPrice::ZERO);
-        let strk_l1_data_gas_price = row
-            .get_optional_gas_price("strk_l1_data_gas_price")?
-            .unwrap_or(GasPrice::ZERO);
-        let sequencer_address = row.get_sequencer_address("sequencer_address")?;
-        let transaction_commitment = row.get_transaction_commitment("transaction_commitment")?;
-        let event_commitment = row.get_event_commitment("event_commitment")?;
-        let class_commitment = row.get_class_commitment("class_commitment")?;
-        let starknet_version = row.get_starknet_version("version")?;
-        let event_count: usize = row.get("event_count")?;
-        let transaction_count: usize = row.get("transaction_count")?;
-        let state_commitment = row.get_state_commitment("state_commitment")?;
-        let l1_da_mode = row.get_l1_da_mode("l1_da_mode")?;
-
-        let header = BlockHeader {
-            hash,
-            number,
-            timestamp,
-            eth_l1_gas_price,
-            strk_l1_gas_price,
-            eth_l1_data_gas_price,
-            strk_l1_data_gas_price,
-            sequencer_address,
-            class_commitment,
-            event_commitment,
-            state_commitment,
-            storage_commitment,
-            transaction_commitment,
-            starknet_version,
-            transaction_count,
-            event_count,
-            l1_da_mode,
-            // TODO: store block hash in-line.
-            // This gets filled in by a separate query, but really should get stored as a column in
-            // order to support truncated history.
-            parent_hash: BlockHash::default(),
-        };
-
-        Ok(header)
-    };
-
     let mut stmt = tx
         .inner()
         .prepare_cached(&sql)
         .context("Preparing block header query")?;
 
     let header = match block {
-        BlockId::Latest => stmt.query_row([], parse_row),
-        BlockId::Number(number) => stmt.query_row(params![&number], parse_row),
-        BlockId::Hash(hash) => stmt.query_row(params![&hash], parse_row),
+        BlockId::Latest => stmt.query_row([], parse_row_as_header),
+        BlockId::Number(number) => stmt.query_row(params![&number], parse_row_as_header),
+        BlockId::Hash(hash) => stmt.query_row(params![&hash], parse_row_as_header),
     }
     .optional()
     .context("Querying for block header")?;
@@ -376,6 +324,58 @@ pub(super) fn block_header(
     Ok(Some(header))
 }
 
+fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader> {
+    let number = row.get_block_number("number")?;
+    let hash = row.get_block_hash("hash")?;
+    let storage_commitment = row.get_storage_commitment("storage_commitment")?;
+    let timestamp = row.get_timestamp("timestamp")?;
+    let eth_l1_gas_price = row.get_gas_price("eth_l1_gas_price")?;
+    let strk_l1_gas_price = row
+        .get_optional_gas_price("strk_l1_gas_price")?
+        .unwrap_or(GasPrice::ZERO);
+    let eth_l1_data_gas_price = row
+        .get_optional_gas_price("eth_l1_data_gas_price")?
+        .unwrap_or(GasPrice::ZERO);
+    let strk_l1_data_gas_price = row
+        .get_optional_gas_price("strk_l1_data_gas_price")?
+        .unwrap_or(GasPrice::ZERO);
+    let sequencer_address = row.get_sequencer_address("sequencer_address")?;
+    let transaction_commitment = row.get_transaction_commitment("transaction_commitment")?;
+    let event_commitment = row.get_event_commitment("event_commitment")?;
+    let class_commitment = row.get_class_commitment("class_commitment")?;
+    let starknet_version = row.get_starknet_version("version")?;
+    let event_count: usize = row.get("event_count")?;
+    let transaction_count: usize = row.get("transaction_count")?;
+    let state_commitment = row.get_state_commitment("state_commitment")?;
+    let l1_da_mode = row.get_l1_da_mode("l1_da_mode")?;
+
+    let header = BlockHeader {
+        hash,
+        number,
+        timestamp,
+        eth_l1_gas_price,
+        strk_l1_gas_price,
+        eth_l1_data_gas_price,
+        strk_l1_data_gas_price,
+        sequencer_address,
+        class_commitment,
+        event_commitment,
+        state_commitment,
+        storage_commitment,
+        transaction_commitment,
+        starknet_version,
+        transaction_count,
+        event_count,
+        l1_da_mode,
+        // TODO: store block hash in-line.
+        // This gets filled in by a separate query, but really should get stored as a column in
+        // order to support truncated history.
+        parent_hash: BlockHash::default(),
+    };
+
+    Ok(header)
+}
+
 pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
     let Some(l1_l2) = tx.l1_l2_pointer().context("Querying L1-L2 pointer")? else {
         return Ok(false);
@@ -388,27 +388,28 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
     Ok(block_number <= l1_l2)
 }
 
-pub(super) fn blocks_with_missing_transactions(
+pub(super) fn blocks_without_transactions(
     tx: &Transaction<'_>,
     before_block: Option<BlockNumber>,
     limit: u64,
-) -> anyhow::Result<Vec<(BlockNumber, u64)>> {
+) -> anyhow::Result<Vec<BlockHeader>> {
     let before_block = before_block.unwrap_or(BlockNumber::MAX);
 
     let mut stmt = tx
         .inner()
         .prepare(
-            "SELECT
-                block_headers.number,
-                block_headers.transaction_count
+            "
+            SELECT *
             FROM block_headers
-            JOIN starknet_transactions ON starknet_transactions.block_hash = block_headers.hash
+            LEFT JOIN starknet_transactions ON starknet_transactions.block_hash = block_headers.hash
+            LEFT JOIN starknet_versions ON block_headers.version_id = starknet_versions.id
             GROUP BY block_headers.hash
             HAVING
-                COUNT(starknet_transactions.idx) <> block_headers.transaction_count AND
+                COUNT(starknet_transactions.idx) = 0 AND
                 block_headers.number < ?
             ORDER BY block_headers.number DESC
-            LIMIT ?;",
+            LIMIT ?;
+            ",
         )
         .context("Preparing blocks_missing_transactions query")?;
 
@@ -418,7 +419,7 @@ pub(super) fn blocks_with_missing_transactions(
 
     let mut data = Vec::new();
     while let Some(row) = rows.next()? {
-        data.push((row.get_block_number(0)?, row.get_i64(1)?.try_into()?));
+        data.push(parse_row_as_header(row)?);
     }
     Ok(data)
 }

@@ -3,6 +3,7 @@ mod headers;
 mod transactions;
 
 use anyhow::Context;
+use futures::StreamExt;
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
@@ -83,7 +84,6 @@ impl Sync {
                 .await
                 .context("Finding next gap in header chain")?
         {
-            use futures::StreamExt;
             use futures::TryStreamExt;
 
             // TODO: create a tracing scope for this gap start, stop.
@@ -133,16 +133,60 @@ impl Sync {
         Ok(())
     }
 
-    /// Syncs all transactions in reverse chronological order, from the anchor point
-    /// back to genesis. Fills in any gaps left by previous header syncs.
-    ///
-    /// As sync goes backwards from a known L1 anchor block, this method can
-    /// guarantee that all sync'd headers are secured by L1.
-    ///
-    /// No guarantees are made about any headers newer than the anchor.
     async fn sync_transactions(&self) -> anyhow::Result<()> {
-        //let mut before_block = None;
-        todo!()
+        let mut last_block = None;
+        loop {
+            let blocks =
+                transactions::blocks_without_transactions(self.storage.clone(), last_block)
+                    .await
+                    .context("Querying for blocks without transactions")?;
+            if blocks.is_empty() {
+                if last_block.is_none() {
+                    tracing::info!("No blocks without transactions, transaction sync complete");
+                    return Ok(());
+                }
+
+                // End reached, but more blocks might have been inserted. Start over.
+                last_block = None;
+                continue;
+            }
+            for block in blocks {
+                let transaction_stream = self.p2p.clone().transaction_stream(block.number);
+                futures::pin_mut!(transaction_stream);
+                loop {
+                    let transactions = transaction_stream.next().await.ok_or_else(|| {
+                        anyhow::anyhow!("Transaction stream ended, this should never happen")
+                    })?;
+                    if transactions.data.len() != block.transaction_count {
+                        continue;
+                    }
+                    // TODO Check transaction commitment, could fetch this in blocks_without_transactions.
+                    // If commitment is invalid, continue.
+                    // This will have to wait until the client types are removed and we're using
+                    // pathfinder_common everywhere.
+
+                    let mut connection = self
+                        .storage
+                        .connection()
+                        .context("Creating database connection")?;
+                    let db_transaction = connection
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    /*
+                    transactions::insert_transactions(
+                        self.storage.clone(),
+                        block,
+                        todo!("transactions.data once pathfinder_common is used everywhere"),
+                    )
+                    .await
+                    .context("Inserting transactions")?;
+                    */
+
+                    break;
+                }
+                last_block = Some(block.number);
+            }
+        }
     }
 }
 
