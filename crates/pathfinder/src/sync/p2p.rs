@@ -17,6 +17,7 @@ use crate::state::block_hash::{
 };
 
 /// Provides P2P sync capability for blocks secured by L1.
+#[derive(Clone)]
 pub struct Sync {
     storage: Storage,
     p2p: P2PClient,
@@ -67,10 +68,19 @@ impl Sync {
             .await
             .context("Persisting new Ethereum anchor")?;
 
+        let sync = self.clone();
+        tokio::spawn(async move {
+            // Sync missing transactions.
+            while let Err(e) = sync.sync_transactions().await {
+                tracing::info!(%e, "Error while syncing transactions, retrying");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        });
+
         // Sync missing headers in reverse chronological order, from the new anchor to genesis.
         self.sync_headers(anchor).await.context("Syncing headers")?;
 
-        // Sync the rest of the data in chronological order.
+        // Sync the rest of the headers and transactions in chronological order.
 
         Ok(())
     }
@@ -146,8 +156,11 @@ impl Sync {
                     .context("Querying for blocks without transactions")?;
             if blocks.is_empty() {
                 if last_block.is_none() {
-                    tracing::info!("No blocks without transactions, transaction sync complete");
-                    return Ok(());
+                    // End reached and no blocks were inserted. Wait for new blocks.
+                    // TODO Ideally this would be signaled over a channel or something, by the
+                    // main sync task?
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
                 }
 
                 // End reached, but more blocks might have been inserted. Start over.
@@ -180,13 +193,6 @@ impl Sync {
 
                     last_block = Some(block.number);
 
-                    let mut connection = self
-                        .storage
-                        .connection()
-                        .context("Creating database connection")?;
-                    let db_transaction = connection
-                        .transaction()
-                        .context("Creating database transaction")?;
                     transactions::insert_transactions(
                         self.storage.clone(),
                         block,

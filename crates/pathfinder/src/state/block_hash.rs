@@ -310,7 +310,6 @@ impl TransactionCommitmentFinalHashType {
     }
 }
 
-// TODO This is how you verify transaction commitments
 /// Calculate transaction commitment hash value.
 ///
 /// The transaction commitment is the root of the Patricia Merkle tree with height 64

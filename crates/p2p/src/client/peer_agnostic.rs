@@ -173,11 +173,6 @@ impl Client {
         }
     }
 
-    // TODO I'm now realizing that in order to do anything useful, we have to get all transactions
-    // for a block. So this should really return Vec<Transaction> and I don't really need to fetch
-    // transaction counts from the DB because the transaction count should be either zero OR there
-    // all the transacations should be present (i.e. the transaction update should happen in a
-    // commitment which includes all the transactions).
     pub fn transaction_stream(
         self,
         block: BlockNumber,
