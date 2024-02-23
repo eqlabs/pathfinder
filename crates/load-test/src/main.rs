@@ -16,6 +16,10 @@ mod tasks;
 mod types;
 
 fn register_v05(attack: GooseAttack) -> GooseAttack {
+    use tasks::scripted::{
+        goerli_cairo0_scripted, goerli_cairo2_scripted, mainnet_scripted,
+        mainnet_scripted_without_huge_calls,
+    };
     use tasks::v05::*;
 
     attack
@@ -92,6 +96,22 @@ fn register_v05(attack: GooseAttack) -> GooseAttack {
         // composite scenario
         .register_scenario(
             scenario!("v05_block_explorer").register_transaction(transaction!(block_explorer)),
+        )
+        // scripted scenarios
+        .register_scenario(
+            scenario!("v06_scripted_mainnet").register_transaction(transaction!(mainnet_scripted)),
+        )
+        .register_scenario(
+            scenario!("v06_scripted_mainnet_without_huge_calls")
+                .register_transaction(transaction!(mainnet_scripted_without_huge_calls)),
+        )
+        .register_scenario(
+            scenario!("v06_scripted_goerli_cairo0")
+                .register_transaction(transaction!(goerli_cairo0_scripted)),
+        )
+        .register_scenario(
+            scenario!("v06_scripted_goerli_cairo2")
+                .register_transaction(transaction!(goerli_cairo2_scripted)),
         )
 }
 

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_executor::ExecutionState;
+use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 use serde_with::serde_as;
 
 use crate::{
@@ -143,7 +143,13 @@ pub async fn estimate_fee(
             }
         };
 
-        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            L1BlobDataAvailability::Disabled,
+        );
 
         let skip_validate = input
             .simulation_flags
@@ -409,37 +415,37 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 26571.into(),
+                gas_consumed: 2768.into(),
                 gas_price: 1.into(),
-                overall_fee: 26571.into(),
+                overall_fee: 2768.into(),
                 unit: PriceUnit::Wei,
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 3008.into(),
+                gas_consumed: 3020.into(),
                 gas_price: 1.into(),
-                overall_fee: 3008.into(),
+                overall_fee: 3020.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_expected = FeeEstimate {
-                gas_consumed: 1664.into(),
+                gas_consumed: 1674.into(),
                 gas_price: 1.into(),
-                overall_fee: 1664.into(),
+                overall_fee: 1674.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v0_expected = FeeEstimate {
-                gas_consumed: 872.into(),
+                gas_consumed: 880.into(),
                 gas_price: 1.into(),
-                overall_fee: 872.into(),
+                overall_fee: 880.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v3_expected = FeeEstimate {
-                gas_consumed: 1664.into(),
+                gas_consumed: 1674.into(),
                 // STRK gas price is 2
                 gas_price: 2.into(),
-                overall_fee: 3328.into(),
+                overall_fee: 3348.into(),
                 unit: PriceUnit::Fri,
             };
-            pretty_assertions_sorted::assert_eq!(
+            assert_eq!(
                 result,
                 vec![
                     declare_expected,

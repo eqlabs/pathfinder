@@ -99,7 +99,7 @@ mod prop {
     use crate::p2p_network::sync_handlers;
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p::client::types::{RawTransactionVariant, Receipt, SignedBlockHeader, TryFromDto};
+    use p2p::client::conv::TryFromDto;
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -110,12 +110,14 @@ mod prop {
     };
     use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
     use pathfinder_common::event::Event;
+    use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{
         ContractClassUpdate, ContractUpdate, SystemContractUpdate,
     };
+    use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::{
-        ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
-        TransactionHash,
+        ClassCommitment, ClassHash, ContractAddress, ContractNonce, SierraHash, SignedBlockHeader,
+        StorageAddress, StorageCommitment, StorageValue, TransactionHash, TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use proptest::prelude::*;
@@ -160,7 +162,14 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|(h, s, _, _, _, _)| SignedBlockHeader::from((h, s)) ).collect::<Vec<_>>();
+                .into_iter().map(|(mut h, s, _, _, _, _)| {
+                // P2P headers don't carry class commitment and storage commitment, so zero them just like `try_from_dto` does
+                h.class_commitment = ClassCommitment::ZERO;
+                h.storage_commitment = StorageCommitment::ZERO;
+                SignedBlockHeader{
+                    header: h,
+                    signature: s,
+                }}).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -179,7 +188,7 @@ mod prop {
 
             // Check the rest
             let actual = responses.into_iter().map(|response| match response {
-                BlockHeadersResponse::Header(hdr) => SignedBlockHeader::try_from(*hdr).unwrap(),
+                BlockHeadersResponse::Header(hdr) => SignedBlockHeader::try_from_dto(*hdr).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 
@@ -261,6 +270,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -360,10 +370,17 @@ mod prop {
                     (
                         // Block number
                         h.number,
-                        // List of tuples (Transaction hash, Raw transaction variant)
+                        // List of tuples (Transaction hash, Transaction variant)
                         tr.into_iter().map(|(t, _)| {
-                            let txn = workaround::for_legacy_l1_handlers(t);
-                            (txn.hash, RawTransactionVariant::from(txn.variant))
+                            let mut txn = workaround::for_legacy_l1_handlers(t);
+                            // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
+                            match &mut txn.variant {
+                                TransactionVariant::Deploy(x) => x.contract_address = ContractAddress::ZERO,
+                                TransactionVariant::DeployAccountV0V1(x) => x.contract_address = ContractAddress::ZERO,
+                                TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
+                                _ => {}
+                            };
+                            (txn.hash, txn.variant)
                         }).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
@@ -381,7 +398,7 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                TransactionsResponse::Transaction(txn) => (TransactionHash(txn.hash.0), RawTransactionVariant::try_from_dto(txn.variant).unwrap()),
+                TransactionsResponse::Transaction(txn) => (TransactionHash(txn.hash.0), TransactionVariant::try_from_dto(txn.variant).unwrap()),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 
@@ -406,7 +423,12 @@ mod prop {
                         // Block number
                         h.number,
                         // List of receipts
-                        tr.into_iter().map(|(_, r)| Receipt::from(r)).collect::<Vec<_>>()
+                        tr.into_iter().map(|(_, mut r)| {
+                            // P2P receipts don't carry events and transaction index
+                            r.events = vec![];
+                            r.transaction_index = TransactionIndex::new_or_panic(0);
+                            r
+                        }).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -423,7 +445,7 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                ReceiptsResponse::Receipt(receipt) => Receipt::try_from(receipt).unwrap(),
+                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto(receipt).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 

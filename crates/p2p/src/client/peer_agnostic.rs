@@ -6,7 +6,6 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
 use futures::StreamExt;
 use libp2p::PeerId;
 use p2p_proto::{
@@ -17,20 +16,11 @@ use p2p_proto::{
     header::{BlockHeadersRequest, BlockHeadersResponse},
     transaction::TransactionsResponse,
 };
-use pathfinder_common::{
-    transaction::{DeployAccountTransactionV0V1, DeployAccountTransactionV3, TransactionVariant},
-    BlockNumber,
-};
-use pathfinder_common::{BlockHash, ContractAddress};
-
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use pathfinder_common::{transaction::Transaction, BlockNumber, SignedBlockHeader};
 use tokio::sync::RwLock;
 
-use crate::client::types::{RawDeployAccountTransaction, SignedBlockHeader};
-use crate::client::{peer_aware, types::TryFromDto};
+use crate::client::{conv::TryFromDto, peer_aware};
 use crate::sync::protocol;
-
-use super::types::RawTransactionVariant;
 
 /// Data received from a specific peer.
 #[derive(Debug)]
@@ -153,7 +143,8 @@ impl Client {
 
                     while let Some(signed_header) = responses.next().await {
                         let signed_header = match signed_header {
-                            BlockHeadersResponse::Header(hdr) => match SignedBlockHeader::try_from(*hdr) {
+                            BlockHeadersResponse::Header(hdr) =>
+                            match SignedBlockHeader::try_from_dto(*hdr) {
                                 Ok(hdr) => hdr,
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Header stream failed");
@@ -190,9 +181,7 @@ impl Client {
     pub fn transaction_stream(
         self,
         block: BlockNumber,
-    ) -> impl futures::Stream<
-        Item = PeerData<Vec<(pathfinder_common::TransactionHash, RawTransactionVariant)>>,
-    > {
+    ) -> impl futures::Stream<Item = PeerData<Vec<Transaction>>> {
         async_stream::stream! {
             // Loop which refreshes peer set once we exhaust it.
             loop {
@@ -224,11 +213,8 @@ impl Client {
                     let mut transactions = Vec::new();
                     while let Some(transaction) = responses.next().await {
                         match transaction {
-                            TransactionsResponse::Transaction(tx) => match RawTransactionVariant::try_from_dto(tx.variant) {
-                                Ok(variant) => transactions.push((
-                                    pathfinder_common::TransactionHash(tx.hash.0),
-                                    variant
-                                )),
+                            TransactionsResponse::Transaction(tx) => match Transaction::try_from_dto(tx.variant) {
+                                Ok(tx) => transactions.push(tx),
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Transaction stream failed");
                                     continue 'next_peer;
@@ -245,71 +231,6 @@ impl Client {
             }
         }
     }
-}
-
-// TODO
-/// Does not block the current thread.
-async fn _compute_contract_addresses(
-    deploy_account: HashMap<BlockHash, Vec<super::types::RawDeployAccountTransaction>>,
-) -> anyhow::Result<Vec<(BlockHash, Vec<TransactionVariant>)>> {
-    let jh = tokio::task::spawn_blocking(move || {
-        // Now we can compute the missing addresses
-        let computed: Vec<_> = deploy_account
-            .into_par_iter()
-            .map(|(block_hash, transactions)| {
-                (
-                    block_hash,
-                    transactions
-                        .into_par_iter()
-                        .map(|t| match t {
-                            RawDeployAccountTransaction::DeployAccountV0V1(x) => {
-                                let contract_address = ContractAddress::deployed_contract_address(
-                                    x.constructor_calldata.iter().copied(),
-                                    &x.contract_address_salt,
-                                    &x.class_hash,
-                                );
-                                TransactionVariant::DeployAccountV0V1(
-                                    DeployAccountTransactionV0V1 {
-                                        contract_address,
-                                        max_fee: x.max_fee,
-                                        version: x.version,
-                                        signature: x.signature,
-                                        nonce: x.nonce,
-                                        contract_address_salt: x.contract_address_salt,
-                                        constructor_calldata: x.constructor_calldata,
-                                        class_hash: x.class_hash,
-                                    },
-                                )
-                            }
-                            RawDeployAccountTransaction::DeployAccountV3(x) => {
-                                let contract_address = ContractAddress::deployed_contract_address(
-                                    x.constructor_calldata.iter().copied(),
-                                    &x.contract_address_salt,
-                                    &x.class_hash,
-                                );
-                                TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
-                                    contract_address,
-                                    signature: x.signature,
-                                    nonce: x.nonce,
-                                    nonce_data_availability_mode: x.nonce_data_availability_mode,
-                                    fee_data_availability_mode: x.fee_data_availability_mode,
-                                    resource_bounds: x.resource_bounds,
-                                    tip: x.tip,
-                                    paymaster_data: x.paymaster_data,
-                                    contract_address_salt: x.contract_address_salt,
-                                    constructor_calldata: x.constructor_calldata,
-                                    class_hash: x.class_hash,
-                                })
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect();
-        computed
-    });
-    let computed = jh.await.context("task ended unexpectedly")?;
-    Ok(computed)
 }
 
 #[derive(Clone, Debug)]

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Context;
 use pathfinder_common::BlockHash;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
@@ -22,17 +21,21 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     sequencer: S,
     poll_interval: std::time::Duration,
     storage: Storage,
-) -> anyhow::Result<()> {
+) {
     let mut prev_tx_count = 0;
     let mut prev_hash = BlockHash::default();
 
     loop {
         let t_fetch = Instant::now();
 
-        let (block, state_update) = sequencer
-            .pending_block()
-            .await
-            .context("Downloading pending block and state update")?;
+        let (block, state_update) = match sequencer.pending_block().await {
+            Ok(r) => r,
+            Err(err) => {
+                tracing::debug!(%err, "Failed to fetch pending block");
+                tokio::time::sleep_until(t_fetch + poll_interval).await;
+                continue;
+            }
+        };
 
         // Use the transaction count as a proxy for freshness of the pending data.
         //
@@ -64,10 +67,13 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
             tracing::trace!("Emitting a pending update");
             let block = Arc::new(block);
             let state_update = Arc::new(state_update);
-            tx_event
+            if let Err(e) = tx_event
                 .send(SyncEvent::Pending((block, state_update)))
                 .await
-                .context("Event channel closed")?;
+            {
+                tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
+                break;
+            }
         }
 
         tokio::time::sleep_until(t_fetch + poll_interval).await;

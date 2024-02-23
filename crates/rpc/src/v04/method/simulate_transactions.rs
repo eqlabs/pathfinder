@@ -5,7 +5,7 @@ pub(crate) mod tests {
         BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1,
     };
     use crate::v02::types::ContractClass;
-    use pathfinder_common::{macro_prelude::*, Fee};
+    use pathfinder_common::{macro_prelude::*, Fee, StarknetVersion};
     use pathfinder_common::{
         //felt,
         BlockHeader,
@@ -115,7 +115,9 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) async fn setup_storage() -> (
+    pub(crate) async fn setup_storage_with_starknet_version(
+        version: StarknetVersion,
+    ) -> (
         Storage,
         BlockHeader,
         ContractAddress,
@@ -127,7 +129,7 @@ pub(crate) mod tests {
 
         // set test storage variable
         let (storage, last_block_header, account_contract_address, universal_deployer_address) =
-            crate::test_setup::test_storage(|state_update| {
+            crate::test_setup::test_storage(version, |state_update| {
                 state_update.with_storage_update(
                     fixtures::DEPLOYED_CONTRACT_ADDRESS,
                     test_storage_key,
@@ -143,5 +145,15 @@ pub(crate) mod tests {
             universal_deployer_address,
             test_storage_value,
         )
+    }
+
+    pub(crate) async fn setup_storage() -> (
+        Storage,
+        BlockHeader,
+        ContractAddress,
+        ContractAddress,
+        StorageValue,
+    ) {
+        setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 0)).await
     }
 }

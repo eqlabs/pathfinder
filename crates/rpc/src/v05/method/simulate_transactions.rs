@@ -5,7 +5,9 @@ use crate::{
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{types::TransactionSimulation, TransactionExecutionError};
+use pathfinder_executor::{
+    types::TransactionSimulation, L1BlobDataAvailability, TransactionExecutionError,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -123,8 +125,13 @@ pub async fn simulate_transactions(
             }
         };
 
-        let state =
-            pathfinder_executor::ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = pathfinder_executor::ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            L1BlobDataAvailability::Disabled,
+        );
 
         let transactions = input
             .transactions
@@ -584,9 +591,9 @@ pub(crate) mod tests {
             SimulatedTransaction {
                 fee_estimation:
                     FeeEstimate {
-                        gas_consumed: 2213.into(),
+                        gas_consumed: 2222.into(),
                         gas_price: 1.into(),
-                        overall_fee: 2213.into(),
+                        overall_fee: 2222.into(),
                     }
                 ,
                 transaction_trace:
@@ -694,7 +701,7 @@ pub(crate) mod tests {
 
         let result = simulate_transactions(context, input).await.unwrap();
 
-        const DECLARE_GAS_CONSUMED: u64 = 17116;
+        const DECLARE_GAS_CONSUMED: u64 = 1666;
         use super::dto::*;
         use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
 
@@ -762,7 +769,7 @@ pub(crate) mod tests {
                             storage_entries: vec![
                                 StorageEntry {
                                     key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                                    value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffbd24")
+                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff97e")
                                 },
                                 StorageEntry {
                                     key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -809,7 +816,7 @@ pub(crate) mod tests {
             use super::dto::*;
             use super::*;
 
-            const DECLARE_GAS_CONSUMED: u64 = 26571;
+            const DECLARE_GAS_CONSUMED: u64 = 2768;
 
             pub fn declare(
                 account_contract_address: ContractAddress,
@@ -902,7 +909,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9835")
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff530")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -966,7 +973,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3008;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3020;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -1089,7 +1096,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff8c75")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe964")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1263,7 +1270,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_GAS_CONSUMED: u64 = 1664;
+            const INVOKE_GAS_CONSUMED: u64 = 1674;
 
             pub fn invoke(
                 account_contract_address: ContractAddress,
@@ -1368,7 +1375,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff85f5")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe2da")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),

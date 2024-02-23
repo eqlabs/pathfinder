@@ -191,7 +191,11 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
 impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
     fn to_dto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
-        let revert_reason = self.1.revert_reason().unwrap_or_default();
+        let revert_reason = self
+            .1
+            .revert_reason()
+            .map(|x| x.to_owned())
+            .unwrap_or_default();
         let common = ReceiptCommon {
             transaction_hash: Hash(self.1.transaction_hash.0),
             actual_fee: self.1.actual_fee.unwrap_or_default().0,

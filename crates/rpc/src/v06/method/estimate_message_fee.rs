@@ -5,7 +5,7 @@ use pathfinder_common::{
     BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress, TransactionNonce,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{ExecutionState, IntoStarkFelt};
+use pathfinder_executor::{ExecutionState, IntoStarkFelt, L1BlobDataAvailability};
 use starknet_api::core::PatriciaKey;
 
 use crate::{context::RpcContext, error::ApplicationError, v06::method::estimate_fee::FeeEstimate};
@@ -129,7 +129,13 @@ pub(crate) async fn estimate_message_fee_impl(
             return Err(EstimateMessageFeeError::ContractNotFound);
         }
 
-        let state = ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            L1BlobDataAvailability::Disabled,
+        );
 
         let transaction = create_executor_transaction(input, context.chain_id)?;
 
@@ -364,15 +370,15 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
-            gas_consumed: 16299.into(),
+            gas_consumed: 16302.into(),
             gas_price: 1.into(),
-            overall_fee: 16299.into(),
+            overall_fee: 16302.into(),
             unit: PriceUnit::Wei,
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");
         let result = estimate_message_fee(rpc, input()).await.expect("result");
-        pretty_assertions_sorted::assert_eq!(result, expected);
+        assert_eq!(result, expected);
     }
 
     #[tokio::test]
