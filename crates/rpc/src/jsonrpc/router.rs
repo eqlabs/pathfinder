@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
-use crate::dto::SerializeForVersion;
+use crate::dto::serialize::SerializeForVersion;
 use crate::DefaultVersion;
 use axum::async_trait;
 use axum::extract::State;
@@ -276,7 +276,7 @@ where
 mod sealed {
     use std::marker::PhantomData;
 
-    use crate::{dto::Serializer, jsonrpc::error::RpcError, DefaultVersion};
+    use crate::{dto::serialize::Serializer, jsonrpc::error::RpcError, DefaultVersion};
 
     use super::*;
 

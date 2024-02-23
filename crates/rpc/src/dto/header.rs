@@ -1,6 +1,6 @@
 use pathfinder_common::GasPrice;
 
-use crate::dto::SerializeForVersion;
+use crate::dto::serialize;
 use crate::DefaultVersion;
 
 pub struct BlockHeader<'a>(&'a pathfinder_common::BlockHeader);
@@ -9,8 +9,11 @@ pub struct ResourcePrice<'a> {
     price_in_wei: &'a GasPrice,
 }
 
-impl SerializeForVersion for BlockHeader<'_> {
-    fn serialize(&self, serializer: super::Serializer) -> Result<super::Ok, super::Error> {
+impl serialize::SerializeForVersion for BlockHeader<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
         let count = match serializer.version {
             DefaultVersion::V05 | DefaultVersion::V06 => 8,
             DefaultVersion::V07 => 10,
@@ -55,8 +58,11 @@ impl SerializeForVersion for BlockHeader<'_> {
     }
 }
 
-impl SerializeForVersion for ResourcePrice<'_> {
-    fn serialize(&self, serializer: super::Serializer) -> Result<super::Ok, super::Error> {
+impl serialize::SerializeForVersion for ResourcePrice<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<super::serialize::Ok, super::serialize::Error> {
         let mut serializer = serializer.serialize_struct("RESOURCE_PRICE", 2)?;
 
         serializer.serialize_field("price_in_fri", &self.price_in_fri)?;
