@@ -80,7 +80,7 @@ impl Sync {
         // Sync missing headers in reverse chronological order, from the new anchor to genesis.
         self.sync_headers(anchor).await.context("Syncing headers")?;
 
-        // Sync the rest of the headers and transactions in chronological order.
+        // Sync the rest of the headers in chronological order.
 
         Ok(())
     }
