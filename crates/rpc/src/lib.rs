@@ -828,7 +828,6 @@ mod tests {
         "starknet_getTransactionStatus",
         "starknet_estimateFee",
         "starknet_estimateMessageFee",
-        "starknet_getBlockWithTxs",
         "starknet_getTransactionByBlockIdAndIndex",
         "starknet_getTransactionByHash",
     ])]
