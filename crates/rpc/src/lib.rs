@@ -50,7 +50,7 @@ pub enum DefaultVersion {
 }
 
 impl DefaultVersion {
-    fn to_str(&self) -> &'static str {
+    fn to_str(self) -> &'static str {
         match self {
             DefaultVersion::V05 => "v0.5",
             DefaultVersion::V06 => "v0.6",

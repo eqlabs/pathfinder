@@ -1,6 +1,4 @@
 use pathfinder_common::GasPrice;
-use serde::ser::SerializeStruct;
-use serde::Serializer;
 
 use crate::dto::SerializeForVersion;
 use crate::DefaultVersion;
@@ -12,47 +10,45 @@ pub struct ResourcePrice<'a> {
 }
 
 impl SerializeForVersion for BlockHeader<'_> {
-    fn serialize(&self, v: DefaultVersion) -> serde_json::Result<serde_json::Value> {
-        let x = &self.0;
-        let serializer = serde_json::value::Serializer;
-
-        let count = match v {
+    fn serialize(&self, serializer: super::Serializer) -> Result<super::Ok, super::Error> {
+        let count = match serializer.version {
             DefaultVersion::V05 | DefaultVersion::V06 => 8,
             DefaultVersion::V07 => 10,
         };
 
         let mut s = serializer.serialize_struct("BLOCK_HEADER", count)?;
 
-        x.hash.serialize_struct_field(v, "block_hash", &mut s)?;
-        x.parent_hash
-            .serialize_struct_field(v, "parent_hash", &mut s)?;
-        x.number.serialize_struct_field(v, "block_number", &mut s)?;
-        x.state_commitment
-            .serialize_struct_field(v, "new_root", &mut s)?;
-        x.timestamp.serialize_struct_field(v, "timestamp", &mut s)?;
-        x.sequencer_address
-            .serialize_struct_field(v, "sequencer_address", &mut s)?;
-        ResourcePrice {
-            price_in_fri: &x.strk_l1_gas_price,
-            price_in_wei: &x.eth_l1_gas_price,
-        }
-        .serialize_struct_field(v, "l1_gas_price", &mut s)?;
-        x.starknet_version
-            .serialize_struct_field(v, "starknet_version", &mut s)?;
+        s.serialize_field("block_hash", &self.0.hash)?;
+        s.serialize_field("parent_hash", &self.0.parent_hash)?;
+        s.serialize_field("block_number", &self.0.number)?;
+        s.serialize_field("timestamp", &self.0.timestamp)?;
+        s.serialize_field("new_root", &self.0.state_commitment)?;
+        s.serialize_field("sequencer_address", &self.0.sequencer_address)?;
+        s.serialize_field(
+            "l1_gas_price",
+            &ResourcePrice {
+                price_in_fri: &self.0.strk_l1_gas_price,
+                price_in_wei: &self.0.eth_l1_gas_price,
+            },
+        )?;
+        s.serialize_field("block_hash", &self.0.hash)?;
+        s.serialize_field("starknet_version", &self.0.starknet_version)?;
 
-        if v == DefaultVersion::V07 {
+        if s.version == DefaultVersion::V07 {
             // This is an anonymous enum defined inside BLOCK_HEADER so we handle it inline.
-            let l1_da_mode = match x.l1_da_mode {
+            let l1_da_mode = match self.0.l1_da_mode {
                 pathfinder_common::L1DataAvailabilityMode::Calldata => "CALLDATA",
                 pathfinder_common::L1DataAvailabilityMode::Blob => "BLOB",
             };
 
-            l1_da_mode.serialize_struct_field(v, "l1_da_mode", &mut s)?;
-            ResourcePrice {
-                price_in_fri: &x.strk_l1_data_gas_price,
-                price_in_wei: &x.eth_l1_data_gas_price,
-            }
-            .serialize_struct_field(v, "l1_data_gas_price", &mut s)?;
+            s.serialize_field("l1_da_mode", &l1_da_mode)?;
+            s.serialize_field(
+                "l1_data_gas_price",
+                &ResourcePrice {
+                    price_in_fri: &self.0.strk_l1_data_gas_price,
+                    price_in_wei: &self.0.eth_l1_data_gas_price,
+                },
+            )?;
         }
 
         s.end()
@@ -60,13 +56,11 @@ impl SerializeForVersion for BlockHeader<'_> {
 }
 
 impl SerializeForVersion for ResourcePrice<'_> {
-    fn serialize(&self, v: DefaultVersion) -> Result<serde_json::Value, serde_json::Error> {
-        let mut serializer = serde_json::value::Serializer.serialize_struct("RESOURCE_PRICE", 2)?;
+    fn serialize(&self, serializer: super::Serializer) -> Result<super::Ok, super::Error> {
+        let mut serializer = serializer.serialize_struct("RESOURCE_PRICE", 2)?;
 
-        self.price_in_fri
-            .serialize_struct_field(v, "price_in_fri", &mut serializer)?;
-        self.price_in_wei
-            .serialize_struct_field(v, "price_in_wei", &mut serializer)?;
+        serializer.serialize_field("price_in_fri", &self.price_in_fri)?;
+        serializer.serialize_field("price_in_wei", &self.price_in_wei)?;
 
         serializer.end()
     }

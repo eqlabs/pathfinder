@@ -276,7 +276,7 @@ where
 mod sealed {
     use std::marker::PhantomData;
 
-    use crate::{jsonrpc::error::RpcError, DefaultVersion};
+    use crate::{dto::Serializer, jsonrpc::error::RpcError, DefaultVersion};
 
     use super::*;
 
@@ -332,7 +332,7 @@ mod sealed {
                     (self.f)(state, input)
                         .await
                         .map_err(Into::into)?
-                        .serialize(version)
+                        .serialize(Serializer::new(version))
                         .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
@@ -381,7 +381,7 @@ mod sealed {
                     (self.f)(input)
                         .await
                         .map_err(Into::into)?
-                        .serialize(version)
+                        .serialize(Serializer::new(version))
                         .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
@@ -432,7 +432,7 @@ mod sealed {
                     (self.f)(state)
                         .await
                         .map_err(Into::into)?
-                        .serialize(version)
+                        .serialize(Serializer::new(version))
                         .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
@@ -483,7 +483,7 @@ mod sealed {
                     (self.f)()
                         .await
                         .map_err(Into::into)?
-                        .serialize(version)
+                        .serialize(Serializer::new(version))
                         .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
@@ -525,7 +525,7 @@ mod sealed {
                         ));
                     }
                     (self.f)()
-                        .serialize(version)
+                        .serialize(Serializer::new(version))
                         .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
