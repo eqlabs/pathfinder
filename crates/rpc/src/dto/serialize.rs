@@ -30,6 +30,15 @@ where
     }
 }
 
+impl Default for Serializer {
+    fn default() -> Self {
+        Self {
+            inner: BaseSerializer {},
+            version: Default::default(),
+        }
+    }
+}
+
 impl Serializer {
     pub fn new(version: DefaultVersion) -> Self {
         Self {
@@ -40,6 +49,11 @@ impl Serializer {
 
     pub fn serialize(self, value: &dyn SerializeForVersion) -> Result<Ok, Error> {
         value.serialize(self)
+    }
+
+    pub fn serialize_str(self, value: &str) -> Result<Ok, Error> {
+        use serde::Serializer;
+        self.inner.serialize_str(value)
     }
 
     pub fn serialize_struct(
