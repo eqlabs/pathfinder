@@ -81,19 +81,23 @@ pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
 ) -> Result<FeeEstimate, EstimateMessageFeeError> {
-    let result = estimate_message_fee_impl(context, input).await?;
+    let result =
+        estimate_message_fee_impl(context, input, L1BlobDataAvailability::Disabled).await?;
 
     Ok(FeeEstimate {
         gas_consumed: result.gas_consumed,
         gas_price: result.gas_price,
         overall_fee: result.overall_fee,
         unit: result.unit.into(),
+        data_gas_consumed: None,
+        data_gas_price: None,
     })
 }
 
 pub(crate) async fn estimate_message_fee_impl(
     context: RpcContext,
     input: EstimateMessageFeeInput,
+    l1_blob_data_availability: L1BlobDataAvailability,
 ) -> Result<pathfinder_executor::types::FeeEstimate, EstimateMessageFeeError> {
     let span = tracing::Span::current();
 
@@ -134,7 +138,7 @@ pub(crate) async fn estimate_message_fee_impl(
             context.chain_id,
             header,
             pending,
-            L1BlobDataAvailability::Disabled,
+            l1_blob_data_availability,
         );
 
         let transaction = create_executor_transaction(input, context.chain_id)?;
@@ -374,6 +378,8 @@ mod tests {
             gas_price: 1.into(),
             overall_fee: 16302.into(),
             unit: PriceUnit::Wei,
+            data_gas_consumed: None,
+            data_gas_price: None,
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");

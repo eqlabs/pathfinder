@@ -826,8 +826,6 @@ mod tests {
         "starknet_syncing",
         "starknet_call",
         "starknet_getTransactionStatus",
-        "starknet_estimateFee",
-        "starknet_estimateMessageFee",
         "starknet_getTransactionByBlockIdAndIndex",
         "starknet_getTransactionByHash",
     ])]

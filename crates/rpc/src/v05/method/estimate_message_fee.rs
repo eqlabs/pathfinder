@@ -8,8 +8,12 @@ pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
 ) -> Result<FeeEstimate, EstimateMessageFeeError> {
-    let result =
-        crate::v06::method::estimate_message_fee::estimate_message_fee_impl(context, input).await?;
+    let result = crate::v06::method::estimate_message_fee::estimate_message_fee_impl(
+        context,
+        input,
+        pathfinder_executor::L1BlobDataAvailability::Disabled,
+    )
+    .await?;
 
     Ok(FeeEstimate {
         gas_consumed: result.gas_consumed,

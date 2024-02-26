@@ -93,6 +93,12 @@ pub struct FeeEstimate {
     pub gas_consumed: primitive_types::U256,
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
     pub gas_price: primitive_types::U256,
+    #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_gas_consumed: Option<primitive_types::U256>,
+    #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_gas_price: Option<primitive_types::U256>,
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
     pub overall_fee: primitive_types::U256,
     pub unit: PriceUnit,
@@ -105,13 +111,35 @@ impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
             gas_price: value.gas_price,
             overall_fee: value.overall_fee,
             unit: value.unit.into(),
+            data_gas_consumed: Some(value.data_gas_consumed),
+            data_gas_price: Some(value.data_gas_price),
         }
+    }
+}
+
+impl FeeEstimate {
+    pub fn with_v06_format(&mut self) {
+        self.data_gas_consumed = None;
+        self.data_gas_price = None;
     }
 }
 
 pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
+) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
+    estimate_fee_impl(context, input, L1BlobDataAvailability::Disabled)
+        .await
+        .map(|mut x| {
+            x.iter_mut().for_each(|y| y.with_v06_format());
+            x
+        })
+}
+
+pub async fn estimate_fee_impl(
+    context: RpcContext,
+    input: EstimateFeeInput,
+    l1_blob_data_availability: L1BlobDataAvailability,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
     let span = tracing::Span::current();
 
@@ -148,7 +176,7 @@ pub async fn estimate_fee(
             context.chain_id,
             header,
             pending,
-            L1BlobDataAvailability::Disabled,
+            l1_blob_data_availability,
         );
 
         let skip_validate = input
@@ -419,24 +447,32 @@ pub(crate) mod tests {
                 gas_price: 1.into(),
                 overall_fee: 2768.into(),
                 unit: PriceUnit::Wei,
+                data_gas_consumed: None,
+                data_gas_price: None,
             };
             let deploy_expected = FeeEstimate {
                 gas_consumed: 3020.into(),
                 gas_price: 1.into(),
                 overall_fee: 3020.into(),
                 unit: PriceUnit::Wei,
+                data_gas_consumed: None,
+                data_gas_price: None,
             };
             let invoke_expected = FeeEstimate {
                 gas_consumed: 1674.into(),
                 gas_price: 1.into(),
                 overall_fee: 1674.into(),
                 unit: PriceUnit::Wei,
+                data_gas_consumed: None,
+                data_gas_price: None,
             };
             let invoke_v0_expected = FeeEstimate {
                 gas_consumed: 880.into(),
                 gas_price: 1.into(),
                 overall_fee: 880.into(),
                 unit: PriceUnit::Wei,
+                data_gas_consumed: None,
+                data_gas_price: None,
             };
             let invoke_v3_expected = FeeEstimate {
                 gas_consumed: 1674.into(),
@@ -444,6 +480,8 @@ pub(crate) mod tests {
                 gas_price: 2.into(),
                 overall_fee: 3348.into(),
                 unit: PriceUnit::Fri,
+                data_gas_consumed: None,
+                data_gas_price: None,
             };
             assert_eq!(
                 result,
