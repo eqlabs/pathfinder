@@ -502,32 +502,17 @@ impl SerializeForVersion for ExecutionResources<'_> {
         serializer.serialize_field("memory_holes", &NumAsHex::U64(self.0.n_memory_holes))?;
         serializer.serialize_field(
             "range_check_builtin_applications",
-            &NumAsHex::U64(self.0.builtin_instance_counter.range_check_builtin),
+            &NumAsHex::U64(self.0.builtins.range_check),
         )?;
         serializer.serialize_field(
             "pedersen_builtin_applications",
-            &NumAsHex::U64(self.0.builtin_instance_counter.pedersen_builtin),
+            &NumAsHex::U64(self.0.builtins.pedersen),
         )?;
-        serializer.serialize_field(
-            "poseidon",
-            &NumAsHex::U64(self.0.builtin_instance_counter.poseidon_builtin),
-        )?;
-        serializer.serialize_field(
-            "ec_op",
-            &NumAsHex::U64(self.0.builtin_instance_counter.ec_op_builtin),
-        )?;
-        serializer.serialize_field(
-            "ecdsa",
-            &NumAsHex::U64(self.0.builtin_instance_counter.ecdsa_builtin),
-        )?;
-        serializer.serialize_field(
-            "bitwise",
-            &NumAsHex::U64(self.0.builtin_instance_counter.bitwise_builtin),
-        )?;
-        serializer.serialize_field(
-            "keccak",
-            &NumAsHex::U64(self.0.builtin_instance_counter.keccak_builtin),
-        )?;
+        serializer.serialize_field("poseidon", &NumAsHex::U64(self.0.builtins.poseidon))?;
+        serializer.serialize_field("ec_op", &NumAsHex::U64(self.0.builtins.ec_op))?;
+        serializer.serialize_field("ecdsa", &NumAsHex::U64(self.0.builtins.ecdsa))?;
+        serializer.serialize_field("bitwise", &NumAsHex::U64(self.0.builtins.bitwise))?;
+        serializer.serialize_field("keccak", &NumAsHex::U64(self.0.builtins.keccak))?;
 
         serializer.end()
     }
