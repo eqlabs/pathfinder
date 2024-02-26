@@ -169,6 +169,7 @@ mod prop {
                 SignedBlockHeader{
                     header: h,
                     signature: s,
+                    state_update_stats: Default::default(), // FIXME these are 0s in sync_handlers
                 }}).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };

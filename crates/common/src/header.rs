@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use crate::state_update::StateUpdateStats;
 use crate::BlockCommitmentSignature;
 use fake::Dummy;
 
@@ -38,6 +39,7 @@ pub enum L1DataAvailabilityMode {
 pub struct SignedBlockHeader {
     pub header: BlockHeader,
     pub signature: BlockCommitmentSignature,
+    pub state_update_stats: StateUpdateStats,
 }
 
 impl SignedBlockHeader {
