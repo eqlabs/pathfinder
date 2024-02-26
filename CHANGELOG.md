@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `starknet_getEvents` implementation is now using a much simpler implementation that no longer relies on SQLite queries. In general this leads to more consistent query times and a roughly 20% smaller database.
   - The migration step involves computing Bloom filters for all blocks and dropping database tables no longer needed. This takes more than one hour for a mainnet database.
   - The new `storage.event-bloom-filter-cache-size`, `rpc.get-events-max-blocks-to-scan` and `rpc.get-events-max-bloom-filters-to-load` arguments control some aspects of the algorithm.
+- The memory allocator used by pathfinder has been changed to jemalloc, leading to improved JSON-RPC performance.
 
 ## [0.10.6] - 2024-02-03
 
