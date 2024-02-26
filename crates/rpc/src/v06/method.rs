@@ -8,7 +8,7 @@ mod get_block_with_txs;
 mod get_transaction_by_block_id_and_index;
 mod get_transaction_by_hash;
 pub(crate) mod get_transaction_receipt;
-mod simulate_transactions;
+pub(crate) mod simulate_transactions;
 mod trace_block_transactions;
 mod trace_transaction;
 

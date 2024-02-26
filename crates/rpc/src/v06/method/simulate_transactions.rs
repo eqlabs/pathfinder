@@ -15,9 +15,9 @@ use self::dto::SimulatedTransaction;
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SimulateTransactionInput {
-    block_id: BlockId,
-    transactions: Vec<BroadcastedTransaction>,
-    simulation_flags: dto::SimulationFlags,
+    pub block_id: BlockId,
+    pub transactions: Vec<BroadcastedTransaction>,
+    pub simulation_flags: dto::SimulationFlags,
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
@@ -87,6 +87,19 @@ pub async fn simulate_transactions(
     context: RpcContext,
     input: SimulateTransactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
+    simulate_transactions_impl(context, input, L1BlobDataAvailability::Disabled)
+        .await
+        .map(|mut x| {
+            x.0.iter_mut().for_each(|y| y.with_v06_format());
+            x
+        })
+}
+
+pub async fn simulate_transactions_impl(
+    context: RpcContext,
+    input: SimulateTransactionInput,
+    l1_blob_data_availability: L1BlobDataAvailability,
+) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
     let span = tracing::Span::current();
     tokio::task::spawn_blocking(move || {
         let _g = span.enter();
@@ -135,7 +148,7 @@ pub async fn simulate_transactions(
             context.chain_id,
             header,
             pending,
-            L1BlobDataAvailability::Disabled,
+            l1_blob_data_availability,
         );
 
         let transactions = input
@@ -150,13 +163,7 @@ pub async fn simulate_transactions(
             .into_iter()
             .map(TryInto::try_into)
             .collect::<Result<Vec<SimulatedTransaction>, _>>()?;
-        let txs = txs
-            .into_iter()
-            .map(|mut tx| {
-                SimulatedTransaction::with_v06_format(&mut tx);
-                tx
-            })
-            .collect();
+        let txs = txs.into_iter().collect();
         Ok(SimulateTransactionOutput(txs))
     })
     .await

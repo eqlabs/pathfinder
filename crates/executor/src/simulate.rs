@@ -325,7 +325,15 @@ fn to_trace(
     let computation_resources = validate_invocation
         .as_ref()
         .map(|i: &FunctionInvocation| i.computation_resources.clone())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        + maybe_function_invocation
+            .as_ref()
+            .map(|i: &FunctionInvocation| i.computation_resources.clone())
+            .unwrap_or_default()
+        + fee_transfer_invocation
+            .as_ref()
+            .map(|i: &FunctionInvocation| i.computation_resources.clone())
+            .unwrap_or_default();
     let data_availability = DataAvailabilityResources {
         l1_gas: execution_info.da_gas.l1_gas,
         l1_data_gas: execution_info.da_gas.l1_data_gas,
