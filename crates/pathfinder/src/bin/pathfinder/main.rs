@@ -2,7 +2,6 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use mimalloc::MiMalloc;
 
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
@@ -25,8 +24,11 @@ use crate::config::NetworkConfig;
 mod config;
 mod update;
 
+// The Cairo VM allocates felts on the stack, so during execution it's making
+// a huge number of allocations. We get roughly two times better execution
+// performance by using jemalloc (compared to the Linux glibc allocator).
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 fn main() -> anyhow::Result<()> {
     tokio::runtime::Builder::new_multi_thread()

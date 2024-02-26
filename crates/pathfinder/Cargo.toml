@@ -34,10 +34,10 @@ console-subscriber = { version = "0.1.10", optional = true }
 fake = { workspace = true }
 futures = { workspace = true }
 ipnet = { workspace = true }
+jemallocator = "0.5.4"
 lazy_static = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = "0.11.0"
-mimalloc = { version = "0.1.39", default-features = false }
 p2p = { path = "../p2p", optional = true }
 p2p_proto = { path = "../p2p_proto", optional = true }
 pathfinder-common = { path = "../common" }
