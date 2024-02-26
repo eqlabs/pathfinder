@@ -812,10 +812,7 @@ mod tests {
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
     #[case::v0_7_api  ("/rpc/v0_7", "v07/starknet_api_openrpc.json", &[])]
-    #[case::v0_7_trace("/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[
-        "starknet_traceBlockTransactions",
-        "starknet_traceTransaction",
-    ])]
+    #[case::v0_7_trace("/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[])]
     #[case::v0_7_write("/rpc/v0_7", "v07/starknet_write_api.json", &[])]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]

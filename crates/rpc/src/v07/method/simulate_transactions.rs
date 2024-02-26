@@ -316,6 +316,11 @@ pub(crate) mod tests {
     pub(crate) mod fixtures {
         use super::*;
 
+        pub use crate::v04::method::simulate_transactions::tests::fixtures::{
+            CASM_DEFINITION, CASM_HASH, DEPLOYED_CONTRACT_ADDRESS, SIERRA_DEFINITION, SIERRA_HASH,
+            UNIVERSAL_DEPLOYER_CLASS_HASH,
+        };
+
         // The input transactions are the same as in v04.
         pub mod input {
             pub use crate::v04::method::simulate_transactions::tests::fixtures::input::*;
@@ -325,9 +330,7 @@ pub(crate) mod tests {
             use crate::v03::method::get_state_update::types::{
                 DeclaredSierraClass, StorageDiff, StorageEntry,
             };
-            use crate::v04::method::simulate_transactions::tests::fixtures::{
-                CASM_HASH, DEPLOYED_CONTRACT_ADDRESS, SIERRA_HASH, UNIVERSAL_DEPLOYER_CLASS_HASH,
-            };
+
             use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
 
             use super::dto::*;

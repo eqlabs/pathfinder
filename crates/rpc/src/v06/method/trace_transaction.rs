@@ -104,6 +104,16 @@ pub async fn trace_transaction(
     context: RpcContext,
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
+    trace_transaction_impl(context, input).await.map(|mut x| {
+        x.0.with_v06_format();
+        x
+    })
+}
+
+pub async fn trace_transaction_impl(
+    context: RpcContext,
+    input: TraceTransactionInput,
+) -> Result<TraceTransactionOutput, TraceTransactionError> {
     #[allow(clippy::large_enum_variant)]
     enum LocalExecution {
         Success(TransactionTrace),
@@ -214,11 +224,7 @@ pub async fn trace_transaction(
                         ))
                     })
             })
-            .and_then(|x| {
-                let mut trace: TransactionTrace = x.try_into()?;
-                trace.with_v06_format();
-                Ok(LocalExecution::Success(trace))
-            })
+            .and_then(|x| Ok(LocalExecution::Success(x.try_into()?)))
     })
     .await
     .context("trace_transaction: execution")??;
@@ -234,8 +240,7 @@ pub async fn trace_transaction(
         .await
         .context("Proxying call to feeder gateway")?;
 
-    let mut trace = map_gateway_trace(transaction, trace)?;
-    trace.with_v06_format();
+    let trace = map_gateway_trace(transaction, trace)?;
 
     Ok(TraceTransactionOutput(trace))
 }

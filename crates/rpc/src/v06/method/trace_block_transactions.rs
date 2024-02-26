@@ -19,7 +19,7 @@ use super::simulate_transactions::dto::TransactionTrace;
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct TraceBlockTransactionsInput {
-    block_id: BlockId,
+    pub block_id: BlockId,
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq, Clone)]
@@ -87,7 +87,7 @@ impl From<TraceConversionError> for TraceBlockTransactionsError {
     }
 }
 
-pub(super) struct TraceConversionError(pub &'static str);
+pub(crate) struct TraceConversionError(pub &'static str);
 
 pub(crate) fn map_gateway_trace(
     transaction: Transaction,
@@ -165,6 +165,18 @@ pub(crate) fn map_gateway_trace(
 }
 
 pub async fn trace_block_transactions(
+    context: RpcContext,
+    input: TraceBlockTransactionsInput,
+) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
+    trace_block_transactions_impl(context, input)
+        .await
+        .map(|mut x| {
+            x.0.iter_mut().for_each(|y| y.trace_root.with_v06_format());
+            x
+        })
+}
+
+pub async fn trace_block_transactions_impl(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
@@ -250,11 +262,9 @@ pub async fn trace_block_transactions(
         let result = traces
             .into_iter()
             .map(|(hash, trace)| {
-                let mut trace: TransactionTrace = trace.try_into()?;
-                trace.with_v06_format();
                 Ok(Trace {
                     transaction_hash: hash,
-                    trace_root: trace,
+                    trace_root: trace.try_into()?,
                 })
             })
             .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?;
@@ -360,6 +370,7 @@ pub(crate) mod tests {
             let next_block_header = BlockHeader::builder()
                 .with_number(last_block_header.number + 1)
                 .with_eth_l1_gas_price(GasPrice(1))
+                .with_eth_l1_data_gas_price(GasPrice(2))
                 .with_parent_hash(last_block_header.hash)
                 .with_starknet_version(last_block_header.starknet_version)
                 .with_sequencer_address(last_block_header.sequencer_address)
@@ -510,8 +521,8 @@ pub(crate) mod tests {
                 strk_l1_gas_price_implementation_detail: Some(GasPrice(1)),
                 l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
-                    price_in_wei: GasPrice(1),
-                    price_in_fri: GasPrice(1),
+                    price_in_wei: GasPrice(2),
+                    price_in_fri: GasPrice(2),
                 }),
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
