@@ -128,15 +128,18 @@ pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
-    estimate_fee_impl(context, input).await.map(|mut x| {
-        x.iter_mut().for_each(|y| y.with_v06_format());
-        x
-    })
+    estimate_fee_impl(context, input, L1BlobDataAvailability::Disabled)
+        .await
+        .map(|mut x| {
+            x.iter_mut().for_each(|y| y.with_v06_format());
+            x
+        })
 }
 
 pub async fn estimate_fee_impl(
     context: RpcContext,
     input: EstimateFeeInput,
+    l1_blob_data_availability: L1BlobDataAvailability,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
     let span = tracing::Span::current();
 
@@ -173,7 +176,7 @@ pub async fn estimate_fee_impl(
             context.chain_id,
             header,
             pending,
-            L1BlobDataAvailability::Disabled,
+            l1_blob_data_availability,
         );
 
         let skip_validate = input
