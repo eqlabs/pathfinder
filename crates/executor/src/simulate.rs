@@ -18,9 +18,10 @@ use pathfinder_common::{
 use crate::{
     transaction::transaction_hash,
     types::{
-        DeclareTransactionTrace, DeclaredSierraClass, DeployAccountTransactionTrace,
-        DeployedContract, ExecuteInvocation, InvokeTransactionTrace, L1HandlerTransactionTrace,
-        PriceUnit, ReplacedClass, StateDiff, StorageDiff,
+        DataAvailabilityResources, DeclareTransactionTrace, DeclaredSierraClass,
+        DeployAccountTransactionTrace, DeployedContract, ExecuteInvocation, ExecutionResources,
+        FunctionInvocation, InvokeTransactionTrace, L1HandlerTransactionTrace, PriceUnit,
+        ReplacedClass, StateDiff, StorageDiff,
     },
     IntoFelt,
 };
@@ -321,11 +322,25 @@ fn to_trace(
     let maybe_function_invocation = execution_info.execute_call_info.map(Into::into);
     let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(Into::into);
 
+    let computation_resources = validate_invocation
+        .as_ref()
+        .map(|i: &FunctionInvocation| i.computation_resources.clone())
+        .unwrap_or_default();
+    let data_availability = DataAvailabilityResources {
+        l1_gas: execution_info.da_gas.l1_gas,
+        l1_data_gas: execution_info.da_gas.l1_data_gas,
+    };
+    let execution_resources = ExecutionResources {
+        computation_resources,
+        data_availability,
+    };
+
     match transaction_type {
         TransactionType::Declare => TransactionTrace::Declare(DeclareTransactionTrace {
             validate_invocation,
             fee_transfer_invocation,
             state_diff,
+            execution_resources,
         }),
         TransactionType::DeployAccount => {
             TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
@@ -333,6 +348,7 @@ fn to_trace(
                 constructor_invocation: maybe_function_invocation,
                 fee_transfer_invocation,
                 state_diff,
+                execution_resources,
             })
         }
         TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
@@ -344,10 +360,12 @@ fn to_trace(
             },
             fee_transfer_invocation,
             state_diff,
+            execution_resources,
         }),
         TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
             function_invocation: maybe_function_invocation,
             state_diff,
+            execution_resources,
         }),
     }
 }

@@ -214,7 +214,11 @@ pub async fn trace_transaction(
                         ))
                     })
             })
-            .and_then(|x| Ok(LocalExecution::Success(x.try_into()?)))
+            .and_then(|x| {
+                let mut trace: TransactionTrace = x.try_into()?;
+                trace.with_v06_format();
+                Ok(LocalExecution::Success(trace))
+            })
     })
     .await
     .context("trace_transaction: execution")??;
@@ -230,7 +234,8 @@ pub async fn trace_transaction(
         .await
         .context("Proxying call to feeder gateway")?;
 
-    let trace = map_gateway_trace(transaction, trace)?;
+    let mut trace = map_gateway_trace(transaction, trace)?;
+    trace.with_v06_format();
 
     Ok(TraceTransactionOutput(trace))
 }
