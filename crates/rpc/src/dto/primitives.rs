@@ -1,31 +1,34 @@
-use primitive_types::H160;
+use primitive_types::H256;
 
 use crate::dto::serialize;
 
 use super::serialize::SerializeForVersion;
 
 pub struct SyncStatus<'a> {
-    start_hash: &'a pathfinder_common::BlockHash,
-    start_number: pathfinder_common::BlockNumber,
-    current_hash: &'a pathfinder_common::BlockHash,
-    current_number: pathfinder_common::BlockNumber,
-    highest_hash: &'a pathfinder_common::BlockHash,
-    highest_number: pathfinder_common::BlockNumber,
+    pub start_hash: &'a pathfinder_common::BlockHash,
+    pub start_number: pathfinder_common::BlockNumber,
+    pub current_hash: &'a pathfinder_common::BlockHash,
+    pub current_number: pathfinder_common::BlockNumber,
+    pub highest_hash: &'a pathfinder_common::BlockHash,
+    pub highest_number: pathfinder_common::BlockNumber,
 }
 
-pub struct Felt<'a>(&'a pathfinder_crypto::Felt);
-pub struct BlockHash<'a>(&'a pathfinder_common::BlockHash);
-pub struct Address<'a>(Felt<'a>);
-pub struct TxnHash<'a>(&'a pathfinder_common::TransactionHash);
-pub struct ChainId<'a>(&'a pathfinder_common::ChainId);
+pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
+pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
+pub struct Address<'a>(pub &'a pathfinder_common::ContractAddress);
+pub struct TxnHash<'a>(pub &'a pathfinder_common::TransactionHash);
+pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 
-pub struct EthAddress<'a>(&'a H160);
-pub struct StorageKey<'a>(&'a pathfinder_common::StorageAddress);
-pub struct BlockNumber(pathfinder_common::BlockNumber);
+pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
+pub struct StorageKey<'a>(pub &'a pathfinder_common::StorageAddress);
+pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 
-pub struct U64(u64);
-pub struct U128(u128);
-pub struct NumAsHex(u64);
+pub struct U64(pub u64);
+pub struct U128(pub u128);
+pub enum NumAsHex<'a> {
+    U64(u64),
+    H256(&'a H256),
+}
 
 mod hex_str {
     use std::borrow::Cow;
@@ -65,7 +68,7 @@ impl SerializeForVersion for SyncStatus<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        let mut serializer = serializer.serialize_struct("SYNC_STATUS", 6)?;
+        let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("starting_block_hash", &BlockHash(&self.start_hash))?;
         serializer.serialize_field("starting_block_num", &BlockNumber(self.start_number))?;
         serializer.serialize_field("current_block_hash", &BlockHash(&self.current_hash))?;
@@ -127,7 +130,7 @@ impl SerializeForVersion for EthAddress<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        let hex_str = hex_str::bytes_to_hex_str_full(self.0.as_bytes());
+        let hex_str = hex_str::bytes_to_hex_str_full(self.0 .0.as_bytes());
         serializer.serialize_str(&hex_str)
     }
 }
@@ -168,18 +171,23 @@ impl SerializeForVersion for U128 {
     }
 }
 
-impl SerializeForVersion for NumAsHex {
+impl SerializeForVersion for NumAsHex<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        let hex = pathfinder_serde::bytes_to_hex_str(&self.0.to_be_bytes());
+        let hex = match &self {
+            NumAsHex::U64(x) => hex_str::bytes_to_hex_str_stripped(&x.to_be_bytes()),
+            NumAsHex::H256(x) => hex_str::bytes_to_hex_str_stripped(x.as_bytes()),
+        };
         serializer.serialize_str(&hex)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use crate::dto::serialize::Serializer;
 
     use super::*;
@@ -246,7 +254,7 @@ mod tests {
 
     #[test]
     fn address() {
-        let uut = Address(Felt(&felt!("0x1234")));
+        let uut = Address(&contract_address!("0x1234"));
         let expected = Serializer::default().serialize(&uut.0).unwrap();
         let encoded = uut.serialize(Serializer::default()).unwrap();
 
@@ -283,7 +291,9 @@ mod tests {
 
     #[test]
     fn eth_address() {
-        let uut = H160::from_slice(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7]);
+        let uut = pathfinder_common::EthereumAddress(primitive_types::H160::from_slice(&[
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7,
+        ]));
         let uut = EthAddress(&uut);
         let expected = json!("0x0000000000000000000000000001020304050607");
         let encoded = uut.serialize(Serializer::default()).unwrap();
@@ -310,8 +320,19 @@ mod tests {
     }
 
     #[test]
-    fn num_as_hex() {
-        let uut = NumAsHex(0x1234);
+    fn num_as_hex_u64() {
+        let uut = NumAsHex::U64(0x1234);
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Serializer::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn num_as_hex_h256() {
+        use std::str::FromStr;
+        let uut = H256::from_str("1234").unwrap();
+        let uut = NumAsHex::H256(&uut);
         let expected = json!("0x1234");
         let encoded = uut.serialize(Serializer::default()).unwrap();
 

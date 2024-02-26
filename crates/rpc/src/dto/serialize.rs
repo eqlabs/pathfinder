@@ -5,8 +5,22 @@ pub struct Serializer {
     pub version: DefaultVersion,
 }
 
+impl Clone for Serializer {
+    fn clone(&self) -> Self {
+        Self {
+            inner: BaseSerializer {},
+            version: self.version,
+        }
+    }
+}
+
 pub struct SerializeStruct {
-    pub(crate) inner: <BaseSerializer as serde::Serializer>::SerializeStruct,
+    pub version: DefaultVersion,
+    fields: serde_json::Map<String, Ok>,
+}
+
+pub struct SerializeSeq {
+    pub(crate) inner: <BaseSerializer as serde::Serializer>::SerializeSeq,
     pub version: DefaultVersion,
 }
 
@@ -32,10 +46,7 @@ where
 
 impl Default for Serializer {
     fn default() -> Self {
-        Self {
-            inner: BaseSerializer {},
-            version: Default::default(),
-        }
+        Self::new(Default::default())
     }
 }
 
@@ -56,14 +67,17 @@ impl Serializer {
         self.inner.serialize_str(value)
     }
 
-    pub fn serialize_struct(
-        self,
-        name: &'static str,
-        len: usize,
-    ) -> Result<SerializeStruct, Error> {
-        use serde::Serializer;
+    pub fn serialize_struct(self) -> Result<SerializeStruct, Error> {
         Ok(SerializeStruct {
-            inner: self.inner.serialize_struct(name, len)?,
+            version: self.version,
+            fields: Default::default(),
+        })
+    }
+
+    pub fn serialize_seq(self, len: Option<usize>) -> Result<SerializeSeq, Error> {
+        use serde::Serializer;
+        Ok(SerializeSeq {
+            inner: self.inner.serialize_seq(len)?,
             version: self.version,
         })
     }
@@ -75,13 +89,53 @@ impl SerializeStruct {
         key: &'static str,
         value: &dyn SerializeForVersion,
     ) -> Result<(), Error> {
-        use serde::ser::SerializeStruct;
         let value = value.serialize(Serializer::new(self.version))?;
-        self.inner.serialize_field(key, &value)
+        self.fields.insert(key.to_owned(), value);
+        Ok(())
+    }
+
+    pub fn serialize_iter(
+        &mut self,
+        key: &'static str,
+        len: usize,
+        values: &mut dyn Iterator<Item = impl SerializeForVersion>,
+    ) -> Result<(), Error> {
+        let mut seq = Serializer::new(self.version).serialize_seq(Some(len))?;
+
+        for value in values {
+            seq.serialize_element(&value)?;
+        }
+
+        let field_value = seq.end()?;
+        self.serialize_field(key, &field_value)
+    }
+
+    pub fn flatten(&mut self, value: &dyn SerializeForVersion) -> Result<(), Error> {
+        let value = value.serialize(Serializer::new(self.version))?;
+
+        if let serde_json::Value::Object(value) = value {
+            for (k, v) in value {
+                self.fields.insert(k, v);
+            }
+        }
+
+        Ok(())
     }
 
     pub fn end(self) -> Result<Ok, Error> {
-        use serde::ser::SerializeStruct;
+        Ok(serde_json::Value::Object(self.fields))
+    }
+}
+
+impl SerializeSeq {
+    pub fn serialize_element(&mut self, value: &dyn SerializeForVersion) -> Result<(), Error> {
+        use serde::ser::SerializeSeq;
+        let value = value.serialize(Serializer::new(self.version))?;
+        self.inner.serialize_element(&value)
+    }
+
+    pub fn end(self) -> Result<Ok, Error> {
+        use serde::ser::SerializeSeq;
         self.inner.end()
     }
 }

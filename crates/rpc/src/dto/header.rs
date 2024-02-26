@@ -14,12 +14,7 @@ impl serialize::SerializeForVersion for BlockHeader<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        let count = match serializer.version {
-            DefaultVersion::V05 | DefaultVersion::V06 => 8,
-            DefaultVersion::V07 => 10,
-        };
-
-        let mut s = serializer.serialize_struct("BLOCK_HEADER", count)?;
+        let mut s = serializer.serialize_struct()?;
 
         s.serialize_field("block_hash", &self.0.hash)?;
         s.serialize_field("parent_hash", &self.0.parent_hash)?;
@@ -63,7 +58,7 @@ impl serialize::SerializeForVersion for ResourcePrice<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<super::serialize::Ok, super::serialize::Error> {
-        let mut serializer = serializer.serialize_struct("RESOURCE_PRICE", 2)?;
+        let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("price_in_fri", &self.price_in_fri)?;
         serializer.serialize_field("price_in_wei", &self.price_in_wei)?;
