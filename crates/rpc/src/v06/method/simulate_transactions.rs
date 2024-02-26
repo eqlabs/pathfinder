@@ -10,6 +10,8 @@ use pathfinder_executor::{
 };
 use serde::{Deserialize, Serialize};
 
+use self::dto::SimulatedTransaction;
+
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SimulateTransactionInput {
@@ -147,7 +149,14 @@ pub async fn simulate_transactions(
         let txs = txs
             .into_iter()
             .map(TryInto::try_into)
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<SimulatedTransaction>, _>>()?;
+        let txs = txs
+            .into_iter()
+            .map(|mut tx| {
+                SimulatedTransaction::with_v06_format(&mut tx);
+                tx
+            })
+            .collect();
         Ok(SimulateTransactionOutput(txs))
     })
     .await
@@ -180,10 +189,25 @@ pub mod dto {
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub gas_price: primitive_types::U256,
+        /// The Ethereum data gas cost of the transaction
+        #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data_gas_consumed: Option<primitive_types::U256>,
+        /// The data gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data_gas_price: Option<primitive_types::U256>,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub overall_fee: primitive_types::U256,
         pub unit: PriceUnit,
+    }
+
+    impl FeeEstimate {
+        pub fn with_v06_format(&mut self) {
+            self.data_gas_consumed = None;
+            self.data_gas_price = None;
+        }
     }
 
     impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
@@ -191,6 +215,8 @@ pub mod dto {
             Self {
                 gas_consumed: value.gas_consumed,
                 gas_price: value.gas_price,
+                data_gas_consumed: Some(value.data_gas_consumed),
+                data_gas_price: Some(value.data_gas_price),
                 overall_fee: value.overall_fee,
                 unit: value.unit.into(),
             }
@@ -554,6 +580,12 @@ pub mod dto {
         }
     }
 
+    impl SimulatedTransaction {
+        pub fn with_v06_format(&mut self) {
+            self.fee_estimation.with_v06_format()
+        }
+    }
+
     impl From<gateway_trace::FunctionInvocation> for FunctionInvocation {
         fn from(value: gateway_trace::FunctionInvocation) -> Self {
             Self {
@@ -681,6 +713,8 @@ pub(crate) mod tests {
                     FeeEstimate {
                         gas_consumed: 2222.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: 2222.into(),
                         unit: PriceUnit::Wei,
                     }
@@ -803,6 +837,8 @@ pub(crate) mod tests {
                 fee_estimation: FeeEstimate {
                     gas_consumed: DECLARE_GAS_CONSUMED.into(),
                     gas_price: 1.into(),
+                    data_gas_consumed: None,
+                    data_gas_price: None,
                     overall_fee: DECLARE_GAS_CONSUMED.into(),
                     unit: PriceUnit::Wei,
                 },
@@ -929,6 +965,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -953,6 +991,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -972,6 +1012,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1101,6 +1143,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1135,6 +1179,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1167,6 +1213,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1428,6 +1476,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1457,6 +1507,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1481,6 +1533,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1676,6 +1730,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1805,6 +1861,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -2069,6 +2127,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
