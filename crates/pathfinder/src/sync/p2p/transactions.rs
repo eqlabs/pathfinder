@@ -10,7 +10,7 @@ pub fn blocks_without_transactions(
     stream::unfold(
         (BlockNumber::new_or_panic(0), storage),
         move |(block_number, storage)| async move {
-            match spawn_blocking({
+            let result = spawn_blocking({
                 let storage = storage.clone();
                 move || {
                     let mut db = storage
@@ -27,8 +27,8 @@ pub fn blocks_without_transactions(
                 }
             })
             .await
-            .context("Joining blocking task")
-            {
+            .context("Joining blocking task");
+            match result {
                 Ok(Ok(None)) => None,
                 Ok(Ok(Some((blocks, state)))) => Some((Ok(blocks), state)),
                 Ok(Err(err)) => Some((Err(err), (block_number, storage))),
