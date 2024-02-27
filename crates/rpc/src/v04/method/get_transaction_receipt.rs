@@ -36,7 +36,7 @@ pub async fn get_transaction_receipt(
             .transactions
             .iter()
             .zip(pending.block.transaction_receipts.iter())
-            .find_map(|(t, r)| (t.hash() == input.transaction_hash).then(|| (t.clone(), r.clone())))
+            .find_map(|(t, r)| (t.hash == input.transaction_hash).then(|| (t.clone(), r.clone())))
         {
             let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
@@ -82,12 +82,11 @@ pub mod types {
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
         BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
-        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash,
+        L2ToL1MessagePayloadElem, TransactionHash,
     };
     use pathfinder_serde::EthereumAddressAsHexStr;
     use serde::Serialize;
     use serde_with::serde_as;
-    use starknet_gateway_types::reply::transaction::{L1ToL2Message, L2ToL1Message};
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -151,15 +150,11 @@ pub mod types {
         Reverted,
     }
 
-    impl From<starknet_gateway_types::reply::transaction::ExecutionStatus> for ExecutionStatus {
-        fn from(value: starknet_gateway_types::reply::transaction::ExecutionStatus) -> Self {
+    impl From<pathfinder_common::receipt::ExecutionStatus> for ExecutionStatus {
+        fn from(value: pathfinder_common::receipt::ExecutionStatus) -> Self {
             match value {
-                starknet_gateway_types::reply::transaction::ExecutionStatus::Succeeded => {
-                    Self::Succeeded
-                }
-                starknet_gateway_types::reply::transaction::ExecutionStatus::Reverted => {
-                    Self::Reverted
-                }
+                pathfinder_common::receipt::ExecutionStatus::Succeeded => Self::Succeeded,
+                pathfinder_common::receipt::ExecutionStatus::Reverted { .. } => Self::Reverted,
             }
         }
     }
@@ -208,12 +203,13 @@ pub mod types {
 
     impl TransactionReceipt {
         pub fn with_block_data(
-            receipt: starknet_gateway_types::reply::transaction::Receipt,
+            receipt: pathfinder_common::receipt::Receipt,
             finality_status: FinalityStatus,
             block_hash: BlockHash,
             block_number: BlockNumber,
-            transaction: starknet_gateway_types::reply::transaction::Transaction,
+            transaction: pathfinder_common::transaction::Transaction,
         ) -> Self {
+            let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
                 actual_fee: receipt
@@ -227,24 +223,43 @@ pub mod types {
                     .map(MessageToL1::from)
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
-                revert_reason: receipt.revert_error,
+                revert_reason,
                 execution_status: receipt.execution_status.into(),
                 finality_status,
             };
 
-            use starknet_gateway_types::reply::transaction::Transaction::*;
-            match transaction {
-                Declare(_) => Self::Declare(DeclareTransactionReceipt { common }),
-                Deploy(tx) => Self::Deploy(DeployTransactionReceipt {
+            use pathfinder_common::transaction::TransactionVariant;
+            match transaction.variant {
+                TransactionVariant::DeclareV0(_)
+                | TransactionVariant::DeclareV1(_)
+                | TransactionVariant::DeclareV2(_)
+                | TransactionVariant::DeclareV3(_) => {
+                    Self::Declare(DeclareTransactionReceipt { common })
+                }
+                TransactionVariant::Deploy(tx) => Self::Deploy(DeployTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                DeployAccount(tx) => Self::DeployAccount(DeployAccountTransactionReceipt {
-                    common,
-                    contract_address: tx.contract_address(),
-                }),
-                Invoke(_) => Self::Invoke(InvokeTransactionReceipt { common }),
-                L1Handler(_) => Self::L1Handler(L1HandlerTransactionReceipt { common }),
+                TransactionVariant::DeployAccountV0V1(tx) => {
+                    Self::DeployAccount(DeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::DeployAccountV3(tx) => {
+                    Self::DeployAccount(DeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::InvokeV0(_)
+                | TransactionVariant::InvokeV1(_)
+                | TransactionVariant::InvokeV3(_) => {
+                    Self::Invoke(InvokeTransactionReceipt { common })
+                }
+                TransactionVariant::L1Handler(_) => {
+                    Self::L1Handler(L1HandlerTransactionReceipt { common })
+                }
             }
         }
     }
@@ -323,9 +338,10 @@ pub mod types {
 
     impl PendingTransactionReceipt {
         pub fn from(
-            receipt: starknet_gateway_types::reply::transaction::Receipt,
-            transaction: &starknet_gateway_types::reply::transaction::Transaction,
+            receipt: pathfinder_common::receipt::Receipt,
+            transaction: &pathfinder_common::transaction::Transaction,
         ) -> Self {
+            let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
                 actual_fee: receipt
@@ -337,24 +353,43 @@ pub mod types {
                     .map(MessageToL1::from)
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
-                revert_reason: receipt.revert_error,
+                revert_reason,
                 execution_status: receipt.execution_status.into(),
                 finality_status: FinalityStatus::AcceptedOnL2,
             };
 
-            use starknet_gateway_types::reply::transaction::Transaction::*;
-            match transaction {
-                Declare(_) => Self::Declare(PendingDeclareTransactionReceipt { common }),
-                Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
+            use pathfinder_common::transaction::TransactionVariant;
+            match &transaction.variant {
+                TransactionVariant::DeclareV0(_)
+                | TransactionVariant::DeclareV1(_)
+                | TransactionVariant::DeclareV2(_)
+                | TransactionVariant::DeclareV3(_) => {
+                    Self::Declare(PendingDeclareTransactionReceipt { common })
+                }
+                TransactionVariant::Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                DeployAccount(tx) => Self::DeployAccount(PendingDeployAccountTransactionReceipt {
-                    common,
-                    contract_address: tx.contract_address(),
-                }),
-                Invoke(_) => Self::Invoke(PendingInvokeTransactionReceipt { common }),
-                L1Handler(_) => Self::L1Handler(PendingL1HandlerTransactionReceipt { common }),
+                TransactionVariant::DeployAccountV0V1(tx) => {
+                    Self::DeployAccount(PendingDeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::DeployAccountV3(tx) => {
+                    Self::DeployAccount(PendingDeployAccountTransactionReceipt {
+                        common,
+                        contract_address: tx.contract_address,
+                    })
+                }
+                TransactionVariant::InvokeV0(_)
+                | TransactionVariant::InvokeV1(_)
+                | TransactionVariant::InvokeV3(_) => {
+                    Self::Invoke(PendingInvokeTransactionReceipt { common })
+                }
+                TransactionVariant::L1Handler(_) => {
+                    Self::L1Handler(PendingL1HandlerTransactionReceipt { common })
+                }
             }
         }
     }
@@ -373,31 +408,10 @@ pub mod types {
     }
 
     impl MessageToL1 {
-        fn from(msg: L2ToL1Message) -> Self {
+        fn from(msg: pathfinder_common::receipt::L2ToL1Message) -> Self {
             Self {
                 from_address: msg.from_address,
                 to_address: msg.to_address,
-                payload: msg.payload,
-            }
-        }
-    }
-
-    /// Message sent from L1 to L2.
-    #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct MessageToL2 {
-        #[serde_as(as = "EthereumAddressAsHexStr")]
-        pub from_address: EthereumAddress,
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub payload: Vec<L1ToL2MessagePayloadElem>,
-    }
-
-    impl From<L1ToL2Message> for MessageToL2 {
-        fn from(msg: L1ToL2Message) -> Self {
-            Self {
-                from_address: msg.from_address,
                 payload: msg.payload,
             }
         }

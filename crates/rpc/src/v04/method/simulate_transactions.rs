@@ -7,7 +7,6 @@ use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{types::TransactionSimulation, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
-use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 use starknet_gateway_types::trace as gateway_trace;
 
 #[derive(Deserialize, Debug)]
@@ -101,8 +100,13 @@ pub async fn simulate_transactions(
             }
         };
 
-        let state =
-            pathfinder_executor::ExecutionState::simulation(&db, context.chain_id, header, pending);
+        let state = pathfinder_executor::ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            pathfinder_executor::L1BlobDataAvailability::Disabled,
+        );
 
         let transactions = input
             .transactions
@@ -115,8 +119,7 @@ pub async fn simulate_transactions(
 
         match txs
             .iter()
-            .filter_map(pathfinder_executor::types::TransactionSimulation::revert_reason)
-            .next()
+            .find_map(pathfinder_executor::types::TransactionSimulation::revert_reason)
         {
             Some(revert_reason) => Err(SimulateTransactionError::Custom(anyhow::anyhow!(
                 "Transaction reverted: {}",
@@ -133,6 +136,7 @@ pub async fn simulate_transactions(
 }
 
 pub mod dto {
+    use crate::v05::method::simulate_transactions::dto as v05_dto;
     use serde_with::serde_as;
 
     use crate::felt::RpcFelt;
@@ -185,6 +189,16 @@ pub mod dto {
         LibraryCall,
     }
 
+    impl From<v05_dto::CallType> for CallType {
+        fn from(value: v05_dto::CallType) -> Self {
+            match value {
+                v05_dto::CallType::Call => Self::Call,
+                v05_dto::CallType::_LibraryCall => Self::LibraryCall,
+                v05_dto::CallType::Delegate => Self::LibraryCall,
+            }
+        }
+    }
+
     impl From<pathfinder_executor::types::CallType> for CallType {
         fn from(value: pathfinder_executor::types::CallType) -> Self {
             use pathfinder_executor::types::CallType::*;
@@ -222,6 +236,22 @@ pub mod dto {
         pub result: Vec<Felt>,
     }
 
+    impl From<v05_dto::FunctionInvocation> for FunctionInvocation {
+        fn from(value: v05_dto::FunctionInvocation) -> Self {
+            Self {
+                call_type: value.call_type.into(),
+                caller_address: value.caller_address,
+                calls: value.calls.into_iter().map(Into::into).collect(),
+                class_hash: value.class_hash,
+                entry_point_type: value.entry_point_type.into(),
+                events: value.events.into_iter().map(Into::into).collect(),
+                function_call: value.function_call,
+                messages: value.messages.into_iter().map(Into::into).collect(),
+                result: value.result,
+            }
+        }
+    }
+
     impl From<pathfinder_executor::types::FunctionInvocation> for FunctionInvocation {
         fn from(fi: pathfinder_executor::types::FunctionInvocation) -> Self {
             Self {
@@ -252,6 +282,16 @@ pub mod dto {
         L1Handler,
     }
 
+    impl From<v05_dto::EntryPointType> for EntryPointType {
+        fn from(value: v05_dto::EntryPointType) -> Self {
+            match value {
+                v05_dto::EntryPointType::Constructor => Self::Constructor,
+                v05_dto::EntryPointType::External => Self::External,
+                v05_dto::EntryPointType::L1Handler => Self::L1Handler,
+            }
+        }
+    }
+
     impl From<pathfinder_executor::types::EntryPointType> for EntryPointType {
         fn from(value: pathfinder_executor::types::EntryPointType) -> Self {
             use pathfinder_executor::types::EntryPointType::*;
@@ -274,6 +314,16 @@ pub mod dto {
         pub from_address: Felt,
     }
 
+    impl From<v05_dto::OrderedMsgToL1> for MsgToL1 {
+        fn from(value: v05_dto::OrderedMsgToL1) -> Self {
+            Self {
+                payload: value.payload,
+                to_address: value.to_address,
+                from_address: value.from_address,
+            }
+        }
+    }
+
     impl From<pathfinder_executor::types::MsgToL1> for MsgToL1 {
         fn from(value: pathfinder_executor::types::MsgToL1) -> Self {
             Self {
@@ -293,6 +343,15 @@ pub mod dto {
         pub keys: Vec<Felt>,
     }
 
+    impl From<v05_dto::OrderedEvent> for Event {
+        fn from(value: v05_dto::OrderedEvent) -> Self {
+            Self {
+                data: value.data,
+                keys: value.keys,
+            }
+        }
+    }
+
     impl From<pathfinder_executor::types::Event> for Event {
         fn from(value: pathfinder_executor::types::Event) -> Self {
             Self {
@@ -309,6 +368,32 @@ pub mod dto {
         DeployAccount(DeployAccountTxnTrace),
         Invoke(InvokeTxnTrace),
         L1Handler(L1HandlerTxnTrace),
+    }
+
+    impl From<v05_dto::TransactionTrace> for TransactionTrace {
+        fn from(value: v05_dto::TransactionTrace) -> Self {
+            use v05_dto::TransactionTrace as v05;
+
+            match value {
+                v05::Declare(t) => Self::Declare(DeclareTxnTrace {
+                    fee_transfer_invocation: t.fee_transfer_invocation.map(Into::into),
+                    validate_invocation: t.validate_invocation.map(Into::into),
+                }),
+                v05::DeployAccount(t) => Self::DeployAccount(DeployAccountTxnTrace {
+                    constructor_invocation: t.constructor_invocation.map(Into::into),
+                    fee_transfer_invocation: t.fee_transfer_invocation.map(Into::into),
+                    validate_invocation: t.validate_invocation.map(Into::into),
+                }),
+                v05::Invoke(t) => Self::Invoke(InvokeTxnTrace {
+                    execute_invocation: t.execute_invocation.into(),
+                    fee_transfer_invocation: t.fee_transfer_invocation.map(Into::into),
+                    validate_invocation: t.validate_invocation.map(Into::into),
+                }),
+                v05::L1Handler(t) => Self::L1Handler(L1HandlerTxnTrace {
+                    function_invocation: t.function_invocation.map(Into::into),
+                }),
+            }
+        }
     }
 
     impl From<pathfinder_executor::types::TransactionTrace> for TransactionTrace {
@@ -382,6 +467,20 @@ pub mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
+    }
+
+    impl From<v05_dto::ExecuteInvocation> for ExecuteInvocation {
+        fn from(value: v05_dto::ExecuteInvocation) -> Self {
+            match value {
+                v05_dto::ExecuteInvocation::Empty => Self::Empty,
+                v05_dto::ExecuteInvocation::FunctionInvocation(t) => {
+                    Self::FunctionInvocation(t.into())
+                }
+                v05_dto::ExecuteInvocation::RevertedReason { revert_reason } => {
+                    Self::RevertedReason { revert_reason }
+                }
+            }
+        }
     }
 
     impl From<pathfinder_executor::types::InvokeTransactionTrace> for InvokeTxnTrace {
@@ -495,49 +594,6 @@ pub mod dto {
             }
         }
     }
-
-    pub(crate) fn map_gateway_trace(
-        transaction: GatewayTransaction,
-        trace: gateway_trace::TransactionTrace,
-    ) -> TransactionTrace {
-        match transaction {
-            GatewayTransaction::Declare(_) => dto::TransactionTrace::Declare(DeclareTxnTrace {
-                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
-                validate_invocation: trace.validate_invocation.map(Into::into),
-            }),
-            GatewayTransaction::Deploy(_) => {
-                dto::TransactionTrace::DeployAccount(DeployAccountTxnTrace {
-                    constructor_invocation: trace.function_invocation.map(Into::into),
-                    fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
-                    validate_invocation: trace.validate_invocation.map(Into::into),
-                })
-            }
-            GatewayTransaction::DeployAccount(_) => {
-                dto::TransactionTrace::DeployAccount(DeployAccountTxnTrace {
-                    constructor_invocation: trace.function_invocation.map(Into::into),
-                    fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
-                    validate_invocation: trace.validate_invocation.map(Into::into),
-                })
-            }
-            GatewayTransaction::Invoke(_) => TransactionTrace::Invoke(InvokeTxnTrace {
-                execute_invocation: if let Some(revert_reason) = trace.revert_error {
-                    ExecuteInvocation::RevertedReason { revert_reason }
-                } else {
-                    trace
-                        .function_invocation
-                        .map(|invocation| ExecuteInvocation::FunctionInvocation(invocation.into()))
-                        .unwrap_or_else(|| ExecuteInvocation::Empty)
-                },
-                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
-                validate_invocation: trace.validate_invocation.map(Into::into),
-            }),
-            GatewayTransaction::L1Handler(_) => {
-                dto::TransactionTrace::L1Handler(L1HandlerTxnTrace {
-                    function_invocation: trace.function_invocation.map(Into::into),
-                })
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -547,12 +603,11 @@ pub(crate) mod tests {
         BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1,
     };
     use crate::v02::types::ContractClass;
-    use pathfinder_common::{macro_prelude::*, Fee, StarknetVersion};
     use crate::v05::method::call::FunctionCall;
     use pathfinder_common::{
         felt, BlockHeader, ContractAddress, StorageAddress, StorageValue, TransactionVersion,
     };
-    use pathfinder_common::{macro_prelude::*, Fee};
+    use pathfinder_common::{macro_prelude::*, Fee, StarknetVersion};
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
@@ -1305,7 +1360,6 @@ pub(crate) mod tests {
         )
     }
 
-<<<<<<< HEAD
     pub(crate) async fn setup_storage() -> (
         Storage,
         BlockHeader,
@@ -1314,7 +1368,8 @@ pub(crate) mod tests {
         StorageValue,
     ) {
         setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 0)).await
-=======
+    }
+
     #[test_log::test(tokio::test)]
     async fn declare_deploy_and_invoke_sierra_class() {
         let (
@@ -1443,6 +1498,5 @@ pub(crate) mod tests {
                 ),
             ])
         );
->>>>>>> parent of 70da45ef (feat(rpc): v04 removal related cleanup)
     }
 }

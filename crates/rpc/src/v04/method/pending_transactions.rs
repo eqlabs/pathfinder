@@ -27,7 +27,7 @@ pub async fn pending_transactions(
             .transactions
             .iter()
             .map(|x| {
-                let common_tx = pathfinder_common::transaction::Transaction::from(x.clone());
+                let common_tx = x.clone();
                 common_tx.into()
             })
             .collect();

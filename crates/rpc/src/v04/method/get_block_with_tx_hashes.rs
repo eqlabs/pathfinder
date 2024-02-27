@@ -37,11 +37,17 @@ pub async fn get_block_with_tx_hashes(
                 let block = context
                     .pending_data
                     .get(&transaction)
-                    .context("Querying pending data")?
-                    .block;
-                let block = (*block).clone();
+                    .context("Querying pending data")?;
 
-                return Ok(types::Block::from_sequencer(block.into()));
+                let header = block.header();
+
+                let transactions = block.block.transactions.iter().map(|t| t.hash).collect();
+
+                return Ok(types::Block::from_parts(
+                    header,
+                    BlockStatus::Pending,
+                    transactions,
+                ));
             }
             other => other.try_into().expect("Only pending cast should fail"),
         };
@@ -76,7 +82,6 @@ mod types {
         BlockHash, BlockHeader, BlockNumber, BlockTimestamp, SequencerAddress, StateCommitment,
         TransactionHash,
     };
-    use pathfinder_crypto::Felt;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
 
@@ -116,36 +121,6 @@ mod types {
                 timestamp: header.timestamp,
                 sequencer_address: header.sequencer_address,
                 transactions,
-            }
-        }
-
-        /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
-        pub fn from_sequencer(block: starknet_gateway_types::reply::MaybePendingBlock) -> Self {
-            use starknet_gateway_types::reply::MaybePendingBlock;
-            match block {
-                MaybePendingBlock::Block(block) => Self {
-                    status: block.status.into(),
-                    block_hash: Some(block.block_hash),
-                    parent_hash: block.parent_block_hash,
-                    block_number: Some(block.block_number),
-                    new_root: Some(block.state_commitment),
-                    timestamp: block.timestamp,
-                    sequencer_address: block
-                        .sequencer_address
-                        // Default value for cairo <0.8.0 is 0
-                        .unwrap_or(SequencerAddress(Felt::ZERO)),
-                    transactions: block.transactions.iter().map(|t| t.hash()).collect(),
-                },
-                MaybePendingBlock::Pending(pending) => Self {
-                    status: pending.status.into(),
-                    block_hash: None,
-                    parent_hash: pending.parent_hash,
-                    block_number: None,
-                    new_root: None,
-                    timestamp: pending.timestamp,
-                    sequencer_address: pending.sequencer_address,
-                    transactions: pending.transactions.iter().map(|t| t.hash()).collect(),
-                },
             }
         }
     }

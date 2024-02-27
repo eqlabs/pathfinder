@@ -73,7 +73,6 @@ pub mod request {
     };
     use serde::Deserialize;
     use serde_with::serde_as;
-    use starknet_gateway_types::transaction_hash::compute_txn_hash;
 
     /// "Broadcasted" L2 transaction in requests the RPC API.
     ///
