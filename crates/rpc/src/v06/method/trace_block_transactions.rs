@@ -7,7 +7,8 @@ use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
 
 use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
 use crate::v06::method::simulate_transactions::dto::{
-    DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
+    DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, ExecutionResources,
+    FunctionInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
 };
 use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
 
@@ -18,7 +19,7 @@ use super::simulate_transactions::dto::TransactionTrace;
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct TraceBlockTransactionsInput {
-    block_id: BlockId,
+    pub block_id: BlockId,
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq, Clone)]
@@ -86,7 +87,7 @@ impl From<TraceConversionError> for TraceBlockTransactionsError {
     }
 }
 
-pub(super) struct TraceConversionError(pub &'static str);
+pub(crate) struct TraceConversionError(pub &'static str);
 
 pub(crate) fn map_gateway_trace(
     transaction: Transaction,
@@ -96,6 +97,24 @@ pub(crate) fn map_gateway_trace(
     let validate_invocation = trace.validate_invocation.map(Into::into);
     let function_invocation = trace.function_invocation.map(Into::into);
     let state_diff = None;
+
+    let computation_resources = validate_invocation
+        .as_ref()
+        .map(|i: &FunctionInvocation| i.execution_resources.clone())
+        .unwrap_or_default()
+        + function_invocation
+            .as_ref()
+            .map(|i: &FunctionInvocation| i.execution_resources.clone())
+            .unwrap_or_default()
+        + fee_transfer_invocation
+            .as_ref()
+            .map(|i: &FunctionInvocation| i.execution_resources.clone())
+            .unwrap_or_default();
+    let execution_resources = Some(ExecutionResources {
+        computation_resources,
+        // These values are not available in the gateway trace.
+        data_availability: Default::default(),
+    });
 
     use pathfinder_common::transaction::TransactionVariant;
 
@@ -107,6 +126,7 @@ pub(crate) fn map_gateway_trace(
             fee_transfer_invocation,
             validate_invocation,
             state_diff,
+            execution_resources,
         }),
         TransactionVariant::DeployAccountV0V1(_)
         | TransactionVariant::DeployAccountV3(_)
@@ -117,6 +137,7 @@ pub(crate) fn map_gateway_trace(
             fee_transfer_invocation,
             validate_invocation,
             state_diff,
+            execution_resources,
         }),
         TransactionVariant::InvokeV0(_)
         | TransactionVariant::InvokeV1(_)
@@ -131,17 +152,31 @@ pub(crate) fn map_gateway_trace(
             fee_transfer_invocation,
             validate_invocation,
             state_diff,
+            execution_resources,
         }),
         TransactionVariant::L1Handler(_) => TransactionTrace::L1Handler(L1HandlerTxnTrace {
             function_invocation: function_invocation.ok_or(TraceConversionError(
                 "function_invocation is missing from trace response",
             ))?,
             state_diff,
+            execution_resources,
         }),
     })
 }
 
 pub async fn trace_block_transactions(
+    context: RpcContext,
+    input: TraceBlockTransactionsInput,
+) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
+    trace_block_transactions_impl(context, input)
+        .await
+        .map(|mut x| {
+            x.0.iter_mut().for_each(|y| y.trace_root.with_v06_format());
+            x
+        })
+}
+
+pub async fn trace_block_transactions_impl(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
@@ -335,6 +370,7 @@ pub(crate) mod tests {
             let next_block_header = BlockHeader::builder()
                 .with_number(last_block_header.number + 1)
                 .with_eth_l1_gas_price(GasPrice(1))
+                .with_eth_l1_data_gas_price(GasPrice(2))
                 .with_parent_hash(last_block_header.hash)
                 .with_starknet_version(last_block_header.starknet_version)
                 .with_sequencer_address(last_block_header.sequencer_address)
@@ -485,8 +521,8 @@ pub(crate) mod tests {
                 strk_l1_gas_price_implementation_detail: Some(GasPrice(1)),
                 l1_gas_price_implementation_detail: None,
                 l1_data_gas_price: Some(GasPrices {
-                    price_in_wei: GasPrice(1),
-                    price_in_fri: GasPrice(1),
+                    price_in_wei: GasPrice(2),
+                    price_in_fri: GasPrice(2),
                 }),
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,

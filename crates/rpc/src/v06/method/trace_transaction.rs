@@ -104,6 +104,16 @@ pub async fn trace_transaction(
     context: RpcContext,
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
+    trace_transaction_impl(context, input).await.map(|mut x| {
+        x.0.with_v06_format();
+        x
+    })
+}
+
+pub async fn trace_transaction_impl(
+    context: RpcContext,
+    input: TraceTransactionInput,
+) -> Result<TraceTransactionOutput, TraceTransactionError> {
     #[allow(clippy::large_enum_variant)]
     enum LocalExecution {
         Success(TransactionTrace),

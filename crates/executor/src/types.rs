@@ -101,6 +101,7 @@ pub struct DeclareTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
     pub state_diff: StateDiff,
+    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +110,7 @@ pub struct DeployAccountTransactionTrace {
     pub constructor_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
     pub state_diff: StateDiff,
+    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone)]
@@ -123,12 +125,14 @@ pub struct InvokeTransactionTrace {
     pub execute_invocation: ExecuteInvocation,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
     pub state_diff: StateDiff,
+    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone)]
 pub struct L1HandlerTransactionTrace {
     pub function_invocation: Option<FunctionInvocation>,
     pub state_diff: StateDiff,
+    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -157,7 +161,7 @@ pub struct FunctionInvocation {
     pub events: Vec<Event>,
     pub messages: Vec<MsgToL1>,
     pub result: Vec<Felt>,
-    pub execution_resources: ExecutionResources,
+    pub computation_resources: ComputationResources,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -202,8 +206,14 @@ pub struct ReplacedClass {
     pub class_hash: ClassHash,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct ExecutionResources {
+    pub computation_resources: ComputationResources,
+    pub data_availability: DataAvailabilityResources,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct ComputationResources {
     pub steps: usize,
     pub memory_holes: usize,
     pub range_check_builtin_applications: usize,
@@ -214,6 +224,38 @@ pub struct ExecutionResources {
     pub bitwise_builtin_applications: usize,
     pub keccak_builtin_applications: usize,
     pub segment_arena_builtin: usize,
+}
+
+impl std::ops::Add for ComputationResources {
+    type Output = ComputationResources;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::Output {
+            steps: self.steps + rhs.steps,
+            memory_holes: self.memory_holes + rhs.memory_holes,
+            range_check_builtin_applications: self.range_check_builtin_applications
+                + rhs.range_check_builtin_applications,
+            pedersen_builtin_applications: self.pedersen_builtin_applications
+                + rhs.pedersen_builtin_applications,
+            poseidon_builtin_applications: self.poseidon_builtin_applications
+                + rhs.poseidon_builtin_applications,
+            ec_op_builtin_applications: self.ec_op_builtin_applications
+                + rhs.ec_op_builtin_applications,
+            ecdsa_builtin_applications: self.ecdsa_builtin_applications
+                + rhs.ecdsa_builtin_applications,
+            bitwise_builtin_applications: self.bitwise_builtin_applications
+                + rhs.bitwise_builtin_applications,
+            keccak_builtin_applications: self.keccak_builtin_applications
+                + rhs.keccak_builtin_applications,
+            segment_arena_builtin: self.segment_arena_builtin + rhs.segment_arena_builtin,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct DataAvailabilityResources {
+    pub l1_gas: u128,
+    pub l1_data_gas: u128,
 }
 
 impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
@@ -260,7 +302,7 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             events,
             messages,
             result,
-            execution_resources: call_info.resources.into(),
+            computation_resources: call_info.resources.into(),
         }
     }
 }
@@ -330,7 +372,7 @@ fn ordered_l2_to_l1_messages(
     messages.into_values().collect()
 }
 
-impl From<cairo_vm::vm::runners::cairo_runner::ExecutionResources> for ExecutionResources {
+impl From<cairo_vm::vm::runners::cairo_runner::ExecutionResources> for ComputationResources {
     fn from(value: cairo_vm::vm::runners::cairo_runner::ExecutionResources) -> Self {
         use cairo_vm::vm::runners::builtin_runner::{
             BITWISE_BUILTIN_NAME, EC_OP_BUILTIN_NAME, HASH_BUILTIN_NAME, KECCAK_BUILTIN_NAME,
