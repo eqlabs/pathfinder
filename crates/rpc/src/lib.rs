@@ -41,6 +41,7 @@ use tower_http::ServiceBuilderExt;
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
 pub enum DefaultVersion {
+    V04,
     V05,
     V06,
     V07,
@@ -142,12 +143,14 @@ impl RpcServer {
             }
         }
 
+        let v04_routes = v04::register_routes().build(self.context.clone());
         let v05_routes = v05::register_routes().build(self.context.clone());
         let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
+            DefaultVersion::V04 => v04_routes.clone(),
             DefaultVersion::V05 => v05_routes.clone(),
             DefaultVersion::V06 => v06_routes.clone(),
             DefaultVersion::V07 => v07_routes.clone(),
@@ -158,6 +161,9 @@ impl RpcServer {
             // used by monitoring bots to check service health.
             .route("/", get(empty_body).post(rpc_handler))
             .with_state(default_router)
+            .route("/rpc/v0.4", post(rpc_handler))
+            .route("/rpc/v0_4", post(rpc_handler))
+            .with_state(v04_routes)
             .route("/rpc/v0.5", post(rpc_handler))
             .route("/rpc/v0_5", post(rpc_handler))
             .with_state(v05_routes)
@@ -774,7 +780,7 @@ mod tests {
         // of health check. Test that we return success for such queries.
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V05)
+        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
             .spawn()
             .unwrap();
 
@@ -806,9 +812,9 @@ mod tests {
 
     #[rustfmt::skip]
     #[rstest::rstest]
-    #[case::root_api  ("/", "v05/starknet_api_openrpc.json",       &[])]
-    #[case::root_trace("/", "v05/starknet_trace_api_openrpc.json", &[])]
-    #[case::root_write("/", "v05/starknet_write_api.json",         &[])]
+    #[case::root_api  ("/", "v04/starknet_api_openrpc.json",       &[])]
+    #[case::root_trace("/", "v04/starknet_trace_api_openrpc.json", &[])]
+    #[case::root_write("/", "v04/starknet_write_api.json",         &[])]
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
     #[case::v0_7_api  ("/rpc/v0_7", "v07/starknet_api_openrpc.json", &[])]
@@ -832,6 +838,15 @@ mod tests {
     #[case::v0_5_write("/rpc/v0_5", "v05/starknet_write_api.json",         &[])]
     #[case::v0_5_pathfinder("/rpc/v0_5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
 
+    #[case::v04_api  ("/rpc/v0.4", "v04/starknet_api_openrpc.json",       &[])]
+    #[case::v04_trace("/rpc/v0.4", "v04/starknet_trace_api_openrpc.json", &[])]
+    #[case::v04_write("/rpc/v0.4", "v04/starknet_write_api.json",         &[])]
+    #[case::v04_pathfinder("/rpc/v0.4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    #[case::v0_4_api  ("/rpc/v0_4", "v04/starknet_api_openrpc.json", &[])]
+    #[case::v0_4_trace("/rpc/v0_4", "v04/starknet_trace_api_openrpc.json", &[])]
+    #[case::v0_4_write("/rpc/v0_4", "v04/starknet_write_api.json",         &[])]
+    #[case::v0_4_pathfinder("/rpc/v0_4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
 
     #[tokio::test]
@@ -867,7 +882,7 @@ mod tests {
 
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V05)
+        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
             .spawn()
             .unwrap();
 

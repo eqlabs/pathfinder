@@ -5,9 +5,9 @@ mod get_block_with_tx_hashes;
 mod get_block_with_txs;
 pub(crate) mod get_transaction_receipt;
 mod get_transaction_status;
-mod simulate_transactions;
-mod trace_block_transactions;
-mod trace_transaction;
+pub(crate) mod simulate_transactions;
+pub(crate) mod trace_block_transactions;
+pub(crate) mod trace_transaction;
 
 pub(crate) use call::call;
 pub(crate) use estimate_fee::estimate_fee;
