@@ -78,6 +78,11 @@ impl MontFelt {
         self.0.into_bigint().0.into()
     }
 
+    /// Computes the double of a field element
+    pub fn double(&self) -> Self {
+        MontFelt(self.0.double())
+    }
+
     /// Compute the square of a field element
     pub fn square(&self) -> Self {
         MontFelt(self.0.square())
