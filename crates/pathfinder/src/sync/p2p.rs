@@ -78,7 +78,7 @@ impl Sync {
             .await
             .context("Syncing transactions")?;
 
-        // Sync the rest of the headers in chronological order.
+        // Sync the rest of the data in chronological order.
 
         Ok(())
     }
@@ -147,7 +147,6 @@ impl Sync {
 
     async fn sync_transactions(&self) -> anyhow::Result<()> {
         const NUM_CONCURRENT_TASKS: usize = 10;
-
         let mut tasks = JoinSet::new();
         let blocks_without_transactions =
             transactions::blocks_without_transactions(self.storage.clone()).fuse();
@@ -214,7 +213,6 @@ async fn sync_transactions_for_block(
             );
             continue;
         }
-
         transactions::insert_transactions(storage, block, transactions)
             .await
             .context("Inserting transactions")?;
