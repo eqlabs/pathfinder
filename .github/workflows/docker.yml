@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Determine Docker image metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: eqlabs/pathfinder
       - name: Checkout sources
