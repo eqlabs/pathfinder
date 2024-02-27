@@ -390,11 +390,9 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 
 pub(super) fn blocks_without_transactions(
     tx: &Transaction<'_>,
-    before_block: Option<BlockNumber>,
+    start: BlockNumber,
     limit: u64,
 ) -> anyhow::Result<Vec<BlockHeader>> {
-    let before_block = before_block.unwrap_or(BlockNumber::MAX);
-
     let mut stmt = tx
         .inner()
         .prepare(
@@ -406,16 +404,16 @@ pub(super) fn blocks_without_transactions(
             GROUP BY block_headers.hash
             HAVING
                 COUNT(starknet_transactions.idx) = 0 AND
-                block_headers.number < ?
+                block_headers.number >= ?
             ORDER BY block_headers.number DESC
             LIMIT ?;
             ",
         )
-        .context("Preparing blocks_missing_transactions query")?;
+        .context("Preparing blocks_without_transactions query")?;
 
     let mut rows = stmt
-        .query(params![&before_block, &limit])
-        .context("Executing blocks_missing_transactions")?;
+        .query(params![&start, &limit])
+        .context("Executing blocks_without_transactions")?;
 
     let mut data = Vec::new();
     while let Some(row) = rows.next()? {

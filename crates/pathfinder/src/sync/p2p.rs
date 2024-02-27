@@ -3,12 +3,14 @@ mod headers;
 mod transactions;
 
 use anyhow::Context;
-use futures::StreamExt;
-use pathfinder_common::{BlockHash, BlockNumber};
+use futures::{pin_mut, StreamExt};
+use pathfinder_common::{
+    transaction::Transaction, BlockHash, BlockHeader, BlockNumber, TransactionCommitment,
+};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
-use tokio::task::spawn_blocking;
+use tokio::task::{spawn_blocking, JoinSet};
 
 use p2p::client::peer_agnostic::Client as P2PClient;
 
@@ -68,17 +70,13 @@ impl Sync {
             .await
             .context("Persisting new Ethereum anchor")?;
 
-        let sync = self.clone();
-        tokio::spawn(async move {
-            // Sync missing transactions.
-            while let Err(e) = sync.sync_transactions().await {
-                tracing::info!(%e, "Error while syncing transactions, retrying");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            }
-        });
-
         // Sync missing headers in reverse chronological order, from the new anchor to genesis.
         self.sync_headers(anchor).await.context("Syncing headers")?;
+
+        // Sync missing transactions in chronological order for all synced headers.
+        self.sync_transactions()
+            .await
+            .context("Syncing transactions")?;
 
         // Sync the rest of the headers in chronological order.
 
@@ -148,64 +146,82 @@ impl Sync {
     }
 
     async fn sync_transactions(&self) -> anyhow::Result<()> {
-        let mut last_block = None;
-        loop {
-            let blocks =
-                transactions::blocks_without_transactions(self.storage.clone(), last_block)
-                    .await
-                    .context("Querying for blocks without transactions")?;
-            if blocks.is_empty() {
-                if last_block.is_none() {
-                    // End reached and no blocks were inserted. Wait for new blocks.
-                    // TODO Ideally this would be signaled over a channel or something, by the
-                    // main sync task?
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                }
+        const NUM_CONCURRENT_TASKS: usize = 10;
 
-                // End reached, but more blocks might have been inserted. Start over.
-                last_block = None;
-                continue;
-            }
-            for block in blocks {
-                let transaction_stream = self.p2p.clone().transaction_stream(block.number);
-                futures::pin_mut!(transaction_stream);
-                loop {
-                    let transactions = transaction_stream.next().await.ok_or_else(|| {
-                        anyhow::anyhow!("Transaction stream ended, this should never happen")
-                    })?;
-                    if transactions.data.len() != block.transaction_count {
-                        continue;
-                    }
-                    let transaction_final_hash_type =
-                        TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
-                    let transaction_commitment = calculate_transaction_commitment(
-                        &transactions.data,
-                        transaction_final_hash_type,
-                    )?;
-                    if transaction_commitment != block.transaction_commitment {
-                        tracing::debug!(
-                            "Transaction commitment mismatch for block {}, trying next peer",
-                            block.number
-                        );
-                        continue;
-                    }
-
-                    last_block = Some(block.number);
-
-                    transactions::insert_transactions(
-                        self.storage.clone(),
-                        block,
-                        transactions.data,
-                    )
-                    .await
-                    .context("Inserting transactions")?;
-
-                    break;
-                }
+        let mut tasks = JoinSet::new();
+        let blocks_without_transactions =
+            transactions::blocks_without_transactions(self.storage.clone()).fuse();
+        pin_mut!(blocks_without_transactions);
+        for _ in 0..NUM_CONCURRENT_TASKS {
+            let Some(block) = blocks_without_transactions.next().await else {
+                break;
+            };
+            let block = block?;
+            tasks.spawn(sync_transactions_for_block(
+                self.p2p.clone(),
+                self.storage.clone(),
+                block,
+            ));
+        }
+        while let Some(result) = tasks.join_next().await {
+            result??;
+            if let Some(block) = blocks_without_transactions.next().await {
+                let block = block?;
+                tasks.spawn(sync_transactions_for_block(
+                    self.p2p.clone(),
+                    self.storage.clone(),
+                    block,
+                ));
             }
         }
+        Ok(())
     }
+}
+
+async fn sync_transactions_for_block(
+    p2p: P2PClient,
+    storage: Storage,
+    block: BlockHeader,
+) -> anyhow::Result<()> {
+    let transaction_stream = p2p.transaction_stream(block.number);
+    futures::pin_mut!(transaction_stream);
+    loop {
+        let transactions = transaction_stream
+            .next()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Transaction stream ended, this should never happen"))?;
+        if transactions.data.len() != block.transaction_count {
+            continue;
+        }
+        let transaction_final_hash_type =
+            TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
+        let (transaction_commitment, transactions) = spawn_blocking(
+            move || -> anyhow::Result<(TransactionCommitment, Vec<Transaction>)> {
+                let commitment = calculate_transaction_commitment(
+                    &transactions.data,
+                    transaction_final_hash_type,
+                )?;
+                Ok((commitment, transactions.data))
+            },
+        )
+        .await
+        .context("Joining blocking task")?
+        .context("Calculating transaction commitment")?;
+        if transaction_commitment != block.transaction_commitment {
+            tracing::debug!(
+                "Transaction commitment mismatch for block {}, trying next peer",
+                block.number
+            );
+            continue;
+        }
+
+        transactions::insert_transactions(storage, block, transactions)
+            .await
+            .context("Inserting transactions")?;
+        break;
+    }
+
+    Ok(())
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with a given L1 checkpoint,
