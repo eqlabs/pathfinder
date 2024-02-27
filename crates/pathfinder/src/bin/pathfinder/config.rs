@@ -81,7 +81,7 @@ Examples:
     #[arg(
         long = "rpc.root-version",
         long_help = "Version of the JSON-RPC API to serve on the / (root) path",
-        default_value = "v05",
+        default_value = "v06",
         env = "PATHFINDER_RPC_ROOT_VERSION"
     )]
     rpc_root_version: RpcVersion,
