@@ -211,46 +211,60 @@ pub struct Client {
 
 impl Client {
     /// Creates a [Client] for [pathfinder_common::Chain::Mainnet].
-    pub fn mainnet() -> Self {
-        Self::with_base_url(Url::parse("https://alpha-mainnet.starknet.io/").unwrap()).unwrap()
+    pub fn mainnet(timeout: Duration) -> Self {
+        Self::with_base_url(
+            Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
+            timeout,
+        )
+        .unwrap()
     }
 
     /// Creates a [Client] for [pathfinder_common::Chain::GoerliTestnet].
-    pub fn goerli_testnet() -> Self {
-        Self::with_base_url(Url::parse("https://alpha4.starknet.io/").unwrap()).unwrap()
+    pub fn goerli_testnet(timeout: Duration) -> Self {
+        Self::with_base_url(Url::parse("https://alpha4.starknet.io/").unwrap(), timeout).unwrap()
     }
 
     /// Creates a [Client] for [pathfinder_common::Chain::GoerliIntegration].
-    pub fn goerli_integration() -> Self {
-        Self::with_base_url(Url::parse("https://external.integration.starknet.io").unwrap())
-            .unwrap()
+    pub fn goerli_integration(timeout: Duration) -> Self {
+        Self::with_base_url(
+            Url::parse("https://external.integration.starknet.io").unwrap(),
+            timeout,
+        )
+        .unwrap()
     }
 
     /// Creates a [Client] for [pathfinder_common::Chain::SepoliaTestnet].
-    pub fn sepolia_testnet() -> Self {
-        Self::with_base_url(Url::parse("https://alpha-sepolia.starknet.io/").unwrap()).unwrap()
+    pub fn sepolia_testnet(timeout: Duration) -> Self {
+        Self::with_base_url(
+            Url::parse("https://alpha-sepolia.starknet.io/").unwrap(),
+            timeout,
+        )
+        .unwrap()
     }
 
     /// Creates a [Client] for [pathfinder_common::Chain::SepoliaIntegration].
-    pub fn sepolia_integration() -> Self {
-        Self::with_base_url(Url::parse("https://integration-sepolia.starknet.io/").unwrap())
-            .unwrap()
+    pub fn sepolia_integration(timeout: Duration) -> Self {
+        Self::with_base_url(
+            Url::parse("https://integration-sepolia.starknet.io/").unwrap(),
+            timeout,
+        )
+        .unwrap()
     }
 
     /// Creates a [Client] with a shared feeder gateway and gateway base url.
-    pub fn with_base_url(base: Url) -> anyhow::Result<Self> {
+    pub fn with_base_url(base: Url, timeout: Duration) -> anyhow::Result<Self> {
         let gateway = base.join("gateway")?;
         let feeder_gateway = base.join("feeder_gateway")?;
-        Self::with_urls(gateway, feeder_gateway)
+        Self::with_urls(gateway, feeder_gateway, timeout)
     }
 
     /// Create a Sequencer client for the given [Url]s.
-    pub fn with_urls(gateway: Url, feeder_gateway: Url) -> anyhow::Result<Self> {
+    pub fn with_urls(gateway: Url, feeder_gateway: Url, timeout: Duration) -> anyhow::Result<Self> {
         metrics::register();
 
         Ok(Self {
             inner: reqwest::Client::builder()
-                .timeout(Duration::from_secs(5))
+                .timeout(timeout)
                 .user_agent(pathfinder_common::consts::USER_AGENT)
                 .build()?,
             gateway,
@@ -504,9 +518,12 @@ impl GatewayApi for Client {
 }
 
 pub mod test_utils {
+    use std::time::Duration;
+
     use super::Client;
     use starknet_gateway_types::error::KnownStarknetErrorCode;
 
+    pub const GATEWAY_TIMEOUT: Duration = Duration::from_secs(5);
     /// Helper function which allows for easy creation of a response tuple
     /// that contains a [StarknetError](starknet_gateway_types::error::StarknetError) for a given [KnownStarknetErrorCode].
     ///
@@ -552,9 +569,9 @@ pub mod test_utils {
         S2: std::string::ToString + Send + Sync + Clone + 'static,
     {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
-            (None, Client::goerli_testnet())
+            (None, Client::goerli_testnet(GATEWAY_TIMEOUT))
         } else if std::env::var_os("SEQUENCER_TESTS_LIVE_API_INTEGRATION").is_some() {
-            (None, Client::goerli_integration())
+            (None, Client::goerli_integration(GATEWAY_TIMEOUT))
         } else {
             use warp::Filter;
             let opt_query_raw = warp::query::raw()
@@ -590,9 +607,11 @@ pub mod test_utils {
 
             let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
             let server_handle = tokio::spawn(serve_fut);
-            let client =
-                Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap())
-                    .unwrap();
+            let client = Client::with_base_url(
+                reqwest::Url::parse(&format!("http://{addr}")).unwrap(),
+                GATEWAY_TIMEOUT,
+            )
+            .unwrap();
             (Some(server_handle), client)
         }
     }
@@ -666,9 +685,12 @@ pub mod test_utils {
 
         let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
         let server_handle = tokio::spawn(serve_fut);
-        let client = Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap())
-            .unwrap()
-            .disable_retry_for_tests();
+        let client = Client::with_base_url(
+            reqwest::Url::parse(&format!("http://{addr}")).unwrap(),
+            GATEWAY_TIMEOUT,
+        )
+        .unwrap()
+        .disable_retry_for_tests();
         (Some(server_handle), client)
     }
 }
@@ -713,7 +735,7 @@ mod tests {
 
         let url = format!("http://{addr}");
         let url = Url::parse(&url).unwrap();
-        let client = Client::with_base_url(url).unwrap();
+        let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
 
         let _ = client.block_header(BlockId::Latest).await;
         shutdown_tx.send(()).unwrap();
@@ -1175,7 +1197,7 @@ mod tests {
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
-                let client = Client::with_base_url(url).unwrap();
+                let client = Client::with_base_url(url, test_utils::GATEWAY_TIMEOUT).unwrap();
 
                 let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
@@ -1204,7 +1226,7 @@ mod tests {
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
-                let client = Client::with_base_url(url).unwrap();
+                let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
 
                 let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
