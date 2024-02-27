@@ -7,7 +7,7 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.11.0] - 2024-02-27
 
 ### Changed
 
@@ -15,10 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The migration step involves computing Bloom filters for all blocks and dropping database tables no longer needed. This takes more than one hour for a mainnet database.
   - The new `storage.event-bloom-filter-cache-size`, `rpc.get-events-max-blocks-to-scan` and `rpc.get-events-max-bloom-filters-to-load` arguments control some aspects of the algorithm.
 - The memory allocator used by pathfinder has been changed to jemalloc, leading to improved JSON-RPC performance.
+- Improved poseidon hash performance.
+- Default RPC version changed to v0.6.
+
 
 ### Added
 
+- Support for Starknet v0.13.1.
+- Support for RPC v0.7.
 - The request timeout for gateway and feeder-gateway queries is now configurable using `gateway.request-timeout` (`"PATHFINDER_GATEWAY_REQUEST_TIMEOUT"`).
+
+### Fixed
+
+- Websocket control frames aren't handled.
 
 ## [0.10.6] - 2024-02-03
 
