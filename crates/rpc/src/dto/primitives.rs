@@ -254,7 +254,8 @@ mod tests {
 
     #[test]
     fn address() {
-        let uut = Address(&contract_address!("0x1234"));
+        let uut = contract_address!("0x1234");
+        let uut = Address(&uut);
         let expected = Serializer::default().serialize(&uut.0).unwrap();
         let encoded = uut.serialize(Serializer::default()).unwrap();
 
@@ -330,8 +331,7 @@ mod tests {
 
     #[test]
     fn num_as_hex_h256() {
-        use std::str::FromStr;
-        let uut = H256::from_str("1234").unwrap();
+        let uut = H256(felt!("0x1234").to_be_bytes());
         let uut = NumAsHex::H256(&uut);
         let expected = json!("0x1234");
         let encoded = uut.serialize(Serializer::default()).unwrap();

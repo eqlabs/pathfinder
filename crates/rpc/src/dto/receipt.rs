@@ -468,7 +468,11 @@ impl SerializeForVersion for MsgToL1<'_> {
 
         serializer.serialize_field("from_address", &Felt(self.0.from_address.get()))?;
         // The spec erroneously marks this as a Felt, but should be an ETH_ADDRESS.
-        serializer.serialize_field("to_address", &EthAddress(&self.0.to_address))?;
+        serializer.serialize_field(
+            "to_address",
+            // unwrap is safe as Ethereum address is 20 bytes and cannot overflow.
+            &Felt(&pathfinder_crypto::Felt::from_be_slice(self.0.to_address.0.as_bytes()).unwrap()),
+        )?;
         serializer.serialize_field("payload", &PayloadDto(&self.0.payload))?;
 
         struct PayloadDto<'a>(&'a [pathfinder_common::L2ToL1MessagePayloadElem]);
@@ -508,12 +512,79 @@ impl SerializeForVersion for ExecutionResources<'_> {
             "pedersen_builtin_applications",
             &NumAsHex::U64(self.0.builtins.pedersen),
         )?;
-        serializer.serialize_field("poseidon", &NumAsHex::U64(self.0.builtins.poseidon))?;
-        serializer.serialize_field("ec_op", &NumAsHex::U64(self.0.builtins.ec_op))?;
-        serializer.serialize_field("ecdsa", &NumAsHex::U64(self.0.builtins.ecdsa))?;
-        serializer.serialize_field("bitwise", &NumAsHex::U64(self.0.builtins.bitwise))?;
-        serializer.serialize_field("keccak", &NumAsHex::U64(self.0.builtins.keccak))?;
+        serializer.serialize_field(
+            "poseidon_builtin_applications",
+            &NumAsHex::U64(self.0.builtins.poseidon),
+        )?;
+        serializer.serialize_field(
+            "ec_op_builtin_applications",
+            &NumAsHex::U64(self.0.builtins.ec_op),
+        )?;
+        serializer.serialize_field(
+            "ecdsa_builtin_applications",
+            &NumAsHex::U64(self.0.builtins.ecdsa),
+        )?;
+        serializer.serialize_field(
+            "bitwise_builtin_applications",
+            &NumAsHex::U64(self.0.builtins.bitwise),
+        )?;
+        serializer.serialize_field(
+            "keccak_builtin_applications",
+            &NumAsHex::U64(self.0.builtins.keccak),
+        )?;
 
         serializer.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions_sorted::assert_eq;
+
+    #[test]
+    fn execution_resources() {
+        let uut = pathfinder_common::receipt::ExecutionResources {
+            n_steps: 1,
+            n_memory_holes: 2,
+            builtins: pathfinder_common::receipt::BuiltinCounters {
+                output: 3,
+                pedersen: 4,
+                range_check: 5,
+                ecdsa: 6,
+                bitwise: 7,
+                ec_op: 8,
+                keccak: 9,
+                poseidon: 10,
+                segment_arena: 11,
+            },
+            data_availability: pathfinder_common::receipt::ExecutionDataAvailability::default(),
+        };
+        let expected = serde_json::json!({
+           "steps": NumAsHex::U64(uut.n_steps)
+                        .serialize(Default::default()).unwrap(),
+           "memory_holes": NumAsHex::U64(uut.n_memory_holes)
+                        .serialize(Default::default()).unwrap(),
+           "range_check_builtin_applications": NumAsHex::U64(uut.builtins.range_check)
+                        .serialize(Default::default()).unwrap(),
+           "pedersen_builtin_applications": NumAsHex::U64(uut.builtins.pedersen)
+                        .serialize(Default::default()).unwrap(),
+           "poseidon_builtin_applications": NumAsHex::U64(uut.builtins.poseidon)
+                        .serialize(Default::default()).unwrap(),
+           "ec_op_builtin_applications": NumAsHex::U64(uut.builtins.ec_op)
+                        .serialize(Default::default()).unwrap(),
+           "ecdsa_builtin_applications": NumAsHex::U64(uut.builtins.ecdsa)
+                        .serialize(Default::default()).unwrap(),
+           "bitwise_builtin_applications": NumAsHex::U64(uut.builtins.bitwise)
+                        .serialize(Default::default()).unwrap(),
+           "keccak_builtin_applications": NumAsHex::U64(uut.builtins.keccak)
+                        .serialize(Default::default()).unwrap(),
+        });
+
+        let encoded = ExecutionResources(&uut)
+            .serialize(Default::default())
+            .unwrap();
+
+        assert_eq!(encoded, expected);
     }
 }

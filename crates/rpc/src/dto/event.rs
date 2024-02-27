@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn event_content() {
-        let uut = EventContent(&pathfinder_common::event::Event {
+        let uut = pathfinder_common::event::Event {
             data: vec![
                 event_data!("0x1"),
                 event_data!("0x2"),
@@ -87,7 +87,8 @@ mod tests {
                 event_key!("0x7"),
                 event_key!("0x8"),
             ],
-        });
+        };
+        let uut = EventContent(&uut);
         let expected = serde_json::json!({
             "data": uut.0.data.iter()
                 .map(|x| Felt(&x.0)
