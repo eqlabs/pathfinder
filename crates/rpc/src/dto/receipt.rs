@@ -1,7 +1,7 @@
 use primitive_types::H256;
 
 use crate::dto::serialize::SerializeForVersion;
-use crate::dto::*;
+use crate::{dto::*, DefaultVersion};
 
 use super::serialize;
 
@@ -20,6 +20,7 @@ pub struct PendingTxnReceipt<'a> {
 
 struct CommonReceiptProperties<'a> {
     receipt: &'a pathfinder_common::receipt::Receipt,
+    transaction: &'a pathfinder_common::transaction::Transaction,
     finality: TxnFinalityStatus,
     block_hash: &'a pathfinder_common::BlockHash,
     block_number: pathfinder_common::BlockNumber,
@@ -29,6 +30,13 @@ struct PendingCommonReceiptProperties<'a> {
     receipt: &'a pathfinder_common::receipt::Receipt,
     transaction: &'a pathfinder_common::transaction::Transaction,
 }
+
+struct FeePayment<'a> {
+    receipt: &'a pathfinder_common::receipt::Receipt,
+    transaction: &'a pathfinder_common::transaction::Transaction,
+}
+
+struct PriceUnit<'a>(&'a pathfinder_common::transaction::Transaction);
 
 struct ExecutionResources<'a>(&'a pathfinder_common::receipt::ExecutionResources);
 
@@ -110,6 +118,7 @@ impl SerializeForVersion for TxnReceipt<'_> {
             finality: self.finality,
             block_hash: self.block_hash,
             block_number: self.block_number,
+            transaction: self.transaction,
         };
         use pathfinder_common::transaction::TransactionVariant;
         match &self.transaction.variant {
@@ -326,10 +335,20 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("transaction_hash", &TxnHash(&self.receipt.transaction_hash))?;
-        serializer.serialize_field(
-            "actual_fee",
-            &Felt(&self.receipt.actual_fee.unwrap_or_default().0),
-        )?;
+        if serializer.version >= DefaultVersion::V06 {
+            serializer.serialize_field(
+                "actual_fee",
+                &FeePayment {
+                    receipt: self.receipt,
+                    transaction: self.transaction,
+                },
+            )?;
+        } else {
+            serializer.serialize_field(
+                "actual_fee",
+                &Felt(&self.receipt.actual_fee.unwrap_or_default().0),
+            )?;
+        }
         serializer.serialize_field("finality_status", &self.finality)?;
         serializer.serialize_field("block_hash", &BlockHash(self.block_hash))?;
         serializer.serialize_field("block_number", &BlockNumber(self.block_number))?;
@@ -385,10 +404,21 @@ impl SerializeForVersion for PendingCommonReceiptProperties<'_> {
         };
 
         serializer.serialize_field("transaction_hash", &TxnHash(&self.receipt.transaction_hash))?;
-        serializer.serialize_field(
-            "actual_fee",
-            &Felt(&self.receipt.actual_fee.unwrap_or_default().0),
-        )?;
+
+        if serializer.version >= DefaultVersion::V06 {
+            serializer.serialize_field(
+                "actual_fee",
+                &FeePayment {
+                    receipt: &self.receipt,
+                    transaction: &self.transaction,
+                },
+            )?;
+        } else {
+            serializer.serialize_field(
+                "actual_fee",
+                &Felt(&self.receipt.actual_fee.unwrap_or_default().0),
+            )?;
+        }
         serializer.serialize_field("type", &txn_type)?;
         serializer.serialize_iter(
             "messages_sent",
@@ -502,89 +532,179 @@ impl SerializeForVersion for ExecutionResources<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("steps", &NumAsHex::U64(self.0.n_steps))?;
-        serializer.serialize_field("memory_holes", &NumAsHex::U64(self.0.n_memory_holes))?;
-        serializer.serialize_field(
-            "range_check_builtin_applications",
-            &NumAsHex::U64(self.0.builtins.range_check),
-        )?;
-        serializer.serialize_field(
-            "pedersen_builtin_applications",
-            &NumAsHex::U64(self.0.builtins.pedersen),
-        )?;
-        serializer.serialize_field(
-            "poseidon_builtin_applications",
-            &NumAsHex::U64(self.0.builtins.poseidon),
-        )?;
-        serializer.serialize_field(
-            "ec_op_builtin_applications",
-            &NumAsHex::U64(self.0.builtins.ec_op),
-        )?;
-        serializer.serialize_field(
-            "ecdsa_builtin_applications",
-            &NumAsHex::U64(self.0.builtins.ecdsa),
-        )?;
-        serializer.serialize_field(
-            "bitwise_builtin_applications",
-            &NumAsHex::U64(self.0.builtins.bitwise),
-        )?;
-        serializer.serialize_field(
-            "keccak_builtin_applications",
-            &NumAsHex::U64(self.0.builtins.keccak),
-        )?;
+        if serializer.version >= DefaultVersion::V06 {
+            serializer.serialize_field("memory_holes", &self.0.n_memory_holes)?;
+            serializer.serialize_field(
+                "range_check_builtin_applications",
+                &self.0.builtins.range_check,
+            )?;
+            serializer
+                .serialize_field("pedersen_builtin_applications", &self.0.builtins.pedersen)?;
+            serializer
+                .serialize_field("poseidon_builtin_applications", &self.0.builtins.poseidon)?;
+            serializer.serialize_field("ec_op_builtin_applications", &self.0.builtins.ec_op)?;
+            serializer.serialize_field("ecdsa_builtin_applications", &self.0.builtins.ecdsa)?;
+            serializer.serialize_field("bitwise_builtin_applications", &self.0.builtins.bitwise)?;
+            serializer.serialize_field("keccak_builtin_applications", &self.0.builtins.keccak)?;
+            serializer.serialize_field("segment_arena_builtin", &self.0.builtins.segment_arena)?;
+        } else {
+            serializer.serialize_field("steps", &NumAsHex::U64(self.0.n_steps))?;
+            serializer.serialize_field("memory_holes", &NumAsHex::U64(self.0.n_memory_holes))?;
+            serializer.serialize_field(
+                "range_check_builtin_applications",
+                &NumAsHex::U64(self.0.builtins.range_check),
+            )?;
+            serializer.serialize_field(
+                "pedersen_builtin_applications",
+                &NumAsHex::U64(self.0.builtins.pedersen),
+            )?;
+            serializer.serialize_field(
+                "poseidon_builtin_applications",
+                &NumAsHex::U64(self.0.builtins.poseidon),
+            )?;
+            serializer.serialize_field(
+                "ec_op_builtin_applications",
+                &NumAsHex::U64(self.0.builtins.ec_op),
+            )?;
+            serializer.serialize_field(
+                "ecdsa_builtin_applications",
+                &NumAsHex::U64(self.0.builtins.ecdsa),
+            )?;
+            serializer.serialize_field(
+                "bitwise_builtin_applications",
+                &NumAsHex::U64(self.0.builtins.bitwise),
+            )?;
+            serializer.serialize_field(
+                "keccak_builtin_applications",
+                &NumAsHex::U64(self.0.builtins.keccak),
+            )?;
+        }
 
         serializer.end()
+    }
+}
+
+impl SerializeForVersion for FeePayment<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        let amount = self.receipt.actual_fee.unwrap_or_default().0;
+        serializer.serialize_field("amount", &Felt(&amount))?;
+        serializer.serialize_field("unit", &PriceUnit(&self.transaction))?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for PriceUnit<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        use pathfinder_common::TransactionVersion;
+        match self.0.version() {
+            TransactionVersion::ZERO | TransactionVersion::ONE | TransactionVersion::TWO => "WEI",
+            _ => "FRI",
+        }
+        .serialize(serializer)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions_sorted::assert_eq;
 
-    #[test]
-    fn execution_resources() {
-        let uut = pathfinder_common::receipt::ExecutionResources {
-            n_steps: 1,
-            n_memory_holes: 2,
-            builtins: pathfinder_common::receipt::BuiltinCounters {
-                output: 3,
-                pedersen: 4,
-                range_check: 5,
-                ecdsa: 6,
-                bitwise: 7,
-                ec_op: 8,
-                keccak: 9,
-                poseidon: 10,
-                segment_arena: 11,
-            },
-            data_availability: pathfinder_common::receipt::ExecutionDataAvailability::default(),
-        };
-        let expected = serde_json::json!({
-           "steps": NumAsHex::U64(uut.n_steps)
-                        .serialize(Default::default()).unwrap(),
-           "memory_holes": NumAsHex::U64(uut.n_memory_holes)
-                        .serialize(Default::default()).unwrap(),
-           "range_check_builtin_applications": NumAsHex::U64(uut.builtins.range_check)
-                        .serialize(Default::default()).unwrap(),
-           "pedersen_builtin_applications": NumAsHex::U64(uut.builtins.pedersen)
-                        .serialize(Default::default()).unwrap(),
-           "poseidon_builtin_applications": NumAsHex::U64(uut.builtins.poseidon)
-                        .serialize(Default::default()).unwrap(),
-           "ec_op_builtin_applications": NumAsHex::U64(uut.builtins.ec_op)
-                        .serialize(Default::default()).unwrap(),
-           "ecdsa_builtin_applications": NumAsHex::U64(uut.builtins.ecdsa)
-                        .serialize(Default::default()).unwrap(),
-           "bitwise_builtin_applications": NumAsHex::U64(uut.builtins.bitwise)
-                        .serialize(Default::default()).unwrap(),
-           "keccak_builtin_applications": NumAsHex::U64(uut.builtins.keccak)
-                        .serialize(Default::default()).unwrap(),
-        });
+    mod execution_resources {
+        use crate::dto::serialize::Serializer;
 
-        let encoded = ExecutionResources(&uut)
-            .serialize(Default::default())
-            .unwrap();
+        use super::*;
+        use pretty_assertions_sorted::assert_eq;
 
-        assert_eq!(encoded, expected);
+        #[test]
+        fn v05() {
+            let uut = pathfinder_common::receipt::ExecutionResources {
+                n_steps: 1,
+                n_memory_holes: 2,
+                builtins: pathfinder_common::receipt::BuiltinCounters {
+                    output: 3,
+                    pedersen: 4,
+                    range_check: 5,
+                    ecdsa: 6,
+                    bitwise: 7,
+                    ec_op: 8,
+                    keccak: 9,
+                    poseidon: 10,
+                    segment_arena: 11,
+                },
+                data_availability: pathfinder_common::receipt::ExecutionDataAvailability::default(),
+            };
+            let expected = serde_json::json!({
+               "steps": NumAsHex::U64(uut.n_steps)
+                            .serialize(Default::default()).unwrap(),
+               "memory_holes": NumAsHex::U64(uut.n_memory_holes)
+                            .serialize(Default::default()).unwrap(),
+               "range_check_builtin_applications": NumAsHex::U64(uut.builtins.range_check)
+                            .serialize(Default::default()).unwrap(),
+               "pedersen_builtin_applications": NumAsHex::U64(uut.builtins.pedersen)
+                            .serialize(Default::default()).unwrap(),
+               "poseidon_builtin_applications": NumAsHex::U64(uut.builtins.poseidon)
+                            .serialize(Default::default()).unwrap(),
+               "ec_op_builtin_applications": NumAsHex::U64(uut.builtins.ec_op)
+                            .serialize(Default::default()).unwrap(),
+               "ecdsa_builtin_applications": NumAsHex::U64(uut.builtins.ecdsa)
+                            .serialize(Default::default()).unwrap(),
+               "bitwise_builtin_applications": NumAsHex::U64(uut.builtins.bitwise)
+                            .serialize(Default::default()).unwrap(),
+               "keccak_builtin_applications": NumAsHex::U64(uut.builtins.keccak)
+                            .serialize(Default::default()).unwrap(),
+            });
+
+            let encoded = ExecutionResources(&uut)
+                .serialize(Serializer::new(DefaultVersion::V05))
+                .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn v06() {
+            let uut = pathfinder_common::receipt::ExecutionResources {
+                n_steps: 1,
+                n_memory_holes: 2,
+                builtins: pathfinder_common::receipt::BuiltinCounters {
+                    output: 3,
+                    pedersen: 4,
+                    range_check: 5,
+                    ecdsa: 6,
+                    bitwise: 7,
+                    ec_op: 8,
+                    keccak: 9,
+                    poseidon: 10,
+                    segment_arena: 11,
+                },
+                data_availability: pathfinder_common::receipt::ExecutionDataAvailability::default(),
+            };
+            let expected = serde_json::json!({
+               "steps": 1,
+               "memory_holes": 2,
+               "range_check_builtin_applications": 5,
+               "pedersen_builtin_applications": 4,
+               "poseidon_builtin_applications": 10,
+               "ec_op_builtin_applications": 8,
+               "ecdsa_builtin_applications": 6,
+               "bitwise_builtin_applications": 7,
+               "keccak_builtin_applications": 9,
+               "segment_arena_builtin_applications": 11
+            });
+
+            let encoded = ExecutionResources(&uut)
+                .serialize(Serializer::new(DefaultVersion::V06))
+                .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
     }
 }
