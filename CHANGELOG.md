@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The new `storage.event-bloom-filter-cache-size`, `rpc.get-events-max-blocks-to-scan` and `rpc.get-events-max-bloom-filters-to-load` arguments control some aspects of the algorithm.
 - The memory allocator used by pathfinder has been changed to jemalloc, leading to improved JSON-RPC performance.
 
+### Added
+
+- The request timeout for gateway and feeder-gateway queries is now configurable using `gateway.request-timeout` (`"PATHFINDER_GATEWAY_REQUEST_TIMEOUT"`).
+
 ## [0.10.6] - 2024-02-03
 
 ### Added

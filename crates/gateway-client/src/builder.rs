@@ -606,7 +606,7 @@ mod tests {
     }
 
     mod invalid_starknet_error_variant {
-        use crate::{Client, GatewayApi};
+        use crate::{test_utils::GATEWAY_TIMEOUT, Client, GatewayApi};
         use http::response::Builder;
         use warp::Filter;
 
@@ -622,7 +622,7 @@ mod tests {
             let (_jh, addr) = server();
             let mut url = reqwest::Url::parse("http://localhost/").unwrap();
             url.set_port(Some(addr.port())).unwrap();
-            let client = Client::with_base_url(url)
+            let client = Client::with_base_url(url, GATEWAY_TIMEOUT)
                 .unwrap()
                 .disable_retry_for_tests();
             let error = client
@@ -637,7 +637,7 @@ mod tests {
     }
 
     mod api_key_is_set_when_configured {
-        use crate::Client;
+        use crate::{test_utils::GATEWAY_TIMEOUT, Client};
         use fake::{Fake, Faker};
         use httpmock::{prelude::*, Mock};
         use serde_json::json;
@@ -650,7 +650,7 @@ mod tests {
                 then.status(200).json_body(json!({}));
             });
 
-            let client = Client::with_base_url(server.base_url().parse().unwrap())
+            let client = Client::with_base_url(server.base_url().parse().unwrap(), GATEWAY_TIMEOUT)
                 .unwrap()
                 .with_api_key(Some(api_key.clone()));
 
