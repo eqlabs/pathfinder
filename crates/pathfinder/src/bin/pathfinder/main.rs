@@ -2,7 +2,6 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use mimalloc::MiMalloc;
 
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
@@ -25,8 +24,11 @@ use crate::config::NetworkConfig;
 mod config;
 mod update;
 
+// The Cairo VM allocates felts on the stack, so during execution it's making
+// a huge number of allocations. We get roughly two times better execution
+// performance by using jemalloc (compared to the Linux glibc allocator).
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 fn main() -> anyhow::Result<()> {
     tokio::runtime::Builder::new_multi_thread()
@@ -96,6 +98,7 @@ async fn async_main() -> anyhow::Result<()> {
         network,
         config.data_directory,
         config.gateway_api_key,
+        config.gateway_timeout,
     )
     .await
     .context("Configuring pathfinder")?;
@@ -195,6 +198,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     let default_version = match config.rpc_root_version {
+        config::RpcVersion::V04 => pathfinder_rpc::DefaultVersion::V04,
         config::RpcVersion::V05 => pathfinder_rpc::DefaultVersion::V05,
         config::RpcVersion::V06 => pathfinder_rpc::DefaultVersion::V06,
         config::RpcVersion::V07 => pathfinder_rpc::DefaultVersion::V07,
@@ -487,7 +491,7 @@ mod pathfinder_context {
     use super::PathfinderContext;
     use crate::config::NetworkConfig;
 
-    use std::path::PathBuf;
+    use std::{path::PathBuf, time::Duration};
 
     use anyhow::Context;
     use pathfinder_common::{Chain, ChainId};
@@ -501,40 +505,43 @@ mod pathfinder_context {
             cfg: NetworkConfig,
             data_directory: PathBuf,
             api_key: Option<String>,
+            gateway_timeout: Duration,
         ) -> anyhow::Result<Self> {
             let context = match cfg {
                 NetworkConfig::Mainnet => Self {
                     network: Chain::Mainnet,
                     network_id: ChainId::MAINNET,
-                    gateway: GatewayClient::mainnet().with_api_key(api_key),
+                    gateway: GatewayClient::mainnet(gateway_timeout).with_api_key(api_key),
                     database: data_directory.join("mainnet.sqlite"),
                     l1_core_address: H160::from(core_addr::MAINNET),
                 },
                 NetworkConfig::GoerliTestnet => Self {
                     network: Chain::GoerliTestnet,
                     network_id: ChainId::GOERLI_TESTNET,
-                    gateway: GatewayClient::goerli_testnet().with_api_key(api_key),
+                    gateway: GatewayClient::goerli_testnet(gateway_timeout).with_api_key(api_key),
                     database: data_directory.join("goerli.sqlite"),
                     l1_core_address: H160::from(core_addr::GOERLI_TESTNET),
                 },
                 NetworkConfig::GoerliIntegration => Self {
                     network: Chain::GoerliIntegration,
                     network_id: ChainId::GOERLI_INTEGRATION,
-                    gateway: GatewayClient::goerli_integration().with_api_key(api_key),
+                    gateway: GatewayClient::goerli_integration(gateway_timeout)
+                        .with_api_key(api_key),
                     database: data_directory.join("integration.sqlite"),
                     l1_core_address: H160::from(core_addr::GOERLI_INTEGRATION),
                 },
                 NetworkConfig::SepoliaTestnet => Self {
                     network: Chain::SepoliaTestnet,
                     network_id: ChainId::SEPOLIA_TESTNET,
-                    gateway: GatewayClient::sepolia_testnet().with_api_key(api_key),
+                    gateway: GatewayClient::sepolia_testnet(gateway_timeout).with_api_key(api_key),
                     database: data_directory.join("testnet-sepolia.sqlite"),
                     l1_core_address: H160::from(core_addr::SEPOLIA_TESTNET),
                 },
                 NetworkConfig::SepoliaIntegration => Self {
                     network: Chain::SepoliaIntegration,
                     network_id: ChainId::SEPOLIA_INTEGRATION,
-                    gateway: GatewayClient::sepolia_integration().with_api_key(api_key),
+                    gateway: GatewayClient::sepolia_integration(gateway_timeout)
+                        .with_api_key(api_key),
                     database: data_directory.join("integration-sepolia.sqlite"),
                     l1_core_address: H160::from(core_addr::SEPOLIA_INTEGRATION),
                 },
@@ -548,6 +555,7 @@ mod pathfinder_context {
                     chain_id,
                     data_directory,
                     api_key,
+                    gateway_timeout,
                 )
                 .await
                 .context("Configuring custom network")?,
@@ -565,11 +573,12 @@ mod pathfinder_context {
             chain_id: String,
             data_directory: PathBuf,
             api_key: Option<String>,
+            gateway_timeout: Duration,
         ) -> anyhow::Result<Self> {
             use pathfinder_crypto::Felt;
             use starknet_gateway_client::GatewayApi;
 
-            let gateway = GatewayClient::with_urls(gateway, feeder)
+            let gateway = GatewayClient::with_urls(gateway, feeder, gateway_timeout)
                 .context("Creating gateway client")?
                 .with_api_key(api_key);
 

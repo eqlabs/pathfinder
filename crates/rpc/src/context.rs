@@ -5,6 +5,7 @@ use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_executor::TraceCache;
 use pathfinder_storage::Storage;
+use starknet_gateway_client::test_utils::GATEWAY_TIMEOUT;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -62,16 +63,22 @@ impl RpcContext {
     pub fn for_tests_on(chain: pathfinder_common::Chain) -> Self {
         use pathfinder_common::Chain;
         let (chain_id, sequencer) = match chain {
-            Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet()),
-            Chain::GoerliTestnet => (ChainId::GOERLI_TESTNET, SequencerClient::goerli_testnet()),
+            Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet(GATEWAY_TIMEOUT)),
+            Chain::GoerliTestnet => (
+                ChainId::GOERLI_TESTNET,
+                SequencerClient::goerli_testnet(GATEWAY_TIMEOUT),
+            ),
             Chain::GoerliIntegration => (
                 ChainId::GOERLI_INTEGRATION,
-                SequencerClient::goerli_integration(),
+                SequencerClient::goerli_integration(GATEWAY_TIMEOUT),
             ),
-            Chain::SepoliaTestnet => (ChainId::SEPOLIA_TESTNET, SequencerClient::sepolia_testnet()),
+            Chain::SepoliaTestnet => (
+                ChainId::SEPOLIA_TESTNET,
+                SequencerClient::sepolia_testnet(GATEWAY_TIMEOUT),
+            ),
             Chain::SepoliaIntegration => (
                 ChainId::SEPOLIA_INTEGRATION,
-                SequencerClient::sepolia_integration(),
+                SequencerClient::sepolia_integration(GATEWAY_TIMEOUT),
             ),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
         };

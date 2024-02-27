@@ -1,7 +1,6 @@
 use std::num::NonZeroU32;
 
 use anyhow::Context;
-use mimalloc::MiMalloc;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
@@ -9,11 +8,11 @@ use pathfinder_executor::ExecutionState;
 use pathfinder_storage::{BlockId, JournalMode, Storage};
 use rayon::prelude::*;
 
-// Due to the amount of JSON parsing that gets done during execution we use an alternate
-// allocator here: mimalloc. According to benchmarks re_execute performs roughly 25% better
-// when using mimalloc.
+// The Cairo VM allocates felts on the stack, so during execution it's making
+// a huge number of allocations. We get roughly two times better execution
+// performance by using jemalloc (compared to the Linux glibc allocator).
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 /// Re-execute transactions in a range of blocks.
 ///

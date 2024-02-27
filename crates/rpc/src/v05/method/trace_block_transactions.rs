@@ -16,7 +16,7 @@ use crate::{compose_executor_transaction, context::RpcContext, executor::Executi
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct TraceBlockTransactionsInput {
-    block_id: BlockId,
+    pub block_id: BlockId,
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq)]

@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 
@@ -209,6 +210,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
     gateway_api_key: Option<String>,
 
     #[arg(
+        long = "gateway.request-timeout",
+        value_name = "Seconds",
+        long_help = "Timeout duration for all gateway and feeder-gateway requests",
+        env = "PATHFINDER_GATEWAY_REQUEST_TIMEOUT",
+        default_value = "5"
+    )]
+    gateway_timeout: std::num::NonZeroU64,
+
+    #[arg(
         long = "storage.event-bloom-filter-cache-size",
         long_help = "The number of blocks whose event bloom filters are cached in memory. \
             This cache speeds up event related RPC queries at the cost of using extra memory. \
@@ -259,6 +269,7 @@ impl Color {
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
 pub enum RpcVersion {
+    V04,
     V05,
     V06,
     V07,
@@ -537,6 +548,7 @@ pub struct Config {
     pub is_sync_enabled: bool,
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
+    pub gateway_timeout: Duration,
     pub event_bloom_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
@@ -741,7 +753,7 @@ impl Config {
                 false => JournalMode::Rollback,
             },
             max_rpc_connections: cli.max_rpc_connections,
-            poll_interval: std::time::Duration::from_secs(cli.poll_interval.get()),
+            poll_interval: Duration::from_secs(cli.poll_interval.get()),
             color: cli.color,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),
@@ -754,6 +766,7 @@ impl Config {
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
             get_events_max_uncached_bloom_filters_to_load: cli
                 .get_events_max_uncached_bloom_filters_to_load,
+            gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
         }
     }
 }

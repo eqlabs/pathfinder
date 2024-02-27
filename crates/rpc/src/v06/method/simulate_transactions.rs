@@ -10,12 +10,14 @@ use pathfinder_executor::{
 };
 use serde::{Deserialize, Serialize};
 
+use self::dto::SimulatedTransaction;
+
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SimulateTransactionInput {
-    block_id: BlockId,
-    transactions: Vec<BroadcastedTransaction>,
-    simulation_flags: dto::SimulationFlags,
+    pub block_id: BlockId,
+    pub transactions: Vec<BroadcastedTransaction>,
+    pub simulation_flags: dto::SimulationFlags,
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
@@ -85,6 +87,19 @@ pub async fn simulate_transactions(
     context: RpcContext,
     input: SimulateTransactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
+    simulate_transactions_impl(context, input, L1BlobDataAvailability::Disabled)
+        .await
+        .map(|mut x| {
+            x.0.iter_mut().for_each(|y| y.with_v06_format());
+            x
+        })
+}
+
+pub async fn simulate_transactions_impl(
+    context: RpcContext,
+    input: SimulateTransactionInput,
+    l1_blob_data_availability: L1BlobDataAvailability,
+) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
     let span = tracing::Span::current();
     tokio::task::spawn_blocking(move || {
         let _g = span.enter();
@@ -133,7 +148,7 @@ pub async fn simulate_transactions(
             context.chain_id,
             header,
             pending,
-            L1BlobDataAvailability::Disabled,
+            l1_blob_data_availability,
         );
 
         let transactions = input
@@ -147,7 +162,8 @@ pub async fn simulate_transactions(
         let txs = txs
             .into_iter()
             .map(TryInto::try_into)
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<SimulatedTransaction>, _>>()?;
+        let txs = txs.into_iter().collect();
         Ok(SimulateTransactionOutput(txs))
     })
     .await
@@ -180,10 +196,25 @@ pub mod dto {
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub gas_price: primitive_types::U256,
+        /// The Ethereum data gas cost of the transaction
+        #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data_gas_consumed: Option<primitive_types::U256>,
+        /// The data gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub data_gas_price: Option<primitive_types::U256>,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub overall_fee: primitive_types::U256,
         pub unit: PriceUnit,
+    }
+
+    impl FeeEstimate {
+        pub fn with_v06_format(&mut self) {
+            self.data_gas_consumed = None;
+            self.data_gas_price = None;
+        }
     }
 
     impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
@@ -191,6 +222,8 @@ pub mod dto {
             Self {
                 gas_consumed: value.gas_consumed,
                 gas_price: value.gas_price,
+                data_gas_consumed: Some(value.data_gas_consumed),
+                data_gas_price: Some(value.data_gas_price),
                 overall_fee: value.overall_fee,
                 unit: value.unit.into(),
             }
@@ -250,7 +283,7 @@ pub mod dto {
         #[serde(default)]
         #[serde_as(as = "Vec<RpcFelt>")]
         pub result: Vec<Felt>,
-        pub execution_resources: ExecutionResources,
+        pub execution_resources: ComputationResources,
     }
 
     impl From<pathfinder_executor::types::FunctionInvocation> for FunctionInvocation {
@@ -269,7 +302,7 @@ pub mod dto {
                 },
                 messages: fi.messages.into_iter().map(Into::into).collect(),
                 result: fi.result.into_iter().map(Into::into).collect(),
-                execution_resources: fi.execution_resources.into(),
+                execution_resources: fi.computation_resources.into(),
             }
         }
     }
@@ -339,7 +372,7 @@ pub mod dto {
     }
 
     #[derive(Clone, Debug, Default, Serialize, Eq, PartialEq)]
-    pub struct ExecutionResources {
+    pub struct ComputationResources {
         pub steps: usize,
         #[serde(skip_serializing_if = "builtin_applications_is_zero")]
         pub memory_holes: usize,
@@ -365,8 +398,8 @@ pub mod dto {
         *n == 0
     }
 
-    impl From<pathfinder_executor::types::ExecutionResources> for ExecutionResources {
-        fn from(value: pathfinder_executor::types::ExecutionResources) -> Self {
+    impl From<pathfinder_executor::types::ComputationResources> for ComputationResources {
+        fn from(value: pathfinder_executor::types::ComputationResources) -> Self {
             Self {
                 steps: value.steps,
                 memory_holes: value.memory_holes,
@@ -382,6 +415,63 @@ pub mod dto {
         }
     }
 
+    impl std::ops::Add for ComputationResources {
+        type Output = ComputationResources;
+
+        fn add(self, rhs: Self) -> Self::Output {
+            Self::Output {
+                steps: self.steps + rhs.steps,
+                memory_holes: self.memory_holes + rhs.memory_holes,
+                range_check_builtin_applications: self.range_check_builtin_applications
+                    + rhs.range_check_builtin_applications,
+                pedersen_builtin_applications: self.pedersen_builtin_applications
+                    + rhs.pedersen_builtin_applications,
+                poseidon_builtin_applications: self.poseidon_builtin_applications
+                    + rhs.poseidon_builtin_applications,
+                ec_op_builtin_applications: self.ec_op_builtin_applications
+                    + rhs.ec_op_builtin_applications,
+                ecdsa_builtin_applications: self.ecdsa_builtin_applications
+                    + rhs.ecdsa_builtin_applications,
+                bitwise_builtin_applications: self.bitwise_builtin_applications
+                    + rhs.bitwise_builtin_applications,
+                keccak_builtin_applications: self.keccak_builtin_applications
+                    + rhs.keccak_builtin_applications,
+                segment_arena_builtin: self.segment_arena_builtin + rhs.segment_arena_builtin,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Default, Serialize, Eq, PartialEq)]
+    pub struct DataAvailabilityResources {
+        pub l1_gas: u128,
+        pub l1_data_gas: u128,
+    }
+
+    impl From<pathfinder_executor::types::DataAvailabilityResources> for DataAvailabilityResources {
+        fn from(value: pathfinder_executor::types::DataAvailabilityResources) -> Self {
+            Self {
+                l1_gas: value.l1_gas,
+                l1_data_gas: value.l1_data_gas,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Default, Serialize, Eq, PartialEq)]
+    pub struct ExecutionResources {
+        #[serde(flatten)]
+        pub computation_resources: ComputationResources,
+        pub data_availability: DataAvailabilityResources,
+    }
+
+    impl From<pathfinder_executor::types::ExecutionResources> for ExecutionResources {
+        fn from(value: pathfinder_executor::types::ExecutionResources) -> Self {
+            Self {
+                computation_resources: value.computation_resources.into(),
+                data_availability: value.data_availability.into(),
+            }
+        }
+    }
+
     #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     #[serde(tag = "type")]
     pub enum TransactionTrace {
@@ -393,6 +483,17 @@ pub mod dto {
         Invoke(InvokeTxnTrace),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTxnTrace),
+    }
+
+    impl TransactionTrace {
+        pub fn with_v06_format(&mut self) {
+            match self {
+                TransactionTrace::Declare(tx) => tx.with_v06_format(),
+                TransactionTrace::DeployAccount(tx) => tx.with_v06_format(),
+                TransactionTrace::Invoke(tx) => tx.with_v06_format(),
+                TransactionTrace::L1Handler(tx) => tx.with_v06_format(),
+            }
+        }
     }
 
     impl TryFrom<pathfinder_executor::types::TransactionTrace> for TransactionTrace {
@@ -419,6 +520,14 @@ pub mod dto {
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
         pub state_diff: Option<StateDiff>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub execution_resources: Option<ExecutionResources>,
+    }
+
+    impl DeclareTxnTrace {
+        pub fn with_v06_format(&mut self) {
+            self.execution_resources = None
+        }
     }
 
     impl From<pathfinder_executor::types::DeclareTransactionTrace> for DeclareTxnTrace {
@@ -427,6 +536,7 @@ pub mod dto {
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
                 state_diff: Some(trace.state_diff.into()),
+                execution_resources: Some(trace.execution_resources.into()),
             }
         }
     }
@@ -441,6 +551,14 @@ pub mod dto {
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
         pub state_diff: Option<StateDiff>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub execution_resources: Option<ExecutionResources>,
+    }
+
+    impl DeployAccountTxnTrace {
+        pub fn with_v06_format(&mut self) {
+            self.execution_resources = None
+        }
     }
 
     impl TryFrom<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
@@ -461,6 +579,7 @@ pub mod dto {
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
                 state_diff: Some(trace.state_diff.into()),
+                execution_resources: Some(trace.execution_resources.into()),
             })
         }
     }
@@ -486,6 +605,14 @@ pub mod dto {
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
         pub state_diff: Option<StateDiff>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub execution_resources: Option<ExecutionResources>,
+    }
+
+    impl InvokeTxnTrace {
+        pub fn with_v06_format(&mut self) {
+            self.execution_resources = None
+        }
     }
 
     impl From<pathfinder_executor::types::InvokeTransactionTrace> for InvokeTxnTrace {
@@ -505,6 +632,7 @@ pub mod dto {
                 },
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 state_diff: Some(trace.state_diff.into()),
+                execution_resources: Some(trace.execution_resources.into()),
             }
         }
     }
@@ -514,6 +642,14 @@ pub mod dto {
     pub struct L1HandlerTxnTrace {
         pub function_invocation: FunctionInvocation,
         pub state_diff: Option<StateDiff>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub execution_resources: Option<ExecutionResources>,
+    }
+
+    impl L1HandlerTxnTrace {
+        pub fn with_v06_format(&mut self) {
+            self.execution_resources = None
+        }
     }
 
     impl TryFrom<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
@@ -530,6 +666,7 @@ pub mod dto {
                     })?
                     .into(),
                 state_diff: Some(trace.state_diff.into()),
+                execution_resources: Some(trace.execution_resources.into()),
             })
         }
     }
@@ -551,6 +688,13 @@ pub mod dto {
                 fee_estimation: tx.fee_estimation.into(),
                 transaction_trace: tx.trace.try_into()?,
             })
+        }
+    }
+
+    impl SimulatedTransaction {
+        pub fn with_v06_format(&mut self) {
+            self.fee_estimation.with_v06_format();
+            self.transaction_trace.with_v06_format();
         }
     }
 
@@ -584,7 +728,7 @@ pub mod dto {
                 result: value.result,
                 execution_resources: {
                     let builtins = &value.execution_resources.builtin_instance_counter;
-                    ExecutionResources {
+                    ComputationResources {
                         steps: value.execution_resources.n_steps as usize,
                         memory_holes: value.execution_resources.n_memory_holes as usize,
                         range_check_builtin_applications: builtins.range_check_builtin as usize,
@@ -681,6 +825,8 @@ pub(crate) mod tests {
                     FeeEstimate {
                         gas_consumed: 2222.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: 2222.into(),
                         unit: PriceUnit::Wei,
                     }
@@ -702,7 +848,7 @@ pub(crate) mod tests {
                                     },
                                     messages: vec![],
                                     result: vec![],
-                                    execution_resources: ExecutionResources::default(),
+                                    execution_resources: ComputationResources::default(),
                                 },
                             validate_invocation: Some(
                                 FunctionInvocation {
@@ -722,7 +868,7 @@ pub(crate) mod tests {
                                     },
                                     messages: vec![],
                                     result: vec![],
-                                    execution_resources: ExecutionResources {
+                                    execution_resources: ComputationResources {
                                         steps: 13,
                                         ..Default::default()
                                     },
@@ -747,6 +893,7 @@ pub(crate) mod tests {
                                     }
                                 ]
                             }),
+                            execution_resources: None,
                         },
                     ),
             }]
@@ -803,6 +950,8 @@ pub(crate) mod tests {
                 fee_estimation: FeeEstimate {
                     gas_consumed: DECLARE_GAS_CONSUMED.into(),
                     gas_price: 1.into(),
+                    data_gas_consumed: None,
+                    data_gas_price: None,
                     overall_fee: DECLARE_GAS_CONSUMED.into(),
                     unit: PriceUnit::Wei,
                 },
@@ -837,7 +986,7 @@ pub(crate) mod tests {
                             },
                             messages: vec![],
                             result: vec![felt!("0x1")],
-                            execution_resources: ExecutionResources {
+                            execution_resources: ComputationResources {
                                 steps: 936,
                                 memory_holes: 59,
                                 range_check_builtin_applications: 21,
@@ -861,7 +1010,7 @@ pub(crate) mod tests {
                             },
                             messages: vec![],
                             result: vec![],
-                            execution_resources: ExecutionResources {
+                            execution_resources: ComputationResources {
                                 steps: 12,
                                 ..Default::default()
                             },
@@ -891,7 +1040,8 @@ pub(crate) mod tests {
                             contract_address: account_contract_address,
                             nonce: contract_nonce!("0x1"),
                         }],
-                    })
+                    }),
+                    execution_resources: None,
                 }),
             }])
         );
@@ -929,6 +1079,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -942,6 +1094,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             declare_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -953,6 +1106,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -960,6 +1115,7 @@ pub(crate) mod tests {
                         fee_transfer_invocation: None,
                         validate_invocation: Some(declare_validate(account_contract_address)),
                         state_diff: Some(declare_state_diff(account_contract_address, vec![])),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -972,6 +1128,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -985,6 +1143,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             declare_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1058,7 +1217,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![felt!("0x1")],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 936,
                         memory_holes: 59,
                         range_check_builtin_applications: 21,
@@ -1083,7 +1242,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 12,
                         ..Default::default()
                     },
@@ -1101,6 +1260,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1123,6 +1284,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             universal_deployer_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1135,6 +1297,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1154,6 +1318,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             vec![],
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1167,6 +1332,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1186,6 +1353,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             universal_deployer_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1257,7 +1425,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 21,
                         range_check_builtin_applications: 1,
                         ..Default::default()
@@ -1291,7 +1459,7 @@ pub(crate) mod tests {
                                     },
                                     messages: vec![],
                                     result: vec![],
-                                    execution_resources: ExecutionResources::default(),
+                                    execution_resources: ComputationResources::default(),
                                 },
                             ],
                             class_hash: Some(UNIVERSAL_DEPLOYER_CLASS_HASH.0),
@@ -1330,7 +1498,7 @@ pub(crate) mod tests {
                             result: vec![
                                 *DEPLOYED_CONTRACT_ADDRESS.get(),
                             ],
-                            execution_resources: ExecutionResources {
+                            execution_resources: ComputationResources {
                                 steps: 1120,
                                 memory_holes: 2,
                                 range_check_builtin_applications: 20,
@@ -1363,7 +1531,7 @@ pub(crate) mod tests {
                     result: vec![
                         *DEPLOYED_CONTRACT_ADDRESS.get(),
                     ],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 1850,
                         memory_holes: 2,
                         range_check_builtin_applications: 40,
@@ -1407,7 +1575,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![felt!("0x1")],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 936,
                         memory_holes: 59,
                         range_check_builtin_applications: 21,
@@ -1428,6 +1596,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1445,6 +1615,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             invoke_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1457,6 +1628,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1468,6 +1641,7 @@ pub(crate) mod tests {
                         )),
                         fee_transfer_invocation: None,
                         state_diff: Some(invoke_state_diff(account_contract_address, vec![])),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1481,6 +1655,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1498,6 +1674,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             invoke_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1555,7 +1732,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 21,
                         range_check_builtin_applications: 1,
                         ..Default::default()
@@ -1584,7 +1761,7 @@ pub(crate) mod tests {
                         },
                         messages: vec![],
                         result: vec![test_storage_value.0],
-                        execution_resources: ExecutionResources {
+                        execution_resources: ComputationResources {
                             steps: 122,
                             range_check_builtin_applications: 2,
                             ..Default::default()
@@ -1605,7 +1782,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![test_storage_value.0],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 852,
                         range_check_builtin_applications: 22,
                         ..Default::default()
@@ -1646,7 +1823,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![felt!("0x1")],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 936,
                         memory_holes: 59,
                         range_check_builtin_applications: 21,
@@ -1676,6 +1853,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: DECLARE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: DECLARE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1689,6 +1868,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             declare_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1762,7 +1942,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![felt!("0x1")],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 1354,
                         memory_holes: 59,
                         range_check_builtin_applications: 31,
@@ -1787,7 +1967,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 12,
                         ..Default::default()
                     },
@@ -1805,6 +1985,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -1827,6 +2009,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             universal_deployer_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -1898,7 +2081,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 21,
                         range_check_builtin_applications: 1,
                         ..Default::default()
@@ -1932,7 +2115,7 @@ pub(crate) mod tests {
                                     },
                                     messages: vec![],
                                     result: vec![],
-                                    execution_resources: ExecutionResources::default(),
+                                    execution_resources: ComputationResources::default(),
                                 },
                             ],
                             class_hash: Some(UNIVERSAL_DEPLOYER_CLASS_HASH.0),
@@ -1971,7 +2154,7 @@ pub(crate) mod tests {
                             result: vec![
                                 *DEPLOYED_CONTRACT_ADDRESS.get(),
                             ],
-                            execution_resources: ExecutionResources {
+                            execution_resources: ComputationResources {
                                 steps: 1262,
                                 memory_holes: 2,
                                 range_check_builtin_applications: 23,
@@ -2004,7 +2187,7 @@ pub(crate) mod tests {
                     result: vec![
                         *DEPLOYED_CONTRACT_ADDRESS.get(),
                     ],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 2061,
                         memory_holes: 2,
                         range_check_builtin_applications: 44,
@@ -2048,7 +2231,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![felt!("0x1")],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 1354,
                         memory_holes: 59,
                         range_check_builtin_applications: 31,
@@ -2069,6 +2252,8 @@ pub(crate) mod tests {
                     fee_estimation: FeeEstimate {
                         gas_consumed: INVOKE_GAS_CONSUMED.into(),
                         gas_price: 1.into(),
+                        data_gas_consumed: None,
+                        data_gas_price: None,
                         overall_fee: INVOKE_GAS_CONSUMED.into(),
                         unit: PriceUnit::Wei,
                     },
@@ -2086,6 +2271,7 @@ pub(crate) mod tests {
                             account_contract_address,
                             invoke_fee_transfer_storage_diffs(),
                         )),
+                        execution_resources: None,
                     }),
                 }
             }
@@ -2143,7 +2329,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 21,
                         range_check_builtin_applications: 1,
                         ..Default::default()
@@ -2172,7 +2358,7 @@ pub(crate) mod tests {
                         },
                         messages: vec![],
                         result: vec![test_storage_value.0],
-                        execution_resources: ExecutionResources {
+                        execution_resources: ComputationResources {
                             steps: 165,
                             range_check_builtin_applications: 3,
                             ..Default::default()
@@ -2193,7 +2379,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![test_storage_value.0],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 964,
                         range_check_builtin_applications: 24,
                         ..Default::default()
@@ -2234,7 +2420,7 @@ pub(crate) mod tests {
                     },
                     messages: vec![],
                     result: vec![felt!("0x1")],
-                    execution_resources: ExecutionResources {
+                    execution_resources: ComputationResources {
                         steps: 1354,
                         memory_holes: 59,
                         range_check_builtin_applications: 31,

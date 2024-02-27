@@ -94,9 +94,7 @@ impl<'tx> ExecutionState<'tx> {
 
         // Perform system contract updates if we are executing ontop of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
-        let old_block_number_and_hash = if self.execute_on_parent_state
-            && self.header.number.get() >= 10
-        {
+        let old_block_number_and_hash = if self.header.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
                 pathfinder_common::BlockNumber::new_or_panic(self.header.number.get() - 10);
             let block_hash = self
