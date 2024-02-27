@@ -31,6 +31,9 @@ inherits = "release"
 codegen-units = 1
 lto = true
 
+[profile.dev.package.flate2]
+opt-level = 3
+
 [workspace.package]
 version = "0.11.0"
 edition = "2021"

@@ -2,7 +2,14 @@ default:
     just --summary --unsorted
 
 test $RUST_BACKTRACE="1" *args="":
-    cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked {{args}}
+    cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked \
+    -E 'not test(/^p2p_network::sync_handlers::tests::prop/)' \
+    {{args}}
+
+proptest $RUST_BACKTRACE="1" *args="":
+    cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked \
+    -E 'test(/^p2p_network::sync_handlers::tests::prop/)' \
+    {{args}}
 
 build:
     cargo build --workspace --all-targets
