@@ -13,6 +13,7 @@ pub struct TxnHash<'a>(pub &'a pathfinder_common::TransactionHash);
 pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 
 pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
+pub struct StorageKey<'a>(pub &'a pathfinder_common::StorageAddress);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 
 
@@ -122,6 +123,14 @@ impl SerializeForVersion for EthAddress<'_> {
     }
 }
 
+impl SerializeForVersion for StorageKey<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer.serialize_str(&self.0 .0.to_hex_str())
+    }
+}
 
 impl SerializeForVersion for BlockNumber {
     fn serialize(
@@ -224,6 +233,15 @@ mod tests {
         let uut = ChainId(&pathfinder_common::ChainId(felt!("0x1234")));
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn storage_key() {
+        let uut = storage_address!("0x1234");
+        let expected = json!("0x1234");
+        let encoded = StorageKey(&uut).serialize(Default::default()).unwrap();
 
         assert_eq!(encoded, expected);
     }
