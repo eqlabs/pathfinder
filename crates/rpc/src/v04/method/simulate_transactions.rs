@@ -718,6 +718,12 @@ pub(crate) mod tests {
             class_hash!("0x06f38fb91ddbf325a0625533576bb6f6eafd9341868a9ec3faa4b01ce6c4f4dc");
 
         pub mod input {
+            use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip};
+
+            use crate::v02::types::{
+                request::BroadcastedInvokeTransactionV3, ResourceBound, ResourceBounds,
+            };
+
             use super::*;
 
             pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
@@ -778,6 +784,39 @@ pub(crate) mod tests {
                         version: TransactionVersion::ONE,
                         max_fee: MAX_FEE,
                         signature: vec![],
+                        sender_address: account_contract_address,
+                        calldata: vec![
+                            CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
+                            // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                            CallParam(EntryPoint::hashed(b"get_data").0),
+                            // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                            call_param!("0"),
+                        ],
+                    },
+                ))
+            }
+
+            pub fn invoke_v3(account_contract_address: ContractAddress) -> BroadcastedTransaction {
+                BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+                    BroadcastedInvokeTransactionV3 {
+                        version: TransactionVersion::THREE,
+                        signature: vec![],
+                        nonce: transaction_nonce!("0x3"),
+                        resource_bounds: ResourceBounds {
+                            l1_gas: ResourceBound {
+                                max_amount: ResourceAmount(10000),
+                                max_price_per_unit: ResourcePricePerUnit(100000000),
+                            },
+                            l2_gas: ResourceBound {
+                                max_amount: ResourceAmount(10000),
+                                max_price_per_unit: ResourcePricePerUnit(100000000),
+                            },
+                        },
+                        tip: Tip(0),
+                        paymaster_data: vec![],
+                        account_deployment_data: vec![],
+                        nonce_data_availability_mode: crate::v02::types::DataAvailabilityMode::L1,
+                        fee_data_availability_mode: crate::v02::types::DataAvailabilityMode::L1,
                         sender_address: account_contract_address,
                         calldata: vec![
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
