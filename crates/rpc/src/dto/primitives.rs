@@ -6,6 +6,7 @@ pub struct SyncStatus<'a>(pub &'a crate::v02::types::syncing::Status);
 
 pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
+pub struct Address<'a>(pub &'a pathfinder_common::ContractAddress);
 pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 
@@ -70,6 +71,15 @@ impl SerializeForVersion for Felt<'_> {
 }
 
 impl SerializeForVersion for BlockHash<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl SerializeForVersion for Address<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
@@ -162,6 +172,15 @@ mod tests {
         let hash = block_hash!("0x1234");
         let expected = Felt(&hash.0).serialize(Default::default()).unwrap();
         let encoded = BlockHash(&hash).serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn address() {
+        let uut = contract_address!("0x1234");
+        let expected = Felt(&uut.0).serialize(Default::default()).unwrap();
+        let encoded = Address(&uut).serialize(Default::default()).unwrap();
 
         assert_eq!(encoded, expected);
     }
