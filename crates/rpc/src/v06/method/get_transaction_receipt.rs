@@ -354,18 +354,18 @@ pub mod types {
     impl From<pathfinder_common::receipt::ExecutionResources> for ExecutionResourcesProperties {
         fn from(value: pathfinder_common::receipt::ExecutionResources) -> Self {
             let pathfinder_common::receipt::ExecutionResources {
-                builtin_instance_counter:
+                builtins:
                     pathfinder_common::receipt::BuiltinCounters {
                         // Absent from the OpenRPC spec
-                        output_builtin: _,
-                        pedersen_builtin,
-                        range_check_builtin,
-                        ecdsa_builtin,
-                        bitwise_builtin,
-                        ec_op_builtin,
-                        keccak_builtin,
-                        poseidon_builtin,
-                        segment_arena_builtin,
+                        output: _,
+                        pedersen: pedersen_builtin,
+                        range_check: range_check_builtin,
+                        ecdsa: ecdsa_builtin,
+                        bitwise: bitwise_builtin,
+                        ec_op: ec_op_builtin,
+                        keccak: keccak_builtin,
+                        poseidon: poseidon_builtin,
+                        segment_arena: segment_arena_builtin,
                     },
                 n_steps,
                 n_memory_holes,
@@ -846,9 +846,9 @@ mod tests {
                         finality_status: FinalityStatus::AcceptedOnL1,
                         revert_reason: None,
                         execution_resources: ExecutionResources {
-                            builtin_instance_counter: BuiltinCounters {
-                                output_builtin: 33,
-                                pedersen_builtin: 32,
+                            builtins: BuiltinCounters {
+                                output: 33,
+                                pedersen: 32,
                                 ..Default::default()
                             },
                             n_memory_holes: 5,
@@ -897,9 +897,9 @@ mod tests {
                         finality_status: FinalityStatus::AcceptedOnL2,
                         revert_reason: None,
                         execution_resources: ExecutionResources {
-                            builtin_instance_counter: BuiltinCounters {
-                                output_builtin: 33,
-                                pedersen_builtin: 32,
+                            builtins: BuiltinCounters {
+                                output: 33,
+                                pedersen: 32,
                                 ..Default::default()
                             },
                             n_memory_holes: 5,
@@ -916,16 +916,16 @@ mod tests {
     #[test]
     fn execution_resources_properties_into() {
         let original = ExecutionResources {
-            builtin_instance_counter: BuiltinCounters {
-                output_builtin: 0,
-                pedersen_builtin: 1,
-                range_check_builtin: 2,
-                ecdsa_builtin: 3,
-                bitwise_builtin: 4,
-                ec_op_builtin: 5,
-                keccak_builtin: 6,
-                poseidon_builtin: 7,
-                segment_arena_builtin: 8,
+            builtins: BuiltinCounters {
+                output: 0,
+                pedersen: 1,
+                range_check: 2,
+                ecdsa: 3,
+                bitwise: 4,
+                ec_op: 5,
+                keccak: 6,
+                poseidon: 7,
+                segment_arena: 8,
             },
             n_steps: 9,
             n_memory_holes: 10,
@@ -942,32 +942,20 @@ mod tests {
         assert_eq!(into.memory_holes, original.n_memory_holes);
         assert_eq!(
             into.range_check_builtin_applications,
-            original.builtin_instance_counter.range_check_builtin
+            original.builtins.range_check
         );
         assert_eq!(
             into.pedersen_builtin_applications,
-            original.builtin_instance_counter.pedersen_builtin
+            original.builtins.pedersen
         );
         assert_eq!(
             into.poseidon_builtin_applications,
-            original.builtin_instance_counter.poseidon_builtin
+            original.builtins.poseidon
         );
-        assert_eq!(
-            into.ec_op_builtin_applications,
-            original.builtin_instance_counter.ec_op_builtin
-        );
-        assert_eq!(
-            into.ecdsa_builtin_applications,
-            original.builtin_instance_counter.ecdsa_builtin
-        );
-        assert_eq!(
-            into.bitwise_builtin_applications,
-            original.builtin_instance_counter.bitwise_builtin
-        );
-        assert_eq!(
-            into.keccak_builtin_applications,
-            original.builtin_instance_counter.keccak_builtin
-        );
+        assert_eq!(into.ec_op_builtin_applications, original.builtins.ec_op);
+        assert_eq!(into.ecdsa_builtin_applications, original.builtins.ecdsa);
+        assert_eq!(into.bitwise_builtin_applications, original.builtins.bitwise);
+        assert_eq!(into.keccak_builtin_applications, original.builtins.keccak);
     }
 
     #[tokio::test]
