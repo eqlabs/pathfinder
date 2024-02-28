@@ -50,6 +50,17 @@ pub enum RpcVersion {
     V07,
 }
 
+impl RpcVersion {
+    fn to_str(self) -> &'static str {
+        match self {
+            RpcVersion::V04 => "v0.4",
+            RpcVersion::V05 => "v0.5",
+            RpcVersion::V06 => "v0.6",
+            RpcVersion::V07 => "v0.7",
+        }
+    }
+}
+
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,

@@ -9,7 +9,7 @@ use crate::v04::method as v04_method;
 
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
-    RpcRouter::builder("v0.4")
+    RpcRouter::builder(crate::RpcVersion::V04)
         .register("starknet_blockHashAndNumber"              , v02_method::block_hash_and_number)
         .register("starknet_blockNumber"                     , v02_method::block_number)
         .register("starknet_call"                            , v02_method::call)
