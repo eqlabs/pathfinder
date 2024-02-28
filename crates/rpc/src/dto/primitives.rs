@@ -2,6 +2,8 @@ use crate::dto::serialize;
 
 use super::serialize::SerializeForVersion;
 
+pub struct SyncStatus<'a>(pub &'a crate::v02::types::syncing::Status);
+
 pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
@@ -40,6 +42,21 @@ mod hex_str {
     }
 }
 
+impl SerializeForVersion for SyncStatus<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("starting_block_hash", &BlockHash(&self.0.starting.hash))?;
+        serializer.serialize_field("starting_block_num", &BlockNumber(self.0.starting.number))?;
+        serializer.serialize_field("current_block_hash", &BlockHash(&self.0.current.hash))?;
+        serializer.serialize_field("current_block_num", &BlockNumber(self.0.current.number))?;
+        serializer.serialize_field("highest_block_hash", &BlockHash(&self.0.highest.hash))?;
+        serializer.serialize_field("highest_block_num", &BlockNumber(self.0.highest.number))?;
+        serializer.end()
+    }
+}
 
 impl SerializeForVersion for Felt<'_> {
     fn serialize(
@@ -78,6 +95,38 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
+
+    #[test]
+    fn sync_status() {
+        use crate::v02::types::syncing::NumberedBlock;
+        let status = crate::v02::types::syncing::Status {
+            starting: NumberedBlock {
+                number: pathfinder_common::BlockNumber::GENESIS,
+                hash: block_hash!("0x123"),
+            },
+            current: NumberedBlock {
+                number: pathfinder_common::BlockNumber::GENESIS + 20,
+                hash: block_hash!("0x456"),
+            },
+            highest: NumberedBlock {
+                number: pathfinder_common::BlockNumber::GENESIS + 300,
+                hash: block_hash!("0x789"),
+            },
+        };
+
+        let expected = json!({
+           "starting_block_hash": BlockHash(&status.starting.hash).serialize(Default::default()).unwrap(),
+           "current_block_hash": BlockHash(&status.current.hash).serialize(Default::default()).unwrap(),
+           "highest_block_hash": BlockHash(&status.highest.hash).serialize(Default::default()).unwrap(),
+           "starting_block_num": BlockNumber(status.starting.number).serialize(Default::default()).unwrap(),
+           "current_block_num": BlockNumber(status.current.number).serialize(Default::default()).unwrap(),
+           "highest_block_num": BlockNumber(status.highest.number).serialize(Default::default()).unwrap(),
+        });
+
+        let encoded = SyncStatus(&status).serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
 
     #[test]
     fn block_number() {
