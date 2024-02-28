@@ -16,6 +16,7 @@ pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
 pub struct StorageKey<'a>(pub &'a pathfinder_common::StorageAddress);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 
+pub struct U64(pub u64);
 
 mod hex_str {
     use std::borrow::Cow;
@@ -141,6 +142,16 @@ impl SerializeForVersion for BlockNumber {
     }
 }
 
+impl SerializeForVersion for U64 {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let hex = pathfinder_serde::bytes_to_hex_str(&self.0.to_be_bytes());
+        serializer.serialize_str(&hex)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::dto::serialize::Serializer;
@@ -257,4 +268,14 @@ mod tests {
 
         assert_eq!(encoded, expected);
     }
+
+    #[test]
+    fn u64() {
+        let uut = U64(0x1234);
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
 }
