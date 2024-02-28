@@ -140,55 +140,57 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            let txn_count = header
-                .transaction_count
-                .try_into()
-                .context("invalid transaction count")?;
+            if let Some(stats) = db_tx.state_update_stats(block_number.into())? {
+                let txn_count = header
+                    .transaction_count
+                    .try_into()
+                    .context("invalid transaction count")?;
 
-            tx.blocking_send(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
-                block_hash: Hash(header.hash.0),
-                parent_hash: Hash(header.parent_hash.0),
-                number: header.number.get(),
-                time: header.timestamp.get(),
-                sequencer_address: Address(header.sequencer_address.0),
-                state_diff_commitment: Hash(Felt::ZERO), // TODO
-                state: Patricia {
-                    height: 251,
-                    root: Hash(header.state_commitment.0),
-                },
-                transactions: Merkle {
-                    n_leaves: txn_count,
-                    root: Hash(header.transaction_commitment.0),
-                },
-                events: Merkle {
-                    n_leaves: header
-                        .event_count
-                        .try_into()
-                        .context("invalid event count")?,
-                    root: Hash(header.event_commitment.0),
-                },
-                receipts: Merkle {
-                    n_leaves: txn_count,
-                    root: Hash(Felt::ZERO), // TODO
-                },
-                protocol_version: header.starknet_version.take_inner(),
-                gas_price_wei: header.eth_l1_gas_price.0,
-                gas_price_fri: header.strk_l1_gas_price.0,
-                data_gas_price_wei: header.eth_l1_data_gas_price.0,
-                data_gas_price_fri: header.strk_l1_data_gas_price.0,
-                num_storage_diffs: 0,      // TODO
-                num_nonce_updates: 0,      // TODO
-                num_declared_classes: 0,   // TODO
-                num_deployed_contracts: 0, // TODO
-                l1_data_availability_mode: header.l1_da_mode.to_dto(),
-                signatures: vec![ConsensusSignature {
-                    r: signature.r.0,
-                    s: signature.s.0,
-                }],
-            })))
-            .map_err(|_| anyhow::anyhow!("Sending header"))?;
+                tx.blocking_send(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
+                    block_hash: Hash(header.hash.0),
+                    parent_hash: Hash(header.parent_hash.0),
+                    number: header.number.get(),
+                    time: header.timestamp.get(),
+                    sequencer_address: Address(header.sequencer_address.0),
+                    state_diff_commitment: Hash(Felt::ZERO), // TODO
+                    state: Patricia {
+                        height: 251,
+                        root: Hash(header.state_commitment.0),
+                    },
+                    transactions: Merkle {
+                        n_leaves: txn_count,
+                        root: Hash(header.transaction_commitment.0),
+                    },
+                    events: Merkle {
+                        n_leaves: header
+                            .event_count
+                            .try_into()
+                            .context("invalid event count")?,
+                        root: Hash(header.event_commitment.0),
+                    },
+                    receipts: Merkle {
+                        n_leaves: txn_count,
+                        root: Hash(Felt::ZERO), // TODO
+                    },
+                    protocol_version: header.starknet_version.take_inner(),
+                    gas_price_wei: header.eth_l1_gas_price.0,
+                    gas_price_fri: header.strk_l1_gas_price.0,
+                    data_gas_price_wei: header.eth_l1_data_gas_price.0,
+                    data_gas_price_fri: header.strk_l1_data_gas_price.0,
+                    num_storage_diffs: stats.num_storage_diffs,
+                    num_nonce_updates: stats.num_nonce_updates,
+                    num_declared_classes: stats.num_declared_classes,
+                    num_deployed_contracts: stats.num_deployed_contracts,
+                    l1_data_availability_mode: header.l1_da_mode.to_dto(),
+                    signatures: vec![ConsensusSignature {
+                        r: signature.r.0,
+                        s: signature.s.0,
+                    }],
+                })))
+                .map_err(|_| anyhow::anyhow!("Sending header"))?;
 
-            return Ok(true);
+                return Ok(true);
+            }
         }
     }
 
