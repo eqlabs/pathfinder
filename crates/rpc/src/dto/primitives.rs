@@ -1,3 +1,5 @@
+use primitive_types::H256;
+
 use crate::dto::serialize;
 
 use super::serialize::SerializeForVersion;
@@ -9,6 +11,8 @@ pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
 pub struct Address<'a>(pub &'a pathfinder_common::ContractAddress);
 pub struct TxnHash<'a>(pub &'a pathfinder_common::TransactionHash);
 pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
+
+pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 
 
@@ -107,6 +111,18 @@ impl SerializeForVersion for ChainId<'_> {
         serializer.serialize_str(&hex_str)
     }
 }
+
+impl SerializeForVersion for EthAddress<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let hex_str = hex_str::bytes_to_hex_str_full(self.0 .0.as_bytes());
+        serializer.serialize_str(&hex_str)
+    }
+}
+
+
 impl SerializeForVersion for BlockNumber {
     fn serialize(
         &self,
@@ -207,6 +223,18 @@ mod tests {
     fn chain_id() {
         let uut = ChainId(&pathfinder_common::ChainId(felt!("0x1234")));
         let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn eth_address() {
+        let uut = pathfinder_common::EthereumAddress(primitive_types::H160::from_slice(&[
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7,
+        ]));
+        let uut = EthAddress(&uut);
+        let expected = json!("0x0000000000000000000000000001020304050607");
         let encoded = uut.serialize(Default::default()).unwrap();
 
         assert_eq!(encoded, expected);
