@@ -40,10 +40,12 @@ use tower_http::ServiceBuilderExt;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
-pub enum DefaultVersion {
+#[derive(Copy, Clone, Default, PartialEq, PartialOrd)]
+pub enum RpcVersion {
     V04,
     V05,
     V06,
+    #[default]
     V07,
 }
 
@@ -52,11 +54,11 @@ pub struct RpcServer {
     context: RpcContext,
     max_connections: usize,
     cors: Option<CorsLayer>,
-    default_version: DefaultVersion,
+    default_version: RpcVersion,
 }
 
 impl RpcServer {
-    pub fn new(addr: SocketAddr, context: RpcContext, default_version: DefaultVersion) -> Self {
+    pub fn new(addr: SocketAddr, context: RpcContext, default_version: RpcVersion) -> Self {
         Self {
             addr,
             context,
@@ -150,10 +152,10 @@ impl RpcServer {
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
-            DefaultVersion::V04 => v04_routes.clone(),
-            DefaultVersion::V05 => v05_routes.clone(),
-            DefaultVersion::V06 => v06_routes.clone(),
-            DefaultVersion::V07 => v07_routes.clone(),
+            RpcVersion::V04 => v04_routes.clone(),
+            RpcVersion::V05 => v05_routes.clone(),
+            RpcVersion::V06 => v06_routes.clone(),
+            RpcVersion::V07 => v07_routes.clone(),
         };
 
         let router = axum::Router::new()
@@ -780,7 +782,7 @@ mod tests {
         // of health check. Test that we return success for such queries.
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
             .spawn()
             .unwrap();
 
@@ -882,7 +884,7 @@ mod tests {
 
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
             .spawn()
             .unwrap();
 
