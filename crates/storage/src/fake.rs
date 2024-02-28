@@ -1,26 +1,22 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction as common;
-use pathfinder_common::{
-    BlockCommitmentSignature, BlockHeader, ClassHash, SierraHash, StateUpdate,
-};
+use pathfinder_common::{transaction as common, SignedBlockHeader};
+use pathfinder_common::{ClassHash, SierraHash, StateUpdate};
 use rand::Rng;
 
-pub type StorageInitializer = Vec<StorageInitializerItem>;
-
-pub type StorageInitializerItem = (
-    BlockHeader,
-    BlockCommitmentSignature,
-    Vec<(common::Transaction, Receipt)>,
-    StateUpdate,
-    Vec<(ClassHash, Vec<u8>)>,           // Cairo 0 definitions
-    Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
-);
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct StorageInitItem {
+    pub header: SignedBlockHeader,
+    pub transaction_data: Vec<(common::Transaction, Receipt)>,
+    pub state_update: StateUpdate,
+    pub cairo_defs: Vec<(ClassHash, Vec<u8>)>, // Cairo 0 definitions
+    pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
+}
 
 /// Initialize [`Storage`] with fake blocks and state updates
 /// maintaining [**limited consistency guarantees**](crate::fake::init::with_n_blocks)
-pub fn with_n_blocks(storage: &Storage, n: usize) -> StorageInitializer {
+pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<StorageInitItem> {
     let mut rng = rand::thread_rng();
     with_n_blocks_and_rng(storage, n, &mut rng)
 }
@@ -30,16 +26,22 @@ pub fn with_n_blocks_and_rng<R: Rng>(
     storage: &Storage,
     n: usize,
     rng: &mut R,
-) -> StorageInitializer {
+) -> Vec<StorageInitItem> {
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
     let fake_data = init::with_n_blocks_and_rng(n, rng);
     fake_data.iter().for_each(
-        |(header, signature, transaction_data, state_update, cairo_defs, sierra_defs)| {
-            tx.insert_block_header(header).unwrap();
+        |StorageInitItem {
+             header,
+             transaction_data,
+             state_update,
+             cairo_defs,
+             sierra_defs,
+         }| {
+            tx.insert_block_header(&header.header).unwrap();
             tx.insert_transaction_data(
-                header.hash,
-                header.number,
+                header.header.hash,
+                header.header.number,
                 &transaction_data
                     .iter()
                     .cloned()
@@ -47,7 +49,10 @@ pub fn with_n_blocks_and_rng<R: Rng>(
                     .collect::<Vec<_>>(),
             )
             .unwrap();
-            tx.insert_signature(header.number, signature).unwrap();
+            tx.insert_signature(header.header.number, &header.signature)
+                .unwrap();
+            tx.insert_state_update_stats(header.header.number, &header.state_update_stats)
+                .unwrap();
 
             state_update
                 .declared_cairo_classes
@@ -73,7 +78,8 @@ pub fn with_n_blocks_and_rng<R: Rng>(
                     },
                 );
 
-            tx.insert_state_update(header.number, state_update).unwrap();
+            tx.insert_state_update(header.header.number, state_update)
+                .unwrap();
         },
     );
     tx.commit().unwrap();
@@ -84,19 +90,20 @@ pub fn with_n_blocks_and_rng<R: Rng>(
 pub mod init {
     use std::collections::{HashMap, HashSet};
 
-    use super::StorageInitializer;
     use fake::{Fake, Faker};
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
-    use pathfinder_common::transaction as common;
     use pathfinder_common::ContractAddress;
     use pathfinder_common::{
         state_update::ContractClassUpdate, BlockHash, BlockHeader, BlockNumber, StateCommitment,
         StateUpdate, TransactionIndex,
     };
+    use pathfinder_common::{transaction as common, SignedBlockHeader};
     use rand::Rng;
     use starknet_gateway_types::class_definition;
+
+    use super::StorageInitItem;
 
     /// Create fake blocks and state updates with __limited consistency guarantees__:
     /// - block headers:
@@ -120,13 +127,13 @@ pub mod init {
     ///     - casm definitions for sierra classes are empty
     ///
     ///     
-    pub fn with_n_blocks(n: usize) -> StorageInitializer {
+    pub fn with_n_blocks(n: usize) -> Vec<StorageInitItem> {
         let mut rng = rand::thread_rng();
         with_n_blocks_and_rng(n, &mut rng)
     }
 
     /// Same as [`with_n_blocks`] except caller can specify the rng used
-    pub fn with_n_blocks_and_rng<R: Rng>(n: usize, rng: &mut R) -> StorageInitializer {
+    pub fn with_n_blocks_and_rng<R: Rng>(n: usize, rng: &mut R) -> Vec<StorageInitItem> {
         let mut init = Vec::with_capacity(n);
 
         for i in 0..n {
@@ -137,7 +144,7 @@ pub mod init {
                 StateCommitment::calculate(header.storage_commitment, header.class_commitment);
 
             // There must be at least 1 transaction per block
-            let transactions_and_receipts = fake_non_empty_with_rng::<
+            let transaction_data = fake_non_empty_with_rng::<
                 Vec<_>,
                 crate::connection::transaction::dto::Transaction,
             >(rng)
@@ -160,18 +167,15 @@ pub mod init {
             })
             .collect::<Vec<_>>();
 
-            header.transaction_count = transactions_and_receipts.len();
-            header.event_count = transactions_and_receipts
-                .iter()
-                .map(|(_, r)| r.events.len())
-                .sum();
+            header.transaction_count = transaction_data.len();
+            header.event_count = transaction_data.iter().map(|(_, r)| r.events.len()).sum();
 
             let block_hash = header.hash;
             let state_commitment = header.state_commitment;
             let declared_cairo_classes = Faker.fake_with_rng::<HashSet<_>, _>(rng);
             let declared_sierra_classes = Faker.fake_with_rng::<HashMap<_, _>, _>(rng);
 
-            let cairo_definitions = declared_cairo_classes
+            let cairo_defs = declared_cairo_classes
                 .iter()
                 .map(|&class_hash| {
                     (
@@ -183,7 +187,7 @@ pub mod init {
                     )
                 })
                 .collect::<Vec<_>>();
-            let sierra_definitions = declared_sierra_classes
+            let sierra_defs = declared_sierra_classes
                 .iter()
                 .map(|(&sierra_hash, _)| {
                     (
@@ -197,11 +201,14 @@ pub mod init {
                 })
                 .collect::<Vec<_>>();
 
-            init.push((
-                header,
-                Faker.fake_with_rng(rng),
-                transactions_and_receipts,
-                StateUpdate {
+            init.push(StorageInitItem {
+                header: SignedBlockHeader {
+                    header,
+                    signature: Faker.fake_with_rng(rng),
+                    ..Default::default()
+                },
+                transaction_data,
+                state_update: StateUpdate {
                     block_hash,
                     state_commitment,
                     // Will be fixed in the next loop
@@ -230,48 +237,66 @@ pub mod init {
                         x
                     },
                 },
-                cairo_definitions,
-                sierra_definitions,
-            ));
+                cairo_defs,
+                sierra_defs,
+            });
         }
 
         //
         // "Fix" block headers and state updates
         //
         if !init.is_empty() {
-            let (header, _, _, state_update, _, _) = init.get_mut(0).unwrap();
-            header.parent_hash = BlockHash::ZERO;
-            header.state_commitment =
-                StateCommitment::calculate(header.storage_commitment, header.class_commitment);
-            state_update.block_hash = header.hash;
+            let StorageInitItem {
+                header,
+                state_update,
+                ..
+            } = init.get_mut(0).unwrap();
+            header.header.parent_hash = BlockHash::ZERO;
+            header.header.state_commitment = StateCommitment::calculate(
+                header.header.storage_commitment,
+                header.header.class_commitment,
+            );
+            state_update.block_hash = header.header.hash;
             state_update.parent_state_commitment = StateCommitment::ZERO;
 
             for i in 1..n {
                 let (parent_hash, parent_state_commitment, deployed_in_parent) = init
                     .get(i - 1)
-                    .map(|(h, _, _, state_update, _, _)| {
-                        (
-                            h.hash,
-                            h.state_commitment,
-                            state_update
-                                .contract_updates
-                                .iter()
-                                .filter_map(|(&address, update)| match update.class {
-                                    Some(ContractClassUpdate::Deploy(class_hash)) => {
-                                        Some((address, class_hash))
-                                    }
-                                    Some(_) | None => None,
-                                })
-                                .collect::<Vec<_>>(),
-                        )
-                    })
+                    .map(
+                        |StorageInitItem {
+                             header,
+                             state_update,
+                             ..
+                         }| {
+                            (
+                                header.header.hash,
+                                header.header.state_commitment,
+                                state_update
+                                    .contract_updates
+                                    .iter()
+                                    .filter_map(|(&address, update)| match update.class {
+                                        Some(ContractClassUpdate::Deploy(class_hash)) => {
+                                            Some((address, class_hash))
+                                        }
+                                        Some(_) | None => None,
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )
+                        },
+                    )
                     .unwrap();
-                let (header, _, _, state_update, _, _) = init.get_mut(i).unwrap();
+                let StorageInitItem {
+                    header,
+                    state_update,
+                    ..
+                } = init.get_mut(i).unwrap();
 
-                header.parent_hash = parent_hash;
-                header.state_commitment =
-                    StateCommitment::calculate(header.storage_commitment, header.class_commitment);
-                state_update.block_hash = header.hash;
+                header.header.parent_hash = parent_hash;
+                header.header.state_commitment = StateCommitment::calculate(
+                    header.header.storage_commitment,
+                    header.header.class_commitment,
+                );
+                state_update.block_hash = header.header.hash;
 
                 //
                 // Fix state updates
@@ -297,6 +322,38 @@ pub mod init {
                                 Some(ContractClassUpdate::Replace(Faker.fake_with_rng(rng)))
                         })
                 }
+            }
+
+            // Update stats
+            for StorageInitItem {
+                header:
+                    SignedBlockHeader {
+                        state_update_stats, ..
+                    },
+                state_update,
+                ..
+            } in init.iter_mut()
+            {
+                state_update_stats.num_storage_diffs = state_update.contract_updates.iter().fold(
+                    state_update
+                        .system_contract_updates
+                        .iter()
+                        .fold(0, |acc, (_, u)| acc + u.storage.len()),
+                    |acc, (_, u)| acc + u.storage.len(),
+                ) as u64;
+                state_update_stats.num_nonce_updates = state_update
+                    .contract_updates
+                    .iter()
+                    .filter(|(_, u)| u.nonce.is_some())
+                    .count() as u64;
+                state_update_stats.num_declared_classes =
+                    (state_update.declared_cairo_classes.len()
+                        + state_update.declared_sierra_classes.len()) as u64;
+                state_update_stats.num_deployed_contracts = state_update
+                    .contract_updates
+                    .iter()
+                    .filter(|(_, u)| u.class.is_some())
+                    .count() as u64;
             }
         }
 
