@@ -1203,6 +1203,194 @@ pub(crate) mod tests {
                     execution_resources: invoke_fee_transfer_computation_resources(),
                 }
             }
+
+            const INVOKE_V3_OVERALL_FEE: u64 = 280;
+            const INVOKE_V3_GAS_CONSUMED: u64 = 12;
+            const INVOKE_V3_DATA_GAS_CONSUMED: u64 = 128;
+
+            pub fn invoke_v3(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+                test_storage_value: StorageValue,
+            ) -> SimulatedTransaction {
+                SimulatedTransaction {
+                    fee_estimation: FeeEstimate {
+                        gas_consumed: INVOKE_V3_GAS_CONSUMED.into(),
+                        gas_price: 2.into(),
+                        data_gas_consumed: Some(INVOKE_V3_DATA_GAS_CONSUMED.into()),
+                        data_gas_price: Some(2.into()),
+                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        unit: PriceUnit::Fri,
+                    },
+                    transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
+                        validate_invocation: Some(invoke_validate(account_contract_address)),
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(invoke_execute(
+                            account_contract_address,
+                            test_storage_value,
+                        )),
+                        fee_transfer_invocation: Some(invoke_v3_fee_transfer(
+                            account_contract_address,
+                            last_block_header,
+                        )),
+                        state_diff: Some(invoke_v3_state_diff(
+                            account_contract_address,
+                            invoke_v3_fee_transfer_storage_diffs(),
+                        )),
+                        execution_resources: Some(ExecutionResources {
+                            computation_resources: invoke_validate_computation_resources()
+                                + invoke_execute_computation_resources()
+                                + invoke_fee_transfer_computation_resources(),
+                            data_availability: DataAvailabilityResources {
+                                l1_gas: 0,
+                                l1_data_gas: 128,
+                            },
+                        }),
+                    }),
+                }
+            }
+
+            pub fn invoke_v3_without_fee_transfer(
+                account_contract_address: ContractAddress,
+                test_storage_value: StorageValue,
+            ) -> SimulatedTransaction {
+                SimulatedTransaction {
+                    fee_estimation: FeeEstimate {
+                        gas_consumed: INVOKE_V3_GAS_CONSUMED.into(),
+                        gas_price: 2.into(),
+                        data_gas_consumed: Some(INVOKE_V3_DATA_GAS_CONSUMED.into()),
+                        data_gas_price: Some(2.into()),
+                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        unit: PriceUnit::Fri,
+                    },
+                    transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
+                        validate_invocation: Some(invoke_validate(account_contract_address)),
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(invoke_execute(
+                            account_contract_address,
+                            test_storage_value,
+                        )),
+                        fee_transfer_invocation: None,
+                        state_diff: Some(invoke_v3_state_diff(account_contract_address, vec![])),
+                        execution_resources: Some(ExecutionResources {
+                            computation_resources: invoke_validate_computation_resources()
+                                + invoke_execute_computation_resources(),
+                            data_availability: DataAvailabilityResources {
+                                l1_gas: 0,
+                                l1_data_gas: 128,
+                            },
+                        }),
+                    }),
+                }
+            }
+
+            pub fn invoke_v3_without_validate(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+                test_storage_value: StorageValue,
+            ) -> SimulatedTransaction {
+                SimulatedTransaction {
+                    fee_estimation: FeeEstimate {
+                        gas_consumed: INVOKE_V3_GAS_CONSUMED.into(),
+                        gas_price: 2.into(),
+                        data_gas_consumed: Some(INVOKE_V3_DATA_GAS_CONSUMED.into()),
+                        data_gas_price: Some(2.into()),
+                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        unit: PriceUnit::Fri,
+                    },
+                    transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
+                        validate_invocation: None,
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(invoke_execute(
+                            account_contract_address,
+                            test_storage_value,
+                        )),
+                        fee_transfer_invocation: Some(invoke_v3_fee_transfer(
+                            account_contract_address,
+                            last_block_header,
+                        )),
+                        state_diff: Some(invoke_v3_state_diff(
+                            account_contract_address,
+                            invoke_v3_fee_transfer_storage_diffs(),
+                        )),
+                        execution_resources: Some(ExecutionResources {
+                            computation_resources: invoke_execute_computation_resources()
+                                + invoke_fee_transfer_computation_resources(),
+                            data_availability: DataAvailabilityResources {
+                                l1_gas: 0,
+                                l1_data_gas: 128,
+                            },
+                        }),
+                    }),
+                }
+            }
+
+            fn invoke_v3_fee_transfer(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+            ) -> FunctionInvocation {
+                FunctionInvocation {
+                    call_type: CallType::Call,
+                    caller_address: *account_contract_address.get(),
+                    calls: vec![],
+                    class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
+                    entry_point_type: EntryPointType::External,
+                    events: vec![OrderedEvent {
+                        order: 0,
+                        data: vec![
+                            *account_contract_address.get(),
+                            last_block_header.sequencer_address.0,
+                            Felt::from_u64(INVOKE_V3_OVERALL_FEE),
+                            felt!("0x0"),
+                        ],
+                        keys: vec![felt!(
+                            "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
+                        )],
+                    }],
+                    function_call: FunctionCall {
+                        calldata: vec![
+                            CallParam(last_block_header.sequencer_address.0),
+                            CallParam(Felt::from_u64(INVOKE_V3_OVERALL_FEE)),
+                            call_param!("0x0"),
+                        ],
+                        contract_address: pathfinder_executor::STRK_FEE_TOKEN_ADDRESS,
+                        entry_point_selector: EntryPoint::hashed(b"transfer"),
+                    },
+                    messages: vec![],
+                    result: vec![felt!("0x1")],
+                    execution_resources: invoke_fee_transfer_computation_resources(),
+                }
+            }
+
+            fn invoke_v3_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> StateDiff {
+                StateDiff {
+                    storage_diffs,
+                    deprecated_declared_classes: vec![],
+                    declared_classes: vec![],
+                    deployed_contracts: vec![],
+                    replaced_classes: vec![],
+                    nonces: vec![Nonce {
+                        contract_address: account_contract_address,
+                        nonce: contract_nonce!("0x4"),
+                    }],
+                }
+            }
+
+            fn invoke_v3_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: pathfinder_executor::STRK_FEE_TOKEN_ADDRESS,
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffffee8")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: StorageValue((INVOKE_V3_OVERALL_FEE).into()),
+                        },
+                    ],
+                }]
+            }
         }
     }
 
@@ -1225,6 +1413,7 @@ pub(crate) mod tests {
                     universal_deployer_address,
                 ),
                 fixtures::input::invoke(account_contract_address),
+                fixtures::input::invoke_v3(account_contract_address),
             ],
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: dto::SimulationFlags(vec![]),
@@ -1244,6 +1433,11 @@ pub(crate) mod tests {
                     universal_deployer_address,
                 ),
                 fixtures::expected_output_0_13_1::invoke(
+                    account_contract_address,
+                    &last_block_header,
+                    test_storage_value,
+                ),
+                fixtures::expected_output_0_13_1::invoke_v3(
                     account_contract_address,
                     &last_block_header,
                     test_storage_value,
@@ -1271,6 +1465,7 @@ pub(crate) mod tests {
                     universal_deployer_address,
                 ),
                 fixtures::input::invoke(account_contract_address),
+                fixtures::input::invoke_v3(account_contract_address),
             ],
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: dto::SimulationFlags(vec![dto::SimulationFlag::SkipFeeCharge]),
@@ -1288,6 +1483,10 @@ pub(crate) mod tests {
                     universal_deployer_address,
                 ),
                 fixtures::expected_output_0_13_1::invoke_without_fee_transfer(
+                    account_contract_address,
+                    test_storage_value,
+                ),
+                fixtures::expected_output_0_13_1::invoke_v3_without_fee_transfer(
                     account_contract_address,
                     test_storage_value,
                 ),
@@ -1314,6 +1513,7 @@ pub(crate) mod tests {
                     universal_deployer_address,
                 ),
                 fixtures::input::invoke(account_contract_address),
+                fixtures::input::invoke_v3(account_contract_address),
             ],
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: dto::SimulationFlags(vec![dto::SimulationFlag::SkipValidate]),
@@ -1333,6 +1533,11 @@ pub(crate) mod tests {
                     universal_deployer_address,
                 ),
                 fixtures::expected_output_0_13_1::invoke_without_validate(
+                    account_contract_address,
+                    &last_block_header,
+                    test_storage_value,
+                ),
+                fixtures::expected_output_0_13_1::invoke_v3_without_validate(
                     account_contract_address,
                     &last_block_header,
                     test_storage_value,
