@@ -3,6 +3,7 @@ use crate::dto::serialize;
 use super::serialize::SerializeForVersion;
 
 pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
+pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
 
 mod hex_str {
     use std::borrow::Cow;
@@ -47,6 +48,16 @@ impl SerializeForVersion for Felt<'_> {
         serializer.serialize_str(&hex_str)
     }
 }
+
+impl SerializeForVersion for BlockHash<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::dto::serialize::Serializer;
@@ -66,4 +77,12 @@ mod tests {
         assert_eq!(encoded, expected);
     }
 
+    #[test]
+    fn block_hash() {
+        let hash = block_hash!("0x1234");
+        let expected = Felt(&hash.0).serialize(Default::default()).unwrap();
+        let encoded = BlockHash(&hash).serialize(Serializer::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
 }
