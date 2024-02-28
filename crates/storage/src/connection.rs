@@ -14,6 +14,7 @@ pub(crate) mod transaction;
 mod trie;
 
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateStats;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 
@@ -538,8 +539,20 @@ impl<'inner> Transaction<'inner> {
         state_update::insert_state_update(self, block_number, state_update)
     }
 
+    pub fn insert_state_update_stats(
+        &self,
+        block_number: BlockNumber,
+        stats: &StateUpdateStats,
+    ) -> anyhow::Result<()> {
+        state_update::insert_state_update_stats(self, block_number, stats)
+    }
+
     pub fn state_update(&self, block: BlockId) -> anyhow::Result<Option<StateUpdate>> {
         state_update::state_update(self, block)
+    }
+
+    pub fn state_update_stats(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateStats>> {
+        state_update::state_update_stats(self, block)
     }
 
     pub fn storage_value(

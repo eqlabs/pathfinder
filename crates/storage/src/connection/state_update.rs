@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::state_update::ContractClassUpdate;
+use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateStats};
 use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StateUpdate, StorageAddress, StorageCommitment, StorageValue,
@@ -89,6 +89,31 @@ pub(super) fn insert_state_update(
     for class in declared_classes {
         update_class_defs.execute(params![&block_number, &class])?;
     }
+
+    Ok(())
+}
+
+/// Inserts a [StateUpdateStats] instance into storage.
+pub(super) fn insert_state_update_stats(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    state_update_stats: &StateUpdateStats,
+) -> anyhow::Result<()> {
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            "INSERT INTO state_update_stats (block_number, num_storage_diffs, num_nonce_updates, num_declared_classes, num_deployed_contracts) VALUES (?, ?, ?, ?, ?)",
+        )
+        .context("Preparing insert statement")?;
+
+    stmt.execute(params![
+        &block_number,
+        &state_update_stats.num_storage_diffs,
+        &state_update_stats.num_nonce_updates,
+        &state_update_stats.num_declared_classes,
+        &state_update_stats.num_deployed_contracts
+    ])
+    .context("Inserting state update stats")?;
 
     Ok(())
 }
@@ -273,6 +298,35 @@ pub(super) fn state_update(
     }
 
     Ok(Some(state_update))
+}
+
+pub(super) fn state_update_stats(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<StateUpdateStats>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            r"SELECT num_storage_diffs, num_nonce_updates, num_declared_classes, num_deployed_contracts
+                FROM state_update_stats WHERE block_number = ?")
+        .context("Preparing get state update stats statement")?;
+
+    let stats = stmt
+        .query_row(params![&block_number], |row| {
+            Ok(StateUpdateStats {
+                num_storage_diffs: row.get(0)?,
+                num_nonce_updates: row.get(1)?,
+                num_declared_classes: row.get(2)?,
+                num_deployed_contracts: row.get(3)?,
+            })
+        })
+        .context("Querying state update stats")?;
+
+    Ok(Some(stats))
 }
 
 pub(super) fn declared_classes_at(
