@@ -4,6 +4,8 @@ use super::serialize::SerializeForVersion;
 
 pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
+pub struct BlockNumber(pub pathfinder_common::BlockNumber);
+
 
 mod hex_str {
     use std::borrow::Cow;
@@ -58,6 +60,15 @@ impl SerializeForVersion for BlockHash<'_> {
     }
 }
 
+impl SerializeForVersion for BlockNumber {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer.serialize_u64(self.0.get())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::dto::serialize::Serializer;
@@ -67,6 +78,15 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
+
+    #[test]
+    fn block_number() {
+        let number = pathfinder_common::BlockNumber::new_or_panic(1234);
+        let expected = json!(1234);
+        let encoded = BlockNumber(number).serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
 
     #[test]
     fn felt() {
