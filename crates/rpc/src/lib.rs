@@ -1,5 +1,6 @@
 //! Starknet node JSON-RPC related modules.
 pub mod context;
+mod dto;
 mod error;
 mod executor;
 mod felt;
