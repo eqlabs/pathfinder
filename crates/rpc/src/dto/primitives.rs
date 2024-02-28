@@ -18,6 +18,10 @@ pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 
 pub struct U64(pub u64);
 pub struct U128(pub u128);
+pub enum NumAsHex<'a> {
+    U64(u64),
+    H256(&'a H256),
+}
 
 mod hex_str {
     use std::borrow::Cow;
@@ -163,6 +167,19 @@ impl SerializeForVersion for U128 {
     }
 }
 
+impl SerializeForVersion for NumAsHex<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let hex = match &self {
+            NumAsHex::U64(x) => hex_str::bytes_to_hex_str_stripped(&x.to_be_bytes()),
+            NumAsHex::H256(x) => hex_str::bytes_to_hex_str_stripped(x.as_bytes()),
+        };
+        serializer.serialize_str(&hex)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::dto::serialize::Serializer;
@@ -292,6 +309,25 @@ mod tests {
     #[test]
     fn u128() {
         let uut = U128(0x1234);
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn num_as_hex_u64() {
+        let uut = NumAsHex::U64(0x1234);
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn num_as_hex_h256() {
+        let uut = H256(felt!("0x1234").to_be_bytes());
+        let uut = NumAsHex::H256(&uut);
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
 
