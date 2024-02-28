@@ -11,7 +11,10 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 blockifier = { workspace = true }
 cached = { workspace = true }
-cairo-vm = { workspace = true }
+cairo-vm = { workspace = true, default-features = false, features = [
+    "std",
+    "lambdaworks-felt",
+] }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
