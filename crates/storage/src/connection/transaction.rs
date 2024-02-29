@@ -18,8 +18,6 @@ pub(super) fn insert_transactions(
     block_number: BlockNumber,
     transaction_data: &[(StarknetTransaction, Receipt)],
 ) -> anyhow::Result<()> {
-    let start = std::time::Instant::now();
-
     if transaction_data.is_empty() {
         return Ok(());
     }
@@ -62,14 +60,6 @@ pub(super) fn insert_transactions(
         .flat_map(|(_, receipt)| &receipt.events);
     super::event::insert_block_events(tx, block_number, events)
         .context("Inserting events into Bloom filter")?;
-
-    let duration = start.elapsed();
-    tracing::warn!(
-        "Inserting {} transactions took {:?}",
-        transaction_data.len(),
-        duration
-    );
-
     Ok(())
 }
 

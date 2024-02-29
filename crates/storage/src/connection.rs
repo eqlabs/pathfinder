@@ -158,12 +158,12 @@ impl<'inner> Transaction<'inner> {
         block::block_is_l1_accepted(self, block)
     }
 
-    pub fn blocks_without_transactions(
-        &self,
-        start: BlockNumber,
-        limit: u64,
-    ) -> anyhow::Result<Vec<BlockHeader>> {
-        block::blocks_without_transactions(self, start, limit)
+    pub fn first_block_without_transactions(&self) -> anyhow::Result<Option<BlockNumber>> {
+        block::first_block_without_transactions(self)
+    }
+
+    pub fn last_block(&self) -> anyhow::Result<Option<BlockNumber>> {
+        block::last_block(self)
     }
 
     pub fn update_l1_l2_pointer(&self, block: Option<BlockNumber>) -> anyhow::Result<()> {

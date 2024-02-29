@@ -16,7 +16,7 @@ use p2p_proto::{
     header::{BlockHeadersRequest, BlockHeadersResponse},
     transaction::TransactionsResponse,
 };
-use pathfinder_common::{transaction::Transaction, BlockNumber, SignedBlockHeader};
+use pathfinder_common::{BlockNumber, SignedBlockHeader};
 use tokio::sync::RwLock;
 
 use crate::client::{conv::TryFromDto, peer_aware};
@@ -100,6 +100,11 @@ impl Client {
         peers
     }
 
+    pub async fn get_update_peers_with_transaction_sync_capability(&self) -> Vec<PeerId> {
+        self.get_update_peers_with_sync_capability(protocol::Transactions::NAME)
+            .await
+    }
+
     pub fn header_stream(
         self,
         start: BlockNumber,
@@ -173,58 +178,14 @@ impl Client {
         }
     }
 
-    pub fn transaction_stream(
-        self,
-        block: BlockNumber,
-    ) -> impl futures::Stream<Item = PeerData<Vec<Transaction>>> {
-        async_stream::stream! {
-            // Loop which refreshes peer set once we exhaust it.
-            loop {
-                let peers = self
-                    .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
-                    .await;
-
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let request = TransactionsRequest {
-                        iteration: Iteration {
-                            start: block.get().into(),
-                            direction: Direction::Forward,
-                            limit: 1,
-                            step: 1.into(),
-                        },
-                    };
-
-                    let mut responses = match self.inner.send_transactions_sync_request(peer, request).await
-                    {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
-                            continue 'next_peer;
-                        }
-                    };
-
-                    let mut transactions = Vec::new();
-                    while let Some(transaction) = responses.next().await {
-                        match transaction {
-                            TransactionsResponse::Transaction(tx) => match Transaction::try_from_dto(tx) {
-                                Ok(tx) => transactions.push(tx),
-                                Err(error) => {
-                                    tracing::debug!(%peer, %error, "Transaction stream failed");
-                                    continue 'next_peer;
-                                },
-                            },
-                            TransactionsResponse::Fin => {
-                                tracing::debug!(%peer, "Transaction stream Fin");
-                                yield PeerData::new(peer, transactions);
-                                continue 'next_peer;
-                            }
-                        };
-                    }
-                }
-            }
-        }
+    pub async fn send_transactions_sync_request(
+        &self,
+        peer: PeerId,
+        request: TransactionsRequest,
+    ) -> anyhow::Result<futures::channel::mpsc::Receiver<TransactionsResponse>> {
+        self.inner
+            .send_transactions_sync_request(peer, request)
+            .await
     }
 }
 

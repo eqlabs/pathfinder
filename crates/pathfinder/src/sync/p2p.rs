@@ -2,17 +2,23 @@
 mod headers;
 mod transactions;
 
+use std::mem;
+
 use anyhow::Context;
-use futures::{pin_mut, StreamExt};
+use futures::StreamExt;
+use p2p_proto::{
+    common::{BlockNumberOrHash, Direction, Iteration},
+    transaction::{TransactionsRequest, TransactionsResponse},
+};
 use pathfinder_common::{
     transaction::Transaction, BlockHash, BlockHeader, BlockNumber, TransactionCommitment,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
-use tokio::task::{spawn_blocking, JoinSet};
+use tokio::task::spawn_blocking;
 
-use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
 
 use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
@@ -146,80 +152,158 @@ impl Sync {
     }
 
     async fn sync_transactions(&self) -> anyhow::Result<()> {
-        const NUM_CONCURRENT_TASKS: usize = 10;
-        let mut tasks = JoinSet::new();
-        let blocks_without_transactions =
-            transactions::blocks_without_transactions(self.storage.clone()).fuse();
-        pin_mut!(blocks_without_transactions);
-        for _ in 0..NUM_CONCURRENT_TASKS {
-            let Some(block) = blocks_without_transactions.next().await else {
-                break;
-            };
-            let block = block?;
-            tasks.spawn(sync_transactions_for_block(
-                self.p2p.clone(),
-                self.storage.clone(),
-                block,
-            ));
-        }
-        while let Some(result) = tasks.join_next().await {
-            result??;
-            if let Some(block) = blocks_without_transactions.next().await {
-                let block = block?;
-                tasks.spawn(sync_transactions_for_block(
-                    self.p2p.clone(),
-                    self.storage.clone(),
-                    block,
-                ));
+        let first_block = spawn_blocking({
+            let storage = self.storage.clone();
+            move || {
+                let mut db = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let db = db.transaction().context("Creating database transaction")?;
+                db.first_block_without_transactions()
+                    .context("Querying first block without transactions")
+            }
+        })
+        .await
+        .context("Joining blocking task")??;
+        let last_block = spawn_blocking({
+            let storage = self.storage.clone();
+            move || {
+                let mut db = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let db = db.transaction().context("Creating database transaction")?;
+                db.last_block()
+                    .context("Querying last block without transactions")
+            }
+        })
+        .await
+        .context("Joining blocking task")??;
+
+        let Some(first_block) = first_block else {
+            return Ok(());
+        };
+        let last_block = last_block
+            .context("Last block not found but first block found, something is terribly wrong")?;
+
+        let mut curr_block = headers::query(self.storage.clone(), first_block)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("First block not found when it should have been"))?;
+
+        // Loop which refreshes peer set once we exhaust it.
+        loop {
+            let peers = self
+                .p2p
+                .get_update_peers_with_transaction_sync_capability()
+                .await;
+
+            // Attempt each peer.
+            'next_peer: for peer in peers {
+                let request = TransactionsRequest {
+                    iteration: Iteration {
+                        start: BlockNumberOrHash::Number(curr_block.number.get()),
+                        direction: Direction::Forward,
+                        limit: last_block.get() - curr_block.number.get() + 1,
+                        step: 1.into(),
+                    },
+                };
+
+                let mut responses =
+                    match self.p2p.send_transactions_sync_request(peer, request).await {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // Failed to establish connection, try next peer.
+                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
+                            continue 'next_peer;
+                        }
+                    };
+
+                let mut transactions = Vec::new();
+                while let Some(transaction) = responses.next().await {
+                    match transaction {
+                        TransactionsResponse::Transaction(tx) => {
+                            match Transaction::try_from_dto(tx) {
+                                Ok(tx) if transactions.len() < curr_block.transaction_count => {
+                                    transactions.push(tx)
+                                }
+                                Ok(tx) => {
+                                    if !check_transactions(&curr_block, &transactions).await? {
+                                        tracing::debug!(
+                                            "Invalid transactions for block {}, trying next peer",
+                                            curr_block.number
+                                        );
+                                        continue 'next_peer;
+                                    }
+                                    transactions::persist(
+                                        self.storage.clone(),
+                                        curr_block.clone(),
+                                        mem::take(&mut transactions),
+                                    )
+                                    .await
+                                    .context("Inserting transactions")?;
+                                    if curr_block.number == last_block {
+                                        return Ok(());
+                                    }
+                                    curr_block =
+                                        headers::query(self.storage.clone(), curr_block.number + 1)
+                                            .await?
+                                            .ok_or_else(|| {
+                                                anyhow::anyhow!(
+                                                    "Next block not found when it should have been"
+                                                )
+                                            })?;
+                                    transactions.push(tx);
+                                }
+                                Err(error) => {
+                                    tracing::debug!(%peer, %error, "Transaction stream returned unexpected DTO");
+                                    continue 'next_peer;
+                                }
+                            }
+                        }
+                        TransactionsResponse::Fin if curr_block.number == last_block => {
+                            if !check_transactions(&curr_block, &transactions).await? {
+                                tracing::debug!(
+                                    "Invalid transactions for block {}, trying next peer",
+                                    curr_block.number
+                                );
+                                continue 'next_peer;
+                            }
+                            transactions::persist(self.storage.clone(), curr_block, transactions)
+                                .await
+                                .context("Inserting transactions")?;
+                            return Ok(());
+                        }
+                        TransactionsResponse::Fin => {
+                            tracing::debug!(%peer, "Unexpected transaction stream Fin");
+                            continue 'next_peer;
+                        }
+                    };
+                }
             }
         }
-        Ok(())
     }
 }
 
-async fn sync_transactions_for_block(
-    p2p: P2PClient,
-    storage: Storage,
-    block: BlockHeader,
-) -> anyhow::Result<()> {
-    let transaction_stream = p2p.transaction_stream(block.number);
-    futures::pin_mut!(transaction_stream);
-    loop {
-        let transactions = transaction_stream
-            .next()
-            .await
-            .ok_or_else(|| anyhow::anyhow!("Transaction stream ended, this should never happen"))?;
-        if transactions.data.len() != block.transaction_count {
-            continue;
-        }
-        let transaction_final_hash_type =
-            TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
-        let (transaction_commitment, transactions) = spawn_blocking(
-            move || -> anyhow::Result<(TransactionCommitment, Vec<Transaction>)> {
-                let commitment = calculate_transaction_commitment(
-                    &transactions.data,
-                    transaction_final_hash_type,
-                )?;
-                Ok((commitment, transactions.data))
-            },
-        )
-        .await
-        .context("Joining blocking task")?
-        .context("Calculating transaction commitment")?;
-        if transaction_commitment != block.transaction_commitment {
-            tracing::debug!(
-                "Transaction commitment mismatch for block {}, trying next peer",
-                block.number
-            );
-            continue;
-        }
-        transactions::insert_transactions(storage, block, transactions)
-            .await
-            .context("Inserting transactions")?;
-        break;
+async fn check_transactions(
+    block: &BlockHeader,
+    transactions: &[Transaction],
+) -> anyhow::Result<bool> {
+    if transactions.len() != block.transaction_count {
+        return Ok(false);
     }
-
-    Ok(())
+    let transaction_final_hash_type =
+        TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
+    let transaction_commitment = spawn_blocking({
+        let transactions = transactions.to_vec();
+        move || -> anyhow::Result<TransactionCommitment> {
+            let commitment =
+                calculate_transaction_commitment(&transactions, transaction_final_hash_type)?;
+            Ok(commitment)
+        }
+    })
+    .await
+    .context("Joining blocking task")?
+    .context("Calculating transaction commitment")?;
+    Ok(transaction_commitment == block.transaction_commitment)
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with a given L1 checkpoint,
@@ -288,7 +372,8 @@ impl CheckpointAnalysis {
                     checkpoint: checkpoint.block_number,
                     anchor: local_state.anchor.as_ref().map(|x| x.block_number),
                 };
-            } else if let Some((_, hash)) = local_state.checkpoint {
+            }
+            if let Some((_, hash)) = local_state.checkpoint {
                 if hash != checkpoint.block_hash {
                     return CheckpointAnalysis::HashMismatchWithLocalChain {
                         block: checkpoint.block_number,

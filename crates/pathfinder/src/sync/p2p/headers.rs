@@ -2,7 +2,7 @@
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{
-    BlockHash, BlockNumber, ClassCommitment, SignedBlockHeader, StorageCommitment,
+    BlockHash, BlockHeader, BlockNumber, ClassCommitment, SignedBlockHeader, StorageCommitment,
 };
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
@@ -190,4 +190,22 @@ pub(super) async fn persist(
     })
     .await
     .expect("Task should not crash")
+}
+
+pub(super) async fn query(
+    storage: Storage,
+    block_number: BlockNumber,
+) -> anyhow::Result<Option<BlockHeader>> {
+    spawn_blocking({
+        move || {
+            let mut db = storage
+                .connection()
+                .context("Creating database connection")?;
+            let db = db.transaction().context("Creating database transaction")?;
+            db.block_header(block_number.into())
+                .context("Querying first block without transactions")
+        }
+    })
+    .await
+    .context("Joining blocking task")?
 }

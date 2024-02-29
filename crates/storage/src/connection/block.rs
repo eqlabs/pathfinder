@@ -388,38 +388,55 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
     Ok(block_number <= l1_l2)
 }
 
-pub(super) fn blocks_without_transactions(
+pub(super) fn first_block_without_transactions(
     tx: &Transaction<'_>,
-    start: BlockNumber,
-    limit: u64,
-) -> anyhow::Result<Vec<BlockHeader>> {
+) -> anyhow::Result<Option<BlockNumber>> {
     let mut stmt = tx
         .inner()
         .prepare(
             "
-            SELECT *
+            SELECT number
             FROM block_headers
             LEFT JOIN starknet_transactions ON starknet_transactions.block_hash = block_headers.hash
-            LEFT JOIN starknet_versions ON block_headers.version_id = starknet_versions.id
             GROUP BY block_headers.hash
-            HAVING
-                COUNT(starknet_transactions.idx) = 0 AND
-                block_headers.number >= ?
-            ORDER BY block_headers.number DESC
-            LIMIT ?;
+            HAVING COUNT(starknet_transactions.idx) = 0
+            ORDER BY number ASC
+            LIMIT 1;
             ",
         )
-        .context("Preparing blocks_without_transactions query")?;
+        .context("Preparing first_block_without_transactions query")?;
 
     let mut rows = stmt
-        .query(params![&start, &limit])
-        .context("Executing blocks_without_transactions")?;
+        .query(params![])
+        .context("Executing first_block_without_transactions")?;
 
-    let mut data = Vec::new();
-    while let Some(row) = rows.next()? {
-        data.push(parse_row_as_header(row)?);
+    match rows.next()? {
+        Some(row) => Ok(Some(row.get_block_number(0)?)),
+        None => Ok(None),
     }
-    Ok(data)
+}
+
+pub(super) fn last_block(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
+    let mut stmt = tx
+        .inner()
+        .prepare(
+            "
+            SELECT number
+            FROM block_headers
+            ORDER BY number DESC
+            LIMIT 1;
+            ",
+        )
+        .context("Preparing first_block_without_transactions query")?;
+
+    let mut rows = stmt
+        .query(params![])
+        .context("Executing first_block_without_transactions")?;
+
+    match rows.next()? {
+        Some(row) => Ok(Some(row.get_block_number(0)?)),
+        None => Ok(None),
+    }
 }
 
 #[cfg(test)]
