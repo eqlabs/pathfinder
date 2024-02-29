@@ -19,6 +19,30 @@ pub enum TxnFinalityStatus {
 
 struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
 
+enum TxnType {
+    Declare,
+    Deploy,
+    DeployAccount,
+    Invoke,
+    L1Handler,
+}
+
+impl SerializeForVersion for TxnType {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        match self {
+            TxnType::Declare => "DECLARE",
+            TxnType::Deploy => "DEPLOY",
+            TxnType::DeployAccount => "DEPLOY_ACCOUNT",
+            TxnType::Invoke => "INVOKE",
+            TxnType::L1Handler => "L1_HANDLER",
+        }
+        .serialize(serializer)
+    }
+}
+
 impl SerializeForVersion for TxnExecutionStatus {
     fn serialize(
         &self,
@@ -126,5 +150,22 @@ mod tests {
 
         assert_eq!(succeeded, json!("SUCCEEDED"));
         assert_eq!(reverted, json!("REVERTED"));
+    }
+
+    #[test]
+    fn txn_type() {
+        let s = Serializer::default();
+
+        let declare = s.serialize(&TxnType::Declare).unwrap();
+        let deploy = s.serialize(&TxnType::Deploy).unwrap();
+        let deploy_account = s.serialize(&TxnType::DeployAccount).unwrap();
+        let invoke = s.serialize(&TxnType::Invoke).unwrap();
+        let l1_handler = s.serialize(&TxnType::L1Handler).unwrap();
+
+        assert_eq!(declare, json!("DECLARE"));
+        assert_eq!(deploy, json!("DEPLOY"));
+        assert_eq!(deploy_account, json!("DEPLOY_ACCOUNT"));
+        assert_eq!(invoke, json!("INVOKE"));
+        assert_eq!(l1_handler, json!("L1_HANDLER"));
     }
 }
