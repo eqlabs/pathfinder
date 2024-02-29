@@ -208,16 +208,18 @@ mod tests {
             },
         };
 
+        let s = Serializer::default();
+
         let expected = json!({
-           "starting_block_hash": BlockHash(&status.starting.hash).serialize(Default::default()).unwrap(),
-           "current_block_hash": BlockHash(&status.current.hash).serialize(Default::default()).unwrap(),
-           "highest_block_hash": BlockHash(&status.highest.hash).serialize(Default::default()).unwrap(),
-           "starting_block_num": BlockNumber(status.starting.number).serialize(Default::default()).unwrap(),
-           "current_block_num": BlockNumber(status.current.number).serialize(Default::default()).unwrap(),
-           "highest_block_num": BlockNumber(status.highest.number).serialize(Default::default()).unwrap(),
+           "starting_block_hash": BlockHash(&status.starting.hash).serialize(s).unwrap(),
+           "current_block_hash": BlockHash(&status.current.hash).serialize(s).unwrap(),
+           "highest_block_hash": BlockHash(&status.highest.hash).serialize(s).unwrap(),
+           "starting_block_num": BlockNumber(status.starting.number).serialize(s).unwrap(),
+           "current_block_num": BlockNumber(status.current.number).serialize(s).unwrap(),
+           "highest_block_num": BlockNumber(status.highest.number).serialize(s).unwrap(),
         });
 
-        let encoded = SyncStatus(&status).serialize(Default::default()).unwrap();
+        let encoded = SyncStatus(&status).serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
     }

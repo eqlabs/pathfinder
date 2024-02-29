@@ -16,14 +16,14 @@ impl serialize::SerializeForVersion for BlockHeader<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        let mut s = serializer.clone().serialize_struct()?;
+        let mut s = serializer.serialize_struct()?;
 
         s.serialize_field("block_hash", &dto::BlockHash(&self.0.hash))?;
         s.serialize_field("parent_hash", &dto::BlockHash(&self.0.parent_hash))?;
         s.serialize_field("block_number", &dto::BlockNumber(self.0.number))?;
         s.serialize_field(
             "timestamp",
-            &serializer.clone().serialize_u64(self.0.timestamp.get())?,
+            &serializer.serialize_u64(self.0.timestamp.get())?,
         )?;
         s.serialize_field("new_root", &dto::Felt(&self.0.state_commitment.0))?;
         s.serialize_field("sequencer_address", &dto::Felt(&self.0.sequencer_address.0))?;
@@ -98,6 +98,8 @@ mod tests {
 
     #[test]
     fn header() {
+        let s = Serializer::default();
+
         let header = pathfinder_common::BlockHeader {
             hash: block_hash!("0x1"),
             parent_hash: block_hash!("0x2"),
@@ -119,25 +121,25 @@ mod tests {
             l1_da_mode: pathfinder_common::L1DataAvailabilityMode::Blob,
         };
         let expected = json!({
-            "block_hash": BlockHash(&header.hash).serialize(Default::default()).unwrap(),
-            "parent_hash": BlockHash(&header.parent_hash).serialize(Default::default()).unwrap(),
-            "block_number": BlockNumber(header.number).serialize(Default::default()).unwrap(),
-            "timestamp": Serializer::default().serialize_u64(header.timestamp.get()).unwrap(),
-            "new_root": Felt(&header.state_commitment.0).serialize(Default::default()).unwrap(),
-            "sequencer_address": Felt(&header.sequencer_address.0).serialize(Default::default()).unwrap(),
-            "starknet_version": Serializer::default().serialize_str(header.starknet_version.as_str()).unwrap(),
-            "l1_da_mode": L1DaMode(header.l1_da_mode).serialize(Default::default()).unwrap(),
-            "l1_gas_price": ResourcePrice {
+            "block_hash": s.serialize(&BlockHash(&header.hash)).unwrap(),
+            "parent_hash": s.serialize(&BlockHash(&header.parent_hash)).unwrap(),
+            "block_number": s.serialize(&BlockNumber(header.number)).unwrap(),
+            "timestamp": s.serialize_u64(header.timestamp.get()).unwrap(),
+            "new_root": s.serialize(&Felt(&header.state_commitment.0)).unwrap(),
+            "sequencer_address": s.serialize(&Felt(&header.sequencer_address.0)).unwrap(),
+            "starknet_version": s.serialize_str(header.starknet_version.as_str()).unwrap(),
+            "l1_da_mode": s.serialize(&L1DaMode(header.l1_da_mode)).unwrap(),
+            "l1_gas_price": s.serialize(&ResourcePrice {
                 price_in_fri: &header.strk_l1_gas_price,
                 price_in_wei: &header.eth_l1_gas_price,
-            }.serialize(Default::default()).unwrap(),
-            "l1_data_gas_price": ResourcePrice {
+            }).unwrap(),
+            "l1_data_gas_price": s.serialize(&ResourcePrice {
                 price_in_fri: &header.strk_l1_data_gas_price,
                 price_in_wei: &header.eth_l1_data_gas_price,
-            }.serialize(Default::default()).unwrap(),
+            }).unwrap(),
         });
 
-        let encoded = BlockHeader(&header).serialize(Default::default()).unwrap();
+        let encoded = s.serialize(&BlockHeader(&header)).unwrap();
 
         assert_eq!(encoded, expected);
     }

@@ -1,17 +1,8 @@
 use crate::RpcVersion;
 
+#[derive(Copy, Clone, Default)]
 pub struct Serializer {
-    pub(crate) inner: BaseSerializer,
     pub version: RpcVersion,
-}
-
-impl Clone for Serializer {
-    fn clone(&self) -> Self {
-        Self {
-            inner: BaseSerializer {},
-            version: self.version,
-        }
-    }
 }
 
 pub struct SerializeStruct {
@@ -20,11 +11,11 @@ pub struct SerializeStruct {
 }
 
 pub struct SerializeSeq {
-    pub(crate) inner: <BaseSerializer as serde::Serializer>::SerializeSeq,
+    inner: <BaseSerializer as serde::Serializer>::SerializeSeq,
     pub version: RpcVersion,
 }
 
-pub(crate) type BaseSerializer = serde_json::value::Serializer;
+type BaseSerializer = serde_json::value::Serializer;
 pub(crate) type Ok = <BaseSerializer as serde::Serializer>::Ok;
 pub(crate) type Error = <BaseSerializer as serde::Serializer>::Error;
 
@@ -37,23 +28,14 @@ impl<T> SerializeForVersion for T
 where
     T: serde::Serialize,
 {
-    fn serialize(&self, serializer: Serializer) -> Result<Ok, Error> {
-        self.serialize(serializer.inner)
-    }
-}
-
-impl Default for Serializer {
-    fn default() -> Self {
-        Self::new(Default::default())
+    fn serialize(&self, _serializer: Serializer) -> Result<Ok, Error> {
+        self.serialize(BaseSerializer {})
     }
 }
 
 impl Serializer {
     pub fn new(version: RpcVersion) -> Self {
-        Self {
-            inner: BaseSerializer {},
-            version,
-        }
+        Self { version }
     }
 
     pub fn serialize(self, value: &dyn SerializeForVersion) -> Result<Ok, Error> {
@@ -62,12 +44,17 @@ impl Serializer {
 
     pub fn serialize_str(self, value: &str) -> Result<Ok, Error> {
         use serde::Serializer;
-        self.inner.serialize_str(value)
+        BaseSerializer {}.serialize_str(value)
     }
 
     pub fn serialize_u64(self, value: u64) -> Result<Ok, Error> {
         use serde::Serializer;
-        self.inner.serialize_u64(value)
+        BaseSerializer {}.serialize_u64(value)
+    }
+
+    pub fn serialize_bool(self, value: bool) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_bool(value)
     }
 
     pub fn serialize_struct(self) -> Result<SerializeStruct, Error> {
@@ -80,7 +67,7 @@ impl Serializer {
     pub fn serialize_seq(self, len: Option<usize>) -> Result<SerializeSeq, Error> {
         use serde::Serializer;
         Ok(SerializeSeq {
-            inner: self.inner.serialize_seq(len)?,
+            inner: BaseSerializer {}.serialize_seq(len)?,
             version: self.version,
         })
     }
