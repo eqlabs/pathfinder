@@ -158,6 +158,10 @@ impl<'inner> Transaction<'inner> {
         block::block_is_l1_accepted(self, block)
     }
 
+    pub fn first_block_without_transactions(&self) -> anyhow::Result<Option<BlockNumber>> {
+        block::first_block_without_transactions(self)
+    }
+
     pub fn update_l1_l2_pointer(&self, block: Option<BlockNumber>) -> anyhow::Result<()> {
         reference::update_l1_l2_pointer(self, block)
     }

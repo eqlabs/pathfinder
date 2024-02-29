@@ -7,7 +7,7 @@ use pathfinder_common::{
         DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
         DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
         InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
-        ResourceBound, ResourceBounds, TransactionVariant,
+        ResourceBound, ResourceBounds, Transaction, TransactionVariant,
     },
     AccountDeploymentDataElem, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
     BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassCommitment, ClassHash,
@@ -66,6 +66,18 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             },
             signature,
+        })
+    }
+}
+
+impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
+    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Transaction {
+            hash: TransactionHash(dto.hash.0),
+            variant: TransactionVariant::try_from_dto(dto.variant)?,
         })
     }
 }

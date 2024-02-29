@@ -8,8 +8,14 @@ use std::{
 
 use futures::StreamExt;
 use libp2p::PeerId;
-use p2p_proto::common::{Direction, Iteration};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::{
+    common::{Direction, Iteration},
+    transaction::TransactionsRequest,
+};
+use p2p_proto::{
+    header::{BlockHeadersRequest, BlockHeadersResponse},
+    transaction::TransactionsResponse,
+};
 use pathfinder_common::{BlockNumber, SignedBlockHeader};
 use tokio::sync::RwLock;
 
@@ -94,6 +100,11 @@ impl Client {
         peers
     }
 
+    pub async fn get_update_peers_with_transaction_sync_capability(&self) -> Vec<PeerId> {
+        self.get_update_peers_with_sync_capability(protocol::Transactions::NAME)
+            .await
+    }
+
     pub fn header_stream(
         self,
         start: BlockNumber,
@@ -165,6 +176,16 @@ impl Client {
                 }
             }
         }
+    }
+
+    pub async fn send_transactions_sync_request(
+        &self,
+        peer: PeerId,
+        request: TransactionsRequest,
+    ) -> anyhow::Result<futures::channel::mpsc::Receiver<TransactionsResponse>> {
+        self.inner
+            .send_transactions_sync_request(peer, request)
+            .await
     }
 }
 
