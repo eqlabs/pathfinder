@@ -7,6 +7,11 @@ use crate::{dto::*, RpcVersion};
 
 use super::serialize;
 
+struct PendingCommonReceiptProperties<'a> {
+    receipt: &'a pathfinder_common::receipt::Receipt,
+    version: &'a pathfinder_common::TransactionVersion,
+}
+
 struct FeePayment<'a> {
     amount: Option<&'a pathfinder_common::Fee>,
     version: &'a pathfinder_common::TransactionVersion,
@@ -37,6 +42,49 @@ enum TxnType {
     DeployAccount,
     Invoke,
     L1Handler,
+}
+
+impl SerializeForVersion for PendingCommonReceiptProperties<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("transaction_hash", &TxnHash(&self.receipt.transaction_hash))?;
+        serializer.serialize_field(
+            "actual_fee",
+            &FeePayment {
+                amount: self.receipt.actual_fee.as_ref(),
+                version: self.version,
+            },
+        )?;
+
+        serializer.serialize_iter(
+            "messages_sent",
+            self.receipt.l2_to_l1_messages.len(),
+            &mut self.receipt.l2_to_l1_messages.iter().map(MsgToL1),
+        )?;
+        serializer.serialize_iter(
+            "events",
+            self.receipt.events.len(),
+            &mut self.receipt.events.iter().map(Event),
+        )?;
+        serializer.serialize_field("finality_status", &"ACCEPTED_ON_L2")?;
+        serializer.serialize_field(
+            "execution_resources",
+            &ExecutionResources(&self.receipt.execution_resources),
+        )?;
+
+        if let Some(reason) = self.receipt.revert_reason() {
+            serializer.serialize_field("execution_status", &TxnExecutionStatus::Reverted)?;
+            serializer.serialize_field("revert_reason", &reason)?;
+        } else {
+            serializer.serialize_field("execution_status", &TxnExecutionStatus::Succeeded)?;
+        }
+
+        serializer.end()
+    }
 }
 
 impl SerializeForVersion for TxnType {
@@ -410,5 +458,96 @@ mod tests {
         .unwrap();
 
         assert_eq!(encoded, expected);
+    }
+
+    mod pending_common_receipt_properties {
+        use super::*;
+        use pretty_assertions_sorted::assert_eq;
+
+        #[test]
+        fn reverted() {
+            let s = Serializer::default();
+            let version = pathfinder_common::TransactionVersion::ZERO;
+            let receipt = test_receipt();
+
+            let expected = json!({
+                "transaction_hash": s.serialize(&TxnHash(&receipt.transaction_hash)).unwrap(),
+                "actual_fee": s.serialize(&FeePayment {
+                    amount: receipt.actual_fee.as_ref(),
+                    version: &version
+                }).unwrap(),
+                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "events": receipt.events.iter().map(|x| Event(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "revert_reason": "revert reason",
+                "finality_status": "ACCEPTED_ON_L2",
+                "execution_status": s.serialize(&TxnExecutionStatus::Reverted).unwrap(),
+                "execution_resources": s.serialize(&ExecutionResources(&receipt.execution_resources)).unwrap(),
+            });
+
+            let encoded = PendingCommonReceiptProperties {
+                receipt: &receipt,
+                version: &version,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn success() {
+            let s = Serializer::default();
+            let version = pathfinder_common::TransactionVersion::ZERO;
+            let mut receipt = test_receipt();
+            receipt.execution_status = pathfinder_common::receipt::ExecutionStatus::Succeeded;
+
+            let expected = json!({
+                "transaction_hash": s.serialize(&TxnHash(&receipt.transaction_hash)).unwrap(),
+                "actual_fee": s.serialize(&FeePayment {
+                    amount: receipt.actual_fee.as_ref(),
+                    version: &version
+                }).unwrap(),
+                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "events": receipt.events.iter().map(|x| Event(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "finality_status": "ACCEPTED_ON_L2",
+                "execution_status": s.serialize(&TxnExecutionStatus::Succeeded).unwrap(),
+                "execution_resources": s.serialize(&ExecutionResources(&receipt.execution_resources)).unwrap(),
+            });
+
+            let encoded = PendingCommonReceiptProperties {
+                receipt: &receipt,
+                version: &version,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        fn test_receipt() -> pathfinder_common::receipt::Receipt {
+            let receipt = pathfinder_common::receipt::Receipt {
+                actual_fee: None,
+                events: vec![pathfinder_common::event::Event {
+                    data: vec![],
+                    from_address: contract_address!("0xABC"),
+                    keys: vec![],
+                }],
+                execution_resources: pathfinder_common::receipt::ExecutionResources {
+                    n_steps: 100,
+                    ..Default::default()
+                },
+                l2_to_l1_messages: vec![pathfinder_common::receipt::L2ToL1Message {
+                    from_address: contract_address!("0x999"),
+                    payload: vec![],
+                    to_address: pathfinder_common::EthereumAddress(Default::default()),
+                }],
+                execution_status: pathfinder_common::receipt::ExecutionStatus::Reverted {
+                    reason: "revert reason".to_owned(),
+                },
+                transaction_hash: transaction_hash!("0x123"),
+                transaction_index: Default::default(),
+            };
+            receipt
+        }
     }
 }
