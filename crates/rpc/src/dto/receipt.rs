@@ -7,6 +7,11 @@ use crate::{dto::*, RpcVersion};
 
 use super::serialize;
 
+pub struct PendingTxnReceipt<'a> {
+    pub receipt: &'a pathfinder_common::receipt::Receipt,
+    pub transaction: &'a pathfinder_common::transaction::Transaction,
+}
+
 struct CommonReceiptProperties<'a> {
     receipt: &'a pathfinder_common::receipt::Receipt,
     version: &'a pathfinder_common::TransactionVersion,
@@ -44,12 +49,141 @@ pub enum TxnFinalityStatus {
 
 struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
 
+struct PendingInvokeTxnReceipt<'a> {
+    common: PendingCommonReceiptProperties<'a>,
+}
+
+struct PendingL1HandlerTxnReceipt<'a> {
+    common: PendingCommonReceiptProperties<'a>,
+    message_hash: &'a H256,
+}
+
+struct PendingDeclareTxnReceipt<'a> {
+    common: PendingCommonReceiptProperties<'a>,
+}
+
+struct PendingDeployAccountTxnReceipt<'a> {
+    common: PendingCommonReceiptProperties<'a>,
+    contract_address: &'a pathfinder_common::ContractAddress,
+}
+
 enum TxnType {
     Declare,
     Deploy,
     DeployAccount,
     Invoke,
     L1Handler,
+}
+
+impl SerializeForVersion for PendingTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let common = PendingCommonReceiptProperties {
+            receipt: self.receipt,
+            version: &self.transaction.version(),
+        };
+        use pathfinder_common::transaction::TransactionVariant;
+        match &self.transaction.variant {
+            TransactionVariant::DeclareV0(_)
+            | TransactionVariant::DeclareV1(_)
+            | TransactionVariant::DeclareV2(_)
+            | TransactionVariant::DeclareV3(_) => {
+                PendingDeclareTxnReceipt { common }.serialize(serializer)
+            }
+            // This should no longer be possible to receive for a pending transaction.
+            // These are legacy only transactions.
+            TransactionVariant::Deploy(tx) => PendingDeployAccountTxnReceipt {
+                common,
+                contract_address: &tx.contract_address,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeployAccountV0V1(tx) => PendingDeployAccountTxnReceipt {
+                common,
+                contract_address: &tx.contract_address,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeployAccountV3(tx) => PendingDeployAccountTxnReceipt {
+                common,
+                contract_address: &tx.contract_address,
+            }
+            .serialize(serializer),
+            TransactionVariant::InvokeV0(_)
+            | TransactionVariant::InvokeV1(_)
+            | TransactionVariant::InvokeV3(_) => {
+                PendingInvokeTxnReceipt { common }.serialize(serializer)
+            }
+            TransactionVariant::L1Handler(tx) => PendingL1HandlerTxnReceipt {
+                common,
+                message_hash: &tx.calculate_message_hash(),
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl SerializeForVersion for PendingInvokeTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"INVOKE")?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for DeployTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"DEPLOY")?;
+        serializer.serialize_field("contract_address", &Felt(self.contract_address.get()))?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for PendingDeployAccountTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
+        serializer.serialize_field("contract_address", &Felt(self.contract_address.get()))?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for PendingL1HandlerTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"L1_HANDLER")?;
+        serializer.serialize_field("message_hash", &NumAsHex::H256(&self.message_hash))?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for PendingDeclareTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"DECLARE")?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
 }
 
 impl SerializeForVersion for CommonReceiptProperties<'_> {
@@ -680,31 +814,249 @@ mod tests {
 
             assert_eq!(encoded, expected);
         }
+    }
 
-        fn test_receipt() -> pathfinder_common::receipt::Receipt {
-            let receipt = pathfinder_common::receipt::Receipt {
-                actual_fee: None,
-                events: vec![pathfinder_common::event::Event {
-                    data: vec![],
-                    from_address: contract_address!("0xABC"),
-                    keys: vec![],
-                }],
-                execution_resources: pathfinder_common::receipt::ExecutionResources {
-                    n_steps: 100,
-                    ..Default::default()
-                },
-                l2_to_l1_messages: vec![pathfinder_common::receipt::L2ToL1Message {
-                    from_address: contract_address!("0x999"),
-                    payload: vec![],
-                    to_address: pathfinder_common::EthereumAddress(Default::default()),
-                }],
-                execution_status: pathfinder_common::receipt::ExecutionStatus::Reverted {
-                    reason: "revert reason".to_owned(),
-                },
-                transaction_hash: transaction_hash!("0x123"),
-                transaction_index: Default::default(),
-            };
-            receipt
+    #[test]
+    fn pending_invoke_txn_receipt() {
+        let s = Serializer::default();
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let common = PendingCommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+        };
+
+        let expected = merge_json(json!({"type": "INVOKE"}), s.serialize(&common).unwrap());
+        let encoded = PendingInvokeTxnReceipt { common }.serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn pending_l1_handler_txn_receipt() {
+        let s = Serializer::default();
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let msg_hash = H256::from_low_u64_be(57);
+        let common = PendingCommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+        };
+
+        let expected = merge_json(
+            json!({
+                "type": "L1_HANDLER",
+                "message_hash": s.serialize(&NumAsHex::H256(&msg_hash)).unwrap(),
+            }),
+            s.serialize(&common).unwrap(),
+        );
+        let encoded = PendingL1HandlerTxnReceipt {
+            common,
+            message_hash: &msg_hash,
         }
+        .serialize(s)
+        .unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn pending_declare_txn_receipt() {
+        let s = Serializer::default();
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let common = PendingCommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+        };
+
+        let expected = merge_json(
+            json!({
+                "type": "DECLARE"
+            }),
+            s.serialize(&common).unwrap(),
+        );
+        let encoded = PendingDeclareTxnReceipt { common }.serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn pending_deploy_txn_receipt() {
+        let s = Serializer::default();
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let address = contract_address!("0x99123");
+        let common = PendingCommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+        };
+
+        let expected = merge_json(
+            json!({
+                "type": "DEPLOY_ACCOUNT",
+                "contract_address": s.serialize(&Felt(&address.0)).unwrap(),
+            }),
+            s.serialize(&common).unwrap(),
+        );
+        let encoded = PendingDeployAccountTxnReceipt {
+            common,
+            contract_address: &address,
+        }
+        .serialize(s)
+        .unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    mod pending_txn_receipt {
+        use super::*;
+        use pretty_assertions_sorted::assert_eq;
+
+        #[test]
+        fn invoke() {
+            let s = Serializer::default();
+            let receipt = test_receipt();
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::InvokeV0(
+                    Default::default(),
+                ),
+            };
+
+            let common = PendingCommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+            };
+            let expected = PendingInvokeTxnReceipt { common }.serialize(s).unwrap();
+
+            let encoded = PendingTxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn declare() {
+            let s = Serializer::default();
+            let receipt = test_receipt();
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::DeclareV0(
+                    Default::default(),
+                ),
+            };
+
+            let common = PendingCommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+            };
+            let expected = PendingDeclareTxnReceipt { common }.serialize(s).unwrap();
+
+            let encoded = PendingTxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn deploy_account() {
+            let s = Serializer::default();
+            let receipt = test_receipt();
+            let variant = pathfinder_common::transaction::DeployAccountTransactionV3::default();
+            let contract_address = variant.contract_address;
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::DeployAccountV3(
+                    variant,
+                ),
+            };
+
+            let common = PendingCommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+            };
+            let expected = PendingDeployAccountTxnReceipt {
+                common,
+                contract_address: &contract_address,
+            }
+            .serialize(s)
+            .unwrap();
+
+            let encoded = PendingTxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn l1_handler() {
+            let s = Serializer::default();
+            let receipt = test_receipt();
+            let variant = pathfinder_common::transaction::L1HandlerTransaction::default();
+            let msg_hash = variant.calculate_message_hash();
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::L1Handler(variant),
+            };
+
+            let common = PendingCommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+            };
+            let expected = PendingL1HandlerTxnReceipt {
+                common,
+                message_hash: &msg_hash,
+            }
+            .serialize(s)
+            .unwrap();
+
+            let encoded = PendingTxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+    }
+
+    fn test_receipt() -> pathfinder_common::receipt::Receipt {
+        let receipt = pathfinder_common::receipt::Receipt {
+            actual_fee: None,
+            events: vec![pathfinder_common::event::Event {
+                data: vec![],
+                from_address: contract_address!("0xABC"),
+                keys: vec![],
+            }],
+            execution_resources: pathfinder_common::receipt::ExecutionResources {
+                n_steps: 100,
+                ..Default::default()
+            },
+            l2_to_l1_messages: vec![pathfinder_common::receipt::L2ToL1Message {
+                from_address: contract_address!("0x999"),
+                payload: vec![],
+                to_address: pathfinder_common::EthereumAddress(Default::default()),
+            }],
+            execution_status: pathfinder_common::receipt::ExecutionStatus::Reverted {
+                reason: "revert reason".to_owned(),
+            },
+            transaction_hash: transaction_hash!("0x123"),
+            transaction_index: Default::default(),
+        };
+        receipt
     }
 }
