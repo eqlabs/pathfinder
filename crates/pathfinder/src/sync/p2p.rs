@@ -2,8 +2,6 @@
 mod headers;
 mod transactions;
 
-use std::mem;
-
 use anyhow::Context;
 use futures::StreamExt;
 use p2p_proto::{
@@ -182,12 +180,11 @@ impl Sync {
         let Some(first_block) = first_block else {
             return Ok(());
         };
-        let last_block = last_block
-            .context("Last block not found but first block found, something is terribly wrong")?;
+        let last_block = last_block.context("Last block not found but first block found")?;
 
         let mut curr_block = headers::query(self.storage.clone(), first_block)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("First block not found when it should have been"))?;
+            .ok_or_else(|| anyhow::anyhow!("First block not found"))?;
 
         // Loop which refreshes peer set once we exhaust it.
         loop {
@@ -236,7 +233,7 @@ impl Sync {
                                     transactions::persist(
                                         self.storage.clone(),
                                         curr_block.clone(),
-                                        mem::take(&mut transactions),
+                                        transactions.clone(),
                                     )
                                     .await
                                     .context("Inserting transactions")?;
@@ -247,10 +244,9 @@ impl Sync {
                                         headers::query(self.storage.clone(), curr_block.number + 1)
                                             .await?
                                             .ok_or_else(|| {
-                                                anyhow::anyhow!(
-                                                    "Next block not found when it should have been"
-                                                )
+                                                anyhow::anyhow!("Next block not found")
                                             })?;
+                                    transactions.clear();
                                     transactions.push(tx);
                                 }
                                 Err(error) => {
