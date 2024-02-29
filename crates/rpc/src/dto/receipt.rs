@@ -5,7 +5,26 @@ use crate::{dto::*, RpcVersion};
 
 use super::serialize;
 
+#[derive(Copy, Clone)]
+pub enum TxnFinalityStatus {
+    AcceptedOnL2,
+    AcceptedOnL1,
+}
+
 struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
+
+impl SerializeForVersion for TxnFinalityStatus {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        match self {
+            TxnFinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
+            TxnFinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
+        }
+        .serialize(serializer)
+    }
+}
 
 impl SerializeForVersion for MsgToL1<'_> {
     fn serialize(
@@ -68,5 +87,15 @@ mod tests {
         let encoded = MsgToL1(&message).serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn txn_finality_status() {
+        let s = Serializer::default();
+        let l2 = s.serialize(&TxnFinalityStatus::AcceptedOnL2).unwrap();
+        let l1 = s.serialize(&TxnFinalityStatus::AcceptedOnL1).unwrap();
+
+        assert_eq!(l2, json!("ACCEPTED_ON_L2"));
+        assert_eq!(l1, json!("ACCEPTED_ON_L1"));
     }
 }
