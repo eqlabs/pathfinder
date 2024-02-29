@@ -6,12 +6,31 @@ use crate::{dto::*, RpcVersion};
 use super::serialize;
 
 #[derive(Copy, Clone)]
+enum TxnExecutionStatus {
+    Succeeded,
+    Reverted,
+}
+
+#[derive(Copy, Clone)]
 pub enum TxnFinalityStatus {
     AcceptedOnL2,
     AcceptedOnL1,
 }
 
 struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
+
+impl SerializeForVersion for TxnExecutionStatus {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        match self {
+            TxnExecutionStatus::Succeeded => "SUCCEEDED",
+            TxnExecutionStatus::Reverted => "REVERTED",
+        }
+        .serialize(serializer)
+    }
+}
 
 impl SerializeForVersion for TxnFinalityStatus {
     fn serialize(
@@ -97,5 +116,15 @@ mod tests {
 
         assert_eq!(l2, json!("ACCEPTED_ON_L2"));
         assert_eq!(l1, json!("ACCEPTED_ON_L1"));
+    }
+
+    #[test]
+    fn txn_execution_status() {
+        let s = Serializer::default();
+        let succeeded = s.serialize(&TxnExecutionStatus::Succeeded).unwrap();
+        let reverted = s.serialize(&TxnExecutionStatus::Reverted).unwrap();
+
+        assert_eq!(succeeded, json!("SUCCEEDED"));
+        assert_eq!(reverted, json!("REVERTED"));
     }
 }
