@@ -7,6 +7,14 @@ use crate::{dto::*, RpcVersion};
 
 use super::serialize;
 
+pub struct TxnReceipt<'a> {
+    pub receipt: &'a pathfinder_common::receipt::Receipt,
+    pub transaction: &'a pathfinder_common::transaction::Transaction,
+    pub finality: TxnFinalityStatus,
+    pub block_hash: &'a pathfinder_common::BlockHash,
+    pub block_number: pathfinder_common::BlockNumber,
+}
+
 pub struct PendingTxnReceipt<'a> {
     pub receipt: &'a pathfinder_common::receipt::Receipt,
     pub transaction: &'a pathfinder_common::transaction::Transaction,
@@ -49,6 +57,29 @@ pub enum TxnFinalityStatus {
 
 struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
 
+struct InvokeTxnReceipt<'a> {
+    common: CommonReceiptProperties<'a>,
+}
+
+struct L1HandlerTxnReceipt<'a> {
+    common: CommonReceiptProperties<'a>,
+    message_hash: &'a H256,
+}
+
+struct DeclareTxnReceipt<'a> {
+    common: CommonReceiptProperties<'a>,
+}
+
+struct DeployTxnReceipt<'a> {
+    common: CommonReceiptProperties<'a>,
+    contract_address: &'a pathfinder_common::ContractAddress,
+}
+
+struct DeployAccountTxnReceipt<'a> {
+    common: CommonReceiptProperties<'a>,
+    contract_address: &'a pathfinder_common::ContractAddress,
+}
+
 struct PendingInvokeTxnReceipt<'a> {
     common: PendingCommonReceiptProperties<'a>,
 }
@@ -73,6 +104,53 @@ enum TxnType {
     DeployAccount,
     Invoke,
     L1Handler,
+}
+
+impl SerializeForVersion for TxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let common = CommonReceiptProperties {
+            receipt: self.receipt,
+            finality: self.finality,
+            block_hash: self.block_hash,
+            block_number: self.block_number,
+            version: &self.transaction.version(),
+        };
+        use pathfinder_common::transaction::TransactionVariant;
+        match &self.transaction.variant {
+            TransactionVariant::DeclareV0(_)
+            | TransactionVariant::DeclareV1(_)
+            | TransactionVariant::DeclareV2(_)
+            | TransactionVariant::DeclareV3(_) => {
+                DeclareTxnReceipt { common }.serialize(serializer)
+            }
+            TransactionVariant::Deploy(tx) => DeployTxnReceipt {
+                common,
+                contract_address: &tx.contract_address,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeployAccountV0V1(tx) => DeployAccountTxnReceipt {
+                common,
+                contract_address: &tx.contract_address,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeployAccountV3(tx) => DeployAccountTxnReceipt {
+                common,
+                contract_address: &tx.contract_address,
+            }
+            .serialize(serializer),
+            TransactionVariant::InvokeV0(_)
+            | TransactionVariant::InvokeV1(_)
+            | TransactionVariant::InvokeV3(_) => InvokeTxnReceipt { common }.serialize(serializer),
+            TransactionVariant::L1Handler(tx) => L1HandlerTxnReceipt {
+                common,
+                message_hash: &tx.calculate_message_hash(),
+            }
+            .serialize(serializer),
+        }
+    }
 }
 
 impl SerializeForVersion for PendingTxnReceipt<'_> {
@@ -123,6 +201,18 @@ impl SerializeForVersion for PendingTxnReceipt<'_> {
     }
 }
 
+impl SerializeForVersion for InvokeTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"INVOKE")?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
 impl SerializeForVersion for PendingInvokeTxnReceipt<'_> {
     fn serialize(
         &self,
@@ -148,6 +238,19 @@ impl SerializeForVersion for DeployTxnReceipt<'_> {
     }
 }
 
+impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
+        serializer.serialize_field("contract_address", &Felt(self.contract_address.get()))?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
 impl SerializeForVersion for PendingDeployAccountTxnReceipt<'_> {
     fn serialize(
         &self,
@@ -161,6 +264,19 @@ impl SerializeForVersion for PendingDeployAccountTxnReceipt<'_> {
     }
 }
 
+impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"L1_HANDLER")?;
+        serializer.serialize_field("message_hash", &NumAsHex::H256(&self.message_hash))?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
 impl SerializeForVersion for PendingL1HandlerTxnReceipt<'_> {
     fn serialize(
         &self,
@@ -169,6 +285,18 @@ impl SerializeForVersion for PendingL1HandlerTxnReceipt<'_> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("type", &"L1_HANDLER")?;
         serializer.serialize_field("message_hash", &NumAsHex::H256(&self.message_hash))?;
+        serializer.flatten(&self.common)?;
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for DeclareTxnReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("type", &"DECLARE")?;
         serializer.flatten(&self.common)?;
         serializer.end()
     }
@@ -1026,6 +1154,284 @@ mod tests {
             let encoded = PendingTxnReceipt {
                 receipt: &receipt,
                 transaction: &transaction,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+    }
+
+    #[test]
+    fn invoke_txn_receipt() {
+        let s = Serializer::default();
+        let finality = TxnFinalityStatus::AcceptedOnL1;
+        let block_hash = block_hash!("0x12312");
+        let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let common = CommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+            finality,
+            block_hash: &block_hash,
+            block_number,
+        };
+
+        let expected = merge_json(json!({"type": "INVOKE"}), s.serialize(&common).unwrap());
+        let encoded = InvokeTxnReceipt { common }.serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn l1_handler_txn_receipt() {
+        let s = Serializer::default();
+        let finality = TxnFinalityStatus::AcceptedOnL1;
+        let block_hash = block_hash!("0x12312");
+        let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let msg_hash = H256::from_low_u64_be(57);
+        let common = CommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+            finality,
+            block_hash: &block_hash,
+            block_number,
+        };
+
+        let expected = merge_json(
+            json!({
+                "type": "L1_HANDLER",
+                "message_hash": s.serialize(&NumAsHex::H256(&msg_hash)).unwrap(),
+            }),
+            s.serialize(&common).unwrap(),
+        );
+        let encoded = L1HandlerTxnReceipt {
+            common,
+            message_hash: &msg_hash,
+        }
+        .serialize(s)
+        .unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn declare_txn_receipt() {
+        let s = Serializer::default();
+        let finality = TxnFinalityStatus::AcceptedOnL1;
+        let block_hash = block_hash!("0x12312");
+        let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let common = CommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+            finality,
+            block_hash: &block_hash,
+            block_number,
+        };
+
+        let expected = merge_json(
+            json!({
+                "type": "DECLARE"
+            }),
+            s.serialize(&common).unwrap(),
+        );
+        let encoded = DeclareTxnReceipt { common }.serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn deploy_txn_receipt() {
+        let s = Serializer::default();
+        let finality = TxnFinalityStatus::AcceptedOnL1;
+        let block_hash = block_hash!("0x12312");
+        let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+        let receipt = test_receipt();
+        let version = pathfinder_common::TransactionVersion::ZERO;
+        let address = contract_address!("0x99123");
+        let common = CommonReceiptProperties {
+            receipt: &receipt,
+            version: &version,
+            finality,
+            block_hash: &block_hash,
+            block_number,
+        };
+
+        let expected = merge_json(
+            json!({
+                "type": "DEPLOY_ACCOUNT",
+                "contract_address": s.serialize(&Felt(&address.0)).unwrap(),
+            }),
+            s.serialize(&common).unwrap(),
+        );
+        let encoded = DeployAccountTxnReceipt {
+            common,
+            contract_address: &address,
+        }
+        .serialize(s)
+        .unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    mod txn_receipt {
+        use super::*;
+        use pretty_assertions_sorted::assert_eq;
+
+        #[test]
+        fn invoke() {
+            let s = Serializer::default();
+            let receipt = test_receipt();
+            let finality = TxnFinalityStatus::AcceptedOnL1;
+            let block_hash = block_hash!("0x12312");
+            let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::InvokeV0(
+                    Default::default(),
+                ),
+            };
+
+            let common = CommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+                finality,
+                block_hash: &block_hash,
+                block_number,
+            };
+            let expected = InvokeTxnReceipt { common }.serialize(s).unwrap();
+
+            let encoded = TxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+                finality,
+                block_hash: &block_hash,
+                block_number,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn declare() {
+            let s = Serializer::default();
+            let finality = TxnFinalityStatus::AcceptedOnL1;
+            let block_hash = block_hash!("0x12312");
+            let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+            let receipt = test_receipt();
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::DeclareV0(
+                    Default::default(),
+                ),
+            };
+
+            let common = CommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+                finality,
+                block_hash: &block_hash,
+                block_number,
+            };
+            let expected = DeclareTxnReceipt { common }.serialize(s).unwrap();
+
+            let encoded = TxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+                finality,
+                block_hash: &block_hash,
+                block_number,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn deploy_account() {
+            let s = Serializer::default();
+            let finality = TxnFinalityStatus::AcceptedOnL1;
+            let block_hash = block_hash!("0x12312");
+            let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+            let receipt = test_receipt();
+            let variant = pathfinder_common::transaction::DeployAccountTransactionV3::default();
+            let contract_address = variant.contract_address;
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::DeployAccountV3(
+                    variant,
+                ),
+            };
+
+            let common = CommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+                finality,
+                block_hash: &block_hash,
+                block_number,
+            };
+            let expected = DeployAccountTxnReceipt {
+                common,
+                contract_address: &contract_address,
+            }
+            .serialize(s)
+            .unwrap();
+
+            let encoded = TxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+                finality,
+                block_hash: &block_hash,
+                block_number,
+            }
+            .serialize(s)
+            .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn l1_handler() {
+            let s = Serializer::default();
+            let finality = TxnFinalityStatus::AcceptedOnL1;
+            let block_hash = block_hash!("0x12312");
+            let block_number = pathfinder_common::BlockNumber::GENESIS + 132;
+            let receipt = test_receipt();
+            let variant = pathfinder_common::transaction::L1HandlerTransaction::default();
+            let msg_hash = variant.calculate_message_hash();
+            let transaction = pathfinder_common::transaction::Transaction {
+                hash: receipt.transaction_hash,
+                variant: pathfinder_common::transaction::TransactionVariant::L1Handler(variant),
+            };
+
+            let common = CommonReceiptProperties {
+                receipt: &receipt,
+                version: &transaction.version(),
+                finality,
+                block_hash: &block_hash,
+                block_number,
+            };
+            let expected = L1HandlerTxnReceipt {
+                common,
+                message_hash: &msg_hash,
+            }
+            .serialize(s)
+            .unwrap();
+
+            let encoded = TxnReceipt {
+                receipt: &receipt,
+                transaction: &transaction,
+                finality,
+                block_hash: &block_hash,
+                block_number,
             }
             .serialize(s)
             .unwrap();
