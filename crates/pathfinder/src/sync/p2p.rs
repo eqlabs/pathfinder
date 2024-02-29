@@ -4,19 +4,24 @@ mod receipts;
 mod state_updates;
 mod transactions;
 
+use std::num::NonZeroUsize;
+
 use anyhow::Context;
 use futures::StreamExt;
+use futures::TryStreamExt;
 use p2p_proto::{
     common::{BlockNumberOrHash, Direction, Iteration},
     receipt::{ReceiptsRequest, ReceiptsResponse},
     transaction::{TransactionsRequest, TransactionsResponse},
 };
-use pathfinder_common::{
-    receipt::Receipt, transaction::Transaction, BlockHash, BlockHeader, BlockNumber,
-};
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateStats;
+use pathfinder_common::{transaction::Transaction, BlockHeader};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
+use smallvec::SmallVec;
 use tokio::task::spawn_blocking;
 
 use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
@@ -73,7 +78,7 @@ impl Sync {
         // necessary being rolled back (potentially all data if the header sync process is frequently interrupted), so this
         // ensures sync will progress even under bad conditions.
         let anchor = checkpoint;
-        persist_anchor(self.storage.clone(), anchor.clone())
+        persist_anchor(self.storage.clone(), anchor)
             .await
             .context("Persisting new Ethereum anchor")?;
 
@@ -86,6 +91,9 @@ impl Sync {
             .context("Syncing transactions")?;
 
         // Sync the rest of the data in chronological order.
+        self.sync_state_updates(anchor.block_number)
+            .await
+            .context("Syncing state updates")?;
 
         Ok(())
     }
@@ -103,8 +111,6 @@ impl Sync {
                 .await
                 .context("Finding next gap in header chain")?
         {
-            use futures::TryStreamExt;
-
             // TODO: create a tracing scope for this gap start, stop.
 
             tracing::info!("Syncing headers");
@@ -386,6 +392,35 @@ impl Sync {
                 }
             }
         }
+    }
+
+    async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
+        let getter = move |start: BlockNumber,
+                           limit: NonZeroUsize|
+              -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
+            let mut db = self
+                .storage
+                .connection()
+                .context("Creating database connection")?;
+            let db = db.transaction().context("Creating database transaction")?;
+            let stats = db
+                .state_update_stats(start.into(), limit)
+                .context("Querying state updates")?;
+            Ok(stats)
+        };
+
+        while let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
+            .await
+            .context("Finding next missing state update")?
+        {
+            let _stream = self
+                .p2p
+                .clone()
+                .state_update_stream(start, stop, |_, _| todo!());
+            // .try_chunks(1024);
+        }
+
+        Ok(())
     }
 }
 

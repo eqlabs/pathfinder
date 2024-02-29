@@ -1,4 +1,4 @@
-use std::num::NonZeroU64;
+use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateStats};
@@ -315,7 +315,7 @@ pub(super) fn highest_state_update(tx: &Transaction<'_>) -> anyhow::Result<Optio
 pub(super) fn state_update_stats(
     tx: &Transaction<'_>,
     block: BlockId,
-    max_len: NonZeroU64,
+    max_len: NonZeroUsize,
 ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
         return Ok(None);
@@ -325,11 +325,12 @@ pub(super) fn state_update_stats(
         .inner()
         .prepare_cached(
             r"SELECT num_storage_diffs, num_nonce_updates, num_declared_classes, num_deployed_contracts
-                FROM state_update_stats WHERE block_number = ? LIMIT ?")
+                FROM state_update_stats WHERE block_number >= ? ORDER BY block_number ASC LIMIT ?")
         .context("Preparing get state update stats statement")?;
 
+    let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
     let mut stats = stmt
-        .query_map(params![&block_number, &max_len.get()], |row| {
+        .query_map(params![&block_number, &max_len], |row| {
             Ok(StateUpdateStats {
                 num_storage_diffs: row.get(0)?,
                 num_nonce_updates: row.get(1)?,
@@ -339,7 +340,7 @@ pub(super) fn state_update_stats(
         })
         .context("Querying state update stats")?;
 
-    let mut ret = SmallVec::new();
+    let mut ret = SmallVec::<[StateUpdateStats; 10]>::new();
 
     while let Some(stat) = stats
         .next()
@@ -348,6 +349,8 @@ pub(super) fn state_update_stats(
     {
         ret.push(stat);
     }
+
+    ret.reverse();
 
     Ok((!ret.is_empty()).then_some(ret))
 }

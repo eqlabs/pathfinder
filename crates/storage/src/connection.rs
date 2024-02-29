@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -559,10 +558,11 @@ impl<'inner> Transaction<'inner> {
 
     /// ### Guarantee
     /// Should the resulting sequence be empty this function will always return `None`.
+    /// Items are sorted in descending order.
     pub fn state_update_stats(
         &self,
         block: BlockId,
-        max_len: NonZeroU64,
+        max_len: NonZeroUsize,
     ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
         state_update::state_update_stats(self, block, max_len)
     }
