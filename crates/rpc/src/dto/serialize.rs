@@ -100,6 +100,19 @@ impl SerializeStruct {
         self.serialize_field(key, &field_value)
     }
 
+    /// Skips serialization if its [`None`].
+    pub fn serialize_optional(
+        &mut self,
+        key: &'static str,
+        value: Option<impl SerializeForVersion>,
+    ) -> Result<(), Error> {
+        if let Some(value) = value {
+            self.serialize_field(key, &value)?;
+        }
+
+        Ok(())
+    }
+
     pub fn flatten(&mut self, value: &dyn SerializeForVersion) -> Result<(), Error> {
         let value = value.serialize(Serializer::new(self.version))?;
 
