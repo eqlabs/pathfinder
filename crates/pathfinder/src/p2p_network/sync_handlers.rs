@@ -1,4 +1,4 @@
-use std::num::NonZeroU64;
+use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use futures::SinkExt;
@@ -143,7 +143,7 @@ fn get_header(
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
             if let Some(stats) =
-                db_tx.state_update_stats(block_number.into(), NonZeroU64::new(1).expect("1>0"))?
+                db_tx.state_update_stats(block_number.into(), NonZeroUsize::new(1).expect("1>0"))?
             {
                 // Safety: `state_update_stats` returns `None` in case of an empty sequence.
                 let stats = stats[0];
