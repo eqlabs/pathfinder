@@ -1,12 +1,15 @@
 mod event;
 mod header;
 mod primitives;
+mod receipt;
 
 pub mod serialize;
 
 pub use event::*;
 pub use header::*;
 pub use primitives::*;
+pub use receipt::*;
+
 #[cfg(test)]
 /// Merges two json objects together. Panics if either of them is not an object.
 fn merge_json(mut x: serde_json::Value, y: serde_json::Value) -> serde_json::Value {
