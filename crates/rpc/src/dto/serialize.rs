@@ -5,6 +5,15 @@ pub struct Serializer {
     pub version: RpcVersion,
 }
 
+impl Clone for Serializer {
+    fn clone(&self) -> Self {
+        Self {
+            inner: BaseSerializer {},
+            version: self.version,
+        }
+    }
+}
+
 pub struct SerializeStruct {
     pub version: RpcVersion,
     fields: serde_json::Map<String, Ok>,
