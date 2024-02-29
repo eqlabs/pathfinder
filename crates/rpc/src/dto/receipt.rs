@@ -7,6 +7,8 @@ use crate::{dto::*, RpcVersion};
 
 use super::serialize;
 
+struct PriceUnit<'a>(&'a pathfinder_common::TransactionVersion);
+
 struct ExecutionResources<'a>(&'a pathfinder_common::receipt::ExecutionResources);
 struct ComputationResources<'a>(&'a pathfinder_common::receipt::ExecutionResources);
 
@@ -164,6 +166,22 @@ impl SerializeForVersion for ExecutionResources<'_> {
         serializer.end()
     }
 }
+impl SerializeForVersion for PriceUnit<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        use pathfinder_common::TransactionVersion;
+        match self.0 {
+            &TransactionVersion::ZERO | &TransactionVersion::ONE | &TransactionVersion::TWO => {
+                "WEI"
+            }
+            _ => "FRI",
+        }
+        .serialize(serializer)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::dto::serialize::Serializer;
@@ -330,5 +348,21 @@ mod tests {
         let encoded = ExecutionResources(&resources).serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn price_unit() {
+        use pathfinder_common::TransactionVersion;
+
+        let s = Serializer::default();
+        let v0 = s.serialize(&PriceUnit(&TransactionVersion::ZERO)).unwrap();
+        let v1 = s.serialize(&PriceUnit(&TransactionVersion::ONE)).unwrap();
+        let v2 = s.serialize(&PriceUnit(&TransactionVersion::TWO)).unwrap();
+        let v3 = s.serialize(&PriceUnit(&TransactionVersion::THREE)).unwrap();
+
+        assert_eq!(v0, json!("WEI"));
+        assert_eq!(v1, json!("WEI"));
+        assert_eq!(v2, json!("WEI"));
+        assert_eq!(v3, json!("FRI"));
     }
 }
