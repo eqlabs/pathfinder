@@ -7,6 +7,7 @@ use crate::{dto::*, RpcVersion};
 
 use super::serialize;
 
+struct ExecutionResources<'a>(&'a pathfinder_common::receipt::ExecutionResources);
 struct ComputationResources<'a>(&'a pathfinder_common::receipt::ExecutionResources);
 
 #[derive(Copy, Clone)]
@@ -141,6 +142,26 @@ impl SerializeForVersion for ComputationResources<'_> {
         )?;
 
         s.end()
+    }
+}
+
+impl SerializeForVersion for ExecutionResources<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        // This object is defined inline in the spec.
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("l1_gas", &self.0.data_availability.l1_gas)?;
+        s.serialize_field("l1_data_gas", &self.0.data_availability.l1_data_gas)?;
+        let data_availability = s.end()?;
+
+        let computation = serializer.serialize(&ComputationResources(self.0))?;
+
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("data_availability", &data_availability)?;
+        serializer.flatten(&computation)?;
+        serializer.end()
     }
 }
 #[cfg(test)]
@@ -281,5 +302,33 @@ mod tests {
 
             assert_eq!(encoded, expected);
         }
+    }
+
+    #[test]
+    fn execution_resources() {
+        let s = Serializer::default();
+
+        let resources = pathfinder_common::receipt::ExecutionResources {
+            n_steps: 10,
+            data_availability: pathfinder_common::receipt::ExecutionDataAvailability {
+                l1_gas: 101,
+                l1_data_gas: 200,
+            },
+            n_memory_holes: Default::default(),
+            builtins: Default::default(),
+        };
+
+        let expected_computation = s.serialize(&ComputationResources(&resources)).unwrap();
+        let expected_data_availability = json!({
+            "data_availability": {
+                "l1_gas": resources.data_availability.l1_gas,
+                "l1_data_gas": resources.data_availability.l1_data_gas,
+            }
+        });
+        let expected = crate::dto::merge_json(expected_computation, expected_data_availability);
+
+        let encoded = ExecutionResources(&resources).serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
     }
 }
