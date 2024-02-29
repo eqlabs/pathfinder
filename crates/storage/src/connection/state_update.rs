@@ -1,9 +1,12 @@
+use std::num::NonZeroU64;
+
 use anyhow::Context;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateStats};
 use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
+use smallvec::SmallVec;
 
 use crate::{prelude::*, BlockId};
 
@@ -300,10 +303,20 @@ pub(super) fn state_update(
     Ok(Some(state_update))
 }
 
+pub(super) fn highest_state_update(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
+    let mut stmt = tx.inner().prepare_cached(
+        r"SELECT block_number FROM storage_updates ORDER BY block_number DESC LIMIT 1",
+    )?;
+    stmt.query_row([], |row| row.get_block_number(0))
+        .optional()
+        .context("Querying highest storage update")
+}
+
 pub(super) fn state_update_stats(
     tx: &Transaction<'_>,
     block: BlockId,
-) -> anyhow::Result<Option<StateUpdateStats>> {
+    max_len: NonZeroU64,
+) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
         return Ok(None);
     };
@@ -312,11 +325,11 @@ pub(super) fn state_update_stats(
         .inner()
         .prepare_cached(
             r"SELECT num_storage_diffs, num_nonce_updates, num_declared_classes, num_deployed_contracts
-                FROM state_update_stats WHERE block_number = ?")
+                FROM state_update_stats WHERE block_number = ? LIMIT ?")
         .context("Preparing get state update stats statement")?;
 
-    let stats = stmt
-        .query_row(params![&block_number], |row| {
+    let mut stats = stmt
+        .query_map(params![&block_number, &max_len.get()], |row| {
             Ok(StateUpdateStats {
                 num_storage_diffs: row.get(0)?,
                 num_nonce_updates: row.get(1)?,
@@ -326,7 +339,17 @@ pub(super) fn state_update_stats(
         })
         .context("Querying state update stats")?;
 
-    Ok(Some(stats))
+    let mut ret = SmallVec::new();
+
+    while let Some(stat) = stats
+        .next()
+        .transpose()
+        .context("Iterating over state update stats rows")?
+    {
+        ret.push(stat);
+    }
+
+    Ok((!ret.is_empty()).then_some(ret))
 }
 
 pub(super) fn declared_classes_at(

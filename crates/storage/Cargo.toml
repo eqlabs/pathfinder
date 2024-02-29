@@ -34,6 +34,7 @@ serde_json = { workspace = true, features = [
     "raw_value",
 ] }
 serde_with = { workspace = true }
+smallvec = "1.13.1"
 sha3 = { workspace = true }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }

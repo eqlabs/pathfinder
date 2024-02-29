@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ pub use event::{EmittedEvent, EventFilter, EventFilterError, PageOfEvents};
 
 pub(crate) use reorg_counter::ReorgCounter;
 
+use smallvec::SmallVec;
 pub use transaction::TransactionStatus;
 
 pub use trie::{Child, Node, StoredNode};
@@ -551,8 +553,18 @@ impl<'inner> Transaction<'inner> {
         state_update::state_update(self, block)
     }
 
-    pub fn state_update_stats(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateStats>> {
-        state_update::state_update_stats(self, block)
+    pub fn highest_state_update(&self) -> anyhow::Result<Option<BlockNumber>> {
+        state_update::highest_state_update(self)
+    }
+
+    /// ### Guarantee
+    /// Should the resulting sequence be empty this function will always return `None`.
+    pub fn state_update_stats(
+        &self,
+        block: BlockId,
+        max_len: NonZeroU64,
+    ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
+        state_update::state_update_stats(self, block, max_len)
     }
 
     pub fn storage_value(

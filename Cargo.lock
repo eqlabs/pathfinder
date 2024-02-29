@@ -6384,6 +6384,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
+ "smallvec",
  "starknet-gateway-types",
  "tempfile",
  "test-log",
