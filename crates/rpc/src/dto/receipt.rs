@@ -7,6 +7,11 @@ use crate::{dto::*, RpcVersion};
 
 use super::serialize;
 
+struct FeePayment<'a> {
+    amount: Option<&'a pathfinder_common::Fee>,
+    version: &'a pathfinder_common::TransactionVersion,
+}
+
 struct PriceUnit<'a>(&'a pathfinder_common::TransactionVersion);
 
 struct ExecutionResources<'a>(&'a pathfinder_common::receipt::ExecutionResources);
@@ -166,6 +171,25 @@ impl SerializeForVersion for ExecutionResources<'_> {
         serializer.end()
     }
 }
+
+impl SerializeForVersion for FeePayment<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        if let Some(amount) = self.amount {
+            serializer.serialize_field("amount", &Felt(&amount.0))?;
+        } else {
+            serializer.serialize_field("amount", &Felt(&Default::default()))?;
+        }
+        serializer.serialize_field("unit", &PriceUnit(&self.version))?;
+
+        serializer.end()
+    }
+}
+
 impl SerializeForVersion for PriceUnit<'_> {
     fn serialize(
         &self,
@@ -363,6 +387,28 @@ mod tests {
         assert_eq!(v0, json!("WEI"));
         assert_eq!(v1, json!("WEI"));
         assert_eq!(v2, json!("WEI"));
+
         assert_eq!(v3, json!("FRI"));
+    }
+
+    #[test]
+    fn fee_payment() {
+        let s = Serializer::default();
+        let amount = fee!("0x123");
+        let version = pathfinder_common::TransactionVersion::ZERO;
+
+        let expected = json!({
+            "amount": s.serialize(&Felt(&amount.0)).unwrap(),
+            "unit": s.serialize(&PriceUnit(&version)).unwrap(),
+        });
+
+        let encoded = FeePayment {
+            amount: Some(&amount),
+            version: &version,
+        }
+        .serialize(s)
+        .unwrap();
+
+        assert_eq!(encoded, expected);
     }
 }
