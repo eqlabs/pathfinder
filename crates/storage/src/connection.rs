@@ -162,10 +162,6 @@ impl<'inner> Transaction<'inner> {
         block::first_block_without_transactions(self)
     }
 
-    pub fn last_block(&self) -> anyhow::Result<Option<BlockNumber>> {
-        block::last_block(self)
-    }
-
     pub fn update_l1_l2_pointer(&self, block: Option<BlockNumber>) -> anyhow::Result<()> {
         reference::update_l1_l2_pointer(self, block)
     }

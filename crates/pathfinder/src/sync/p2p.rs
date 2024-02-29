@@ -150,28 +150,21 @@ impl Sync {
     }
 
     async fn sync_transactions(&self) -> anyhow::Result<()> {
-        let first_block = spawn_blocking({
+        let (first_block, last_block) = spawn_blocking({
             let storage = self.storage.clone();
-            move || {
+            move || -> anyhow::Result<(Option<BlockNumber>, Option<BlockNumber>)> {
                 let mut db = storage
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.first_block_without_transactions()
-                    .context("Querying first block without transactions")
-            }
-        })
-        .await
-        .context("Joining blocking task")??;
-        let last_block = spawn_blocking({
-            let storage = self.storage.clone();
-            move || {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                db.last_block()
-                    .context("Querying last block without transactions")
+                let first_block = db
+                    .first_block_without_transactions()
+                    .context("Querying first block without transactions")?;
+                let last_block = db
+                    .block_id(pathfinder_storage::BlockId::Latest)
+                    .context("Querying latest block without transactions")?
+                    .map(|(block_number, _)| block_number);
+                Ok((first_block, last_block))
             }
         })
         .await

@@ -416,29 +416,6 @@ pub(super) fn first_block_without_transactions(
     }
 }
 
-pub(super) fn last_block(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
-    let mut stmt = tx
-        .inner()
-        .prepare(
-            "
-            SELECT number
-            FROM block_headers
-            ORDER BY number DESC
-            LIMIT 1;
-            ",
-        )
-        .context("Preparing first_block_without_transactions query")?;
-
-    let mut rows = stmt
-        .query(params![])
-        .context("Executing first_block_without_transactions")?;
-
-    match rows.next()? {
-        Some(row) => Ok(Some(row.get_block_number(0)?)),
-        None => Ok(None),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
