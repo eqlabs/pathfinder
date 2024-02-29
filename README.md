@@ -180,7 +180,7 @@ This produces uncompressed database file `goerli.sqlite` that can then be used b
 | Goerli testnet | 880310 | >= 0.9.0                    | `testnet_0.9.0_880310.sqlite.zst`             | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/testnet_0.9.0_880310.sqlite.zst)             | 102.36 GB       | `55f7e30e4cc3ba3fb0cd610487e5eb4a69428af1aacc340ba60cf1018b58b51c` |
 | Goerli testnet | 946477 | >= 0.11.0-rc0               | `goerli-testnet_0.11.0-rc0_946477.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/goerli-testnet_0.11.0-rc0_946477.sqlite.zst) | 112.85 GB       | `2f41216e30180dcf07c2b6a3fdf635e1bb783fab0587ae1f23c9c073acfb9d69` |
 | mainnet        | 309113 | >= 0.9.0                    | `mainnet_0.9.0_309113.sqlite.zst`             | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.9.0_309113.sqlite.zst)             | 279.85 GB       | `0430900a18cd6ae26465280bbe922ed5d37cfcc305babfc164e21d927b4644ce` |
-| mainnet        | 536160 | >= 0.11.0-rc0               | `mainnet_0.11.0-rc0_536160.sqlite.zst`        | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0-rc0_536160.sqlite.zst)        | 439.86 GB       | `bd3dc47620a610e70d9d85cc2e4c78b86aaf1d87ddd9a32328b0b281b56a617f` |
+| mainnet        | 595424 | >= 0.11.0                   | `mainnet_0.11.0_595424.sqlite.zst`            | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0_595424.sqlite.zst)            | 469.63 GB       | `e42bae71c97c1a403116a7362f15f5180b19e8cc647efb1357f1ae8924dce654` |
 | integration    | 315152 | >= 0.9.1                    | `integration_0.9.1_315152.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/integration_0.9.1_315152.sqlite.zst)         | 8.45 GB         | `2ad5ab46163624bd6d9aaa0dff3cdd5c7406e69ace78f1585f9d8f011b8b9526` |
 
 ## Configuration
@@ -242,12 +242,13 @@ This can be used to interact with a custom Starknet gateway, or to use a gateway
 
 You can interact with Starknet using the JSON-RPC API. Pathfinder supports the official Starknet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
-Currently, pathfinder supports `v0.4`, `v0.5`, and `v0.6` versions of the Starknet JSON-RPC specification.
+Currently, pathfinder supports `v0.4`, `v0.5`, `v0.6` and `v0.7` versions of the Starknet JSON-RPC specification.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
 - the `v0.4.0` API is exposed on the `/rpc/v0.4` and `/rpc/v0_4` path
 - the `v0.5.1` API is exposed on the `/`, `/rpc/v0.5` and `/rpc/v0_5` path
 - the `v0.6.0` API is exposed on the `/rpc/v0_6` path
+- the `v0.7.0` API is exposed on the `/rpc/v0_7` path
 - the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1`
 - websocket API is exposed on the `/ws` path
 

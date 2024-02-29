@@ -31,8 +31,11 @@ inherits = "release"
 codegen-units = 1
 lto = true
 
+[profile.dev.package.flate2]
+opt-level = 3
+
 [workspace.package]
-version = "0.11.0-rc0"
+version = "0.11.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.74"
