@@ -1,9 +1,13 @@
+use std::num::NonZeroU64;
+
 use primitive_types::H256;
 
 use crate::dto::serialize::SerializeForVersion;
 use crate::{dto::*, RpcVersion};
 
 use super::serialize;
+
+struct ComputationResources<'a>(&'a pathfinder_common::receipt::ExecutionResources);
 
 #[derive(Copy, Clone)]
 enum TxnExecutionStatus {
@@ -93,6 +97,52 @@ impl SerializeForVersion for MsgToL1<'_> {
     }
 }
 
+impl SerializeForVersion for ComputationResources<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+
+        s.serialize_field("steps", &self.0.n_steps)?;
+
+        s.serialize_optional("memory_holes", NonZeroU64::new(self.0.n_memory_holes))?;
+        s.serialize_optional(
+            "range_check_builtin_applications",
+            NonZeroU64::new(self.0.builtins.range_check),
+        )?;
+        s.serialize_optional(
+            "pedersen_builtin_applications",
+            NonZeroU64::new(self.0.builtins.pedersen),
+        )?;
+        s.serialize_optional(
+            "poseidon_builtin_applications",
+            NonZeroU64::new(self.0.builtins.poseidon),
+        )?;
+        s.serialize_optional(
+            "ec_op_builtin_applications",
+            NonZeroU64::new(self.0.builtins.ec_op),
+        )?;
+        s.serialize_optional(
+            "ecdsa_builtin_applications",
+            NonZeroU64::new(self.0.builtins.ecdsa),
+        )?;
+        s.serialize_optional(
+            "bitwise_builtin_applications",
+            NonZeroU64::new(self.0.builtins.bitwise),
+        )?;
+        s.serialize_optional(
+            "keccak_builtin_applications",
+            NonZeroU64::new(self.0.builtins.keccak),
+        )?;
+        s.serialize_optional(
+            "segment_arena_builtin",
+            NonZeroU64::new(self.0.builtins.segment_arena),
+        )?;
+
+        s.end()
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::dto::serialize::Serializer;
@@ -167,5 +217,69 @@ mod tests {
         assert_eq!(deploy_account, json!("DEPLOY_ACCOUNT"));
         assert_eq!(invoke, json!("INVOKE"));
         assert_eq!(l1_handler, json!("L1_HANDLER"));
+    }
+
+    mod computation_resources {
+        use super::*;
+        use pretty_assertions_sorted::assert_eq;
+
+        #[test]
+        fn zeros_are_skipped() {
+            let resources = pathfinder_common::receipt::ExecutionResources {
+                builtins: Default::default(),
+                n_steps: 10,
+                n_memory_holes: 0,
+                data_availability: Default::default(),
+            };
+
+            let expected = json!({
+               "steps": 10
+            });
+
+            let encoded = Serializer::default()
+                .serialize(&ComputationResources(&resources))
+                .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn non_zeros_are_present() {
+            let resources = pathfinder_common::receipt::ExecutionResources {
+                builtins: pathfinder_common::receipt::BuiltinCounters {
+                    output: 1,
+                    pedersen: 2,
+                    range_check: 3,
+                    ecdsa: 4,
+                    bitwise: 5,
+                    ec_op: 6,
+                    keccak: 7,
+                    poseidon: 8,
+                    segment_arena: 9,
+                },
+                n_steps: 10,
+                n_memory_holes: 11,
+                data_availability: Default::default(),
+            };
+
+            let expected = json!({
+               "steps": 10,
+               "memory_holes": resources.n_memory_holes,
+               "range_check_builtin_applications": resources.builtins.range_check,
+               "pedersen_builtin_applications": resources.builtins.pedersen,
+               "poseidon_builtin_applications": resources.builtins.poseidon,
+               "ec_op_builtin_applications": resources.builtins.ec_op,
+               "ecdsa_builtin_applications": resources.builtins.ecdsa,
+               "bitwise_builtin_applications": resources.builtins.bitwise,
+               "keccak_builtin_applications": resources.builtins.keccak,
+               "segment_arena_builtin": resources.builtins.segment_arena,
+            });
+
+            let encoded = Serializer::default()
+                .serialize(&ComputationResources(&resources))
+                .unwrap();
+
+            assert_eq!(encoded, expected);
+        }
     }
 }
