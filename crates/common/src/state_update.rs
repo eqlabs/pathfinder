@@ -49,8 +49,12 @@ impl ContractClassUpdate {
         }
     }
 
+    pub fn is_deployed(&self) -> bool {
+        matches!(self, Self::Deploy(_))
+    }
+
     pub fn is_replaced(&self) -> bool {
-        matches!(self, ContractClassUpdate::Replace(_))
+        matches!(self, Self::Replace(_))
     }
 }
 
