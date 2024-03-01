@@ -112,6 +112,26 @@ pub mod request {
                 _ => None,
             }
         }
+
+        pub fn version(&self) -> TransactionVersion {
+            match self {
+                BroadcastedTransaction::Declare(declare) => match declare {
+                    BroadcastedDeclareTransaction::V0(tx) => tx.version,
+                    BroadcastedDeclareTransaction::V1(tx) => tx.version,
+                    BroadcastedDeclareTransaction::V2(tx) => tx.version,
+                    BroadcastedDeclareTransaction::V3(tx) => tx.version,
+                },
+                BroadcastedTransaction::Invoke(invoke) => match invoke {
+                    BroadcastedInvokeTransaction::V0(tx) => tx.version,
+                    BroadcastedInvokeTransaction::V1(tx) => tx.version,
+                    BroadcastedInvokeTransaction::V3(tx) => tx.version,
+                },
+                BroadcastedTransaction::DeployAccount(deploy_account) => match deploy_account {
+                    BroadcastedDeployAccountTransaction::V0V1(tx) => tx.version,
+                    BroadcastedDeployAccountTransaction::V3(tx) => tx.version,
+                },
+            }
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -456,6 +476,8 @@ pub mod request {
         pub fn into_common(self, chain_id: ChainId) -> pathfinder_common::transaction::Transaction {
             use pathfinder_common::transaction::*;
 
+            let query_only = self.version().has_query_version();
+
             let variant = match self {
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(declare)) => {
                     let class_hash = declare.contract_class.class_hash().unwrap().hash();
@@ -566,7 +588,7 @@ pub mod request {
                 }
             };
 
-            let hash = variant.calculate_hash(chain_id);
+            let hash = variant.calculate_hash(chain_id, query_only);
             Transaction { hash, variant }
         }
     }
