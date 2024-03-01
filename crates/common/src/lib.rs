@@ -206,6 +206,14 @@ impl TransactionVersion {
         self.0.as_be_bytes()[15] & 0b0000_0001 != 0
     }
 
+    pub fn with_query_only(self, query_only: bool) -> Self {
+        if query_only {
+            self.with_query_version()
+        } else {
+            Self(self.without_query_version().into())
+        }
+    }
+
     pub const ZERO: Self = Self(Felt::ZERO);
     pub const ONE: Self = Self(Felt::from_u64(1));
     pub const TWO: Self = Self(Felt::from_u64(2));

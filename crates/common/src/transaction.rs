@@ -60,7 +60,7 @@ pub enum TransactionVariant {
 impl TransactionVariant {
     #[must_use = "Should act on verification result"]
     fn verify_hash(&self, chain_id: ChainId, expected: TransactionHash) -> bool {
-        if expected == self.calculate_hash(chain_id) {
+        if expected == self.calculate_hash(chain_id, false) {
             return true;
         }
 
@@ -79,18 +79,18 @@ impl TransactionVariant {
         false
     }
 
-    pub fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    pub fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         match self {
-            TransactionVariant::DeclareV0(tx) => tx.calculate_hash_v0(chain_id),
-            TransactionVariant::DeclareV1(tx) => tx.calculate_hash_v1(chain_id),
-            TransactionVariant::DeclareV2(tx) => tx.calculate_hash(chain_id),
-            TransactionVariant::DeclareV3(tx) => tx.calculate_hash(chain_id),
+            TransactionVariant::DeclareV0(tx) => tx.calculate_hash_v0(chain_id, query_only),
+            TransactionVariant::DeclareV1(tx) => tx.calculate_hash_v1(chain_id, query_only),
+            TransactionVariant::DeclareV2(tx) => tx.calculate_hash(chain_id, query_only),
+            TransactionVariant::DeclareV3(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::Deploy(tx) => tx.calculate_hash(chain_id),
-            TransactionVariant::DeployAccountV0V1(tx) => tx.calculate_hash(chain_id),
-            TransactionVariant::DeployAccountV3(tx) => tx.calculate_hash(chain_id),
-            TransactionVariant::InvokeV0(tx) => tx.calculate_hash(chain_id),
-            TransactionVariant::InvokeV1(tx) => tx.calculate_hash(chain_id),
-            TransactionVariant::InvokeV3(tx) => tx.calculate_hash(chain_id),
+            TransactionVariant::DeployAccountV0V1(tx) => tx.calculate_hash(chain_id, query_only),
+            TransactionVariant::DeployAccountV3(tx) => tx.calculate_hash(chain_id, query_only),
+            TransactionVariant::InvokeV0(tx) => tx.calculate_hash(chain_id, query_only),
+            TransactionVariant::InvokeV1(tx) => tx.calculate_hash(chain_id, query_only),
+            TransactionVariant::InvokeV3(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::L1Handler(tx) => tx.calculate_hash(chain_id),
         }
     }
@@ -301,10 +301,10 @@ impl From<DataAvailabilityMode> for u64 {
 }
 
 impl DeclareTransactionV0V1 {
-    fn calculate_hash_v0(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash_v0(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         PreV3Hasher {
             prefix: felt_bytes!(b"declare"),
-            version: TransactionVersion::ZERO,
+            version: TransactionVersion::ZERO.with_query_only(query_only),
             address: self.sender_address,
             data_hash: PedersenHasher::default().finalize(),
             nonce_or_class: Some(self.class_hash.0),
@@ -313,10 +313,10 @@ impl DeclareTransactionV0V1 {
         .hash(chain_id)
     }
 
-    fn calculate_hash_v1(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash_v1(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         PreV3Hasher {
             prefix: felt_bytes!(b"declare"),
-            version: TransactionVersion::ONE,
+            version: TransactionVersion::ONE.with_query_only(query_only),
             address: self.sender_address,
             data_hash: PedersenHasher::single(self.class_hash.0),
             max_fee: self.max_fee,
@@ -328,10 +328,10 @@ impl DeclareTransactionV0V1 {
 }
 
 impl DeclareTransactionV2 {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         PreV3Hasher {
             prefix: felt_bytes!(b"declare"),
-            version: TransactionVersion::TWO,
+            version: TransactionVersion::TWO.with_query_only(query_only),
             address: self.sender_address,
             data_hash: PedersenHasher::single(self.class_hash.0),
             max_fee: self.max_fee,
@@ -378,7 +378,7 @@ impl DeployTransaction {
 }
 
 impl DeployAccountTransactionV0V1 {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         let constructor_calldata_hash = std::iter::once(self.class_hash.0)
             .chain(std::iter::once(self.contract_address_salt.0))
             .chain(self.constructor_calldata.iter().map(|x| x.0))
@@ -389,7 +389,7 @@ impl DeployAccountTransactionV0V1 {
 
         PreV3Hasher {
             prefix: felt_bytes!(b"deploy_account"),
-            version: self.version,
+            version: self.version.with_query_only(query_only),
             address: self.contract_address,
             data_hash: constructor_calldata_hash,
             max_fee: self.max_fee,
@@ -401,10 +401,10 @@ impl DeployAccountTransactionV0V1 {
 }
 
 impl InvokeTransactionV0 {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         PreV3Hasher {
             prefix: felt_bytes!(b"invoke"),
-            version: TransactionVersion::ZERO,
+            version: TransactionVersion::ZERO.with_query_only(query_only),
             address: self.sender_address,
             entry_point: self.entry_point_selector,
             data_hash: self.calldata_hash(),
@@ -518,7 +518,7 @@ impl L1HandlerTransaction {
 }
 
 impl DeclareTransactionV3 {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         let deployment_hash = self
             .account_deployment_data
             .iter()
@@ -542,13 +542,14 @@ impl DeclareTransactionV3 {
             nonce_data_availability_mode: self.nonce_data_availability_mode,
             fee_data_availability_mode: self.fee_data_availability_mode,
             resource_bounds: self.resource_bounds,
+            query_only,
         }
         .hash(chain_id)
     }
 }
 
 impl DeployAccountTransactionV3 {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         let deployment_hash = self
             .constructor_calldata
             .iter()
@@ -572,13 +573,14 @@ impl DeployAccountTransactionV3 {
             nonce_data_availability_mode: self.nonce_data_availability_mode,
             fee_data_availability_mode: self.fee_data_availability_mode,
             resource_bounds: self.resource_bounds,
+            query_only,
         }
         .hash(chain_id)
     }
 }
 
 impl InvokeTransactionV3 {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         let deployment_hash = self
             .account_deployment_data
             .iter()
@@ -606,13 +608,14 @@ impl InvokeTransactionV3 {
             nonce_data_availability_mode: self.nonce_data_availability_mode,
             fee_data_availability_mode: self.fee_data_availability_mode,
             resource_bounds: self.resource_bounds,
+            query_only,
         }
         .hash(chain_id)
     }
 }
 
 impl InvokeTransactionV1 {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         let list_hash = self
             .calldata
             .iter()
@@ -623,7 +626,7 @@ impl InvokeTransactionV1 {
 
         PreV3Hasher {
             prefix: felt_bytes!(b"invoke"),
-            version: TransactionVersion::ONE,
+            version: TransactionVersion::ONE.with_query_only(query_only),
             address: self.sender_address,
             data_hash: list_hash,
             max_fee: self.max_fee,
@@ -706,13 +709,19 @@ struct V3Hasher<'a> {
     pub nonce_data_availability_mode: DataAvailabilityMode,
     pub fee_data_availability_mode: DataAvailabilityMode,
     pub resource_bounds: ResourceBounds,
+    pub query_only: bool,
 }
 
 impl V3Hasher<'_> {
     fn hash(self, chain_id: ChainId) -> TransactionHash {
         let hasher = PoseidonHasher::default()
             .chain(self.prefix.into())
-            .chain(TransactionVersion::THREE.0.into())
+            .chain(
+                TransactionVersion::THREE
+                    .with_query_only(self.query_only)
+                    .0
+                    .into(),
+            )
             .chain(self.sender_address.0.into())
             .chain(self.hash_fee_fields().into())
             .chain(self.hash_paymaster_data().into())
@@ -1294,5 +1303,40 @@ mod tests {
                 ..Default::default()
             }),
         }
+    }
+
+    #[test]
+    fn invoke_v1_with_query_version() {
+        let invoke = TransactionVariant::InvokeV1(InvokeTransactionV1 {
+            sender_address: contract_address!(
+                "0x05b53783880534bf39ba4224ffbf6cdbca5d9f8f018a21cf1fe870dff409b3ce"
+            ),
+            max_fee: fee!("0x0"),
+            nonce: transaction_nonce!("0x3"),
+            signature: vec![
+                transaction_signature_elem!(
+                    "0x29784653f04451ad9abb301d06320816756396b0bda4e598559eff4718fe6f9"
+                ),
+                transaction_signature_elem!(
+                    "0x6c5288a10f44612ffdbfa8681af54f97e53339a5119713bdee36a05485abe60"
+                ),
+            ],
+            calldata: vec![
+                call_param!("0x1"),
+                call_param!("0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"),
+                call_param!("0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e"),
+                call_param!("0x0"),
+                call_param!("0x3"),
+                call_param!("0x3"),
+                call_param!("0x5b53783880534bf39ba4224ffbf6cdbca5d9f8f018a21cf1fe870dff409b3ce"),
+                call_param!("0x9184e72a000"),
+                call_param!("0x0"),
+            ],
+        });
+
+        assert_eq!(
+            transaction_hash!("0x00acd1213b669b094390c5b70a447cb2335ee40bbe21c4544db57450aa0e5c04"),
+            invoke.calculate_hash(ChainId::GOERLI_TESTNET, true)
+        );
     }
 }
