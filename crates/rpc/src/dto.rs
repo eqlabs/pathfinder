@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod event;
 mod header;
 mod primitives;
