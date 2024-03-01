@@ -2,6 +2,8 @@ use super::serialize::SerializeForVersion;
 use crate::dto::*;
 use std::collections::HashMap;
 
+pub struct StateUpdate<'a>(pub &'a pathfinder_common::StateUpdate);
+
 pub struct PendingStateUpdate<'a>(pub &'a pathfinder_common::StateUpdate);
 
 pub struct StateDiff<'a>(pub &'a pathfinder_common::StateUpdate);
@@ -14,6 +16,20 @@ pub struct ContractStorageDiffItem<'a> {
 pub struct DeployedContractItem<'a> {
     address: &'a pathfinder_common::ContractAddress,
     class_hash: &'a pathfinder_common::ClassHash,
+}
+
+impl SerializeForVersion for StateUpdate<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("block_hash", &BlockHash(&self.0.block_hash))?;
+        serializer.serialize_field("new_root", &Felt(&self.0.state_commitment.0))?;
+        serializer.serialize_field("old_root", &Felt(&self.0.parent_state_commitment.0))?;
+        serializer.serialize_field("state_diff", &StateDiff(self.0))?;
+        serializer.end()
+    }
 }
 
 impl SerializeForVersion for PendingStateUpdate<'_> {
@@ -233,6 +249,23 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn state_update() {
+        let s = Serializer::default();
+        let state_update = test_state_update();
+
+        let expected = json!({
+            "block_hash": s.serialize(&BlockHash(&state_update.block_hash)).unwrap(),
+            "new_root": s.serialize(&Felt(&state_update.state_commitment.0)).unwrap(),
+            "old_root": s.serialize(&Felt(&state_update.parent_state_commitment.0)).unwrap(),
+            "state_diff": s.serialize(&StateDiff(&state_update)).unwrap(),
+        });
+
+        let encoded = StateUpdate(&state_update).serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
     fn pending_state_update() {
         let s = Serializer::default();
         let state_update = test_state_update();
@@ -339,7 +372,7 @@ mod tests {
     }
 
     fn test_state_update() -> pathfinder_common::prelude::StateUpdate {
-        let state_update = pathfinder_common::StateUpdate::default()
+        pathfinder_common::StateUpdate::default()
             .with_block_hash(block_hash_bytes!(b"block hash"))
             .with_state_commitment(state_commitment_bytes!(b"state commitment"))
             .with_parent_state_commitment(state_commitment_bytes!(b"parent commitment"))
@@ -378,8 +411,7 @@ mod tests {
             .with_deployed_contract(
                 contract_address_bytes!(b"deployed address"),
                 class_hash_bytes!(b"deployed class"),
-            );
-        state_update
+            )
     }
 
     #[test]
