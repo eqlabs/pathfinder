@@ -2,12 +2,19 @@ use std::collections::HashMap;
 
 use crate::dto::*;
 
+use super::serialize::SerializeForVersion;
+
 pub struct ContractStorageDiffItem<'a> {
     address: &'a pathfinder_common::ContractAddress,
     entries: &'a HashMap<pathfinder_common::StorageAddress, pathfinder_common::StorageValue>,
 }
 
-impl serialize::SerializeForVersion for ContractStorageDiffItem<'_> {
+pub struct DeployedContractItem<'a> {
+    address: &'a pathfinder_common::ContractAddress,
+    class_hash: &'a pathfinder_common::ClassHash,
+}
+
+impl SerializeForVersion for ContractStorageDiffItem<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
@@ -17,7 +24,7 @@ impl serialize::SerializeForVersion for ContractStorageDiffItem<'_> {
             value: &'a pathfinder_common::StorageValue,
         }
 
-        impl serialize::SerializeForVersion for StorageEntry<'_> {
+        impl SerializeForVersion for StorageEntry<'_> {
             fn serialize(
                 &self,
                 serializer: serialize::Serializer,
@@ -45,12 +52,22 @@ impl serialize::SerializeForVersion for ContractStorageDiffItem<'_> {
     }
 }
 
+impl SerializeForVersion for DeployedContractItem<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("address", &Felt(self.address.get()))?;
+        serializer.serialize_field("class_hash", &Felt(&self.class_hash.0))?;
+        serializer.end()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::dto::serialize::SerializeForVersion;
-    use crate::dto::serialize::Serializer;
-
     use super::*;
+    use crate::dto::serialize::Serializer;
     use pathfinder_common::macro_prelude::*;
     use serde_json::json;
 
@@ -79,6 +96,28 @@ mod tests {
         let encoded = ContractStorageDiffItem {
             address: &address,
             entries: &entries,
+        }
+        .serialize(s)
+        .unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn deployed_contract_item() {
+        let s = Serializer::default();
+
+        let address = contract_address!("0x123");
+        let class_hash = class_hash!("0x467");
+
+        let expected = json!({
+            "address": s.serialize(&Felt(address.get())).unwrap(),
+            "class_hash": s.serialize(&Felt(&class_hash.0)).unwrap(),
+        });
+
+        let encoded = DeployedContractItem {
+            address: &address,
+            class_hash: &class_hash,
         }
         .serialize(s)
         .unwrap();
