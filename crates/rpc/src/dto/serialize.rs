@@ -1,6 +1,7 @@
 use crate::RpcVersion;
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(Default))]
 pub struct Serializer {
     pub version: RpcVersion,
 }
