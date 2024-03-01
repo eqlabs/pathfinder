@@ -34,7 +34,7 @@ mod hex_str {
             return Cow::from("0x0");
         }
 
-        return bytes_to_hex_str_full(data).into();
+        bytes_to_hex_str_full(data).into()
     }
 
     pub fn bytes_to_hex_str_full(data: &[u8]) -> String {
@@ -44,7 +44,7 @@ mod hex_str {
         buf[0] = b'0';
         buf[1] = b'x';
         // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
-        for (i, b) in data.into_iter().enumerate() {
+        for (i, b) in data.iter().enumerate() {
             let idx = *b as usize;
             let pos = 2 + i * 2;
             let x = [LUT[(idx & 0xf0) >> 4], LUT[idx & 0x0f]];

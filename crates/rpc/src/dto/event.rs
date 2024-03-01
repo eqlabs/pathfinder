@@ -25,7 +25,7 @@ impl SerializeForVersion for Event<'_> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("from_address", &Address(&self.0.from_address))?;
-        serializer.flatten(&EventContent(&self.0))?;
+        serializer.flatten(&EventContent(self.0))?;
 
         serializer.end()
     }

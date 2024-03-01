@@ -271,7 +271,7 @@ impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("type", &"L1_HANDLER")?;
-        serializer.serialize_field("message_hash", &NumAsHex::H256(&self.message_hash))?;
+        serializer.serialize_field("message_hash", &NumAsHex::H256(self.message_hash))?;
         serializer.flatten(&self.common)?;
         serializer.end()
     }
@@ -284,7 +284,7 @@ impl SerializeForVersion for PendingL1HandlerTxnReceipt<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("type", &"L1_HANDLER")?;
-        serializer.serialize_field("message_hash", &NumAsHex::H256(&self.message_hash))?;
+        serializer.serialize_field("message_hash", &NumAsHex::H256(self.message_hash))?;
         serializer.flatten(&self.common)?;
         serializer.end()
     }
@@ -326,7 +326,7 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
             "actual_fee",
             &FeePayment {
                 amount: self.receipt.actual_fee.as_ref(),
-                version: &self.version,
+                version: self.version,
             },
         )?;
         serializer.serialize_field("finality_status", &self.finality)?;
@@ -546,7 +546,7 @@ impl SerializeForVersion for FeePayment<'_> {
         } else {
             serializer.serialize_field("amount", &Felt(&Default::default()))?;
         }
-        serializer.serialize_field("unit", &PriceUnit(&self.version))?;
+        serializer.serialize_field("unit", &PriceUnit(self.version))?;
 
         serializer.end()
     }
@@ -790,8 +790,8 @@ mod tests {
                     amount: receipt.actual_fee.as_ref(),
                     version: &version
                 }).unwrap(),
-                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
-                "events": receipt.events.iter().map(|x| Event(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "events": receipt.events.iter().map(|x| Event(x).serialize(s).unwrap()).collect::<Vec<_>>(),
                 "revert_reason": "revert reason",
                 "finality_status": "ACCEPTED_ON_L2",
                 "execution_status": s.serialize(&TxnExecutionStatus::Reverted).unwrap(),
@@ -821,8 +821,8 @@ mod tests {
                     amount: receipt.actual_fee.as_ref(),
                     version: &version
                 }).unwrap(),
-                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
-                "events": receipt.events.iter().map(|x| Event(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "events": receipt.events.iter().map(|x| Event(x).serialize(s).unwrap()).collect::<Vec<_>>(),
                 "finality_status": "ACCEPTED_ON_L2",
                 "execution_status": s.serialize(&TxnExecutionStatus::Succeeded).unwrap(),
                 "execution_resources": s.serialize(&ExecutionResources(&receipt.execution_resources)).unwrap(),
@@ -839,7 +839,7 @@ mod tests {
         }
 
         fn test_receipt() -> pathfinder_common::receipt::Receipt {
-            let receipt = pathfinder_common::receipt::Receipt {
+            pathfinder_common::receipt::Receipt {
                 actual_fee: None,
                 events: vec![pathfinder_common::event::Event {
                     data: vec![],
@@ -860,8 +860,7 @@ mod tests {
                 },
                 transaction_hash: transaction_hash!("0x123"),
                 transaction_index: Default::default(),
-            };
-            receipt
+            }
         }
     }
 
@@ -883,8 +882,8 @@ mod tests {
                     amount: receipt.actual_fee.as_ref(),
                     version: &version
                 }).unwrap(),
-                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
-                "events": receipt.events.iter().map(|x| Event(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "events": receipt.events.iter().map(|x| Event(x).serialize(s).unwrap()).collect::<Vec<_>>(),
                 "revert_reason": "revert reason",
                 "finality_status": "ACCEPTED_ON_L1",
                 "execution_status": s.serialize(&TxnExecutionStatus::Reverted).unwrap(),
@@ -921,8 +920,8 @@ mod tests {
                     amount: receipt.actual_fee.as_ref(),
                     version: &version
                 }).unwrap(),
-                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
-                "events": receipt.events.iter().map(|x| Event(&x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "messages_sent": receipt.l2_to_l1_messages.iter().map(|x| MsgToL1(x).serialize(s).unwrap()).collect::<Vec<_>>(),
+                "events": receipt.events.iter().map(|x| Event(x).serialize(s).unwrap()).collect::<Vec<_>>(),
                 "finality_status": "ACCEPTED_ON_L1",
                 "execution_status": s.serialize(&TxnExecutionStatus::Succeeded).unwrap(),
                 "execution_resources": s.serialize(&ExecutionResources(&receipt.execution_resources)).unwrap(),
@@ -1441,7 +1440,7 @@ mod tests {
     }
 
     fn test_receipt() -> pathfinder_common::receipt::Receipt {
-        let receipt = pathfinder_common::receipt::Receipt {
+        pathfinder_common::receipt::Receipt {
             actual_fee: None,
             events: vec![pathfinder_common::event::Event {
                 data: vec![],
@@ -1462,7 +1461,6 @@ mod tests {
             },
             transaction_hash: transaction_hash!("0x123"),
             transaction_index: Default::default(),
-        };
-        receipt
+        }
     }
 }
