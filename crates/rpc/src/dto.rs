@@ -2,6 +2,7 @@ mod event;
 mod header;
 mod primitives;
 mod receipt;
+mod state_update;
 
 pub mod serialize;
 
@@ -9,6 +10,7 @@ pub use event::*;
 pub use header::*;
 pub use primitives::*;
 pub use receipt::*;
+pub use state_update::*;
 
 #[cfg(test)]
 /// Merges two json objects together. Panics if either of them is not an object.
