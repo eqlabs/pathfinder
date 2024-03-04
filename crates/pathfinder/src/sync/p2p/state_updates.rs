@@ -1,10 +1,17 @@
+use std::collections::HashMap;
+
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{
-    state_update::ContractUpdates, BlockNumber, StateUpdate, StorageCommitment,
+    state_update::ContractUpdates, BlockHash, BlockHeader, BlockNumber, StateUpdate,
+    StorageCommitment,
 };
-use pathfinder_merkle_tree::{contract_state::update_contract_state, StorageCommitmentTree};
-use pathfinder_storage::{Storage, Transaction};
+use pathfinder_crypto::Felt;
+use pathfinder_merkle_tree::{
+    contract_state::{update_contract_state, ContractStateUpdateResult},
+    StorageCommitmentTree,
+};
+use pathfinder_storage::{Node, Storage};
 use tokio::task::spawn_blocking;
 
 #[derive(Debug, thiserror::Error)]
@@ -12,7 +19,7 @@ pub(super) enum ContractDiffSyncError {
     #[error(transparent)]
     DatabaseOrComputeError(#[from] anyhow::Error),
     #[error("Storage commitment mismatch")]
-    BadSignature(PeerData<BlockNumber>),
+    StorageCommitmentMismatch(PeerData<BlockNumber>),
 }
 
 /// Returns the first block number whose state update is missing in storage, counting from genesis
@@ -39,29 +46,63 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
-fn verify_then_persist_starknet_storage_update(
-    transaction: &Transaction<'_>,
-    storage_update: &ContractUpdates,
-    verify_hashes: bool,
-    block: BlockNumber,
-    // we need this so that we can create extra read-only transactions for
-    // parallel contract state updates
+#[derive(Debug)]
+pub(super) struct VerificationOk {
+    block_number: BlockNumber,
+    block_hash: BlockHash,
+    storage_commitment: StorageCommitment,
+    contract_update_results: Vec<ContractStateUpdateResult>,
+    trie_nodes: HashMap<Felt, Node>,
+    contract_updates: ContractUpdates,
+}
+
+pub async fn verify_storage_commitments(
     storage: Storage,
-) -> anyhow::Result<bool> {
+    contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
+    verify_trie_hashes: bool,
+) -> Result<Vec<PeerData<VerificationOk>>, ContractDiffSyncError> {
+    tokio::task::spawn_blocking(move || {
+        use rayon::prelude::*;
+
+        contract_updates
+            .into_par_iter()
+            .map(|x| verify(storage.clone(), x, verify_trie_hashes))
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .await
+    .context("Joining blocking task")?
+}
+
+fn verify(
+    storage: Storage,
+    contract_updates: PeerData<(BlockNumber, ContractUpdates)>,
+    verify_hashes: bool,
+) -> Result<PeerData<VerificationOk>, ContractDiffSyncError> {
     use rayon::prelude::*;
 
-    let expected_storage_commitment = transaction
-        .block_header(block.into())
+    let peer = contract_updates.peer;
+    let block_number = contract_updates.data.0;
+    let contract_updates = contract_updates.data.1;
+    let mut connection = storage
+        .connection()
+        .context("Creating database connection")?;
+    let transaction = connection
+        .transaction()
+        .context("Creating database transaction")?;
+
+    let BlockHeader {
+        hash: block_hash,
+        storage_commitment,
+        ..
+    } = transaction
+        .block_header(block_number.into())
         .context("getting block header")?
-        .ok_or(anyhow::anyhow!("Block header not found"))?
-        .storage_commitment;
+        .ok_or(anyhow::anyhow!("Block header not found"))?;
 
-    // 1. Compute the new storage commitment trie.
-
-    let mut storage_commitment_tree = match block.parent() {
-        Some(parent) => StorageCommitmentTree::load(transaction, parent)
+    let mut storage_commitment_tree = match block_number.parent() {
+        Some(parent) => StorageCommitmentTree::load(&transaction, parent)
             .context("Loading storage commitment tree")?,
-        None => StorageCommitmentTree::empty(transaction),
+        None => StorageCommitmentTree::empty(&transaction),
     }
     .with_verify_hashes(verify_hashes);
 
@@ -70,7 +111,7 @@ fn verify_then_persist_starknet_storage_update(
     // Apply contract storage updates to the storage commitment tree.
     rayon::scope(|s| {
         s.spawn(|_| {
-            let result: Result<Vec<_>, _> = storage_update
+            let result: Result<Vec<_>, _> = contract_updates
                 .regular
                 .par_iter()
                 .map_init(
@@ -91,7 +132,7 @@ fn verify_then_persist_starknet_storage_update(
                             update.class.as_ref().map(|x| x.class_hash()),
                             &transaction,
                             verify_hashes,
-                            block,
+                            block_number,
                         )
                     },
                 )
@@ -100,7 +141,7 @@ fn verify_then_persist_starknet_storage_update(
         })
     });
 
-    let contract_update_results = recv.recv().context("Panic on rayon thread")??;
+    let mut contract_update_results = recv.recv().context("Panic on rayon thread")??;
 
     for contract_update_result in contract_update_results.iter() {
         storage_commitment_tree
@@ -116,7 +157,7 @@ fn verify_then_persist_starknet_storage_update(
     // Apply system contract storage updates to the storage commitment tree.
     rayon::scope(|s| {
         s.spawn(|_| {
-            let result: Result<Vec<_>, _> = storage_update
+            let result: Result<Vec<_>, _> = contract_updates
                 .system
                 .par_iter()
                 .map_init(
@@ -137,7 +178,7 @@ fn verify_then_persist_starknet_storage_update(
                             None,
                             &transaction,
                             verify_hashes,
-                            block,
+                            block_number,
                         )
                     },
                 )
@@ -163,42 +204,88 @@ fn verify_then_persist_starknet_storage_update(
         .commit()
         .context("Apply storage commitment tree updates")?;
 
-    // 2. Verify if the computed storage commitment matches the expected one.
-    if expected_storage_commitment != computed_storage_commitment {
-        anyhow::bail!(
-            "storage commitment mismatch: computed {}, expected {}",
-            computed_storage_commitment,
-            expected_storage_commitment
-        );
+    if storage_commitment != computed_storage_commitment {
+        return Err(ContractDiffSyncError::StorageCommitmentMismatch(
+            PeerData::new(peer, block_number),
+        ));
     }
 
-    // 3. Persist the storage commitment tree changes.
+    contract_update_results.extend(system_contract_update_results);
 
-    for contract_update_result in contract_update_results.into_iter() {
-        contract_update_result
-            .insert(block, transaction)
-            .context("Persisting contract update result")?;
-    }
+    Ok(PeerData::new(
+        peer,
+        VerificationOk {
+            block_number,
+            block_hash,
+            storage_commitment,
+            contract_update_results,
+            trie_nodes: nodes,
+            contract_updates,
+        },
+    ))
+}
 
-    for system_contract_update_result in system_contract_update_results.into_iter() {
-        system_contract_update_result
-            .insert(block, transaction)
-            .context("Persisting system contract update result")?;
-    }
+pub(super) async fn persist(
+    storage: Storage,
+    verification_results: Vec<PeerData<VerificationOk>>,
+) -> Result<BlockNumber, ContractDiffSyncError> {
+    tokio::task::spawn_blocking(move || {
+        let mut connection = storage
+            .connection()
+            .context("Creating database connection")?;
+        let transaction = connection
+            .transaction()
+            .context("Creating database transaction")?;
+        let tail = verification_results
+            .last()
+            .map(|x| x.data.block_number)
+            .ok_or(anyhow::anyhow!(
+                "Verification results are empty, no block to persist"
+            ))?;
 
-    let root_idx = if !computed_storage_commitment.0.is_zero() {
-        let root_idx = transaction
-            .insert_storage_trie(computed_storage_commitment, &nodes)
-            .context("Persisting storage trie")?;
+        for VerificationOk {
+            block_number,
+            block_hash,
+            storage_commitment,
+            contract_update_results,
+            trie_nodes,
+            contract_updates,
+        } in verification_results.into_iter().map(|x| x.data)
+        {
+            for contract_update_result in contract_update_results {
+                contract_update_result
+                    .insert(block_number, &transaction)
+                    .context("Persisting contract update result")?;
+            }
 
-        Some(root_idx)
-    } else {
-        None
-    };
+            let root_idx = if !storage_commitment.0.is_zero() {
+                let root_idx = transaction
+                    .insert_storage_trie(storage_commitment, &trie_nodes)
+                    .context("Persisting storage trie")?;
 
-    transaction
-        .insert_storage_root(block, root_idx)
-        .context("Inserting storage root index")?;
+                Some(root_idx)
+            } else {
+                None
+            };
 
-    Ok(true)
+            transaction
+                .insert_storage_root(block_number, root_idx)
+                .context("Inserting storage root index")?;
+
+            let state_update = StateUpdate {
+                block_hash,
+                contract_updates: contract_updates.regular,
+                system_contract_updates: contract_updates.system,
+                ..Default::default()
+            };
+
+            transaction
+                .insert_state_update(block_number, &state_update)
+                .context("Inserting state update")?;
+        }
+
+        Ok(tail)
+    })
+    .await
+    .context("Joining blocking task")?
 }

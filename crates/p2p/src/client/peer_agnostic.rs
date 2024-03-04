@@ -23,8 +23,8 @@ use p2p_proto::{
 };
 use pathfinder_common::{
     state_update::{ContractClassUpdate, ContractUpdates, StateUpdateStats},
-    BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StateUpdate,
-    StorageAddress, StorageValue,
+    BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
+    StorageValue,
 };
 use smallvec::SmallVec;
 use tokio::{sync::RwLock, task::spawn_blocking};
@@ -227,7 +227,7 @@ impl Client {
                 + Sync
                 + 'static,
         >,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<ContractUpdates>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ContractUpdates)>>> {
         debug_assert!(start <= stop_inclusive);
 
         async_stream::try_stream! {
@@ -336,7 +336,7 @@ impl Client {
                         // All the counters for this block have been exhausted which means
                         // that the state update for this block is complete.
                         if current.num_storage_diffs == 0 && current.num_nonce_updates == 0 && current.num_deployed_contracts == 0 {
-                            yield PeerData::new(peer, std::mem::take(&mut contract_updates));
+                            yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
                             // Move to the next block
                             start = start + 1;
                             current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;

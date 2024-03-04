@@ -8,10 +8,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use anyhow::Context;
-use futures::future;
 use futures::StreamExt;
 use futures::TryStreamExt;
-use p2p::libp2p::kad::store;
+use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
 use p2p_proto::{
     common::{BlockNumberOrHash, Direction, Iteration},
     receipt::{ReceiptsRequest, ReceiptsResponse},
@@ -27,11 +26,11 @@ use primitive_types::H160;
 use smallvec::SmallVec;
 use tokio::task::spawn_blocking;
 
-use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
-
 use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
+
+use self::state_updates::ContractDiffSyncError;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -422,16 +421,19 @@ impl Sync {
                 .p2p
                 .clone()
                 .contract_updates_stream(start, stop, getter)
+                .map_err(|e| ContractDiffSyncError::from(e))
                 .try_chunks(100)
-                // Compute storage commitments
-                .and_then(|x| futures::future::ok(x))
-                // Verify storage commitments
-                .and_then(|x| futures::future::ok(x))
-                // Persist state updates (without state roots and declared classes)
-                .and_then(|x| futures::future::ok(x))
-                .inspect_ok(
-                    |x| tracing::info!(tail="TODO", len=%x.len(), "State update chunk synced"),
-                );
+                .map_err(|e| e.1)
+                .and_then(|x| {
+                    state_updates::verify_storage_commitments(
+                        self.storage.clone(),
+                        x,
+                        false, /*TODO*/
+                    )
+                })
+                // Persist state updates (without: state commitments and declared classes)
+                .and_then(|x| state_updates::persist(self.storage.clone(), x))
+                .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"));
         }
 
         Ok(())

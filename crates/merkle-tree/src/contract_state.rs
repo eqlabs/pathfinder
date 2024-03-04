@@ -9,6 +9,7 @@ use pathfinder_common::{
 use pathfinder_crypto::{hash::pedersen_hash, Felt};
 use pathfinder_storage::{Node, Transaction};
 
+#[derive(Debug)]
 pub struct ContractStateUpdateResult {
     pub state_hash: ContractStateHash,
     pub contract_address: ContractAddress,
