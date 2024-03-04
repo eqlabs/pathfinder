@@ -193,7 +193,11 @@ pub fn setup_test_storage() -> (Storage, TestData) {
             header.hash,
             header.number,
             &transactions_and_receipts
-                [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
+                [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK]
+                .iter()
+                .cloned()
+                .map(|(tx, receipt)| (tx, Some(receipt)))
+                .collect::<Vec<_>>(),
         )
         .unwrap();
     }

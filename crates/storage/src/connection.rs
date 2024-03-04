@@ -162,6 +162,10 @@ impl<'inner> Transaction<'inner> {
         block::first_block_without_transactions(self)
     }
 
+    pub fn first_block_without_receipts(&self) -> anyhow::Result<Option<BlockNumber>> {
+        block::first_block_without_receipts(self)
+    }
+
     pub fn update_l1_l2_pointer(&self, block: Option<BlockNumber>) -> anyhow::Result<()> {
         reference::update_l1_l2_pointer(self, block)
     }
@@ -190,9 +194,18 @@ impl<'inner> Transaction<'inner> {
         &self,
         block_hash: BlockHash,
         block_number: BlockNumber,
-        transaction_data: &[(StarknetTransaction, Receipt)],
+        transaction_data: &[(StarknetTransaction, Option<Receipt>)],
     ) -> anyhow::Result<()> {
         transaction::insert_transactions(self, block_hash, block_number, transaction_data)
+    }
+
+    pub fn update_receipt(
+        &self,
+        block_hash: BlockHash,
+        transaction_idx: usize,
+        receipt: &Receipt,
+    ) -> anyhow::Result<()> {
+        transaction::update_receipt(self, block_hash, transaction_idx, receipt)
     }
 
     pub fn transaction_block_hash(

@@ -536,14 +536,14 @@ pub mod test_utils {
             reason: "Reverted because".to_owned(),
         };
 
-        let transaction_data0 = [(txn0, receipt0)];
-        let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
+        let transaction_data0 = [(txn0, Some(receipt0))];
+        let transaction_data1 = [(txn1, Some(receipt1)), (txn2, Some(receipt2))];
         let transaction_data2 = [
-            (txn3, receipt3),
-            (txn4, receipt4),
-            (txn5, receipt5),
-            (txn6, receipt6),
-            (txn_reverted, receipt_reverted),
+            (txn3, Some(receipt3)),
+            (txn4, Some(receipt4)),
+            (txn5, Some(receipt5)),
+            (txn6, Some(receipt6)),
+            (txn_reverted, Some(receipt_reverted)),
         ];
         db_txn
             .insert_transaction_data(header0.hash, header0.number, &transaction_data0)

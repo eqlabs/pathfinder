@@ -821,7 +821,7 @@ async fn l2_update(
         let transaction_data = block
             .transactions
             .into_iter()
-            .zip(block.transaction_receipts.into_iter())
+            .zip(block.transaction_receipts.into_iter().map(Some))
             .collect::<Vec<_>>();
 
         transaction

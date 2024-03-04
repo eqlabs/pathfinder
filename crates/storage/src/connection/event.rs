@@ -505,8 +505,8 @@ mod tests {
             header.hash,
             header.number,
             &vec![
-                (transactions[0].clone(), receipts[0].clone()),
-                (transactions[1].clone(), receipts[1].clone()),
+                (transactions[0].clone(), Some(receipts[0].clone())),
+                (transactions[1].clone(), Some(receipts[1].clone())),
             ],
         )
         .unwrap();
