@@ -5,10 +5,13 @@ mod state_updates;
 mod transactions;
 
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use anyhow::Context;
+use futures::future;
 use futures::StreamExt;
 use futures::TryStreamExt;
+use p2p::libp2p::kad::store;
 use p2p_proto::{
     common::{BlockNumberOrHash, Direction, Iteration},
     receipt::{ReceiptsRequest, ReceiptsResponse},
@@ -395,11 +398,11 @@ impl Sync {
     }
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
+        let storage = self.storage.clone();
         let getter = move |start: BlockNumber,
                            limit: NonZeroUsize|
               -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
-            let mut db = self
-                .storage
+            let mut db = storage
                 .connection()
                 .context("Creating database connection")?;
             let db = db.transaction().context("Creating database transaction")?;
@@ -408,16 +411,27 @@ impl Sync {
                 .context("Querying state updates")?;
             Ok(stats)
         };
+        let getter = Arc::new(getter);
 
         while let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
         {
+            let getter = getter.clone();
             let _stream = self
                 .p2p
                 .clone()
-                .state_update_stream(start, stop, |_, _| todo!());
-            // .try_chunks(1024);
+                .contract_updates_stream(start, stop, getter)
+                .try_chunks(100)
+                // Compute storage commitments
+                .and_then(|x| futures::future::ok(x))
+                // Verify storage commitments
+                .and_then(|x| futures::future::ok(x))
+                // Persist state updates (without state roots and declared classes)
+                .and_then(|x| futures::future::ok(x))
+                .inspect_ok(
+                    |x| tracing::info!(tail="TODO", len=%x.len(), "State update chunk synced"),
+                );
         }
 
         Ok(())

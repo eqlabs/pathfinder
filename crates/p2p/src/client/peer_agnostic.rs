@@ -22,7 +22,7 @@ use p2p_proto::{
     state::ContractStoredValue,
 };
 use pathfinder_common::{
-    state_update::{ContractClassUpdate, StateUpdateStats},
+    state_update::{ContractClassUpdate, ContractUpdates, StateUpdateStats},
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StateUpdate,
     StorageAddress, StorageValue,
 };
@@ -214,21 +214,21 @@ impl Client {
     /// ### Important
     ///
     /// Caller must guarantee that `start <= stop_inclusive`
-    pub fn state_update_stream(
+    pub fn contract_updates_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        getter: impl Fn(
-                BlockNumber,
-                NonZeroUsize,
-            ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>>
-            + Send
-            + Sync
-            + 'static,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<StateUpdate>>> {
+        getter: Arc<
+            impl Fn(
+                    BlockNumber,
+                    NonZeroUsize,
+                ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>>
+                + Send
+                + Sync
+                + 'static,
+        >,
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<ContractUpdates>>> {
         debug_assert!(start <= stop_inclusive);
-
-        let getter = Arc::new(getter);
 
         async_stream::try_stream! {
 
@@ -269,7 +269,7 @@ impl Client {
                     // Get state update numbers for this block
                     let mut current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
 
-                    let mut state_update = StateUpdate::default();
+                    let mut contract_updates = ContractUpdates::default();
 
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
@@ -286,12 +286,12 @@ impl Client {
                                 }
 
                                 if address == ContractAddress::ONE {
-                                    let storage = &mut state_update.system_contract_updates.entry(address).or_default().storage;
+                                    let storage = &mut contract_updates.system.entry(address).or_default().storage;
                                     values.into_iter().for_each(|ContractStoredValue { key, value }| {
                                         storage.insert(StorageAddress(key), StorageValue(value));
                                     });
                                 } else {
-                                    let update = &mut state_update.contract_updates.entry(address).or_default();
+                                    let update = &mut contract_updates.regular.entry(address).or_default();
                                     values.into_iter().for_each(|ContractStoredValue { key, value }| {
                                         update.storage.insert(StorageAddress(key), StorageValue(value));
                                     });
@@ -336,7 +336,7 @@ impl Client {
                         // All the counters for this block have been exhausted which means
                         // that the state update for this block is complete.
                         if current.num_storage_diffs == 0 && current.num_nonce_updates == 0 && current.num_deployed_contracts == 0 {
-                            yield PeerData::new(peer, std::mem::take(&mut state_update));
+                            yield PeerData::new(peer, std::mem::take(&mut contract_updates));
                             // Move to the next block
                             start = start + 1;
                             current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
