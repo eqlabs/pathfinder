@@ -19,6 +19,13 @@ pub struct StateUpdateStats {
     pub num_deployed_contracts: u64,
 }
 
+#[derive(Default, Debug, Copy, Clone, PartialEq, Dummy)]
+pub struct ContractUpdateStats {
+    pub num_storage_diffs: u64,
+    pub num_nonce_updates: u64,
+    pub num_deployed_contracts: u64,
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct StateUpdate {
     pub block_hash: BlockHash,

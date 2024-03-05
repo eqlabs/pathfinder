@@ -21,11 +21,10 @@ use p2p_proto::{
     state::ContractStoredValue,
 };
 use pathfinder_common::{
-    state_update::{ContractClassUpdate, ContractUpdates, StateUpdateStats},
+    state_update::{ContractClassUpdate, ContractUpdateStats, ContractUpdates},
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
-use smallvec::SmallVec;
 use tokio::{sync::RwLock, task::spawn_blocking};
 
 use crate::client::{conv::TryFromDto, peer_aware};
@@ -202,10 +201,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         getter: Arc<
-            impl Fn(
-                    BlockNumber,
-                    NonZeroUsize,
-                ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>>
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<Option<Vec<ContractUpdateStats>>>
                 + Send
                 + Sync
                 + 'static,
@@ -250,7 +246,7 @@ impl Client {
                     };
 
                     // Get state update numbers for this block
-                    let mut current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                    let mut current = self.contract_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
 
                     let mut contract_updates = ContractUpdates::default();
 
@@ -319,7 +315,7 @@ impl Client {
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                                        current = self.contract_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
                                         tracing::debug!(%peer, "State diff stream Fin");
                                     } else {
                                         // We're done, terminate the stream
@@ -338,24 +334,21 @@ impl Client {
         }
     }
 
-    async fn state_update_nums_for_next_block(
+    async fn contract_update_nums_for_next_block(
         &self,
         start: BlockNumber,
         stop_inclusive: BlockNumber,
-        stats: &mut SmallVec<[StateUpdateStats; 10]>,
+        stats: &mut Vec<ContractUpdateStats>,
         getter: Arc<
-            impl Fn(
-                    BlockNumber,
-                    NonZeroUsize,
-                ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>>
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<Option<Vec<ContractUpdateStats>>>
                 + Send
                 + Sync
                 + 'static,
         >,
-    ) -> anyhow::Result<StateUpdateStats> {
-        // size_of(StateUpdateStats) == 32B
-        // 30k x 32B == 960kB
-        let limit: usize = 30_000
+    ) -> anyhow::Result<ContractUpdateStats> {
+        // size_of(ContractUpdateStats) == 24B
+        // 40k x 24B == 960kB
+        let limit: usize = 40_000
             .min(stop_inclusive.get() - start.get() + 1)
             .try_into()
             .expect("pts size is 64 bits");
@@ -367,7 +360,7 @@ impl Client {
                 let new_stats = spawn_blocking(move || getter(start, limit))
                     .await
                     .context("Joining blocking task")?
-                    .context("Getting state update stats")?
+                    .context("Getting contract update stats")?
                     .ok_or(anyhow::anyhow!("No stats for this range"))?;
                 *stats = new_stats;
                 Ok(stats.pop().expect("vector is not empty"))

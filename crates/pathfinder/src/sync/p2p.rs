@@ -14,13 +14,12 @@ use p2p_proto::{
     common::{BlockNumberOrHash, Direction, Iteration},
     transaction::{TransactionsRequest, TransactionsResponse},
 };
-use pathfinder_common::state_update::StateUpdateStats;
+use pathfinder_common::state_update::ContractUpdateStats;
 use pathfinder_common::{transaction::Transaction, BlockHeader, TransactionCommitment};
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
-use smallvec::SmallVec;
 use tokio::task::spawn_blocking;
 
 use crate::state::block_hash::{
@@ -283,13 +282,13 @@ impl Sync {
         let storage = self.storage.clone();
         let getter = move |start: BlockNumber,
                            limit: NonZeroUsize|
-              -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
+              -> anyhow::Result<Option<Vec<ContractUpdateStats>>> {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;
             let db = db.transaction().context("Creating database transaction")?;
             let stats = db
-                .state_update_stats(start.into(), limit)
+                .contract_update_stats(start.into(), limit)
                 .context("Querying state updates")?;
             Ok(stats)
         };

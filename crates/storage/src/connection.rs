@@ -14,6 +14,7 @@ pub(crate) mod transaction;
 mod trie;
 
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::ContractUpdateStats;
 use pathfinder_common::state_update::StateUpdateStats;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
@@ -24,7 +25,6 @@ pub use event::{EmittedEvent, EventFilter, EventFilterError, PageOfEvents};
 
 pub(crate) use reorg_counter::ReorgCounter;
 
-use smallvec::SmallVec;
 pub use transaction::TransactionStatus;
 
 pub use trie::{Child, Node, StoredNode};
@@ -543,15 +543,30 @@ impl<'inner> Transaction<'inner> {
         state_update::highest_state_update(self)
     }
 
+    pub fn state_update_stats(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateStats>> {
+        state_update::state_update_stats(self, block)
+    }
+
     /// ### Guarantee
     /// Should the resulting sequence be empty this function will always return `None`.
     /// Items are sorted in descending order.
-    pub fn state_update_stats(
+    pub fn contract_update_stats(
         &self,
-        block: BlockId,
-        max_len: NonZeroUsize,
-    ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
-        state_update::state_update_stats(self, block, max_len)
+        start_block: BlockId,
+        max_num_blocks: NonZeroUsize,
+    ) -> anyhow::Result<Option<Vec<ContractUpdateStats>>> {
+        state_update::contract_update_stats(self, start_block, max_num_blocks)
+    }
+
+    /// ### Guarantee
+    /// Should the resulting sequence be empty this function will always return `None`.
+    /// Items are sorted in descending order.
+    pub fn num_of_declared_classes(
+        &self,
+        start_block: BlockId,
+        max_num_blocks: NonZeroUsize,
+    ) -> anyhow::Result<Option<Vec<usize>>> {
+        state_update::num_of_declared_classes(self, start_block, max_num_blocks)
     }
 
     pub fn storage_value(

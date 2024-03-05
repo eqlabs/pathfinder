@@ -1,12 +1,11 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateStats};
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdateStats, StateUpdateStats};
 use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
-use smallvec::SmallVec;
 
 use crate::{prelude::*, BlockId};
 
@@ -312,11 +311,30 @@ pub(super) fn highest_state_update(tx: &Transaction<'_>) -> anyhow::Result<Optio
         .context("Querying highest storage update")
 }
 
+// pub fn state_update_stats(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateStats>> {
+//     state_update::state_update_stats(self, block)
+// }
+
+// pub fn contract_update_stats(
+//     &self,
+//     start_block: BlockId,
+//     max_num_blocks: NonZeroUsize,
+// ) -> anyhow::Result<Option<Vec<ContractUpdateStats>>> {
+//     state_update::contract_update_stats(self, start_block, max_num_blocks)
+// }
+
+// pub fn num_of_declared_classes(
+//     &self,
+//     start_block: BlockId,
+//     max_num_blocks: NonZeroUsize,
+// ) -> anyhow::Result<Option<Vec<usize>>> {
+//     state_update::num_of_declared_classes(self, block, max_num_blocks)
+// }
+
 pub(super) fn state_update_stats(
     tx: &Transaction<'_>,
     block: BlockId,
-    max_len: NonZeroUsize,
-) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
+) -> anyhow::Result<Option<StateUpdateStats>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
         return Ok(None);
     };
@@ -325,12 +343,11 @@ pub(super) fn state_update_stats(
         .inner()
         .prepare_cached(
             r"SELECT num_storage_diffs, num_nonce_updates, num_declared_classes, num_deployed_contracts
-                FROM state_update_stats WHERE block_number >= ? ORDER BY block_number ASC LIMIT ?")
+                FROM state_update_stats WHERE block_number = ? ORDER BY block_number ASC LIMIT 1")
         .context("Preparing get state update stats statement")?;
 
-    let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
-    let mut stats = stmt
-        .query_map(params![&block_number, &max_len], |row| {
+    let stats = stmt
+        .query_row(params![&block_number], |row| {
             Ok(StateUpdateStats {
                 num_storage_diffs: row.get(0)?,
                 num_nonce_updates: row.get(1)?,
@@ -338,9 +355,78 @@ pub(super) fn state_update_stats(
                 num_deployed_contracts: row.get(3)?,
             })
         })
+        .optional()
         .context("Querying state update stats")?;
 
-    let mut ret = SmallVec::<[StateUpdateStats; 10]>::new();
+    Ok(stats)
+}
+
+pub(super) fn contract_update_stats(
+    tx: &Transaction<'_>,
+    block: BlockId,
+    max_num_blocks: NonZeroUsize,
+) -> anyhow::Result<Option<Vec<ContractUpdateStats>>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            r"SELECT num_storage_diffs, num_nonce_updates, num_deployed_contracts
+                FROM state_update_stats WHERE block_number >= ? ORDER BY block_number ASC LIMIT ?",
+        )
+        .context("Preparing get state update stats statement")?;
+
+    let max_len = u64::try_from(max_num_blocks.get()).expect("ptr size is 64 bits");
+    let mut stats = stmt
+        .query_map(params![&block_number, &max_len], |row| {
+            Ok(ContractUpdateStats {
+                num_storage_diffs: row.get(0)?,
+                num_nonce_updates: row.get(1)?,
+                num_deployed_contracts: row.get(2)?,
+            })
+        })
+        .context("Querying state update stats")?;
+
+    let mut ret = Vec::<ContractUpdateStats>::new();
+
+    while let Some(stat) = stats
+        .next()
+        .transpose()
+        .context("Iterating over state update stats rows")?
+    {
+        ret.push(stat);
+    }
+
+    ret.reverse();
+
+    Ok((!ret.is_empty()).then_some(ret))
+}
+
+pub(super) fn num_of_declared_classes(
+    tx: &Transaction<'_>,
+    block: BlockId,
+    max_num_blocks: NonZeroUsize,
+) -> anyhow::Result<Option<Vec<usize>>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            r"SELECT num_declared_classes
+                FROM state_update_stats WHERE block_number >= ? ORDER BY block_number ASC LIMIT ?",
+        )
+        .context("Preparing get state update stats statement")?;
+
+    let max_len = u64::try_from(max_num_blocks.get()).expect("ptr size is 64 bits");
+    let mut stats = stmt
+        .query_map(params![&block_number, &max_len], |row| row.get(0))
+        .context("Querying state update stats")?;
+
+    let mut ret = Vec::<usize>::new();
 
     while let Some(stat) = stats
         .next()
