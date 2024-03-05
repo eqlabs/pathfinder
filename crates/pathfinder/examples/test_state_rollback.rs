@@ -48,6 +48,7 @@ fn main() -> anyhow::Result<()> {
         from,
         to,
         to_header.storage_commitment,
+        true,
     )?;
 
     tracing::info!(

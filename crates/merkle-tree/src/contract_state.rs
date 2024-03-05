@@ -147,13 +147,14 @@ pub fn revert_contract_updates(
     head: BlockNumber,
     target_block: BlockNumber,
     expected_storage_commitment: StorageCommitment,
+    force: bool,
 ) -> anyhow::Result<()> {
     let state_root_exists = match transaction.storage_root_index(target_block)? {
         None => false,
         Some(root_idx) => transaction.storage_trie_node(root_idx)?.is_some(),
     };
 
-    if !state_root_exists {
+    if force || !state_root_exists {
         let updates = transaction.reverse_contract_updates(head, target_block)?;
 
         let mut global_tree = StorageCommitmentTree::load(transaction, head)

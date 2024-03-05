@@ -988,6 +988,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
                 head,
                 target_block,
                 target_header.storage_commitment,
+                false,
             )?;
             // FIXME: revert class trie changes
         }
