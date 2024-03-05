@@ -232,7 +232,7 @@ impl Client {
             let mut stats = Default::default();
 
             // Loop which refreshes peer set once we exhaust it.
-            loop {
+            'outer: loop {
                 let peers = self
                     .get_update_peers_with_sync_capability(protocol::StateDiffs::NAME)
                     .await;
@@ -325,19 +325,27 @@ impl Client {
                                 }
                             },
                             StateDiffsResponse::Fin => {
-                                tracing::debug!(%peer, "State diff stream Fin");
-                                continue 'next_peer;
+                                if current.num_storage_diffs == 0 && current.num_nonce_updates == 0 && current.num_deployed_contracts == 0 {
+                                    // All the counters for this block have been exhausted which means
+                                    // that the state update for this block is complete.
+                                    yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
+
+                                    if start < stop_inclusive {
+                                        // Move to the next block
+                                        start += 1;
+                                        current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                                        tracing::debug!(%peer, "State diff stream Fin");
+                                    } else {
+                                        // We're done, terminate the stream
+                                        break 'outer;
+                                    }
+                                } else {
+                                    tracing::debug!(%peer, "Premature state diff stream Fin");
+                                    // TODO punish the peer
+                                    continue 'next_peer;
+                                }
                             }
                         };
-
-                        // All the counters for this block have been exhausted which means
-                        // that the state update for this block is complete.
-                        if current.num_storage_diffs == 0 && current.num_nonce_updates == 0 && current.num_deployed_contracts == 0 {
-                            yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
-                            // Move to the next block
-                            start += 1;
-                            current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
-                        }
                     }
                 }
             }
