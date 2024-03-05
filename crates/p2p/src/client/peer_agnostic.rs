@@ -10,8 +10,14 @@ use std::{
 use anyhow::Context;
 use futures::StreamExt;
 use libp2p::PeerId;
-use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto::{
+    class::ClassesRequest,
+    state::{StateDiffsRequest, StateDiffsResponse},
+};
+use p2p_proto::{
+    class::ClassesResponse,
+    transaction::{TransactionsRequest, TransactionsResponse},
+};
 use p2p_proto::{
     common::{Direction, Iteration},
     state::ContractDiff,
@@ -361,9 +367,114 @@ impl Client {
                     .await
                     .context("Joining blocking task")?
                     .context("Getting contract update stats")?
-                    .ok_or(anyhow::anyhow!("No stats for this range"))?;
+                    .ok_or(anyhow::anyhow!("No contract update stats for this range"))?;
                 *stats = new_stats;
                 Ok(stats.pop().expect("vector is not empty"))
+            }
+        }
+    }
+
+    /// ### Important
+    ///
+    /// Caller must guarantee that `start <= stop_inclusive`
+    pub fn class_updates_stream(
+        self,
+        mut start: BlockNumber,
+        stop_inclusive: BlockNumber,
+        getter: Arc<
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<Option<Vec<usize>>>
+                + Send
+                + Sync
+                + 'static,
+        >,
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ())>>> {
+        // TODO stream item type
+        debug_assert!(start <= stop_inclusive);
+
+        async_stream::try_stream! {
+
+            // A vector that holds the number of declared classes for each block in range
+            let mut stats = Default::default();
+
+            // Loop which refreshes peer set once we exhaust it.
+            'outer: loop {
+                let peers = self
+                    .get_update_peers_with_sync_capability(protocol::Classes::NAME)
+                    .await;
+
+                // Attempt each peer.
+                'next_peer: for peer in peers {
+                    let limit = stop_inclusive.get() - start.get() + 1;
+
+                    let request = ClassesRequest {
+                        iteration: Iteration {
+                            start: start.get().into(),
+                            direction: Direction::Forward,
+                            limit,
+                            step: 1.into(),
+                        },
+                    };
+
+                    let mut responses = match self
+                        .inner
+                        .send_classes_sync_request(peer, request)
+                        .await
+                    {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // Failed to establish connection, try next peer.
+                            tracing::debug!(%peer, reason=%error, "Classes request failed");
+                            continue 'next_peer;
+                        }
+                    };
+
+                    // Get the number of declared classes for this block
+                    let mut current = self.num_of_declared_classes_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+
+                    // let mut contract_updates = ContractUpdates::default();
+
+                    while let Some(classes) = responses.next().await {
+                        match classes {
+                            ClassesResponse::Class(_) => todo!(),
+                            ClassesResponse::Fin => todo!(),
+                        };
+                    }
+
+                    yield PeerData::new(peer, (start, ())); // TODO
+                }
+            }
+        }
+    }
+
+    async fn num_of_declared_classes_for_next_block(
+        &self,
+        start: BlockNumber,
+        stop_inclusive: BlockNumber,
+        num_declared: &mut Vec<usize>,
+        getter: Arc<
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<Option<Vec<usize>>>
+                + Send
+                + Sync
+                + 'static,
+        >,
+    ) -> anyhow::Result<usize> {
+        // 40k x 8B == 320kB
+        let limit: usize = 40_000
+            .min(stop_inclusive.get() - start.get() + 1)
+            .try_into()
+            .expect("pts size is 64 bits");
+        let limit = NonZeroUsize::new(limit).expect("limit > 0");
+        let next = num_declared.pop();
+        match next {
+            Some(x) => Ok(x),
+            None => {
+                let new_chunk = spawn_blocking(move || getter(start, limit))
+                    .await
+                    .context("Joining blocking task")?
+                    .context("Getting declared classes stats")?
+                    .ok_or(anyhow::anyhow!("No declared classes stats for this range"))?;
+                *num_declared = new_chunk;
+                Ok(num_declared.pop().expect("vector is not empty"))
             }
         }
     }
