@@ -46,7 +46,7 @@ where
         .await?;
 
         if previous != state_update {
-            previous = state_update.clone();
+            previous = state_update;
             tx_event.send(SyncEvent::L1Update(state_update)).await?;
         }
 

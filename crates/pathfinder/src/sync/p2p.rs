@@ -63,7 +63,7 @@ impl Sync {
             .await
             .context("Fetching latest L1 checkpoint")?;
 
-        let local_state = LocalState::from_db(self.storage.clone(), checkpoint.clone())
+        let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
             .await
             .context("Querying local state")?;
 

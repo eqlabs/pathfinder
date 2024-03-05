@@ -309,7 +309,7 @@ impl Client {
                                         update.nonce = Some(ContractNonce(nonce));
                                     }
 
-                                    if let Some(class_hash) = class_hash.map(|x| ClassHash(x)) {
+                                    if let Some(class_hash) = class_hash.map(ClassHash) {
                                         match current.num_deployed_contracts.checked_sub(1) {
                                             Some(x) => current.num_deployed_contracts = x,
                                             None => {
@@ -338,7 +338,7 @@ impl Client {
                         if current.num_storage_diffs == 0 && current.num_nonce_updates == 0 && current.num_deployed_contracts == 0 {
                             yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
                             // Move to the next block
-                            start = start + 1;
+                            start += 1;
                             current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
                         }
                     }
