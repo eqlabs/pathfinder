@@ -30,6 +30,8 @@ use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
 
+use self::state_updates::ContractDiffSyncError;
+
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
 pub struct Sync {
@@ -415,7 +417,7 @@ impl Sync {
             .context("Finding next missing state update")?
         {
             let getter = getter.clone();
-            let _stream = self
+            let result = self
                 .p2p
                 .clone()
                 .contract_updates_stream(start, stop, getter)
@@ -427,7 +429,22 @@ impl Sync {
                 })
                 // Persist state updates (without: state commitments and declared classes)
                 .and_then(|x| state_updates::persist(self.storage.clone(), x))
-                .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"));
+                .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
+                // Drive stream to completion.
+                .try_fold((), |_, _| std::future::ready(Ok(())))
+                .await;
+
+            match result {
+                Ok(()) => {
+                    tracing::info!("Syncing contract updates complete");
+                }
+                Err(ContractDiffSyncError::StorageCommitmentMismatch(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: storage commitment mismatch");
+                }
+                Err(ContractDiffSyncError::DatabaseOrComputeError(error)) => {
+                    tracing::debug!(%error, "Error while streaming contract updates");
+                }
+            }
         }
 
         Ok(())
