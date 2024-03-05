@@ -54,15 +54,6 @@ pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventRe
         transport::create(&keypair, relay_transport),
         behaviour,
         local_peer_id,
-        // libp2p v0.52 related change: `libp2p::swarm::keep_alive`` has been deprecated and
-        // it is advised to set the idle connection timeout to maximum value instead.
-        //
-        // TODO but ultimately do we really need keep_alive?
-        // 1. sync status message was removed in the latest spec, but as we used it partially to
-        //    maintain connection with peers, we're using keep alive instead
-        // 2. I'm not sure if we really need keep alive, as connections should be closed when not used
-        //    because they consume resources, and in general we should be managing connections in a wiser manner,
-        //    the deprecated `libp2p::swarm::keep_alive::Behaviour` was supposed to be mostly used for testing anyway.
         swarm::Config::with_tokio_executor().with_idle_connection_timeout(Duration::MAX),
     );
 
