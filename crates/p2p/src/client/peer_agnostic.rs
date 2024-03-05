@@ -10,24 +10,13 @@ use std::{
 use anyhow::Context;
 use futures::StreamExt;
 use libp2p::PeerId;
-use p2p_proto::{
-    class::ClassesRequest,
-    state::{StateDiffsRequest, StateDiffsResponse},
-};
-use p2p_proto::{
-    class::ClassesResponse,
-    transaction::{TransactionsRequest, TransactionsResponse},
-};
-use p2p_proto::{
-    common::{Direction, Iteration},
-    state::ContractDiff,
-};
-use p2p_proto::{
-    header::{BlockHeadersRequest, BlockHeadersResponse},
-    state::ContractStoredValue,
-};
+use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest, ClassesResponse};
+use p2p_proto::common::{Direction, Iteration};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdateStats, ContractUpdates};
 use pathfinder_common::{
-    state_update::{ContractClassUpdate, ContractUpdateStats, ContractUpdates},
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
@@ -252,15 +241,30 @@ impl Client {
                     };
 
                     // Get state update numbers for this block
-                    let mut current = self.contract_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                    let mut current = self
+                        .contract_update_nums_for_next_block(
+                            start,
+                            stop_inclusive,
+                            &mut stats,
+                            getter.clone(),
+                        )
+                        .await?;
 
                     let mut contract_updates = ContractUpdates::default();
 
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
-                            StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, is_replaced, values, domain: _ }) => {
+                            StateDiffsResponse::ContractDiff(ContractDiff {
+                                address,
+                                nonce,
+                                class_hash,
+                                is_replaced,
+                                values,
+                                domain: _,
+                            }) => {
                                 let address = ContractAddress(address.0);
-                                let num_values = u64::try_from(values.len()).expect("ptr size is 64 bits");
+                                let num_values =
+                                    u64::try_from(values.len()).expect("ptr size is 64 bits");
                                 match current.num_storage_diffs.checked_sub(num_values) {
                                     Some(x) => current.num_storage_diffs = x,
                                     None => {
@@ -271,15 +275,26 @@ impl Client {
                                 }
 
                                 if address == ContractAddress::ONE {
-                                    let storage = &mut contract_updates.system.entry(address).or_default().storage;
-                                    values.into_iter().for_each(|ContractStoredValue { key, value }| {
-                                        storage.insert(StorageAddress(key), StorageValue(value));
-                                    });
+                                    let storage = &mut contract_updates
+                                        .system
+                                        .entry(address)
+                                        .or_default()
+                                        .storage;
+                                    values.into_iter().for_each(
+                                        |ContractStoredValue { key, value }| {
+                                            storage.insert(StorageAddress(key), StorageValue(value));
+                                        },
+                                    );
                                 } else {
-                                    let update = &mut contract_updates.regular.entry(address).or_default();
-                                    values.into_iter().for_each(|ContractStoredValue { key, value }| {
-                                        update.storage.insert(StorageAddress(key), StorageValue(value));
-                                    });
+                                    let update =
+                                        &mut contract_updates.regular.entry(address).or_default();
+                                    values.into_iter().for_each(
+                                        |ContractStoredValue { key, value }| {
+                                            update
+                                                .storage
+                                                .insert(StorageAddress(key), StorageValue(value));
+                                        },
+                                    );
 
                                     if let Some(nonce) = nonce {
                                         match current.num_nonce_updates.checked_sub(1) {
@@ -305,23 +320,38 @@ impl Client {
                                         }
 
                                         if is_replaced.unwrap_or_default() {
-                                            update.class = Some(ContractClassUpdate::Replace(class_hash));
+                                            update.class =
+                                                Some(ContractClassUpdate::Replace(class_hash));
                                         } else {
-                                            update.class = Some(ContractClassUpdate::Deploy(class_hash));
+                                            update.class =
+                                                Some(ContractClassUpdate::Deploy(class_hash));
                                         }
                                     }
                                 }
-                            },
+                            }
                             StateDiffsResponse::Fin => {
-                                if current.num_storage_diffs == 0 && current.num_nonce_updates == 0 && current.num_deployed_contracts == 0 {
+                                if current.num_storage_diffs == 0
+                                    && current.num_nonce_updates == 0
+                                    && current.num_deployed_contracts == 0
+                                {
                                     // All the counters for this block have been exhausted which means
                                     // that the state update for this block is complete.
-                                    yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
+                                    yield PeerData::new(
+                                        peer,
+                                        (start, std::mem::take(&mut contract_updates)),
+                                    );
 
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = self.contract_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                                        current = self
+                                            .contract_update_nums_for_next_block(
+                                                start,
+                                                stop_inclusive,
+                                                &mut stats,
+                                                getter.clone(),
+                                            )
+                                            .await?;
                                         tracing::debug!(%peer, "State diff stream Fin");
                                     } else {
                                         // We're done, terminate the stream
@@ -394,7 +424,7 @@ impl Client {
         async_stream::try_stream! {
 
             // A vector that holds the number of declared classes for each block in range
-            let mut stats = Default::default();
+            let mut declared_classes_counters = Default::default();
 
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
@@ -415,10 +445,7 @@ impl Client {
                         },
                     };
 
-                    let mut responses = match self
-                        .inner
-                        .send_classes_sync_request(peer, request)
-                        .await
+                    let mut responses = match self.inner.send_classes_sync_request(peer, request).await
                     {
                         Ok(x) => x,
                         Err(error) => {
@@ -429,14 +456,60 @@ impl Client {
                     };
 
                     // Get the number of declared classes for this block
-                    let mut current = self.num_of_declared_classes_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                    let mut current = self
+                        .num_of_declared_classes_for_next_block(
+                            start,
+                            stop_inclusive,
+                            &mut declared_classes_counters,
+                            getter.clone(),
+                        )
+                        .await?;
 
                     // let mut contract_updates = ContractUpdates::default();
 
                     while let Some(classes) = responses.next().await {
                         match classes {
-                            ClassesResponse::Class(_) => todo!(),
-                            ClassesResponse::Fin => todo!(),
+                            ClassesResponse::Class(Class::Cairo0 {
+                                class,
+                                domain: _, // TODO
+                                class_hash,
+                            }) => todo!(),
+                            ClassesResponse::Class(Class::Cairo1 {
+                                class,
+                                domain: _, // TODO
+                                class_hash,
+                            }) => todo!(),
+                            ClassesResponse::Fin => {
+                                if current == 0 {
+                                    // The counter for this block has been exhausted which means
+                                    // that the classes update for this block is complete.
+                                    // TODO
+                                    //  |
+                                    //  V
+                                    // yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
+
+                                    if start < stop_inclusive {
+                                        // Move to the next block
+                                        start += 1;
+                                        current = self
+                                            .num_of_declared_classes_for_next_block(
+                                                start,
+                                                stop_inclusive,
+                                                &mut declared_classes_counters,
+                                                getter.clone(),
+                                            )
+                                            .await?;
+                                        tracing::debug!(%peer, "Classes stream Fin");
+                                    } else {
+                                        // We're done, terminate the stream
+                                        break 'outer;
+                                    }
+                                } else {
+                                    tracing::debug!(%peer, "Premature state diff stream Fin");
+                                    // TODO punish the peer
+                                    continue 'next_peer;
+                                }
+                            }
                         };
                     }
 
