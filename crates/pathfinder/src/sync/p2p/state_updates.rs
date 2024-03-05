@@ -56,7 +56,7 @@ pub(super) struct VerificationOk {
     contract_updates: ContractUpdates,
 }
 
-pub async fn verify_storage_commitments(
+pub(super) async fn verify(
     storage: Storage,
     contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
     verify_trie_hashes: bool,
@@ -66,14 +66,14 @@ pub async fn verify_storage_commitments(
 
         contract_updates
             .into_par_iter()
-            .map(|x| verify(storage.clone(), x, verify_trie_hashes))
+            .map(|x| verify_one(storage.clone(), x, verify_trie_hashes))
             .collect::<Result<Vec<_>, _>>()
     })
     .await
     .context("Joining blocking task")?
 }
 
-fn verify(
+fn verify_one(
     storage: Storage,
     contract_updates: PeerData<(BlockNumber, ContractUpdates)>,
     verify_hashes: bool,

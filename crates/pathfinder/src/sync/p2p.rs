@@ -30,8 +30,6 @@ use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
 
-use self::state_updates::ContractDiffSyncError;
-
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
 pub struct Sync {
@@ -421,15 +419,11 @@ impl Sync {
                 .p2p
                 .clone()
                 .contract_updates_stream(start, stop, getter)
-                .map_err(|e| ContractDiffSyncError::from(e))
+                .map_err(Into::into)
                 .try_chunks(100)
                 .map_err(|e| e.1)
                 .and_then(|x| {
-                    state_updates::verify_storage_commitments(
-                        self.storage.clone(),
-                        x,
-                        false, /*TODO*/
-                    )
+                    state_updates::verify(self.storage.clone(), x, false /*TODO*/)
                 })
                 // Persist state updates (without: state commitments and declared classes)
                 .and_then(|x| state_updates::persist(self.storage.clone(), x))
