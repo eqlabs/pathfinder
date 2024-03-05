@@ -52,9 +52,6 @@ pub struct Client {
     peers_with_capability: Arc<RwLock<PeersWithCapability>>,
 }
 
-// TODO Rework the API!
-// I.e. make sure the api looks reasonable from the perspective of
-// the __user__, which is the sync driving algo/entity.
 impl Client {
     pub fn new(inner: peer_aware::Client, block_propagation_topic: String) -> Self {
         Self {
