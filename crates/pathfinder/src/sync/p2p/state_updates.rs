@@ -36,8 +36,8 @@ pub(super) async fn next_missing(
         let db = db.transaction().context("Creating database transaction")?;
 
         if let Some(highest) = db
-            .highest_state_update()
-            .context("Querying highest state update")?
+            .highest_block_with_state_update()
+            .context("Querying highest block with state update")?
         {
             Ok((highest < head).then_some(highest + 1))
         } else {

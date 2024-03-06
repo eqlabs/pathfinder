@@ -22,7 +22,7 @@ use p2p_proto::{
     state::ContractStoredValue,
 };
 use pathfinder_common::{
-    state_update::{ContractClassUpdate, ContractUpdates, StateUpdateStats},
+    state_update::{ContractClassUpdate, ContractUpdates, StateUpdateCounts},
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
@@ -219,7 +219,7 @@ impl Client {
             impl Fn(
                     BlockNumber,
                     NonZeroUsize,
-                ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>>
+                ) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>>
                 + Send
                 + Sync
                 + 'static,
@@ -229,7 +229,7 @@ impl Client {
 
         async_stream::try_stream! {
 
-            let mut stats = Default::default();
+            let mut counts = Default::default();
 
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
@@ -264,7 +264,7 @@ impl Client {
                     };
 
                     // Get state update numbers for this block
-                    let mut current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                    let mut current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut counts, getter.clone()).await?;
 
                     let mut contract_updates = ContractUpdates::default();
 
@@ -273,10 +273,10 @@ impl Client {
                             StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, is_replaced, values, domain: _ }) => {
                                 let address = ContractAddress(address.0);
                                 let num_values = u64::try_from(values.len()).expect("ptr size is 64 bits");
-                                match current.num_storage_diffs.checked_sub(num_values) {
-                                    Some(x) => current.num_storage_diffs = x,
+                                match current.storage_diffs.checked_sub(num_values) {
+                                    Some(x) => current.storage_diffs = x,
                                     None => {
-                                        tracing::debug!(%peer, "Too many storage diffs: {num_values} > {}", current.num_storage_diffs);
+                                        tracing::debug!(%peer, "Too many storage diffs: {num_values} > {}", current.storage_diffs);
                                         // TODO punish the peer
                                         continue 'next_peer;
                                     }
@@ -294,8 +294,8 @@ impl Client {
                                     });
 
                                     if let Some(nonce) = nonce {
-                                        match current.num_nonce_updates.checked_sub(1) {
-                                            Some(x) => current.num_nonce_updates = x,
+                                        match current.nonce_updates.checked_sub(1) {
+                                            Some(x) => current.nonce_updates = x,
                                             None => {
                                                 tracing::debug!(%peer, "Too many nonce updates");
                                                 // TODO punish the peer
@@ -307,8 +307,8 @@ impl Client {
                                     }
 
                                     if let Some(class_hash) = class_hash.map(ClassHash) {
-                                        match current.num_deployed_contracts.checked_sub(1) {
-                                            Some(x) => current.num_deployed_contracts = x,
+                                        match current.deployed_contracts.checked_sub(1) {
+                                            Some(x) => current.deployed_contracts = x,
                                             None => {
                                                 tracing::debug!(%peer, "Too many deployed contracts");
                                                 // TODO punish the peer
@@ -325,7 +325,7 @@ impl Client {
                                 }
                             },
                             StateDiffsResponse::Fin => {
-                                if current.num_storage_diffs == 0 && current.num_nonce_updates == 0 && current.num_deployed_contracts == 0 {
+                                if current.storage_diffs == 0 && current.nonce_updates == 0 && current.deployed_contracts == 0 {
                                     // All the counters for this block have been exhausted which means
                                     // that the state update for this block is complete.
                                     yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
@@ -333,7 +333,7 @@ impl Client {
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut stats, getter.clone()).await?;
+                                        current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut counts, getter.clone()).await?;
                                         tracing::debug!(%peer, "State diff stream Fin");
                                     } else {
                                         // We're done, terminate the stream
@@ -356,35 +356,35 @@ impl Client {
         &self,
         start: BlockNumber,
         stop_inclusive: BlockNumber,
-        stats: &mut SmallVec<[StateUpdateStats; 10]>,
+        counts: &mut SmallVec<[StateUpdateCounts; 10]>,
         getter: Arc<
             impl Fn(
                     BlockNumber,
                     NonZeroUsize,
-                ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>>
+                ) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>>
                 + Send
                 + Sync
                 + 'static,
         >,
-    ) -> anyhow::Result<StateUpdateStats> {
-        // size_of(StateUpdateStats) == 32B
+    ) -> anyhow::Result<StateUpdateCounts> {
+        // size_of(StateUpdateCounts) == 32B
         // 30k x 32B == 960kB
         let limit: usize = 30_000
             .min(stop_inclusive.get() - start.get() + 1)
             .try_into()
             .expect("pts size is 64 bits");
         let limit = NonZeroUsize::new(limit).expect("limit > 0");
-        let next = stats.pop();
+        let next = counts.pop();
         match next {
             Some(x) => Ok(x),
             None => {
-                let new_stats = spawn_blocking(move || getter(start, limit))
+                let new_counts = spawn_blocking(move || getter(start, limit))
                     .await
                     .context("Joining blocking task")?
-                    .context("Getting state update stats")?
-                    .ok_or(anyhow::anyhow!("No stats for this range"))?;
-                *stats = new_stats;
-                Ok(stats.pop().expect("vector is not empty"))
+                    .context("Getting state update counts")?
+                    .ok_or(anyhow::anyhow!("No counts for this range"))?;
+                *counts = new_counts;
+                Ok(counts.pop().expect("vector is not empty"))
             }
         }
     }

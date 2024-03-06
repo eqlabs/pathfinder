@@ -12,11 +12,11 @@ use crate::{
 };
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Dummy)]
-pub struct StateUpdateStats {
-    pub num_storage_diffs: u64,
-    pub num_nonce_updates: u64,
-    pub num_declared_classes: u64,
-    pub num_deployed_contracts: u64,
+pub struct StateUpdateCounts {
+    pub storage_diffs: u64,
+    pub nonce_updates: u64,
+    pub declared_classes: u64,
+    pub deployed_contracts: u64,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]

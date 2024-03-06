@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateStats};
+use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateCounts};
 use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StateUpdate, StorageAddress, StorageCommitment, StorageValue,
@@ -96,27 +96,27 @@ pub(super) fn insert_state_update(
     Ok(())
 }
 
-/// Inserts a [StateUpdateStats] instance into storage.
-pub(super) fn insert_state_update_stats(
+/// Inserts a [StateUpdateCounts] instance into storage.
+pub(super) fn insert_state_update_counts(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    state_update_stats: &StateUpdateStats,
+    counts: &StateUpdateCounts,
 ) -> anyhow::Result<()> {
     let mut stmt = tx
         .inner()
         .prepare_cached(
-            "INSERT INTO state_update_stats (block_number, num_storage_diffs, num_nonce_updates, num_declared_classes, num_deployed_contracts) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO state_update_counts (block_number, storage_diffs, nonce_updates, declared_classes, deployed_contracts) VALUES (?, ?, ?, ?, ?)",
         )
         .context("Preparing insert statement")?;
 
     stmt.execute(params![
         &block_number,
-        &state_update_stats.num_storage_diffs,
-        &state_update_stats.num_nonce_updates,
-        &state_update_stats.num_declared_classes,
-        &state_update_stats.num_deployed_contracts
+        &counts.storage_diffs,
+        &counts.nonce_updates,
+        &counts.declared_classes,
+        &counts.deployed_contracts
     ])
-    .context("Inserting state update stats")?;
+    .context("Inserting state update counts")?;
 
     Ok(())
 }
@@ -303,7 +303,9 @@ pub(super) fn state_update(
     Ok(Some(state_update))
 }
 
-pub(super) fn highest_state_update(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
+pub(super) fn highest_block_with_state_update(
+    tx: &Transaction<'_>,
+) -> anyhow::Result<Option<BlockNumber>> {
     let mut stmt = tx.inner().prepare_cached(
         r"SELECT block_number FROM storage_updates ORDER BY block_number DESC LIMIT 1",
     )?;
@@ -312,11 +314,11 @@ pub(super) fn highest_state_update(tx: &Transaction<'_>) -> anyhow::Result<Optio
         .context("Querying highest storage update")
 }
 
-pub(super) fn state_update_stats(
+pub(super) fn state_update_counts(
     tx: &Transaction<'_>,
     block: BlockId,
     max_len: NonZeroUsize,
-) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
+) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
         return Ok(None);
     };
@@ -324,28 +326,29 @@ pub(super) fn state_update_stats(
     let mut stmt = tx
         .inner()
         .prepare_cached(
-            r"SELECT num_storage_diffs, num_nonce_updates, num_declared_classes, num_deployed_contracts
-                FROM state_update_stats WHERE block_number >= ? ORDER BY block_number ASC LIMIT ?")
-        .context("Preparing get state update stats statement")?;
+            r"SELECT storage_diffs, nonce_updates, declared_classes, deployed_contracts
+                FROM state_update_counts WHERE block_number >= ? ORDER BY block_number ASC LIMIT ?",
+        )
+        .context("Preparing get state update counts statement")?;
 
     let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
-    let mut stats = stmt
+    let mut counts = stmt
         .query_map(params![&block_number, &max_len], |row| {
-            Ok(StateUpdateStats {
-                num_storage_diffs: row.get(0)?,
-                num_nonce_updates: row.get(1)?,
-                num_declared_classes: row.get(2)?,
-                num_deployed_contracts: row.get(3)?,
+            Ok(StateUpdateCounts {
+                storage_diffs: row.get(0)?,
+                nonce_updates: row.get(1)?,
+                declared_classes: row.get(2)?,
+                deployed_contracts: row.get(3)?,
             })
         })
-        .context("Querying state update stats")?;
+        .context("Querying state update counts")?;
 
-    let mut ret = SmallVec::<[StateUpdateStats; 10]>::new();
+    let mut ret = SmallVec::<[StateUpdateCounts; 10]>::new();
 
-    while let Some(stat) = stats
+    while let Some(stat) = counts
         .next()
         .transpose()
-        .context("Iterating over state update stats rows")?
+        .context("Iterating over state update counts rows")?
     {
         ret.push(stat);
     }

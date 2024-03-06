@@ -17,7 +17,7 @@ use p2p_proto::{
     transaction::{TransactionsRequest, TransactionsResponse},
 };
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::StateUpdateStats;
+use pathfinder_common::state_update::StateUpdateCounts;
 use pathfinder_common::{transaction::Transaction, BlockHeader};
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_ethereum::EthereumStateUpdate;
@@ -30,7 +30,7 @@ use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
 
-use self::state_updates::ContractDiffSyncError;
+use state_updates::ContractDiffSyncError;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -65,7 +65,7 @@ impl Sync {
             .await
             .context("Fetching latest L1 checkpoint")?;
 
-        let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
+        let local_state = LocalState::from_db(self.storage.clone(), checkpoint.clone())
             .await
             .context("Querying local state")?;
 
@@ -80,9 +80,11 @@ impl Sync {
         // necessary being rolled back (potentially all data if the header sync process is frequently interrupted), so this
         // ensures sync will progress even under bad conditions.
         let anchor = checkpoint;
-        persist_anchor(self.storage.clone(), anchor)
+        persist_anchor(self.storage.clone(), anchor.clone())
             .await
             .context("Persisting new Ethereum anchor")?;
+
+        let head = anchor.block_number;
 
         // Sync missing headers in reverse chronological order, from the new anchor to genesis.
         self.sync_headers(anchor).await.context("Syncing headers")?;
@@ -93,7 +95,7 @@ impl Sync {
             .context("Syncing transactions")?;
 
         // Sync the rest of the data in chronological order.
-        self.sync_state_updates(anchor.block_number)
+        self.sync_state_updates(head)
             .await
             .context("Syncing state updates")?;
 
@@ -400,15 +402,15 @@ impl Sync {
         let storage = self.storage.clone();
         let getter = move |start: BlockNumber,
                            limit: NonZeroUsize|
-              -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
+              -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>> {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;
             let db = db.transaction().context("Creating database transaction")?;
-            let stats = db
-                .state_update_stats(start.into(), limit)
+            let counts = db
+                .state_update_counts(start.into(), limit)
                 .context("Querying state updates")?;
-            Ok(stats)
+            Ok(counts)
         };
         let getter = Arc::new(getter);
 

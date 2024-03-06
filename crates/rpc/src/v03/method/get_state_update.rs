@@ -434,7 +434,7 @@ pub(crate) mod types {
 mod tests {
     use super::types::StateUpdate;
     use super::*;
-    use pathfinder_storage::fake::StorageInitItem;
+    use pathfinder_storage::fake::Block;
     use serde_json::json;
 
     use pathfinder_common::macro_prelude::*;
@@ -463,7 +463,7 @@ mod tests {
 
         let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
             .into_iter()
-            .map(|StorageInitItem { state_update, .. }| state_update.into())
+            .map(|Block { state_update, .. }| state_update.into())
             .collect();
 
         let context = RpcContext::for_tests().with_storage(storage);

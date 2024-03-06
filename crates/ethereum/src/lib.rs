@@ -16,7 +16,7 @@ pub mod core_addr {
         Decoder::Hex.decode(b"4737c0c1B4D5b1A687B42610DdabEE781152359c");
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EthereumStateUpdate {
     pub state_root: StateCommitment,
     pub block_number: BlockNumber,

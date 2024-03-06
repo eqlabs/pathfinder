@@ -6,7 +6,7 @@ use pathfinder_common::{ClassHash, SierraHash, StateUpdate};
 use rand::Rng;
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct StorageInitItem {
+pub struct Block {
     pub header: SignedBlockHeader,
     pub transaction_data: Vec<(common::Transaction, Receipt)>,
     pub state_update: StateUpdate,
@@ -16,22 +16,18 @@ pub struct StorageInitItem {
 
 /// Initialize [`Storage`] with fake blocks and state updates
 /// maintaining [**limited consistency guarantees**](crate::fake::init::with_n_blocks)
-pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<StorageInitItem> {
+pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<Block> {
     let mut rng = rand::thread_rng();
     with_n_blocks_and_rng(storage, n, &mut rng)
 }
 
 /// Same as [`with_n_blocks`] except caller can specify the rng used
-pub fn with_n_blocks_and_rng<R: Rng>(
-    storage: &Storage,
-    n: usize,
-    rng: &mut R,
-) -> Vec<StorageInitItem> {
+pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -> Vec<Block> {
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
     let fake_data = init::with_n_blocks_and_rng(n, rng);
     fake_data.iter().for_each(
-        |StorageInitItem {
+        |Block {
              header,
              transaction_data,
              state_update,
@@ -51,7 +47,7 @@ pub fn with_n_blocks_and_rng<R: Rng>(
             .unwrap();
             tx.insert_signature(header.header.number, &header.signature)
                 .unwrap();
-            tx.insert_state_update_stats(header.header.number, &header.state_update_stats)
+            tx.insert_state_update_counts(header.header.number, &header.state_update_counts)
                 .unwrap();
 
             state_update
@@ -103,7 +99,7 @@ pub mod init {
     use rand::Rng;
     use starknet_gateway_types::class_definition;
 
-    use super::StorageInitItem;
+    use super::Block;
 
     /// Create fake blocks and state updates with __limited consistency guarantees__:
     /// - block headers:
@@ -127,13 +123,13 @@ pub mod init {
     ///     - casm definitions for sierra classes are empty
     ///
     ///     
-    pub fn with_n_blocks(n: usize) -> Vec<StorageInitItem> {
+    pub fn with_n_blocks(n: usize) -> Vec<Block> {
         let mut rng = rand::thread_rng();
         with_n_blocks_and_rng(n, &mut rng)
     }
 
     /// Same as [`with_n_blocks`] except caller can specify the rng used
-    pub fn with_n_blocks_and_rng<R: Rng>(n: usize, rng: &mut R) -> Vec<StorageInitItem> {
+    pub fn with_n_blocks_and_rng<R: Rng>(n: usize, rng: &mut R) -> Vec<Block> {
         let mut init = Vec::with_capacity(n);
 
         for i in 0..n {
@@ -201,7 +197,7 @@ pub mod init {
                 })
                 .collect::<Vec<_>>();
 
-            init.push(StorageInitItem {
+            init.push(Block {
                 header: SignedBlockHeader {
                     header,
                     signature: Faker.fake_with_rng(rng),
@@ -246,7 +242,7 @@ pub mod init {
         // "Fix" block headers and state updates
         //
         if !init.is_empty() {
-            let StorageInitItem {
+            let Block {
                 header,
                 state_update,
                 ..
@@ -263,7 +259,7 @@ pub mod init {
                 let (parent_hash, parent_state_commitment, deployed_in_parent) = init
                     .get(i - 1)
                     .map(
-                        |StorageInitItem {
+                        |Block {
                              header,
                              state_update,
                              ..
@@ -285,7 +281,7 @@ pub mod init {
                         },
                     )
                     .unwrap();
-                let StorageInitItem {
+                let Block {
                     header,
                     state_update,
                     ..
@@ -324,32 +320,33 @@ pub mod init {
                 }
             }
 
-            // Update stats
-            for StorageInitItem {
+            // Update counts
+            for Block {
                 header:
                     SignedBlockHeader {
-                        state_update_stats, ..
+                        state_update_counts,
+                        ..
                     },
                 state_update,
                 ..
             } in init.iter_mut()
             {
-                state_update_stats.num_storage_diffs = state_update.contract_updates.iter().fold(
+                state_update_counts.storage_diffs = state_update.contract_updates.iter().fold(
                     state_update
                         .system_contract_updates
                         .iter()
                         .fold(0, |acc, (_, u)| acc + u.storage.len()),
                     |acc, (_, u)| acc + u.storage.len(),
                 ) as u64;
-                state_update_stats.num_nonce_updates = state_update
+                state_update_counts.nonce_updates = state_update
                     .contract_updates
                     .iter()
                     .filter(|(_, u)| u.nonce.is_some())
                     .count() as u64;
-                state_update_stats.num_declared_classes =
-                    (state_update.declared_cairo_classes.len()
-                        + state_update.declared_sierra_classes.len()) as u64;
-                state_update_stats.num_deployed_contracts = state_update
+                state_update_counts.declared_classes = (state_update.declared_cairo_classes.len()
+                    + state_update.declared_sierra_classes.len())
+                    as u64;
+                state_update_counts.deployed_contracts = state_update
                     .contract_updates
                     .iter()
                     .filter(|(_, u)| u.class.is_some())

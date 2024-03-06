@@ -142,11 +142,11 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            if let Some(stats) =
-                db_tx.state_update_stats(block_number.into(), NonZeroUsize::new(1).expect("1>0"))?
+            if let Some(counts) = db_tx
+                .state_update_counts(block_number.into(), NonZeroUsize::new(1).expect("1>0"))?
             {
-                // Safety: `state_update_stats` returns `None` in case of an empty sequence.
-                let stats = stats[0];
+                // Safety: `state_update_counts` returns `None` in case of an empty sequence.
+                let counts = counts[0];
 
                 let txn_count = header
                     .transaction_count
@@ -184,10 +184,10 @@ fn get_header(
                     gas_price_fri: header.strk_l1_gas_price.0,
                     data_gas_price_wei: header.eth_l1_data_gas_price.0,
                     data_gas_price_fri: header.strk_l1_data_gas_price.0,
-                    num_storage_diffs: stats.num_storage_diffs,
-                    num_nonce_updates: stats.num_nonce_updates,
-                    num_declared_classes: stats.num_declared_classes,
-                    num_deployed_contracts: stats.num_deployed_contracts,
+                    num_storage_diffs: counts.storage_diffs,
+                    num_nonce_updates: counts.nonce_updates,
+                    num_declared_classes: counts.declared_classes,
+                    num_deployed_contracts: counts.deployed_contracts,
                     l1_data_availability_mode: header.l1_da_mode.to_dto(),
                     signatures: vec![ConsensusSignature {
                         r: signature.r.0,

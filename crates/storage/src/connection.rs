@@ -14,7 +14,7 @@ pub(crate) mod transaction;
 mod trie;
 
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::StateUpdateStats;
+use pathfinder_common::state_update::StateUpdateCounts;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 
@@ -540,31 +540,31 @@ impl<'inner> Transaction<'inner> {
         state_update::insert_state_update(self, block_number, state_update)
     }
 
-    pub fn insert_state_update_stats(
+    pub fn insert_state_update_counts(
         &self,
         block_number: BlockNumber,
-        stats: &StateUpdateStats,
+        counts: &StateUpdateCounts,
     ) -> anyhow::Result<()> {
-        state_update::insert_state_update_stats(self, block_number, stats)
+        state_update::insert_state_update_counts(self, block_number, counts)
     }
 
     pub fn state_update(&self, block: BlockId) -> anyhow::Result<Option<StateUpdate>> {
         state_update::state_update(self, block)
     }
 
-    pub fn highest_state_update(&self) -> anyhow::Result<Option<BlockNumber>> {
-        state_update::highest_state_update(self)
+    pub fn highest_block_with_state_update(&self) -> anyhow::Result<Option<BlockNumber>> {
+        state_update::highest_block_with_state_update(self)
     }
 
     /// ### Guarantee
     /// Should the resulting sequence be empty this function will always return `None`.
     /// Items are sorted in descending order.
-    pub fn state_update_stats(
+    pub fn state_update_counts(
         &self,
         block: BlockId,
         max_len: NonZeroUsize,
-    ) -> anyhow::Result<Option<SmallVec<[StateUpdateStats; 10]>>> {
-        state_update::state_update_stats(self, block, max_len)
+    ) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>> {
+        state_update::state_update_counts(self, block, max_len)
     }
 
     pub fn storage_value(

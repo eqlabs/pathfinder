@@ -120,7 +120,7 @@ mod prop {
         StorageAddress, StorageCommitment, StorageValue, TransactionHash, TransactionIndex,
     };
     use pathfinder_crypto::Felt;
-    use pathfinder_storage::fake::StorageInitItem;
+    use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use std::collections::HashMap;
     use tokio::runtime::Runtime;
@@ -163,7 +163,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|StorageInitItem { mut header, .. }| {
+                .into_iter().map(|Block { mut header, .. }| {
                     // P2P headers don't carry class commitment and storage commitment, so zero them just like `try_from_dto` does
                     header.header.class_commitment = ClassCommitment::ZERO;
                     header.header.storage_commitment = StorageCommitment::ZERO;
@@ -204,7 +204,7 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|StorageInitItem { header, state_update, .. }|
+                .map(|Block { header, state_update, .. }|
                     (
                         header.header.number, // Block number
                         state_update.contract_updates,
@@ -278,7 +278,7 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|StorageInitItem { header, cairo_defs, sierra_defs, .. }|
+                .map(|Block { header, cairo_defs, sierra_defs, .. }|
                     (
                         // Block number
                         header.header.number,
@@ -365,7 +365,7 @@ mod prop {
             // These are the transactions that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|StorageInitItem { header, transaction_data, .. }|
+                .map(|Block { header, transaction_data, .. }|
                     (
                         // Block number
                         header.header.number,
@@ -417,7 +417,7 @@ mod prop {
             // These are the receipts that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|StorageInitItem { header, transaction_data, .. }|
+                .map(|Block { header, transaction_data, .. }|
                     (
                         // Block number
                         header.header.number,
@@ -464,7 +464,7 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|StorageInitItem { header, transaction_data, .. }|
+                .map(|Block { header, transaction_data, .. }|
                     (
                         // Block number
                         header.header.number,
@@ -501,12 +501,12 @@ mod prop {
     /// Fixtures for prop tests
     mod fixtures {
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
-        use pathfinder_storage::fake::{with_n_blocks_and_rng, StorageInitItem};
+        use pathfinder_storage::fake::{with_n_blocks_and_rng, Block};
         use pathfinder_storage::Storage;
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 
-        pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, Vec<StorageInitItem>) {
+        pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, Vec<Block>) {
             use rand::SeedableRng;
             let storage = Storage::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
@@ -521,16 +521,16 @@ mod prop {
     mod overlapping {
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
         use p2p_proto::common::{Direction, Step};
-        use pathfinder_storage::fake::StorageInitItem;
+        use pathfinder_storage::fake::Block;
 
         pub fn get(
-            from_db: Vec<StorageInitItem>,
+            from_db: Vec<Block>,
             start_block: u64,
             limit: u64,
             step: Step,
             num_blocks: u64,
             direction: Direction,
-        ) -> Vec<StorageInitItem> {
+        ) -> Vec<Block> {
             match direction {
                 Direction::Forward => forward(from_db, start_block, limit, step).collect(),
                 Direction::Backward => {
@@ -540,11 +540,11 @@ mod prop {
         }
 
         fn forward(
-            from_db: Vec<StorageInitItem>,
+            from_db: Vec<Block>,
             start_block: u64,
             limit: u64,
             step: Step,
-        ) -> impl Iterator<Item = StorageInitItem> {
+        ) -> impl Iterator<Item = Block> {
             from_db
                 .into_iter()
                 .skip(start_block.try_into().unwrap())
@@ -553,12 +553,12 @@ mod prop {
         }
 
         fn backward(
-            mut from_db: Vec<StorageInitItem>,
+            mut from_db: Vec<Block>,
             start_block: u64,
             limit: u64,
             step: Step,
             num_blocks: u64,
-        ) -> impl Iterator<Item = StorageInitItem> {
+        ) -> impl Iterator<Item = Block> {
             if start_block >= num_blocks {
                 // The is no overlapping range but we want to keep the iterator type in this
                 // branch type-consistent
