@@ -599,6 +599,14 @@ impl<'inner> Transaction<'inner> {
         state_update::reverse_updates(self, from_block, to_block)
     }
 
+    pub fn reverse_sierra_class_updates(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<Vec<(SierraHash, Option<CasmHash>)>> {
+        state_update::reverse_sierra_class_updates(self, from_block, to_block)
+    }
+
     pub fn insert_signature(
         &self,
         block_number: BlockNumber,

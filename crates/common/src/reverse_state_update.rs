@@ -1,6 +1,6 @@
 use crate::{ClassHash, ContractNonce, StorageAddress, StorageValue};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ReverseContractUpdate {
     Deleted,
     Updated(ReverseContractUpdateDetails),
@@ -15,7 +15,7 @@ impl ReverseContractUpdate {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq)]
 pub struct ReverseContractUpdateDetails {
     pub storage: Vec<(StorageAddress, Option<StorageValue>)>,
     pub nonce: Option<ContractNonce>,
