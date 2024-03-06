@@ -422,11 +422,9 @@ impl Sync {
                 .clone()
                 .contract_updates_stream(start, stop, getter)
                 .map_err(Into::into)
+                .and_then(state_updates::verify_signature)
                 .try_chunks(100)
                 .map_err(|e| e.1)
-                .and_then(|x| {
-                    state_updates::verify(self.storage.clone(), x, false /*TODO*/)
-                })
                 // Persist state updates (without: state commitments and declared classes)
                 .and_then(|x| state_updates::persist(self.storage.clone(), x))
                 .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
@@ -438,8 +436,11 @@ impl Sync {
                 Ok(()) => {
                     tracing::info!("Syncing contract updates complete");
                 }
-                Err(ContractDiffSyncError::StorageCommitmentMismatch(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: storage commitment mismatch");
+                Err(ContractDiffSyncError::SignatureVerification(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: signature verification failed");
+                }
+                Err(ContractDiffSyncError::StateDiffCommitmentMismatch(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: state diff commitment mismatch");
                 }
                 Err(ContractDiffSyncError::DatabaseOrComputeError(error)) => {
                     tracing::debug!(%error, "Error while streaming contract updates");

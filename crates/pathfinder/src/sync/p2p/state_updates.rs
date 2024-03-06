@@ -18,8 +18,10 @@ use tokio::task::spawn_blocking;
 pub(super) enum ContractDiffSyncError {
     #[error(transparent)]
     DatabaseOrComputeError(#[from] anyhow::Error),
-    #[error("Storage commitment mismatch")]
-    StorageCommitmentMismatch(PeerData<BlockNumber>),
+    #[error("Signature verification failed")]
+    SignatureVerification(PeerData<BlockNumber>),
+    #[error("State diff commitment mismatch")]
+    StateDiffCommitmentMismatch(PeerData<BlockNumber>),
 }
 
 /// Returns the first block number whose state update is missing in storage, counting from genesis
@@ -46,6 +48,56 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
+pub(super) async fn verify_signature(
+    contract_updates: PeerData<(BlockNumber, ContractUpdates)>,
+) -> Result<PeerData<(BlockNumber, ContractUpdates)>, ContractDiffSyncError> {
+    todo!()
+}
+
+pub(super) async fn persist(
+    storage: Storage,
+    contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
+) -> Result<BlockNumber, ContractDiffSyncError> {
+    tokio::task::spawn_blocking(move || {
+        let mut connection = storage
+            .connection()
+            .context("Creating database connection")?;
+        let transaction = connection
+            .transaction()
+            .context("Creating database transaction")?;
+        let tail = contract_updates
+            .last()
+            .map(|x| x.data.0)
+            .ok_or(anyhow::anyhow!(
+                "Verification results are empty, no block to persist"
+            ))?;
+
+        for (block_number, contract_updates_for_block) in
+            contract_updates.into_iter().map(|x| x.data)
+        {
+            let block_hash = transaction
+                .block_hash(block_number.into())
+                .context("Getting block hash")?
+                .ok_or(anyhow::anyhow!("Block hash not found"))?;
+
+            let state_update = StateUpdate {
+                block_hash,
+                contract_updates: contract_updates_for_block.regular,
+                system_contract_updates: contract_updates_for_block.system,
+                ..Default::default()
+            };
+
+            transaction
+                .insert_state_update(block_number, &state_update)
+                .context("Inserting state update")?;
+        }
+
+        Ok(tail)
+    })
+    .await
+    .context("Joining blocking task")?
+}
+
 #[derive(Debug)]
 pub(super) struct VerificationOk {
     block_number: BlockNumber,
@@ -56,16 +108,15 @@ pub(super) struct VerificationOk {
     contract_updates: ContractUpdates,
 }
 
-pub(super) async fn verify(
+/// This function is a placeholder for further state trie update work
+pub(super) async fn _update_and_verify_state_trie(
     storage: Storage,
     contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
     verify_trie_hashes: bool,
 ) -> Result<Vec<PeerData<VerificationOk>>, ContractDiffSyncError> {
     tokio::task::spawn_blocking(move || {
-        use rayon::prelude::*;
-
         contract_updates
-            .into_par_iter()
+            .into_iter()
             .map(|x| verify_one(storage.clone(), x, verify_trie_hashes))
             .collect::<Result<Vec<_>, _>>()
     })
@@ -205,7 +256,7 @@ fn verify_one(
         .context("Apply storage commitment tree updates")?;
 
     if storage_commitment != computed_storage_commitment {
-        return Err(ContractDiffSyncError::StorageCommitmentMismatch(
+        return Err(ContractDiffSyncError::StateDiffCommitmentMismatch(
             PeerData::new(peer, block_number),
         ));
     }
@@ -223,69 +274,4 @@ fn verify_one(
             contract_updates,
         },
     ))
-}
-
-pub(super) async fn persist(
-    storage: Storage,
-    verification_results: Vec<PeerData<VerificationOk>>,
-) -> Result<BlockNumber, ContractDiffSyncError> {
-    tokio::task::spawn_blocking(move || {
-        let mut connection = storage
-            .connection()
-            .context("Creating database connection")?;
-        let transaction = connection
-            .transaction()
-            .context("Creating database transaction")?;
-        let tail = verification_results
-            .last()
-            .map(|x| x.data.block_number)
-            .ok_or(anyhow::anyhow!(
-                "Verification results are empty, no block to persist"
-            ))?;
-
-        for VerificationOk {
-            block_number,
-            block_hash,
-            storage_commitment,
-            contract_update_results,
-            trie_nodes,
-            contract_updates,
-        } in verification_results.into_iter().map(|x| x.data)
-        {
-            for contract_update_result in contract_update_results {
-                contract_update_result
-                    .insert(block_number, &transaction)
-                    .context("Persisting contract update result")?;
-            }
-
-            let root_idx = if !storage_commitment.0.is_zero() {
-                let root_idx = transaction
-                    .insert_storage_trie(storage_commitment, &trie_nodes)
-                    .context("Persisting storage trie")?;
-
-                Some(root_idx)
-            } else {
-                None
-            };
-
-            transaction
-                .insert_storage_root(block_number, root_idx)
-                .context("Inserting storage root index")?;
-
-            let state_update = StateUpdate {
-                block_hash,
-                contract_updates: contract_updates.regular,
-                system_contract_updates: contract_updates.system,
-                ..Default::default()
-            };
-
-            transaction
-                .insert_state_update(block_number, &state_update)
-                .context("Inserting state update")?;
-        }
-
-        Ok(tail)
-    })
-    .await
-    .context("Joining blocking task")?
 }
