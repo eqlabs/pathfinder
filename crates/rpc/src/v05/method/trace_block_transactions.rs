@@ -343,7 +343,7 @@ pub(crate) mod tests {
                 transactions
                     .iter()
                     .cloned()
-                    .map(|t| (t, dummy_receipt.clone()))
+                    .map(|t| (t, Some(dummy_receipt.clone())))
                     .collect::<Vec<_>>()
                     .as_slice(),
             )?;

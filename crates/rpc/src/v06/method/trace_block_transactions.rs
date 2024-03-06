@@ -387,9 +387,9 @@ pub(crate) mod tests {
                 next_block_header.hash,
                 next_block_header.number,
                 &[
-                    (transactions[0].clone(), dummy_receipt.clone()),
-                    (transactions[1].clone(), dummy_receipt.clone()),
-                    (transactions[2].clone(), dummy_receipt.clone()),
+                    (transactions[0].clone(), Some(dummy_receipt.clone())),
+                    (transactions[1].clone(), Some(dummy_receipt.clone())),
+                    (transactions[2].clone(), Some(dummy_receipt.clone())),
                 ],
             )?;
             tx.commit()?;

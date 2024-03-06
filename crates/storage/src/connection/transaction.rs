@@ -1,7 +1,7 @@
 //! Contains starknet transaction related code and __not__ database transaction.
 
 use anyhow::Context;
-use pathfinder_common::receipt::Receipt;
+use pathfinder_common::receipt::{ExecutionStatus, Receipt};
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
@@ -16,7 +16,7 @@ pub(super) fn insert_transactions(
     tx: &Transaction<'_>,
     block_hash: BlockHash,
     block_number: BlockNumber,
-    transaction_data: &[(StarknetTransaction, Receipt)],
+    transaction_data: &[(StarknetTransaction, Option<Receipt>)],
 ) -> anyhow::Result<()> {
     if transaction_data.is_empty() {
         return Ok(());
@@ -26,22 +26,33 @@ pub(super) fn insert_transactions(
     for (i, (transaction, receipt)) in transaction_data.iter().enumerate() {
         // Serialize and compress transaction data.
         let transaction = dto::Transaction::from(transaction);
-        let receipt = dto::Receipt::from(receipt);
 
         let tx_data = serde_json::to_vec(&transaction).context("Serializing transaction")?;
         let tx_data = compressor
             .compress(&tx_data)
             .context("Compressing transaction")?;
 
-        let serialized_receipt = serde_json::to_vec(&receipt).context("Serializing receipt")?;
-        let serialized_receipt = compressor
-            .compress(&serialized_receipt)
-            .context("Compressing receipt")?;
-
-        let execution_status = match receipt.execution_status {
-            dto::ExecutionStatus::Succeeded => 0,
-            dto::ExecutionStatus::Reverted => 1,
+        let serialized_receipt = match receipt {
+            Some(receipt) => {
+                let receipt = dto::Receipt::from(receipt);
+                let serialized_receipt =
+                    serde_json::to_vec(&receipt).context("Serializing receipt")?;
+                Some(
+                    compressor
+                        .compress(&serialized_receipt)
+                        .context("Compressing receipt")?,
+                )
+            }
+            None => None,
         };
+
+        let execution_status = receipt
+            .as_ref()
+            .map(|receipt| match receipt.execution_status {
+                ExecutionStatus::Succeeded => 0,
+                ExecutionStatus::Reverted { .. } => 1,
+            })
+            .unwrap_or(0);
 
         tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt,  execution_status) 
                                                                   VALUES (:hash, :idx, :block_hash, :tx, :receipt, :execution_status)",
@@ -57,9 +68,46 @@ pub(super) fn insert_transactions(
 
     let events = transaction_data
         .iter()
-        .flat_map(|(_, receipt)| &receipt.events);
+        .filter_map(|(_, receipt)| receipt.as_ref())
+        .flat_map(|receipt| &receipt.events);
     super::event::insert_block_events(tx, block_number, events)
         .context("Inserting events into Bloom filter")?;
+    Ok(())
+}
+
+pub(super) fn update_receipt(
+    tx: &Transaction<'_>,
+    block_hash: BlockHash,
+    transaction_idx: usize,
+    receipt: &Receipt,
+) -> anyhow::Result<()> {
+    let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+    let receipt = dto::Receipt::from(receipt);
+    let serialized_receipt = serde_json::to_vec(&receipt).context("Serializing receipt")?;
+    let serialized_receipt = compressor
+        .compress(&serialized_receipt)
+        .context("Compressing receipt")?;
+
+    let execution_status = match receipt.execution_status {
+        dto::ExecutionStatus::Succeeded => 0,
+        dto::ExecutionStatus::Reverted { .. } => 1,
+    };
+
+    tx.inner()
+        .execute(
+            r"
+            UPDATE starknet_transactions SET receipt = :receipt, execution_status = :execution_status
+            WHERE block_hash = :block_hash AND idx = :idx;
+            ",
+            named_params![
+                ":receipt": &serialized_receipt,
+                ":execution_status": &execution_status,
+                ":block_hash": &block_hash,
+                ":idx": &transaction_idx.try_into_sql_int()?,
+            ],
+        )
+        .context("Inserting transaction data")?;
+
     Ok(())
 }
 
@@ -2069,7 +2117,15 @@ mod tests {
 
         db_tx.insert_block_header(&header).unwrap();
         db_tx
-            .insert_transaction_data(header.hash, header.number, &body)
+            .insert_transaction_data(
+                header.hash,
+                header.number,
+                &body
+                    .clone()
+                    .into_iter()
+                    .map(|(tx, receipt)| (tx, Some(receipt)))
+                    .collect::<Vec<_>>(),
+            )
             .unwrap();
 
         db_tx.commit().unwrap();

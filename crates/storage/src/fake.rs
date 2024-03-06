@@ -37,8 +37,16 @@ pub fn with_n_blocks_and_rng<R: Rng>(
     fake_data.iter().for_each(
         |(header, signature, transaction_data, state_update, cairo_defs, sierra_defs)| {
             tx.insert_block_header(header).unwrap();
-            tx.insert_transaction_data(header.hash, header.number, transaction_data)
-                .unwrap();
+            tx.insert_transaction_data(
+                header.hash,
+                header.number,
+                &transaction_data
+                    .iter()
+                    .cloned()
+                    .map(|(tx, receipt)| (tx, Some(receipt)))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
             tx.insert_signature(header.number, signature).unwrap();
 
             state_update

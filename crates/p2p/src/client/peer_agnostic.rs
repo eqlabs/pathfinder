@@ -10,6 +10,7 @@ use futures::StreamExt;
 use libp2p::PeerId;
 use p2p_proto::{
     common::{Direction, Iteration},
+    receipt::{ReceiptsRequest, ReceiptsResponse},
     transaction::TransactionsRequest,
 };
 use p2p_proto::{
@@ -105,6 +106,11 @@ impl Client {
             .await
     }
 
+    pub async fn get_update_peers_with_receipt_sync_capability(&self) -> Vec<PeerId> {
+        self.get_update_peers_with_sync_capability(protocol::Receipts::NAME)
+            .await
+    }
+
     pub fn header_stream(
         self,
         start: BlockNumber,
@@ -186,6 +192,14 @@ impl Client {
         self.inner
             .send_transactions_sync_request(peer, request)
             .await
+    }
+
+    pub async fn send_receipts_sync_request(
+        &self,
+        peer: PeerId,
+        request: ReceiptsRequest,
+    ) -> anyhow::Result<futures::channel::mpsc::Receiver<ReceiptsResponse>> {
+        self.inner.send_receipts_sync_request(peer, request).await
     }
 }
 

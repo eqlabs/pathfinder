@@ -416,6 +416,33 @@ pub(super) fn first_block_without_transactions(
     }
 }
 
+pub(super) fn first_block_without_receipts(
+    tx: &Transaction<'_>,
+) -> anyhow::Result<Option<BlockNumber>> {
+    let mut stmt = tx
+        .inner()
+        .prepare(
+            "
+            SELECT block_headers.number
+            FROM block_headers
+            JOIN starknet_transactions
+            ON starknet_transactions.block_hash = block_headers.hash AND starknet_transactions.receipt IS NULL
+            ORDER BY number ASC
+            LIMIT 1;
+            ",
+        )
+        .context("Preparing first_block_without_transactions query")?;
+
+    let mut rows = stmt
+        .query(params![])
+        .context("Executing first_block_without_transactions")?;
+
+    match rows.next()? {
+        Some(row) => Ok(Some(row.get_block_number(0)?)),
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;

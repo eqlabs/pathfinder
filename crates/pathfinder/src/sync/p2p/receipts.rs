@@ -1,27 +1,22 @@
 use anyhow::Context;
-use pathfinder_common::{transaction::Transaction, BlockHeader};
+use pathfinder_common::{receipt::Receipt, BlockHeader};
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
 pub(super) async fn persist(
     storage: Storage,
     block: BlockHeader,
-    transactions: Vec<Transaction>,
+    receipts: Vec<Receipt>,
 ) -> anyhow::Result<()> {
     spawn_blocking(move || {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
-        db.insert_transaction_data(
-            block.hash,
-            block.number,
-            &transactions
-                .into_iter()
-                .map(|tx| (tx, None))
-                .collect::<Vec<_>>(),
-        )
-        .context("Inserting transactions")?;
+        for (transaction_idx, receipt) in receipts.into_iter().enumerate() {
+            db.update_receipt(block.hash, transaction_idx, &receipt)
+                .context("Updating receipt")?;
+        }
         db.commit().context("Committing database transaction")
     })
     .await
