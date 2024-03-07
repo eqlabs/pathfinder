@@ -74,13 +74,7 @@ impl SerializeForVersion for InvokeTxnV1<'_> {
 
 impl SerializeForVersion for Signature<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        let mut serializer = serializer.serialize_seq(Some(self.0.len()))?;
-
-        for x in self.0 {
-            serializer.serialize_element(&Felt(&x.0))?;
-        }
-
-        serializer.end()
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(|x| Felt(&x.0)))
     }
 }
 
@@ -123,7 +117,10 @@ mod tests {
             "signature": s.serialize(&Signature(&tx.signature)).unwrap(),
             "contract_address": s.serialize(&Address(&tx.sender_address)).unwrap(),
             "entry_point_selector": s.serialize(&Felt(&tx.entry_point_selector.0)).unwrap(),
-            "calldata": tx.calldata.iter().map(|x| s.serialize(&Felt(&x.0)).unwrap()).collect::<Vec<_>>(),
+            "calldata": s.serialize_iter(
+                tx.calldata.len(),
+                &mut tx.calldata.iter().map(|x| Felt(&x.0))
+            ).unwrap(),
         });
 
         let encoded = InvokeTxnV0 { inner: &tx, query }.serialize(s).unwrap();

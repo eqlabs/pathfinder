@@ -65,12 +65,20 @@ impl Serializer {
         })
     }
 
-    pub fn serialize_seq(self, len: Option<usize>) -> Result<SerializeSeq, Error> {
+    pub fn serialize_iter(
+        self,
+        len: usize,
+        values: &mut dyn Iterator<Item = impl SerializeForVersion>,
+    ) -> Result<Ok, Error> {
+        use serde::ser::SerializeSeq;
         use serde::Serializer;
-        Ok(SerializeSeq {
-            inner: BaseSerializer {}.serialize_seq(len)?,
-            version: self.version,
-        })
+
+        let mut serializer = BaseSerializer {}.serialize_seq(Some(len))?;
+        for value in values {
+            let value = self.serialize(&value)?;
+            serializer.serialize_element(&value)?;
+        }
+        serializer.end()
     }
 }
 
@@ -91,14 +99,8 @@ impl SerializeStruct {
         len: usize,
         values: &mut dyn Iterator<Item = impl SerializeForVersion>,
     ) -> Result<(), Error> {
-        let mut seq = Serializer::new(self.version).serialize_seq(Some(len))?;
-
-        for value in values {
-            seq.serialize_element(&value)?;
-        }
-
-        let field_value = seq.end()?;
-        self.serialize_field(key, &field_value)
+        let seq = Serializer::new(self.version).serialize_iter(len, values)?;
+        self.serialize_field(key, &seq)
     }
 
     /// Skips serialization if its [`None`].
@@ -128,18 +130,5 @@ impl SerializeStruct {
 
     pub fn end(self) -> Result<Ok, Error> {
         Ok(serde_json::Value::Object(self.fields))
-    }
-}
-
-impl SerializeSeq {
-    pub fn serialize_element(&mut self, value: &dyn SerializeForVersion) -> Result<(), Error> {
-        use serde::ser::SerializeSeq;
-        let value = value.serialize(Serializer::new(self.version))?;
-        self.inner.serialize_element(&value)
-    }
-
-    pub fn end(self) -> Result<Ok, Error> {
-        use serde::ser::SerializeSeq;
-        self.inner.end()
     }
 }
