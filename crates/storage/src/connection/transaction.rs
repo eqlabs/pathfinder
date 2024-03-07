@@ -1,7 +1,7 @@
 //! Contains starknet transaction related code and __not__ database transaction.
 
 use anyhow::Context;
-use pathfinder_common::receipt::{ExecutionStatus, Receipt};
+use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
@@ -46,23 +46,14 @@ pub(super) fn insert_transactions(
             None => None,
         };
 
-        let execution_status = receipt
-            .as_ref()
-            .map(|receipt| match receipt.execution_status {
-                ExecutionStatus::Succeeded => 0,
-                ExecutionStatus::Reverted { .. } => 1,
-            })
-            .unwrap_or(0);
-
-        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt,  execution_status) 
-                                                                  VALUES (:hash, :idx, :block_hash, :tx, :receipt, :execution_status)",
+        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt) 
+                                                                  VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
             named_params![
             ":hash": &transaction.hash(),
             ":idx": &i.try_into_sql_int()?,
             ":block_hash": &block_hash,
             ":tx": &tx_data,
             ":receipt": &serialized_receipt,
-            ":execution_status": &execution_status,
         ]).context("Inserting transaction data")?;
     }
 
