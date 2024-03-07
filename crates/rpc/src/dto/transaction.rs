@@ -2,6 +2,7 @@ use crate::dto::serialize::SerializeForVersion;
 use crate::dto::serialize::Serializer;
 use crate::dto::*;
 
+mod declare;
 mod deploy_account;
 mod invoke;
 
