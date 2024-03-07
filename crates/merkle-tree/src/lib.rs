@@ -7,6 +7,6 @@ mod contract;
 mod storage;
 mod transaction;
 
-pub use class::ClassCommitmentTree;
+pub use class::{revert_class_updates, ClassCommitmentTree};
 pub use contract::{ContractsStorageTree, StorageCommitmentTree};
 pub use transaction::TransactionOrEventTree;

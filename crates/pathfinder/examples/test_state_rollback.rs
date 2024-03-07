@@ -43,6 +43,8 @@ fn main() -> anyhow::Result<()> {
 
     let to_header = tx.block_header(to.into()).unwrap().unwrap();
 
+    pathfinder_merkle_tree::revert_class_updates(&tx, from, to, to_header.class_commitment, true)?;
+
     pathfinder_merkle_tree::contract_state::revert_contract_updates(
         &tx,
         from,

@@ -990,7 +990,13 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
                 target_header.storage_commitment,
                 false,
             )?;
-            // FIXME: revert class trie changes
+            pathfinder_merkle_tree::revert_class_updates(
+                &transaction,
+                head,
+                target_block,
+                target_header.class_commitment,
+                false,
+            )?;
         }
 
         // Purge each block one at a time.
