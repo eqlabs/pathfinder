@@ -21,6 +21,8 @@ struct ResourceBoundsMapping<'a>(&'a common::ResourceBounds);
 
 struct ResourceBounds<'a>(&'a common::ResourceBound);
 
+struct DaMode(common::DataAvailabilityMode);
+
 impl SerializeForVersion for InvokeTxnV0<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
@@ -101,6 +103,16 @@ impl SerializeForVersion for ResourceBounds<'_> {
         serializer.serialize_field("max_price_per_unit", &U128(self.0.max_price_per_unit.0))?;
 
         serializer.end()
+    }
+}
+
+impl SerializeForVersion for DaMode {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let da_mode = match self.0 {
+            common::DataAvailabilityMode::L1 => "L1",
+            common::DataAvailabilityMode::L2 => "L2",
+        };
+        serializer.serialize_str(da_mode)
     }
 }
 
@@ -252,6 +264,17 @@ mod tests {
         });
 
         let encoded = ResourceBounds(&bound).serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[rstest]
+    #[case::l1(common::DataAvailabilityMode::L1, "L1")]
+    #[case::l2(common::DataAvailabilityMode::L2, "L2")]
+    fn da_mode(#[case] mode: common::DataAvailabilityMode, #[case] expected: &str) {
+        let s = Serializer::default();
+        let expected = s.serialize_str(expected).unwrap();
+        let encoded = DaMode(mode).serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
     }
