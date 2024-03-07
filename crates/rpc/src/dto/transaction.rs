@@ -130,7 +130,7 @@ impl SerializeForVersion for FunctionCall<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("contract_address", &Address(&self.contract_address))?;
+        serializer.serialize_field("contract_address", &Address(self.contract_address))?;
         serializer.serialize_field("entry_point_selector", &Felt(&self.entry_point_selector.0))?;
         serializer.serialize_iter(
             "calldata",
