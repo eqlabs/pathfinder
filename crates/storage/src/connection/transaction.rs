@@ -49,12 +49,17 @@ pub(super) fn insert_transactions(
         tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt) 
                                                                   VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
             named_params![
-            ":hash": &transaction.hash(),
-            ":idx": &i.try_into_sql_int()?,
-            ":block_hash": &block_hash,
-            ":tx": &tx_data,
-            ":receipt": &serialized_receipt,
-        ]).context("Inserting transaction data")?;
+                ":hash": &transaction.hash(),
+                ":idx": &i.try_into_sql_int()?,
+                ":block_hash": &block_hash,
+                ":tx": &tx_data,
+                ":receipt": &serialized_receipt,
+            ]).context("Inserting transaction data")?;
+
+        if let Some(receipt) = receipt {
+            insert_events(tx, transaction.hash(), &receipt.events)
+                .context("Inserting events into database")?;
+        }
     }
 
     let events = transaction_data
@@ -66,12 +71,39 @@ pub(super) fn insert_transactions(
     Ok(())
 }
 
+pub(super) fn insert_events(
+    tx: &Transaction<'_>,
+    transaction_hash: TransactionHash,
+    events: &[pathfinder_common::event::Event],
+) -> anyhow::Result<()> {
+    let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+    let serialized_events = serde_json::to_vec(events).context("Serializing events")?;
+    let serialized_events = compressor
+        .compress(&serialized_events)
+        .context("Compressing events")?;
+    tx.inner()
+        .execute(
+            "INSERT INTO starknet_events (transaction_hash, events) VALUES (:hash, :events)",
+            named_params![
+                ":hash": &transaction_hash,
+                ":events": &serialized_events,
+            ],
+        )
+        .context("Inserting events")?;
+    Ok(())
+}
+
 pub(super) fn update_receipt(
     tx: &Transaction<'_>,
     block_hash: BlockHash,
     transaction_idx: usize,
     receipt: &Receipt,
 ) -> anyhow::Result<()> {
+    debug_assert!(
+        receipt.events.is_empty(),
+        "Follow-up PR: properly separate events from receipt data in our core models"
+    );
+
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
     let receipt = dto::Receipt::from(receipt);
     let serialized_receipt = serde_json::to_vec(&receipt).context("Serializing receipt")?;
@@ -134,7 +166,14 @@ pub(super) fn transaction_with_receipt(
 ) -> anyhow::Result<Option<(StarknetTransaction, Receipt, BlockHash)>> {
     let mut stmt = tx
         .inner()
-        .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
+        .prepare(
+            r"
+            SELECT tx, receipt, block_hash, events
+            FROM starknet_transactions
+            LEFT JOIN starknet_events ON starknet_transactions.hash = starknet_events.transaction_hash
+            WHERE hash = ?1
+            ",
+        )
         .context("Preparing statement")?;
 
     let mut rows = stmt.query(params![&txn_hash]).context("Executing query")?;
@@ -157,9 +196,21 @@ pub(super) fn transaction_with_receipt(
     let receipt: dto::Receipt =
         serde_json::from_slice(&receipt).context("Deserializing receipt")?;
 
+    let events = match row.get_ref_unwrap("events").as_blob_or_null()? {
+        Some(data) => data,
+        None => return Ok(None),
+    };
+    let events = zstd::decode_all(events).context("Decompressing events")?;
+    let events: Vec<pathfinder_common::event::Event> =
+        serde_json::from_slice(&events).context("Deserializing events")?;
+
     let block_hash = row.get_block_hash("block_hash")?;
 
-    Ok(Some((transaction.into(), receipt.into(), block_hash)))
+    Ok(Some((
+        transaction.into(),
+        receipt.into_common(events),
+        block_hash,
+    )))
 }
 
 pub(super) fn transaction_at_block(
@@ -241,7 +292,13 @@ pub(super) fn transaction_data_for_block(
     let mut stmt = tx
         .inner()
         .prepare(
-            "SELECT tx, receipt FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC",
+            r"
+            SELECT tx, receipt, events
+            FROM starknet_transactions
+            LEFT JOIN starknet_events ON starknet_transactions.hash = starknet_events.transaction_hash
+            WHERE block_hash = ?
+            ORDER BY idx ASC
+            ",
         )
         .context("Preparing statement")?;
 
@@ -267,7 +324,15 @@ pub(super) fn transaction_data_for_block(
         let transaction: dto::Transaction =
             serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
-        data.push((transaction.into(), receipt.into()));
+        let events = row
+            .get_ref_unwrap("events")
+            .as_blob_or_null()?
+            .context("Events missing")?;
+        let events = zstd::decode_all(events).context("Decompressing events")?;
+        let events: Vec<pathfinder_common::event::Event> =
+            serde_json::from_slice(&events).context("Deserializing events")?;
+
+        data.push((transaction.into(), receipt.into_common(events)));
     }
 
     Ok(Some(data))
@@ -316,7 +381,15 @@ pub(super) fn receipts_for_block(
 
     let mut stmt = tx
         .inner()
-        .prepare("SELECT receipt FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .prepare(
+            r"
+            SELECT receipt, events
+            FROM starknet_transactions
+            LEFT JOIN starknet_events ON starknet_transactions.hash = starknet_events.transaction_hash
+            WHERE block_hash = ?
+            ORDER BY idx ASC
+            ",
+        )
         .context("Preparing statement")?;
 
     let mut rows = stmt
@@ -333,7 +406,15 @@ pub(super) fn receipts_for_block(
         let receipt: dto::Receipt =
             serde_json::from_slice(&receipt).context("Deserializing receipt")?;
 
-        data.push(receipt.into());
+        let events = row
+            .get_ref_unwrap("events")
+            .as_blob_or_null()?
+            .context("Events missing")?;
+        let events = zstd::decode_all(events).context("Decompressing events")?;
+        let events: Vec<pathfinder_common::event::Event> =
+            serde_json::from_slice(&events).context("Deserializing events")?;
+
+        data.push(receipt.into_common(events));
     }
 
     Ok(Some(data))
@@ -625,7 +706,6 @@ pub(crate) mod dto {
     pub struct Receipt {
         #[serde(default)]
         pub actual_fee: Option<Fee>,
-        pub events: Vec<pathfinder_common::event::Event>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub execution_resources: Option<ExecutionResources>,
         // This field exists in our database but is unused within our code.
@@ -643,37 +723,15 @@ pub(crate) mod dto {
         pub revert_error: Option<String>,
     }
 
-    impl From<&pathfinder_common::receipt::Receipt> for Receipt {
-        fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
-            let (execution_status, revert_error) = match &value.execution_status {
-                receipt::ExecutionStatus::Succeeded => (ExecutionStatus::Succeeded, None),
-                receipt::ExecutionStatus::Reverted { reason } => {
-                    (ExecutionStatus::Reverted, Some(reason.clone()))
-                }
-            };
-
-            Self {
-                actual_fee: value.actual_fee,
-                events: value.events.clone(),
-                execution_resources: Some((&value.execution_resources).into()),
-                // We don't care about this field anymore.
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
-                transaction_hash: value.transaction_hash,
-                transaction_index: value.transaction_index,
-                execution_status,
-                revert_error,
-            }
-        }
-    }
-
-    impl From<Receipt> for pathfinder_common::receipt::Receipt {
-        fn from(value: Receipt) -> Self {
+    impl Receipt {
+        pub fn into_common(
+            self,
+            events: Vec<pathfinder_common::event::Event>,
+        ) -> pathfinder_common::receipt::Receipt {
             use pathfinder_common::receipt as common;
 
             let Receipt {
                 actual_fee,
-                events,
                 execution_resources,
                 // This information is redundant as it is already in the transaction itself.
                 l1_to_l2_consumed_message: _,
@@ -682,7 +740,7 @@ pub(crate) mod dto {
                 transaction_index,
                 execution_status,
                 revert_error,
-            } = value;
+            } = self;
 
             common::Receipt {
                 actual_fee,
@@ -701,6 +759,29 @@ pub(crate) mod dto {
         }
     }
 
+    impl From<&pathfinder_common::receipt::Receipt> for Receipt {
+        fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
+            let (execution_status, revert_error) = match &value.execution_status {
+                receipt::ExecutionStatus::Succeeded => (ExecutionStatus::Succeeded, None),
+                receipt::ExecutionStatus::Reverted { reason } => {
+                    (ExecutionStatus::Reverted, Some(reason.clone()))
+                }
+            };
+
+            Self {
+                actual_fee: value.actual_fee,
+                execution_resources: Some((&value.execution_resources).into()),
+                // We don't care about this field anymore.
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
+                transaction_hash: value.transaction_hash,
+                transaction_index: value.transaction_index,
+                execution_status,
+                revert_error,
+            }
+        }
+    }
+
     impl<T> Dummy<T> for Receipt {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             let execution_status = Faker.fake_with_rng(rng);
@@ -711,7 +792,6 @@ pub(crate) mod dto {
             Self {
                 actual_fee: Some(Faker.fake_with_rng(rng)),
                 execution_resources: Some(Faker.fake_with_rng(rng)),
-                events: Faker.fake_with_rng(rng),
                 l1_to_l2_consumed_message: Faker.fake_with_rng(rng),
                 l2_to_l1_messages: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
