@@ -9,17 +9,41 @@ use super::DaMode;
 use super::ResourceBoundsMapping;
 use super::Signature;
 
-struct DeployAccountV1<'a> {
+struct DeployAccountTxn<'a> {
+    variant: DeployAccountVariant<'a>,
+    query: bool,
+}
+
+enum DeployAccountVariant<'a> {
+    V1(&'a common::DeployAccountTransactionV0V1),
+    V3(&'a common::DeployAccountTransactionV3),
+}
+
+struct DeployAccountTxnV1<'a> {
     inner: &'a common::DeployAccountTransactionV0V1,
     query: bool,
 }
 
-struct DeployAccountV3<'a> {
+struct DeployAccountTxnV3<'a> {
     inner: &'a common::DeployAccountTransactionV3,
     query: bool,
 }
 
-impl SerializeForVersion for DeployAccountV1<'_> {
+impl SerializeForVersion for DeployAccountTxn<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let query = self.query;
+        match self.variant {
+            DeployAccountVariant::V1(inner) => {
+                DeployAccountTxnV1 { inner, query }.serialize(serializer)
+            }
+            DeployAccountVariant::V3(inner) => {
+                DeployAccountTxnV3 { inner, query }.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl SerializeForVersion for DeployAccountTxnV1<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
@@ -48,7 +72,7 @@ impl SerializeForVersion for DeployAccountV1<'_> {
     }
 }
 
-impl SerializeForVersion for DeployAccountV3<'_> {
+impl SerializeForVersion for DeployAccountTxnV3<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
