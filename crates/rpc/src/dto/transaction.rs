@@ -2,8 +2,10 @@ use crate::dto::serialize::SerializeForVersion;
 use crate::dto::serialize::Serializer;
 use crate::dto::*;
 
+mod deploy_account;
 mod invoke;
 
+pub use deploy_account::*;
 pub use invoke::*;
 
 use pathfinder_common::transaction as common;
