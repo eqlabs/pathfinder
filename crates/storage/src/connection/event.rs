@@ -61,13 +61,6 @@ pub struct PageOfEvents {
     pub continuation_token: Option<ContinuationToken>,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct KeyFilterResult<'a> {
-    pub base_query: &'static str,
-    pub where_statement: &'static str,
-    pub param: (&'static str, rusqlite::types::ToSqlOutput<'a>),
-}
-
 pub(super) fn insert_block_events<'a>(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
