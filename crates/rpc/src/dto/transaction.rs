@@ -9,6 +9,7 @@ pub use invoke::*;
 use pathfinder_common::transaction as common;
 use pathfinder_common::TransactionVersion;
 
+struct L1HandlerTxn<'a>(&'a common::L1HandlerTransaction);
 struct FunctionCall<'a> {
     pub contract_address: &'a pathfinder_common::ContractAddress,
     pub entry_point_selector: &'a pathfinder_common::EntryPoint,
@@ -19,6 +20,23 @@ struct Signature<'a>(&'a [pathfinder_common::TransactionSignatureElem]);
 struct ResourceBoundsMapping<'a>(&'a common::ResourceBounds);
 struct ResourceBounds<'a>(&'a common::ResourceBound);
 struct DaMode(common::DataAvailabilityMode);
+
+impl SerializeForVersion for L1HandlerTxn<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("version", &"0x0")?;
+        serializer.serialize_field("type", &"L1_HANDLER")?;
+        serializer.serialize_field("nonce", &NumAsHex::Felt(&self.0.nonce.0))?;
+        serializer.flatten(&FunctionCall {
+            contract_address: &self.0.contract_address,
+            entry_point_selector: &self.0.entry_point_selector,
+            calldata: &self.0.calldata,
+        })?;
+
+        serializer.end()
+    }
+}
 
 impl SerializeForVersion for FunctionCall<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
