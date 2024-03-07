@@ -5,10 +5,17 @@ use crate::dto::*;
 use pathfinder_common::transaction as common;
 use pathfinder_common::TransactionVersion;
 
+use super::DaMode;
+use super::ResourceBoundsMapping;
 use super::Signature;
 
 struct DeployAccountV1<'a> {
     inner: &'a common::DeployAccountTransactionV0V1,
+    query: bool,
+}
+
+struct DeployAccountV3<'a> {
+    inner: &'a common::DeployAccountTransactionV3,
     query: bool,
 }
 
@@ -36,6 +43,52 @@ impl SerializeForVersion for DeployAccountV1<'_> {
             &mut self.inner.constructor_calldata.iter().map(|x| Felt(&x.0)),
         )?;
         serializer.serialize_field("class_hash", &Felt(&self.inner.class_hash.0))?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for DeployAccountV3<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
+        let version = if self.query {
+            "0x100000000000000000000000000000003"
+        } else {
+            "0x3"
+        };
+        serializer.serialize_field("version", &version)?;
+        serializer.serialize_field("signature", &Signature(&self.inner.signature))?;
+        serializer.serialize_field("nonce", &Felt(&self.inner.nonce.0))?;
+        serializer.serialize_field(
+            "contract_address_salt",
+            &Felt(&self.inner.contract_address_salt.0),
+        )?;
+        serializer.serialize_iter(
+            "constructor_calldata",
+            self.inner.constructor_calldata.len(),
+            &mut self.inner.constructor_calldata.iter().map(|x| Felt(&x.0)),
+        )?;
+        serializer.serialize_field("class_hash", &Felt(&self.inner.class_hash.0))?;
+        serializer.serialize_field(
+            "resource_bounds",
+            &ResourceBoundsMapping(&self.inner.resource_bounds),
+        )?;
+        serializer.serialize_field("tip", &U64(self.inner.tip.0))?;
+        serializer.serialize_iter(
+            "paymaster_data",
+            self.inner.paymaster_data.len(),
+            &mut self.inner.paymaster_data.iter().map(|x| Felt(&x.0)),
+        )?;
+        serializer.serialize_field(
+            "nonce_data_availability_mode",
+            &DaMode(self.inner.nonce_data_availability_mode),
+        )?;
+        serializer.serialize_field(
+            "fee_data_availability_mode",
+            &DaMode(self.inner.fee_data_availability_mode),
+        )?;
 
         serializer.end()
     }
