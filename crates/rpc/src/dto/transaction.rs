@@ -13,9 +13,9 @@ pub use invoke::*;
 use pathfinder_common::transaction as common;
 use pathfinder_common::TransactionVersion;
 
-struct Txn<'a> {
-    variant: &'a common::TransactionVariant,
-    query: bool,
+pub struct Txn<'a> {
+    pub variant: &'a common::TransactionVariant,
+    pub query: bool,
 }
 
 struct DeployTxn<'a>(&'a common::DeployTransaction);

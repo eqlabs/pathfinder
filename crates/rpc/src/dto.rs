@@ -16,6 +16,7 @@ pub use header::*;
 pub use primitives::*;
 pub use receipt::*;
 pub use state_update::*;
+pub use transaction::*;
 
 #[cfg(test)]
 /// Merges two json objects together. Panics if either of them is not an object.
