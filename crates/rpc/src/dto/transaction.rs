@@ -17,6 +17,8 @@ struct InvokeTxnV1<'a> {
 
 struct Signature<'a>(&'a [pathfinder_common::TransactionSignatureElem]);
 
+struct ResourceBoundsMapping<'a>(&'a common::ResourceBounds);
+
 struct ResourceBounds<'a>(&'a common::ResourceBound);
 
 impl SerializeForVersion for InvokeTxnV0<'_> {
@@ -77,6 +79,17 @@ impl SerializeForVersion for InvokeTxnV1<'_> {
 impl SerializeForVersion for Signature<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(|x| Felt(&x.0)))
+    }
+}
+
+impl SerializeForVersion for ResourceBoundsMapping<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("l1_gas", &ResourceBounds(&self.0.l1_gas))?;
+        serializer.serialize_field("l2_gas", &ResourceBounds(&self.0.l2_gas))?;
+
+        serializer.end()
     }
 }
 
@@ -195,6 +208,31 @@ mod tests {
         let expected = json!(expected);
 
         let encoded = Signature(&signature).serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn resource_bounds_mapping() {
+        let s = Serializer::default();
+
+        let bounds = common::ResourceBounds {
+            l1_gas: common::ResourceBound {
+                max_amount: pathfinder_common::ResourceAmount(30),
+                max_price_per_unit: pathfinder_common::ResourcePricePerUnit(200),
+            },
+            l2_gas: common::ResourceBound {
+                max_amount: pathfinder_common::ResourceAmount(123),
+                max_price_per_unit: pathfinder_common::ResourcePricePerUnit(1293),
+            },
+        };
+
+        let expected = json!({
+            "l1_gas": s.serialize(&ResourceBounds(&bounds.l1_gas)).unwrap(),
+            "l2_gas": s.serialize(&ResourceBounds(&bounds.l2_gas)).unwrap(),
+        });
+
+        let encoded = ResourceBoundsMapping(&bounds).serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
     }
