@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
+
+## [0.11.1] - 2024-03-01
+
+### Fixed
+
 - Transaction hash calculation for transactions using the "query version" flag is broken for `starknet_estimateFee` and `starknet_simulateTransactions`.
 
 ## [0.11.0] - 2024-02-27
