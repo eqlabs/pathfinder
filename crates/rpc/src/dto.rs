@@ -5,6 +5,7 @@ mod header;
 mod primitives;
 mod receipt;
 mod state_update;
+mod transaction;
 
 pub mod serialize;
 
