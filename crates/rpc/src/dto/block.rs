@@ -25,7 +25,7 @@ impl SerializeForVersion for BlockBodyWithTxHashes<'_> {
         serializer.serialize_iter(
             "transactions",
             self.0.len(),
-            &mut self.0.iter().map(|x| TxnHash(x)),
+            &mut self.0.iter().map(TxnHash),
         )?;
 
         serializer.end()
@@ -61,7 +61,7 @@ impl SerializeForVersion for BlockBodyWithTxs<'_> {
         serializer.serialize_iter(
             self.0.len(),
             &mut self.0.iter().map(|(t, query)| Item {
-                transaction: *t,
+                transaction: t,
                 query: *query,
             }),
         )
@@ -110,9 +110,9 @@ impl SerializeForVersion for BlockBodyWithReceipts<'_> {
         serializer.serialize_iter(
             self.body.len(),
             &mut self.body.iter().map(|(t, r, query)| Item {
-                transaction: *t,
+                transaction: t,
                 query: *query,
-                receipt: *r,
+                receipt: r,
                 block_hash: self.block_hash,
                 block_number: self.block_number,
                 finality: self.finality,
