@@ -17,6 +17,8 @@ struct InvokeTxnV1<'a> {
 
 struct Signature<'a>(&'a [pathfinder_common::TransactionSignatureElem]);
 
+struct ResourceBounds<'a>(&'a common::ResourceBound);
+
 impl SerializeForVersion for InvokeTxnV0<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
@@ -75,6 +77,17 @@ impl SerializeForVersion for InvokeTxnV1<'_> {
 impl SerializeForVersion for Signature<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(|x| Felt(&x.0)))
+    }
+}
+
+impl SerializeForVersion for ResourceBounds<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("max_amount", &U64(self.0.max_amount.0))?;
+        serializer.serialize_field("max_price_per_unit", &U128(self.0.max_price_per_unit.0))?;
+
+        serializer.end()
     }
 }
 
@@ -182,6 +195,25 @@ mod tests {
         let expected = json!(expected);
 
         let encoded = Signature(&signature).serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn resource_bounds() {
+        let s = Serializer::default();
+
+        let bound = common::ResourceBound {
+            max_amount: pathfinder_common::ResourceAmount(30),
+            max_price_per_unit: pathfinder_common::ResourcePricePerUnit(200),
+        };
+
+        let expected = json!({
+            "max_amount": s.serialize(&U64(bound.max_amount.0)).unwrap(),
+            "max_price_per_unit": s.serialize(&U128(bound.max_price_per_unit.0)).unwrap(),
+        });
+
+        let encoded = ResourceBounds(&bound).serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
     }
