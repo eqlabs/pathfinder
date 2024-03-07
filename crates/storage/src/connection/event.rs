@@ -670,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn get_events_by_key_v03() {
+    fn get_events_by_key() {
         let (storage, test_data) = test_utils::setup_test_storage();
         let emitted_events = test_data.events;
         let mut connection = storage.connection().unwrap();
@@ -914,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn get_events_by_key_v03_with_paging() {
+    fn get_events_by_key_with_paging() {
         let (storage, test_data) = test_utils::setup_test_storage();
         let emitted_events = test_data.events;
         let mut connection = storage.connection().unwrap();
