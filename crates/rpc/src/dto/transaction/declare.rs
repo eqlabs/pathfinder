@@ -9,6 +9,18 @@ use crate::dto::*;
 use pathfinder_common::transaction as common;
 use pathfinder_common::TransactionVersion;
 
+pub(crate) struct DeclareTxn<'a> {
+    pub(crate) variant: CommonDeclareVariant<'a>,
+    pub(crate) query: bool,
+}
+
+pub(crate) enum CommonDeclareVariant<'a> {
+    V0(&'a common::DeclareTransactionV0V1),
+    V1(&'a common::DeclareTransactionV0V1),
+    V2(&'a common::DeclareTransactionV2),
+    V3(&'a common::DeclareTransactionV3),
+}
+
 pub(crate) struct DeclareTxnV0<'a> {
     pub(crate) inner: &'a common::DeclareTransactionV0V1,
     pub(crate) query: bool,
@@ -27,6 +39,18 @@ pub(crate) struct DeclareTxnV2<'a> {
 pub(crate) struct DeclareTxnV3<'a> {
     pub(crate) inner: &'a common::DeclareTransactionV3,
     pub(crate) query: bool,
+}
+
+impl SerializeForVersion for DeclareTxn<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let query = self.query;
+        match self.variant {
+            CommonDeclareVariant::V0(inner) => DeclareTxnV0 { inner, query }.serialize(serializer),
+            CommonDeclareVariant::V1(inner) => DeclareTxnV1 { inner, query }.serialize(serializer),
+            CommonDeclareVariant::V2(inner) => DeclareTxnV2 { inner, query }.serialize(serializer),
+            CommonDeclareVariant::V3(inner) => DeclareTxnV3 { inner, query }.serialize(serializer),
+        }
+    }
 }
 
 impl SerializeForVersion for DeclareTxnV0<'_> {
