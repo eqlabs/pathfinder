@@ -21,6 +21,7 @@ pub struct U128(pub u128);
 pub enum NumAsHex<'a> {
     U64(u64),
     H256(&'a H256),
+    Felt(&'a pathfinder_crypto::Felt),
 }
 
 mod hex_str {
@@ -175,6 +176,7 @@ impl SerializeForVersion for NumAsHex<'_> {
         let hex = match &self {
             NumAsHex::U64(x) => hex_str::bytes_to_hex_str_stripped(&x.to_be_bytes()),
             NumAsHex::H256(x) => hex_str::bytes_to_hex_str_stripped(x.as_bytes()),
+            NumAsHex::Felt(x) => hex_str::bytes_to_hex_str_stripped(x.as_be_bytes()),
         };
         serializer.serialize_str(&hex)
     }
@@ -330,6 +332,16 @@ mod tests {
     fn num_as_hex_h256() {
         let uut = H256(felt!("0x1234").to_be_bytes());
         let uut = NumAsHex::H256(&uut);
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn num_as_hex_felt() {
+        let uut = felt!("0x1234");
+        let uut = NumAsHex::Felt(&uut);
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
 
