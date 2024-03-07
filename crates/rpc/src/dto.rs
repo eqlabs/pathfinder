@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+mod block;
 mod event;
 mod header;
 mod primitives;
@@ -9,6 +10,7 @@ mod transaction;
 
 pub mod serialize;
 
+pub use block::*;
 pub use event::*;
 pub use header::*;
 pub use primitives::*;
