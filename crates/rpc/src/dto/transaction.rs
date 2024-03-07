@@ -15,6 +15,11 @@ struct InvokeTxnV1<'a> {
     query: bool,
 }
 
+struct InvokeTxnV3<'a> {
+    inner: &'a common::InvokeTransactionV3,
+    query: bool,
+}
+
 struct Signature<'a>(&'a [pathfinder_common::TransactionSignatureElem]);
 
 struct ResourceBoundsMapping<'a>(&'a common::ResourceBounds);
@@ -73,6 +78,58 @@ impl SerializeForVersion for InvokeTxnV1<'_> {
         serializer.serialize_field("version", &version)?;
         serializer.serialize_field("signature", &Signature(&self.inner.signature))?;
         serializer.serialize_field("nonce", &Felt(&self.inner.nonce.0))?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for InvokeTxnV3<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("type", &"INVOKE")?;
+        serializer.serialize_field("sender_address", &Address(&self.inner.sender_address))?;
+        serializer.serialize_iter(
+            "calldata",
+            self.inner.calldata.len(),
+            &mut self.inner.calldata.iter().map(|x| Felt(&x.0)),
+        )?;
+
+        let version = if self.query {
+            "0x100000000000000000000000000000003"
+        } else {
+            "0x3"
+        };
+        serializer.serialize_field("version", &version)?;
+        serializer.serialize_field("signature", &Signature(&self.inner.signature))?;
+        serializer.serialize_field("nonce", &Felt(&self.inner.nonce.0))?;
+        serializer.serialize_field(
+            "resource_bounds",
+            &ResourceBoundsMapping(&self.inner.resource_bounds),
+        )?;
+        serializer.serialize_field("tip", &U64(self.inner.tip.0))?;
+        serializer.serialize_iter(
+            "paymaster_data",
+            self.inner.paymaster_data.len(),
+            &mut self.inner.paymaster_data.iter().map(|x| Felt(&x.0)),
+        )?;
+        serializer.serialize_iter(
+            "account_deployment_data",
+            self.inner.account_deployment_data.len(),
+            &mut self
+                .inner
+                .account_deployment_data
+                .iter()
+                .map(|x| Felt(&x.0)),
+        )?;
+        serializer.serialize_field(
+            "nonce_data_availability_mode",
+            &DaMode(self.inner.nonce_data_availability_mode),
+        )?;
+        serializer.serialize_field(
+            "fee_data_availability_mode",
+            &DaMode(self.inner.fee_data_availability_mode),
+        )?;
 
         serializer.end()
     }
@@ -199,6 +256,75 @@ mod tests {
         });
 
         let encoded = InvokeTxnV1 { inner: &tx, query }.serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[rstest]
+    #[case::without_query(false, "0x3")]
+    #[case::with_query(true, "0x100000000000000000000000000000003")]
+    fn invoke_txn_v3(#[case] query: bool, #[case] expected_version: &str) {
+        let s = Serializer::default();
+        let tx = common::InvokeTransactionV3 {
+            calldata: vec![
+                call_param!("0x11"),
+                call_param!("0x33"),
+                call_param!("0x22"),
+            ],
+            sender_address: contract_address!("0x999"),
+            signature: vec![
+                transaction_signature_elem!("0x1"),
+                transaction_signature_elem!("0x2"),
+                transaction_signature_elem!("0x3"),
+                transaction_signature_elem!("0x4"),
+            ],
+            nonce: transaction_nonce!("0x88129"),
+            resource_bounds: common::ResourceBounds {
+                l1_gas: common::ResourceBound {
+                    max_amount: pathfinder_common::ResourceAmount(123786),
+                    max_price_per_unit: pathfinder_common::ResourcePricePerUnit(9807123),
+                },
+                l2_gas: common::ResourceBound {
+                    max_amount: pathfinder_common::ResourceAmount(123786),
+                    max_price_per_unit: pathfinder_common::ResourcePricePerUnit(9807123),
+                },
+            },
+            tip: pathfinder_common::Tip(100),
+            paymaster_data: vec![
+                paymaster_data_elem!("0x12333"),
+                paymaster_data_elem!("0x123338"),
+            ],
+            account_deployment_data: vec![
+                account_deployment_data_elem!("0x24"),
+                account_deployment_data_elem!("0x192"),
+                account_deployment_data_elem!("0x908123"),
+            ],
+            fee_data_availability_mode: Default::default(),
+            nonce_data_availability_mode: Default::default(),
+        };
+
+        let expected = json!({
+            "type": "INVOKE",
+            "version": s.serialize_str(expected_version).unwrap(),
+            "signature": s.serialize(&Signature(&tx.signature)).unwrap(),
+            "sender_address": s.serialize(&Address(&tx.sender_address)).unwrap(),
+            "calldata": tx.calldata.iter().map(|x| s.serialize(&Felt(&x.0)).unwrap()).collect::<Vec<_>>(),
+            "nonce": s.serialize(&Felt(&tx.nonce.0)).unwrap(),
+            "resource_bounds": s.serialize(&ResourceBoundsMapping(&tx.resource_bounds)).unwrap(),
+            "tip": s.serialize(&U64(tx.tip.0)).unwrap(),
+            "paymaster_data": s.serialize_iter(
+                tx.paymaster_data.len(),
+                &mut tx.paymaster_data.iter().map(|x| Felt(&x.0))
+            ).unwrap(),
+            "account_deployment_data": s.serialize_iter(
+                tx.account_deployment_data.len(),
+                &mut tx.account_deployment_data.iter().map(|x| Felt(&x.0))
+            ).unwrap(),
+            "nonce_data_availability_mode": s.serialize(&DaMode(tx.nonce_data_availability_mode)).unwrap(),
+            "fee_data_availability_mode": s.serialize(&DaMode(tx.fee_data_availability_mode)).unwrap(),
+        });
+
+        let encoded = InvokeTxnV3 { inner: &tx, query }.serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
     }
