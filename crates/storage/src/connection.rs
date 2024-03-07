@@ -545,7 +545,7 @@ impl<'inner> Transaction<'inner> {
         block_number: BlockNumber,
         counts: &StateUpdateCounts,
     ) -> anyhow::Result<()> {
-        state_update::insert_state_update_counts(self, block_number, counts)
+        state_update::update_state_update_counts(self, block_number, counts)
     }
 
     pub fn state_update(&self, block: BlockId) -> anyhow::Result<Option<StateUpdate>> {

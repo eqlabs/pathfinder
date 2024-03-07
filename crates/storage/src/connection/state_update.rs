@@ -97,7 +97,7 @@ pub(super) fn insert_state_update(
 }
 
 /// Inserts a [StateUpdateCounts] instance into storage.
-pub(super) fn insert_state_update_counts(
+pub(super) fn update_state_update_counts(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
     counts: &StateUpdateCounts,
@@ -105,16 +105,21 @@ pub(super) fn insert_state_update_counts(
     let mut stmt = tx
         .inner()
         .prepare_cached(
-            "INSERT INTO state_update_counts (block_number, storage_diffs, nonce_updates, declared_classes, deployed_contracts) VALUES (?, ?, ?, ?, ?)",
+            r"UPDATE block_headers SET
+                storage_diffs_count=?,
+                nonce_updates_count=?,
+                declared_classes_count=?,
+                deployed_contracts_count=?
+            WHERE number=?",
         )
         .context("Preparing insert statement")?;
 
     stmt.execute(params![
-        &block_number,
         &counts.storage_diffs,
         &counts.nonce_updates,
         &counts.declared_classes,
-        &counts.deployed_contracts
+        &counts.deployed_contracts,
+        &block_number,
     ])
     .context("Inserting state update counts")?;
 
@@ -326,8 +331,8 @@ pub(super) fn state_update_counts(
     let mut stmt = tx
         .inner()
         .prepare_cached(
-            r"SELECT storage_diffs, nonce_updates, declared_classes, deployed_contracts
-                FROM state_update_counts WHERE block_number >= ? ORDER BY block_number ASC LIMIT ?",
+            r"SELECT storage_diffs_count, nonce_updates_count, declared_classes_count, deployed_contracts_count
+                FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
         )
         .context("Preparing get state update counts statement")?;
 
