@@ -9,12 +9,12 @@ use super::DaMode;
 use super::ResourceBoundsMapping;
 use super::Signature;
 
-struct DeployAccountTxn<'a> {
-    variant: DeployAccountVariant<'a>,
-    query: bool,
+pub struct DeployAccountTxn<'a> {
+    pub variant: CommonDeployAccountVariant<'a>,
+    pub query: bool,
 }
 
-enum DeployAccountVariant<'a> {
+pub enum CommonDeployAccountVariant<'a> {
     V1(&'a common::DeployAccountTransactionV0V1),
     V3(&'a common::DeployAccountTransactionV3),
 }
@@ -33,10 +33,10 @@ impl SerializeForVersion for DeployAccountTxn<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let query = self.query;
         match self.variant {
-            DeployAccountVariant::V1(inner) => {
+            CommonDeployAccountVariant::V1(inner) => {
                 DeployAccountTxnV1 { inner, query }.serialize(serializer)
             }
-            DeployAccountVariant::V3(inner) => {
+            CommonDeployAccountVariant::V3(inner) => {
                 DeployAccountTxnV3 { inner, query }.serialize(serializer)
             }
         }

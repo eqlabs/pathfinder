@@ -6,11 +6,17 @@ mod declare;
 mod deploy_account;
 mod invoke;
 
+pub use declare::*;
 pub use deploy_account::*;
 pub use invoke::*;
 
 use pathfinder_common::transaction as common;
 use pathfinder_common::TransactionVersion;
+
+struct Txn<'a> {
+    variant: &'a common::TransactionVariant,
+    query: bool,
+}
 
 struct DeployTxn<'a>(&'a common::DeployTransaction);
 struct L1HandlerTxn<'a>(&'a common::L1HandlerTransaction);
@@ -24,6 +30,63 @@ struct Signature<'a>(&'a [pathfinder_common::TransactionSignatureElem]);
 struct ResourceBoundsMapping<'a>(&'a common::ResourceBounds);
 struct ResourceBounds<'a>(&'a common::ResourceBound);
 struct DaMode(common::DataAvailabilityMode);
+
+impl SerializeForVersion for Txn<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let query = self.query;
+
+        use common::TransactionVariant;
+        match self.variant {
+            TransactionVariant::DeclareV0(inner) => DeclareTxn {
+                variant: CommonDeclareVariant::V0(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeclareV1(inner) => DeclareTxn {
+                variant: CommonDeclareVariant::V1(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeclareV2(inner) => DeclareTxn {
+                variant: CommonDeclareVariant::V2(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeclareV3(inner) => DeclareTxn {
+                variant: CommonDeclareVariant::V3(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::Deploy(inner) => DeployTxn(inner).serialize(serializer),
+            TransactionVariant::DeployAccountV0V1(inner) => DeployAccountTxn {
+                variant: CommonDeployAccountVariant::V1(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::DeployAccountV3(inner) => DeployAccountTxn {
+                variant: CommonDeployAccountVariant::V3(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::InvokeV0(inner) => InvokeTxn {
+                variant: CommonInvokeVariant::V0(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::InvokeV1(inner) => InvokeTxn {
+                variant: CommonInvokeVariant::V1(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::InvokeV3(inner) => InvokeTxn {
+                variant: CommonInvokeVariant::V3(inner),
+                query,
+            }
+            .serialize(serializer),
+            TransactionVariant::L1Handler(inner) => L1HandlerTxn(inner).serialize(serializer),
+        }
+    }
+}
 
 impl SerializeForVersion for DeployTxn<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
