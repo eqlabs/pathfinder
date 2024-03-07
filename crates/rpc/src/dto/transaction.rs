@@ -9,6 +9,7 @@ pub use invoke::*;
 use pathfinder_common::transaction as common;
 use pathfinder_common::TransactionVersion;
 
+struct DeployTxn<'a>(&'a common::DeployTransaction);
 struct L1HandlerTxn<'a>(&'a common::L1HandlerTransaction);
 struct FunctionCall<'a> {
     pub contract_address: &'a pathfinder_common::ContractAddress,
@@ -20,6 +21,27 @@ struct Signature<'a>(&'a [pathfinder_common::TransactionSignatureElem]);
 struct ResourceBoundsMapping<'a>(&'a common::ResourceBounds);
 struct ResourceBounds<'a>(&'a common::ResourceBound);
 struct DaMode(common::DataAvailabilityMode);
+
+impl SerializeForVersion for DeployTxn<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("version", &Felt(&self.0.version.0))?;
+        serializer.serialize_field("type", &"DEPLOY")?;
+        serializer.serialize_field(
+            "contract_address_salt",
+            &Felt(&self.0.contract_address_salt.0),
+        )?;
+        serializer.serialize_iter(
+            "constructor_calldata",
+            self.0.constructor_calldata.len(),
+            &mut self.0.constructor_calldata.iter().map(|x| Felt(&x.0)),
+        )?;
+        serializer.serialize_field("class_hash", &Felt(&self.0.class_hash.0))?;
+
+        serializer.end()
+    }
+}
 
 impl SerializeForVersion for L1HandlerTxn<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
