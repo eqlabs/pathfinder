@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
+use crate::RpcVersion;
 use axum::async_trait;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -22,12 +23,12 @@ use crate::jsonrpc::response::{RpcResponse, RpcResult};
 pub struct RpcRouter {
     context: RpcContext,
     methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
-    version: &'static str,
+    version: RpcVersion,
 }
 
 pub struct RpcRouterBuilder {
     methods: HashMap<&'static str, Box<dyn RpcMethod>>,
-    version: &'static str,
+    version: RpcVersion,
 }
 
 impl RpcRouterBuilder {
@@ -63,7 +64,7 @@ impl RpcRouterBuilder {
         }
     }
 
-    fn new(version: &'static str) -> Self {
+    fn new(version: RpcVersion) -> Self {
         RpcRouterBuilder {
             methods: Default::default(),
             version,
@@ -72,7 +73,7 @@ impl RpcRouterBuilder {
 }
 
 impl RpcRouter {
-    pub fn builder(version: &'static str) -> RpcRouterBuilder {
+    pub fn builder(version: RpcVersion) -> RpcRouterBuilder {
         RpcRouterBuilder::new(version)
     }
 
@@ -98,9 +99,9 @@ impl RpcRouter {
             return Some(RpcResponse::method_not_found(request.id));
         };
 
-        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version);
+        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version.to_str());
 
-        let method = method.invoke(self.context.clone(), request.params);
+        let method = method.invoke(self.context.clone(), request.params, self.version);
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
         let output = match result {
@@ -114,7 +115,7 @@ impl RpcRouter {
         };
 
         if output.is_err() {
-            metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => self.version);
+            metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => self.version.to_str());
         }
 
         Some(RpcResponse {
@@ -638,7 +639,7 @@ mod tests {
                 ]))
             }
 
-            RpcRouter::builder("vTEST")
+            RpcRouter::builder(RpcVersion::default())
                 .register("subtract", subtract)
                 .register("sum", sum)
                 .register("get_data", get_data)
@@ -799,7 +800,7 @@ mod tests {
                 "Success"
             }
 
-            RpcRouter::builder("vTest")
+            RpcRouter::builder(Default::default())
                 .register("panic", always_panic)
                 .register("success", always_success)
                 .build(RpcContext::for_tests())
@@ -844,7 +845,7 @@ mod tests {
             Ok(json!("Success"))
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -874,7 +875,7 @@ mod tests {
             Ok(json!("Success"))
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -911,7 +912,7 @@ mod tests {
             Ok(json!("Success"))
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -944,7 +945,7 @@ mod tests {
             "Success"
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 
@@ -988,7 +989,7 @@ mod tests {
             "Success"
         }
 
-        let router = RpcRouter::builder("vTEST")
+        let router = RpcRouter::builder(Default::default())
             .register("success", always_success)
             .build(RpcContext::for_tests());
 

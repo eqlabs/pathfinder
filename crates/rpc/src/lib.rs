@@ -47,6 +47,19 @@ pub enum RpcVersion {
     V06,
     #[default]
     V07,
+    PathfinderV01,
+}
+
+impl RpcVersion {
+    fn to_str(self) -> &'static str {
+        match self {
+            RpcVersion::V04 => "v0.4",
+            RpcVersion::V05 => "v0.5",
+            RpcVersion::V06 => "v0.6",
+            RpcVersion::V07 => "v0.7",
+            RpcVersion::PathfinderV01 => "v0.1",
+        }
+    }
 }
 
 pub struct RpcServer {
@@ -156,6 +169,9 @@ impl RpcServer {
             RpcVersion::V05 => v05_routes.clone(),
             RpcVersion::V06 => v06_routes.clone(),
             RpcVersion::V07 => v07_routes.clone(),
+            RpcVersion::PathfinderV01 => {
+                anyhow::bail!("Did not expect default RPC version to be Pathfinder v0.1")
+            }
         };
 
         let router = axum::Router::new()
