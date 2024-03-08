@@ -46,20 +46,24 @@ pub(super) fn insert_transactions(
             None => None,
         };
 
-        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt) 
-                                                                  VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
+        let serialized_events = match receipt {
+            Some(receipt) => {
+                let events = serde_json::to_vec(&receipt.events).context("Serializing events")?;
+                Some(compressor.compress(&events).context("Compressing events")?)
+            }
+            None => None,
+        };
+
+        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt,  events) 
+                                                                  VALUES (:hash, :idx, :block_hash, :tx, :receipt, :events)",
             named_params![
                 ":hash": &transaction.hash(),
                 ":idx": &i.try_into_sql_int()?,
                 ":block_hash": &block_hash,
                 ":tx": &tx_data,
                 ":receipt": &serialized_receipt,
+                ":events": &serialized_events,
             ]).context("Inserting transaction data")?;
-
-        if let Some(receipt) = receipt {
-            insert_events(tx, transaction.hash(), &receipt.events)
-                .context("Inserting events into database")?;
-        }
     }
 
     let events = transaction_data
@@ -68,28 +72,6 @@ pub(super) fn insert_transactions(
         .flat_map(|receipt| &receipt.events);
     super::event::insert_block_events(tx, block_number, events)
         .context("Inserting events into Bloom filter")?;
-    Ok(())
-}
-
-pub(super) fn insert_events(
-    tx: &Transaction<'_>,
-    transaction_hash: TransactionHash,
-    events: &[pathfinder_common::event::Event],
-) -> anyhow::Result<()> {
-    let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-    let serialized_events = serde_json::to_vec(events).context("Serializing events")?;
-    let serialized_events = compressor
-        .compress(&serialized_events)
-        .context("Compressing events")?;
-    tx.inner()
-        .execute(
-            "INSERT INTO starknet_events (transaction_hash, events) VALUES (:hash, :events)",
-            named_params![
-                ":hash": &transaction_hash,
-                ":events": &serialized_events,
-            ],
-        )
-        .context("Inserting events")?;
     Ok(())
 }
 
@@ -170,7 +152,6 @@ pub(super) fn transaction_with_receipt(
             r"
             SELECT tx, receipt, block_hash, events
             FROM starknet_transactions
-            LEFT JOIN starknet_events ON starknet_transactions.hash = starknet_events.transaction_hash
             WHERE hash = ?1
             ",
         )
@@ -295,7 +276,6 @@ pub(super) fn transaction_data_for_block(
             r"
             SELECT tx, receipt, events
             FROM starknet_transactions
-            LEFT JOIN starknet_events ON starknet_transactions.hash = starknet_events.transaction_hash
             WHERE block_hash = ?
             ORDER BY idx ASC
             ",
@@ -385,7 +365,6 @@ pub(super) fn receipts_for_block(
             r"
             SELECT receipt, events
             FROM starknet_transactions
-            LEFT JOIN starknet_events ON starknet_transactions.hash = starknet_events.transaction_hash
             WHERE block_hash = ?
             ORDER BY idx ASC
             ",

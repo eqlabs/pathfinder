@@ -83,14 +83,11 @@ pub enum ExecutionStatus {
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
         r"
-CREATE TABLE starknet_events (
-    transaction_hash BLOB NOT NULL REFERENCES starknet_transactions(hash) ON DELETE CASCADE,
-    events BLOB NOT NULL
-)
+ALTER TABLE starknet_transactions ADD COLUMN events BLOB DEFAULT NULL;
 ",
         [],
     )
-    .context("Creating starknet_events table")?;
+    .context("Altering starknet_transactions table: adding new column")?;
     let mut stmt = tx.prepare("SELECT hash, receipt FROM starknet_transactions")?;
     let mut rows = stmt.query([])?;
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
@@ -103,18 +100,14 @@ CREATE TABLE starknet_events (
         let events =
             serde_json::to_vec(&receipt.events.as_ref().unwrap()).context("Serializing events")?;
         let events = compressor.compress(&events).context("Compressing events")?;
-        tx.execute(
-            "INSERT INTO starknet_events (transaction_hash, events) VALUES (?, ?)",
-            params![hash, events],
-        )?;
         receipt.events = None;
         let receipt = serde_json::to_vec(&receipt).context("Serializing receipt")?;
         let receipt = compressor
             .compress(&receipt)
             .context("Compressing receipt")?;
         tx.execute(
-            "UPDATE starknet_transactions SET receipt = ? WHERE hash = ?",
-            params![receipt, hash],
+            "UPDATE starknet_transactions SET receipt = ?, events = ? WHERE hash = ?",
+            params![receipt, events, hash],
         )?;
     }
     Ok(())
