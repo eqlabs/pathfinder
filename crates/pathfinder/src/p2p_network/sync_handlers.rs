@@ -142,10 +142,10 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            if let Some(counts) = db_tx
-                .state_update_counts(block_number.into(), NonZeroUsize::new(1).expect("1>0"))?
-            {
-                // Safety: `state_update_counts` returns `None` in case of an empty sequence.
+            let counts =
+                db_tx.state_update_counts(block_number.into(), NonZeroUsize::new(1).unwrap())?;
+
+            if !counts.is_empty() {
                 let counts = counts[0];
 
                 let txn_count = header

@@ -216,10 +216,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         getter: Arc<
-            impl Fn(
-                    BlockNumber,
-                    NonZeroUsize,
-                ) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>>
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>>
                 + Send
                 + Sync
                 + 'static,
@@ -358,10 +355,7 @@ impl Client {
         stop_inclusive: BlockNumber,
         counts: &mut SmallVec<[StateUpdateCounts; 10]>,
         getter: Arc<
-            impl Fn(
-                    BlockNumber,
-                    NonZeroUsize,
-                ) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>>
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>>
                 + Send
                 + Sync
                 + 'static,
@@ -381,8 +375,8 @@ impl Client {
                 let new_counts = spawn_blocking(move || getter(start, limit))
                     .await
                     .context("Joining blocking task")?
-                    .context("Getting state update counts")?
-                    .ok_or(anyhow::anyhow!("No counts for this range"))?;
+                    .context("Getting state update counts")?;
+                anyhow::ensure!(!new_counts.is_empty(), "No counts for this range");
                 *counts = new_counts;
                 Ok(counts.pop().expect("vector is not empty"))
             }

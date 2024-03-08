@@ -323,9 +323,9 @@ pub(super) fn state_update_counts(
     tx: &Transaction<'_>,
     block: BlockId,
     max_len: NonZeroUsize,
-) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>> {
+) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
-        return Ok(None);
+        return Ok(Default::default());
     };
 
     let mut stmt = tx
@@ -360,7 +360,7 @@ pub(super) fn state_update_counts(
 
     ret.reverse();
 
-    Ok((!ret.is_empty()).then_some(ret))
+    Ok(ret)
 }
 
 pub(super) fn declared_classes_at(

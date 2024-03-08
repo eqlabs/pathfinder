@@ -402,7 +402,7 @@ impl Sync {
         let storage = self.storage.clone();
         let getter = move |start: BlockNumber,
                            limit: NonZeroUsize|
-              -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>> {
+              -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;

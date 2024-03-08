@@ -556,14 +556,12 @@ impl<'inner> Transaction<'inner> {
         state_update::highest_block_with_state_update(self)
     }
 
-    /// ### Guarantee
-    /// Should the resulting sequence be empty this function will always return `None`.
     /// Items are sorted in descending order.
     pub fn state_update_counts(
         &self,
         block: BlockId,
         max_len: NonZeroUsize,
-    ) -> anyhow::Result<Option<SmallVec<[StateUpdateCounts; 10]>>> {
+    ) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
         state_update::state_update_counts(self, block, max_len)
     }
 
