@@ -516,12 +516,28 @@ impl<'inner> Transaction<'inner> {
         trie::insert_class_root(self, block_number, root)
     }
 
+    pub fn insert_or_update_class_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u64>,
+    ) -> anyhow::Result<()> {
+        trie::insert_or_update_class_root(self, block_number, root)
+    }
+
     pub fn insert_storage_root(
         &self,
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
         trie::insert_storage_root(self, block_number, root)
+    }
+
+    pub fn insert_or_update_storage_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u64>,
+    ) -> anyhow::Result<()> {
+        trie::insert_or_update_storage_root(self, block_number, root)
     }
 
     pub fn insert_contract_root(
@@ -531,6 +547,15 @@ impl<'inner> Transaction<'inner> {
         root: Option<u64>,
     ) -> anyhow::Result<()> {
         trie::insert_contract_root(self, block_number, contract, root)
+    }
+
+    pub fn insert_or_update_contract_root(
+        &self,
+        block_number: BlockNumber,
+        contract: ContractAddress,
+        root: Option<u64>,
+    ) -> anyhow::Result<()> {
+        trie::insert_or_update_contract_root(self, block_number, contract, root)
     }
 
     pub fn insert_state_update(

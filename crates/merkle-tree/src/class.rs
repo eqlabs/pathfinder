@@ -172,9 +172,8 @@ pub fn revert_class_updates(
             None
         };
 
-        // FIXME: should be update instead of insert
         transaction
-            .insert_class_root(target_block, root_idx)
+            .insert_or_update_class_root(target_block, root_idx)
             .context("Inserting class root index")?;
 
         tracing::debug!(%target_block, %class_commitment, "Committed class trie");

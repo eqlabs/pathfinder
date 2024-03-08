@@ -213,9 +213,8 @@ pub fn revert_contract_updates(
             None
         };
 
-        // FIXME: should be update instead of insert
         transaction
-            .insert_storage_root(target_block, root_idx)
+            .insert_or_update_storage_root(target_block, root_idx)
             .context("Inserting storage root index")?;
         tracing::debug!(%target_block, %storage_commitment, "Committed global state tree");
     } else {
@@ -285,9 +284,8 @@ fn apply_reverse_contract_update(
                     None
                 };
 
-                // FIXME: should be update instead of insert
                 transaction
-                    .insert_contract_root(target_block, contract_address, root_index)
+                    .insert_or_update_contract_root(target_block, contract_address, root_index)
                     .context("Inserting contract's root index")?;
 
                 root
