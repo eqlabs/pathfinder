@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
+use crate::dto::serialize::SerializeForVersion;
 use crate::RpcVersion;
 use axum::async_trait;
 use axum::extract::State;
@@ -9,7 +10,6 @@ use axum::response::IntoResponse;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_json::value::RawValue;
 use serde_json::Value;
 use tracing::Instrument;
@@ -237,7 +237,12 @@ pub async fn rpc_handler(
 
 #[axum::async_trait]
 pub trait RpcMethod: Send + Sync {
-    async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult;
+    async fn invoke<'a>(
+        &self,
+        state: RpcContext,
+        input: RawParams<'a>,
+        version: RpcVersion,
+    ) -> RpcResult;
 }
 
 /// Utility trait which automates the serde of an RPC methods input and output.
@@ -271,7 +276,7 @@ where
 mod sealed {
     use std::marker::PhantomData;
 
-    use crate::jsonrpc::error::RpcError;
+    use crate::{dto::serialize::Serializer, jsonrpc::error::RpcError, RpcVersion};
 
     use super::*;
 
@@ -298,7 +303,7 @@ mod sealed {
     where
         F: Fn(RpcContext, Input) -> Fut + Sync + Send + 'static,
         Input: DeserializeOwned + Send + Sync + 'static,
-        Output: Serialize + Send + Sync + 'static,
+        Output: SerializeForVersion + Send + Sync + 'static,
         Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -313,14 +318,22 @@ mod sealed {
             where
                 F: Fn(RpcContext, Input) -> Fut + Sync + Send,
                 Input: DeserializeOwned + Send + Sync,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    state: RpcContext,
+                    input: RawParams<'a>,
+                    version: RpcVersion,
+                ) -> RpcResult {
                     let input = input.deserialize()?;
-                    let output = (self.f)(state, input).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)(state, input)
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(Serializer::new(version))
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -339,7 +352,7 @@ mod sealed {
     where
         F: Fn(Input) -> Fut + Sync + Send + 'static,
         Input: DeserializeOwned + Sync + Send + 'static,
-        Output: Serialize + Sync + Send + 'static,
+        Output: SerializeForVersion + Sync + Send + 'static,
         Error: Into<RpcError> + Sync + Send + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -354,14 +367,22 @@ mod sealed {
             where
                 F: Fn(Input) -> Fut + Sync + Send,
                 Input: DeserializeOwned + Send + Sync,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    _state: RpcContext,
+                    input: RawParams<'a>,
+                    version: RpcVersion,
+                ) -> RpcResult {
                     let input = input.deserialize()?;
-                    let output = (self.f)(input).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)(input)
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(Serializer::new(version))
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -379,7 +400,7 @@ mod sealed {
     impl<'a, F, Output, Error, Fut> Sealed<(), ((), Output), ((), RpcContext)> for F
     where
         F: Fn(RpcContext) -> Fut + Sync + Send + 'static,
-        Output: Serialize + Sync + Send + 'static,
+        Output: SerializeForVersion + Sync + Send + 'static,
         Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -393,18 +414,26 @@ mod sealed {
             impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
             where
                 F: Fn(RpcContext) -> Fut + Sync + Send,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    state: RpcContext,
+                    input: RawParams<'a>,
+                    version: RpcVersion,
+                ) -> RpcResult {
                     if !input.is_empty() {
                         return Err(RpcError::InvalidParams(
                             "This method takes no inputs".to_owned(),
                         ));
                     }
-                    let output = (self.f)(state).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)(state)
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(Serializer::new(version))
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -422,7 +451,7 @@ mod sealed {
     impl<'a, F, Output, Error, Fut> Sealed<(), (), ((), Output)> for F
     where
         F: Fn() -> Fut + Sync + Send + 'static,
-        Output: Serialize + Sync + Send + 'static,
+        Output: SerializeForVersion + Sync + Send + 'static,
         Error: Into<RpcError> + Sync + Send + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
@@ -436,18 +465,26 @@ mod sealed {
             impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
             where
                 F: Fn() -> Fut + Sync + Send,
-                Output: Serialize + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    _state: RpcContext,
+                    input: RawParams<'a>,
+                    version: RpcVersion,
+                ) -> RpcResult {
                     if !input.is_empty() {
                         return Err(RpcError::InvalidParams(
                             "This method takes no inputs".to_owned(),
                         ));
                     }
-                    let output = (self.f)().await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)()
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(Serializer::new(version))
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -476,14 +513,20 @@ mod sealed {
             where
                 F: Fn() -> &'static str + Sync + Send,
             {
-                async fn invoke<'a>(&self, _state: RpcContext, input: RawParams<'a>) -> RpcResult {
+                async fn invoke<'a>(
+                    &self,
+                    _state: RpcContext,
+                    input: RawParams<'a>,
+                    version: RpcVersion,
+                ) -> RpcResult {
                     if !input.is_empty() {
                         return Err(RpcError::InvalidParams(
                             "This method takes no inputs".to_owned(),
                         ));
                     }
-                    let output = (self.f)();
-                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
+                    (self.f)()
+                        .serialize(Serializer::new(version))
+                        .map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
             Box::new(Helper { f: self })
@@ -567,6 +610,7 @@ where
 mod tests {
     use super::*;
     use serde::Deserialize;
+    use serde::Serialize;
     use serde_json::json;
 
     async fn spawn_server(router: RpcRouter) -> String {

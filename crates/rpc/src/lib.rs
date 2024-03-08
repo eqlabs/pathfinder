@@ -1,5 +1,6 @@
 //! Starknet node JSON-RPC related modules.
 pub mod context;
+mod dto;
 mod error;
 mod executor;
 mod felt;
@@ -40,7 +41,7 @@ use tower_http::ServiceBuilderExt;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
-#[derive(Copy, Clone, Default, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub enum RpcVersion {
     V04,
     V05,
