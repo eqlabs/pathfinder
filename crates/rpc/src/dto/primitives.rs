@@ -6,6 +6,7 @@ pub struct SyncStatus<'a>(pub &'a crate::v02::types::syncing::Status);
 
 pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
+pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 
 mod hex_str {
@@ -99,6 +100,16 @@ impl SerializeForVersion for BlockHash<'_> {
     }
 }
 
+impl SerializeForVersion for ChainId<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let hex_str = hex_str::bytes_to_hex_str_stripped(self.0 .0.as_be_bytes());
+        serializer.serialize_str(&hex_str)
+    }
+}
+
 impl SerializeForVersion for BlockNumber {
     fn serialize(
         &self,
@@ -175,6 +186,15 @@ mod tests {
         });
 
         let encoded = SyncStatus(&status).serialize(s).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn chain_id() {
+        let uut = ChainId(&pathfinder_common::ChainId(felt!("0x1234")));
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
 
         assert_eq!(encoded, expected);
     }
