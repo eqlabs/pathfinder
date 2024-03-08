@@ -124,7 +124,7 @@ pub(crate) fn create_transactions_and_receipts() -> [(Transaction, Receipt); NUM
                 vec![]
             },
             execution_resources: ExecutionResources {
-                builtin_instance_counter: Default::default(),
+                builtins: Default::default(),
                 n_steps: i as u64 + 987,
                 n_memory_holes: i as u64 + 1177,
                 data_availability: ExecutionDataAvailability {
