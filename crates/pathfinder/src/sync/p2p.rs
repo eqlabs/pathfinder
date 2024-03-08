@@ -414,7 +414,7 @@ impl Sync {
         };
         let getter = Arc::new(getter);
 
-        while let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
+        if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
         {
