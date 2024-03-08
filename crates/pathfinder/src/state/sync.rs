@@ -5,7 +5,6 @@ mod pending;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::state_update::StateUpdateCounts;
 use pathfinder_common::BlockCommitmentSignature;
 use pathfinder_common::Chain;
 use pathfinder_crypto::Felt;
@@ -812,35 +811,8 @@ async fn l2_update(
             .insert_block_header(&header)
             .context("Inserting block header into database")?;
 
-        let state_update_counts = StateUpdateCounts {
-            storage_diffs: state_update
-                .contract_updates
-                .iter()
-                .map(|(_, update)| update.storage.len())
-                .sum::<usize>()
-                .try_into()
-                .expect("ptr size is 64 bits"),
-            nonce_updates: state_update
-                .contract_updates
-                .iter()
-                .filter(|(_, update)| update.nonce.is_some())
-                .count()
-                .try_into()
-                .expect("ptr size is 64 bits"),
-            declared_classes: (state_update.declared_cairo_classes.len()
-                + state_update.declared_sierra_classes.len())
-            .try_into()
-            .expect("ptr size is 64 bits"),
-            deployed_contracts: state_update
-                .contract_updates
-                .iter()
-                .filter(|(_, update)| update.class.is_some())
-                .count()
-                .try_into()
-                .expect("ptr size is 64 bits"),
-        };
         transaction
-            .insert_state_update_counts(header.number, &state_update_counts)
+            .insert_state_update_counts(header.number, &state_update.counts())
             .context("Inserting state update counts into database")?;
 
         // Insert the transactions.
