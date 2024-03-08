@@ -208,9 +208,6 @@ impl Client {
         self.inner.send_receipts_sync_request(peer, request).await
     }
 
-    /// ### Important
-    ///
-    /// Caller must guarantee that `start <= stop_inclusive`
     pub fn contract_updates_stream(
         self,
         mut start: BlockNumber,
@@ -222,10 +219,8 @@ impl Client {
                 + 'static,
         >,
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ContractUpdates)>>> {
-        debug_assert!(start <= stop_inclusive);
-
         async_stream::try_stream! {
-
+        if start <= stop_inclusive {
             let mut counts = Default::default();
 
             // Loop which refreshes peer set once we exhaust it.
@@ -346,6 +341,7 @@ impl Client {
                     }
                 }
             }
+        }
         }
     }
 
