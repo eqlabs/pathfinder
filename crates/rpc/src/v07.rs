@@ -3,7 +3,6 @@ pub mod method;
 
 use crate::v02::method as v02_method;
 use crate::v03::method as v03_method;
-use crate::v04::method as v04_method;
 use crate::v05::method as v05_method;
 use crate::v06::method as v06_method;
 
@@ -25,7 +24,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getEvents",                           v03_method::get_events)
         .register("starknet_getStateUpdate",                      v03_method::get_state_update)
 
-        .register("starknet_syncing",                             v04_method::syncing)
+        .register("starknet_syncing",                             crate::method::syncing)
 
         .register("starknet_call",                                v05_method::call)
         .register("starknet_getTransactionStatus",                v05_method::get_transaction_status)

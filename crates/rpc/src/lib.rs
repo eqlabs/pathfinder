@@ -5,6 +5,7 @@ mod error;
 mod executor;
 mod felt;
 mod jsonrpc;
+pub(crate) mod method;
 pub mod middleware;
 mod pathfinder;
 mod pending;
