@@ -215,38 +215,14 @@ impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
                 // Assumption: the values are small enough to fit into u32
                 ExecutionResources {
                     builtins: BuiltinCounter {
-                        bitwise: e
-                            .builtin_instance_counter
-                            .bitwise_builtin
-                            .try_into()
-                            .unwrap(),
-                        ecdsa: e.builtin_instance_counter.ecdsa_builtin.try_into().unwrap(),
-                        ec_op: e.builtin_instance_counter.ec_op_builtin.try_into().unwrap(),
-                        pedersen: e
-                            .builtin_instance_counter
-                            .pedersen_builtin
-                            .try_into()
-                            .unwrap(),
-                        range_check: e
-                            .builtin_instance_counter
-                            .range_check_builtin
-                            .try_into()
-                            .unwrap(),
-                        poseidon: e
-                            .builtin_instance_counter
-                            .poseidon_builtin
-                            .try_into()
-                            .unwrap(),
-                        keccak: e
-                            .builtin_instance_counter
-                            .keccak_builtin
-                            .try_into()
-                            .unwrap(),
-                        output: e
-                            .builtin_instance_counter
-                            .output_builtin
-                            .try_into()
-                            .unwrap(),
+                        bitwise: e.builtins.bitwise.try_into().unwrap(),
+                        ecdsa: e.builtins.ecdsa.try_into().unwrap(),
+                        ec_op: e.builtins.ec_op.try_into().unwrap(),
+                        pedersen: e.builtins.pedersen.try_into().unwrap(),
+                        range_check: e.builtins.range_check.try_into().unwrap(),
+                        poseidon: e.builtins.poseidon.try_into().unwrap(),
+                        keccak: e.builtins.keccak.try_into().unwrap(),
+                        output: e.builtins.output.try_into().unwrap(),
                     },
                     steps: e.n_steps.try_into().unwrap(),
                     memory_holes: e.n_memory_holes.try_into().unwrap(),

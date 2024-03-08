@@ -458,9 +458,9 @@ pub mod test_utils {
         };
         let mut receipt0 = Receipt {
             execution_resources: ExecutionResources {
-                builtin_instance_counter: BuiltinCounters {
-                    output_builtin: 33,
-                    pedersen_builtin: 32,
+                builtins: BuiltinCounters {
+                    output: 33,
+                    pedersen: 32,
                     ..Default::default()
                 },
                 n_memory_holes: 5,
