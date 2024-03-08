@@ -11,7 +11,7 @@ use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::V07)
-        .register("starknet_blockHashAndNumber",                  v02_method::block_hash_and_number)
+        .register("starknet_blockHashAndNumber",                  crate::method::block_hash_and_number)
         .register("starknet_blockNumber",                         crate::method::block_number)
         .register("starknet_chainId",                             v02_method::chain_id)
         .register("starknet_getBlockTransactionCount",            v02_method::get_block_transaction_count)
