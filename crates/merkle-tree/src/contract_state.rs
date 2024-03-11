@@ -3,9 +3,8 @@ use std::collections::HashMap;
 use crate::{ContractsStorageTree, StorageCommitmentTree};
 use anyhow::Context;
 use pathfinder_common::{
-    reverse_state_update::ReverseContractUpdate, BlockNumber, ClassHash, ContractAddress,
-    ContractNonce, ContractRoot, ContractStateHash, StorageAddress, StorageCommitment,
-    StorageValue,
+    state_update::ReverseContractUpdate, BlockNumber, ClassHash, ContractAddress, ContractNonce,
+    ContractRoot, ContractStateHash, StorageAddress, StorageValue,
 };
 use pathfinder_crypto::{hash::pedersen_hash, Felt};
 use pathfinder_storage::{Node, Transaction};
@@ -236,11 +235,11 @@ fn apply_reverse_contract_update(
     tracing::debug!(%contract_address, "Rolling back");
 
     match contract_update {
-        pathfinder_common::reverse_state_update::ReverseContractUpdate::Deleted => {
+        ReverseContractUpdate::Deleted => {
             tracing::debug!(%contract_address, "Contract has been deleted");
             Ok(ContractStateHash::ZERO)
         }
-        pathfinder_common::reverse_state_update::ReverseContractUpdate::Updated(update) => {
+        ReverseContractUpdate::Updated(update) => {
             let class_hash = match update.class {
                 Some(class_hash) => class_hash,
                 None => {

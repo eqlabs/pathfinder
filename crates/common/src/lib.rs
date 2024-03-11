@@ -17,7 +17,6 @@ mod header;
 mod macros;
 pub mod prelude;
 pub mod receipt;
-pub mod reverse_state_update;
 pub mod signature;
 pub mod state_update;
 pub mod test_utils;

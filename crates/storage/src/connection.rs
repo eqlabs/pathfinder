@@ -14,8 +14,7 @@ pub(crate) mod transaction;
 mod trie;
 
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::reverse_state_update::ReverseContractUpdate;
-use pathfinder_common::state_update::StateUpdateCounts;
+use pathfinder_common::state_update::{ReverseContractUpdate, StateUpdateCounts};
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 

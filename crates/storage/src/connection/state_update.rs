@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use pathfinder_common::reverse_state_update::{
-    ReverseContractUpdate, ReverseContractUpdateDetails,
+use pathfinder_common::state_update::{
+    ContractClassUpdate, ReverseContractUpdate, ReverseContractUpdateDetails, StateUpdateCounts,
 };
-use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateCounts};
 use pathfinder_common::{
     BlockHash, BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
     StateCommitment, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
