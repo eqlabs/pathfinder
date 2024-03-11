@@ -152,10 +152,9 @@ pub mod init {
                     transaction_index: TransactionIndex::new_or_panic(
                         i.try_into().expect("u64 is at least as wide as usize"),
                     ),
-                    events: fake_non_empty_with_rng(rng),
                     ..Faker.fake_with_rng(rng)
                 }
-                .into();
+                .into_common(fake_non_empty_with_rng(rng));
                 (t, r)
             })
             .collect::<Vec<_>>();
