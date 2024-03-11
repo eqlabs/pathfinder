@@ -43,20 +43,12 @@ fn main() -> anyhow::Result<()> {
 
     let to_header = tx.block_header(to.into()).unwrap().unwrap();
 
-    pathfinder_merkle_tree::revert_class_updates(&tx, from, to, to_header.class_commitment, true)?;
-
-    pathfinder_merkle_tree::contract_state::revert_contract_updates(
-        &tx,
-        from,
-        to,
-        to_header.storage_commitment,
-        true,
-    )?;
+    pathfinder_lib::state::revert::revert_starknet_state(&tx, from, to, to_header, true)?;
 
     tracing::info!(
         from=%from,
         to=%to,
-        total = ?started.elapsed(),
+        total=?started.elapsed(),
         "Finished state rollback"
     );
 

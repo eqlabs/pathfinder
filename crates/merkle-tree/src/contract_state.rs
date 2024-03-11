@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ContractsStorageTree, StorageCommitmentTree};
+use crate::ContractsStorageTree;
 use anyhow::Context;
 use pathfinder_common::{
     state_update::ReverseContractUpdate, BlockNumber, ClassHash, ContractAddress, ContractNonce,
@@ -137,95 +137,10 @@ pub fn calculate_contract_state_hash(
     ContractStateHash(hash)
 }
 
-/// Revert all contract/global storage trie updates.
-///
-/// Fetches reverse updates from the database and updates all tries, returning the storage commitment
-/// and the storage root node index.
-pub fn revert_contract_updates(
-    transaction: &Transaction<'_>,
-    head: BlockNumber,
-    target_block: BlockNumber,
-    expected_storage_commitment: StorageCommitment,
-    force: bool,
-) -> anyhow::Result<()> {
-    let state_root_exists = match transaction.storage_root_index(target_block)? {
-        None => false,
-        Some(root_idx) => transaction.storage_trie_node(root_idx)?.is_some(),
-    };
-
-    if force || !state_root_exists {
-        let updates = transaction.reverse_contract_updates(head, target_block)?;
-
-        let mut global_tree = StorageCommitmentTree::load(transaction, head)
-            .context("Loading global storage tree")?;
-
-        for (contract_address, contract_update) in updates {
-            let state_hash = apply_reverse_contract_update(
-                transaction,
-                contract_address,
-                head,
-                target_block,
-                contract_update,
-            )?;
-
-            if state_hash != ContractStateHash::ZERO {
-                let expected_contract_state_hash = transaction
-                    .contract_state_hash(target_block, contract_address)
-                    .context("Fetching expected contract state hash")?
-                    .context("Expected contract state hash to be there")?;
-                if expected_contract_state_hash != state_hash {
-                    anyhow::bail!(
-                        "Contract state hash mismatch: address {} computed {} expected {}",
-                        contract_address,
-                        state_hash,
-                        expected_contract_state_hash
-                    );
-                }
-            }
-
-            global_tree
-                .set(contract_address, state_hash)
-                .context("Updating contract state hash in global tree")?;
-        }
-
-        tracing::debug!("Applied reverse updates, committing global state tree");
-
-        let (storage_commitment, nodes_added) = global_tree
-            .commit()
-            .context("Committing global state tree")?;
-
-        if expected_storage_commitment != storage_commitment {
-            anyhow::bail!(
-                "Storage commitment mismatch: expected {}, calculated {}",
-                expected_storage_commitment,
-                storage_commitment
-            );
-        }
-
-        let root_idx = if !storage_commitment.0.is_zero() {
-            let root_idx = transaction
-                .insert_storage_trie(storage_commitment, &nodes_added)
-                .context("Persisting storage trie")?;
-
-            Some(root_idx)
-        } else {
-            None
-        };
-
-        transaction
-            .insert_or_update_storage_root(target_block, root_idx)
-            .context("Inserting storage root index")?;
-        tracing::debug!(%target_block, %storage_commitment, "Committed global state tree");
-    } else {
-        tracing::debug!(%target_block, "State tree root node exists");
-    }
-    Ok(())
-}
-
 /// Reverts Merkle tree state for a contract.
 ///
 /// Takes Merkle tree state at `head` and applies reverse updates.
-fn apply_reverse_contract_update(
+pub fn revert_contract_state(
     transaction: &Transaction<'_>,
     contract_address: ContractAddress,
     head: BlockNumber,

@@ -2,6 +2,7 @@ mod class;
 pub mod l1;
 pub mod l2;
 mod pending;
+pub mod revert;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
@@ -983,20 +984,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
                 .block_header(target_block.into())
                 .context("Fetching target block header")?
                 .context("Expected target header to exist")?;
-            pathfinder_merkle_tree::contract_state::revert_contract_updates(
-                &transaction,
-                head,
-                target_block,
-                target_header.storage_commitment,
-                false,
-            )?;
-            pathfinder_merkle_tree::revert_class_updates(
-                &transaction,
-                head,
-                target_block,
-                target_header.class_commitment,
-                false,
-            )?;
+            revert::revert_starknet_state(&transaction, head, target_block, target_header, false)?;
         }
 
         // Purge each block one at a time.
