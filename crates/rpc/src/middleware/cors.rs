@@ -19,7 +19,7 @@ pub fn with_allowed_origins(allowed_origins: AllowedOrigins) -> CorsLayer {
 
 #[cfg(test)]
 mod tests {
-    use crate::{context::RpcContext, DefaultVersion, RpcServer};
+    use crate::{context::RpcContext, RpcServer, RpcVersion};
     use http::HeaderValue;
 
     #[tokio::test]
@@ -34,8 +34,7 @@ mod tests {
             (None, None, line!()),
         ] {
             let context = RpcContext::for_tests();
-            let server =
-                RpcServer::new("127.0.0.1:0".parse().unwrap(), context, DefaultVersion::V05);
+            let server = RpcServer::new("127.0.0.1:0".parse().unwrap(), context, RpcVersion::V05);
             let server = match allowed {
                 Some(allowed) => server.with_cors(allowed.into()),
                 None => server,
