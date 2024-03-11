@@ -1,3 +1,9 @@
+use crate::dto::serialize;
+
+use super::serialize::SerializeForVersion;
+
+pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
+
 mod hex_str {
     use std::borrow::Cow;
 
@@ -54,9 +60,34 @@ mod hex_str {
     }
 }
 
+impl SerializeForVersion for Felt<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let hex_str = hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes());
+        serializer.serialize_str(&hex_str)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::dto::serialize::Serializer;
+
     use super::*;
+
+    use pathfinder_common::macro_prelude::*;
+    use pretty_assertions_sorted::assert_eq;
+    use serde_json::json;
+
+    #[test]
+    fn felt() {
+        let uut = Felt(&felt!("0x1234"));
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
 
     mod hex_str {
         use super::super::hex_str::*;
