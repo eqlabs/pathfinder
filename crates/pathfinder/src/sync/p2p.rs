@@ -1,28 +1,36 @@
 #![allow(dead_code, unused_variables)]
 mod headers;
 mod receipts;
+mod state_updates;
 mod transactions;
+
+use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use anyhow::Context;
 use futures::StreamExt;
+use futures::TryStreamExt;
+use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
 use p2p_proto::{
     common::{BlockNumberOrHash, Direction, Iteration},
     receipt::{ReceiptsRequest, ReceiptsResponse},
     transaction::{TransactionsRequest, TransactionsResponse},
 };
-use pathfinder_common::{
-    receipt::Receipt, transaction::Transaction, BlockHash, BlockHeader, BlockNumber,
-};
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateCounts;
+use pathfinder_common::{transaction::Transaction, BlockHeader};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
+use smallvec::SmallVec;
 use tokio::task::spawn_blocking;
-
-use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
 
 use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
+
+use state_updates::ContractDiffSyncError;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -76,6 +84,8 @@ impl Sync {
             .await
             .context("Persisting new Ethereum anchor")?;
 
+        let head = anchor.block_number;
+
         // Sync missing headers in reverse chronological order, from the new anchor to genesis.
         self.sync_headers(anchor).await.context("Syncing headers")?;
 
@@ -85,6 +95,9 @@ impl Sync {
             .context("Syncing transactions")?;
 
         // Sync the rest of the data in chronological order.
+        self.sync_state_updates(head)
+            .await
+            .context("Syncing state updates")?;
 
         Ok(())
     }
@@ -102,8 +115,6 @@ impl Sync {
                 .await
                 .context("Finding next gap in header chain")?
         {
-            use futures::TryStreamExt;
-
             // TODO: create a tracing scope for this gap start, stop.
 
             tracing::info!("Syncing headers");
@@ -385,6 +396,61 @@ impl Sync {
                 }
             }
         }
+    }
+
+    async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
+        let storage = self.storage.clone();
+        let getter = move |start: BlockNumber,
+                           limit: NonZeroUsize|
+              -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
+            let mut db = storage
+                .connection()
+                .context("Creating database connection")?;
+            let db = db.transaction().context("Creating database transaction")?;
+            let counts = db
+                .state_update_counts(start.into(), limit)
+                .context("Querying state updates")?;
+            Ok(counts)
+        };
+        let getter = Arc::new(getter);
+
+        if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
+            .await
+            .context("Finding next missing state update")?
+        {
+            let getter = getter.clone();
+            let result = self
+                .p2p
+                .clone()
+                .contract_updates_stream(start, stop, getter)
+                .map_err(Into::into)
+                .and_then(state_updates::verify_signature)
+                .try_chunks(100)
+                .map_err(|e| e.1)
+                // Persist state updates (without: state commitments and declared classes)
+                .and_then(|x| state_updates::persist(self.storage.clone(), x))
+                .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
+                // Drive stream to completion.
+                .try_fold((), |_, _| std::future::ready(Ok(())))
+                .await;
+
+            match result {
+                Ok(()) => {
+                    tracing::info!("Syncing contract updates complete");
+                }
+                Err(ContractDiffSyncError::SignatureVerification(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: signature verification failed");
+                }
+                Err(ContractDiffSyncError::StateDiffCommitmentMismatch(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: state diff commitment mismatch");
+                }
+                Err(ContractDiffSyncError::DatabaseOrComputeError(error)) => {
+                    tracing::debug!(%error, "Error while streaming contract updates");
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

@@ -811,6 +811,10 @@ async fn l2_update(
             .insert_block_header(&header)
             .context("Inserting block header into database")?;
 
+        transaction
+            .insert_state_update_counts(header.number, &state_update.counts())
+            .context("Inserting state update counts into database")?;
+
         // Insert the transactions.
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),

@@ -3,6 +3,7 @@ use pathfinder_common::{
         BuiltinCounters, ExecutionDataAvailability, ExecutionResources, ExecutionStatus,
         L2ToL1Message, Receipt,
     },
+    state_update::StateUpdateCounts,
     transaction::{
         DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
         DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
@@ -66,6 +67,12 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             },
             signature,
+            state_update_counts: StateUpdateCounts {
+                storage_diffs: dto.num_storage_diffs,
+                nonce_updates: dto.num_nonce_updates,
+                declared_classes: dto.num_declared_classes,
+                deployed_contracts: dto.num_deployed_contracts,
+            },
         })
     }
 }

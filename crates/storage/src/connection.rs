@@ -14,6 +14,7 @@ pub(crate) mod transaction;
 mod trie;
 
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateCounts;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 
@@ -23,6 +24,7 @@ pub use event::{EmittedEvent, EventFilter, EventFilterError, PageOfEvents};
 
 pub(crate) use reorg_counter::ReorgCounter;
 
+use smallvec::SmallVec;
 pub use transaction::TransactionStatus;
 
 pub use trie::{Child, Node, StoredNode};
@@ -538,8 +540,29 @@ impl<'inner> Transaction<'inner> {
         state_update::insert_state_update(self, block_number, state_update)
     }
 
+    pub fn insert_state_update_counts(
+        &self,
+        block_number: BlockNumber,
+        counts: &StateUpdateCounts,
+    ) -> anyhow::Result<()> {
+        state_update::update_state_update_counts(self, block_number, counts)
+    }
+
     pub fn state_update(&self, block: BlockId) -> anyhow::Result<Option<StateUpdate>> {
         state_update::state_update(self, block)
+    }
+
+    pub fn highest_block_with_state_update(&self) -> anyhow::Result<Option<BlockNumber>> {
+        state_update::highest_block_with_state_update(self)
+    }
+
+    /// Items are sorted in descending order.
+    pub fn state_update_counts(
+        &self,
+        block: BlockId,
+        max_len: NonZeroUsize,
+    ) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
+        state_update::state_update_counts(self, block, max_len)
     }
 
     pub fn storage_value(
