@@ -73,7 +73,7 @@ pub fn permute(state: &mut PoseidonState) {
 
 #[cfg(test)]
 mod tests {
-    use crate::algebra::field::{montfelt_dec, MontFelt};
+    use crate::algebra::field::MontFelt;
 
     use super::*;
 
@@ -81,15 +81,9 @@ mod tests {
     fn test_poseidon() {
         // Test vector from https://github.com/starkware-industries/poseidon
         let test_result = [
-            montfelt_dec!(
-                "3446325744004048536138401612021367625846492093718951375866996507163446763827"
-            ),
-            montfelt_dec!(
-                "1590252087433376791875644726012779423683501236913937337746052470473806035332"
-            ),
-            montfelt_dec!(
-                "867921192302518434283879514999422690776342565400001269945778456016268852423"
-            ),
+            MontFelt::from_hex("79E8D1E78258000A28FC9D49E233BC6852357968577B1E386550ED6A9086133"),
+            MontFelt::from_hex("3840D003D0F3F96DBB796FF6AA6A63BE5B5404B91CCAABCA256154CBB6FB984"),
+            MontFelt::from_hex("1EB39DA3F7D3B04142D0AC83D9DA00C9325A61FB2EF326E50B70EAA8A3C7CC7"),
         ];
         let mut state: PoseidonState = [MontFelt::ZERO, MontFelt::ZERO, MontFelt::ZERO];
         permute(&mut state);
