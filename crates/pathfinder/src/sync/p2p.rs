@@ -4,9 +4,6 @@ mod receipts;
 mod state_updates;
 mod transactions;
 
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-
 use anyhow::Context;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -17,13 +14,11 @@ use p2p_proto::{
     transaction::{TransactionsRequest, TransactionsResponse},
 };
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::StateUpdateCounts;
 use pathfinder_common::{transaction::Transaction, BlockHeader};
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
-use smallvec::SmallVec;
 use tokio::task::spawn_blocking;
 
 use crate::state::block_hash::{
@@ -400,29 +395,16 @@ impl Sync {
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
         let storage = self.storage.clone();
-        let getter = move |start: BlockNumber,
-                           limit: NonZeroUsize|
-              -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
-            let mut db = storage
-                .connection()
-                .context("Creating database connection")?;
-            let db = db.transaction().context("Creating database transaction")?;
-            let counts = db
-                .state_update_counts(start.into(), limit)
-                .context("Querying state updates")?;
-            Ok(counts)
-        };
-        let getter = Arc::new(getter);
+        let (_, state_update_counts_stream) = futures::channel::mpsc::channel(0); // FIXME: use a real stream
 
         if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
         {
-            let getter = getter.clone();
             let result = self
                 .p2p
                 .clone()
-                .contract_updates_stream(start, stop, getter)
+                .contract_updates_stream(start, stop, state_update_counts_stream)
                 .map_err(Into::into)
                 .and_then(state_updates::verify_signature)
                 .try_chunks(100)
