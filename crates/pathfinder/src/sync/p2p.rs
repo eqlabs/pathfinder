@@ -12,6 +12,7 @@ use p2p_proto::{
 };
 use pathfinder_common::{
     receipt::Receipt, transaction::Transaction, BlockHash, BlockHeader, BlockNumber,
+    TransactionIndex,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
@@ -334,7 +335,10 @@ impl Sync {
                 while let Some(receipt) = responses.next().await {
                     match receipt {
                         ReceiptsResponse::Receipt(receipt) => {
-                            match Receipt::try_from_dto(receipt) {
+                            match Receipt::try_from_dto((
+                                receipt,
+                                TransactionIndex::new_or_panic(receipts.len().try_into().unwrap()),
+                            )) {
                                 Ok(receipt) if receipts.len() < curr_block.transaction_count => {
                                     receipts.push(receipt)
                                 }

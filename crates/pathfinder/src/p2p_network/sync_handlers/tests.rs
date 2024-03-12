@@ -443,7 +443,7 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto(receipt).unwrap(),
+                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 
