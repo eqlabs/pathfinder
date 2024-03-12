@@ -31,6 +31,10 @@ inherits = "release"
 codegen-units = 1
 lto = true
 
+[profile.release-lto-debug]
+inherits = "release-lto"
+debug = true
+
 [profile.dev.package.flate2]
 opt-level = 3
 
