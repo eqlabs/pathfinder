@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
+- `starknet_addXXX` requests to the gateway use the configured gateway timeout, often causing these to timeout while waiting for 
+  a gateway response. These instead now use a much longer timeout.
 
 ## [0.11.1] - 2024-03-01
 

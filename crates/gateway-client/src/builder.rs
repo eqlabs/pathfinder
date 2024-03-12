@@ -301,7 +301,13 @@ impl<'a> Request<'a, stage::Final> {
 
     /// Sends the Sequencer request as a REST `POST` operation, in addition to the specified
     /// JSON body. The response is parsed as type `T`.
-    pub async fn post_with_json<T, J>(self, json: &J) -> Result<T, SequencerError>
+    ///
+    /// Can specify an optional timeout which will override the client's timeout.
+    pub async fn post_with_json<T, J>(
+        self,
+        json: &J,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<T, SequencerError>
     where
         T: serde::de::DeserializeOwned,
         J: serde::Serialize + ?Sized,
@@ -312,6 +318,7 @@ impl<'a> Request<'a, stage::Final> {
             client: &reqwest::Client,
             meta: RequestMetadata,
             json: &J,
+            timeout: Option<std::time::Duration>,
         ) -> Result<T, SequencerError>
         where
             T: serde::de::DeserializeOwned,
@@ -323,6 +330,10 @@ impl<'a> Request<'a, stage::Final> {
                     Some(api_key) => request.header(X_THROTTLING_BYPASS, api_key),
                     None => request,
                 };
+                let request = match timeout {
+                    Some(timeout) => request.timeout(timeout),
+                    None => request,
+                };
                 let response = request.json(json).send().await?;
                 parse::<T>(response).await
             })
@@ -331,8 +342,15 @@ impl<'a> Request<'a, stage::Final> {
 
         match self.state.retry {
             false => {
-                post_with_json_inner(self.url, self.api_key, self.client, self.state.meta, json)
-                    .await
+                post_with_json_inner(
+                    self.url,
+                    self.api_key,
+                    self.client,
+                    self.state.meta,
+                    json,
+                    timeout,
+                )
+                .await
             }
             true => {
                 retry0(
@@ -340,7 +358,15 @@ impl<'a> Request<'a, stage::Final> {
                         tracing::trace!(url=%self.url, "Posting data to gateway");
                         let url = self.url.clone();
                         let api_key = self.api_key.clone();
-                        post_with_json_inner(url, api_key, self.client, self.state.meta, json).await
+                        post_with_json_inner(
+                            url,
+                            api_key,
+                            self.client,
+                            self.state.meta,
+                            json,
+                            timeout,
+                        )
+                        .await
                     },
                     retry_condition,
                 )
@@ -719,7 +745,7 @@ mod tests {
                 .gateway_request()
                 .with_method("")
                 .with_retry(false)
-                .post_with_json(&json!({}))
+                .post_with_json(&json!({}), None)
                 .await?;
 
             let _: serde_json::Value = client
@@ -727,7 +753,7 @@ mod tests {
                 .feeder_gateway_request()
                 .with_method("")
                 .with_retry(false)
-                .post_with_json(&json!({}))
+                .post_with_json(&json!({}), None)
                 .await?;
 
             mock.assert_hits(2);
