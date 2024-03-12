@@ -371,7 +371,7 @@ mod prop {
                         // Block number
                         h.number,
                         // List of tuples (Transaction hash, Transaction variant)
-                        tr.into_iter().map(|(t, _)| {
+                        tr.into_iter().map(|(t, _, _)| {
                             let mut txn = workaround::for_legacy_l1_handlers(t);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
                             match &mut txn.variant {
@@ -423,9 +423,7 @@ mod prop {
                         // Block number
                         h.number,
                         // List of receipts
-                        tr.into_iter().map(|(_, mut r)| {
-                            // P2P receipts don't carry events and transaction index
-                            r.events = vec![];
+                        tr.into_iter().map(|(_, mut r, _)| {
                             r.transaction_index = TransactionIndex::new_or_panic(0);
                             r
                         }).collect::<Vec<_>>()
@@ -445,7 +443,7 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto(receipt).unwrap(),
+                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 
@@ -470,7 +468,7 @@ mod prop {
                         // Block number
                         h.number,
                         // List of tuples (Transaction hash, Event)
-                        tr.into_iter().flat_map(|(_, r)| r.events.into_iter().map(move |event| (r.transaction_hash, event)))
+                        tr.into_iter().flat_map(|(_, r, events)| events.into_iter().map(move |event| (r.transaction_hash, event)))
                             .collect::<Vec<(TransactionHash, Event)>>()
                     )
             ).collect::<Vec<_>>();

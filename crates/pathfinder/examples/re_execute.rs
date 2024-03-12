@@ -70,8 +70,10 @@ fn main() -> anyhow::Result<()> {
                 .unwrap();
             drop(transaction);
 
-            let (transactions, receipts): (Vec<_>, Vec<_>) =
-                transactions_and_receipts.into_iter().unzip();
+            let (transactions, receipts): (Vec<_>, Vec<_>) = transactions_and_receipts
+                .into_iter()
+                .map(|(tx, rx, _ev)| (tx, rx))
+                .unzip();
 
             num_transactions += transactions.len();
 

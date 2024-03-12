@@ -1,5 +1,6 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction as common;
 use pathfinder_common::{
@@ -12,7 +13,7 @@ pub type StorageInitializer = Vec<StorageInitializerItem>;
 pub type StorageInitializerItem = (
     BlockHeader,
     BlockCommitmentSignature,
-    Vec<(common::Transaction, Receipt)>,
+    Vec<(common::Transaction, Receipt, Vec<Event>)>,
     StateUpdate,
     Vec<(ClassHash, Vec<u8>)>,           // Cairo 0 definitions
     Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
@@ -43,7 +44,11 @@ pub fn with_n_blocks_and_rng<R: Rng>(
                 &transaction_data
                     .iter()
                     .cloned()
-                    .map(|(tx, receipt)| (tx, Some(receipt)))
+                    .map(|(tx, receipt, events)| crate::TransactionData {
+                        transaction: tx,
+                        receipt: Some(receipt),
+                        events: Some(events),
+                    })
                     .collect::<Vec<_>>(),
             )
             .unwrap();
@@ -86,6 +91,7 @@ pub mod init {
 
     use super::StorageInitializer;
     use fake::{Fake, Faker};
+    use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
@@ -154,15 +160,16 @@ pub mod init {
                     ),
                     ..Faker.fake_with_rng(rng)
                 }
-                .into_common(fake_non_empty_with_rng(rng));
-                (t, r)
+                .into();
+                let e: Vec<Event> = fake_non_empty_with_rng(rng);
+                (t, r, e)
             })
             .collect::<Vec<_>>();
 
             header.transaction_count = transactions_and_receipts.len();
             header.event_count = transactions_and_receipts
                 .iter()
-                .map(|(_, r)| r.events.len())
+                .map(|(_, _, e)| e.len())
                 .sum();
 
             let block_hash = header.hash;

@@ -26,11 +26,12 @@ pub struct PendingBlockWithReceipts {
 
 type CommonTransaction = pathfinder_common::transaction::Transaction;
 type CommonReceipt = pathfinder_common::receipt::Receipt;
+type CommonEvent = pathfinder_common::event::Event;
 
 impl BlockWithReceipts {
     pub fn from_common(
         header: pathfinder_common::BlockHeader,
-        body: Vec<(CommonTransaction, CommonReceipt)>,
+        body: Vec<(CommonTransaction, CommonReceipt, Vec<CommonEvent>)>,
         is_l1_accepted: bool,
     ) -> Self {
         let status = if is_l1_accepted {
@@ -64,12 +65,7 @@ impl From<PendingData> for PendingBlockWithReceipts {
             .transactions
             .iter()
             .zip(value.block.transaction_receipts.iter())
-            .map(|(t, r)| {
-                (
-                    CommonTransaction::from(t.clone()),
-                    CommonReceipt::from(r.clone()),
-                )
-            })
+            .map(|(t, (r, e))| (t.clone(), r.clone(), e.clone()))
             .collect::<Vec<_>>();
 
         let body = BlockBodyWithReceipts::from_common(body, v06::FinalityStatus::AcceptedOnL2);
@@ -88,12 +84,12 @@ struct BlockBodyWithReceipts {
 
 impl BlockBodyWithReceipts {
     fn from_common(
-        value: Vec<(CommonTransaction, CommonReceipt)>,
+        value: Vec<(CommonTransaction, CommonReceipt, Vec<CommonEvent>)>,
         finality_status: v06::FinalityStatus,
     ) -> Self {
         let transactions = value
             .into_iter()
-            .map(|(t, r)| TransactionWithReceipt::from_common(t, r, finality_status))
+            .map(|(t, r, e)| TransactionWithReceipt::from_common(t, r, e, finality_status))
             .collect();
 
         Self { transactions }
@@ -111,9 +107,11 @@ impl TransactionWithReceipt {
     fn from_common(
         transaction: CommonTransaction,
         receipt: CommonReceipt,
+        events: Vec<CommonEvent>,
         finality_status: v06::FinalityStatus,
     ) -> Self {
-        let receipt = PendingTxnReceipt::from_common(&transaction, receipt, finality_status);
+        let receipt =
+            PendingTxnReceipt::from_common(&transaction, receipt, events, finality_status);
 
         Self {
             transaction: transaction.into(),
@@ -187,6 +185,7 @@ impl TxnReceipt {
     pub fn from_common(
         transaction: &CommonTransaction,
         receipt: CommonReceipt,
+        events: Vec<CommonEvent>,
         block_hash: BlockHash,
         block_number: BlockNumber,
         finality_status: v06::FinalityStatus,
@@ -194,6 +193,7 @@ impl TxnReceipt {
         let common = CommonReceiptProperties::from_common(
             transaction,
             receipt,
+            events,
             block_hash,
             block_number,
             finality_status,
@@ -232,10 +232,15 @@ impl PendingTxnReceipt {
     pub fn from_common(
         transaction: &CommonTransaction,
         receipt: CommonReceipt,
+        events: Vec<CommonEvent>,
         finality_status: v06::FinalityStatus,
     ) -> Self {
-        let common =
-            PendingCommonReceiptProperties::from_common(transaction, receipt, finality_status);
+        let common = PendingCommonReceiptProperties::from_common(
+            transaction,
+            receipt,
+            events,
+            finality_status,
+        );
 
         use pathfinder_common::transaction::TransactionVariant;
         match &transaction.variant {
@@ -350,6 +355,7 @@ impl CommonReceiptProperties {
     fn from_common(
         transaction: &CommonTransaction,
         receipt: CommonReceipt,
+        events: Vec<CommonEvent>,
         block_hash: BlockHash,
         block_number: BlockNumber,
         finality_status: v06::FinalityStatus,
@@ -365,7 +371,7 @@ impl CommonReceiptProperties {
             .into_iter()
             .map(Into::into)
             .collect();
-        let events = receipt.events.into_iter().map(Into::into).collect();
+        let events = events.into_iter().map(Into::into).collect();
         let execution_status = receipt.execution_status.into();
         let execution_resources = receipt.execution_resources.into();
 
@@ -388,6 +394,7 @@ impl PendingCommonReceiptProperties {
     fn from_common(
         transaction: &CommonTransaction,
         receipt: CommonReceipt,
+        events: Vec<CommonEvent>,
         finality_status: v06::FinalityStatus,
     ) -> Self {
         let actual_fee = FeePayment {
@@ -401,7 +408,7 @@ impl PendingCommonReceiptProperties {
             .into_iter()
             .map(Into::into)
             .collect();
-        let events = receipt.events.into_iter().map(Into::into).collect();
+        let events = events.into_iter().map(Into::into).collect();
         let execution_status = receipt.execution_status.into();
         let execution_resources = receipt.execution_resources.into();
 

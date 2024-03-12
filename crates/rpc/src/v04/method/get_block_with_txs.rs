@@ -90,7 +90,7 @@ fn get_block_transactions(
         .context("Reading transactions from database")?
         .context("Transaction data missing for block")?
         .into_iter()
-        .map(|(tx, _rx)| tx.into())
+        .map(|(tx, _rx, _ev)| tx.into())
         .collect();
 
     Ok(txs)

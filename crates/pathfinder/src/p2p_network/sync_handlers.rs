@@ -321,7 +321,7 @@ fn get_transactions_for_block(
         return Ok(false);
     };
 
-    for (txn, _) in txn_data {
+    for (txn, _, _) in txn_data {
         tx.blocking_send(TransactionsResponse::Transaction(txn.to_dto()))
             .map_err(|_| anyhow::anyhow!("Sending transaction"))?;
     }
@@ -338,8 +338,8 @@ fn get_receipts_for_block(
         return Ok(false);
     };
 
-    for tr in txn_data {
-        tx.blocking_send(ReceiptsResponse::Receipt(tr.to_dto()))
+    for (txn, r, _) in txn_data {
+        tx.blocking_send(ReceiptsResponse::Receipt((txn, r).to_dto()))
             .map_err(|_| anyhow::anyhow!("Sending receipt"))?;
     }
 
@@ -355,8 +355,8 @@ fn get_events_for_block(
         return Ok(false);
     };
 
-    for (_, r) in txn_data {
-        for event in r.events {
+    for (_, r, events) in txn_data {
+        for event in events {
             tx.blocking_send(EventsResponse::Event((r.transaction_hash, event).to_dto()))
                 .map_err(|_| anyhow::anyhow!("Sending event"))?;
         }

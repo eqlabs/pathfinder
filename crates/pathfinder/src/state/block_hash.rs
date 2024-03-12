@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
-use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
@@ -53,7 +52,12 @@ pub fn verify_block_hash(
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
     let transaction_commitment =
         calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
-    let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
+    let events: Vec<_> = block
+        .transaction_receipts
+        .iter()
+        .map(|(_, events)| events.clone())
+        .collect();
+    let event_commitment = calculate_event_commitment(&events)?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
         anyhow::ensure!(
@@ -428,15 +432,15 @@ fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
 /// The event commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
-pub fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<EventCommitment> {
+pub fn calculate_event_commitment(events: &[Vec<Event>]) -> Result<EventCommitment> {
     use rayon::prelude::*;
 
     let mut event_hashes = Vec::new();
     rayon::scope(|s| {
         s.spawn(|_| {
-            event_hashes = transaction_receipts
+            event_hashes = events
                 .par_iter()
-                .flat_map(|receipt| receipt.events.par_iter())
+                .flat_map(|events| events.par_iter())
                 .map(calculate_event_hash)
                 .collect();
         })
@@ -488,7 +492,7 @@ fn number_of_events_in_block(block: &Block) -> usize {
     block
         .transaction_receipts
         .iter()
-        .flat_map(|r| r.events.iter())
+        .flat_map(|(_, events)| events.iter())
         .count()
 }
 
