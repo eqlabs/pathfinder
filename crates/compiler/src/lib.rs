@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use anyhow::Context;
-use pathfinder_common::StarknetVersion;
+use pathfinder_common::{CasmHash, StarknetVersion};
 
 /// Compile a Sierra class definition into CASM.
 ///
@@ -54,6 +54,13 @@ fn panic_error(e: Box<dyn std::any::Any>) -> anyhow::Error {
             None => anyhow::anyhow!("Compiler panicked"),
         },
     }
+}
+
+/// Parse CASM class definition and return CASM class hash.
+///
+/// Uses the _latest_ compiler for the parsing and calculation.
+pub fn casm_class_hash(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
+    v2::casm_class_hash(casm_definition)
 }
 
 mod v1_0_0_alpha6 {
@@ -196,6 +203,7 @@ mod v1_1_1 {
 
 // This compiler is backwards compatible with v1.1.
 mod v2 {
+    use super::CasmHash;
     use anyhow::Context;
     use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
     use cairo_lang_starknet_classes::contract_class::ContractClass;
@@ -236,6 +244,18 @@ mod v2 {
         let casm_definition = serde_json::to_vec(&casm_class)?;
 
         Ok(casm_definition)
+    }
+
+    pub(super) fn casm_class_hash(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
+        let ccc: CasmContractClass =
+            serde_json::from_slice(casm_definition).context("Deserializing CASM class")?;
+
+        let casm_hash = CasmHash(
+            pathfinder_crypto::Felt::from_be_bytes(ccc.compiled_class_hash().to_be_bytes())
+                .context("Computing CASM class hash")?,
+        );
+
+        Ok(casm_hash)
     }
 }
 

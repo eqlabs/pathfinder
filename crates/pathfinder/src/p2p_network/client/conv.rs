@@ -1,10 +1,8 @@
 use std::borrow::Cow;
 
 use anyhow::Context;
-use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
 use p2p_proto::class::{Cairo0Class, Cairo1Class};
 use pathfinder_common::{ByteCodeOffset, CasmHash, ClassHash, EntryPoint, SierraHash};
-use pathfinder_crypto::Felt;
 use serde::Deserialize;
 use serde_json::value::RawValue;
 use starknet_gateway_types::{
@@ -127,13 +125,7 @@ pub fn sierra_defs_and_hashes_from_dto(
         .0,
     );
 
-    let ccc: CasmContractClass =
-        serde_json::from_slice(&compiled).context("deserialize casm class")?;
-
-    let casm_hash = CasmHash(
-        Felt::from_be_bytes(ccc.compiled_class_hash().to_be_bytes())
-            .context("compute casm class hash")?,
-    );
+    let casm_hash = pathfinder_compiler::casm_class_hash(&compiled)?;
 
     let class_def = class_definition::Sierra {
         abi: Cow::Borrowed(abi),
