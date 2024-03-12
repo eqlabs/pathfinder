@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
+- `starknet_getTransactionStatus` reports gateway errors as `TxnNotFound`. These are now reported as internal errors.
 
 ## [0.11.1] - 2024-03-01
 
