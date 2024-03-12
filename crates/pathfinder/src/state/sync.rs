@@ -978,8 +978,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
         // Roll back Merkle trie updates.
         //
         // If we're rolling back genesis then there will be no blocks left so state will be empty.
-        if reorg_tail != BlockNumber::GENESIS {
-            let target_block = reorg_tail - 1;
+        if let Some(target_block) = reorg_tail.parent() {
             let target_header = transaction
                 .block_header(target_block.into())
                 .context("Fetching target block header")?
