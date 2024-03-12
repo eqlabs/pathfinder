@@ -209,11 +209,10 @@ impl Client {
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        state_update_counts_stream: impl futures::Stream<Item = StateUpdateCounts>,
+        state_update_counts_stream: impl futures::Stream<Item = anyhow::Result<StateUpdateCounts>>,
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ContractUpdates)>>> {
         async_stream::try_stream! {
         pin_mut!(state_update_counts_stream);
-        let mut state_update_counts_stream = state_update_counts_stream;
 
         if start <= stop_inclusive {
             // Loop which refreshes peer set once we exhaust it.
@@ -249,15 +248,23 @@ impl Client {
                     };
 
                     // Get state update numbers for this block
-                    let mut current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("No state update counts for block {start}"))?;
+                    let mut current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("State update counts stream terminated prematurely at block {start}"))??;
 
                     let mut contract_updates = ContractUpdates::default();
 
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
-                            StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, is_replaced, values, domain: _ }) => {
+                            StateDiffsResponse::ContractDiff(ContractDiff {
+                                address,
+                                nonce,
+                                class_hash,
+                                is_replaced,
+                                values,
+                                domain: _,
+                            }) => {
                                 let address = ContractAddress(address.0);
-                                let num_values = u64::try_from(values.len()).expect("ptr size is 64 bits");
+                                let num_values =
+                                    u64::try_from(values.len()).expect("ptr size is 64 bits");
                                 match current.storage_diffs.checked_sub(num_values) {
                                     Some(x) => current.storage_diffs = x,
                                     None => {
@@ -268,15 +275,27 @@ impl Client {
                                 }
 
                                 if address == ContractAddress::ONE {
-                                    let storage = &mut contract_updates.system.entry(address).or_default().storage;
-                                    values.into_iter().for_each(|ContractStoredValue { key, value }| {
-                                        storage.insert(StorageAddress(key), StorageValue(value));
-                                    });
+                                    let storage = &mut contract_updates
+                                        .system
+                                        .entry(address)
+                                        .or_default()
+                                        .storage;
+                                    values.into_iter().for_each(
+                                        |ContractStoredValue { key, value }| {
+                                            storage
+                                                .insert(StorageAddress(key), StorageValue(value));
+                                        },
+                                    );
                                 } else {
-                                    let update = &mut contract_updates.regular.entry(address).or_default();
-                                    values.into_iter().for_each(|ContractStoredValue { key, value }| {
-                                        update.storage.insert(StorageAddress(key), StorageValue(value));
-                                    });
+                                    let update =
+                                        &mut contract_updates.regular.entry(address).or_default();
+                                    values.into_iter().for_each(
+                                        |ContractStoredValue { key, value }| {
+                                            update
+                                                .storage
+                                                .insert(StorageAddress(key), StorageValue(value));
+                                        },
+                                    );
 
                                     if let Some(nonce) = nonce {
                                         match current.nonce_updates.checked_sub(1) {
@@ -302,23 +321,31 @@ impl Client {
                                         }
 
                                         if is_replaced.unwrap_or_default() {
-                                            update.class = Some(ContractClassUpdate::Replace(class_hash));
+                                            update.class =
+                                                Some(ContractClassUpdate::Replace(class_hash));
                                         } else {
-                                            update.class = Some(ContractClassUpdate::Deploy(class_hash));
+                                            update.class =
+                                                Some(ContractClassUpdate::Deploy(class_hash));
                                         }
                                     }
                                 }
-                            },
+                            }
                             StateDiffsResponse::Fin => {
-                                if current.storage_diffs == 0 && current.nonce_updates == 0 && current.deployed_contracts == 0 {
+                                if current.storage_diffs == 0
+                                    && current.nonce_updates == 0
+                                    && current.deployed_contracts == 0
+                                {
                                     // All the counters for this block have been exhausted which means
                                     // that the state update for this block is complete.
-                                    yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
+                                    yield PeerData::new(
+                                        peer,
+                                        (start, std::mem::take(&mut contract_updates)),
+                                    );
 
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("No state update counts for block {start}"))?;
+                                        current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("State update counts stream terminated prematurely at block {start}"))??;
                                         tracing::debug!(%peer, "State diff stream Fin");
                                     } else {
                                         // We're done, terminate the stream

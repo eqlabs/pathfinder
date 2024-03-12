@@ -394,9 +394,6 @@ impl Sync {
     }
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
-        let storage = self.storage.clone();
-        let (_, state_update_counts_stream) = futures::channel::mpsc::channel(0); // FIXME: use a real stream
-
         if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
@@ -404,7 +401,11 @@ impl Sync {
             let result = self
                 .p2p
                 .clone()
-                .contract_updates_stream(start, stop, state_update_counts_stream)
+                .contract_updates_stream(
+                    start,
+                    stop,
+                    state_updates::counts_stream(self.storage.clone(), start, stop),
+                )
                 .map_err(Into::into)
                 .and_then(state_updates::verify_signature)
                 .try_chunks(100)
