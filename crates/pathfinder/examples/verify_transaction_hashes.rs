@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
         transactions
             .par_iter()
             .enumerate()
-            .for_each(|(i, (txn, _))| {
+            .for_each(|(i, (txn, _, _))| {
                 if !txn.verify_hash(chain_id) {
                     println!("Mismatch: block {block_number} idx {i}. Full_txn\n{txn:?}",);
                 }

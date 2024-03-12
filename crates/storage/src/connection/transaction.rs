@@ -1,11 +1,14 @@
 //! Contains starknet transaction related code and __not__ database transaction.
 
 use anyhow::Context;
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
 use crate::{prelude::*, BlockId};
+
+use super::{EventsForBlock, TransactionData, TransactionDataForBlock, TransactionWithReceipt};
 
 pub enum TransactionStatus {
     L1Accepted,
@@ -16,14 +19,22 @@ pub(super) fn insert_transactions(
     tx: &Transaction<'_>,
     block_hash: BlockHash,
     block_number: BlockNumber,
-    transaction_data: &[(StarknetTransaction, Option<Receipt>)],
+    transaction_data: &[TransactionData],
 ) -> anyhow::Result<()> {
     if transaction_data.is_empty() {
         return Ok(());
     }
 
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-    for (i, (transaction, receipt)) in transaction_data.iter().enumerate() {
+    for (
+        i,
+        TransactionData {
+            transaction,
+            receipt,
+            events,
+        },
+    ) in transaction_data.iter().enumerate()
+    {
         // Serialize and compress transaction data.
         let transaction = dto::Transaction::from(transaction);
 
@@ -46,9 +57,9 @@ pub(super) fn insert_transactions(
             None => None,
         };
 
-        let serialized_events = match receipt {
-            Some(receipt) => {
-                let events = serde_json::to_vec(&receipt.events).context("Serializing events")?;
+        let serialized_events = match events {
+            Some(events) => {
+                let events = serde_json::to_vec(&events).context("Serializing events")?;
                 Some(compressor.compress(&events).context("Compressing events")?)
             }
             None => None,
@@ -68,8 +79,8 @@ pub(super) fn insert_transactions(
 
     let events = transaction_data
         .iter()
-        .filter_map(|(_, receipt)| receipt.as_ref())
-        .flat_map(|receipt| &receipt.events);
+        .filter_map(|data| data.events.as_ref())
+        .flatten();
     super::event::insert_block_events(tx, block_number, events)
         .context("Inserting events into Bloom filter")?;
     Ok(())
@@ -81,11 +92,6 @@ pub(super) fn update_receipt(
     transaction_idx: usize,
     receipt: &Receipt,
 ) -> anyhow::Result<()> {
-    debug_assert!(
-        receipt.events.is_empty(),
-        "Follow-up PR: properly separate events from receipt data in our core models"
-    );
-
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
     let receipt = dto::Receipt::from(receipt);
     let serialized_receipt = serde_json::to_vec(&receipt).context("Serializing receipt")?;
@@ -145,7 +151,7 @@ pub(super) fn transaction(
 pub(super) fn transaction_with_receipt(
     tx: &Transaction<'_>,
     txn_hash: TransactionHash,
-) -> anyhow::Result<Option<(StarknetTransaction, Receipt, BlockHash)>> {
+) -> anyhow::Result<Option<TransactionWithReceipt>> {
     let mut stmt = tx
         .inner()
         .prepare(
@@ -189,7 +195,8 @@ pub(super) fn transaction_with_receipt(
 
     Ok(Some((
         transaction.into(),
-        receipt.into_common(events),
+        receipt.into(),
+        events,
         block_hash,
     )))
 }
@@ -265,7 +272,7 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
 pub(super) fn transaction_data_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
-) -> anyhow::Result<Option<Vec<(StarknetTransaction, Receipt)>>> {
+) -> anyhow::Result<Option<Vec<TransactionDataForBlock>>> {
     let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
@@ -309,10 +316,9 @@ pub(super) fn transaction_data_for_block(
             .as_blob_or_null()?
             .context("Events missing")?;
         let events = zstd::decode_all(events).context("Decompressing events")?;
-        let events: Vec<pathfinder_common::event::Event> =
-            serde_json::from_slice(&events).context("Deserializing events")?;
+        let events: Vec<Event> = serde_json::from_slice(&events).context("Deserializing events")?;
 
-        data.push((transaction.into(), receipt.into_common(events)));
+        data.push((transaction.into(), receipt.into(), events));
     }
 
     Ok(Some(data))
@@ -351,10 +357,10 @@ pub(super) fn transactions_for_block(
     Ok(Some(data))
 }
 
-pub(super) fn receipts_for_block(
+pub(super) fn events_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
-) -> anyhow::Result<Option<Vec<Receipt>>> {
+) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
     let Some(block_hash) = tx.block_hash(block)? else {
         return Ok(None);
     };
@@ -363,7 +369,7 @@ pub(super) fn receipts_for_block(
         .inner()
         .prepare(
             r"
-            SELECT receipt, events
+            SELECT hash, events
             FROM starknet_transactions
             WHERE block_hash = ?
             ORDER BY idx ASC
@@ -377,23 +383,18 @@ pub(super) fn receipts_for_block(
 
     let mut data = Vec::new();
     while let Some(row) = rows.next()? {
-        let receipt = row
-            .get_ref_unwrap("receipt")
-            .as_blob_or_null()?
-            .context("Transaction data missing")?;
-        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
-        let receipt: dto::Receipt =
-            serde_json::from_slice(&receipt).context("Deserializing receipt")?;
-
+        let hash = row
+            .get_transaction_hash("hash")
+            .context("Fetching transaction hash")?;
         let events = row
             .get_ref_unwrap("events")
             .as_blob_or_null()?
-            .context("Events missing")?;
+            .context("Transaction events missing")?;
         let events = zstd::decode_all(events).context("Decompressing events")?;
         let events: Vec<pathfinder_common::event::Event> =
             serde_json::from_slice(&events).context("Deserializing events")?;
 
-        data.push(receipt.into_common(events));
+        data.push((hash, events));
     }
 
     Ok(Some(data))
@@ -702,11 +703,8 @@ pub(crate) mod dto {
         pub revert_error: Option<String>,
     }
 
-    impl Receipt {
-        pub fn into_common(
-            self,
-            events: Vec<pathfinder_common::event::Event>,
-        ) -> pathfinder_common::receipt::Receipt {
+    impl From<Receipt> for pathfinder_common::receipt::Receipt {
+        fn from(value: Receipt) -> Self {
             use pathfinder_common::receipt as common;
 
             let Receipt {
@@ -719,11 +717,10 @@ pub(crate) mod dto {
                 transaction_index,
                 execution_status,
                 revert_error,
-            } = self;
+            } = value;
 
             common::Receipt {
                 actual_fee,
-                events,
                 execution_resources: (&execution_resources.unwrap_or_default()).into(),
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash,
@@ -2173,7 +2170,11 @@ mod tests {
                 &body
                     .clone()
                     .into_iter()
-                    .map(|(tx, receipt)| (tx, Some(receipt)))
+                    .map(|(tx, receipt)| TransactionData {
+                        transaction: tx,
+                        receipt: Some(receipt),
+                        events: Some(vec![]),
+                    })
                     .collect::<Vec<_>>(),
             )
             .unwrap();
@@ -2209,7 +2210,8 @@ mod tests {
             .unwrap();
         assert_eq!(result.0, transaction);
         assert_eq!(result.1, receipt);
-        assert_eq!(result.2, header.hash);
+        assert_eq!(result.2, vec![]);
+        assert_eq!(result.3, header.hash);
 
         let invalid =
             super::transaction_with_receipt(&tx, transaction_hash_bytes!(b"invalid")).unwrap();
@@ -2257,7 +2259,11 @@ mod tests {
         let (mut db, header, body) = setup();
         let tx = db.transaction().unwrap();
 
-        let expected = Some(body);
+        let expected = Some(
+            body.into_iter()
+                .map(|(tx, receipt)| (tx, receipt, vec![]))
+                .collect(),
+        );
 
         let by_number = super::transaction_data_for_block(&tx, header.number.into()).unwrap();
         assert_eq!(by_number, expected);

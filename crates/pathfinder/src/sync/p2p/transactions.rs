@@ -18,7 +18,11 @@ pub(super) async fn persist(
             block.number,
             &transactions
                 .into_iter()
-                .map(|tx| (tx, None))
+                .map(|tx| pathfinder_storage::TransactionData {
+                    transaction: tx,
+                    receipt: None,
+                    events: None,
+                })
                 .collect::<Vec<_>>(),
         )
         .context("Inserting transactions")?;

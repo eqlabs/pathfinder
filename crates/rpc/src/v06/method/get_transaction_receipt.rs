@@ -40,18 +40,18 @@ pub async fn get_transaction_receipt_impl(
             .get(&db_tx)
             .context("Querying pending data")?;
 
-        if let Some((transaction, receipt)) = pending
+        if let Some((transaction, (receipt, events))) = pending
             .block
             .transactions
             .iter()
             .zip(pending.block.transaction_receipts.iter())
             .find_map(|(t, r)| (t.hash == input.transaction_hash).then(|| (t.clone(), r.clone())))
         {
-            let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
+            let pending = types::PendingTransactionReceipt::from(receipt, events, &transaction);
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
         }
 
-        let (transaction, receipt, block_hash) = db_tx
+        let (transaction, receipt, events, block_hash) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Reading transaction receipt from database")?
             .ok_or(GetTransactionReceiptError::TxnHashNotFound)?;
@@ -75,6 +75,7 @@ pub async fn get_transaction_receipt_impl(
         Ok(types::MaybePendingTransactionReceipt::Normal(
             types::TransactionReceipt::with_block_data(
                 receipt,
+                events,
                 finality_status,
                 block_hash,
                 block_number,
@@ -452,6 +453,7 @@ pub mod types {
     impl TransactionReceipt {
         pub fn with_block_data(
             receipt: pathfinder_common::receipt::Receipt,
+            events: Vec<pathfinder_common::event::Event>,
             finality_status: FinalityStatus,
             block_hash: BlockHash,
             block_number: BlockNumber,
@@ -482,7 +484,7 @@ pub mod types {
                     .into_iter()
                     .map(Into::into)
                     .collect(),
-                events: receipt.events.into_iter().map(Event::from).collect(),
+                events: events.into_iter().map(Event::from).collect(),
                 revert_reason,
                 execution_resources: receipt.execution_resources.into(),
                 execution_status: receipt.execution_status.into(),
@@ -601,6 +603,7 @@ pub mod types {
     impl PendingTransactionReceipt {
         pub fn from(
             receipt: pathfinder_common::receipt::Receipt,
+            events: Vec<pathfinder_common::event::Event>,
             transaction: &pathfinder_common::transaction::Transaction,
         ) -> Self {
             let fee_amount = receipt.actual_fee.unwrap_or_default();
@@ -621,7 +624,7 @@ pub mod types {
                     .into_iter()
                     .map(Into::into)
                     .collect(),
-                events: receipt.events.into_iter().map(Event::from).collect(),
+                events: events.into_iter().map(Event::from).collect(),
                 revert_reason,
                 execution_status: receipt.execution_status.into(),
                 execution_resources: receipt.execution_resources.into(),

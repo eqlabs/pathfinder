@@ -54,8 +54,10 @@ fn main() -> anyhow::Result<()> {
         drop(tx);
 
         let block_hash = header.hash;
-        let (transactions, receipts): (Vec<_>, Vec<_>) =
-            transactions_and_receipts.into_iter().unzip();
+        let (transactions, receipts): (Vec<_>, Vec<_>) = transactions_and_receipts
+            .into_iter()
+            .map(|(tx, rx, ev)| (tx, (rx, ev)))
+            .unzip();
 
         let block = Block {
             block_hash: header.hash,

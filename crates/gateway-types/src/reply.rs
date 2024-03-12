@@ -58,7 +58,10 @@ pub struct Block {
     pub status: Status,
     pub timestamp: BlockTimestamp,
     #[serde_as(as = "Vec<transaction::Receipt>")]
-    pub transaction_receipts: Vec<pathfinder_common::receipt::Receipt>,
+    pub transaction_receipts: Vec<(
+        pathfinder_common::receipt::Receipt,
+        Vec<pathfinder_common::event::Event>,
+    )>,
     #[serde_as(as = "Vec<transaction::Transaction>")]
     pub transactions: Vec<pathfinder_common::transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
@@ -125,7 +128,10 @@ pub struct PendingBlock {
     pub status: Status,
     pub timestamp: BlockTimestamp,
     #[serde_as(as = "Vec<transaction::Receipt>")]
-    pub transaction_receipts: Vec<pathfinder_common::receipt::Receipt>,
+    pub transaction_receipts: Vec<(
+        pathfinder_common::receipt::Receipt,
+        Vec<pathfinder_common::event::Event>,
+    )>,
     #[serde_as(as = "Vec<transaction::Transaction>")]
     pub transactions: Vec<pathfinder_common::transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
@@ -593,40 +599,26 @@ pub(crate) mod transaction {
         pub revert_error: Option<String>,
     }
 
-    impl<'de> serde_with::DeserializeAs<'de, pathfinder_common::receipt::Receipt> for Receipt {
-        fn deserialize_as<D>(
-            deserializer: D,
-        ) -> Result<pathfinder_common::receipt::Receipt, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            Self::deserialize(deserializer).map(Into::into)
-        }
-    }
-
-    impl serde_with::SerializeAs<pathfinder_common::receipt::Receipt> for Receipt {
-        fn serialize_as<S>(
-            source: &pathfinder_common::receipt::Receipt,
-            serializer: S,
-        ) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            Self::from(source.clone()).serialize(serializer)
-        }
-    }
-
-    impl From<pathfinder_common::receipt::Receipt> for Receipt {
-        fn from(value: pathfinder_common::receipt::Receipt) -> Self {
+    impl
+        From<(
+            pathfinder_common::receipt::Receipt,
+            Vec<pathfinder_common::event::Event>,
+        )> for Receipt
+    {
+        fn from(
+            (receipt, events): (
+                pathfinder_common::receipt::Receipt,
+                Vec<pathfinder_common::event::Event>,
+            ),
+        ) -> Self {
             let pathfinder_common::receipt::Receipt {
                 actual_fee,
-                events,
                 execution_resources,
                 l2_to_l1_messages,
                 execution_status,
                 transaction_hash,
                 transaction_index,
-            } = value;
+            } = receipt;
 
             let (execution_status, revert_error) = match execution_status {
                 pathfinder_common::receipt::ExecutionStatus::Succeeded => {
@@ -651,7 +643,57 @@ pub(crate) mod transaction {
         }
     }
 
-    impl From<Receipt> for pathfinder_common::receipt::Receipt {
+    impl<'de>
+        serde_with::DeserializeAs<
+            'de,
+            (
+                pathfinder_common::receipt::Receipt,
+                Vec<pathfinder_common::event::Event>,
+            ),
+        > for Receipt
+    {
+        fn deserialize_as<D>(
+            deserializer: D,
+        ) -> Result<
+            (
+                pathfinder_common::receipt::Receipt,
+                Vec<pathfinder_common::event::Event>,
+            ),
+            D::Error,
+        >
+        where
+            D: serde::Deserializer<'de>,
+        {
+            Self::deserialize(deserializer).map(Into::into)
+        }
+    }
+
+    impl
+        serde_with::SerializeAs<(
+            pathfinder_common::receipt::Receipt,
+            Vec<pathfinder_common::event::Event>,
+        )> for Receipt
+    {
+        fn serialize_as<S>(
+            (receipt, events): &(
+                pathfinder_common::receipt::Receipt,
+                Vec<pathfinder_common::event::Event>,
+            ),
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Self::from((receipt.clone(), events.clone())).serialize(serializer)
+        }
+    }
+
+    impl From<Receipt>
+        for (
+            pathfinder_common::receipt::Receipt,
+            Vec<pathfinder_common::event::Event>,
+        )
+    {
         fn from(value: Receipt) -> Self {
             use pathfinder_common::receipt as common;
 
@@ -668,20 +710,22 @@ pub(crate) mod transaction {
                 revert_error,
             } = value;
 
-            common::Receipt {
-                actual_fee,
-                events,
-                execution_resources: execution_resources.unwrap_or_default().into(),
-                l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
-                transaction_hash,
-                transaction_index,
-                execution_status: match execution_status {
-                    ExecutionStatus::Succeeded => common::ExecutionStatus::Succeeded,
-                    ExecutionStatus::Reverted => common::ExecutionStatus::Reverted {
-                        reason: revert_error.unwrap_or_default(),
+            (
+                common::Receipt {
+                    actual_fee,
+                    execution_resources: execution_resources.unwrap_or_default().into(),
+                    l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
+                    transaction_hash,
+                    transaction_index,
+                    execution_status: match execution_status {
+                        ExecutionStatus::Succeeded => common::ExecutionStatus::Succeeded,
+                        ExecutionStatus::Reverted => common::ExecutionStatus::Reverted {
+                            reason: revert_error.unwrap_or_default(),
+                        },
                     },
                 },
-            }
+                events,
+            )
         }
     }
 

@@ -252,10 +252,12 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
     }
 }
 
+// TODO Change this: instead of From, have a into_common method that also accepts the transaction
+// index
 /// ## Important
 ///
-/// This conversion leaves event vector empty and transaction index zeroed.
-/// The caller is responsible filling those with correct values after the conversion succeeds.
+/// This conversion leaves the transaction index zeroed.
+/// The caller is responsible for filling in the correct transaction index after the conversion succeeds.
 impl TryFromDto<p2p_proto::receipt::Receipt> for Receipt {
     fn try_from_dto(dto: p2p_proto::receipt::Receipt) -> anyhow::Result<Self> {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
@@ -310,7 +312,6 @@ impl TryFromDto<p2p_proto::receipt::Receipt> for Receipt {
                         reason: common.revert_reason,
                     }
                 },
-                events: vec![],
                 transaction_index: TransactionIndex::new_or_panic(0),
             }),
         }

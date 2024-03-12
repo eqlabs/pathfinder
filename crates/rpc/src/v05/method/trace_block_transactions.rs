@@ -343,7 +343,11 @@ pub(crate) mod tests {
                 transactions
                     .iter()
                     .cloned()
-                    .map(|t| (t, Some(dummy_receipt.clone())))
+                    .map(|t| pathfinder_storage::TransactionData {
+                        transaction: t,
+                        receipt: Some(dummy_receipt.clone()),
+                        events: Some(vec![]),
+                    })
                     .collect::<Vec<_>>()
                     .as_slice(),
             )?;
@@ -437,8 +441,11 @@ pub(crate) mod tests {
                 ..Default::default()
             };
 
-            let transaction_receipts =
-                vec![dummy_receipt.clone(), dummy_receipt.clone(), dummy_receipt];
+            let transaction_receipts = vec![
+                (dummy_receipt.clone(), vec![]),
+                (dummy_receipt.clone(), vec![]),
+                (dummy_receipt, vec![]),
+            ];
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
                 eth_l1_gas_price_implementation_detail: Some(GasPrice(1)),

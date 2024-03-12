@@ -37,7 +37,7 @@ pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Resul
             .get(&db_tx)
             .context("Querying pending data")?;
 
-        if let Some((transaction, receipt)) = pending
+        if let Some((transaction, (receipt, events))) = pending
             .block
             .transactions
             .iter()
@@ -47,13 +47,14 @@ pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Resul
             let receipt = dto::receipt::PendingTxnReceipt::from_common(
                 &transaction,
                 receipt,
+                events,
                 FinalityStatus::AcceptedOnL2,
             );
 
             return Ok(Output::Pending(receipt));
         }
 
-        let (transaction, receipt, block_hash) = db_tx
+        let (transaction, receipt, events, block_hash) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Reading transaction receipt from database")?
             .ok_or(Error::TxnHashNotFound)?;
@@ -77,6 +78,7 @@ pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Resul
         Ok(Output::Full(dto::receipt::TxnReceipt::from_common(
             &transaction,
             receipt,
+            events,
             block_hash,
             block_number,
             finality_status,
