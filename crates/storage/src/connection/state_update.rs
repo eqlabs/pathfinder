@@ -3,7 +3,8 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::state_update::{
-    ContractClassUpdate, ContractUpdate, ReverseContractUpdate, StateUpdateCounts,
+    ContractClassUpdate, ContractUpdate, ContractUpdateCounts, ReverseContractUpdate,
+    StateUpdateCounts,
 };
 use pathfinder_common::{
     BlockHash, BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
@@ -324,8 +325,35 @@ pub(super) fn highest_block_with_state_update(
 pub(super) fn state_update_counts(
     tx: &Transaction<'_>,
     block: BlockId,
-    max_len: NonZeroUsize,
-) -> anyhow::Result<Vec<StateUpdateCounts>> {
+) -> anyhow::Result<Option<StateUpdateCounts>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            r"SELECT storage_diffs_count, nonce_updates_count, declared_classes_count, deployed_contracts_count
+                FROM block_headers WHERE number = ? ORDER BY number ASC LIMIT 1")
+        .context("Preparing get state update counts statement")?;
+
+    stmt.query_row(params![&block_number], |row| {
+        Ok(StateUpdateCounts {
+            storage_diffs: row.get(0)?,
+            nonce_updates: row.get(1)?,
+            declared_classes: row.get(2)?,
+            deployed_contracts: row.get(3)?,
+        })
+    })
+    .optional()
+    .context("Querying state update counts")
+}
+
+pub(super) fn contract_update_counts(
+    tx: &Transaction<'_>,
+    block: BlockId,
+    max_num_blocks: NonZeroUsize,
+) -> anyhow::Result<Vec<ContractUpdateCounts>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
         return Ok(Default::default());
     };
@@ -333,29 +361,65 @@ pub(super) fn state_update_counts(
     let mut stmt = tx
         .inner()
         .prepare_cached(
-            r"SELECT storage_diffs_count, nonce_updates_count, declared_classes_count, deployed_contracts_count
+            r"SELECT storage_diffs_count, nonce_updates_count, deployed_contracts_count
                 FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
         )
-        .context("Preparing get state update counts statement")?;
+        .context("Preparing get contract update counts statement")?;
 
-    let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
+    let max_len = u64::try_from(max_num_blocks.get()).expect("ptr size is 64 bits");
     let mut counts = stmt
         .query_map(params![&block_number, &max_len], |row| {
-            Ok(StateUpdateCounts {
+            Ok(ContractUpdateCounts {
                 storage_diffs: row.get(0)?,
                 nonce_updates: row.get(1)?,
-                declared_classes: row.get(2)?,
-                deployed_contracts: row.get(3)?,
+                deployed_contracts: row.get(2)?,
             })
         })
-        .context("Querying state update counts")?;
+        .context("Querying contract update counts")?;
+
+    let mut ret = Vec::<ContractUpdateCounts>::new();
+
+    while let Some(stat) = counts
+        .next()
+        .transpose()
+        .context("Iterating over contract update counts rows")?
+    {
+        ret.push(stat);
+    }
+
+    ret.reverse();
+
+    Ok(ret)
+}
+
+pub(super) fn declared_classes_counts(
+    tx: &Transaction<'_>,
+    block: BlockId,
+    max_num_blocks: NonZeroUsize,
+) -> anyhow::Result<Vec<usize>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(Default::default());
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            r"SELECT declared_classes_count
+                FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
+        )
+        .context("Preparing get number of declared classes statement")?;
+
+    let max_len = u64::try_from(max_num_blocks.get()).expect("ptr size is 64 bits");
+    let mut counts = stmt
+        .query_map(params![&block_number, &max_len], |row| row.get(0))
+        .context("Querying declared classes counts")?;
 
     let mut ret = Vec::new();
 
     while let Some(stat) = counts
         .next()
         .transpose()
-        .context("Iterating over state update counts rows")?
+        .context("Iterating over declared classes counts rows")?
     {
         ret.push(stat);
     }

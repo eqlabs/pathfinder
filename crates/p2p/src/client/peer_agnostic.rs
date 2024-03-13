@@ -20,7 +20,7 @@ use p2p_proto::{
     state::ContractStoredValue,
 };
 use pathfinder_common::{
-    state_update::{ContractClassUpdate, ContractUpdates, StateUpdateCounts},
+    state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates},
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
@@ -209,10 +209,10 @@ impl Client {
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        state_update_counts_stream: impl futures::Stream<Item = anyhow::Result<StateUpdateCounts>>,
+        contract_update_counts_stream: impl futures::Stream<Item = anyhow::Result<ContractUpdateCounts>>,
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ContractUpdates)>>> {
         async_stream::try_stream! {
-        pin_mut!(state_update_counts_stream);
+        pin_mut!(contract_update_counts_stream);
 
         if start <= stop_inclusive {
             // Loop which refreshes peer set once we exhaust it.
@@ -247,8 +247,9 @@ impl Client {
                         }
                     };
 
-                    // Get state update numbers for this block
-                    let mut current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("State update counts stream terminated prematurely at block {start}"))??;
+                    // Get contract update counts for this block
+                    let mut current = contract_update_counts_stream.next().await
+                        .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
 
                     let mut contract_updates = ContractUpdates::default();
 
@@ -345,7 +346,8 @@ impl Client {
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("State update counts stream terminated prematurely at block {start}"))??;
+                                        current = contract_update_counts_stream.next().await
+                                            .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
                                         tracing::debug!(%peer, "State diff stream Fin");
                                     } else {
                                         // We're done, terminate the stream

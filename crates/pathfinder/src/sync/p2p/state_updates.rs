@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{
-    state_update::{ContractUpdates, StateUpdateCounts},
+    state_update::{ContractUpdateCounts, ContractUpdates},
     BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment,
 };
 use pathfinder_merkle_tree::{
@@ -47,11 +47,11 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
-pub(super) fn counts_stream(
+pub(super) fn contract_update_counts_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop_inclusive: BlockNumber,
-) -> impl futures::Stream<Item = anyhow::Result<StateUpdateCounts>> {
+) -> impl futures::Stream<Item = anyhow::Result<ContractUpdateCounts>> {
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
@@ -78,7 +78,7 @@ pub(super) fn counts_stream(
                 .connection()
                 .context("Creating database connection")?;
             let db = db.transaction().context("Creating database transaction")?;
-            db.state_update_counts(start.into(), batch_size)
+            db.contract_update_counts(start.into(), batch_size)
                 .context("Querying state update counts")
         })
         .await
