@@ -66,19 +66,18 @@ fn revert_contract_updates(
                 contract_update,
             )?;
 
-            if state_hash != ContractStateHash::ZERO {
-                let expected_contract_state_hash = transaction
-                    .contract_state_hash(target_block, contract_address)
-                    .context("Fetching expected contract state hash")?
-                    .context("Expected contract state hash to be there")?;
-                if expected_contract_state_hash != state_hash {
-                    anyhow::bail!(
-                        "Contract state hash mismatch: address {} computed {} expected {}",
-                        contract_address,
-                        state_hash,
-                        expected_contract_state_hash
-                    );
-                }
+            let expected_contract_state_hash = transaction
+                .contract_state_hash(target_block, contract_address)
+                .context("Fetching expected contract state hash")?
+                // non-existent contracts are mapped to a zero state hash
+                .unwrap_or(ContractStateHash::ZERO);
+            if expected_contract_state_hash != state_hash {
+                anyhow::bail!(
+                    "Contract state hash mismatch: address {} computed {} expected {}",
+                    contract_address,
+                    state_hash,
+                    expected_contract_state_hash
+                );
             }
 
             global_tree
