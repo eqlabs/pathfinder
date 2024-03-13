@@ -291,6 +291,36 @@ where
     }
 }
 
+/// Emits the latest block hash and number from the gateway at regular intervals.
+///
+/// Exits once all receivers are closed.
+/// Errors are logged and ignored.
+pub async fn poll_latest(
+    gateway: impl GatewayApi,
+    interval: Duration,
+    sender: tokio::sync::watch::Sender<(BlockNumber, BlockHash)>,
+) {
+    let mut interval = tokio::time::interval(interval);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        interval.tick().await;
+
+        let Ok(latest) = gateway
+            .block_header(pathfinder_common::BlockId::Latest)
+            .await
+            .inspect_err(|e| tracing::debug!(error=%e, "Error requesting latest block ID"))
+        else {
+            continue;
+        };
+
+        if sender.send(latest).is_err() {
+            tracing::debug!("Channel closed, exiting");
+            break;
+        }
+    }
+}
+
 /// Download and emit new contract classes.
 ///
 /// New classes can come from:
