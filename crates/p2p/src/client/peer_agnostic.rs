@@ -8,19 +8,14 @@ use std::{
 
 use futures::{pin_mut, StreamExt};
 use libp2p::PeerId;
-use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest, ClassesResponse};
+use p2p_proto::common::{Direction, Iteration};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
-use p2p_proto::{
-    common::{Direction, Iteration},
-    receipt::{ReceiptsRequest, ReceiptsResponse},
-    state::ContractDiff,
-};
-use p2p_proto::{
-    header::{BlockHeadersRequest, BlockHeadersResponse},
-    state::ContractStoredValue,
-};
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates};
 use pathfinder_common::{
-    state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates},
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
@@ -358,6 +353,74 @@ impl Client {
                                     // TODO punish the peer
                                     continue 'next_peer;
                                 }
+                            }
+                        };
+                    }
+                }
+            }
+        }
+        }
+    }
+
+    pub fn class_definitions_stream(
+        self,
+        mut start: BlockNumber,
+        stop_inclusive: BlockNumber,
+        declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ())>>> {
+        async_stream::try_stream! {
+        pin_mut!(declared_class_counts_stream);
+
+        if start <= stop_inclusive {
+            // Loop which refreshes peer set once we exhaust it.
+            'outer: loop {
+                let peers = self
+                    .get_update_peers_with_sync_capability(protocol::Classes::NAME)
+                    .await;
+
+                // Attempt each peer.
+                'next_peer: for peer in peers {
+                    let limit = stop_inclusive.get() - start.get() + 1;
+
+                    let request = ClassesRequest {
+                        iteration: Iteration {
+                            start: start.get().into(),
+                            direction: Direction::Forward,
+                            limit,
+                            step: 1.into(),
+                        },
+                    };
+
+                    let mut responses = match self
+                        .inner
+                        .send_classes_sync_request(peer, request)
+                        .await
+                    {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // Failed to establish connection, try next peer.
+                            tracing::debug!(%peer, reason=%error, "Classes request failed");
+                            continue 'next_peer;
+                        }
+                    };
+
+                    // Get number of declared classes for this block
+                    let mut current = declared_class_counts_stream.next().await
+                        .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+
+                    let mut contract_updates = ContractUpdates::default();
+
+                    while let Some(contract_diff) = responses.next().await {
+                        match contract_diff {
+                            ClassesResponse::Class(Class::Cairo0 { class, domain, class_hash }) => {
+                                // TODO
+                                yield PeerData::new(PeerId::random(), (start, ()));
+                            },
+                            ClassesResponse::Class(Class::Cairo1 { class, domain, class_hash }) => {
+                                // TODO
+                            },
+                            ClassesResponse::Fin => {
+                                // TODO
                             }
                         };
                     }
