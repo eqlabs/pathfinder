@@ -336,6 +336,7 @@ These __will not work__:
 - `block_latency` delay between current block being published and sync'd locally
 - `block_download` time taken to download current block's data excluding classes
 - `block_processing` time taken to process and store the current block
+- `block_processing_duration_seconds` histogram of time taken to process and store a block
 
 ### Build info metrics
 

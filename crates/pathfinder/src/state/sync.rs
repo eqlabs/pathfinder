@@ -459,6 +459,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 
                 metrics::gauge!("block_download", download_time);
                 metrics::gauge!("block_processing", update_t.as_secs_f64());
+                metrics::histogram!("block_processing_duration_seconds", update_t);
                 metrics::gauge!("block_latency", latency as f64);
                 metrics::gauge!(
                     "block_time",
