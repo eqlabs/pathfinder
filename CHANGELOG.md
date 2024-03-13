@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_getTransactionStatus` reports gateway errors as `TxnNotFound`. These are now reported as internal errors.
+- Sync process leaves a zombie task behind each time it restarts, wasting resources.
 
 ## [0.11.2] - 2024-03-07
 
