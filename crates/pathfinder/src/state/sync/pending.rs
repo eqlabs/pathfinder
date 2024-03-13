@@ -22,8 +22,8 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
-        let latest = { latest.borrow().clone() }.0.get();
-        let current = { current.borrow().clone() }.0.get();
+        let latest = { latest.borrow().0.get() };
+        let current = { current.borrow().0.get() };
 
         if latest.abs_diff(current) > 6 {
             tracing::debug!(%latest, %current, "Not in sync yet; skipping pending block download");
