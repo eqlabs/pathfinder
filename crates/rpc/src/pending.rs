@@ -90,7 +90,10 @@ impl PendingWatcher {
                     // This shouldn't have an impact anywhere as the RPC methods should
                     // know this is a pending block. But rather safe than sorry.
                     status: Status::Pending,
-                    ..Default::default()
+                    l1_gas_price_implementation_detail: None,
+                    sequencer_address: latest.sequencer_address,
+                    transaction_receipts: vec![],
+                    transactions: vec![],
                 }
                 .into(),
                 state_update: Default::default(),
@@ -110,7 +113,7 @@ impl PendingWatcher {
 #[cfg(test)]
 mod tests {
 
-    use pathfinder_common::{macro_prelude::*, L1DataAvailabilityMode};
+    use pathfinder_common::{macro_prelude::*, L1DataAvailabilityMode, SequencerAddress};
     use pathfinder_common::{BlockHeader, BlockTimestamp, GasPrice};
 
     use super::*;
@@ -184,6 +187,7 @@ mod tests {
             .with_strk_l1_data_gas_price(GasPrice(8888))
             .with_l1_da_mode(L1DataAvailabilityMode::Blob)
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
+            .with_sequencer_address(sequencer_address!("0xffff"))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
         let tx = storage.transaction().unwrap();
@@ -202,6 +206,7 @@ mod tests {
                 }),
                 l1_da_mode: Some(latest.l1_da_mode.into()),
                 timestamp: latest.timestamp,
+                sequencer_address: latest.sequencer_address,
                 parent_hash: latest.hash,
                 starknet_version: latest.starknet_version,
                 status: Status::Pending,
