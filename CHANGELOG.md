@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `starknet_estimateFee` and `starknet_simulateTransactions` always uses CALLDATA L1 DA mode if there is no pending block.
+
+## [0.11.2] - 2024-03-07
+
+### Fixed
+
 - `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
 
 ## [0.11.1] - 2024-03-01
