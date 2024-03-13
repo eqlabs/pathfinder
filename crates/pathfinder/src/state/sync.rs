@@ -247,14 +247,25 @@ where
         rx_latest.clone(),
     ));
 
+    let (current_num, current_hash, _) = l2_head.unwrap_or_default();
+    let (tx_current, rx_current) = tokio::sync::watch::channel((current_num, current_hash));
     let consumer_context = ConsumerContext {
-        storage,
+        storage: storage.clone(),
         state,
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         websocket_txs,
     };
-    let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context));
+    let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context, tx_current));
+
+    let mut pending_handle = tokio::spawn(pending::poll_pending(
+        event_sender.clone(),
+        sequencer.clone(),
+        Duration::from_secs(2),
+        storage.clone(),
+        rx_latest.clone(),
+        rx_current.clone(),
+    ));
 
     /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
     /// tasks are crashing.
@@ -265,6 +276,18 @@ where
 
     loop {
         tokio::select! {
+            _ = &mut pending_handle => {
+                tracing::error!("Pending tracking task ended unexpectedly");
+
+                pending_handle = tokio::spawn(pending::poll_pending(
+                    event_sender.clone(),
+                    sequencer.clone(),
+                    Duration::from_secs(2),
+                    storage.clone(),
+                    rx_latest.clone(),
+                    rx_current.clone(),
+                ));
+            },
             _ = &mut latest_handle => {
                 tracing::error!("Tracking chain tip task ended unexpectedly");
                 tracing::debug!("Shutting down other tasks");
@@ -272,10 +295,12 @@ where
                 l1_handle.abort();
                 l2_handle.abort();
                 consumer_handle.abort();
+                pending_handle.abort();
 
                 _ = l1_handle.await;
                 _ = l2_handle.await;
                 _ = consumer_handle.await;
+                _ = pending_handle.await;
 
                 anyhow::bail!("Sync process terminated");
             },
@@ -343,6 +368,7 @@ where
                 tracing::debug!("Shutting down L1 and L2 sync producer tasks");
                 l1_handle.abort();
                 l2_handle.abort();
+                pending_handle.abort();
                 latest_handle.abort();
 
                 match l1_handle.await {
@@ -387,6 +413,8 @@ where
                     }
                 }
 
+                _ = pending_handle.await;
+
                 anyhow::bail!("Sync process terminated");
             }
         }
@@ -401,7 +429,11 @@ struct ConsumerContext {
     pub websocket_txs: Option<TopicBroadcasters>,
 }
 
-async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> anyhow::Result<()> {
+async fn consumer(
+    mut events: Receiver<SyncEvent>,
+    context: ConsumerContext,
+    current: tokio::sync::watch::Sender<(BlockNumber, BlockHash)>,
+) -> anyhow::Result<()> {
     let ConsumerContext {
         storage,
         state,
@@ -488,6 +520,8 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                         }
                     }
                 }
+
+                _ = current.send((block_number, block_hash));
 
                 let now_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
                 let latency = now_timestamp.saturating_sub(block_timestamp.get());
@@ -1249,7 +1283,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         for i in 0..num_blocks {
@@ -1294,7 +1329,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
@@ -1351,7 +1387,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
@@ -1395,7 +1432,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
@@ -1431,7 +1469,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let definition = tx.class_definition(class_hash).unwrap().unwrap();
@@ -1470,7 +1509,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let definition = tx.class_definition(ClassHash(class_hash)).unwrap().unwrap();
@@ -1506,6 +1546,7 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
     }
 }

@@ -1,6 +1,6 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
-use crate::state::sync::{pending, SyncEvent};
+use crate::state::sync::SyncEvent;
 use anyhow::{anyhow, Context};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
@@ -105,7 +105,7 @@ where
         storage,
     } = context;
 
-    let mut pending_handle = None;
+    // let mut pending_handle = None;
 
     'outer: loop {
         // Get the next block from L2.
@@ -143,24 +143,6 @@ where
                     break (block, commitments, state_update)
                 }
                 DownloadBlock::AtHead => {
-                    const PENDING_POLL_INTERVAL: std::time::Duration =
-                        std::time::Duration::from_secs(2);
-
-                    if cfg!(feature = "p2p") {
-                        // Not implemented yet for P2P
-                        tracing::info!("Skipping the pending blocks polling");
-                        tokio::time::sleep(PENDING_POLL_INTERVAL).await;
-                    } else if pending_handle.is_none() {
-                        tracing::info!("At head of chain, enabling polling of pending data");
-                        pending_handle = Some(tokio::spawn(pending::poll_pending(
-                            tx_event.clone(),
-                            sequencer.clone(),
-                            PENDING_POLL_INTERVAL,
-                            storage.clone(),
-                        )));
-                    }
-
-
                     // Wait for the latest block to change.
                     if latest
                         .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)

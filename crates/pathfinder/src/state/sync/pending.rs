@@ -1,32 +1,35 @@
 use std::sync::Arc;
 
-use pathfinder_common::BlockHash;
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
-use tokio::time::Instant;
+use tokio::{sync::watch, time::Instant};
 
 use crate::state::sync::SyncEvent;
 
-/// Poll's the Sequencer's pending block and emits [pending events](SyncEvent::Pending)
-/// until the pending block is no longer connected to our current head.
-///
-/// This disconnect is detected whenever
-/// - `pending.parent_hash != head`, or
-/// - `pending` is a fully formed block and not [PendingBlock](starknet_gateway_types::reply::PendingBlock), or
-/// - the state update parent root does not match head.
-///
-/// A full block or full state update can be returned from this function if it is encountered during polling.
+/// Emits new pending data events while the current block is close to the latest block.
 pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: S,
     poll_interval: std::time::Duration,
     storage: Storage,
+    latest: watch::Receiver<(BlockNumber, BlockHash)>,
+    current: watch::Receiver<(BlockNumber, BlockHash)>,
 ) {
     let mut prev_tx_count = 0;
     let mut prev_hash = BlockHash::default();
 
     loop {
         let t_fetch = Instant::now();
+
+        let latest = { latest.borrow().clone() }.0.get();
+        let current = { current.borrow().clone() }.0.get();
+
+        if latest.abs_diff(current) > 6 {
+            tracing::debug!(%latest, %current, "Not in sync yet; skipping pending block download");
+            tokio::time::sleep_until(t_fetch + poll_interval).await;
+            continue;
+        }
 
         let (block, state_update) = match sequencer.pending_block().await {
             Ok(r) => r,
@@ -97,6 +100,7 @@ mod tests {
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{Block, L1DataAvailabilityMode, PendingBlock, Status};
+    use tokio::sync::watch;
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
@@ -166,6 +170,9 @@ mod tests {
             .expect_pending_block()
             .returning(|| Ok((PENDING_BLOCK.clone(), PENDING_UPDATE.clone())));
 
+        let (_, latest) = watch::channel(Default::default());
+        let (_, current) = watch::channel(Default::default());
+
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
             poll_pending(
@@ -173,6 +180,8 @@ mod tests {
                 sequencer,
                 std::time::Duration::ZERO,
                 Storage::in_memory().unwrap(),
+                latest,
+                current,
             )
             .await
         });
@@ -237,12 +246,16 @@ mod tests {
         });
 
         let sequencer = Arc::new(sequencer);
+        let (_, rx_latest) = watch::channel(Default::default());
+        let (_, rx_current) = watch::channel(Default::default());
         let _jh = tokio::spawn(async move {
             poll_pending(
                 tx,
                 sequencer,
                 std::time::Duration::ZERO,
                 Storage::in_memory().unwrap(),
+                rx_latest,
+                rx_current,
             )
             .await
         });
