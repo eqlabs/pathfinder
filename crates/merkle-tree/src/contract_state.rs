@@ -156,7 +156,7 @@ pub fn revert_contract_state(
         }
         ReverseContractUpdate::Updated(update) => {
             let class_hash = match update.class {
-                Some(class_hash) => class_hash,
+                Some(class_hash) => class_hash.class_hash(),
                 None => {
                     if contract_address == ContractAddress::ONE {
                         // system contracts have no class hash
@@ -183,7 +183,7 @@ pub fn revert_contract_state(
                     .context("Loading contract state")?;
 
                 for (address, value) in update.storage {
-                    tree.set(address, value.unwrap_or(StorageValue::ZERO))
+                    tree.set(address, value)
                         .context("Updating contract state")?;
                 }
 

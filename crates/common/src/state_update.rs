@@ -446,23 +446,16 @@ impl StateUpdate {
 #[derive(Debug, PartialEq)]
 pub enum ReverseContractUpdate {
     Deleted,
-    Updated(ReverseContractUpdateDetails),
+    Updated(ContractUpdate),
 }
 
 impl ReverseContractUpdate {
-    pub fn update_mut(&mut self) -> Option<&mut ReverseContractUpdateDetails> {
+    pub fn update_mut(&mut self) -> Option<&mut ContractUpdate> {
         match self {
             Self::Deleted => None,
             Self::Updated(update) => Some(update),
         }
     }
-}
-
-#[derive(Default, Debug, PartialEq)]
-pub struct ReverseContractUpdateDetails {
-    pub storage: Vec<(StorageAddress, Option<StorageValue>)>,
-    pub nonce: Option<ContractNonce>,
-    pub class: Option<ClassHash>,
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::state_update::{
-    ContractClassUpdate, ReverseContractUpdate, ReverseContractUpdateDetails, StateUpdateCounts,
+    ContractClassUpdate, ContractUpdate, ReverseContractUpdate, StateUpdateCounts,
 };
 use pathfinder_common::{
     BlockHash, BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
@@ -583,8 +583,8 @@ pub(super) fn reverse_updates(
             .entry(contract_address)
             .or_insert_with(|| match class_hash_update {
                 None => ReverseContractUpdate::Deleted,
-                Some(_) => ReverseContractUpdate::Updated(ReverseContractUpdateDetails {
-                    class: class_hash_update,
+                Some(_) => ReverseContractUpdate::Updated(ContractUpdate {
+                    class: class_hash_update.map(ContractClassUpdate::Replace),
                     ..Default::default()
                 }),
             });
@@ -606,14 +606,14 @@ pub(super) fn reverse_updates(
             .or_insert_with(|| ReverseContractUpdate::Updated(Default::default()))
             .update_mut()
         {
-            update.storage = storage_updates
+            update.storage = storage_updates.into_iter().collect()
         };
     }
 
     Ok(updates)
 }
 
-type StorageUpdates = Vec<(StorageAddress, Option<StorageValue>)>;
+type StorageUpdates = Vec<(StorageAddress, StorageValue)>;
 
 fn reverse_storage_updates(
     tx: &Transaction<'_>,
@@ -649,7 +649,13 @@ fn reverse_storage_updates(
             let storage_address = row.get_storage_address(1)?;
             let old_storage_value = row.get_optional_storage_value(2)?;
 
-            Ok((contract_address, (storage_address, old_storage_value)))
+            Ok((
+                contract_address,
+                (
+                    storage_address,
+                    old_storage_value.unwrap_or(StorageValue::ZERO),
+                ),
+            ))
         })
         .context("Querying reverse storage updates")?;
 
@@ -1000,18 +1006,24 @@ mod tests {
                     ),
                     (
                         ContractAddress::ONE,
-                        ReverseContractUpdate::Updated(ReverseContractUpdateDetails {
-                            storage: vec![(storage_address_bytes!(b"key"), None)],
+                        ReverseContractUpdate::Updated(ContractUpdate {
+                            storage: HashMap::from([(
+                                storage_address_bytes!(b"key"),
+                                StorageValue::ZERO
+                            )]),
                             nonce: None,
                             class: None
                         })
                     ),
                     (
                         CONTRACT_ADDRESS,
-                        ReverseContractUpdate::Updated(ReverseContractUpdateDetails {
-                            storage: vec![(storage_address_bytes!(b"storage key"), None)],
+                        ReverseContractUpdate::Updated(ContractUpdate {
+                            storage: HashMap::from([(
+                                storage_address_bytes!(b"storage key"),
+                                StorageValue::ZERO
+                            )]),
                             nonce: None,
-                            class: Some(CAIRO_HASH)
+                            class: Some(ContractClassUpdate::Replace(CAIRO_HASH))
                         })
                     )
                 ]
