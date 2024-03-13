@@ -159,6 +159,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
+            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
         ) -> F2
         + Copy,
 {
@@ -223,7 +224,7 @@ where
         Arc::clone(&state),
         starting_block_hash,
         starting_block_num,
-        rx_latest,
+        rx_latest.clone(),
         gossiper,
     ));
 
@@ -243,6 +244,7 @@ where
         l2_context.clone(),
         l2_head,
         block_chain,
+        rx_latest.clone(),
     ));
 
     let consumer_context = ConsumerContext {
@@ -313,7 +315,7 @@ where
 
                 let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size).await.context("Fetching latest blocks from storage")?;
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-                let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain);
+                let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain, rx_latest.clone());
 
                 l2_handle = tokio::spawn(async move {
                     tokio::time::sleep(restart_delay).await;

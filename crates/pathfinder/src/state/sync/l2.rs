@@ -92,6 +92,7 @@ pub async fn sync<GatewayClient>(
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
+    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
 ) -> anyhow::Result<()>
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
@@ -159,16 +160,15 @@ where
                         )));
                     }
 
-                    // Poll the head until it changes. This query is very quick and cheap to perform.
-                    // Once its changed we exit the loop to try download the next block.
-                    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
-                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                    loop {
-                        let (_, hash) = sequencer.head().await.context("Polling head of chain")?;
-                        if hash != head.unwrap_or_default().1 {
-                            break;
-                        }
-                        interval.tick().await;
+
+                    // Wait for the latest block to change.
+                    if latest
+                        .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("Latest tracking channel closed, exiting");
+                        return Ok(());
                     }
                 }
                 DownloadBlock::Reorg => {
@@ -838,11 +838,14 @@ mod tests {
                 storage,
             };
 
+            let latest = tokio::sync::watch::channel(Default::default());
+
             tokio::spawn(sync(
                 tx_event,
                 context,
                 None,
                 BlockChain::with_capacity(100, vec![]),
+                latest.1,
             ))
         }
 
@@ -1208,6 +1211,7 @@ mod tests {
                     block_validation_mode: MODE,
                     storage: Storage::in_memory().unwrap(),
                 };
+                let latest_track = tokio::sync::watch::channel(Default::default());
 
                 let _jh = tokio::spawn(sync(
                     tx_event,
@@ -1217,6 +1221,7 @@ mod tests {
                         100,
                         vec![(BLOCK0_NUMBER, BLOCK0_HASH, GLOBAL_ROOT0)],
                     ),
+                    latest_track.1,
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),
