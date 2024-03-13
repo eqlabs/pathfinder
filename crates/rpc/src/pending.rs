@@ -82,6 +82,7 @@ impl PendingWatcher {
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,
                     starknet_version: latest.starknet_version,
+                    l1_da_mode: Some(latest.l1_da_mode.into()),
                     // This shouldn't have an impact anywhere as the RPC methods should
                     // know this is a pending block. But rather safe than sorry.
                     status: Status::Pending,
@@ -105,7 +106,7 @@ impl PendingWatcher {
 #[cfg(test)]
 mod tests {
 
-    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{macro_prelude::*, L1DataAvailabilityMode};
     use pathfinder_common::{BlockHeader, BlockTimestamp, GasPrice};
 
     use super::*;
@@ -175,6 +176,7 @@ mod tests {
             .child_builder()
             .with_eth_l1_gas_price(GasPrice(1234))
             .with_strk_l1_gas_price(GasPrice(3377))
+            .with_l1_da_mode(L1DataAvailabilityMode::Blob)
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
@@ -188,6 +190,7 @@ mod tests {
             block: PendingBlock {
                 eth_l1_gas_price_implementation_detail: Some(latest.eth_l1_gas_price),
                 strk_l1_gas_price_implementation_detail: Some(latest.strk_l1_gas_price),
+                l1_da_mode: Some(latest.l1_da_mode.into()),
                 timestamp: latest.timestamp,
                 parent_hash: latest.hash,
                 starknet_version: latest.starknet_version,
