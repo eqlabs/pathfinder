@@ -298,11 +298,12 @@ rpc_method_calls_total{method="starknet_getEvents", version="v0.3"}
 
 - `gateway_requests_total`
 - `gateway_requests_failed_total`
+- `gateway_request_duration_seconds`
 
 Labels:
 - `method`, to retrieve a counter for a particular sequencer request type
 - `tag`
-    - works with: `get_block`, `get_state_update`
+    - works with methods: `get_block`, `get_state_update`
     - valid values:
         - `pending`
         - `latest`

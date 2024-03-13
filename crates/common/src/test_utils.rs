@@ -107,7 +107,8 @@ pub mod metrics {
             unimplemented!()
         }
         fn register_histogram(&self, _: &Key) -> Histogram {
-            unimplemented!()
+            // Ignored in tests for now
+            Histogram::noop()
         }
     }
 
