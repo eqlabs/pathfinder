@@ -16,7 +16,13 @@ const TAGS: &[&str] = &[TAG_LATEST, TAG_PENDING];
 const REASON_DECODE: &str = "decode";
 const REASON_STARKNET: &str = "starknet";
 const REASON_RATE_LIMITING: &str = "rate_limiting";
-const REASONS: [&str; 3] = [REASON_DECODE, REASON_RATE_LIMITING, REASON_STARKNET];
+const REASON_TIMEOUT: &str = "timeout";
+const REASONS: [&str; 4] = [
+    REASON_DECODE,
+    REASON_RATE_LIMITING,
+    REASON_STARKNET,
+    REASON_TIMEOUT,
+];
 
 /// Register all sequencer related metrics
 pub fn register() {
@@ -174,6 +180,9 @@ pub async fn with_metrics<T>(
                         == reqwest::StatusCode::TOO_MANY_REQUESTS =>
             {
                 increment_failed(meta, REASON_RATE_LIMITING);
+            }
+            SequencerError::ReqwestError(e) if e.is_timeout() => {
+                increment_failed(meta, REASON_TIMEOUT);
             }
             SequencerError::ReqwestError(_) => {}
         }

@@ -313,6 +313,7 @@ Labels:
         - `decode`
         - `starknet`
         - `rate_limiting`
+        - `timeout`
 
 Valid examples:
 ```
