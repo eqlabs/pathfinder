@@ -57,39 +57,6 @@ pub fn cairo_hash_and_def_from_dto(c0: Cairo0Class) -> anyhow::Result<(ClassHash
     Ok((class_hash, class_def))
 }
 
-pub fn cairo_def_from_dto(c0: Cairo0Class) -> anyhow::Result<Vec<u8>> {
-    let from_dto = |x: Vec<p2p_proto::class::EntryPoint>| {
-        x.into_iter()
-            .map(|e| SelectorAndOffset {
-                selector: EntryPoint(e.selector),
-                offset: ByteCodeOffset(e.offset),
-            })
-            .collect::<Vec<_>>()
-    };
-
-    let abi = c0.abi;
-    let program = c0.program;
-    let external = from_dto(c0.externals);
-    let l1_handler = from_dto(c0.l1_handlers);
-    let constructor = from_dto(c0.constructors);
-
-    #[derive(Debug, Deserialize)]
-    struct Abi<'a>(#[serde(borrow)] &'a RawValue);
-
-    let class_def = class_definition::Cairo {
-        abi: Cow::Borrowed(serde_json::from_slice::<Abi<'_>>(&abi).unwrap().0),
-        program: serde_json::from_slice(&program)
-            .context("verify that cairo class program is UTF-8")?,
-        entry_points_by_type: class_definition::CairoEntryPoints {
-            external,
-            l1_handler,
-            constructor,
-        },
-    };
-    let class_def = serde_json::to_vec(&class_def).context("serialize cairo class definition")?;
-    Ok(class_def)
-}
-
 pub fn sierra_defs_and_hashes_from_dto(
     c1: Cairo1Class,
 ) -> anyhow::Result<(SierraHash, Vec<u8>, CasmHash, Vec<u8>)> {
@@ -137,37 +104,4 @@ pub fn sierra_defs_and_hashes_from_dto(
     let class_def = serde_json::to_vec(&class_def).context("serialize sierra class definition")?;
 
     Ok((sierra_hash, class_def, casm_hash, compiled))
-}
-
-pub fn sierra_defs_from_dto(c1: Cairo1Class) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-    let from_dto = |x: Vec<p2p_proto::class::SierraEntryPoint>| {
-        x.into_iter()
-            .map(|e| SelectorAndFunctionIndex {
-                selector: EntryPoint(e.selector),
-                function_idx: e.index,
-            })
-            .collect::<Vec<_>>()
-    };
-
-    let abi = std::str::from_utf8(&c1.abi).context("parsing abi as utf8")?;
-    let entry_points = SierraEntryPoints {
-        external: from_dto(c1.entry_points.externals),
-        l1_handler: from_dto(c1.entry_points.l1_handlers),
-        constructor: from_dto(c1.entry_points.constructors),
-    };
-    let program = c1.program;
-    let contract_class_version = c1.contract_class_version;
-    let compiled_def = c1.compiled;
-
-    let sierra_def = class_definition::Sierra {
-        abi: Cow::Borrowed(abi),
-        sierra_program: program,
-        contract_class_version: contract_class_version.into(),
-        entry_points_by_type: entry_points,
-    };
-
-    let sierra_def =
-        serde_json::to_vec(&sierra_def).context("serialize sierra class definition")?;
-
-    Ok((sierra_def, compiled_def))
 }

@@ -8,20 +8,24 @@ use std::{
 
 use futures::{pin_mut, StreamExt};
 use libp2p::PeerId;
-use p2p_proto::class::{Cairo0Class, Cairo1Class, Class, ClassesRequest, ClassesResponse};
+use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
-use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates};
+use pathfinder_common::{
+    state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates},
+    SierraHash,
+};
 use pathfinder_common::{
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
 use tokio::sync::RwLock;
 
-use crate::client::{conv::TryFromDto, peer_aware};
+use crate::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
+use crate::client::peer_aware;
 use crate::sync::protocol;
 
 /// Data received from a specific peer.
@@ -35,6 +39,21 @@ impl<T> PeerData<T> {
     pub fn new(peer: PeerId, data: T) -> Self {
         Self { peer, data }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum Class {
+    Cairo {
+        block_number: BlockNumber,
+        hash: ClassHash,
+        definition: Vec<u8>,
+    },
+    Sierra {
+        block_number: BlockNumber,
+        sierra_hash: SierraHash,
+        sierra_definition: Vec<u8>,
+        casm_definition: Vec<u8>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -367,7 +386,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ())>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<Class>>> {
         async_stream::try_stream! {
         pin_mut!(declared_class_counts_stream);
 
@@ -408,19 +427,44 @@ impl Client {
                     let mut current = declared_class_counts_stream.next().await
                         .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
 
-                    let mut contract_updates = ContractUpdates::default();
-
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
-                            ClassesResponse::Class(Class::Cairo0 { class, domain, class_hash }) => {
-                                // TODO
-                                yield PeerData::new(PeerId::random(), (start, ()));
+                            ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _ , class_hash }) => {
+                                yield PeerData::new(peer, Class::Cairo {
+                                    block_number: start,
+                                    hash: ClassHash(class_hash.0),
+                                    definition: CairoDefinition::try_from_dto(class)?.0,
+                                });
                             },
-                            ClassesResponse::Class(Class::Cairo1 { class, domain, class_hash }) => {
-                                // TODO
+                            ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _, class_hash }) => {
+                                let definition = SierraDefinition::try_from_dto(class)?;
+                                yield PeerData::new(peer, Class::Sierra {
+                                    block_number: start,
+                                    sierra_hash: SierraHash(class_hash.0),
+                                    sierra_definition: definition.sierra,
+                                    casm_definition: definition.casm,
+                                });
                             },
                             ClassesResponse::Fin => {
-                                // TODO
+                                if current == 0
+                                {
+                                    // All the counters for this block have been exhausted which means
+                                    // that this block is complete.
+                                    if start < stop_inclusive {
+                                        // Move to the next block
+                                        start += 1;
+                                        current = declared_class_counts_stream.next().await
+                                            .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                                        tracing::debug!(%peer, "Class definition stream Fin");
+                                    } else {
+                                        // We're done, terminate the stream
+                                        break 'outer;
+                                    }
+                                } else {
+                                    tracing::debug!(%peer, "Premature class definition stream Fin");
+                                    // TODO punish the peer
+                                    continue 'next_peer;
+                                }
                             }
                         };
                     }

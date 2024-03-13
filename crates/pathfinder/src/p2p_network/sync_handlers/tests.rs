@@ -96,11 +96,10 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::conv::{cairo_def_from_dto, sierra_defs_from_dto};
     use crate::p2p_network::sync_handlers;
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p::client::conv::TryFromDto;
+    use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -307,11 +306,11 @@ mod prop {
 
             responses.into_iter().for_each(|response| match response {
                 ClassesResponse::Class(Class::Cairo0 { class, domain: _, class_hash }) => {
-                    actual_cairo.push((ClassHash(class_hash.0), cairo_def_from_dto(class).unwrap()));
+                    actual_cairo.push((ClassHash(class_hash.0), CairoDefinition::try_from_dto(class).unwrap().0));
                 },
                 ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash }) => {
-                    let (sierra_def, casm_def) = sierra_defs_from_dto(class).unwrap();
-                    actual_sierra.push((SierraHash(class_hash.0), sierra_def, casm_def));
+                    let SierraDefinition {casm, sierra} = SierraDefinition::try_from_dto(class).unwrap();
+                    actual_sierra.push((SierraHash(class_hash.0), sierra, casm));
                 },
                 _ => panic!("unexpected response"),
             });
