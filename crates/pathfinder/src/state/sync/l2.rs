@@ -1,6 +1,6 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
-use crate::state::sync::{pending, SyncEvent};
+use crate::state::sync::SyncEvent;
 use anyhow::{anyhow, Context};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
@@ -92,6 +92,7 @@ pub async fn sync<GatewayClient>(
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
+    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
 ) -> anyhow::Result<()>
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
@@ -103,8 +104,6 @@ where
         block_validation_mode,
         storage,
     } = context;
-
-    let mut pending_handle = None;
 
     'outer: loop {
         // Get the next block from L2.
@@ -142,33 +141,14 @@ where
                     break (block, commitments, state_update)
                 }
                 DownloadBlock::AtHead => {
-                    const PENDING_POLL_INTERVAL: std::time::Duration =
-                        std::time::Duration::from_secs(2);
-
-                    if cfg!(feature = "p2p") {
-                        // Not implemented yet for P2P
-                        tracing::info!("Skipping the pending blocks polling");
-                        tokio::time::sleep(PENDING_POLL_INTERVAL).await;
-                    } else if pending_handle.is_none() {
-                        tracing::info!("At head of chain, enabling polling of pending data");
-                        pending_handle = Some(tokio::spawn(pending::poll_pending(
-                            tx_event.clone(),
-                            sequencer.clone(),
-                            PENDING_POLL_INTERVAL,
-                            storage.clone(),
-                        )));
-                    }
-
-                    // Poll the head until it changes. This query is very quick and cheap to perform.
-                    // Once its changed we exit the loop to try download the next block.
-                    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
-                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                    loop {
-                        let (_, hash) = sequencer.head().await.context("Polling head of chain")?;
-                        if hash != head.unwrap_or_default().1 {
-                            break;
-                        }
-                        interval.tick().await;
+                    // Wait for the latest block to change.
+                    if latest
+                        .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("Latest tracking channel closed, exiting");
+                        return Ok(());
                     }
                 }
                 DownloadBlock::Reorg => {
@@ -288,6 +268,36 @@ where
             ))
             .await
             .context("Event channel closed")?;
+    }
+}
+
+/// Emits the latest block hash and number from the gateway at regular intervals.
+///
+/// Exits once all receivers are closed.
+/// Errors are logged and ignored.
+pub async fn poll_latest(
+    gateway: impl GatewayApi,
+    interval: Duration,
+    sender: tokio::sync::watch::Sender<(BlockNumber, BlockHash)>,
+) {
+    let mut interval = tokio::time::interval(interval);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        interval.tick().await;
+
+        let Ok(latest) = gateway
+            .block_header(pathfinder_common::BlockId::Latest)
+            .await
+            .inspect_err(|e| tracing::debug!(error=%e, "Error requesting latest block ID"))
+        else {
+            continue;
+        };
+
+        if sender.send(latest).is_err() {
+            tracing::debug!("Channel closed, exiting");
+            break;
+        }
     }
 }
 
@@ -808,11 +818,14 @@ mod tests {
                 storage,
             };
 
+            let latest = tokio::sync::watch::channel(Default::default());
+
             tokio::spawn(sync(
                 tx_event,
                 context,
                 None,
                 BlockChain::with_capacity(100, vec![]),
+                latest.1,
             ))
         }
 
@@ -1178,6 +1191,7 @@ mod tests {
                     block_validation_mode: MODE,
                     storage: Storage::in_memory().unwrap(),
                 };
+                let latest_track = tokio::sync::watch::channel(Default::default());
 
                 let _jh = tokio::spawn(sync(
                     tx_event,
@@ -1187,6 +1201,7 @@ mod tests {
                         100,
                         vec![(BLOCK0_NUMBER, BLOCK0_HASH, GLOBAL_ROOT0)],
                     ),
+                    latest_track.1,
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),

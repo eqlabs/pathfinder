@@ -159,6 +159,7 @@ where
             L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
+            tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
         ) -> F2
         + Copy,
 {
@@ -200,6 +201,18 @@ where
         Ok(l2_head)
     })?;
 
+    let gateway_latest = sequencer
+        .head()
+        .await
+        .context("Fetching latest block from gateway")?;
+
+    let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
+    let mut latest_handle = tokio::spawn(l2::poll_latest(
+        sequencer.clone(),
+        head_poll_interval,
+        tx_latest,
+    ));
+
     // Start update sync-status process.
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
@@ -209,10 +222,9 @@ where
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
-        sequencer.clone(),
         starting_block_hash,
         starting_block_num,
-        head_poll_interval,
+        rx_latest.clone(),
         gossiper,
     ));
 
@@ -232,16 +244,28 @@ where
         l2_context.clone(),
         l2_head,
         block_chain,
+        rx_latest.clone(),
     ));
 
+    let (current_num, current_hash, _) = l2_head.unwrap_or_default();
+    let (tx_current, rx_current) = tokio::sync::watch::channel((current_num, current_hash));
     let consumer_context = ConsumerContext {
-        storage,
+        storage: storage.clone(),
         state,
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         websocket_txs,
     };
-    let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context));
+    let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context, tx_current));
+
+    let mut pending_handle = tokio::spawn(pending::poll_pending(
+        event_sender.clone(),
+        sequencer.clone(),
+        Duration::from_secs(2),
+        storage.clone(),
+        rx_latest.clone(),
+        rx_current.clone(),
+    ));
 
     /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
     /// tasks are crashing.
@@ -252,6 +276,34 @@ where
 
     loop {
         tokio::select! {
+            _ = &mut pending_handle => {
+                tracing::error!("Pending tracking task ended unexpectedly");
+
+                pending_handle = tokio::spawn(pending::poll_pending(
+                    event_sender.clone(),
+                    sequencer.clone(),
+                    Duration::from_secs(2),
+                    storage.clone(),
+                    rx_latest.clone(),
+                    rx_current.clone(),
+                ));
+            },
+            _ = &mut latest_handle => {
+                tracing::error!("Tracking chain tip task ended unexpectedly");
+                tracing::debug!("Shutting down other tasks");
+
+                l1_handle.abort();
+                l2_handle.abort();
+                consumer_handle.abort();
+                pending_handle.abort();
+
+                _ = l1_handle.await;
+                _ = l2_handle.await;
+                _ = consumer_handle.await;
+                _ = pending_handle.await;
+
+                anyhow::bail!("Sync process terminated");
+            },
             l1_producer_result = &mut l1_handle => {
                 match l1_producer_result.context("Join L1 sync process handle")? {
                     Ok(()) => {
@@ -288,7 +340,7 @@ where
 
                 let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size).await.context("Fetching latest blocks from storage")?;
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-                let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain);
+                let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain, rx_latest.clone());
 
                 l2_handle = tokio::spawn(async move {
                     tokio::time::sleep(restart_delay).await;
@@ -316,6 +368,8 @@ where
                 tracing::debug!("Shutting down L1 and L2 sync producer tasks");
                 l1_handle.abort();
                 l2_handle.abort();
+                pending_handle.abort();
+                latest_handle.abort();
 
                 match l1_handle.await {
                     Ok(Ok(())) => {
@@ -347,6 +401,20 @@ where
                     }
                 }
 
+                match latest_handle.await {
+                    Ok(()) => {
+                        tracing::debug!("Latest polling task exited gracefully");
+                    },
+                    Err(e) if e.is_cancelled() => {
+                        tracing::debug!("Latest polling task cancelled successfully");
+                    },
+                    Err(panic) => {
+                        tracing::error!(%panic, "Latest polling task panic'd");
+                    }
+                }
+
+                _ = pending_handle.await;
+
                 anyhow::bail!("Sync process terminated");
             }
         }
@@ -361,7 +429,11 @@ struct ConsumerContext {
     pub websocket_txs: Option<TopicBroadcasters>,
 }
 
-async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> anyhow::Result<()> {
+async fn consumer(
+    mut events: Receiver<SyncEvent>,
+    context: ConsumerContext,
+    current: tokio::sync::watch::Sender<(BlockNumber, BlockHash)>,
+) -> anyhow::Result<()> {
     let ConsumerContext {
         storage,
         state,
@@ -448,6 +520,8 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                         }
                     }
                 }
+
+                _ = current.send((block_number, block_hash));
 
                 let now_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
                 let latency = now_timestamp.saturating_sub(block_timestamp.get());
@@ -617,66 +691,69 @@ async fn latest_n_blocks(
 /// propagates latest head after every change or otherwise every 2 minutes.
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
-    sequencer: impl GatewayApi,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
-    poll_interval: Duration,
+    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
     gossiper: Gossiper,
-) -> anyhow::Result<()> {
+) {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
+
     let mut last_propagated = Instant::now();
+    let mut latest_hash = BlockHash::default();
 
     loop {
-        match sequencer.head().await {
-            Ok((block_number, block_hash)) => {
-                let latest = NumberedBlock::from((block_hash, block_number));
+        let Ok((number, hash)) = latest
+            .wait_for(|(_, hash)| hash != &latest_hash)
+            .await
+            .as_deref()
+            .copied()
+        else {
+            break;
+        };
 
-                match &mut *state.status.write().await {
-                    sync_status @ Syncing::False(_) => {
-                        *sync_status = Syncing::Status(syncing::Status {
-                            starting,
-                            current: starting,
-                            highest: latest,
-                        });
+        latest_hash = hash;
+        let latest = NumberedBlock::from((hash, number));
+        match &mut *state.status.write().await {
+            sync_status @ Syncing::False(_) => {
+                *sync_status = Syncing::Status(syncing::Status {
+                    starting,
+                    current: starting,
+                    highest: latest,
+                });
 
-                        metrics::gauge!("current_block", starting.number.get() as f64);
-                        metrics::gauge!("highest_block", latest.number.get() as f64);
+                metrics::gauge!("current_block", starting.number.get() as f64);
+                metrics::gauge!("highest_block", latest.number.get() as f64);
 
-                        propagate_head(&gossiper, &mut last_propagated, latest).await;
+                propagate_head(&gossiper, &mut last_propagated, latest).await;
 
-                        tracing::debug!(
-                            status=%sync_status,
-                            "Updated sync status",
-                        );
-                    }
-                    Syncing::Status(status) => {
-                        if status.highest.hash != latest.hash {
-                            status.highest = latest;
-
-                            metrics::gauge!("highest_block", latest.number.get() as f64);
-
-                            propagate_head(&gossiper, &mut last_propagated, latest).await;
-
-                            tracing::debug!(
-                                %status,
-                                "Updated sync status",
-                            );
-                        }
-                    }
-                }
-
-                // duplicate_cache_time for gossipsub defaults to 1 minute
-                if last_propagated.elapsed() > Duration::from_secs(120) {
-                    propagate_head(&gossiper, &mut last_propagated, latest).await;
-                }
+                tracing::debug!(
+                    status=%sync_status,
+                    "Updated sync status",
+                );
             }
-            Err(e) => {
-                tracing::error!(error=%e, "Failed to fetch latest block");
+            Syncing::Status(status) => {
+                if status.highest.hash != latest.hash {
+                    status.highest = latest;
+
+                    metrics::gauge!("highest_block", latest.number.get() as f64);
+
+                    propagate_head(&gossiper, &mut last_propagated, latest).await;
+
+                    tracing::debug!(
+                        %status,
+                        "Updated sync status",
+                    );
+                }
             }
         }
 
-        tokio::time::sleep(poll_interval).await;
+        // duplicate_cache_time for gossipsub defaults to 1 minute
+        if last_propagated.elapsed() > Duration::from_secs(120) {
+            propagate_head(&gossiper, &mut last_propagated, latest).await;
+        }
     }
+
+    tracing::info!("Channel closed, exiting latest poll task");
 }
 
 async fn propagate_head(gossiper: &Gossiper, last_propagated: &mut Instant, head: NumberedBlock) {
@@ -1206,7 +1283,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         for i in 0..num_blocks {
@@ -1251,7 +1329,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
@@ -1308,7 +1387,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
@@ -1352,7 +1432,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
@@ -1388,7 +1469,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let definition = tx.class_definition(class_hash).unwrap().unwrap();
@@ -1427,7 +1509,8 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
 
         let tx = connection.transaction().unwrap();
         let definition = tx.class_definition(ClassHash(class_hash)).unwrap().unwrap();
@@ -1463,6 +1546,7 @@ mod tests {
             websocket_txs: None,
         };
 
-        consumer(event_rx, context).await.unwrap();
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
     }
 }
