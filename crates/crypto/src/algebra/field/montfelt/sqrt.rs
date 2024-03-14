@@ -3,7 +3,7 @@ use crate::MontFelt;
 impl MontFelt {
     /// Tonelli-Shanks algorithm to compute the square root
     ///
-    /// Based on arkwork which is based on https://eprint.iacr.org/2012/685.pdf (p.12, alg.5).
+    /// Based on arkwork which is based on <https://eprint.iacr.org/2012/685.pdf> (p.12, alg.5).
     pub fn sqrt(&self) -> Option<MontFelt> {
         if self.is_zero() {
             return Some(MontFelt::ZERO);

@@ -1,10 +1,10 @@
 use crate::algebra::field::core::{adc, mac};
-use crate::MontFelt;
+use crate::CurveOrderMontFelt;
 
-impl MontFelt {
+impl CurveOrderMontFelt {
     /// SOS multiplication algorithm
     #[inline(always)]
-    pub const fn const_mul(&self, x: &MontFelt) -> MontFelt {
+    pub const fn const_mul(&self, x: &CurveOrderMontFelt) -> CurveOrderMontFelt {
         let carry = 0;
         let (r0, carry) = mac(self.0[0], x.0[0], 0, carry);
         let (r1, carry) = mac(self.0[0], x.0[1], 0, carry);
@@ -33,13 +33,13 @@ impl MontFelt {
         let (r6, carry) = mac(self.0[3], x.0[3], r6, carry);
         let r7 = carry;
 
-        MontFelt::mont_reduce(r0, r1, r2, r3, r4, r5, r6, r7)
+        CurveOrderMontFelt::mont_reduce(r0, r1, r2, r3, r4, r5, r6, r7)
     }
 
     /// CIOS multiplication algorithm
     #[inline(always)]
     #[allow(unused)]
-    pub const fn const_mul_cios(&self, x: &MontFelt) -> MontFelt {
+    pub const fn const_mul_cios(&self, x: &CurveOrderMontFelt) -> CurveOrderMontFelt {
         let mut r = [0u64; 4];
 
         let mut i = 0;
@@ -70,12 +70,12 @@ impl MontFelt {
             i += 1;
         }
 
-        let r = MontFelt(r);
+        let r = CurveOrderMontFelt(r);
         r.reduce_partial()
     }
 
     #[inline(always)]
-    pub const fn square(&self) -> MontFelt {
+    pub const fn square(&self) -> CurveOrderMontFelt {
         let carry = 0;
         let (r1, carry) = mac(self.0[0usize], self.0[1usize], 0, carry);
         let (r2, carry) = mac(self.0[0usize], self.0[2usize], 0, carry);
@@ -108,11 +108,11 @@ impl MontFelt {
         let (r6, carry) = mac(self.0[3usize], self.0[3usize], r6, carry);
         let (r7, _) = adc(r7, 0, carry);
 
-        MontFelt::mont_reduce(r0, r1, r2, r3, r4, r5, r6, r7)
+        CurveOrderMontFelt::mont_reduce(r0, r1, r2, r3, r4, r5, r6, r7)
     }
 }
 
-impl std::ops::Mul<Self> for MontFelt {
+impl std::ops::Mul<Self> for CurveOrderMontFelt {
     type Output = Self;
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
@@ -120,7 +120,7 @@ impl std::ops::Mul<Self> for MontFelt {
     }
 }
 
-impl std::ops::Mul<&Self> for MontFelt {
+impl std::ops::Mul<&Self> for CurveOrderMontFelt {
     type Output = Self;
     #[inline(always)]
     fn mul(self, rhs: &Self) -> Self::Output {
@@ -128,7 +128,7 @@ impl std::ops::Mul<&Self> for MontFelt {
     }
 }
 
-impl std::ops::Mul<&mut Self> for MontFelt {
+impl std::ops::Mul<&mut Self> for CurveOrderMontFelt {
     type Output = Self;
     #[inline(always)]
     fn mul(self, rhs: &mut Self) -> Self::Output {
@@ -136,21 +136,21 @@ impl std::ops::Mul<&mut Self> for MontFelt {
     }
 }
 
-impl std::ops::MulAssign<Self> for MontFelt {
+impl std::ops::MulAssign<Self> for CurveOrderMontFelt {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.const_mul(&rhs);
     }
 }
 
-impl std::ops::MulAssign<&Self> for MontFelt {
+impl std::ops::MulAssign<&Self> for CurveOrderMontFelt {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: &Self) {
         *self = self.const_mul(rhs);
     }
 }
 
-impl std::ops::MulAssign<&mut Self> for MontFelt {
+impl std::ops::MulAssign<&mut Self> for CurveOrderMontFelt {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: &mut Self) {
         *self = self.const_mul(rhs);

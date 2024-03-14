@@ -1,6 +1,6 @@
-use crate::MontFelt;
+use crate::CurveOrderMontFelt;
 
-impl MontFelt {
+impl CurveOrderMontFelt {
     /// Return whether the value is zero
     #[inline(always)]
     pub const fn is_zero(&self) -> bool {
@@ -10,15 +10,15 @@ impl MontFelt {
     /// Return whether the value is one
     #[inline(always)]
     pub const fn is_one(&self) -> bool {
-        self.0[0] == MontFelt::R[0]
-            && self.0[1] == MontFelt::R[1]
-            && self.0[2] == MontFelt::R[2]
-            && self.0[3] == MontFelt::R[3]
+        self.0[0] == CurveOrderMontFelt::R[0]
+            && self.0[1] == CurveOrderMontFelt::R[1]
+            && self.0[2] == CurveOrderMontFelt::R[2]
+            && self.0[3] == CurveOrderMontFelt::R[3]
     }
 
     #[inline(always)]
     #[allow(clippy::comparison_chain)]
-    pub fn mont_cmp(&self, x: &MontFelt) -> isize {
+    pub fn mont_cmp(&self, x: &CurveOrderMontFelt) -> isize {
         let a = self.reduce_full();
         let b = x.reduce_full();
 
@@ -35,7 +35,7 @@ impl MontFelt {
     }
 
     #[inline(always)]
-    pub const fn cmp(&self, x: &MontFelt) -> isize {
+    pub const fn cmp(&self, x: &CurveOrderMontFelt) -> isize {
         let mut i = 4;
         while i > 0 {
             i -= 1;
@@ -49,32 +49,32 @@ impl MontFelt {
     }
 
     #[inline(always)]
-    pub const fn eq(&self, x: &MontFelt) -> bool {
+    pub const fn eq(&self, x: &CurveOrderMontFelt) -> bool {
         self.cmp(x) == 0
     }
 
     #[inline(always)]
-    pub const fn gt(&self, x: &MontFelt) -> bool {
+    pub const fn gt(&self, x: &CurveOrderMontFelt) -> bool {
         self.cmp(x) > 0
     }
 
     #[inline(always)]
-    pub const fn geq(&self, x: &MontFelt) -> bool {
+    pub const fn geq(&self, x: &CurveOrderMontFelt) -> bool {
         self.cmp(x) >= 0
     }
 
     #[inline(always)]
-    pub const fn lt(&self, x: &MontFelt) -> bool {
+    pub const fn lt(&self, x: &CurveOrderMontFelt) -> bool {
         self.cmp(x) < 0
     }
 
     #[inline(always)]
-    pub const fn leq(&self, x: &MontFelt) -> bool {
+    pub const fn leq(&self, x: &CurveOrderMontFelt) -> bool {
         self.cmp(x) <= 0
     }
 }
 
-impl std::cmp::PartialOrd for MontFelt {
+impl std::cmp::PartialOrd for CurveOrderMontFelt {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match self.mont_cmp(other) {
             1 => Some(std::cmp::Ordering::Greater),

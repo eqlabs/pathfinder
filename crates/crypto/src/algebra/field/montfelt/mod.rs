@@ -1,9 +1,7 @@
 mod additive;
-mod bits;
 mod cmp;
 mod constants;
 mod convert;
-mod core;
 mod division;
 mod hex;
 mod inverse;
@@ -26,14 +24,4 @@ impl std::fmt::Debug for MontFelt {
     }
 }
 
-impl MontFelt {
-    /// Create a field element from Montgomery representation
-    pub const fn new(x: [u64; 4]) -> Self {
-        Self(x)
-    }
-
-    /// Get raw representation of field element
-    pub fn raw(&self) -> [u64; 4] {
-        self.0
-    }
-}
+impl MontFelt {}

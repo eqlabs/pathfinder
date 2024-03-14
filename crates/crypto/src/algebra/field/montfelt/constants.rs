@@ -4,6 +4,11 @@ impl MontFelt {
     /// The modulus of the field
     pub const P: MontFelt = MontFelt([1u64, 0u64, 0u64, 576460752303423505u64]);
 
+    pub const P_BYTES: [u8; 32] = [
+        1u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 17u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 8u8,
+    ];
+
     /// Number of zero-bits in the most-significant limb
     pub const ZERO_BITS: u32 = 4;
 
@@ -51,17 +56,4 @@ impl MontFelt {
 
     /// Constant `(t-1)/2` for use in square-root computation
     pub const SQRT_T_MINUS_ONE_DIV2: [u64; 4] = [288230376151711752u64, 0, 0, 0];
-
-    /// Return whether the value is zero
-    pub const fn is_zero(&self) -> bool {
-        self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
-    }
-
-    /// Return whether the value is one
-    pub const fn is_one(&self) -> bool {
-        self.0[0] == MontFelt::R[0]
-            && self.0[1] == MontFelt::R[1]
-            && self.0[2] == MontFelt::R[2]
-            && self.0[3] == MontFelt::R[3]
-    }
 }

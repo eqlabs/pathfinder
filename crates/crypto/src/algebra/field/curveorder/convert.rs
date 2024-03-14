@@ -1,7 +1,8 @@
+use crate::algebra::curve::CURVE_ORDER;
 use crate::{CurveOrderMontFelt, Felt, MontFelt};
 use bitvec::prelude::*;
 
-impl MontFelt {
+impl CurveOrderMontFelt {
     pub const fn from_be_bytes(bytes: [u8; 32]) -> Self {
         let r0 = u64::from_be_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
@@ -16,8 +17,8 @@ impl MontFelt {
             bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
         ]);
 
-        let x = MontFelt([r3, r2, r1, r0]);
-        x.const_mul(&MontFelt(MontFelt::R2))
+        let x = CurveOrderMontFelt([r3, r2, r1, r0]);
+        x.const_mul(&CurveOrderMontFelt(CurveOrderMontFelt::R2))
     }
 
     pub const fn to_be_bytes(&self) -> [u8; 32] {
@@ -42,7 +43,7 @@ impl MontFelt {
 
     /// Create a Montgomery field element from it's native representation
     pub const fn from_raw(x: [u64; 4]) -> Self {
-        MontFelt(x)
+        CurveOrderMontFelt(x)
     }
 
     /// Get native representation of field element
@@ -52,7 +53,7 @@ impl MontFelt {
 
     /// Create a new field element from a big-integer representation
     pub const fn from_limbs(x: [u64; 4]) -> Self {
-        MontFelt::from_raw(x).const_mul(&MontFelt(MontFelt::R2))
+        CurveOrderMontFelt::from_raw(x).const_mul(&CurveOrderMontFelt(CurveOrderMontFelt::R2))
     }
 
     /// Convert a field element to little-endian bits
@@ -62,27 +63,27 @@ impl MontFelt {
     }
 }
 
-impl From<Felt> for MontFelt {
-    fn from(felt: Felt) -> Self {
-        // safe since the value is below field order
-        MontFelt::from_be_bytes(felt.to_be_bytes())
-    }
-}
-impl From<CurveOrderMontFelt> for MontFelt {
-    fn from(value: CurveOrderMontFelt) -> Self {
-        // safe since the value is below field order
-        let bytes = value.to_be_bytes();
-        MontFelt::from_be_bytes(bytes)
+impl TryFrom<MontFelt> for CurveOrderMontFelt {
+    type Error = ();
+    fn try_from(value: MontFelt) -> Result<Self, Self::Error> {
+        if value < CURVE_ORDER {
+            let bytes = value.to_be_bytes();
+            Ok(Self::from_be_bytes(bytes))
+        } else {
+            Err(())
+        }
     }
 }
 
-impl From<u64> for MontFelt {
-    fn from(value: u64) -> Self {
-        MontFelt::from(Felt::from(value))
-    }
-}
-impl From<u128> for MontFelt {
-    fn from(value: u128) -> Self {
-        MontFelt::from(Felt::from(value))
+impl TryFrom<Felt> for CurveOrderMontFelt {
+    type Error = ();
+    /// Converts a felt element to a curve-order field element if less than the curve order
+    fn try_from(value: Felt) -> Result<Self, Self::Error> {
+        let montvalue = MontFelt::from(value);
+        if montvalue < CURVE_ORDER {
+            Ok(Self::from_be_bytes(value.to_be_bytes()))
+        } else {
+            Err(())
+        }
     }
 }

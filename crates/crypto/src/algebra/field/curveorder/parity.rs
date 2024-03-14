@@ -1,6 +1,6 @@
-use crate::MontFelt;
+use crate::CurveOrderMontFelt;
 
-impl MontFelt {
+impl CurveOrderMontFelt {
     #[inline(always)]
     pub const fn is_odd(&self) -> bool {
         self.0[0] & 1 == 1

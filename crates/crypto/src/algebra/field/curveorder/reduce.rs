@@ -1,20 +1,20 @@
 use crate::algebra::field::core::{adc, mac};
-use crate::MontFelt;
+use crate::CurveOrderMontFelt;
 
-impl MontFelt {
+impl CurveOrderMontFelt {
     /// Reduce a field element max 2*(p-1)
     #[inline(always)]
-    pub const fn reduce_partial(&self) -> MontFelt {
-        if self.geq(&MontFelt::P) {
-            return self.sub_noreduce(&MontFelt::P);
+    pub const fn reduce_partial(&self) -> CurveOrderMontFelt {
+        if self.geq(&CurveOrderMontFelt::P) {
+            return self.sub_noreduce(&CurveOrderMontFelt::P);
         }
         *self
     }
 
     /// Full reduction computing x * R^{-1} mod p
     #[inline(always)]
-    pub const fn reduce_full(&self) -> MontFelt {
-        MontFelt::mont_reduce(self.0[0], self.0[1], self.0[2], self.0[3], 0, 0, 0, 0)
+    pub const fn reduce_full(&self) -> CurveOrderMontFelt {
+        CurveOrderMontFelt::mont_reduce(self.0[0], self.0[1], self.0[2], self.0[3], 0, 0, 0, 0)
     }
 
     /// Reduce a field element max (p-1)^2
@@ -29,7 +29,7 @@ impl MontFelt {
         r5: u64,
         r6: u64,
         r7: u64,
-    ) -> MontFelt {
+    ) -> CurveOrderMontFelt {
         let k = r0.wrapping_mul(Self::M0);
         let (_, carry) = mac(k, Self::P.0[0], r0, 0);
         let (r1, carry) = mac(k, Self::P.0[1], r1, carry);
@@ -58,7 +58,7 @@ impl MontFelt {
         let (r6, carry) = mac(k, Self::P.0[3], r6, carry);
         let (r7, _) = adc(r7, carry2, carry);
 
-        let r = MontFelt([r4, r5, r6, r7]);
+        let r = CurveOrderMontFelt([r4, r5, r6, r7]);
         r.reduce_partial()
     }
 }
