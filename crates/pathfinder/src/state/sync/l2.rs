@@ -105,8 +105,6 @@ where
         storage,
     } = context;
 
-    // let mut pending_handle = None;
-
     'outer: loop {
         // Get the next block from L2.
         let (next, head_meta) = match &head {
