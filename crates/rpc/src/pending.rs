@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use pathfinder_common::{BlockHeader, BlockNumber, StateUpdate};
 use pathfinder_storage::Transaction;
-use starknet_gateway_types::reply::{PendingBlock, Status};
+use starknet_gateway_types::reply::{GasPrices, PendingBlock, Status};
 
 use tokio::sync::watch::Receiver as WatchReceiver;
 
@@ -79,13 +79,21 @@ impl PendingWatcher {
                 block: PendingBlock {
                     eth_l1_gas_price_implementation_detail: Some(latest.eth_l1_gas_price),
                     strk_l1_gas_price_implementation_detail: Some(latest.strk_l1_gas_price),
+                    l1_data_gas_price: Some(GasPrices {
+                        price_in_wei: latest.eth_l1_data_gas_price,
+                        price_in_fri: latest.strk_l1_data_gas_price,
+                    }),
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,
                     starknet_version: latest.starknet_version,
+                    l1_da_mode: Some(latest.l1_da_mode.into()),
                     // This shouldn't have an impact anywhere as the RPC methods should
                     // know this is a pending block. But rather safe than sorry.
                     status: Status::Pending,
-                    ..Default::default()
+                    l1_gas_price_implementation_detail: None,
+                    sequencer_address: latest.sequencer_address,
+                    transaction_receipts: vec![],
+                    transactions: vec![],
                 }
                 .into(),
                 state_update: Default::default(),
@@ -105,7 +113,7 @@ impl PendingWatcher {
 #[cfg(test)]
 mod tests {
 
-    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{macro_prelude::*, L1DataAvailabilityMode};
     use pathfinder_common::{BlockHeader, BlockTimestamp, GasPrice};
 
     use super::*;
@@ -175,7 +183,11 @@ mod tests {
             .child_builder()
             .with_eth_l1_gas_price(GasPrice(1234))
             .with_strk_l1_gas_price(GasPrice(3377))
+            .with_eth_l1_data_gas_price(GasPrice(9999))
+            .with_strk_l1_data_gas_price(GasPrice(8888))
+            .with_l1_da_mode(L1DataAvailabilityMode::Blob)
             .with_timestamp(BlockTimestamp::new_or_panic(6777))
+            .with_sequencer_address(sequencer_address!("0xffff"))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
         let tx = storage.transaction().unwrap();
@@ -188,7 +200,13 @@ mod tests {
             block: PendingBlock {
                 eth_l1_gas_price_implementation_detail: Some(latest.eth_l1_gas_price),
                 strk_l1_gas_price_implementation_detail: Some(latest.strk_l1_gas_price),
+                l1_data_gas_price: Some(GasPrices {
+                    price_in_wei: latest.eth_l1_data_gas_price,
+                    price_in_fri: latest.strk_l1_data_gas_price,
+                }),
+                l1_da_mode: Some(latest.l1_da_mode.into()),
                 timestamp: latest.timestamp,
+                sequencer_address: latest.sequencer_address,
                 parent_hash: latest.hash,
                 starknet_version: latest.starknet_version,
                 status: Status::Pending,
