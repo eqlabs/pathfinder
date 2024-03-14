@@ -158,7 +158,12 @@ pub(super) async fn persist(
             .context("Creating database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        for SignedBlockHeader { header, signature } in signed_headers.iter().map(|x| &x.data) {
+        for SignedBlockHeader {
+            header,
+            signature,
+            state_update_counts,
+        } in signed_headers.iter().map(|x| &x.data)
+        {
             tx.insert_block_header(&pathfinder_common::BlockHeader {
                 hash: header.hash,
                 parent_hash: header.parent_hash,
@@ -182,6 +187,8 @@ pub(super) async fn persist(
             .context("Persisting block header")?;
             tx.insert_signature(header.number, signature)
                 .context("Persisting block signature")?;
+            tx.insert_state_update_counts(header.number, state_update_counts)
+                .context("Persisting state update counts")?;
         }
 
         tx.commit().context("Committing database transaction")?;

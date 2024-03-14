@@ -32,7 +32,7 @@ pub struct L2ToL1Message {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExecutionResources {
-    pub builtin_instance_counter: BuiltinCounters,
+    pub builtins: BuiltinCounters,
     pub n_steps: u64,
     pub n_memory_holes: u64,
     pub data_availability: ExecutionDataAvailability,
@@ -46,15 +46,15 @@ pub struct ExecutionDataAvailability {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BuiltinCounters {
-    pub output_builtin: u64,
-    pub pedersen_builtin: u64,
-    pub range_check_builtin: u64,
-    pub ecdsa_builtin: u64,
-    pub bitwise_builtin: u64,
-    pub ec_op_builtin: u64,
-    pub keccak_builtin: u64,
-    pub poseidon_builtin: u64,
-    pub segment_arena_builtin: u64,
+    pub output: u64,
+    pub pedersen: u64,
+    pub range_check: u64,
+    pub ecdsa: u64,
+    pub bitwise: u64,
+    pub ec_op: u64,
+    pub keccak: u64,
+    pub poseidon: u64,
+    pub segment_arena: u64,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]

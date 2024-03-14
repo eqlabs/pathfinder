@@ -120,6 +120,7 @@ mod prop {
         StorageAddress, StorageCommitment, StorageValue, TransactionHash, TransactionIndex,
     };
     use pathfinder_crypto::Felt;
+    use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use std::collections::HashMap;
     use tokio::runtime::Runtime;
@@ -162,14 +163,12 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|(mut h, s, _, _, _, _)| {
-                // P2P headers don't carry class commitment and storage commitment, so zero them just like `try_from_dto` does
-                h.class_commitment = ClassCommitment::ZERO;
-                h.storage_commitment = StorageCommitment::ZERO;
-                SignedBlockHeader{
-                    header: h,
-                    signature: s,
-                }}).collect::<Vec<_>>();
+                .into_iter().map(|Block { mut header, .. }| {
+                    // P2P headers don't carry class commitment and storage commitment, so zero them just like `try_from_dto` does
+                    header.header.class_commitment = ClassCommitment::ZERO;
+                    header.header.storage_commitment = StorageCommitment::ZERO;
+                    header
+                }).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -205,9 +204,9 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, _, state_update, _, _)|
+                .map(|Block { header, state_update, .. }|
                     (
-                        h.number, // Block number
+                        header.header.number, // Block number
                         state_update.contract_updates,
                         state_update.system_contract_updates,
                     )
@@ -279,10 +278,10 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, _, _, cairo_defs, sierra_defs)|
+                .map(|Block { header, cairo_defs, sierra_defs, .. }|
                     (
                         // Block number
-                        h.number,
+                        header.header.number,
                         // List of tuples (Cairo class hash, Cairo definition bytes)
                         cairo_defs,
                         // List of tuples (Sierra class hash, Sierra definition bytes, Casm definition bytes)
@@ -366,12 +365,12 @@ mod prop {
             // These are the transactions that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, tr, _, _, _)|
+                .map(|Block { header, transaction_data, .. }|
                     (
                         // Block number
-                        h.number,
+                        header.header.number,
                         // List of tuples (Transaction hash, Transaction variant)
-                        tr.into_iter().map(|(t, _, _)| {
+                        transaction_data.into_iter().map(|(t, _, _)| {
                             let mut txn = workaround::for_legacy_l1_handlers(t);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
                             match &mut txn.variant {
@@ -418,12 +417,13 @@ mod prop {
             // These are the receipts that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, tr, _, _, _)|
+                .map(|Block { header, transaction_data, .. }|
                     (
                         // Block number
-                        h.number,
+                        header.header.number,
                         // List of receipts
-                        tr.into_iter().map(|(_, mut r, _)| {
+                        transaction_data.into_iter().map(|(_, mut r, _)| {
+                            // P2P receipts don't carry transaction index
                             r.transaction_index = TransactionIndex::new_or_panic(0);
                             r
                         }).collect::<Vec<_>>()
@@ -463,12 +463,12 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, tr, _, _, _)|
+                .map(|Block { header, transaction_data, .. }|
                     (
                         // Block number
-                        h.number,
+                        header.header.number,
                         // List of tuples (Transaction hash, Event)
-                        tr.into_iter().flat_map(|(_, r, events)| events.into_iter().map(move |event| (r.transaction_hash, event)))
+                        transaction_data.into_iter().flat_map(|(_, r, events)| events.into_iter().map(move |event| (r.transaction_hash, event)))
                             .collect::<Vec<(TransactionHash, Event)>>()
                     )
             ).collect::<Vec<_>>();
@@ -500,12 +500,12 @@ mod prop {
     /// Fixtures for prop tests
     mod fixtures {
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
-        use pathfinder_storage::fake::{with_n_blocks_and_rng, StorageInitializer};
+        use pathfinder_storage::fake::{with_n_blocks_and_rng, Block};
         use pathfinder_storage::Storage;
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 
-        pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, StorageInitializer) {
+        pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, Vec<Block>) {
             use rand::SeedableRng;
             let storage = Storage::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
@@ -520,16 +520,16 @@ mod prop {
     mod overlapping {
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
         use p2p_proto::common::{Direction, Step};
-        use pathfinder_storage::fake::{StorageInitializer, StorageInitializerItem};
+        use pathfinder_storage::fake::Block;
 
         pub fn get(
-            from_db: StorageInitializer,
+            from_db: Vec<Block>,
             start_block: u64,
             limit: u64,
             step: Step,
             num_blocks: u64,
             direction: Direction,
-        ) -> StorageInitializer {
+        ) -> Vec<Block> {
             match direction {
                 Direction::Forward => forward(from_db, start_block, limit, step).collect(),
                 Direction::Backward => {
@@ -539,11 +539,11 @@ mod prop {
         }
 
         fn forward(
-            from_db: StorageInitializer,
+            from_db: Vec<Block>,
             start_block: u64,
             limit: u64,
             step: Step,
-        ) -> impl Iterator<Item = StorageInitializerItem> {
+        ) -> impl Iterator<Item = Block> {
             from_db
                 .into_iter()
                 .skip(start_block.try_into().unwrap())
@@ -552,12 +552,12 @@ mod prop {
         }
 
         fn backward(
-            mut from_db: StorageInitializer,
+            mut from_db: Vec<Block>,
             start_block: u64,
             limit: u64,
             step: Step,
             num_blocks: u64,
-        ) -> impl Iterator<Item = StorageInitializerItem> {
+        ) -> impl Iterator<Item = Block> {
             if start_block >= num_blocks {
                 // The is no overlapping range but we want to keep the iterator type in this
                 // branch type-consistent

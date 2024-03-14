@@ -1,7 +1,7 @@
 {
     "openrpc": "1.0.0-rc1",
     "info": {
-        "version": "0.6.0",
+        "version": "0.7.0",
         "title": "StarkNet Node API",
         "license": {}
     },
@@ -381,16 +381,8 @@
             "result": {
                 "name": "result",
                 "schema": {
-                    "oneOf": [
-                        {
-                            "title": "Transaction receipt",
-                            "$ref": "#/components/schemas/TXN_RECEIPT"
-                        },
-                        {
-                            "title": "Pending transaction receipt",
-                            "$ref": "#/components/schemas/PENDING_TXN_RECEIPT"
-                        }
-                    ]
+                    "title": "Transaction receipt with block info",
+                    "$ref": "#/components/schemas/TXN_RECEIPT_WITH_BLOCK_INFO"
                 }
             },
             "errors": [
@@ -1325,7 +1317,7 @@
                 "title": "Storage key",
                 "$comment": "A storage key, represented as a string of hex digits",
                 "description": "A storage key. Represented as up to 62 hex digits, 3 bits, and 5 leading zeroes.",
-                "pattern": "^0x0[0-7]{1}[a-fA-F0-9]{0,62}$"
+                "pattern": "^0x(0|[0-7]{1}[a-fA-F0-9]{0,62}$)"
             },
             "ETH_ADDRESS": {
                 "title": "Ethereum address",
@@ -1418,25 +1410,21 @@
                         "description": "The transactions in this block",
                         "type": "array",
                         "items": {
-                            "title": "transactions in block",
                             "type": "object",
-                            "allOf": [
-                                {
+                            "title": "transaction and receipt",
+                            "properties": {
+                                "transaction": {
                                     "title": "transaction",
                                     "$ref": "#/components/schemas/TXN"
                                 },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "receipt": {
-                                            "title": "receipt",
-                                            "$ref": "#/components/schemas/TXN_RECEIPT"
-                                        }
-                                    },
-                                    "required": [
-                                        "receipt"
-                                    ]
+                                "receipt": {
+                                    "title": "receipt",
+                                    "$ref": "#/components/schemas/TXN_RECEIPT"
                                 }
+                            },
+                            "required": [
+                                "transaction",
+                                "receipt"
                             ]
                         }
                     }
@@ -1512,6 +1500,8 @@
                     "timestamp",
                     "sequencer_address",
                     "l1_gas_price",
+                    "l1_data_gas_price",
+                    "l1_da_mode",
                     "starknet_version"
                 ]
             },
@@ -1540,6 +1530,20 @@
                         "description": "The price of l1 gas in the block",
                         "$ref": "#/components/schemas/RESOURCE_PRICE"
                     },
+                    "l1_data_gas_price": {
+                        "title": "L1 data gas price",
+                        "description": "The price of l1 data gas in the block",
+                        "$ref": "#/components/schemas/RESOURCE_PRICE"
+                    },
+                    "l1_da_mode": {
+                        "title": "L1 da mode",
+                        "type": "string",
+                        "description": "specifies whether the data of this block is published via blob data or calldata",
+                        "enum": [
+                            "BLOB",
+                            "CALLDATA"
+                        ]
+                    },
                     "starknet_version": {
                         "title": "Starknet version",
                         "description": "Semver of the current Starknet protocol",
@@ -1551,6 +1555,8 @@
                     "timestamp",
                     "sequencer_address",
                     "l1_gas_price",
+                    "l1_data_gas_price",
+                    "l1_da_mode",
                     "starknet_version"
                 ],
                 "not": {
@@ -2836,73 +2842,104 @@
                 ]
             },
             "COMMON_RECEIPT_PROPERTIES": {
-                "title": "Common receipt properties",
-                "description": "Common properties for a transaction receipt",
-                "type": "object",
-                "properties": {
-                    "transaction_hash": {
-                        "title": "Transaction hash",
-                        "$ref": "#/components/schemas/TXN_HASH",
-                        "description": "The hash identifying the transaction"
+                "allOf": [
+                    {
+                        "title": "Common receipt properties",
+                        "description": "Common properties for a transaction receipt",
+                        "type": "object",
+                        "properties": {
+                            "transaction_hash": {
+                                "title": "Transaction hash",
+                                "$ref": "#/components/schemas/TXN_HASH",
+                                "description": "The hash identifying the transaction"
+                            },
+                            "actual_fee": {
+                                "title": "Actual fee",
+                                "$ref": "#/components/schemas/FEE_PAYMENT",
+                                "description": "The fee that was charged by the sequencer"
+                            },
+                            "finality_status": {
+                                "title": "Finality status",
+                                "description": "finality status of the tx",
+                                "$ref": "#/components/schemas/TXN_FINALITY_STATUS"
+                            },
+                            "messages_sent": {
+                                "type": "array",
+                                "title": "Messages sent",
+                                "items": {
+                                    "$ref": "#/components/schemas/MSG_TO_L1"
+                                }
+                            },
+                            "events": {
+                                "description": "The events emitted as part of this transaction",
+                                "title": "Events",
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/EVENT"
+                                }
+                            },
+                            "execution_resources": {
+                                "title": "Execution resources",
+                                "description": "The resources consumed by the transaction",
+                                "$ref": "#/components/schemas/EXECUTION_RESOURCES"
+                            }
+                        },
+                        "required": [
+                            "transaction_hash",
+                            "actual_fee",
+                            "finality_status",
+                            "messages_sent",
+                            "events",
+                            "execution_resources"
+                        ]
                     },
-                    "actual_fee": {
-                        "title": "Actual fee",
-                        "$ref": "#/components/schemas/FEE_PAYMENT",
-                        "description": "The fee that was charged by the sequencer"
-                    },
-                    "execution_status": {
-                        "title": "Execution status",
-                        "$ref": "#/components/schemas/TXN_EXECUTION_STATUS"
-                    },
-                    "finality_status": {
-                        "title": "Finality status",
-                        "$ref": "#/components/schemas/TXN_FINALITY_STATUS"
-                    },
-                    "block_hash": {
-                        "title": "Block hash",
-                        "$ref": "#/components/schemas/BLOCK_HASH"
-                    },
-                    "block_number": {
-                        "title": "Block number",
-                        "$ref": "#/components/schemas/BLOCK_NUMBER"
-                    },
-                    "messages_sent": {
-                        "type": "array",
-                        "title": "Messages sent",
-                        "items": {
-                            "$ref": "#/components/schemas/MSG_TO_L1"
-                        }
-                    },
-                    "revert_reason": {
-                        "title": "Revert reason",
-                        "name": "revert reason",
-                        "description": "the revert reason for the failed execution",
-                        "type": "string"
-                    },
-                    "events": {
-                        "description": "The events emitted as part of this transaction",
-                        "title": "Events",
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/EVENT"
-                        }
-                    },
-                    "execution_resources": {
-                        "title": "Execution resources",
-                        "description": "The resources consumed by the transaction",
-                        "$ref": "#/components/schemas/EXECUTION_RESOURCES"
+                    {
+                        "oneOf": [
+                            {
+                                "title": "Successful Common receipt properties",
+                                "description": "Common properties for a transaction receipt that was executed successfully",
+                                "type": "object",
+                                "properties": {
+                                    "execution_status": {
+                                        "title": "Execution status",
+                                        "type": "string",
+                                        "enum": [
+                                            "SUCCEEDED"
+                                        ],
+                                        "description": "The execution status of the transaction"
+                                    }
+                                },
+                                "required": [
+                                    "execution_status"
+                                ]
+                            },
+                            {
+                                "title": "Reverted Common receipt properties",
+                                "description": "Common properties for a transaction receipt that was reverted",
+                                "type": "object",
+                                "properties": {
+                                    "execution_status": {
+                                        "title": "Execution status",
+                                        "type": "string",
+                                        "enum": [
+                                            "REVERTED"
+                                        ],
+                                        "description": "The execution status of the transaction"
+                                    },
+                                    "revert_reason": {
+                                        "title": "Revert reason",
+                                        "name": "revert reason",
+                                        "description": "the revert reason for the failed execution",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "execution_status",
+                                    "revert_reason"
+                                ]
+                            }
+                        ]
                     }
-                },
-                "required": [
-                    "transaction_hash",
-                    "actual_fee",
-                    "finality_status",
-                    "execution_status",
-                    "block_hash",
-                    "block_number",
-                    "messages_sent",
-                    "events",
-                    "execution_resources"
                 ]
             },
             "INVOKE_TXN_RECEIPT": {
@@ -2927,31 +2964,6 @@
                     {
                         "title": "Common receipt properties",
                         "$ref": "#/components/schemas/COMMON_RECEIPT_PROPERTIES"
-                    }
-                ]
-            },
-            "PENDING_INVOKE_TXN_RECEIPT": {
-                "title": "Invoke Transaction Receipt",
-                "allOf": [
-                    {
-                        "title": "Type",
-                        "type": "object",
-                        "properties": {
-                            "type": {
-                                "title": "Type",
-                                "type": "string",
-                                "enum": [
-                                    "INVOKE"
-                                ]
-                            }
-                        },
-                        "required": [
-                            "type"
-                        ]
-                    },
-                    {
-                        "title": "Common receipt properties",
-                        "$ref": "#/components/schemas/PENDING_COMMON_RECEIPT_PROPERTIES"
                     }
                 ]
             },
@@ -2980,68 +2992,12 @@
                     }
                 ]
             },
-            "PENDING_DECLARE_TXN_RECEIPT": {
-                "title": "Declare Transaction Receipt",
-                "allOf": [
-                    {
-                        "title": "Declare txn receipt",
-                        "type": "object",
-                        "properties": {
-                            "type": {
-                                "title": "Declare",
-                                "type": "string",
-                                "enum": [
-                                    "DECLARE"
-                                ]
-                            }
-                        },
-                        "required": [
-                            "type"
-                        ]
-                    },
-                    {
-                        "title": "Common receipt properties",
-                        "$ref": "#/components/schemas/PENDING_COMMON_RECEIPT_PROPERTIES"
-                    }
-                ]
-            },
             "DEPLOY_ACCOUNT_TXN_RECEIPT": {
                 "title": "Deploy Account Transaction Receipt",
                 "allOf": [
                     {
                         "title": "Common receipt properties",
                         "$ref": "#/components/schemas/COMMON_RECEIPT_PROPERTIES"
-                    },
-                    {
-                        "title": "DeployAccount txn receipt",
-                        "type": "object",
-                        "properties": {
-                            "type": {
-                                "title": "Deploy account",
-                                "type": "string",
-                                "enum": [
-                                    "DEPLOY_ACCOUNT"
-                                ]
-                            },
-                            "contract_address": {
-                                "title": "Contract address",
-                                "description": "The address of the deployed contract",
-                                "$ref": "#/components/schemas/FELT"
-                            }
-                        },
-                        "required": [
-                            "type",
-                            "contract_address"
-                        ]
-                    }
-                ]
-            },
-            "PENDING_DEPLOY_ACCOUNT_TXN_RECEIPT": {
-                "title": "Deploy Account Transaction Receipt",
-                "allOf": [
-                    {
-                        "title": "Common receipt properties",
-                        "$ref": "#/components/schemas/PENDING_COMMON_RECEIPT_PROPERTIES"
                     },
                     {
                         "title": "DeployAccount txn receipt",
@@ -3130,38 +3086,6 @@
                     }
                 ]
             },
-            "PENDING_L1_HANDLER_TXN_RECEIPT": {
-                "title": "L1 Handler Transaction Receipt",
-                "description": "receipt for l1 handler transaction",
-                "allOf": [
-                    {
-                        "title": "Transaction type",
-                        "type": "object",
-                        "properties": {
-                            "type": {
-                                "title": "type",
-                                "type": "string",
-                                "enum": [
-                                    "L1_HANDLER"
-                                ]
-                            },
-                            "message_hash": {
-                                "title": "Message hash",
-                                "description": "The message hash as it appears on the L1 core contract",
-                                "$ref": "#/components/schemas/NUM_AS_HEX"
-                            }
-                        },
-                        "required": [
-                            "type",
-                            "message_hash"
-                        ]
-                    },
-                    {
-                        "title": "Common receipt properties",
-                        "$ref": "#/components/schemas/PENDING_COMMON_RECEIPT_PROPERTIES"
-                    }
-                ]
-            },
             "TXN_RECEIPT": {
                 "title": "Transaction Receipt",
                 "oneOf": [
@@ -3187,91 +3111,29 @@
                     }
                 ]
             },
-            "PENDING_TXN_RECEIPT": {
-                "title": "Transaction Receipt",
-                "oneOf": [
+            "TXN_RECEIPT_WITH_BLOCK_INFO": {
+                "title": "Transaction receipt with block info",
+                "allOf": [
                     {
-                        "title": "Pending Invoke transaction receipt",
-                        "$ref": "#/components/schemas/PENDING_INVOKE_TXN_RECEIPT"
+                        "title": "Transaction receipt",
+                        "$ref": "#/components/schemas/TXN_RECEIPT"
                     },
                     {
-                        "title": "Pending L1 handler transaction receipt",
-                        "$ref": "#/components/schemas/PENDING_L1_HANDLER_TXN_RECEIPT"
-                    },
-                    {
-                        "title": "Pending Declare transaction receipt",
-                        "$ref": "#/components/schemas/PENDING_DECLARE_TXN_RECEIPT"
-                    },
-                    {
-                        "title": "Pending Deploy account transaction receipt",
-                        "$ref": "#/components/schemas/PENDING_DEPLOY_ACCOUNT_TXN_RECEIPT"
+                        "type": "object",
+                        "properties": {
+                            "block_hash": {
+                                "title": "Block hash",
+                                "$ref": "#/components/schemas/BLOCK_HASH",
+                                "description": "If this field is missing, it means the receipt belongs to the pending block"
+                            },
+                            "block_number": {
+                                "title": "Block number",
+                                "$ref": "#/components/schemas/BLOCK_NUMBER",
+                                "description": "If this field is missing, it means the receipt belongs to the pending block"
+                            }
+                        }
                     }
                 ]
-            },
-            "PENDING_COMMON_RECEIPT_PROPERTIES": {
-                "title": "Pending common receipt properties",
-                "description": "Common properties for a pending transaction receipt",
-                "type": "object",
-                "properties": {
-                    "transaction_hash": {
-                        "title": "Transaction hash",
-                        "$ref": "#/components/schemas/TXN_HASH",
-                        "description": "The hash identifying the transaction"
-                    },
-                    "actual_fee": {
-                        "title": "Actual fee",
-                        "$ref": "#/components/schemas/FEE_PAYMENT",
-                        "description": "The fee that was charged by the sequencer"
-                    },
-                    "messages_sent": {
-                        "type": "array",
-                        "title": "Messages sent",
-                        "items": {
-                            "$ref": "#/components/schemas/MSG_TO_L1"
-                        }
-                    },
-                    "events": {
-                        "description": "The events emitted as part of this transaction",
-                        "title": "Events",
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/EVENT"
-                        }
-                    },
-                    "revert_reason": {
-                        "title": "Revert reason",
-                        "name": "revert reason",
-                        "description": "the revert reason for the failed execution",
-                        "type": "string"
-                    },
-                    "finality_status": {
-                        "title": "Finality status",
-                        "type": "string",
-                        "enum": [
-                            "ACCEPTED_ON_L2"
-                        ],
-                        "description": "The finality status of the transaction"
-                    },
-                    "execution_status": {
-                        "title": "Execution status",
-                        "$ref": "#/components/schemas/TXN_EXECUTION_STATUS"
-                    },
-                    "execution_resources": {
-                        "title": "Execution resources",
-                        "description": "The resources consumed by the transaction",
-                        "$ref": "#/components/schemas/EXECUTION_RESOURCES"
-                    }
-                },
-                "required": [
-                    "transaction_hash",
-                    "actual_fee",
-                    "messages_sent",
-                    "events",
-                    "finality_status",
-                    "execution_status",
-                    "execution_resources"
-                ],
-                "additionalProperties": false
             },
             "MSG_TO_L1": {
                 "title": "Message to L1",

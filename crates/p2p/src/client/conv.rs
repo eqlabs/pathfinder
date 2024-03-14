@@ -3,6 +3,7 @@ use pathfinder_common::{
         BuiltinCounters, ExecutionDataAvailability, ExecutionResources, ExecutionStatus,
         L2ToL1Message, Receipt,
     },
+    state_update::StateUpdateCounts,
     transaction::{
         DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
         DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
@@ -66,6 +67,12 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             },
             signature,
+            state_update_counts: StateUpdateCounts {
+                storage_diffs: dto.num_storage_diffs,
+                nonce_updates: dto.num_nonce_updates,
+                declared_classes: dto.num_declared_classes,
+                deployed_contracts: dto.num_deployed_contracts,
+            },
         })
     }
 }
@@ -270,16 +277,16 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
                 transaction_hash: TransactionHash(common.transaction_hash.0),
                 actual_fee: Some(Fee(common.actual_fee)),
                 execution_resources: ExecutionResources {
-                    builtin_instance_counter: BuiltinCounters {
-                        output_builtin: common.execution_resources.builtins.output.into(),
-                        pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
-                        range_check_builtin: common.execution_resources.builtins.range_check.into(),
-                        ecdsa_builtin: common.execution_resources.builtins.ecdsa.into(),
-                        bitwise_builtin: common.execution_resources.builtins.bitwise.into(),
-                        ec_op_builtin: common.execution_resources.builtins.ec_op.into(),
-                        keccak_builtin: common.execution_resources.builtins.keccak.into(),
-                        poseidon_builtin: common.execution_resources.builtins.poseidon.into(),
-                        segment_arena_builtin: 0,
+                    builtins: BuiltinCounters {
+                        output: common.execution_resources.builtins.output.into(),
+                        pedersen: common.execution_resources.builtins.pedersen.into(),
+                        range_check: common.execution_resources.builtins.range_check.into(),
+                        ecdsa: common.execution_resources.builtins.ecdsa.into(),
+                        bitwise: common.execution_resources.builtins.bitwise.into(),
+                        ec_op: common.execution_resources.builtins.ec_op.into(),
+                        keccak: common.execution_resources.builtins.keccak.into(),
+                        poseidon: common.execution_resources.builtins.poseidon.into(),
+                        segment_arena: 0,
                     },
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),

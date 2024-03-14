@@ -13,13 +13,7 @@ path = "src/lib.rs"
 
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
-p2p = [
-    "dep:base64",
-    "dep:p2p",
-    "dep:p2p_proto",
-    "dep:zeroize",
-    "dep:cairo-lang-starknet-classes",
-]
+p2p = ["dep:base64", "dep:p2p", "dep:p2p_proto", "dep:zeroize"]
 rpc-full-serde = []
 
 [dependencies]
@@ -28,7 +22,6 @@ async-trait = { workspace = true }
 base64 = { workspace = true, optional = true }
 bitvec = { workspace = true }
 bytes = { workspace = true }
-cairo-lang-starknet-classes = { version = "=2.6.0-rc.1", optional = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.10", optional = true }
 fake = { workspace = true }
@@ -59,12 +52,13 @@ serde_json = { workspace = true, features = [
     "arbitrary_precision",
     "raw_value",
 ] }
+smallvec = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 tempfile = "3.8"
 thiserror = "1.0.48"
 time = { version = "0.3.28", features = ["macros"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = "0.1.14"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = [

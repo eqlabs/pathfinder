@@ -1,9 +1,12 @@
+use std::num::NonZeroUsize;
+
 use anyhow::Context;
-use pathfinder_common::state_update::ContractClassUpdate;
+use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateCounts};
 use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
+use smallvec::SmallVec;
 
 use crate::{prelude::*, BlockId};
 
@@ -89,6 +92,36 @@ pub(super) fn insert_state_update(
     for class in declared_classes {
         update_class_defs.execute(params![&block_number, &class])?;
     }
+
+    Ok(())
+}
+
+/// Inserts a [StateUpdateCounts] instance into storage.
+pub(super) fn update_state_update_counts(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    counts: &StateUpdateCounts,
+) -> anyhow::Result<()> {
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            r"UPDATE block_headers SET
+                storage_diffs_count=?,
+                nonce_updates_count=?,
+                declared_classes_count=?,
+                deployed_contracts_count=?
+            WHERE number=?",
+        )
+        .context("Preparing insert statement")?;
+
+    stmt.execute(params![
+        &counts.storage_diffs,
+        &counts.nonce_updates,
+        &counts.declared_classes,
+        &counts.deployed_contracts,
+        &block_number,
+    ])
+    .context("Inserting state update counts")?;
 
     Ok(())
 }
@@ -273,6 +306,61 @@ pub(super) fn state_update(
     }
 
     Ok(Some(state_update))
+}
+
+pub(super) fn highest_block_with_state_update(
+    tx: &Transaction<'_>,
+) -> anyhow::Result<Option<BlockNumber>> {
+    let mut stmt = tx.inner().prepare_cached(
+        r"SELECT block_number FROM storage_updates ORDER BY block_number DESC LIMIT 1",
+    )?;
+    stmt.query_row([], |row| row.get_block_number(0))
+        .optional()
+        .context("Querying highest storage update")
+}
+
+pub(super) fn state_update_counts(
+    tx: &Transaction<'_>,
+    block: BlockId,
+    max_len: NonZeroUsize,
+) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(Default::default());
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            r"SELECT storage_diffs_count, nonce_updates_count, declared_classes_count, deployed_contracts_count
+                FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
+        )
+        .context("Preparing get state update counts statement")?;
+
+    let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
+    let mut counts = stmt
+        .query_map(params![&block_number, &max_len], |row| {
+            Ok(StateUpdateCounts {
+                storage_diffs: row.get(0)?,
+                nonce_updates: row.get(1)?,
+                declared_classes: row.get(2)?,
+                deployed_contracts: row.get(3)?,
+            })
+        })
+        .context("Querying state update counts")?;
+
+    let mut ret = SmallVec::<[StateUpdateCounts; 10]>::new();
+
+    while let Some(stat) = counts
+        .next()
+        .transpose()
+        .context("Iterating over state update counts rows")?
+    {
+        ret.push(stat);
+    }
+
+    ret.reverse();
+
+    Ok(ret)
 }
 
 pub(super) fn declared_classes_at(

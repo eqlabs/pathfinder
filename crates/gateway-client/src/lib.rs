@@ -441,7 +441,10 @@ impl GatewayApi for Client {
         self.gateway_request()
             .add_transaction()
             .with_retry(false)
-            .post_with_json(&request::add_transaction::AddTransaction::Invoke(invoke))
+            .post_with_json(
+                &request::add_transaction::AddTransaction::Invoke(invoke),
+                Some(Duration::MAX),
+            )
             .await
     }
 
@@ -461,7 +464,10 @@ impl GatewayApi for Client {
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
             .with_retry(false)
-            .post_with_json(&request::add_transaction::AddTransaction::Declare(declare))
+            .post_with_json(
+                &request::add_transaction::AddTransaction::Declare(declare),
+                Some(Duration::MAX),
+            )
             .await
     }
 
@@ -477,9 +483,10 @@ impl GatewayApi for Client {
         self.gateway_request()
             .add_transaction()
             .with_retry(false)
-            .post_with_json(&request::add_transaction::AddTransaction::DeployAccount(
-                deploy,
-            ))
+            .post_with_json(
+                &request::add_transaction::AddTransaction::DeployAccount(deploy),
+                Some(Duration::MAX),
+            )
             .await
     }
 

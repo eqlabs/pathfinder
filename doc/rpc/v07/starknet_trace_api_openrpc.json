@@ -1,7 +1,7 @@
 {
     "openrpc": "1.0.0-rc1",
     "info": {
-        "version": "0.6.0",
+        "version": "0.7.0",
         "title": "StarkNet Trace API",
         "license": {}
     },
@@ -171,7 +171,10 @@
                                                 "description": "the revert reason for the failed execution",
                                                 "type": "string"
                                             }
-                                        }
+                                        },
+                                        "required": [
+                                            "revert_reason"
+                                        ]
                                     }
                                 ]
                             },
@@ -373,7 +376,7 @@
                             },
                             "execution_resources": {
                                 "title": "Computation resources",
-                                "description": "Resources consumed by the internal call",
+                                "description": "Resources consumed by the internal call. This is named execution_resources for legacy reasons",
                                 "$ref": "#/components/schemas/COMPUTATION_RESOURCES"
                             }
                         },

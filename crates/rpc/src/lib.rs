@@ -1,9 +1,11 @@
 //! Starknet node JSON-RPC related modules.
 pub mod context;
+mod dto;
 mod error;
 mod executor;
 mod felt;
 mod jsonrpc;
+pub(crate) mod method;
 pub mod middleware;
 mod pathfinder;
 mod pending;
@@ -40,11 +42,26 @@ use tower_http::ServiceBuilderExt;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
-pub enum DefaultVersion {
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
+pub enum RpcVersion {
     V04,
     V05,
     V06,
+    #[default]
     V07,
+    PathfinderV01,
+}
+
+impl RpcVersion {
+    fn to_str(self) -> &'static str {
+        match self {
+            RpcVersion::V04 => "v0.4",
+            RpcVersion::V05 => "v0.5",
+            RpcVersion::V06 => "v0.6",
+            RpcVersion::V07 => "v0.7",
+            RpcVersion::PathfinderV01 => "v0.1",
+        }
+    }
 }
 
 pub struct RpcServer {
@@ -52,11 +69,11 @@ pub struct RpcServer {
     context: RpcContext,
     max_connections: usize,
     cors: Option<CorsLayer>,
-    default_version: DefaultVersion,
+    default_version: RpcVersion,
 }
 
 impl RpcServer {
-    pub fn new(addr: SocketAddr, context: RpcContext, default_version: DefaultVersion) -> Self {
+    pub fn new(addr: SocketAddr, context: RpcContext, default_version: RpcVersion) -> Self {
         Self {
             addr,
             context,
@@ -150,10 +167,13 @@ impl RpcServer {
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
-            DefaultVersion::V04 => v04_routes.clone(),
-            DefaultVersion::V05 => v05_routes.clone(),
-            DefaultVersion::V06 => v06_routes.clone(),
-            DefaultVersion::V07 => v07_routes.clone(),
+            RpcVersion::V04 => v04_routes.clone(),
+            RpcVersion::V05 => v05_routes.clone(),
+            RpcVersion::V06 => v06_routes.clone(),
+            RpcVersion::V07 => v07_routes.clone(),
+            RpcVersion::PathfinderV01 => {
+                anyhow::bail!("Did not expect default RPC version to be Pathfinder v0.1")
+            }
         };
 
         let router = axum::Router::new()
@@ -459,9 +479,9 @@ pub mod test_utils {
         };
         let receipt0 = Receipt {
             execution_resources: ExecutionResources {
-                builtin_instance_counter: BuiltinCounters {
-                    output_builtin: 33,
-                    pedersen_builtin: 32,
+                builtins: BuiltinCounters {
+                    output: 33,
+                    pedersen: 32,
                     ..Default::default()
                 },
                 n_memory_holes: 5,
@@ -824,7 +844,7 @@ mod tests {
         // of health check. Test that we return success for such queries.
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
             .spawn()
             .unwrap();
 
@@ -926,7 +946,7 @@ mod tests {
 
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
             .spawn()
             .unwrap();
 

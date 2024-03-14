@@ -8,6 +8,7 @@ use pathfinder_common::BlockId;
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
 const METRIC_FAILED_REQUESTS: &str = "gateway_requests_failed_total";
+const METRIC_REQUESTS_LATENCY: &str = "gateway_request_duration_seconds";
 const METRICS: [&str; 2] = [METRIC_REQUESTS, METRIC_FAILED_REQUESTS];
 const TAG_LATEST: &str = "latest";
 const TAG_PENDING: &str = "pending";
@@ -15,7 +16,13 @@ const TAGS: &[&str] = &[TAG_LATEST, TAG_PENDING];
 const REASON_DECODE: &str = "decode";
 const REASON_STARKNET: &str = "starknet";
 const REASON_RATE_LIMITING: &str = "rate_limiting";
-const REASONS: [&str; 3] = [REASON_DECODE, REASON_RATE_LIMITING, REASON_STARKNET];
+const REASON_TIMEOUT: &str = "timeout";
+const REASONS: [&str; 4] = [
+    REASON_DECODE,
+    REASON_RATE_LIMITING,
+    REASON_STARKNET,
+    REASON_TIMEOUT,
+];
 
 /// Register all sequencer related metrics
 pub fn register() {
@@ -34,6 +41,11 @@ pub fn register() {
                 metrics::register_counter!(name, "method" => method, "tag" => tag);
             })
         })
+    });
+
+    // Request latency for all methods
+    Request::<'_, Method>::METHODS.iter().for_each(|&method| {
+        metrics::register_histogram!(METRIC_REQUESTS_LATENCY, "method" => method);
     });
 
     // Failed requests for specific failure reasons
@@ -143,7 +155,13 @@ pub async fn with_metrics<T>(
 
     increment(METRIC_REQUESTS, meta);
 
-    f.await.map_err(|e| {
+    let started = std::time::Instant::now();
+    let result = f.await;
+    let elapsed = started.elapsed();
+
+    metrics::histogram!(METRIC_REQUESTS_LATENCY, elapsed, "method" => meta.method);
+
+    result.map_err(|e| {
         increment(METRIC_FAILED_REQUESTS, meta);
 
         match &e {
@@ -162,6 +180,9 @@ pub async fn with_metrics<T>(
                         == reqwest::StatusCode::TOO_MANY_REQUESTS =>
             {
                 increment_failed(meta, REASON_RATE_LIMITING);
+            }
+            SequencerError::ReqwestError(e) if e.is_timeout() => {
+                increment_failed(meta, REASON_TIMEOUT);
             }
             SequencerError::ReqwestError(_) => {}
         }

@@ -17,6 +17,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc};
+use tokio::signal::unix::{signal, SignalKind};
 use tracing::info;
 
 use crate::config::NetworkConfig;
@@ -198,10 +199,10 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     let default_version = match config.rpc_root_version {
-        config::RpcVersion::V04 => pathfinder_rpc::DefaultVersion::V04,
-        config::RpcVersion::V05 => pathfinder_rpc::DefaultVersion::V05,
-        config::RpcVersion::V06 => pathfinder_rpc::DefaultVersion::V06,
-        config::RpcVersion::V07 => pathfinder_rpc::DefaultVersion::V07,
+        config::RpcVersion::V04 => pathfinder_rpc::RpcVersion::V04,
+        config::RpcVersion::V05 => pathfinder_rpc::RpcVersion::V05,
+        config::RpcVersion::V06 => pathfinder_rpc::RpcVersion::V06,
+        config::RpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
     };
 
     let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
@@ -251,6 +252,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     tokio::spawn(update::poll_github_for_releases());
 
+    let mut term_signal = signal(SignalKind::terminate())?;
+    let mut int_signal = signal(SignalKind::interrupt())?;
+
     // We are now ready.
     readiness.store(true, std::sync::atomic::Ordering::Relaxed);
 
@@ -261,22 +265,31 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
                 Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
             }
+            anyhow::bail!("Unexpected shutdown");
         }
         result = rpc_handle => {
             match result {
                 Ok(_) => tracing::error!("RPC server process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "RPC server process ended unexpectedly"),
             }
+            anyhow::bail!("Unexpected shutdown");
         }
         result = p2p_handle => {
             match result {
                 Ok(_) => tracing::error!("P2P process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "P2P process ended unexpectedly"),
             }
+            anyhow::bail!("Unexpected shutdown");
+        }
+        _ = term_signal.recv() => {
+            tracing::info!("TERM signal received, exiting gracefully");
+            Ok(())
+        }
+        _ = int_signal.recv() => {
+            tracing::info!("INT signal received, exiting gracefully");
+            Ok(())
         }
     }
-
-    anyhow::bail!("Unexpected shutdown");
 }
 
 #[cfg(feature = "tokio-console")]

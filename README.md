@@ -175,13 +175,14 @@ This produces uncompressed database file `goerli.sqlite` that can then be used b
 
 ### Available database snapshots
 
-| Network        | Block  | Pathfinder version required | Filename                                      | Download URL                                                                                                | Compressed size | SHA2-256 checksum of compressed file                               |
-| -------------- | ------ | --------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| Goerli testnet | 880310 | >= 0.9.0                    | `testnet_0.9.0_880310.sqlite.zst`             | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/testnet_0.9.0_880310.sqlite.zst)             | 102.36 GB       | `55f7e30e4cc3ba3fb0cd610487e5eb4a69428af1aacc340ba60cf1018b58b51c` |
-| Goerli testnet | 946477 | >= 0.11.0-rc0               | `goerli-testnet_0.11.0-rc0_946477.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/goerli-testnet_0.11.0-rc0_946477.sqlite.zst) | 112.85 GB       | `2f41216e30180dcf07c2b6a3fdf635e1bb783fab0587ae1f23c9c073acfb9d69` |
-| mainnet        | 309113 | >= 0.9.0                    | `mainnet_0.9.0_309113.sqlite.zst`             | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.9.0_309113.sqlite.zst)             | 279.85 GB       | `0430900a18cd6ae26465280bbe922ed5d37cfcc305babfc164e21d927b4644ce` |
-| mainnet        | 595424 | >= 0.11.0                   | `mainnet_0.11.0_595424.sqlite.zst`            | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0_595424.sqlite.zst)            | 469.63 GB       | `e42bae71c97c1a403116a7362f15f5180b19e8cc647efb1357f1ae8924dce654` |
-| integration    | 315152 | >= 0.9.1                    | `integration_0.9.1_315152.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/integration_0.9.1_315152.sqlite.zst)         | 8.45 GB         | `2ad5ab46163624bd6d9aaa0dff3cdd5c7406e69ace78f1585f9d8f011b8b9526` |
+| Network         | Block  | Pathfinder version required | Filename                                      | Download URL                                                                                                | Compressed size | SHA2-256 checksum of compressed file                               |
+| --------------- | ------ | --------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
+| Goerli testnet  | 880310 | >= 0.9.0                    | `testnet_0.9.0_880310.sqlite.zst`             | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/testnet_0.9.0_880310.sqlite.zst)             | 102.36 GB       | `55f7e30e4cc3ba3fb0cd610487e5eb4a69428af1aacc340ba60cf1018b58b51c` |
+| Goerli testnet  | 946477 | >= 0.11.0-rc0               | `goerli-testnet_0.11.0-rc0_946477.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/goerli-testnet_0.11.0-rc0_946477.sqlite.zst) | 112.85 GB       | `2f41216e30180dcf07c2b6a3fdf635e1bb783fab0587ae1f23c9c073acfb9d69` |
+| Sepolia testnet | 47191  | >= 0.11.0                   | `sepolia-testnet_0.11.0_47191.sqlite.zst`     | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.11.0_47191.sqlite.zst)     | 1.91 GB         | `82704d8382bac460550c3d31dd3c1f4397c4c43a90fb0e38110b0cd07cd94831` |
+| mainnet         | 309113 | >= 0.9.0                    | `mainnet_0.9.0_309113.sqlite.zst`             | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.9.0_309113.sqlite.zst)             | 279.85 GB       | `0430900a18cd6ae26465280bbe922ed5d37cfcc305babfc164e21d927b4644ce` |
+| mainnet         | 595424 | >= 0.11.0                   | `mainnet_0.11.0_595424.sqlite.zst`            | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0_595424.sqlite.zst)            | 469.63 GB       | `e42bae71c97c1a403116a7362f15f5180b19e8cc647efb1357f1ae8924dce654` |
+| integration     | 315152 | >= 0.9.1                    | `integration_0.9.1_315152.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/integration_0.9.1_315152.sqlite.zst)         | 8.45 GB         | `2ad5ab46163624bd6d9aaa0dff3cdd5c7406e69ace78f1585f9d8f011b8b9526` |
 
 ## Configuration
 
@@ -297,11 +298,12 @@ rpc_method_calls_total{method="starknet_getEvents", version="v0.3"}
 
 - `gateway_requests_total`
 - `gateway_requests_failed_total`
+- `gateway_request_duration_seconds`
 
 Labels:
 - `method`, to retrieve a counter for a particular sequencer request type
 - `tag`
-    - works with: `get_block`, `get_state_update`
+    - works with methods: `get_block`, `get_state_update`
     - valid values:
         - `pending`
         - `latest`
@@ -311,6 +313,7 @@ Labels:
         - `decode`
         - `starknet`
         - `rate_limiting`
+        - `timeout`
 
 Valid examples:
 ```
@@ -334,6 +337,7 @@ These __will not work__:
 - `block_latency` delay between current block being published and sync'd locally
 - `block_download` time taken to download current block's data excluding classes
 - `block_processing` time taken to process and store the current block
+- `block_processing_duration_seconds` histogram of time taken to process and store a block
 
 ### Build info metrics
 

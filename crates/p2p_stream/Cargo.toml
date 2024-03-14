@@ -20,7 +20,7 @@ libp2p = { version = "0.53.0", default-features = false, features = [
     "tcp",
     "tokio",
 ] }
-smallvec = "1.11.1"
+smallvec = { workspace = true }
 tracing = { workspace = true }
 void = "1.0.2"
 
