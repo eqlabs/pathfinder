@@ -131,12 +131,13 @@ pub async fn get_transaction_status(
         .transaction(input.transaction_hash)
         .await
         .context("Fetching transaction from gateway")
+        .map_err(GetTransactionStatusError::Internal)
         .and_then(|tx| {
             use starknet_gateway_types::reply::transaction_status::FinalityStatus as GatewayFinalityStatus;
             use starknet_gateway_types::reply::transaction_status::ExecutionStatus as GatewayExecutionStatus;
 
             match (tx.finality_status, tx.execution_status) {
-                (GatewayFinalityStatus::NotReceived, _) => Err(anyhow::anyhow!("Transaction not received")),
+                (GatewayFinalityStatus::NotReceived, _) => Err(GetTransactionStatusError::TxnHashNotFound),
                 (_, GatewayExecutionStatus::Rejected) => Ok(GetTransactionStatusOutput::Rejected),
                 (GatewayFinalityStatus::Received, _) => Ok(GetTransactionStatusOutput::Received),
                 (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => Ok(GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Reverted)),
@@ -145,12 +146,12 @@ pub async fn get_transaction_status(
                 (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => Ok(GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded)),
             }
         })
-        .map_err(|_| GetTransactionStatusError::TxnHashNotFound)
 }
 
 #[cfg(test)]
 mod tests {
 
+    use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
 
     use super::*;
@@ -260,5 +261,18 @@ mod tests {
             status,
             GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted)
         );
+    }
+
+    #[tokio::test]
+    async fn txn_hash_not_found() {
+        let context = RpcContext::for_tests_with_pending().await;
+        let input = GetTransactionStatusInput {
+            transaction_hash: transaction_hash_bytes!(b"non-existent"),
+        };
+        let err = get_transaction_status(context.clone(), input)
+            .await
+            .unwrap_err();
+
+        assert_matches!(err, GetTransactionStatusError::TxnHashNotFound);
     }
 }
