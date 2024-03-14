@@ -113,7 +113,7 @@ impl PendingWatcher {
 #[cfg(test)]
 mod tests {
 
-    use pathfinder_common::{macro_prelude::*, L1DataAvailabilityMode, SequencerAddress};
+    use pathfinder_common::{macro_prelude::*, L1DataAvailabilityMode};
     use pathfinder_common::{BlockHeader, BlockTimestamp, GasPrice};
 
     use super::*;
