@@ -18,7 +18,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getClass",                            v02_method::get_class)
         .register("starknet_getClassAt",                          v02_method::get_class_at)
         .register("starknet_getClassHashAt",                      v02_method::get_class_hash_at)
-        .register("starknet_getNonce",                            v02_method::get_nonce)
+        .register("starknet_getNonce",                            crate::method::get_nonce)
         .register("starknet_getStorageAt",                        v02_method::get_storage_at)
         
         .register("starknet_getEvents",                           v03_method::get_events)
