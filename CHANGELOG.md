@@ -13,14 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_estimateFee` and `starknet_simulateTransactions` always uses CALLDATA L1 DA mode if there is no pending block.
 - `starknet_getTransactionStatus` reports gateway errors as `TxnNotFound`. These are now reported as internal errors.
+- `starknet_addXXX` requests to the gateway use the configured gateway timeout, often causing these to timeout while waiting for
+  a gateway response. These instead now use a much longer timeout.
 
 ## [0.11.2] - 2024-03-07
 
 ### Fixed
 
 - `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
-- `starknet_addXXX` requests to the gateway use the configured gateway timeout, often causing these to timeout while waiting for 
-  a gateway response. These instead now use a much longer timeout.
 
 ## [0.11.1] - 2024-03-01
 
