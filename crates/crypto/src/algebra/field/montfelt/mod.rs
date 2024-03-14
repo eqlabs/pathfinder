@@ -23,5 +23,3 @@ impl std::fmt::Debug for MontFelt {
         write!(f, "MontFelt({:?})", reduced.0)
     }
 }
-
-impl MontFelt {}

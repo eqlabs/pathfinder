@@ -4,11 +4,6 @@ impl MontFelt {
     /// The modulus of the field
     pub const P: MontFelt = MontFelt([1u64, 0u64, 0u64, 576460752303423505u64]);
 
-    pub const P_BYTES: [u8; 32] = [
-        1u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
-        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 17u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 8u8,
-    ];
-
     /// Number of zero-bits in the most-significant limb
     pub const ZERO_BITS: u32 = 4;
 
