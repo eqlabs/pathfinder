@@ -5,6 +5,7 @@ pub mod get_block_transaction_count;
 pub mod get_class_hash_at;
 pub mod get_nonce;
 pub mod get_storage_at;
+pub mod get_transaction_status;
 pub mod syncing;
 
 pub use block_hash_and_number::block_hash_and_number;

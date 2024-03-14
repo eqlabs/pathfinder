@@ -27,7 +27,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_syncing",                             crate::method::syncing)
 
         .register("starknet_call",                                v05_method::call)
-        .register("starknet_getTransactionStatus",                v05_method::get_transaction_status)
+        .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
 
         .register("starknet_addDeclareTransaction",               v06_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction",         v06_method::add_deploy_account_transaction)

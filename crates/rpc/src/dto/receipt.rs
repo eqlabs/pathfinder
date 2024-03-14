@@ -11,10 +11,20 @@ pub enum TxnStatus {
     AcceptedOnL1,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TxnExecutionStatus {
     Succeeded,
     Reverted,
+}
+
+impl From<&pathfinder_common::receipt::ExecutionStatus> for TxnExecutionStatus {
+    fn from(value: &pathfinder_common::receipt::ExecutionStatus) -> Self {
+        use pathfinder_common::receipt::ExecutionStatus;
+        match value {
+            ExecutionStatus::Succeeded => Self::Succeeded,
+            ExecutionStatus::Reverted { .. } => Self::Reverted,
+        }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -70,6 +80,8 @@ mod tests {
 
     use super::*;
     use pretty_assertions_sorted::assert_eq;
+    use rstest::rstest;
+    use serde_json::json;
 
     #[rstest]
     #[case::received(TxnStatus::Received, "RECEIVED")]
