@@ -631,6 +631,7 @@ impl<'inner> Transaction<'inner> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TransactionData {
     pub transaction: StarknetTransaction,
     pub receipt: Option<Receipt>,

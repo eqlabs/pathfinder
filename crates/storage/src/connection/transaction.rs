@@ -24,6 +24,8 @@ pub(super) fn insert_transactions(
         return Ok(());
     }
 
+    dbg!(&transaction_data);
+
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
     for (
         i,
@@ -487,13 +489,7 @@ pub(crate) mod dto {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::*;
     use pathfinder_crypto::Felt;
-    use pathfinder_serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        L2ToL1MessagePayloadElemAsDecimalStr, ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr,
-        TipAsHexStr, TransactionSignatureElemAsDecimalStr,
-    };
     use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction entry point values.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
@@ -526,9 +522,7 @@ pub(crate) mod dto {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[serde(tag = "db_version")]
     pub enum Events {
-        #[serde(rename = "0")]
         V0 {
             events: Vec<pathfinder_common::event::Event>,
         },
@@ -685,14 +679,11 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 to L1 message.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
-        #[serde_as(as = "Vec<L2ToL1MessagePayloadElemAsDecimalStr>")]
         pub payload: Vec<L2ToL1MessagePayloadElem>,
-        #[serde_as(as = "EthereumAddressAsHexStr")]
         pub to_address: EthereumAddress,
     }
 
@@ -738,9 +729,7 @@ pub(crate) mod dto {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[serde(tag = "db_version")]
     pub enum Receipt {
-        #[serde(rename = "0")]
         V0(ReceiptV0),
     }
 
@@ -750,7 +739,6 @@ pub(crate) mod dto {
     pub struct ReceiptV0 {
         #[serde(default)]
         pub actual_fee: Option<Fee>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub execution_resources: Option<ExecutionResources>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: TransactionHash,
@@ -835,36 +823,11 @@ pub(crate) mod dto {
         }
     }
 
-    #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     pub enum DataAvailabilityMode {
         #[default]
         L1,
         L2,
-    }
-
-    impl Serialize for DataAvailabilityMode {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            match self {
-                DataAvailabilityMode::L1 => serializer.serialize_u8(0),
-                DataAvailabilityMode::L2 => serializer.serialize_u8(1),
-            }
-        }
-    }
-
-    impl<'de> Deserialize<'de> for DataAvailabilityMode {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            match <u8 as Deserialize>::deserialize(deserializer)? {
-                0 => Ok(Self::L1),
-                1 => Ok(Self::L2),
-                _ => Err(serde::de::Error::custom("invalid data availability mode")),
-            }
-        }
     }
 
     impl From<DataAvailabilityMode> for pathfinder_common::transaction::DataAvailabilityMode {
@@ -911,12 +874,9 @@ pub(crate) mod dto {
         }
     }
 
-    #[serde_as]
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     pub struct ResourceBound {
-        #[serde_as(as = "ResourceAmountAsHexStr")]
         pub max_amount: ResourceAmount,
-        #[serde_as(as = "ResourcePricePerUnitAsHexStr")]
         pub max_price_per_unit: ResourcePricePerUnit,
     }
 
@@ -938,93 +898,24 @@ pub(crate) mod dto {
         }
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
-    #[serde(tag = "db_version")]
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
-        #[serde(rename = "0")]
         V0(TransactionV0),
     }
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
-    #[serde(tag = "type")]
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub enum TransactionV0 {
-        #[serde(rename = "DECLARE")]
         Declare(DeclareTransaction),
-        #[serde(rename = "DEPLOY")]
         // FIXME regenesis: remove Deploy txn type after regenesis
         // We are keeping this type of transaction until regenesis
         // only to support older pre-0.11.0 blocks
         Deploy(DeployTransaction),
-        #[serde(rename = "DEPLOY_ACCOUNT")]
         DeployAccount(DeployAccountTransaction),
-        #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeTransaction),
-        #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTransaction),
-    }
-
-    // This manual deserializtion is a work-around for L1 handler transactions
-    // historically being served as Invoke V0. However, the gateway has retroactively
-    // changed these to L1 handlers. This means older databases will have these as Invoke
-    // but modern one's as L1 handler. This causes confusion, so we convert these old Invoke
-    // to L1 handler manually.
-    //
-    // The alternative is to do a costly database migration which involves opening every tx.
-    //
-    // This work-around may be removed once we are certain all databases no longer contain these
-    // transactions, which will likely only occur after either a migration, or regenesis.
-    impl<'de> Deserialize<'de> for Transaction {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            /// Copy of [Transaction] to deserialize into, before converting to [Transaction]
-            /// with the potential Invoke V0 -> L1 handler cast.
-            #[derive(Deserialize)]
-            #[serde(tag = "type", deny_unknown_fields)]
-            pub enum InnerTransaction {
-                #[serde(rename = "DECLARE")]
-                Declare(DeclareTransaction),
-                #[serde(rename = "DEPLOY")]
-                Deploy(DeployTransaction),
-                #[serde(rename = "DEPLOY_ACCOUNT")]
-                DeployAccount(DeployAccountTransaction),
-                #[serde(rename = "INVOKE_FUNCTION")]
-                Invoke(InvokeTransaction),
-                #[serde(rename = "L1_HANDLER")]
-                L1Handler(L1HandlerTransaction),
-            }
-
-            let tx = InnerTransaction::deserialize(deserializer)?;
-            let tx = match tx {
-                InnerTransaction::Declare(x) => Transaction::V0(TransactionV0::Declare(x)),
-                InnerTransaction::Deploy(x) => Transaction::V0(TransactionV0::Deploy(x)),
-                InnerTransaction::DeployAccount(x) => {
-                    Transaction::V0(TransactionV0::DeployAccount(x))
-                }
-                InnerTransaction::Invoke(InvokeTransaction::V0(i))
-                    if i.entry_point_type == Some(EntryPointType::L1Handler) =>
-                {
-                    let l1_handler = L1HandlerTransaction {
-                        contract_address: i.sender_address,
-                        entry_point_selector: i.entry_point_selector,
-                        nonce: TransactionNonce::ZERO,
-                        calldata: i.calldata,
-                        transaction_hash: i.transaction_hash,
-                        version: TransactionVersion::ZERO,
-                    };
-
-                    Transaction::V0(TransactionV0::L1Handler(l1_handler))
-                }
-                InnerTransaction::Invoke(x) => Transaction::V0(TransactionV0::Invoke(x)),
-                InnerTransaction::L1Handler(x) => Transaction::V0(TransactionV0::L1Handler(x)),
-            };
-
-            Ok(tx)
-        }
     }
 
     impl From<&pathfinder_common::transaction::Transaction> for Transaction {
@@ -1642,15 +1533,10 @@ pub(crate) mod dto {
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-    #[serde(tag = "version")]
     pub enum DeclareTransaction {
-        #[serde(rename = "0x0")]
         V0(DeclareTransactionV0V1),
-        #[serde(rename = "0x1")]
         V1(DeclareTransactionV0V1),
-        #[serde(rename = "0x2")]
         V2(DeclareTransactionV2),
-        #[serde(rename = "0x3")]
         V3(DeclareTransactionV3),
     }
 
@@ -1682,7 +1568,6 @@ pub(crate) mod dto {
     }
 
     /// A version 0 or 1 declare transaction.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV0V1 {
@@ -1690,14 +1575,12 @@ pub(crate) mod dto {
         pub max_fee: Fee,
         pub nonce: TransactionNonce,
         pub sender_address: ContractAddress,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
     }
 
     /// A version 2 declare transaction.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV2 {
@@ -1705,7 +1588,6 @@ pub(crate) mod dto {
         pub max_fee: Fee,
         pub nonce: TransactionNonce,
         pub sender_address: ContractAddress,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
@@ -1713,7 +1595,6 @@ pub(crate) mod dto {
     }
 
     /// A version 2 declare transaction.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV3 {
@@ -1723,12 +1604,10 @@ pub(crate) mod dto {
         pub nonce_data_availability_mode: DataAvailabilityMode,
         pub fee_data_availability_mode: DataAvailabilityMode,
         pub resource_bounds: ResourceBounds,
-        #[serde_as(as = "TipAsHexStr")]
         pub tip: Tip,
         pub paymaster_data: Vec<PaymasterDataElem>,
 
         pub sender_address: ContractAddress,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
@@ -1763,14 +1642,12 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 deploy transaction data.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployTransaction {
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
         pub class_hash: ClassHash,
-        #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
         pub transaction_hash: TransactionHash,
         #[serde(default = "transaction_version_zero")]
@@ -1792,13 +1669,9 @@ pub(crate) mod dto {
 
     /// Represents deserialized L2 deploy account transaction data.
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
-    #[serde(tag = "version")]
     pub enum DeployAccountTransaction {
-        #[serde(rename = "0x0")]
         V0(DeployAccountTransactionV0V1),
-        #[serde(rename = "0x1")]
         V1(DeployAccountTransactionV0V1),
-        #[serde(rename = "0x3")]
         V3(DeployAccountTransactionV3),
     }
 
@@ -1818,18 +1691,15 @@ pub(crate) mod dto {
         }
     }
 
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountTransactionV0V1 {
         pub contract_address: ContractAddress,
         pub transaction_hash: TransactionHash,
         pub max_fee: Fee,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
         pub contract_address_salt: ContractAddressSalt,
-        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub constructor_calldata: Vec<CallParam>,
         pub class_hash: ClassHash,
     }
@@ -1857,7 +1727,6 @@ pub(crate) mod dto {
         }
     }
 
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountTransactionV3 {
@@ -1865,16 +1734,13 @@ pub(crate) mod dto {
         pub nonce_data_availability_mode: DataAvailabilityMode,
         pub fee_data_availability_mode: DataAvailabilityMode,
         pub resource_bounds: ResourceBounds,
-        #[serde_as(as = "TipAsHexStr")]
         pub tip: Tip,
         pub paymaster_data: Vec<PaymasterDataElem>,
 
         pub sender_address: ContractAddress,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
         pub contract_address_salt: ContractAddressSalt,
-        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub constructor_calldata: Vec<CallParam>,
         pub class_hash: ClassHash,
     }
@@ -1908,14 +1774,10 @@ pub(crate) mod dto {
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
-    #[serde(tag = "version")]
     #[serde(deny_unknown_fields)]
     pub enum InvokeTransaction {
-        #[serde(rename = "0x0")]
         V0(InvokeTransactionV0),
-        #[serde(rename = "0x1")]
         V1(InvokeTransactionV1),
-        #[serde(rename = "0x3")]
         V3(InvokeTransactionV3),
     }
 
@@ -1930,23 +1792,18 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 invoke transaction v0 data.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV0 {
-        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
         // contract_address is the historic name for this field. sender_address was
         // introduced with starknet v0.11. Although the gateway no longer uses the historic
         // name at all, this alias must be kept until a database migration fixes all historic
         // transaction naming, or until regenesis removes them all.
-        #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub entry_point_type: Option<EntryPointType>,
         pub max_fee: Fee,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
     }
@@ -1966,11 +1823,9 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 invoke transaction v1 data.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV1 {
-        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
         // contract_address is the historic name for this field. sender_address was
         // introduced with starknet v0.11. Although the gateway no longer uses the historic
@@ -1979,14 +1834,12 @@ pub(crate) mod dto {
         #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub max_fee: Fee,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
         pub transaction_hash: TransactionHash,
     }
 
     /// Represents deserialized L2 invoke transaction v3 data.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV3 {
@@ -1994,15 +1847,12 @@ pub(crate) mod dto {
         pub nonce_data_availability_mode: DataAvailabilityMode,
         pub fee_data_availability_mode: DataAvailabilityMode,
         pub resource_bounds: ResourceBounds,
-        #[serde_as(as = "TipAsHexStr")]
         pub tip: Tip,
         pub paymaster_data: Vec<PaymasterDataElem>,
 
         pub sender_address: ContractAddress,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: TransactionHash,
-        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
 
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
@@ -2028,7 +1878,6 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 "L1 handler" transaction data.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L1HandlerTransaction {
@@ -2074,6 +1923,48 @@ mod tests {
     use pathfinder_common::{BlockHeader, TransactionIndex};
 
     use super::*;
+
+    #[test]
+    fn transaction_dto() {
+        /*
+        use serde::{Deserialize, Serialize};
+        use pathfinder_crypto::Felt;
+
+        #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(deny_unknown_fields)]
+        pub enum Transaction {
+            V0 { value: Felt },
+            V1 { value: Felt },
+        }
+
+        let original = Transaction::V0 {
+            value: Felt::from_u64(12),
+        };
+        let serialized =
+            bincode::serde::encode_to_vec(&original, bincode::config::standard()).unwrap();
+        let (outcome, _): (Transaction, _) =
+            bincode::serde::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
+        assert_eq!(original, outcome);
+        panic!();
+        */
+
+        let original = pathfinder_common::transaction::Transaction {
+            hash: transaction_hash_bytes!(b"txn 1"),
+            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                sender_address: contract_address_bytes!(b"contract 1"),
+                ..Default::default()
+            }),
+        };
+        let serialized = bincode::serde::encode_to_vec(
+            dto::Transaction::from(&original),
+            bincode::config::standard(),
+        )
+        .unwrap();
+        let (deserialized, _): (dto::Transaction, _) =
+            bincode::serde::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
+        let outcome = pathfinder_common::transaction::Transaction::from(deserialized);
+        assert_eq!(original, outcome);
+    }
 
     fn setup() -> (
         crate::Connection,

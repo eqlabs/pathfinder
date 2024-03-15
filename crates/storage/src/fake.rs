@@ -174,7 +174,7 @@ pub mod init {
             header.transaction_count = transaction_data.len();
             header.event_count = transaction_data
                 .iter()
-                .map(|(_, _, e)| e.events.len())
+                .map(|(_, _, events)| events.len())
                 .sum();
 
             let block_hash = header.hash;

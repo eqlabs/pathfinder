@@ -130,7 +130,7 @@ pub(crate) mod old_dto {
     impl From<&ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
         fn from(value: &ExecutionResources) -> Self {
             Self {
-                builtin_instance_counter: value.builtin_instance_counter.into(),
+                builtins: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 data_availability: match (value.l1_gas, value.l1_data_gas) {
@@ -149,7 +149,7 @@ pub(crate) mod old_dto {
     impl From<&pathfinder_common::receipt::ExecutionResources> for ExecutionResources {
         fn from(value: &pathfinder_common::receipt::ExecutionResources) -> Self {
             Self {
-                builtin_instance_counter: (&value.builtin_instance_counter).into(),
+                builtin_instance_counter: (&value.builtins).into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 l1_gas: Some(value.data_availability.l1_gas),
@@ -208,15 +208,15 @@ pub(crate) mod old_dto {
                 segment_arena_builtin,
             } = value;
             Self {
-                output_builtin,
-                pedersen_builtin,
-                range_check_builtin,
-                ecdsa_builtin,
-                bitwise_builtin,
-                ec_op_builtin,
-                keccak_builtin,
-                poseidon_builtin,
-                segment_arena_builtin,
+                output: output_builtin,
+                pedersen: pedersen_builtin,
+                range_check: range_check_builtin,
+                ecdsa: ecdsa_builtin,
+                bitwise: bitwise_builtin,
+                ec_op: ec_op_builtin,
+                keccak: keccak_builtin,
+                poseidon: poseidon_builtin,
+                segment_arena: segment_arena_builtin,
             }
         }
     }
@@ -225,26 +225,26 @@ pub(crate) mod old_dto {
         fn from(value: &pathfinder_common::receipt::BuiltinCounters) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
             let pathfinder_common::receipt::BuiltinCounters {
-                output_builtin,
-                pedersen_builtin,
-                range_check_builtin,
-                ecdsa_builtin,
-                bitwise_builtin,
-                ec_op_builtin,
-                keccak_builtin,
-                poseidon_builtin,
-                segment_arena_builtin,
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
             } = value.clone();
             Self {
-                output_builtin,
-                pedersen_builtin,
-                range_check_builtin,
-                ecdsa_builtin,
-                bitwise_builtin,
-                ec_op_builtin,
-                keccak_builtin,
-                poseidon_builtin,
-                segment_arena_builtin,
+                output_builtin: output,
+                pedersen_builtin: pedersen,
+                range_check_builtin: range_check,
+                ecdsa_builtin: ecdsa,
+                bitwise_builtin: bitwise,
+                ec_op_builtin: ec_op,
+                keccak_builtin: keccak,
+                poseidon_builtin: poseidon,
+                segment_arena_builtin: segment_arena,
             }
         }
     }
