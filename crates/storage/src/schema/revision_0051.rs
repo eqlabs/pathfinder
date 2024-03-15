@@ -4,6 +4,8 @@ use anyhow::Context;
 use rusqlite::params;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
+    tracing::info!("migrating starknet_transactions to new format");
+
     tx.execute(
         r"
         CREATE TABLE starknet_transactions_new (
