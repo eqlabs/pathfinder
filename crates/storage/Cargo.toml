@@ -10,7 +10,7 @@ rust-version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
-bincode = "2.0.0-rc.3"
+bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 bitvec = { workspace = true }
 bloomfilter = "1.0.12"
 cached = { workspace = true }
