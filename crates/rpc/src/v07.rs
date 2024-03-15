@@ -14,12 +14,12 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_blockHashAndNumber",                  crate::method::block_hash_and_number)
         .register("starknet_blockNumber",                         crate::method::block_number)
         .register("starknet_chainId",                             crate::method::chain_id)
-        .register("starknet_getBlockTransactionCount",            v02_method::get_block_transaction_count)
+        .register("starknet_getBlockTransactionCount",            crate::method::get_block_transaction_count)
         .register("starknet_getClass",                            v02_method::get_class)
         .register("starknet_getClassAt",                          v02_method::get_class_at)
-        .register("starknet_getClassHashAt",                      v02_method::get_class_hash_at)
-        .register("starknet_getNonce",                            v02_method::get_nonce)
-        .register("starknet_getStorageAt",                        v02_method::get_storage_at)
+        .register("starknet_getClassHashAt",                      crate::method::get_class_hash_at)
+        .register("starknet_getNonce",                            crate::method::get_nonce)
+        .register("starknet_getStorageAt",                        crate::method::get_storage_at)
         
         .register("starknet_getEvents",                           v03_method::get_events)
         .register("starknet_getStateUpdate",                      v03_method::get_state_update)
@@ -27,7 +27,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_syncing",                             crate::method::syncing)
 
         .register("starknet_call",                                v05_method::call)
-        .register("starknet_getTransactionStatus",                v05_method::get_transaction_status)
+        .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
 
         .register("starknet_addDeclareTransaction",               v06_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction",         v06_method::add_deploy_account_transaction)
