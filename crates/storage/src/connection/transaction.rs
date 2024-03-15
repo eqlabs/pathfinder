@@ -24,8 +24,6 @@ pub(super) fn insert_transactions(
         return Ok(());
     }
 
-    dbg!(&transaction_data);
-
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
     for (
         i,
@@ -495,9 +493,7 @@ pub(crate) mod dto {
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
-        #[serde(rename = "EXTERNAL")]
         External,
-        #[serde(rename = "L1_HANDLER")]
         L1Handler,
     }
 
@@ -718,7 +714,6 @@ pub(crate) mod dto {
     }
 
     #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum ExecutionStatus {
         // This must be the default as pre v0.12.1 receipts did not contain this value and
         // were always success as reverted did not exist.
@@ -850,9 +845,7 @@ pub(crate) mod dto {
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     pub struct ResourceBounds {
-        #[serde(rename = "L1_GAS")]
         pub l1_gas: ResourceBound,
-        #[serde(rename = "L2_GAS")]
         pub l2_gas: ResourceBound,
     }
 
@@ -1923,48 +1916,6 @@ mod tests {
     use pathfinder_common::{BlockHeader, TransactionIndex};
 
     use super::*;
-
-    #[test]
-    fn transaction_dto() {
-        /*
-        use serde::{Deserialize, Serialize};
-        use pathfinder_crypto::Felt;
-
-        #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-        #[serde(deny_unknown_fields)]
-        pub enum Transaction {
-            V0 { value: Felt },
-            V1 { value: Felt },
-        }
-
-        let original = Transaction::V0 {
-            value: Felt::from_u64(12),
-        };
-        let serialized =
-            bincode::serde::encode_to_vec(&original, bincode::config::standard()).unwrap();
-        let (outcome, _): (Transaction, _) =
-            bincode::serde::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
-        assert_eq!(original, outcome);
-        panic!();
-        */
-
-        let original = pathfinder_common::transaction::Transaction {
-            hash: transaction_hash_bytes!(b"txn 1"),
-            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
-                sender_address: contract_address_bytes!(b"contract 1"),
-                ..Default::default()
-            }),
-        };
-        let serialized = bincode::serde::encode_to_vec(
-            dto::Transaction::from(&original),
-            bincode::config::standard(),
-        )
-        .unwrap();
-        let (deserialized, _): (dto::Transaction, _) =
-            bincode::serde::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
-        let outcome = pathfinder_common::transaction::Transaction::from(deserialized);
-        assert_eq!(original, outcome);
-    }
 
     fn setup() -> (
         crate::Connection,

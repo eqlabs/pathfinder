@@ -199,7 +199,6 @@ mod tests {
         let context = RpcContext::for_tests();
         // This transaction is in block 1 which is not L1 accepted.
         let tx_hash = transaction_hash_bytes!(b"txn 1");
-        dbg!(&tx_hash);
         let input = GetTransactionStatusInput {
             transaction_hash: tx_hash,
         };
