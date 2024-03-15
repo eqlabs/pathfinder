@@ -3,21 +3,28 @@ use std::mem;
 use anyhow::Context;
 use rusqlite::params;
 
-/// NOTE: DO NOT RUN THIS IN PROD.
-/// TODO: Update this to use bincode serialization instead of serde_json. (Follow-up PR)
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
         r"
-ALTER TABLE starknet_transactions ADD COLUMN events BLOB DEFAULT NULL;
-",
+        CREATE TABLE starknet_transactions_new (
+            hash        BLOB PRIMARY KEY,
+            idx         INTEGER NOT NULL,
+            block_hash  BLOB NOT NULL,
+            tx          BLOB,
+            receipt     BLOB,
+            events      BLOB
+        )",
         [],
     )
-    .context("Altering starknet_transactions table: adding new column")?;
-    let mut stmt = tx.prepare("SELECT hash, receipt, tx FROM starknet_transactions")?;
+    .context("Creating starknet_transactions_new table")?;
+    let mut stmt =
+        tx.prepare("SELECT hash, idx, block_hash, tx, receipt FROM starknet_transactions")?;
     let mut rows = stmt.query([])?;
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
     while let Some(row) = rows.next()? {
         let hash = row.get_ref_unwrap("hash").as_blob()?;
+        let idx = row.get_ref_unwrap("idx").as_i64()?;
+        let block_hash = row.get_ref_unwrap("block_hash").as_blob()?;
 
         // Load old DTOs.
         let transaction = row.get_ref_unwrap("tx").as_blob()?;
@@ -54,10 +61,16 @@ ALTER TABLE starknet_transactions ADD COLUMN events BLOB DEFAULT NULL;
 
         // Store the updated values.
         tx.execute(
-            "UPDATE starknet_transactions SET receipt = ?, events = ?, tx = ? WHERE hash = ?",
-            params![receipt, events, transaction, hash],
+            r"INSERT INTO starknet_transactions_new (hash, idx, block_hash, tx, receipt, events)
+                                             VALUES (?, ?, ?, ?, ?, ?)",
+            params![hash, idx, block_hash, transaction, receipt, events],
         )?;
     }
+    tx.execute("DROP TABLE starknet_transactions", [])?;
+    tx.execute(
+        "ALTER TABLE starknet_transactions_new RENAME TO starknet_transactions",
+        [],
+    )?;
     Ok(())
 }
 
