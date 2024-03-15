@@ -5,7 +5,65 @@ use pathfinder_crypto::algebra::field::{CurveOrderMontFelt, Felt, MontFelt};
 use pathfinder_crypto::hash::pedersen::pedersen_hash;
 use pathfinder_crypto::signature::{ecdsa_sign, ecdsa_sign_k, ecdsa_verify_partial, get_pk};
 
+// FF
+#[macro_use]
+extern crate ff;
+#[derive(PrimeField)]
+#[PrimeFieldModulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
+#[PrimeFieldGenerator = "3"]
+#[PrimeFieldReprEndianness = "big"]
+pub struct Fp([u64; 4]);
+
+// Arkworks
+use ark_ff::fields::{Fp256, MontBackend};
+use ark_ff::{BigInt, Field, MontConfig};
+use rand::Rng;
+#[derive(MontConfig)]
+#[modulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
+#[generator = "3"]
+pub struct FqConfig;
+pub type Fq = Fp256<MontBackend<FqConfig, 4>>;
+
+/// Arkworks multiplication for assembly debugging
+#[no_mangle]
+pub fn ark_mul(a: Fq, b: &Fq) -> Fq {
+    a * b
+}
+
+/// FF multiplication for assembly debugging
+#[no_mangle]
+pub fn ff_mul(a: Fp, b: &Fp) -> Fp {
+    a * b
+}
+
+/// Our multiplication for assembly debugging
+#[no_mangle]
+pub fn pf_mul(a: MontFelt, b: &MontFelt) -> MontFelt {
+    a * b
+}
+/// Arkworks double for assembly debugging
+#[no_mangle]
+pub fn ark_double(a: Fq) -> Fq {
+    a.double()
+}
+
+/// FF double for assembly debugging
+#[no_mangle]
+pub fn ff_double(a: Fp) -> Fp {
+    use ff::Field;
+    a.double()
+}
+
+/// Our double for assembly debugging
+#[no_mangle]
+pub fn pf_double(a: MontFelt) -> MontFelt {
+    a.double()
+}
+
 pub fn criterion_benchmark(c: &mut Criterion) {
+    // Bench field
+    bench_field(c);
+
     // Bench algebra
     bench_algebra(c);
 
@@ -18,6 +76,81 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
+
+pub fn bench_field(c: &mut Criterion) {
+    let rng = &mut rand::thread_rng();
+
+    let mut grp_alg = c.benchmark_group("field");
+
+    let rand: [u64; 4] = [rng.gen(), rng.gen(), rng.gen(), rng.gen()];
+    let ark_elm = Fq::new_unchecked(BigInt(rand));
+    let pf_elm = MontFelt::from_limbs(rand);
+    let ff_elm = <Fp as ff::PrimeField>::from_repr(FpRepr(pf_elm.to_be_bytes())).unwrap();
+
+    // MUL
+    grp_alg.bench_function("ff_mul", |b| b.iter(|| black_box(ff_elm * ff_elm)));
+    grp_alg.bench_function("ark_mul", |b| b.iter(|| black_box(ark_elm * ark_elm)));
+    grp_alg.bench_function("pf_mul", |b| b.iter(|| black_box(pf_elm * pf_elm)));
+
+    // SQUARE
+    grp_alg.bench_function("ff_square", |b| {
+        b.iter(|| {
+            black_box({
+                use ff::Field;
+                ff_elm.square()
+            })
+        })
+    });
+    grp_alg.bench_function("ark_square", |b| b.iter(|| black_box(ark_elm.square())));
+    grp_alg.bench_function("pf_square", |b| b.iter(|| black_box(pf_elm.square())));
+
+    // MUL_ASSIGN
+    grp_alg.bench_function("ff_mul_assign", |b| {
+        b.iter(|| {
+            black_box({
+                let mut tmp = ff_elm;
+                tmp *= ff_elm;
+                tmp
+            })
+        })
+    });
+    grp_alg.bench_function("ark_mul_assign", |b| {
+        b.iter(|| {
+            black_box({
+                let mut tmp = ark_elm;
+                tmp *= ark_elm;
+                tmp
+            })
+        })
+    });
+    grp_alg.bench_function("pf_mul_assign", |b| {
+        b.iter(|| {
+            black_box({
+                let mut tmp = pf_elm;
+                tmp *= pf_elm;
+                tmp
+            })
+        })
+    });
+
+    // Inverse
+    grp_alg.bench_function("ff_inverse", |b| {
+        b.iter(|| {
+            black_box({
+                use ff::Field;
+                ff_elm.invert().unwrap()
+            })
+        })
+    });
+    grp_alg.bench_function("ark_inverse", |b| {
+        b.iter(|| black_box(ark_elm.inverse().unwrap()))
+    });
+    grp_alg.bench_function("pf_inverse", |b| {
+        b.iter(|| black_box(pf_elm.inverse().unwrap()))
+    });
+
+    grp_alg.finish();
+}
 
 pub fn bench_algebra(c: &mut Criterion) {
     let rng = &mut rand::thread_rng();
