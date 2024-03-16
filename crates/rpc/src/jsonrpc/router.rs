@@ -78,7 +78,11 @@ impl RpcRouter {
     }
 
     /// Parses and executes a request. Returns [None] if its a notification.
-    async fn run_request<'a>(&self, request: &'a str, version: &'a RpcVersion) -> Option<RpcResponse<'a>> {
+    async fn run_request<'a>(
+        &self,
+        request: &'a str,
+        version: &'a RpcVersion,
+    ) -> Option<RpcResponse<'a>> {
         tracing::trace!(%request, "Running request");
 
         let request = match serde_json::from_str::<RpcRequest<'_>>(request) {
@@ -175,7 +179,8 @@ pub async fn rpc_handler(
         body: axum::body::Bytes,
         headers: http::HeaderMap,
     ) -> impl axum::response::IntoResponse {
-        let version = headers.get(RPC_VERSION_OVERRIDE_HEADER)
+        let version = headers
+            .get(RPC_VERSION_OVERRIDE_HEADER)
             .and_then(|v| v.to_str().ok())
             .and_then(RpcVersion::from_str)
             .unwrap_or(state.version);

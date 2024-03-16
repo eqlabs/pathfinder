@@ -70,7 +70,7 @@ impl RpcVersion {
             "v0.6" => Some(RpcVersion::V06),
             "v0.7" => Some(RpcVersion::V07),
             "v0.1" => Some(RpcVersion::PathfinderV01),
-            _ => None
+            _ => None,
         }
     }
 }
