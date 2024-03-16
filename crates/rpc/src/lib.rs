@@ -62,6 +62,17 @@ impl RpcVersion {
             RpcVersion::PathfinderV01 => "v0.1",
         }
     }
+
+    fn from_str(version: &str) -> Option<Self> {
+        match version {
+            "v0.4" => Some(RpcVersion::V04),
+            "v0.5" => Some(RpcVersion::V05),
+            "v0.6" => Some(RpcVersion::V06),
+            "v0.7" => Some(RpcVersion::V07),
+            "v0.1" => Some(RpcVersion::PathfinderV01),
+            _ => None
+        }
+    }
 }
 
 pub struct RpcServer {

@@ -78,7 +78,7 @@ impl RpcRouter {
     }
 
     /// Parses and executes a request. Returns [None] if its a notification.
-    async fn run_request<'a>(&self, request: &'a str) -> Option<RpcResponse<'a>> {
+    async fn run_request<'a>(&self, request: &'a str, version: &'a RpcVersion) -> Option<RpcResponse<'a>> {
         tracing::trace!(%request, "Running request");
 
         let request = match serde_json::from_str::<RpcRequest<'_>>(request) {
@@ -99,9 +99,9 @@ impl RpcRouter {
             return Some(RpcResponse::method_not_found(request.id));
         };
 
-        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version.to_str());
+        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version.to_str());
 
-        let method = method.invoke(self.context.clone(), request.params, self.version);
+        let method = method.invoke(self.context.clone(), request.params, *version);
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
         let output = match result {
@@ -126,7 +126,7 @@ impl RpcRouter {
 }
 
 // A slight variation on the axum json extractor.
-fn is_utf8_encoded_json(headers: http::HeaderMap) -> bool {
+fn is_utf8_encoded_json(headers: &http::HeaderMap) -> bool {
     let Some(content_type) = headers.get(http::header::CONTENT_TYPE) else {
         return false;
     };
@@ -160,8 +160,10 @@ pub async fn rpc_handler(
     headers: http::HeaderMap,
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
+    const RPC_VERSION_OVERRIDE_HEADER: &str = "X-Pathfinder-RPC-Version-Override";
+
     // Only utf8 json content allowed.
-    if !is_utf8_encoded_json(headers) {
+    if !is_utf8_encoded_json(&headers) {
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
@@ -171,7 +173,13 @@ pub async fn rpc_handler(
     async fn handle(
         state: RpcRouter,
         body: axum::body::Bytes,
+        headers: http::HeaderMap,
     ) -> impl axum::response::IntoResponse {
+        let version = headers.get(RPC_VERSION_OVERRIDE_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(RpcVersion::from_str)
+            .unwrap_or(state.version);
+
         // Unfortunately due to this https://github.com/serde-rs/json/issues/497
         // we cannot use an enum with borrowed raw values inside to do a single deserialization
         // for us. Instead we have to distinguish manually between a single request and a batch
@@ -184,7 +192,7 @@ pub async fn rpc_handler(
                 }
             };
 
-            match state.run_request(request.get()).await {
+            match state.run_request(request.get(), &version).await {
                 Some(response) => response.into_response(),
                 None => ().into_response(),
             }
@@ -208,7 +216,7 @@ pub async fn rpc_handler(
                 requests.into_iter().enumerate(),
                 |(idx, request)| {
                     state
-                        .run_request(request.get())
+                        .run_request(request.get(), &version)
                         .instrument(tracing::debug_span!("batch", idx))
                 },
             )
@@ -225,7 +233,7 @@ pub async fn rpc_handler(
         }
     }
 
-    let mut response = handle(state, body).await.into_response();
+    let mut response = handle(state, body, headers).await.into_response();
 
     use http::header::CONTENT_TYPE;
     static APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
