@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `X-Pathfinder-RPC-Version-Override` optional request HTTP header that overrides the RPC spec version to be used for the specitic RPC call. When not provided or invalid the pre-definded spec version is going to be used (based on HTTP path).
+- `X-Pathfinder-RPC-Version-Override` optional request HTTP header that overrides the RPC spec version to be used for the specitic RPC call. When not provided or invalid the pre-defined spec version is going to be used (based on HTTP path).
   - Starknet RPC spec versions: `v0.4`, `v0.5`, `v0.6`, `v0.7` for Starknet RPC spec version.
   - Pathfinder extended RPC spec versions: `v0.1` (such does not change the behavior at this point, because there is only a single version of Pathfinder extended RPC spec).
 
