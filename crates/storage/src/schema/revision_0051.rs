@@ -1,4 +1,9 @@
-use std::{mem, sync::mpsc, thread};
+use std::{
+    mem,
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use anyhow::Context;
 use rusqlite::params;
@@ -75,6 +80,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         transformers.push(transformer);
     }
 
+    let mut progress_logged = Instant::now();
+    const LOG_RATE: Duration = Duration::from_secs(10);
+
     tx.execute(
         r"
         CREATE TABLE starknet_transactions_new (
@@ -97,6 +105,11 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     const BATCH_SIZE: usize = 10_000;
     let mut rows = query_stmt.query([])?;
     loop {
+        if progress_logged.elapsed() > LOG_RATE {
+            progress_logged = Instant::now();
+            tracing::info!("Migration still in progress...");
+        }
+
         let mut batch_size = 0;
         for _ in 0..BATCH_SIZE {
             match rows.next() {
