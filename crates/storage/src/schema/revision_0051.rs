@@ -19,9 +19,13 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         [],
     )
     .context("Creating starknet_transactions_new table")?;
-    let mut stmt =
+    let mut query =
         tx.prepare("SELECT hash, idx, block_hash, tx, receipt FROM starknet_transactions")?;
-    let mut rows = stmt.query([])?;
+    let mut insert = tx.prepare(
+        r"INSERT INTO starknet_transactions_new (hash, idx, block_hash, tx, receipt, events)
+                                         VALUES (?, ?, ?, ?, ?, ?)",
+    )?;
+    let mut rows = query.query([])?;
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
     while let Some(row) = rows.next()? {
         let hash = row.get_ref_unwrap("hash").as_blob()?;
@@ -62,11 +66,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         let events = compressor.compress(&events).context("Compressing events")?;
 
         // Store the updated values.
-        tx.execute(
-            r"INSERT INTO starknet_transactions_new (hash, idx, block_hash, tx, receipt, events)
-                                             VALUES (?, ?, ?, ?, ?, ?)",
-            params![hash, idx, block_hash, transaction, receipt, events],
-        )?;
+        insert.execute(params![hash, idx, block_hash, transaction, receipt, events])?;
     }
     tx.execute("DROP TABLE starknet_transactions", [])?;
     tx.execute(
