@@ -52,7 +52,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     .context("Compressing receipt")
                     .unwrap();
                 let events = bincode::serde::encode_to_vec(
-                    crate::transaction::dto::Events::V0 { events },
+                    crate::transaction::dto::Events::V0 {
+                        events: events.into_iter().map(Into::into).collect(),
+                    },
                     bincode::config::standard(),
                 )
                 .context("Serializing events")

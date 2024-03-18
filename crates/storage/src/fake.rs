@@ -158,7 +158,7 @@ pub mod init {
 
                 let r: Receipt = crate::connection::transaction::dto::Receipt::V0(
                     crate::connection::transaction::dto::ReceiptV0 {
-                        transaction_hash,
+                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
                         transaction_index: TransactionIndex::new_or_panic(
                             i.try_into().expect("u64 is at least as wide as usize"),
                         ),
