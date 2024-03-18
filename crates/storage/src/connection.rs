@@ -582,6 +582,12 @@ impl<'inner> Transaction<'inner> {
         state_update::highest_block_with_state_update(self)
     }
 
+    pub fn highest_block_with_all_class_definitions_downloaded(
+        &self,
+    ) -> anyhow::Result<Option<BlockNumber>> {
+        block::highest_block_with_all_class_definitions_downloaded(self)
+    }
+
     pub fn state_update_counts(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateCounts>> {
         state_update::state_update_counts(self, block)
     }
