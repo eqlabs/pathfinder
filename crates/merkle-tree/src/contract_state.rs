@@ -209,7 +209,13 @@ pub fn revert_contract_state(
                     .context("Fetching current contract root")?
             };
 
-            let state_hash = calculate_contract_state_hash(class_hash, root, nonce);
+            let state_hash = if contract_address.is_system_contract() && root == ContractRoot::ZERO
+            {
+                // special case: if the contract trie is empty the system contract should be deleted
+                ContractStateHash::ZERO
+            } else {
+                calculate_contract_state_hash(class_hash, root, nonce)
+            };
 
             tracing::debug!(%state_hash, %contract_address, "Contract state rolled back");
 
