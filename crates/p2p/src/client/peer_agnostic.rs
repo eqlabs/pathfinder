@@ -42,7 +42,7 @@ impl<T> PeerData<T> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Class {
+pub enum RawClass {
     Cairo {
         block_number: BlockNumber,
         hash: ClassHash,
@@ -386,7 +386,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<Class>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<RawClass>>> {
         async_stream::try_stream! {
         pin_mut!(declared_class_counts_stream);
 
@@ -430,7 +430,7 @@ impl Client {
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
                             ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _ , class_hash }) => {
-                                yield PeerData::new(peer, Class::Cairo {
+                                yield PeerData::new(peer, RawClass::Cairo {
                                     block_number: start,
                                     hash: ClassHash(class_hash.0),
                                     definition: CairoDefinition::try_from_dto(class)?.0,
@@ -438,7 +438,7 @@ impl Client {
                             },
                             ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _, class_hash }) => {
                                 let definition = SierraDefinition::try_from_dto(class)?;
-                                yield PeerData::new(peer, Class::Sierra {
+                                yield PeerData::new(peer, RawClass::Sierra {
                                     block_number: start,
                                     sierra_hash: SierraHash(class_hash.0),
                                     sierra_definition: definition.sierra,
