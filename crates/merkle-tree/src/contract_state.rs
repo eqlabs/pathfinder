@@ -86,7 +86,7 @@ pub fn update_contract_state(
         (current_root, Default::default())
     };
 
-    let class_hash = if contract_address == ContractAddress::ONE {
+    let class_hash = if contract_address.is_system_contract() {
         // This is a special system contract at address 0x1, which doesn't have a class hash.
         ClassHash::ZERO
     } else if let Some(class_hash) = new_class_hash {
@@ -158,7 +158,7 @@ pub fn revert_contract_state(
             let class_hash = match update.class {
                 Some(class_hash) => class_hash.class_hash(),
                 None => {
-                    if contract_address == ContractAddress::ONE {
+                    if contract_address.is_system_contract() {
                         // system contracts have no class hash
                         ClassHash::ZERO
                     } else {
