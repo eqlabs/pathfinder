@@ -1,10 +1,13 @@
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateCounts};
+use pathfinder_common::state_update::{
+    ContractClassUpdate, ContractUpdate, ReverseContractUpdate, StateUpdateCounts,
+};
 use pathfinder_common::{
-    BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
-    StateUpdate, StorageAddress, StorageCommitment, StorageValue,
+    BlockHash, BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
+    StateCommitment, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
 use smallvec::SmallVec;
 
@@ -563,6 +566,243 @@ pub(super) fn contract_class_hash(
     .map_err(|e| e.into())
 }
 
+pub(super) fn reverse_updates(
+    tx: &Transaction<'_>,
+    from: BlockNumber,
+    to: BlockNumber,
+) -> anyhow::Result<HashMap<ContractAddress, ReverseContractUpdate>> {
+    let storage_updates = reverse_storage_updates(tx, from, to)?;
+    let nonce_updates: Vec<(ContractAddress, Option<ContractNonce>)> =
+        reverse_nonce_updates(tx, from, to)?;
+    let contract_updates = reverse_contract_updates(tx, from, to)?;
+
+    let mut updates: HashMap<ContractAddress, ReverseContractUpdate> = Default::default();
+
+    for (contract_address, class_hash_update) in contract_updates {
+        updates
+            .entry(contract_address)
+            .or_insert_with(|| match class_hash_update {
+                None => ReverseContractUpdate::Deleted,
+                Some(_) => ReverseContractUpdate::Updated(ContractUpdate {
+                    class: class_hash_update.map(ContractClassUpdate::Replace),
+                    ..Default::default()
+                }),
+            });
+    }
+
+    for (contract_address, nonce_update) in nonce_updates {
+        if let Some(update) = updates
+            .entry(contract_address)
+            .or_insert_with(|| ReverseContractUpdate::Updated(Default::default()))
+            .update_mut()
+        {
+            update.nonce = nonce_update
+        };
+    }
+
+    for (contract_address, storage_updates) in storage_updates {
+        if let Some(update) = updates
+            .entry(contract_address)
+            .or_insert_with(|| ReverseContractUpdate::Updated(Default::default()))
+            .update_mut()
+        {
+            update.storage = storage_updates.into_iter().collect()
+        };
+    }
+
+    Ok(updates)
+}
+
+type StorageUpdates = Vec<(StorageAddress, StorageValue)>;
+
+fn reverse_storage_updates(
+    tx: &Transaction<'_>,
+    from_block: BlockNumber,
+    to_block: BlockNumber,
+) -> anyhow::Result<HashMap<ContractAddress, StorageUpdates>> {
+    let mut stmt = tx.inner().prepare(
+        r"WITH
+        updated_addresses(contract_address, storage_address) AS (
+            SELECT DISTINCT
+                contract_address, storage_address
+            FROM storage_updates
+            WHERE
+                block_number > ?2 AND block_number <= ?1
+        )
+    SELECT
+        contract_address,
+        storage_address,
+        (
+            SELECT storage_value
+            FROM storage_updates
+            WHERE
+                contract_address=updated_addresses.contract_address AND storage_address=updated_addresses.storage_address AND block_number <= ?2
+            ORDER BY block_number DESC
+            LIMIT 1
+        ) AS old_storage_value
+    FROM updated_addresses"
+    )?;
+
+    let mut rows = stmt
+        .query_map(params![&from_block, &to_block], |row| {
+            let contract_address = row.get_contract_address(0)?;
+            let storage_address = row.get_storage_address(1)?;
+            let old_storage_value = row.get_optional_storage_value(2)?;
+
+            Ok((
+                contract_address,
+                (
+                    storage_address,
+                    old_storage_value.unwrap_or(StorageValue::ZERO),
+                ),
+            ))
+        })
+        .context("Querying reverse storage updates")?;
+
+    let mut storage_updates: HashMap<_, Vec<_>> = Default::default();
+
+    while let Some((contract_address, (storage_address, old_storage_value))) = rows
+        .next()
+        .transpose()
+        .context("Iterating over reverse storage updates")?
+    {
+        let entry = storage_updates.entry(contract_address).or_default();
+        entry.push((storage_address, old_storage_value));
+    }
+
+    Ok(storage_updates)
+}
+
+fn reverse_nonce_updates(
+    tx: &Transaction<'_>,
+    from_block: BlockNumber,
+    to_block: BlockNumber,
+) -> anyhow::Result<Vec<(ContractAddress, Option<ContractNonce>)>> {
+    let mut stmt = tx.inner().prepare(
+        r"WITH
+        updated_nonces(contract_address) AS (
+            SELECT DISTINCT
+                contract_address
+            FROM nonce_updates
+            WHERE
+                block_number > ?2 AND block_number <= ?1
+        )
+    SELECT
+        contract_address,
+        (
+            SELECT nonce
+            FROM nonce_updates
+            WHERE
+                contract_address=updated_nonces.contract_address AND block_number <= ?2
+            ORDER BY block_number DESC
+            LIMIT 1
+        ) AS old_nonce
+    FROM updated_nonces",
+    )?;
+
+    let rows = stmt
+        .query_map(params![&from_block, &to_block], |row| {
+            let contract_address = row.get_contract_address(0)?;
+            let old_nonce = row.get_optional_nonce(1)?;
+
+            Ok((contract_address, old_nonce))
+        })
+        .context("Querying reverse nonce updates")?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .context("Iterating over reverse nonce updates")
+}
+
+fn reverse_contract_updates(
+    tx: &Transaction<'_>,
+    from_block: BlockNumber,
+    to_block: BlockNumber,
+) -> anyhow::Result<Vec<(ContractAddress, Option<ClassHash>)>> {
+    let mut stmt = tx.inner().prepare(
+        r"WITH
+        updated_contracts(contract_address) AS (
+            SELECT DISTINCT
+                contract_address
+            FROM contract_updates
+            WHERE
+                block_number > ?2 AND block_number <= ?1
+        )
+    SELECT
+        contract_address,
+        (
+            SELECT class_hash
+            FROM contract_updates
+            WHERE
+                contract_address=updated_contracts.contract_address AND block_number <= ?2
+            ORDER BY block_number DESC
+            LIMIT 1
+        ) AS old_class_hash
+    FROM updated_contracts",
+    )?;
+
+    let rows = stmt
+        .query_map(params![&from_block, &to_block], |row| {
+            let contract_address = row.get_contract_address(0)?;
+            let old_class_hash = row.get_optional_class_hash(1)?;
+
+            Ok((contract_address, old_class_hash))
+        })
+        .context("Querying reverse contract updates")?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .context("Iterating over reverse contract updates")
+}
+
+/// Returns the list of changes to be made to revert Sierra class declarations.
+///
+/// None means the class was declared _after_ `to_block` and has to be deleted.
+/// Some(casm_hash) means the CASM hash for the class has been updated (!).
+pub(super) fn reverse_sierra_class_updates(
+    tx: &Transaction<'_>,
+    from_block: BlockNumber,
+    to_block: BlockNumber,
+) -> anyhow::Result<Vec<(SierraHash, Option<CasmHash>)>> {
+    let mut stmt = tx.inner().prepare(
+        r"WITH declared_sierra_classes(class_hash) AS (
+            SELECT
+                class_definitions.hash AS class_hash
+            FROM
+                class_definitions
+                INNER JOIN casm_definitions ON casm_definitions.hash = class_definitions.hash
+            WHERE
+                class_definitions.block_number > ?2
+                AND class_definitions.block_number <= ?1
+        )
+        SELECT
+            class_hash,
+            (
+                SELECT
+                    casm_definitions.compiled_class_hash
+                FROM
+                    class_definitions
+                    INNER JOIN casm_definitions ON casm_definitions.hash = class_definitions.hash
+                WHERE
+                    class_definitions.hash = declared_sierra_classes.class_hash
+                    AND class_definitions.block_number <= ?2
+            ) AS compiled_class_hash
+        FROM
+            declared_sierra_classes
+        ",
+    )?;
+
+    let rows = stmt
+        .query_map(params![&from_block, &to_block], |row| {
+            let class_hash = SierraHash(row.get_class_hash(0)?.0);
+            let casm_hash = row.get_optional_casm_hash(1)?;
+
+            Ok((class_hash, casm_hash))
+        })
+        .context("Querying reverse contract updates")?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .context("Iterating over reverse Sierra declarations")
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
@@ -654,90 +894,154 @@ mod tests {
         assert_eq!(is_replaced, Some(replaced_class));
     }
 
-    #[test]
-    fn state_update() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
-        let tx = db.transaction().unwrap();
+    mod state_update {
+        use super::*;
 
-        // Submit the class definitions since this occurs out of band of the header and state diff.
-        let cairo_hash = class_hash_bytes!(b"cairo class hash");
-        let sierra_hash = sierra_hash_bytes!(b"sierra hash");
-        let casm_hash = casm_hash_bytes!(b"casm hash");
+        const CAIRO_HASH: ClassHash = class_hash_bytes!(b"cairo class hash");
+        const SIERRA_HASH: SierraHash = sierra_hash_bytes!(b"sierra hash");
+        const CASM_HASH: CasmHash = casm_hash_bytes!(b"casm hash");
+        const CAIRO_HASH2: ClassHash = class_hash_bytes!(b"cairo class hash again");
+        const CONTRACT_ADDRESS: ContractAddress = contract_address_bytes!(b"contract addr");
 
-        let cairo_hash2 = class_hash_bytes!(b"cairo class hash again");
+        fn setup() -> (crate::Connection, StateUpdate, BlockHeader) {
+            let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+            let tx = db.transaction().unwrap();
 
-        tx.insert_cairo_class(cairo_hash, b"cairo definition")
-            .unwrap();
-        tx.insert_cairo_class(cairo_hash2, b"cairo definition 2")
-            .unwrap();
+            // Submit the class definitions since this occurs out of band of the header and state diff.
+            tx.insert_cairo_class(CAIRO_HASH, b"cairo definition")
+                .unwrap();
+            tx.insert_cairo_class(CAIRO_HASH2, b"cairo definition 2")
+                .unwrap();
 
-        tx.insert_sierra_class(
-            &sierra_hash,
-            b"sierra definition",
-            &casm_hash,
-            b"casm definition",
-        )
-        .unwrap();
-
-        // Create genesis block with a deployed contract so we can replace it in the
-        // next block and test against it.
-        let contract_address = contract_address_bytes!(b"contract addr");
-        let genesis_state_update = StateUpdate::default()
-            .with_declared_cairo_class(cairo_hash)
-            .with_deployed_contract(contract_address, cairo_hash);
-        let header = BlockHeader::builder().finalize_with_hash(block_hash!("0xabc"));
-        tx.insert_block_header(&header).unwrap();
-        tx.insert_state_update(header.number, &genesis_state_update)
-            .unwrap();
-
-        // The actual data we want to query.
-        let header = header
-            .child_builder()
-            .finalize_with_hash(block_hash!("0xabcdef"));
-        let state_update = StateUpdate::default()
-            .with_block_hash(header.hash)
-            .with_storage_update(
-                contract_address,
-                storage_address_bytes!(b"storage key"),
-                storage_value_bytes!(b"storage value"),
+            tx.insert_sierra_class(
+                &SIERRA_HASH,
+                b"sierra definition",
+                &CASM_HASH,
+                b"casm definition",
             )
-            .with_system_storage_update(
-                ContractAddress::ONE,
-                storage_address_bytes!(b"key"),
-                storage_value_bytes!(b"value"),
-            )
-            .with_deployed_contract(
-                contract_address_bytes!(b"contract addr 2"),
-                ClassHash(sierra_hash.0),
-            )
-            .with_declared_cairo_class(cairo_hash2)
-            .with_declared_sierra_class(sierra_hash, casm_hash)
-            .with_contract_nonce(contract_address, contract_nonce_bytes!(b"nonce"))
-            .with_replaced_class(contract_address, ClassHash(sierra_hash.0));
-
-        tx.insert_block_header(&header).unwrap();
-        tx.insert_state_update(header.number, &state_update)
             .unwrap();
 
-        let result = super::state_update(&tx, header.number.into())
-            .unwrap()
-            .unwrap();
-        assert_eq!(result, state_update);
+            // Create genesis block with a deployed contract so we can replace it in the
+            // next block and test against it.
+            let genesis_state_update = StateUpdate::default()
+                .with_declared_cairo_class(CAIRO_HASH)
+                .with_deployed_contract(CONTRACT_ADDRESS, CAIRO_HASH);
+            let header = BlockHeader::builder().finalize_with_hash(block_hash!("0xabc"));
+            tx.insert_block_header(&header).unwrap();
+            tx.insert_state_update(header.number, &genesis_state_update)
+                .unwrap();
 
-        // check getters for compiled class
-        let hash = casm_hash_at(&tx, BlockId::Latest, ClassHash(sierra_hash.0))
-            .unwrap()
-            .unwrap();
-        assert_eq!(hash, casm_hash);
+            // The actual data we want to query.
+            let header = header
+                .child_builder()
+                .finalize_with_hash(block_hash!("0xabcdef"));
+            let state_update = StateUpdate::default()
+                .with_block_hash(header.hash)
+                .with_storage_update(
+                    CONTRACT_ADDRESS,
+                    storage_address_bytes!(b"storage key"),
+                    storage_value_bytes!(b"storage value"),
+                )
+                .with_system_storage_update(
+                    ContractAddress::ONE,
+                    storage_address_bytes!(b"key"),
+                    storage_value_bytes!(b"value"),
+                )
+                .with_deployed_contract(
+                    contract_address_bytes!(b"contract addr 2"),
+                    ClassHash(SIERRA_HASH.0),
+                )
+                .with_declared_cairo_class(CAIRO_HASH2)
+                .with_declared_sierra_class(SIERRA_HASH, CASM_HASH)
+                .with_contract_nonce(CONTRACT_ADDRESS, contract_nonce_bytes!(b"nonce"))
+                .with_replaced_class(CONTRACT_ADDRESS, ClassHash(SIERRA_HASH.0));
 
-        let definition = casm_definition_at(&tx, BlockId::Latest, ClassHash(sierra_hash.0))
-            .unwrap()
-            .unwrap();
-        assert_eq!(definition, b"casm definition");
+            tx.insert_block_header(&header).unwrap();
+            tx.insert_state_update(header.number, &state_update)
+                .unwrap();
 
-        // non-existent state update
-        let non_existent = super::state_update(&tx, (header.number + 1).into()).unwrap();
-        assert_eq!(non_existent, None);
+            tx.commit().unwrap();
+
+            (db, state_update, header)
+        }
+
+        #[test]
+        fn state_update() {
+            let (mut db, state_update, header) = setup();
+            let tx = db.transaction().unwrap();
+
+            let result = super::state_update(&tx, header.number.into())
+                .unwrap()
+                .unwrap();
+            assert_eq!(result, state_update);
+
+            // check getters for compiled class
+            let hash = casm_hash_at(&tx, BlockId::Latest, ClassHash(SIERRA_HASH.0))
+                .unwrap()
+                .unwrap();
+            assert_eq!(hash, casm_hash_bytes!(b"casm hash"));
+
+            let definition = casm_definition_at(&tx, BlockId::Latest, ClassHash(SIERRA_HASH.0))
+                .unwrap()
+                .unwrap();
+            assert_eq!(definition, b"casm definition");
+
+            // non-existent state update
+            let non_existent = super::state_update(&tx, (header.number + 1).into()).unwrap();
+            assert_eq!(non_existent, None);
+        }
+
+        #[test]
+        fn reverse_state_update() {
+            let (mut db, _state_update, header) = setup();
+            let tx = db.transaction().unwrap();
+
+            let result = super::reverse_updates(&tx, header.number, BlockNumber::GENESIS).unwrap();
+            assert_eq!(
+                result,
+                vec![
+                    (
+                        contract_address_bytes!(b"contract addr 2"),
+                        ReverseContractUpdate::Deleted
+                    ),
+                    (
+                        ContractAddress::ONE,
+                        ReverseContractUpdate::Updated(ContractUpdate {
+                            storage: HashMap::from([(
+                                storage_address_bytes!(b"key"),
+                                StorageValue::ZERO
+                            )]),
+                            nonce: None,
+                            class: None
+                        })
+                    ),
+                    (
+                        CONTRACT_ADDRESS,
+                        ReverseContractUpdate::Updated(ContractUpdate {
+                            storage: HashMap::from([(
+                                storage_address_bytes!(b"storage key"),
+                                StorageValue::ZERO
+                            )]),
+                            nonce: None,
+                            class: Some(ContractClassUpdate::Replace(CAIRO_HASH))
+                        })
+                    )
+                ]
+                .into_iter()
+                .collect()
+            );
+        }
+
+        #[test]
+        fn reverse_sierra_class_updates() {
+            let (mut db, _state_update, header) = setup();
+            let tx = db.transaction().unwrap();
+
+            let result =
+                super::reverse_sierra_class_updates(&tx, header.number, BlockNumber::GENESIS)
+                    .unwrap();
+            assert_eq!(result, vec![(SIERRA_HASH, None)]);
+        }
     }
 
     mod contract_state {

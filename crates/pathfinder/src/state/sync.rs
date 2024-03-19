@@ -2,6 +2,7 @@ mod class;
 pub mod l1;
 pub mod l2;
 mod pending;
+pub mod revert;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
@@ -973,6 +974,17 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
         transaction
             .increment_reorg_counter()
             .context("Incrementing reorg counter")?;
+
+        // Roll back Merkle trie updates.
+        //
+        // If we're rolling back genesis then there will be no blocks left so state will be empty.
+        if let Some(target_block) = reorg_tail.parent() {
+            let target_header = transaction
+                .block_header(target_block.into())
+                .context("Fetching target block header")?
+                .context("Expected target header to exist")?;
+            revert::revert_starknet_state(&transaction, head, target_block, target_header, false)?;
+        }
 
         // Purge each block one at a time.
         //

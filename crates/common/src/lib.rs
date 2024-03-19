@@ -554,6 +554,10 @@ impl ContractAddress {
 
         ContractAddress::new_or_panic(contract_address)
     }
+
+    pub fn is_system_contract(&self) -> bool {
+        *self == ContractAddress::ONE
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
