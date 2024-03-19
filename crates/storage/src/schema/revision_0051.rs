@@ -38,6 +38,15 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 let events = mem::take(&mut receipt.events);
                 let receipt = pathfinder_common::receipt::Receipt::from(receipt);
 
+                if let pathfinder_common::transaction::TransactionVariant::DeployAccountV0V1(
+                    ref t,
+                ) = transaction.variant
+                {
+                    if t.version == pathfinder_common::TransactionVersion::ZERO {
+                        panic!("version zero");
+                    }
+                }
+
                 // Serialize into new DTOs.
                 let transaction = crate::transaction::dto::Transaction::from(&transaction);
                 let transaction =
@@ -83,6 +92,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut progress_logged = Instant::now();
     const LOG_RATE: Duration = Duration::from_secs(10);
 
+    let count = tx.query_row("SELECT COUNT(*) FROM starknet_transactions", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
     tx.execute(
         r"
         CREATE TABLE starknet_transactions_new (
@@ -104,10 +116,14 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )?;
     const BATCH_SIZE: usize = 10_000;
     let mut rows = query_stmt.query([])?;
+    let mut progress = 0;
     loop {
         if progress_logged.elapsed() > LOG_RATE {
             progress_logged = Instant::now();
-            tracing::info!("Migration still in progress...");
+            tracing::info!(
+                "Migrating rows: {:.2}%",
+                (progress as f64 / count as f64) * 100.0
+            );
         }
 
         let mut batch_size = 0;
@@ -137,6 +153,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         for _ in 0..batch_size {
             let (hash, idx, block_hash, transaction, receipt, events) = insert_rx.recv()?;
             insert_stmt.execute(params![hash, idx, block_hash, transaction, receipt, events])?;
+            progress += 1;
         }
         if batch_size < BATCH_SIZE {
             // This was the last batch.
@@ -152,7 +169,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         transformer.join().unwrap();
     }
 
+    tracing::info!("Dropping old starknet_transactions table");
     tx.execute("DROP TABLE starknet_transactions", [])?;
+    tracing::info!("Renaming starknet_transactions_new to starknet_transactions");
     tx.execute(
         "ALTER TABLE starknet_transactions_new RENAME TO starknet_transactions",
         [],

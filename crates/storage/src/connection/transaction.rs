@@ -36,7 +36,6 @@ pub(super) fn insert_transactions(
     {
         // Serialize and compress transaction data.
         let transaction = dto::Transaction::from(transaction);
-
         let tx_data = bincode::serde::encode_to_vec(&transaction, bincode::config::standard())
             .context("Serializing transaction")?;
         let tx_data = compressor
@@ -592,14 +591,10 @@ pub(crate) mod dto {
                 data: value
                     .data
                     .into_iter()
-                    .map(|x| EventData::new_or_panic(x.into()))
+                    .map(|x| EventData(x.into()))
                     .collect(),
                 from_address: ContractAddress::new_or_panic(value.from_address.into()),
-                keys: value
-                    .keys
-                    .into_iter()
-                    .map(|x| EventKey::new_or_panic(x.into()))
-                    .collect(),
+                keys: value.keys.into_iter().map(|x| EventKey(x.into())).collect(),
             }
         }
     }
@@ -774,7 +769,7 @@ pub(crate) mod dto {
                 from_address: ContractAddress::new_or_panic(from_address.into()),
                 payload: payload
                     .into_iter()
-                    .map(|x| L2ToL1MessagePayloadElem::new_or_panic(x.into()))
+                    .map(|x| L2ToL1MessagePayloadElem(x.into()))
                     .collect(),
                 to_address,
             }
@@ -849,10 +844,10 @@ pub(crate) mod dto {
             }) = value;
 
             common::Receipt {
-                actual_fee: actual_fee.map(|x| Fee::new_or_panic(x.into())),
+                actual_fee: actual_fee.map(|x| Fee(x.into())),
                 execution_resources: (&execution_resources.unwrap_or_default()).into(),
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
-                transaction_hash: TransactionHash::new_or_panic(transaction_hash.into()),
+                transaction_hash: TransactionHash(transaction_hash.into()),
                 transaction_index,
                 execution_status: match execution_status {
                     ExecutionStatus::Succeeded => common::ExecutionStatus::Succeeded,
@@ -1337,13 +1332,13 @@ pub(crate) mod dto {
                     },
                 ))) => TransactionVariant::DeclareV0(
                     pathfinder_common::transaction::DeclareTransactionV0V1 {
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
-                        max_fee: Fee::new_or_panic(max_fee.into()),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
+                        class_hash: ClassHash(class_hash.into()),
+                        max_fee: Fee(max_fee.into()),
+                        nonce: TransactionNonce(nonce.into()),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
                     },
                 ),
@@ -1358,13 +1353,13 @@ pub(crate) mod dto {
                     },
                 ))) => TransactionVariant::DeclareV1(
                     pathfinder_common::transaction::DeclareTransactionV0V1 {
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
-                        max_fee: Fee::new_or_panic(max_fee.into()),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
-                        sender_address: ContractAddress::new_or_panic(sender_address.into()),
+                        class_hash: ClassHash(class_hash.into()),
+                        max_fee: Fee(max_fee.into()),
+                        nonce: TransactionNonce(nonce.into()),
+                        sender_address: ContractAddress(sender_address.into()),
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
                     },
                 ),
@@ -1380,13 +1375,13 @@ pub(crate) mod dto {
                     },
                 ))) => TransactionVariant::DeclareV2(
                     pathfinder_common::transaction::DeclareTransactionV2 {
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
-                        max_fee: Fee::new_or_panic(max_fee.into()),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
-                        sender_address: ContractAddress::new_or_panic(sender_address.into()),
+                        class_hash: ClassHash(class_hash.into()),
+                        max_fee: Fee(max_fee.into()),
+                        nonce: TransactionNonce(nonce.into()),
+                        sender_address: ContractAddress(sender_address.into()),
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
                         compiled_class_hash: CasmHash::new_or_panic(compiled_class_hash.into()),
                     },
@@ -1408,25 +1403,25 @@ pub(crate) mod dto {
                     },
                 ))) => TransactionVariant::DeclareV3(
                     pathfinder_common::transaction::DeclareTransactionV3 {
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
+                        class_hash: ClassHash(class_hash.into()),
+                        nonce: TransactionNonce(nonce.into()),
                         nonce_data_availability_mode: nonce_data_availability_mode.into(),
                         fee_data_availability_mode: fee_data_availability_mode.into(),
                         resource_bounds: resource_bounds.into(),
                         tip,
                         paymaster_data: paymaster_data
                             .into_iter()
-                            .map(|x| PaymasterDataElem::new_or_panic(x.into()))
+                            .map(|x| PaymasterDataElem(x.into()))
                             .collect(),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
                         compiled_class_hash: CasmHash::new_or_panic(compiled_class_hash.into()),
                         account_deployment_data: account_deployment_data
                             .into_iter()
-                            .map(|x| AccountDeploymentDataElem::new_or_panic(x.into()))
+                            .map(|x| AccountDeploymentDataElem(x.into()))
                             .collect(),
                     },
                 ),
@@ -1440,13 +1435,11 @@ pub(crate) mod dto {
                 })) => {
                     TransactionVariant::Deploy(pathfinder_common::transaction::DeployTransaction {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        contract_address_salt: ContractAddressSalt::new_or_panic(
-                            contract_address_salt.into(),
-                        ),
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
+                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
+                        class_hash: ClassHash(class_hash.into()),
                         constructor_calldata: constructor_calldata
                             .into_iter()
-                            .map(|x| ConstructorParam::new_or_panic(x.into()))
+                            .map(|x| ConstructorParam(x.into()))
                             .collect(),
                         version: TransactionVersion(version.into()),
                     })
@@ -1465,21 +1458,19 @@ pub(crate) mod dto {
                 ))) => TransactionVariant::DeployAccountV0V1(
                     pathfinder_common::transaction::DeployAccountTransactionV0V1 {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        max_fee: Fee::new_or_panic(max_fee.into()),
+                        max_fee: Fee(max_fee.into()),
                         version: TransactionVersion::ZERO,
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
-                        contract_address_salt: ContractAddressSalt::new_or_panic(
-                            contract_address_salt.into(),
-                        ),
+                        nonce: TransactionNonce(nonce.into()),
+                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
                         constructor_calldata: constructor_calldata
                             .into_iter()
-                            .map(|x| CallParam::new_or_panic(x.into()))
+                            .map(|x| CallParam(x.into()))
                             .collect(),
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
+                        class_hash: ClassHash(class_hash.into()),
                     },
                 ),
                 Transaction::V0(TransactionV0::DeployAccount(DeployAccountTransaction::V1(
@@ -1496,21 +1487,19 @@ pub(crate) mod dto {
                 ))) => TransactionVariant::DeployAccountV0V1(
                     pathfinder_common::transaction::DeployAccountTransactionV0V1 {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        max_fee: Fee::new_or_panic(max_fee.into()),
+                        max_fee: Fee(max_fee.into()),
                         version: TransactionVersion::ONE,
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
-                        contract_address_salt: ContractAddressSalt::new_or_panic(
-                            contract_address_salt.into(),
-                        ),
+                        nonce: TransactionNonce(nonce.into()),
+                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
                         constructor_calldata: constructor_calldata
                             .into_iter()
-                            .map(|x| CallParam::new_or_panic(x.into()))
+                            .map(|x| CallParam(x.into()))
                             .collect(),
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
+                        class_hash: ClassHash(class_hash.into()),
                     },
                 ),
                 Transaction::V0(TransactionV0::DeployAccount(DeployAccountTransaction::V3(
@@ -1533,25 +1522,23 @@ pub(crate) mod dto {
                         contract_address: ContractAddress::new_or_panic(sender_address.into()),
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
+                        nonce: TransactionNonce(nonce.into()),
                         nonce_data_availability_mode: nonce_data_availability_mode.into(),
                         fee_data_availability_mode: fee_data_availability_mode.into(),
                         resource_bounds: resource_bounds.into(),
                         tip,
                         paymaster_data: paymaster_data
                             .into_iter()
-                            .map(|x| PaymasterDataElem::new_or_panic(x.into()))
+                            .map(|x| PaymasterDataElem(x.into()))
                             .collect(),
-                        contract_address_salt: ContractAddressSalt::new_or_panic(
-                            contract_address_salt.into(),
-                        ),
+                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
                         constructor_calldata: constructor_calldata
                             .into_iter()
-                            .map(|x| CallParam::new_or_panic(x.into()))
+                            .map(|x| CallParam(x.into()))
                             .collect(),
-                        class_hash: ClassHash::new_or_panic(class_hash.into()),
+                        class_hash: ClassHash(class_hash.into()),
                     },
                 ),
                 Transaction::V0(TransactionV0::Invoke(InvokeTransaction::V0(
@@ -1566,17 +1553,14 @@ pub(crate) mod dto {
                     },
                 ))) => TransactionVariant::InvokeV0(
                     pathfinder_common::transaction::InvokeTransactionV0 {
-                        calldata: calldata
-                            .into_iter()
-                            .map(|x| CallParam::new_or_panic(x.into()))
-                            .collect(),
+                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
-                        entry_point_selector: EntryPoint::new_or_panic(entry_point_selector.into()),
+                        entry_point_selector: EntryPoint(entry_point_selector.into()),
                         entry_point_type: entry_point_type.map(Into::into),
-                        max_fee: Fee::new_or_panic(max_fee.into()),
+                        max_fee: Fee(max_fee.into()),
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
                     },
                 ),
@@ -1591,17 +1575,14 @@ pub(crate) mod dto {
                     },
                 ))) => TransactionVariant::InvokeV1(
                     pathfinder_common::transaction::InvokeTransactionV1 {
-                        calldata: calldata
-                            .into_iter()
-                            .map(|x| CallParam::new_or_panic(x.into()))
-                            .collect(),
+                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
-                        max_fee: Fee::new_or_panic(max_fee.into()),
+                        max_fee: Fee(max_fee.into()),
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
+                        nonce: TransactionNonce(nonce.into()),
                     },
                 ),
                 Transaction::V0(TransactionV0::Invoke(InvokeTransaction::V3(
@@ -1622,25 +1603,22 @@ pub(crate) mod dto {
                     pathfinder_common::transaction::InvokeTransactionV3 {
                         signature: signature
                             .into_iter()
-                            .map(|x| TransactionSignatureElem::new_or_panic(x.into()))
+                            .map(|x| TransactionSignatureElem(x.into()))
                             .collect(),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
+                        nonce: TransactionNonce(nonce.into()),
                         nonce_data_availability_mode: nonce_data_availability_mode.into(),
                         fee_data_availability_mode: fee_data_availability_mode.into(),
                         resource_bounds: resource_bounds.into(),
                         tip,
                         paymaster_data: paymaster_data
                             .into_iter()
-                            .map(|x| PaymasterDataElem::new_or_panic(x.into()))
+                            .map(|x| PaymasterDataElem(x.into()))
                             .collect(),
                         account_deployment_data: account_deployment_data
                             .into_iter()
-                            .map(|x| AccountDeploymentDataElem::new_or_panic(x.into()))
+                            .map(|x| AccountDeploymentDataElem(x.into()))
                             .collect(),
-                        calldata: calldata
-                            .into_iter()
-                            .map(|x| CallParam::new_or_panic(x.into()))
-                            .collect(),
+                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
                     },
                 ),
@@ -1655,12 +1633,9 @@ pub(crate) mod dto {
                 })) => TransactionVariant::L1Handler(
                     pathfinder_common::transaction::L1HandlerTransaction {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        entry_point_selector: EntryPoint::new_or_panic(entry_point_selector.into()),
-                        nonce: TransactionNonce::new_or_panic(nonce.into()),
-                        calldata: calldata
-                            .into_iter()
-                            .map(|x| CallParam::new_or_panic(x.into()))
-                            .collect(),
+                        entry_point_selector: EntryPoint(entry_point_selector.into()),
+                        nonce: TransactionNonce(nonce.into()),
+                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
                     },
                 ),
             };
@@ -1672,7 +1647,7 @@ pub(crate) mod dto {
     impl Transaction {
         /// Returns hash of the transaction
         pub fn hash(&self) -> TransactionHash {
-            TransactionHash::new_or_panic(
+            TransactionHash(
                 match self {
                     Transaction::V0(TransactionV0::Declare(t)) => match t {
                         DeclareTransaction::V0(t) => t.transaction_hash.clone(),
@@ -2065,6 +2040,25 @@ mod tests {
     use pathfinder_common::{BlockHeader, TransactionIndex};
 
     use super::*;
+
+    #[test]
+    fn serialize_deserialize_transaction() {
+        let transaction = pathfinder_common::transaction::Transaction {
+            hash: transaction_hash_bytes!(b"pending tx hash 1"),
+            variant: TransactionVariant::Deploy(DeployTransaction {
+                contract_address: contract_address!("0x1122355"),
+                contract_address_salt: contract_address_salt_bytes!(b"salty"),
+                class_hash: class_hash_bytes!(b"pending class hash 1"),
+                version: TransactionVersion::ONE,
+                ..Default::default()
+            }),
+        };
+        let dto = dto::Transaction::from(&transaction);
+        let serialized = bincode::serde::encode_to_vec(&dto, bincode::config::standard()).unwrap();
+        let deserialized: (dto::Transaction, _) =
+            bincode::serde::decode_from_slice(&serialized, bincode::config::standard()).unwrap();
+        assert_eq!(deserialized.0, dto);
+    }
 
     fn setup() -> (
         crate::Connection,
