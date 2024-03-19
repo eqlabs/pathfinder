@@ -20,6 +20,7 @@ fake = { workspace = true }
 flume = { version = "0.11.0", default-features = false, features = ["eventual-fairness"] }
 hex = { workspace = true }
 lazy_static = { workspace = true }
+metrics = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }

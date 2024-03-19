@@ -202,6 +202,9 @@ pub(super) fn insert_or_update_contract_root(
     Ok(())
 }
 
+const METRIC_TRIE_NODES_REMOVED: &str = "pathfinder_storage_trie_nodes_deleted_total";
+const METRIC_TRIE_NODES_ADDED: &str = "pathfinder_storage_trie_nodes_added_total";
+
 mod macros {
     /// Generates the `insert`, `node` and `hash` trie functions for the given table name, within
     /// a module with the table name.
@@ -220,9 +223,13 @@ mod macros {
                         ))
                         .context("Creating delete statement")?;
 
+                    let number_of_nodes_removed = removed.len() as u64;
+                    metrics::counter!(METRIC_TRIE_NODES_REMOVED, number_of_nodes_removed, "table" => stringify!($table));
+
                     for idx in removed {
                         stmt.execute(params![idx]).context("Deleting node")?;
                     }
+
 
                     Ok(())
                 }
@@ -292,6 +299,8 @@ mod macros {
                             .context("Inserting node")?;
 
                         indices.insert(idx, storage_idx);
+
+                        metrics::increment_counter!(METRIC_TRIE_NODES_ADDED, "table" => stringify!($table));
                     }
 
                     Ok(*indices
