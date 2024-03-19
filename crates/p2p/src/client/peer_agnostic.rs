@@ -2,13 +2,11 @@
 //! Frees the caller from managing peers manually.
 use std::{
     collections::{HashMap, HashSet},
-    num::NonZeroUsize,
     sync::Arc,
     time::Duration,
 };
 
-use anyhow::Context;
-use futures::StreamExt;
+use futures::{pin_mut, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
@@ -26,8 +24,7 @@ use pathfinder_common::{
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
-use smallvec::SmallVec;
-use tokio::{sync::RwLock, task::spawn_blocking};
+use tokio::sync::RwLock;
 
 use crate::client::{conv::TryFromDto, peer_aware};
 use crate::sync::protocol;
@@ -212,17 +209,12 @@ impl Client {
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        getter: Arc<
-            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>>
-                + Send
-                + Sync
-                + 'static,
-        >,
+        state_update_counts_stream: impl futures::Stream<Item = anyhow::Result<StateUpdateCounts>>,
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ContractUpdates)>>> {
         async_stream::try_stream! {
-        if start <= stop_inclusive {
-            let mut counts = Default::default();
+        pin_mut!(state_update_counts_stream);
 
+        if start <= stop_inclusive {
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
                 let peers = self
@@ -256,15 +248,23 @@ impl Client {
                     };
 
                     // Get state update numbers for this block
-                    let mut current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut counts, getter.clone()).await?;
+                    let mut current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("State update counts stream terminated prematurely at block {start}"))??;
 
                     let mut contract_updates = ContractUpdates::default();
 
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
-                            StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, is_replaced, values, domain: _ }) => {
+                            StateDiffsResponse::ContractDiff(ContractDiff {
+                                address,
+                                nonce,
+                                class_hash,
+                                is_replaced,
+                                values,
+                                domain: _,
+                            }) => {
                                 let address = ContractAddress(address.0);
-                                let num_values = u64::try_from(values.len()).expect("ptr size is 64 bits");
+                                let num_values =
+                                    u64::try_from(values.len()).expect("ptr size is 64 bits");
                                 match current.storage_diffs.checked_sub(num_values) {
                                     Some(x) => current.storage_diffs = x,
                                     None => {
@@ -275,15 +275,27 @@ impl Client {
                                 }
 
                                 if address == ContractAddress::ONE {
-                                    let storage = &mut contract_updates.system.entry(address).or_default().storage;
-                                    values.into_iter().for_each(|ContractStoredValue { key, value }| {
-                                        storage.insert(StorageAddress(key), StorageValue(value));
-                                    });
+                                    let storage = &mut contract_updates
+                                        .system
+                                        .entry(address)
+                                        .or_default()
+                                        .storage;
+                                    values.into_iter().for_each(
+                                        |ContractStoredValue { key, value }| {
+                                            storage
+                                                .insert(StorageAddress(key), StorageValue(value));
+                                        },
+                                    );
                                 } else {
-                                    let update = &mut contract_updates.regular.entry(address).or_default();
-                                    values.into_iter().for_each(|ContractStoredValue { key, value }| {
-                                        update.storage.insert(StorageAddress(key), StorageValue(value));
-                                    });
+                                    let update =
+                                        &mut contract_updates.regular.entry(address).or_default();
+                                    values.into_iter().for_each(
+                                        |ContractStoredValue { key, value }| {
+                                            update
+                                                .storage
+                                                .insert(StorageAddress(key), StorageValue(value));
+                                        },
+                                    );
 
                                     if let Some(nonce) = nonce {
                                         match current.nonce_updates.checked_sub(1) {
@@ -309,23 +321,31 @@ impl Client {
                                         }
 
                                         if is_replaced.unwrap_or_default() {
-                                            update.class = Some(ContractClassUpdate::Replace(class_hash));
+                                            update.class =
+                                                Some(ContractClassUpdate::Replace(class_hash));
                                         } else {
-                                            update.class = Some(ContractClassUpdate::Deploy(class_hash));
+                                            update.class =
+                                                Some(ContractClassUpdate::Deploy(class_hash));
                                         }
                                     }
                                 }
-                            },
+                            }
                             StateDiffsResponse::Fin => {
-                                if current.storage_diffs == 0 && current.nonce_updates == 0 && current.deployed_contracts == 0 {
+                                if current.storage_diffs == 0
+                                    && current.nonce_updates == 0
+                                    && current.deployed_contracts == 0
+                                {
                                     // All the counters for this block have been exhausted which means
                                     // that the state update for this block is complete.
-                                    yield PeerData::new(peer, (start, std::mem::take(&mut contract_updates)));
+                                    yield PeerData::new(
+                                        peer,
+                                        (start, std::mem::take(&mut contract_updates)),
+                                    );
 
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = self.state_update_nums_for_next_block(start, stop_inclusive, &mut counts, getter.clone()).await?;
+                                        current = state_update_counts_stream.next().await.ok_or_else(|| anyhow::anyhow!("State update counts stream terminated prematurely at block {start}"))??;
                                         tracing::debug!(%peer, "State diff stream Fin");
                                     } else {
                                         // We're done, terminate the stream
@@ -342,40 +362,6 @@ impl Client {
                 }
             }
         }
-        }
-    }
-
-    async fn state_update_nums_for_next_block(
-        &self,
-        start: BlockNumber,
-        stop_inclusive: BlockNumber,
-        counts: &mut SmallVec<[StateUpdateCounts; 10]>,
-        getter: Arc<
-            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>>
-                + Send
-                + Sync
-                + 'static,
-        >,
-    ) -> anyhow::Result<StateUpdateCounts> {
-        // size_of(StateUpdateCounts) == 32B
-        // 30k x 32B == 960kB
-        let limit: usize = 30_000
-            .min(stop_inclusive.get() - start.get() + 1)
-            .try_into()
-            .expect("pts size is 64 bits");
-        let limit = NonZeroUsize::new(limit).expect("limit > 0");
-        let next = counts.pop();
-        match next {
-            Some(x) => Ok(x),
-            None => {
-                let new_counts = spawn_blocking(move || getter(start, limit))
-                    .await
-                    .context("Joining blocking task")?
-                    .context("Getting state update counts")?;
-                anyhow::ensure!(!new_counts.is_empty(), "No counts for this range");
-                *counts = new_counts;
-                Ok(counts.pop().expect("vector is not empty"))
-            }
         }
     }
 }
