@@ -630,7 +630,11 @@ pub(crate) mod transaction {
             };
 
             Self {
-                actual_fee,
+                actual_fee: if actual_fee == Fee::ZERO {
+                    None
+                } else {
+                    Some(actual_fee)
+                },
                 events,
                 execution_resources: Some(execution_resources.into()),
                 l1_to_l2_consumed_message: None,
@@ -712,7 +716,7 @@ pub(crate) mod transaction {
 
             (
                 common::Receipt {
-                    actual_fee,
+                    actual_fee: actual_fee.unwrap_or_default(),
                     execution_resources: execution_resources.unwrap_or_default().into(),
                     l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                     transaction_hash,

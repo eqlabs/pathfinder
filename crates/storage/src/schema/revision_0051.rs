@@ -447,7 +447,11 @@ pub(crate) mod old_dto {
             };
 
             Self {
-                actual_fee: value.actual_fee,
+                actual_fee: if value.actual_fee == Fee::ZERO {
+                    None
+                } else {
+                    Some(value.actual_fee)
+                },
                 events: vec![],
                 execution_resources: Some((&value.execution_resources).into()),
                 // We don't care about this field anymore.
@@ -479,7 +483,7 @@ pub(crate) mod old_dto {
             } = value;
 
             common::Receipt {
-                actual_fee,
+                actual_fee: actual_fee.unwrap_or_default(),
                 execution_resources: (&execution_resources.unwrap_or_default()).into(),
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash,

@@ -361,7 +361,7 @@ impl CommonReceiptProperties {
         finality_status: v06::FinalityStatus,
     ) -> Self {
         let actual_fee = FeePayment {
-            amount: receipt.actual_fee.unwrap_or_default(),
+            amount: receipt.actual_fee,
             unit: transaction.version().into(),
         };
 
@@ -398,7 +398,7 @@ impl PendingCommonReceiptProperties {
         finality_status: v06::FinalityStatus,
     ) -> Self {
         let actual_fee = FeePayment {
-            amount: receipt.actual_fee.unwrap_or_default(),
+            amount: receipt.actual_fee,
             unit: transaction.version().into(),
         };
 

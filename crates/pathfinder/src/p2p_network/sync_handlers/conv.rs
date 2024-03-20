@@ -198,7 +198,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
             .unwrap_or_default();
         let common = ReceiptCommon {
             transaction_hash: Hash(self.1.transaction_hash.0),
-            actual_fee: self.1.actual_fee.unwrap_or_default().0,
+            actual_fee: self.1.actual_fee.0,
             messages_sent: self
                 .1
                 .l2_to_l1_messages

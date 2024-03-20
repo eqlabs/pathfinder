@@ -274,7 +274,7 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
                 transaction_hash: TransactionHash(common.transaction_hash.0),
-                actual_fee: Some(Fee(common.actual_fee)),
+                actual_fee: Fee(common.actual_fee),
                 execution_resources: ExecutionResources {
                     builtins: BuiltinCounters {
                         output: common.execution_resources.builtins.output.into(),

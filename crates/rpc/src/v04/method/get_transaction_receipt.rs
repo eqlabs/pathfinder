@@ -214,9 +214,7 @@ pub mod types {
             let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
-                actual_fee: receipt
-                    .actual_fee
-                    .unwrap_or_else(|| Fee(Default::default())),
+                actual_fee: receipt.actual_fee,
                 block_hash,
                 block_number,
                 messages_sent: receipt
@@ -347,9 +345,7 @@ pub mod types {
             let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
-                actual_fee: receipt
-                    .actual_fee
-                    .unwrap_or_else(|| Fee(Default::default())),
+                actual_fee: receipt.actual_fee,
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()

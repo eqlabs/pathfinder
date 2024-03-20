@@ -810,11 +810,11 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 transaction receipt data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ReceiptV0 {
         #[serde(default)]
-        pub actual_fee: Option<MinimalFelt>,
+        pub actual_fee: MinimalFelt,
         pub execution_resources: Option<ExecutionResources>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: MinimalFelt,
@@ -844,7 +844,7 @@ pub(crate) mod dto {
             }) = value;
 
             common::Receipt {
-                actual_fee: actual_fee.map(|x| Fee(x.into())),
+                actual_fee: Fee(actual_fee.into()),
                 execution_resources: (&execution_resources.unwrap_or_default()).into(),
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash: TransactionHash(transaction_hash.into()),
@@ -869,7 +869,7 @@ pub(crate) mod dto {
             };
 
             Self::V0(ReceiptV0 {
-                actual_fee: value.actual_fee.map(|x| x.as_inner().to_owned().into()),
+                actual_fee: value.actual_fee.as_inner().to_owned().into(),
                 execution_resources: Some((&value.execution_resources).into()),
                 l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
                 transaction_hash: value.transaction_hash.as_inner().to_owned().into(),
@@ -880,22 +880,28 @@ pub(crate) mod dto {
         }
     }
 
-    impl<T> Dummy<T> for Receipt {
+    impl<T> Dummy<T> for ReceiptV0 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             let execution_status = Faker.fake_with_rng(rng);
-            let revert_error =
-                (execution_status == ExecutionStatus::Reverted).then(|| Faker.fake_with_rng(rng));
+            let revert_error = (execution_status == ExecutionStatus::Reverted).then(|| {
+                let error: String = Faker.fake_with_rng(rng);
+                if error.is_empty() {
+                    "Revert error".to_string()
+                } else {
+                    error
+                }
+            });
 
             // Those fields that were missing in very old receipts are always present
-            Self::V0(ReceiptV0 {
-                actual_fee: Some(Faker.fake_with_rng(rng)),
+            ReceiptV0 {
+                actual_fee: Faker.fake_with_rng(rng),
                 execution_resources: Some(Faker.fake_with_rng(rng)),
                 l2_to_l1_messages: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 transaction_index: Faker.fake_with_rng(rng),
                 execution_status,
                 revert_error,
-            })
+            }
         }
     }
 

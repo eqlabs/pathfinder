@@ -668,7 +668,7 @@ pub mod test_utils {
         let transaction_receipts = vec![
             (
                 Receipt {
-                    actual_fee: None,
+                    actual_fee: Fee::ZERO,
                     execution_resources: ExecutionResources::default(),
                     transaction_hash: transactions[0].hash,
                     transaction_index: TransactionIndex::new_or_panic(0),
