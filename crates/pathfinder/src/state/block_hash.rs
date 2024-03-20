@@ -381,7 +381,7 @@ fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Fel
         | TransactionVariant::DeclareV2(_)
         | TransactionVariant::DeclareV3(_)
         | TransactionVariant::Deploy(_)
-        | TransactionVariant::DeployAccountV0V1(_)
+        | TransactionVariant::DeployAccountV1(_)
         | TransactionVariant::DeployAccountV3(_)
         | TransactionVariant::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
@@ -409,7 +409,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
         TransactionVariant::DeclareV1(tx) => calculate_signature_hash(&tx.signature),
         TransactionVariant::DeclareV2(tx) => calculate_signature_hash(&tx.signature),
         TransactionVariant::DeclareV3(tx) => calculate_signature_hash(&tx.signature),
-        TransactionVariant::DeployAccountV0V1(tx) => calculate_signature_hash(&tx.signature),
+        TransactionVariant::DeployAccountV1(tx) => calculate_signature_hash(&tx.signature),
         TransactionVariant::DeployAccountV3(tx) => calculate_signature_hash(&tx.signature),
         TransactionVariant::InvokeV1(tx) => calculate_signature_hash(&tx.signature),
         TransactionVariant::InvokeV3(tx) => calculate_signature_hash(&tx.signature),

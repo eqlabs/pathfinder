@@ -1112,49 +1112,16 @@ pub(crate) mod dto {
                     transaction_hash: transaction_hash.as_inner().to_owned().into(),
                     version: version.0.into(),
                 })),
-                DeployAccountV0V1(DeployAccountTransactionV0V1 {
+                DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address,
                     max_fee,
-                    version,
                     signature,
                     nonce,
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) if version == TransactionVersion::ZERO => {
-                    Self::V0(TransactionV0::DeployAccount(
-                        self::DeployAccountTransaction::V0(self::DeployAccountTransactionV0V1 {
-                            contract_address: contract_address.as_inner().to_owned().into(),
-                            transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                            max_fee: max_fee.as_inner().to_owned().into(),
-                            signature: signature
-                                .into_iter()
-                                .map(|x| x.as_inner().to_owned().into())
-                                .collect(),
-                            nonce: nonce.as_inner().to_owned().into(),
-                            contract_address_salt: contract_address_salt
-                                .as_inner()
-                                .to_owned()
-                                .into(),
-                            constructor_calldata: constructor_calldata
-                                .into_iter()
-                                .map(|x| x.as_inner().to_owned().into())
-                                .collect(),
-                            class_hash: class_hash.as_inner().to_owned().into(),
-                        }),
-                    ))
-                }
-                DeployAccountV0V1(DeployAccountTransactionV0V1 {
-                    contract_address,
-                    max_fee,
-                    version,
-                    signature,
-                    nonce,
-                    contract_address_salt,
-                    constructor_calldata,
-                    class_hash,
-                }) if version == TransactionVersion::ONE => Self::V0(TransactionV0::DeployAccount(
-                    self::DeployAccountTransaction::V1(self::DeployAccountTransactionV0V1 {
+                }) => Self::V0(TransactionV0::DeployAccount(
+                    self::DeployAccountTransaction::V1(self::DeployAccountTransactionV1 {
                         contract_address: contract_address.as_inner().to_owned().into(),
                         transaction_hash: transaction_hash.as_inner().to_owned().into(),
                         max_fee: max_fee.as_inner().to_owned().into(),
@@ -1171,9 +1138,6 @@ pub(crate) mod dto {
                         class_hash: class_hash.as_inner().to_owned().into(),
                     }),
                 )),
-                DeployAccountV0V1(DeployAccountTransactionV0V1 { version, .. }) => {
-                    panic!("invalid version {version:?}")
-                }
                 DeployAccountV3(DeployAccountTransactionV3 {
                     contract_address,
                     signature,
@@ -1444,37 +1408,8 @@ pub(crate) mod dto {
                         version: TransactionVersion(version.into()),
                     })
                 }
-                Transaction::V0(TransactionV0::DeployAccount(DeployAccountTransaction::V0(
-                    DeployAccountTransactionV0V1 {
-                        contract_address,
-                        transaction_hash: _,
-                        max_fee,
-                        signature,
-                        nonce,
-                        contract_address_salt,
-                        constructor_calldata,
-                        class_hash,
-                    },
-                ))) => TransactionVariant::DeployAccountV0V1(
-                    pathfinder_common::transaction::DeployAccountTransactionV0V1 {
-                        contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        max_fee: Fee(max_fee.into()),
-                        version: TransactionVersion::ZERO,
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                        nonce: TransactionNonce(nonce.into()),
-                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
-                        constructor_calldata: constructor_calldata
-                            .into_iter()
-                            .map(|x| CallParam(x.into()))
-                            .collect(),
-                        class_hash: ClassHash(class_hash.into()),
-                    },
-                ),
                 Transaction::V0(TransactionV0::DeployAccount(DeployAccountTransaction::V1(
-                    DeployAccountTransactionV0V1 {
+                    DeployAccountTransactionV1 {
                         contract_address,
                         transaction_hash: _,
                         max_fee,
@@ -1484,11 +1419,10 @@ pub(crate) mod dto {
                         constructor_calldata,
                         class_hash,
                     },
-                ))) => TransactionVariant::DeployAccountV0V1(
-                    pathfinder_common::transaction::DeployAccountTransactionV0V1 {
+                ))) => TransactionVariant::DeployAccountV1(
+                    pathfinder_common::transaction::DeployAccountTransactionV1 {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
                         max_fee: Fee(max_fee.into()),
-                        version: TransactionVersion::ONE,
                         signature: signature
                             .into_iter()
                             .map(|x| TransactionSignatureElem(x.into()))
@@ -1657,9 +1591,7 @@ pub(crate) mod dto {
                     },
                     Transaction::V0(TransactionV0::Deploy(t)) => t.transaction_hash.clone(),
                     Transaction::V0(TransactionV0::DeployAccount(t)) => match t {
-                        DeployAccountTransaction::V0(t) | DeployAccountTransaction::V1(t) => {
-                            t.transaction_hash.clone()
-                        }
+                        DeployAccountTransaction::V1(t) => t.transaction_hash.clone(),
                         DeployAccountTransaction::V3(t) => t.transaction_hash.clone(),
                     },
                     Transaction::V0(TransactionV0::Invoke(t)) => match t {
@@ -1801,14 +1733,13 @@ pub(crate) mod dto {
     /// Represents deserialized L2 deploy account transaction data.
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     pub enum DeployAccountTransaction {
-        V0(DeployAccountTransactionV0V1),
-        V1(DeployAccountTransactionV0V1),
+        V1(DeployAccountTransactionV1),
         V3(DeployAccountTransactionV3),
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct DeployAccountTransactionV0V1 {
+    pub struct DeployAccountTransactionV1 {
         pub contract_address: MinimalFelt,
         pub transaction_hash: MinimalFelt,
         pub max_fee: MinimalFelt,
@@ -1819,7 +1750,7 @@ pub(crate) mod dto {
         pub class_hash: MinimalFelt,
     }
 
-    impl<T> Dummy<T> for DeployAccountTransactionV0V1 {
+    impl<T> Dummy<T> for DeployAccountTransactionV1 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             let contract_address_salt = Faker.fake_with_rng(rng);
             let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
@@ -2126,10 +2057,9 @@ mod tests {
             },
             StarknetTransaction {
                 hash: transaction_hash_bytes!(b"deploy account tx hash"),
-                variant: TransactionVariant::DeployAccountV0V1(DeployAccountTransactionV0V1 {
+                variant: TransactionVariant::DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address: contract_address_bytes!(b"deploy account contract address"),
                     max_fee: fee_bytes!(b"deploy account max fee"),
-                    version: TransactionVersion::ZERO,
                     signature: vec![
                         transaction_signature_elem_bytes!(b"deploy account tx sig 0"),
                         transaction_signature_elem_bytes!(b"deploy account tx sig 1"),

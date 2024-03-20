@@ -264,7 +264,7 @@ fn map_transaction_variant(
         TransactionVariant::Deploy(_) => {
             anyhow::bail!("Deploy transactions are not yet supported in blockifier")
         }
-        TransactionVariant::DeployAccountV0V1(tx) => {
+        TransactionVariant::DeployAccountV1(tx) => {
             let tx = starknet_api::transaction::DeployAccountTransaction::V1(
                 starknet_api::transaction::DeployAccountTransactionV1 {
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
@@ -506,7 +506,7 @@ pub fn compose_executor_transaction(
             )?)
         }
         TransactionVariant::Deploy(_)
-        | TransactionVariant::DeployAccountV0V1(_)
+        | TransactionVariant::DeployAccountV1(_)
         | TransactionVariant::DeployAccountV3(_)
         | TransactionVariant::InvokeV0(_)
         | TransactionVariant::InvokeV1(_)
@@ -515,7 +515,7 @@ pub fn compose_executor_transaction(
     };
 
     let deployed_address = match &transaction.variant {
-        TransactionVariant::DeployAccountV0V1(tx) => {
+        TransactionVariant::DeployAccountV1(tx) => {
             let contract_address = starknet_api::core::ContractAddress(
                 PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
                     .expect("No contract address overflow expected"),

@@ -128,7 +128,7 @@ pub(crate) fn map_gateway_trace(
             state_diff,
             execution_resources,
         }),
-        TransactionVariant::DeployAccountV0V1(_)
+        TransactionVariant::DeployAccountV1(_)
         | TransactionVariant::DeployAccountV3(_)
         | TransactionVariant::Deploy(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
             constructor_invocation: function_invocation.ok_or(TraceConversionError(

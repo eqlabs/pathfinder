@@ -102,7 +102,7 @@ pub(crate) fn map_gateway_trace(
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
-        TransactionVariant::DeployAccountV0V1(_) | TransactionVariant::DeployAccountV3(_) => {
+        TransactionVariant::DeployAccountV1(_) | TransactionVariant::DeployAccountV3(_) => {
             TransactionTrace::DeployAccount(DeployAccountTxnTrace {
                 constructor_invocation: trace.function_invocation.map(Into::into),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),

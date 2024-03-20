@@ -13,7 +13,6 @@ use pathfinder_common::transaction::DataAvailabilityMode;
 use pathfinder_common::{event::Event, transaction::ResourceBound, transaction::Transaction};
 use pathfinder_common::{
     AccountDeploymentDataElem, L1DataAvailabilityMode, PaymasterDataElem, TransactionHash,
-    TransactionVersion,
 };
 use pathfinder_crypto::Felt;
 use starknet_gateway_types::class_definition::{Cairo, Sierra};
@@ -93,10 +92,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 // Only these two values are allowed in storage
                 version: if x.version.is_zero() { 0 } else { 1 },
             }),
-            DeployAccountV0V1(x) if x.version == TransactionVersion::ZERO => {
-                panic!("version zero")
-            }
-            DeployAccountV0V1(x) => {
+            DeployAccountV1(x) => {
                 proto::TransactionVariant::DeployAccountV1(proto::DeployAccountV1 {
                     max_fee: x.max_fee.0,
                     signature: AccountSignature {
@@ -247,7 +243,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
                 common,
                 contract_address: x.contract_address.0,
             }),
-            TransactionVariant::DeployAccountV0V1(x) => {
+            TransactionVariant::DeployAccountV1(x) => {
                 DeployAccount(DeployAccountTransactionReceipt {
                     common,
                     contract_address: x.contract_address.0,

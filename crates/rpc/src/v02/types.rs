@@ -528,16 +528,25 @@ pub mod request {
                 }
                 BroadcastedTransaction::DeployAccount(
                     BroadcastedDeployAccountTransaction::V0V1(deploy),
-                ) => TransactionVariant::DeployAccountV0V1(DeployAccountTransactionV0V1 {
-                    contract_address: deploy.deployed_contract_address(),
-                    max_fee: deploy.max_fee,
-                    version: deploy.version,
-                    signature: deploy.signature,
-                    nonce: deploy.nonce,
-                    contract_address_salt: deploy.contract_address_salt,
-                    constructor_calldata: deploy.constructor_calldata,
-                    class_hash: deploy.class_hash,
-                }),
+                ) if deploy.version.without_query_version()
+                    == TransactionVersion::ONE.without_query_version() =>
+                {
+                    TransactionVariant::DeployAccountV1(DeployAccountTransactionV1 {
+                        contract_address: deploy.deployed_contract_address(),
+                        max_fee: deploy.max_fee,
+                        signature: deploy.signature,
+                        nonce: deploy.nonce,
+                        contract_address_salt: deploy.contract_address_salt,
+                        constructor_calldata: deploy.constructor_calldata,
+                        class_hash: deploy.class_hash,
+                    })
+                }
+                BroadcastedTransaction::DeployAccount(
+                    BroadcastedDeployAccountTransaction::V0V1(deploy),
+                ) => panic!(
+                    "deploy account transaction version {:?} is not supported",
+                    deploy.version
+                ),
                 BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(
                     deploy,
                 )) => TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {

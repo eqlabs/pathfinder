@@ -38,15 +38,6 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 let events = mem::take(&mut receipt.events);
                 let receipt = pathfinder_common::receipt::Receipt::from(receipt);
 
-                if let pathfinder_common::transaction::TransactionVariant::DeployAccountV0V1(
-                    ref t,
-                ) = transaction.variant
-                {
-                    if t.version == pathfinder_common::TransactionVersion::ZERO {
-                        panic!("version zero");
-                    }
-                }
-
                 // Serialize into new DTOs.
                 let transaction = crate::transaction::dto::Transaction::from(&transaction);
                 let transaction =
@@ -797,10 +788,9 @@ pub(crate) mod old_dto {
                     transaction_hash,
                     version,
                 }),
-                DeployAccountV0V1(DeployAccountTransactionV0V1 {
+                DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address,
                     max_fee,
-                    version,
                     signature,
                     nonce,
                     contract_address_salt,
@@ -811,7 +801,7 @@ pub(crate) mod old_dto {
                         contract_address,
                         transaction_hash,
                         max_fee,
-                        version,
+                        version: TransactionVersion::ONE,
                         signature,
                         nonce,
                         contract_address_salt,
@@ -1031,18 +1021,24 @@ pub(crate) mod old_dto {
                         constructor_calldata,
                         class_hash,
                     },
-                )) => TransactionVariant::DeployAccountV0V1(
-                    pathfinder_common::transaction::DeployAccountTransactionV0V1 {
-                        contract_address,
-                        max_fee,
-                        version,
-                        signature,
-                        nonce,
-                        contract_address_salt,
-                        constructor_calldata,
-                        class_hash,
-                    },
-                ),
+                )) if version.without_query_version()
+                    == TransactionVersion::ONE.without_query_version() =>
+                {
+                    TransactionVariant::DeployAccountV1(
+                        pathfinder_common::transaction::DeployAccountTransactionV1 {
+                            contract_address,
+                            max_fee,
+                            signature,
+                            nonce,
+                            contract_address_salt,
+                            constructor_calldata,
+                            class_hash,
+                        },
+                    )
+                }
+                Transaction::DeployAccount(DeployAccountTransaction::V0V1(
+                    DeployAccountTransactionV0V1 { version, .. },
+                )) => panic!("unexpected version for DeployAccountV0V1: {version:?}"),
                 Transaction::DeployAccount(DeployAccountTransaction::V3(
                     DeployAccountTransactionV3 {
                         nonce,

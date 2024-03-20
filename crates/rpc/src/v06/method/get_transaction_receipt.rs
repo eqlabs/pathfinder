@@ -509,7 +509,7 @@ pub mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                TransactionVariant::DeployAccountV0V1(tx) => {
+                TransactionVariant::DeployAccountV1(tx) => {
                     Self::DeployAccount(DeployAccountTransactionReceipt {
                         common,
                         contract_address: tx.contract_address,
@@ -649,7 +649,7 @@ pub mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                TransactionVariant::DeployAccountV0V1(tx) => {
+                TransactionVariant::DeployAccountV1(tx) => {
                     Self::DeployAccount(PendingDeployAccountTransactionReceipt {
                         common,
                         contract_address: tx.contract_address,

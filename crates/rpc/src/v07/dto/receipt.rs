@@ -209,7 +209,7 @@ impl TxnReceipt {
                 contract_address: tx.contract_address,
                 common,
             },
-            TransactionVariant::DeployAccountV0V1(tx) => Self::DeployAccount {
+            TransactionVariant::DeployAccountV1(tx) => Self::DeployAccount {
                 contract_address: tx.contract_address,
                 common,
             },
@@ -252,7 +252,7 @@ impl PendingTxnReceipt {
                 contract_address: tx.contract_address,
                 common,
             },
-            TransactionVariant::DeployAccountV0V1(tx) => Self::DeployAccount {
+            TransactionVariant::DeployAccountV1(tx) => Self::DeployAccount {
                 contract_address: tx.contract_address,
                 common,
             },

@@ -6,7 +6,7 @@ use pathfinder_common::{
     state_update::StateUpdateCounts,
     transaction::{
         DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
-        DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
+        DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransaction,
         InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
         ResourceBound, ResourceBounds, Transaction, TransactionVariant,
     },
@@ -172,10 +172,9 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                     _ => anyhow::bail!("Invalid deploy transaction version"),
                 },
             }),
-            DeployAccountV1(x) => Self::DeployAccountV0V1(DeployAccountTransactionV0V1 {
+            DeployAccountV1(x) => Self::DeployAccountV1(DeployAccountTransactionV1 {
                 contract_address: ContractAddress::ZERO,
                 max_fee: Fee(x.max_fee),
-                version: TransactionVersion::ONE,
                 signature: x
                     .signature
                     .parts

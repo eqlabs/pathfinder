@@ -1048,10 +1048,9 @@ pub(crate) mod transaction {
                     transaction_hash,
                     version,
                 }),
-                DeployAccountV0V1(DeployAccountTransactionV0V1 {
+                DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address,
                     max_fee,
-                    version,
                     signature,
                     nonce,
                     contract_address_salt,
@@ -1062,7 +1061,7 @@ pub(crate) mod transaction {
                         contract_address,
                         transaction_hash,
                         max_fee,
-                        version,
+                        version: TransactionVersion::ONE,
                         signature,
                         nonce,
                         contract_address_salt,
@@ -1282,18 +1281,24 @@ pub(crate) mod transaction {
                         constructor_calldata,
                         class_hash,
                     },
-                )) => TransactionVariant::DeployAccountV0V1(
-                    pathfinder_common::transaction::DeployAccountTransactionV0V1 {
-                        contract_address,
-                        max_fee,
-                        version,
-                        signature,
-                        nonce,
-                        contract_address_salt,
-                        constructor_calldata,
-                        class_hash,
-                    },
-                ),
+                )) if version.without_query_version()
+                    == TransactionVersion::ONE.without_query_version() =>
+                {
+                    TransactionVariant::DeployAccountV1(
+                        pathfinder_common::transaction::DeployAccountTransactionV1 {
+                            contract_address,
+                            max_fee,
+                            signature,
+                            nonce,
+                            contract_address_salt,
+                            constructor_calldata,
+                            class_hash,
+                        },
+                    )
+                }
+                Transaction::DeployAccount(DeployAccountTransaction::V0V1(
+                    DeployAccountTransactionV0V1 { version, .. },
+                )) => panic!("unexpected deploy account transaction version {version:?}"),
                 Transaction::DeployAccount(DeployAccountTransaction::V3(
                     DeployAccountTransactionV3 {
                         nonce,
