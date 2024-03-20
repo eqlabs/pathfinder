@@ -1,45 +1,30 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::peer_agnostic::RawClass;
+use p2p::client::peer_agnostic::Class;
 use p2p::PeerData;
-use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
+use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
+use starknet_gateway_types::class_definition::ClassDefinition;
+use starknet_gateway_types::class_hash::from_parts::{
+    compute_cairo_class_hash, compute_sierra_class_hash,
+};
 use tokio::task::spawn_blocking;
-
-#[derive(Clone, Debug)]
-pub enum Class {
-    Cairo {
-        block_number: BlockNumber,
-        hash: ClassHash,
-        definition: Vec<u8>,
-    },
-    Sierra {
-        block_number: BlockNumber,
-        sierra_hash: SierraHash,
-        sierra_definition: Vec<u8>,
-        casm_hash: CasmHash,
-        casm_definition: Vec<u8>,
-    },
-}
-
-impl Class {
-    pub fn block_number(&self) -> BlockNumber {
-        match self {
-            Self::Cairo { block_number, .. } => *block_number,
-            Self::Sierra { block_number, .. } => *block_number,
-        }
-    }
-}
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum ClassDefinitionSyncError {
     #[error(transparent)]
     ClassDefinitionStreamError(#[from] anyhow::Error),
+    #[error("Invalid class definition layout")]
+    BadLayout(PeerData<(BlockNumber, ClassHash, serde_json::Error)>),
     #[error("Class hash verification failed")]
     BadClassHash(PeerData<(BlockNumber, ClassHash)>),
-    #[error("Compiling sierra into casm failed")]
-    SierraCompilationError(PeerData<(BlockNumber, SierraHash)>),
+}
+
+#[derive(Debug)]
+pub struct ClassWithLayout {
+    pub class: Class,
+    pub layout: ClassDefinition<'static>,
 }
 
 /// Returns the first block number which is missing at least one class definition, counting from genesis
@@ -115,16 +100,99 @@ pub(super) fn declared_class_counts_stream(
     }
 }
 
-pub(super) async fn verify_hash(
-    class: PeerData<RawClass>,
-) -> Result<PeerData<RawClass>, ClassDefinitionSyncError> {
-    todo!()
+pub(super) async fn verify_layout<'a>(
+    peer_data: PeerData<Class>,
+) -> Result<PeerData<ClassWithLayout>, ClassDefinitionSyncError> {
+    let PeerData { peer, data } = peer_data;
+    match data {
+        Class::Cairo {
+            block_number,
+            hash,
+            definition,
+        } => {
+            let layout = serde_json::from_slice(&definition).map_err(|e| {
+                ClassDefinitionSyncError::BadLayout(PeerData::new(peer, (block_number, hash, e)))
+            })?;
+            Ok(PeerData::new(
+                peer,
+                ClassWithLayout {
+                    class: Class::Cairo {
+                        block_number,
+                        hash,
+                        definition,
+                    },
+                    layout,
+                },
+            ))
+        }
+        Class::Sierra {
+            block_number,
+            sierra_hash,
+            sierra_definition,
+            casm_definition,
+        } => {
+            let layout = serde_json::from_slice(&sierra_definition).map_err(|e| {
+                ClassDefinitionSyncError::BadLayout(PeerData::new(
+                    peer,
+                    (block_number, ClassHash(sierra_hash.0), e),
+                ))
+            })?;
+            Ok(PeerData::new(
+                peer,
+                ClassWithLayout {
+                    class: Class::Sierra {
+                        block_number,
+                        sierra_hash,
+                        sierra_definition,
+                        casm_definition,
+                    },
+                    layout,
+                },
+            ))
+        }
+    }
 }
 
-pub(super) async fn compile_sierra(
-    class: PeerData<RawClass>,
+pub(super) async fn verify_hash(
+    peer_data: PeerData<ClassWithLayout>,
 ) -> Result<PeerData<Class>, ClassDefinitionSyncError> {
-    todo!()
+    let PeerData { peer, data } = peer_data;
+    let ClassWithLayout { class, layout } = data;
+
+    let err = || {
+        ClassDefinitionSyncError::BadClassHash(PeerData::new(
+            peer,
+            (class.block_number(), class.hash()),
+        ))
+    };
+
+    let computed = tokio::task::spawn_blocking(move || match layout {
+        ClassDefinition::Cairo(c) => compute_cairo_class_hash(
+            c.abi.as_ref().get().as_bytes(),
+            c.program.as_ref().get().as_bytes(),
+            c.entry_points_by_type.external,
+            c.entry_points_by_type.l1_handler,
+            c.entry_points_by_type.constructor,
+        ),
+        ClassDefinition::Sierra(c) => compute_sierra_class_hash(
+            c.abi.as_ref(),
+            c.sierra_program,
+            c.contract_class_version.as_ref(),
+            c.entry_points_by_type,
+        ),
+    })
+    .await
+    .map_err(|_| err())?
+    .map_err(|_| err())?;
+
+    if computed == class.hash() {
+        Ok(PeerData::new(peer, class))
+    } else {
+        Err(ClassDefinitionSyncError::BadClassHash(PeerData::new(
+            peer,
+            (class.block_number(), class.hash()),
+        )))
+    }
 }
 
 pub(super) async fn persist(
@@ -160,10 +228,14 @@ pub(super) async fn persist(
                 Class::Sierra {
                     sierra_hash,
                     sierra_definition,
-                    casm_hash,
                     casm_definition,
                     ..
                 } => {
+                    let casm_hash = transaction
+                        .casm_hash(ClassHash(sierra_hash.0))
+                        .context("Getting casm hash for sierra class")?
+                        .ok_or(anyhow::anyhow!("Casm hash not found"))?;
+
                     transaction
                         .insert_sierra_class(
                             &sierra_hash,

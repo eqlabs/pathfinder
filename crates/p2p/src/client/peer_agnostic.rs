@@ -41,8 +41,17 @@ impl<T> PeerData<T> {
     }
 }
 
+impl<T> PeerData<T> {
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> PeerData<U> {
+        PeerData {
+            peer: self.peer,
+            data: f(self.data),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
-pub enum RawClass {
+pub enum Class {
     Cairo {
         block_number: BlockNumber,
         hash: ClassHash,
@@ -54,6 +63,22 @@ pub enum RawClass {
         sierra_definition: Vec<u8>,
         casm_definition: Vec<u8>,
     },
+}
+
+impl Class {
+    pub fn block_number(&self) -> BlockNumber {
+        match self {
+            Self::Cairo { block_number, .. } => *block_number,
+            Self::Sierra { block_number, .. } => *block_number,
+        }
+    }
+
+    pub fn hash(&self) -> ClassHash {
+        match self {
+            Self::Cairo { hash, .. } => *hash,
+            Self::Sierra { sierra_hash, .. } => ClassHash(sierra_hash.0),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -386,7 +411,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<RawClass>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<Class>>> {
         async_stream::try_stream! {
         pin_mut!(declared_class_counts_stream);
 
@@ -430,7 +455,7 @@ impl Client {
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
                             ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _ , class_hash }) => {
-                                yield PeerData::new(peer, RawClass::Cairo {
+                                yield PeerData::new(peer, Class::Cairo {
                                     block_number: start,
                                     hash: ClassHash(class_hash.0),
                                     definition: CairoDefinition::try_from_dto(class)?.0,
@@ -438,7 +463,7 @@ impl Client {
                             },
                             ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _, class_hash }) => {
                                 let definition = SierraDefinition::try_from_dto(class)?;
-                                yield PeerData::new(peer, RawClass::Sierra {
+                                yield PeerData::new(peer, Class::Sierra {
                                     block_number: start,
                                     sierra_hash: SierraHash(class_hash.0),
                                     sierra_definition: definition.sierra,

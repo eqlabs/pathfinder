@@ -457,8 +457,8 @@ impl Sync {
                     ),
                 )
                 .map_err(Into::into)
+                .and_then(class_definitions::verify_layout)
                 .and_then(class_definitions::verify_hash)
-                .and_then(class_definitions::compile_sierra)
                 .try_chunks(1000)
                 .map_err(|e| e.1)
                 .and_then(|x| class_definitions::persist(self.storage.clone(), x))
@@ -474,11 +474,11 @@ impl Sync {
                 Err(ClassDefinitionSyncError::ClassDefinitionStreamError(error)) => {
                     tracing::debug!(%error, "Error while streaming class definitions")
                 }
-                Err(ClassDefinitionSyncError::BadClassHash(peer_data)) => {
+                Err(ClassDefinitionSyncError::BadLayout(peer_data)) => {
                     tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
                 }
-                Err(ClassDefinitionSyncError::SierraCompilationError(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, sierra_hash=%peer_data.data.1, "Sierra compilation failed")
+                Err(ClassDefinitionSyncError::BadClassHash(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
                 }
             }
         }
