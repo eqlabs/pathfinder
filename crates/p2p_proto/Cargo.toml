@@ -10,13 +10,13 @@ build = "build.rs"
 [dependencies]
 anyhow = { workspace = true }
 fake = { workspace = true, features = ["serde_json"] }
-libp2p-identity = { version = "0.2.2", features = ["peerid"] }
+libp2p-identity = { workspace = true, features = ["peerid"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true }
-prost = "0.12.1"
-prost-types = "0.12.1"
+prost = { workspace = true }
+prost-types = { workspace = true }
 rand = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
 
@@ -24,4 +24,4 @@ serde_json = { workspace = true, features = ["raw_value"] }
 pretty_assertions_sorted = { workspace = true }
 
 [build-dependencies]
-prost-build = "0.12.1"
+prost-build = { workspace = true }

@@ -14,9 +14,9 @@ base64 = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
-hyper = "0.14.27"
+hyper = { workspace = true }
 metrics = { workspace = true }
-mime = "0.3"
+mime = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }
@@ -40,19 +40,8 @@ starknet-gateway-types = { path = "../gateway-types" }
 starknet_api = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "process"] }
-tower = { version = "0.4.13", default-features = false, features = [
-    "filter",
-    "util",
-    "limit",
-    "timeout",
-] }
-tower-http = { version = "0.4.0", default-features = false, features = [
-    "cors",
-    "limit",
-    "request-id",
-    "trace",
-    "util",
-] }
+tower = { workspace = true, features = ["filter", "util", "limit", "timeout"] }
+tower-http = { workspace = true, features = ["cors", "limit", "request-id", "trace", "util"] }
 tracing = { workspace = true }
 zstd = { workspace = true }
 
@@ -65,7 +54,7 @@ lazy_static = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
-tempfile = "3.6"
+tempfile = { workspace = true }
 test-log = { workspace = true }
-tokio-tungstenite = "0.20"
+tokio-tungstenite = { workspace = true }
 tracing-subscriber = { workspace = true }

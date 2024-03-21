@@ -16,7 +16,7 @@ bitvec = { workspace = true }
 fake = { workspace = true }
 metrics = { workspace = true }
 num-bigint = { workspace = true }
-paste = "1.0.14"
+paste = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
@@ -34,7 +34,4 @@ thiserror = { workspace = true }
 rstest = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-    "git",
-    "gitcl",
-] }
+vergen = { workspace = true, features = ["git", "gitcl"] }

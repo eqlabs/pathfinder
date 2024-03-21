@@ -9,7 +9,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-cairo-lang-starknet-classes = "=2.6.0"
+cairo-lang-starknet-classes = { workspace = true }
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }

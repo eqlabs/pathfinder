@@ -14,7 +14,7 @@ bytes = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
-mockall = { version = "0.11.4" }
+mockall = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-serde = { path = "../serde" }
@@ -27,7 +27,7 @@ serde_json = { workspace = true, features = [
 starknet-gateway-types = { path = "../gateway-types" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 tracing = { workspace = true }
-warp = { version = "0.3.5" }
+warp = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }

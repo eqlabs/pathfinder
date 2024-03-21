@@ -9,7 +9,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 tokio = { workspace = true }
-tokio-retry = "0.3.0"
+tokio-retry = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "test-util"] }
