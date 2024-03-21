@@ -234,6 +234,7 @@ impl Default for SyncState {
     }
 }
 
+#[cfg(test)]
 pub mod test_utils {
     use crate::pending::PendingData;
     use pathfinder_common::event::Event;
