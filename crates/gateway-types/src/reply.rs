@@ -630,11 +630,7 @@ pub(crate) mod transaction {
             };
 
             Self {
-                actual_fee: if actual_fee == Fee::ZERO {
-                    None
-                } else {
-                    Some(actual_fee)
-                },
+                actual_fee: Some(actual_fee),
                 events,
                 execution_resources: Some(execution_resources.into()),
                 l1_to_l2_consumed_message: None,

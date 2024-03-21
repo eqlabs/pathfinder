@@ -450,11 +450,7 @@ pub(crate) mod old_dto {
             };
 
             Self {
-                actual_fee: if value.actual_fee == Fee::ZERO {
-                    None
-                } else {
-                    Some(value.actual_fee)
-                },
+                actual_fee: Some(value.actual_fee),
                 events: vec![],
                 execution_resources: Some((&value.execution_resources).into()),
                 // We don't care about this field anymore.
