@@ -517,7 +517,6 @@ pub(crate) mod dto {
         fn from(value: MinimalFelt) -> Self {
             let mut bytes = [0; 32];
             let num_zeros = bytes.len() - value.0.len();
-            bytes[..num_zeros].fill(0);
             bytes[num_zeros..].copy_from_slice(&value.0);
             Felt::from_be_bytes(bytes).unwrap()
         }
