@@ -467,9 +467,9 @@ pub(crate) mod tests {
                 data_gas_price: None,
             };
             let invoke_v0_expected = FeeEstimate {
-                gas_consumed: 880.into(),
+                gas_consumed: 1669.into(),
                 gas_price: 1.into(),
-                overall_fee: 880.into(),
+                overall_fee: 1669.into(),
                 unit: PriceUnit::Wei,
                 data_gas_consumed: None,
                 data_gas_price: None,

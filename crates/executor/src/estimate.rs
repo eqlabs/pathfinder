@@ -39,7 +39,21 @@ pub fn estimate(
             blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
         };
 
-        let tx_info = transaction
+        let minimal_l1_gas_amount_vector = match &transaction {
+            Transaction::AccountTransaction(account_transaction) => Some(
+                blockifier::fee::gas_usage::estimate_minimal_gas_vector(
+                    &block_context,
+                    account_transaction,
+                )
+                .map_err(|e| TransactionExecutionError::new(transaction_idx, e.into()))?,
+            ),
+            Transaction::L1HandlerTransaction(_) => None,
+        };
+
+        let tx_info: Result<
+            blockifier::transaction::objects::TransactionExecutionInfo,
+            blockifier::transaction::errors::TransactionExecutionError,
+        > = transaction
             .execute(&mut state, &block_context, false, !skip_validate)
             .and_then(|mut tx_info| {
                 if tx_info.actual_fee.0 == 0 {
@@ -71,6 +85,7 @@ pub fn estimate(
                     gas_price,
                     data_gas_price,
                     unit,
+                    minimal_l1_gas_amount_vector,
                 ));
             }
             Err(error) => {
