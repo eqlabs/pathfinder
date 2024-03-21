@@ -210,6 +210,23 @@ mod macros {
             pub(super) mod $table {
                 use super::*;
 
+                pub fn remove(tx: &Transaction<'_>, removed: &[u64]) -> anyhow::Result<()> {
+                    let mut stmt = tx
+                        .inner()
+                        .prepare_cached(concat!(
+                            "DELETE FROM ",
+                            stringify!($table),
+                            " WHERE idx = ?",
+                        ))
+                        .context("Creating delete statement")?;
+
+                    for idx in removed {
+                        stmt.execute(params![idx]).context("Deleting node")?;
+                    }
+
+                    Ok(())
+                }
+
                 /// Stores the node data for this trie and returns the index of the root.
                 pub fn insert(tx: &Transaction<'_>, update: &TrieUpdate) -> anyhow::Result<u64> {
                     assert!(update.nodes_added.len() > 0, "Must have at least one node");
@@ -899,6 +916,28 @@ mod tests {
             assert_eq!(hash, Some(binary_leaf_hash));
             let node = test_table::node(&tx, child).unwrap().unwrap();
             node.into_binary_leaf().unwrap();
+        }
+
+        #[test]
+        fn removed_nodes() {
+            let mut db = setup_db();
+            let tx = db.transaction().unwrap();
+            let tx = crate::Transaction::new(tx);
+
+            let update = TrieUpdate {
+                nodes_added: vec![(
+                    felt_bytes!(b"root"),
+                    Node::LeafEdge {
+                        path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1],
+                    },
+                )],
+                nodes_removed: Default::default(),
+            };
+
+            let root_idx = test_table::insert(&tx, &update).unwrap();
+
+            test_table::remove(&tx, &[root_idx]).unwrap();
+            assert!(test_table::node(&tx, root_idx).unwrap().is_none());
         }
 
         #[test]
