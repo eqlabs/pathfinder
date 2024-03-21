@@ -93,7 +93,7 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
     /// ## Important
     ///
     /// This conversion does not compute deployed contract address for deploy account transactions
-    /// ([`TransactionVariant::DeployAccountV0V1`] and [`TransactionVariant::DeployAccountV3`]),
+    /// ([`TransactionVariant::DeployAccountV1`] and [`TransactionVariant::DeployAccountV3`]),
     /// filling it with a zero address instead. The caller is responsible for performing the computation after the conversion succeeds.
     fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
     where
