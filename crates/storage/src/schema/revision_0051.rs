@@ -36,6 +36,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     .context("Deserializing receipt")
                     .unwrap();
                 let events = mem::take(&mut receipt.events);
+                if receipt.actual_fee.is_none() {
+                    panic!("receipt with no fee {receipt:?}");
+                }
                 let receipt = pathfinder_common::receipt::Receipt::from(receipt);
 
                 // Serialize into new DTOs.
