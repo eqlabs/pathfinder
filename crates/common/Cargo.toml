@@ -13,7 +13,7 @@ full-serde = []
 [dependencies]
 anyhow = { workspace = true }
 bitvec = { workspace = true }
-fake = { workspace = true }
+fake = { workspace = true, features = ["derive"] }
 metrics = { workspace = true }
 num-bigint = { workspace = true }
 paste = { workspace = true }
