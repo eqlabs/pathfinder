@@ -4501,9 +4501,6 @@ name = "ipnet"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f518f335dce6725a761382244631d86cf0ccb2863413590b31338feb467f9c3"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "is-terminal"
@@ -8304,7 +8301,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6159ab4116165c99fc88cce31f99fa2c9dbe08d3691cb38da02fc3b45f357d2b"
 dependencies = [
  "test-log-macros",
- "tracing-subscriber",
 ]
 
 [[package]]
