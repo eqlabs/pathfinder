@@ -47,5 +47,5 @@ assert_matches = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
-test-log = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }

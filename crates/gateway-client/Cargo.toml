@@ -39,7 +39,7 @@ lazy_static = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 pretty_assertions_sorted = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-test-log = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }
 
 [[test]]
