@@ -195,9 +195,9 @@ mod tests {
         let invoke_v0_expected = FeeEstimate {
             gas_consumed: 10.into(),
             gas_price: 1.into(),
-            overall_fee: 138.into(),
+            overall_fee: 266.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(64.into()),
+            data_gas_consumed: Some(128.into()),
             data_gas_price: Some(2.into()),
         };
         let invoke_v3_expected = FeeEstimate {
