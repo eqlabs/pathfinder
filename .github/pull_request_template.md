@@ -6,6 +6,11 @@ A longer description, include motivation and intent if possible. Detail any cave
 
 ---------------------------
 
+Consider motivating any new dependencies.
+
+---------------------------
+
 Delete once completed:
 - [ ] link any issues closed by this pull-request
 - [ ] add all user-facing changes to `CHANGELOG.md`
+- [ ] new dependencies were added to the workspace toml
