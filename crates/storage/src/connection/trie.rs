@@ -185,11 +185,9 @@ mod macros {
                 use super::*;
 
                 /// Stores the node data for this trie and returns the index of the root.
-                pub fn insert(
-                    tx: &Transaction<'_>,
-                    root: Felt,
-                    nodes: &HashMap<Felt, Node>,
-                ) -> anyhow::Result<u64> {
+                pub fn insert(tx: &Transaction<'_>, update: &TrieUpdate) -> anyhow::Result<u64> {
+                    assert!(update.nodes_added.len() > 0, "Must have at least one node");
+
                     let mut stmt = tx
                         .inner()
                         .prepare_cached(concat!(
@@ -200,28 +198,29 @@ mod macros {
                         .context("Creating insert statement")?;
 
                     let mut to_insert = Vec::new();
-                    let mut to_process = vec![Child::Hash(root)];
+                    let mut to_process = vec![NodeRef::Index(update.nodes_added.len() - 1)];
 
                     while let Some(node) = to_process.pop() {
-                        // Only hash variants need to be stored.
+                        // Only index variants need to be stored.
                         //
                         // Leaf nodes never get stored and a node having an
                         // ID indicates it has already been stored as part of a
                         // previous tree - and its children as well.
-                        let Child::Hash(hash) = node else {
+                        let NodeRef::Index(idx) = node else {
                             continue;
                         };
 
-                        let node = nodes.get(&hash).context("New node data is missing")?;
-                        to_insert.push(hash);
+                        let (_, node) =
+                            &update.nodes_added.get(idx).context("Node index missing")?;
+                        to_insert.push(idx);
 
                         match node {
                             Node::Binary { left, right } => {
-                                to_process.push(left.clone());
-                                to_process.push(right.clone());
+                                to_process.push(*left);
+                                to_process.push(*right);
                             }
                             Node::Edge { child, .. } => {
-                                to_process.push(child.clone());
+                                to_process.push(*child);
                             }
                             // Leaves are not stored as separate nodes but are instead serialized in-line in their parents.
                             Node::LeafEdge { .. } | Node::LeafBinary { .. } => {}
@@ -234,27 +233,26 @@ mod macros {
                     let mut buffer = vec![0u8; 256];
 
                     // Insert nodes in reverse to ensure children always have an assigned index for the parent to use.
-                    for hash in to_insert.into_iter().rev() {
-                        let node = nodes
-                            .get(&hash)
-                            .expect("Node must exist as hash is dependent on this");
+                    for idx in to_insert.into_iter().rev() {
+                        let (hash, node) =
+                            &update.nodes_added.get(idx).context("Node index missing")?;
 
                         let node = node.as_stored(&indices)?;
 
                         let length = node.encode(&mut buffer).context("Encoding node")?;
 
-                        let idx: u64 = stmt
+                        let storage_idx: u64 = stmt
                             .query_row(
                                 params![&hash.as_be_bytes().as_slice(), &&buffer[..length]],
                                 |row| row.get(0),
                             )
                             .context("Inserting node")?;
 
-                        indices.insert(hash, idx);
+                        indices.insert(idx, storage_idx);
                     }
 
                     Ok(*indices
-                        .get(&root)
+                        .get(&update.root_index().unwrap())
                         .expect("Root index must exist as we just inserted it"))
                 }
 
@@ -310,14 +308,40 @@ mod macros {
     pub(super) use create_trie_fns;
 }
 
+/// The result of committing a Merkle tree.
+#[derive(Default, Debug)]
+pub struct TrieUpdate {
+    /// New nodes added. Note that these may contain false positives if the
+    /// mutations resulted in removing and then re-adding the same nodes within the tree.
+    ///
+    /// The last node is the root of the trie.
+    pub nodes_added: Vec<(Felt, Node)>,
+    // Nodes committed to storage that have been removed.
+    pub nodes_removed: Vec<u64>,
+}
+
+impl TrieUpdate {
+    pub fn root_index(&self) -> Option<usize> {
+        if self.nodes_added.is_empty() {
+            None
+        } else {
+            Some(self.nodes_added.len() - 1)
+        }
+    }
+
+    pub fn root_hash(&self) -> Felt {
+        self.nodes_added.last().map(|x| x.0).unwrap_or_default()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Node {
     Binary {
-        left: Child,
-        right: Child,
+        left: NodeRef,
+        right: NodeRef,
     },
     Edge {
-        child: Child,
+        child: NodeRef,
         path: BitVec<u8, Msb0>,
     },
     LeafBinary,
@@ -326,10 +350,13 @@ pub enum Node {
     },
 }
 
-#[derive(Clone, Debug)]
-pub enum Child {
-    Id(u64),
-    Hash(Felt),
+#[derive(Copy, Clone, Debug)]
+pub enum NodeRef {
+    // A reference to a node that has already been committed to storage.
+    StorageIndex(u64),
+    // A reference to a node that has not yet been committed to storage.
+    // The index within the `nodes_added` vector is used as a reference.
+    Index(usize),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -448,25 +475,31 @@ impl StoredNode {
 }
 
 impl Node {
-    fn as_stored(&self, indices: &HashMap<Felt, u64>) -> anyhow::Result<StoredNode> {
+    fn as_stored(&self, storage_indices: &HashMap<usize, u64>) -> anyhow::Result<StoredNode> {
         let node = match self {
             Node::Binary { left, right } => {
                 let left = match left {
-                    Child::Id(id) => *id,
-                    Child::Hash(hash) => *indices.get(hash).context("Left child index missing")?,
+                    NodeRef::StorageIndex(id) => *id,
+                    NodeRef::Index(idx) => *storage_indices
+                        .get(idx)
+                        .context("Left child index missing")?,
                 };
 
                 let right = match right {
-                    Child::Id(id) => *id,
-                    Child::Hash(hash) => *indices.get(hash).context("Right child index missing")?,
+                    NodeRef::StorageIndex(id) => *id,
+                    NodeRef::Index(idx) => *storage_indices
+                        .get(idx)
+                        .context("Right child index missing")?,
                 };
 
                 StoredNode::Binary { left, right }
             }
             Node::Edge { child, path } => {
                 let child = match child {
-                    Child::Id(id) => id,
-                    Child::Hash(hash) => indices.get(hash).context("Child index missing")?,
+                    NodeRef::StorageIndex(id) => id,
+                    NodeRef::Index(idx) => {
+                        storage_indices.get(idx).context("Child index missing")?
+                    }
                 };
 
                 StoredNode::Edge {
@@ -568,10 +601,13 @@ mod tests {
         // Simplest trie node setup so we can test the fetching of contract root hashes.
         let root0 = contract_root_bytes!(b"root 0");
         let root_node = Node::LeafBinary;
-        let mut nodes = HashMap::new();
-        nodes.insert(root0.0, root_node.clone());
+        let nodes = vec![(root0.0, root_node.clone())];
+        let update = TrieUpdate {
+            nodes_added: nodes,
+            ..Default::default()
+        };
 
-        let idx0 = trie_contracts::insert(&tx, root0.0, &nodes).unwrap();
+        let idx0 = trie_contracts::insert(&tx, &update).unwrap();
 
         let result1 = contract_root_index(&tx, BlockNumber::GENESIS, c1).unwrap();
         assert_eq!(result1, None);
@@ -587,9 +623,13 @@ mod tests {
         assert_eq!(hash2, None);
 
         let root1 = contract_root_bytes!(b"root 1");
-        nodes.clear();
-        nodes.insert(root1.0, root_node.clone());
-        let idx1 = trie_contracts::insert(&tx, root1.0, &nodes).unwrap();
+        let nodes = vec![(root1.0, root_node.clone())];
+        let update = TrieUpdate {
+            nodes_added: nodes,
+            ..Default::default()
+        };
+
+        let idx1 = trie_contracts::insert(&tx, &update).unwrap();
 
         insert_contract_root(&tx, BlockNumber::GENESIS + 1, c1, Some(idx1)).unwrap();
         insert_contract_root(&tx, BlockNumber::GENESIS + 1, c2, Some(888)).unwrap();
@@ -613,9 +653,12 @@ mod tests {
         assert_eq!(hash1, Some(root1));
 
         let root2 = contract_root_bytes!(b"root 2");
-        nodes.clear();
-        nodes.insert(root2.0, root_node.clone());
-        let idx2 = trie_contracts::insert(&tx, root2.0, &nodes).unwrap();
+        let nodes = vec![(root2.0, root_node.clone())];
+        let update = TrieUpdate {
+            nodes_added: nodes,
+            ..Default::default()
+        };
+        let idx2 = trie_contracts::insert(&tx, &update).unwrap();
 
         insert_contract_root(&tx, BlockNumber::GENESIS + 10, c1, Some(idx2)).unwrap();
         insert_contract_root(&tx, BlockNumber::GENESIS + 11, c2, Some(999)).unwrap();
@@ -699,7 +742,18 @@ mod tests {
                 let tx = db.transaction().unwrap();
                 let tx = crate::Transaction::new(tx);
 
-                test_table::insert(&tx, felt_bytes!(b"missing"), &HashMap::new()).unwrap_err();
+                let update = TrieUpdate {
+                    nodes_added: vec![(
+                        felt_bytes!(b"root"),
+                        Node::Binary {
+                            left: NodeRef::Index(5),
+                            right: NodeRef::Index(7),
+                        },
+                    )],
+                    nodes_removed: Default::default(),
+                };
+
+                test_table::insert(&tx, &update).unwrap_err();
             }
 
             #[test]
@@ -709,23 +763,27 @@ mod tests {
                 let tx = crate::Transaction::new(tx);
 
                 let root = felt_bytes!(b"root");
-                let mut nodes = HashMap::new();
-                nodes.insert(
-                    root,
-                    Node::Binary {
-                        left: Child::Hash(felt_bytes!(b"missing")),
-                        right: Child::Hash(felt_bytes!(b"exists")),
-                    },
-                );
-                nodes.insert(
-                    felt_bytes!(b"exists"),
-                    Node::Edge {
-                        child: Child::Hash(felt_bytes!(b"leaf")),
-                        path: bitvec::bitvec![u8, Msb0; 251; 1],
-                    },
-                );
+                let update = TrieUpdate {
+                    nodes_added: vec![
+                        (
+                            felt_bytes!(b"exists"),
+                            Node::Edge {
+                                child: NodeRef::Index(5),
+                                path: bitvec::bitvec![u8, Msb0; 251; 1],
+                            },
+                        ),
+                        (
+                            root,
+                            Node::Binary {
+                                left: NodeRef::Index(5),
+                                right: NodeRef::Index(0),
+                            },
+                        ),
+                    ],
+                    nodes_removed: Default::default(),
+                };
 
-                test_table::insert(&tx, root, &nodes).unwrap_err();
+                test_table::insert(&tx, &update).unwrap_err();
             }
 
             #[test]
@@ -735,16 +793,18 @@ mod tests {
                 let tx = crate::Transaction::new(tx);
 
                 let root = felt_bytes!(b"root");
-                let mut nodes = HashMap::new();
-                nodes.insert(
-                    root,
-                    Node::Edge {
-                        child: Child::Hash(felt_bytes!(b"missing")),
-                        path: bitvec::bitvec![u8, Msb0; 251; 1],
-                    },
-                );
+                let update = TrieUpdate {
+                    nodes_added: vec![(
+                        root,
+                        Node::Edge {
+                            child: NodeRef::Index(5),
+                            path: bitvec::bitvec![u8, Msb0; 251; 1],
+                        },
+                    )],
+                    nodes_removed: Default::default(),
+                };
 
-                test_table::insert(&tx, root, &nodes).unwrap_err();
+                test_table::insert(&tx, &update).unwrap_err();
             }
         }
 
@@ -766,23 +826,27 @@ mod tests {
 
             let edge_hash = felt_bytes!(b"edge");
             let edge_node = Node::Edge {
-                child: Child::Hash(binary_leaf_hash),
+                child: NodeRef::Index(1),
                 path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1],
             };
 
             let root_hash = felt_bytes!(b"root");
             let root_node = Node::Binary {
-                left: Child::Hash(edge_hash),
-                right: Child::Hash(edge_leaf_hash),
+                left: NodeRef::Index(2),
+                right: NodeRef::Index(0),
             };
 
-            let mut nodes = HashMap::new();
-            nodes.insert(edge_leaf_hash, edge_leaf_node);
-            nodes.insert(binary_leaf_hash, binary_leaf_node);
-            nodes.insert(edge_hash, edge_node);
-            nodes.insert(root_hash, root_node);
+            let update = TrieUpdate {
+                nodes_added: vec![
+                    (edge_leaf_hash, edge_leaf_node),
+                    (binary_leaf_hash, binary_leaf_node),
+                    (edge_hash, edge_node),
+                    (root_hash, root_node),
+                ],
+                nodes_removed: Default::default(),
+            };
 
-            let root_idx = test_table::insert(&tx, root_hash, &nodes).unwrap();
+            let root_idx = test_table::insert(&tx, &update).unwrap();
 
             // Root node
             let hash = test_table::hash(&tx, root_idx).unwrap();
@@ -812,9 +876,9 @@ mod tests {
         }
 
         #[test]
-        fn index_children() {
-            // Insert nodes which use indices as children instead of hashes.
-            // The indices don't actually need to point to real nodes since this
+        fn id_children() {
+            // Insert nodes which use ids as children instead of indexes.
+            // The ids don't actually need to point to real nodes since this
             // isn't enforced within the db.
             let mut db = setup_db();
             let tx = db.transaction().unwrap();
@@ -822,28 +886,32 @@ mod tests {
 
             let edge_hash = felt_bytes!(b"edge");
             let edge_node = Node::Edge {
-                child: Child::Id(123),
+                child: NodeRef::StorageIndex(123),
                 path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1],
             };
 
             let binary_hash0 = felt_bytes!(b"binary");
             let binary_node0 = Node::Binary {
-                left: Child::Id(456),
-                right: Child::Id(777),
+                left: NodeRef::StorageIndex(456),
+                right: NodeRef::StorageIndex(777),
             };
 
             let root_hash = felt_bytes!(b"root");
             let root_node = Node::Binary {
-                left: Child::Hash(edge_hash),
-                right: Child::Hash(binary_hash0),
+                left: NodeRef::Index(0),
+                right: NodeRef::Index(1),
             };
 
-            let mut nodes = HashMap::new();
-            nodes.insert(edge_hash, edge_node);
-            nodes.insert(binary_hash0, binary_node0);
-            nodes.insert(root_hash, root_node);
+            let update = TrieUpdate {
+                nodes_added: vec![
+                    (edge_hash, edge_node),
+                    (binary_hash0, binary_node0),
+                    (root_hash, root_node),
+                ],
+                nodes_removed: Default::default(),
+            };
 
-            let root_idx = test_table::insert(&tx, root_hash, &nodes).unwrap();
+            let root_idx = test_table::insert(&tx, &update).unwrap();
 
             // Root node
             let hash = test_table::hash(&tx, root_idx).unwrap();

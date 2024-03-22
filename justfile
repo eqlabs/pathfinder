@@ -26,6 +26,9 @@ clippy:
 dep-sort:
     cargo sort --check --workspace
 
+doc:
+    cargo doc --no-deps --document-private-items
+
 alias b := build 
 alias t := test 
 alias c := check 

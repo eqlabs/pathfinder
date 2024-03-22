@@ -51,7 +51,7 @@ use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use pathfinder_common::hash::FeltHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::{Node, StoredNode};
+use pathfinder_storage::{Node, NodeRef, StoredNode, TrieUpdate};
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
@@ -61,19 +61,11 @@ use std::{cell::RefCell, rc::Rc};
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
     root: Option<Rc<RefCell<InternalNode>>>,
     leaves: HashMap<BitVec<u8, Msb0>, Felt>,
+    nodes_removed: Vec<u64>,
     _hasher: std::marker::PhantomData<H>,
     /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
     verify_hashes: bool,
-}
-
-/// The result of committing a [MerkleTree]. Contains the new root and any
-/// new nodes added in this update.
-pub struct TrieUpdate {
-    pub root: Felt,
-    /// New nodes added. Note that these may contain false positives if the
-    /// mutations resulted in removing and then re-adding the same nodes within the tree.
-    pub nodes: HashMap<Felt, Node>,
 }
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
@@ -84,6 +76,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             _hasher: std::marker::PhantomData,
             verify_hashes: false,
             leaves: Default::default(),
+            nodes_removed: Default::default(),
         }
     }
 
@@ -98,32 +91,43 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             _hasher: std::marker::PhantomData,
             verify_hashes: false,
             leaves: Default::default(),
+            nodes_removed: Default::default(),
         }
     }
 
     /// Commits all tree mutations and returns the [changes](TrieUpdate) to the tree.
-    pub fn commit(mut self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
-        self.commit_mut(storage)
-    }
-
-    pub fn commit_mut(&mut self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
+    pub fn commit(self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
         // Go through tree, collect mutated nodes and calculate their hashes.
-        let mut added = HashMap::new();
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
 
-        let root = if let Some(root) = self.root.as_ref() {
+        let (_root_hash, _root_ref) = if let Some(root) = self.root.as_ref() {
             match &mut *root.borrow_mut() {
                 InternalNode::Unresolved(idx) => {
                     let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
-                    self.commit_subtree(&mut root, &mut added, storage, BitVec::new())?
+                    self.commit_subtree(
+                        &mut root,
+                        &mut added,
+                        &mut removed,
+                        storage,
+                        BitVec::new(),
+                    )?
                 }
-                other => self.commit_subtree(other, &mut added, storage, BitVec::new())?,
+                other => {
+                    self.commit_subtree(other, &mut added, &mut removed, storage, BitVec::new())?
+                }
             }
         } else {
             // An empty trie has a root of zero
-            Felt::ZERO
+            (Felt::ZERO, None)
         };
 
-        Ok(TrieUpdate { root, nodes: added })
+        removed.extend(self.nodes_removed);
+
+        Ok(TrieUpdate {
+            nodes_added: added,
+            nodes_removed: removed,
+        })
     }
 
     /// Persists any changes in this subtree to storage.
@@ -136,96 +140,103 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     fn commit_subtree(
         &self,
         node: &mut InternalNode,
-        added: &mut HashMap<Felt, Node>,
+        added: &mut Vec<(Felt, Node)>,
+        removed: &mut Vec<u64>,
         storage: &impl Storage,
         mut path: BitVec<u8, Msb0>,
-    ) -> anyhow::Result<Felt> {
-        use pathfinder_storage::Child;
-
-        let hash = match node {
+    ) -> anyhow::Result<(Felt, Option<NodeRef>)> {
+        let result = match node {
             InternalNode::Unresolved(idx) => {
-                // Unresovlved nodes are already committed, but we need their hash for subsequent
+                // Unresolved nodes are already committed, but we need their hash for subsequent
                 // iterations.
-                storage
+                let hash = storage
                     .hash(*idx)
                     .context("Fetching stored node's hash")?
-                    .context("Stored node's hash is missing")?
+                    .context("Stored node's hash is missing")?;
+                (hash, Some(NodeRef::StorageIndex(*idx)))
             }
             InternalNode::Leaf => {
-                if let Some(value) = self.leaves.get(&path) {
+                let hash = if let Some(value) = self.leaves.get(&path) {
                     *value
                 } else {
                     storage
                         .leaf(&path)
                         .context("Fetching leaf value from storage")?
                         .context("Leaf value missing from storage")?
-                }
+                };
+                (hash, None)
             }
             InternalNode::Binary(binary) => {
                 let mut left_path = path.clone();
                 left_path.push(Direction::Left.into());
-                let left_hash =
-                    self.commit_subtree(&mut binary.left.borrow_mut(), added, storage, left_path)?;
+                let (left_hash, left_child) = self.commit_subtree(
+                    &mut binary.left.borrow_mut(),
+                    added,
+                    removed,
+                    storage,
+                    left_path,
+                )?;
                 let mut right_path = path.clone();
                 right_path.push(Direction::Right.into());
-                let right_hash = self.commit_subtree(
+                let (right_hash, right_child) = self.commit_subtree(
                     &mut binary.right.borrow_mut(),
                     added,
+                    removed,
                     storage,
                     right_path,
                 )?;
                 let hash = BinaryNode::calculate_hash::<H>(left_hash, right_hash);
 
-                let persisted_node = match (&*binary.left.borrow(), &*binary.right.borrow()) {
-                    (&InternalNode::Leaf, &InternalNode::Leaf) => Node::LeafBinary,
-                    (InternalNode::Leaf, _non_leaf) | (_non_leaf, InternalNode::Leaf) => {
+                let persisted_node = match (left_child, right_child) {
+                    (None, None) => Node::LeafBinary,
+                    (Some(_), None) | (None, Some(_)) => {
                         anyhow::bail!("Inconsistent binary children. Both children must be leaves or not leaves.")
                     }
-                    (left, right) => {
-                        let left = match left {
-                            InternalNode::Unresolved(idx) => Child::Id(*idx),
-                            _ => Child::Hash(left_hash),
-                        };
-
-                        let right = match right {
-                            InternalNode::Unresolved(idx) => Child::Id(*idx),
-                            _ => Child::Hash(right_hash),
-                        };
-
-                        Node::Binary { left, right }
-                    }
+                    (Some(left), Some(right)) => Node::Binary { left, right },
                 };
 
-                added.insert(hash, persisted_node);
-                hash
+                if let Some(storage_index) = binary.storage_index {
+                    removed.push(storage_index);
+                };
+
+                let node_index = added.len();
+                added.push((hash, persisted_node));
+
+                (hash, Some(NodeRef::Index(node_index)))
             }
             InternalNode::Edge(edge) => {
                 path.extend_from_bitslice(&edge.path);
-                let child_hash =
-                    self.commit_subtree(&mut edge.child.borrow_mut(), added, storage, path)?;
+                let (child_hash, child) = self.commit_subtree(
+                    &mut edge.child.borrow_mut(),
+                    added,
+                    removed,
+                    storage,
+                    path,
+                )?;
 
                 let hash = EdgeNode::calculate_hash::<H>(child_hash, &edge.path);
 
-                let persisted_node = match *edge.child.borrow() {
-                    InternalNode::Leaf => Node::LeafEdge {
+                let persisted_node = match child {
+                    None => Node::LeafEdge {
                         path: edge.path.clone(),
                     },
-                    InternalNode::Unresolved(idx) => Node::Edge {
-                        child: Child::Id(idx),
-                        path: edge.path.clone(),
-                    },
-                    _ => Node::Edge {
-                        child: Child::Hash(child_hash),
+                    Some(child) => Node::Edge {
+                        child,
                         path: edge.path.clone(),
                     },
                 };
 
-                added.insert(hash, persisted_node);
-                hash
+                let node_index = added.len();
+                added.push((hash, persisted_node));
+                if let Some(storage_index) = edge.storage_index {
+                    removed.push(storage_index);
+                };
+
+                (hash, Some(NodeRef::Index(node_index)))
             }
         };
 
-        Ok(hash)
+        Ok(result)
     }
 
     /// Sets the value of a key. To delete a key, set the value to [Felt::ZERO].
@@ -282,6 +293,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             true => Rc::new(RefCell::new(InternalNode::Leaf)),
                             false => {
                                 let new_edge = InternalNode::Edge(EdgeNode {
+                                    storage_index: None,
                                     height: child_height,
                                     path: new_path,
                                     child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -295,6 +307,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             true => edge.child.clone(),
                             false => {
                                 let old_edge = InternalNode::Edge(EdgeNode {
+                                    storage_index: None,
                                     height: child_height,
                                     path: old_path,
                                     child: edge.child.clone(),
@@ -310,6 +323,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         };
 
                         let branch = InternalNode::Binary(BinaryNode {
+                            storage_index: None,
                             height: branch_height,
                             left,
                             right,
@@ -319,6 +333,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         match common.is_empty() {
                             true => branch,
                             false => InternalNode::Edge(EdgeNode {
+                                storage_index: None,
                                 height: edge.height,
                                 path: common.to_bitvec(),
                                 child: Rc::new(RefCell::new(branch)),
@@ -332,7 +347,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     }
                 };
 
-                node.swap(&RefCell::new(updated));
+                let old_node = node.replace(updated);
+                if let Some(index) = old_node.storage_index() {
+                    self.nodes_removed.push(index);
+                };
             }
             None => {
                 // Getting no travel nodes implies that the tree is empty.
@@ -340,6 +358,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // Create a new leaf node with the value, and the root becomes
                 // an edge node connecting to the leaf.
                 let edge = InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path: key.to_bitvec(),
                     child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -388,10 +407,19 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         }
 
         // Go backwards until we hit a branch node.
-        let mut node_iter = path
-            .into_iter()
-            .rev()
-            .skip_while(|node| !node.borrow().is_binary());
+        let mut indexes_removed = Vec::new();
+        let mut node_iter = path.into_iter().rev().skip_while(|node| {
+            let node = node.borrow();
+            match *node {
+                InternalNode::Binary(_) => false,
+                _ => {
+                    if let Some(index) = node.storage_index() {
+                        indexes_removed.push(index);
+                    };
+                    true
+                }
+            }
+        });
 
         match node_iter.next() {
             Some(node) => {
@@ -405,6 +433,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     let child = binary.get_child(direction);
                     let path = std::iter::once(bool::from(direction)).collect::<BitVec<_, _>>();
                     let mut edge = EdgeNode {
+                        storage_index: None,
                         height: binary.height,
                         path,
                         child,
@@ -416,7 +445,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     edge
                 };
                 // Replace the old binary node with the new edge node.
-                node.swap(&RefCell::new(InternalNode::Edge(new_edge)));
+                let old_node = node.replace(InternalNode::Edge(new_edge));
+                if let Some(index) = old_node.storage_index() {
+                    self.nodes_removed.push(index);
+                };
             }
             None => {
                 // We reached the root without a hitting binary node. The new tree
@@ -432,6 +464,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 self.merge_edges(storage, edge)?;
             }
         }
+
+        // All nodes below the binary node were deleted
+        self.nodes_removed.extend(indexes_removed);
 
         Ok(())
     }
@@ -593,7 +628,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             let next = match current_tmp {
                 Unresolved(idx) => {
                     let node = self.resolve(storage, idx, height)?;
-                    current.swap(&RefCell::new(node));
+                    current.replace(node);
                     current
                 }
                 Binary(binary) => {
@@ -638,21 +673,25 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         let node = match node {
             StoredNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
+                storage_index: Some(index),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Unresolved(left))),
                 right: Rc::new(RefCell::new(InternalNode::Unresolved(right))),
             }),
             StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
+                storage_index: Some(index),
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Unresolved(child))),
             }),
             StoredNode::LeafBinary => InternalNode::Binary(BinaryNode {
+                storage_index: Some(index),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Leaf)),
                 right: Rc::new(RefCell::new(InternalNode::Leaf)),
             }),
             StoredNode::LeafEdge { path } => InternalNode::Edge(EdgeNode {
+                storage_index: Some(index),
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -668,7 +707,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
     /// (since edge nodes __must be__ maximal subtrees).
-    fn merge_edges(&self, storage: &impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
+    fn merge_edges(&mut self, storage: &impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
         let resolved_child = match &*parent.child.borrow() {
             InternalNode::Unresolved(hash) => {
                 self.resolve(storage, *hash, parent.height + parent.path.len())?
@@ -678,6 +717,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         if let Some(child_edge) = resolved_child.as_edge().cloned() {
             parent.path.extend_from_bitslice(&child_edge.path);
+            if let Some(storage_index) = child_edge.storage_index {
+                self.nodes_removed.push(storage_index);
+            }
             parent.child = child_edge.child;
         }
 
@@ -815,15 +857,16 @@ mod tests {
     struct TestStorage {
         nodes: HashMap<u64, (Felt, StoredNode)>,
         leaves: HashMap<Felt, Felt>,
+        next_index: u64,
     }
 
     impl Storage for TestStorage {
-        fn get(&self, node: u64) -> anyhow::Result<Option<StoredNode>> {
-            Ok(self.nodes.get(&node).map(|x| x.1.clone()))
+        fn get(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
+            Ok(self.nodes.get(&index).map(|x| x.1.clone()))
         }
 
-        fn hash(&self, node: u64) -> anyhow::Result<Option<Felt>> {
-            Ok(self.nodes.get(&node).map(|x| x.0))
+        fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+            Ok(self.nodes.get(&index).map(|x| x.0))
         }
 
         fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
@@ -833,13 +876,27 @@ mod tests {
         }
     }
 
+    /// Commits the tree changes and persists them to storage, pruning any nodes that are no longer needed.
+    fn commit_and_persist_with_pruning<H: FeltHash, const HEIGHT: usize>(
+        tree: MerkleTree<H, HEIGHT>,
+        storage: &mut TestStorage,
+    ) -> (Felt, u64) {
+        commit_and_persist(tree, storage, true)
+    }
+
+    fn commit_and_persist_without_pruning<H: FeltHash, const HEIGHT: usize>(
+        tree: MerkleTree<H, HEIGHT>,
+        storage: &mut TestStorage,
+    ) -> (Felt, u64) {
+        commit_and_persist(tree, storage, false)
+    }
+
     /// Commits the tree changes and persists them to storage.
     fn commit_and_persist<H: FeltHash, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
+        prune_nodes: bool,
     ) -> (Felt, u64) {
-        use pathfinder_storage::Child;
-
         for (key, value) in &tree.leaves {
             let key = Felt::from_bits(key).unwrap();
             storage.leaves.insert(key, *value);
@@ -847,38 +904,37 @@ mod tests {
 
         let update = tree.commit(storage).unwrap();
 
-        let mut indices = HashMap::new();
-        let mut idx = storage.nodes.len();
-        for hash in update.nodes.keys() {
-            indices.insert(*hash, idx as u64);
-            idx += 1;
+        assert!(!update.nodes_added.is_empty());
+
+        let root_hash = update.root_hash();
+
+        if prune_nodes {
+            for idx in update.nodes_removed {
+                storage.nodes.remove(&idx);
+            }
         }
 
-        for (hash, node) in update.nodes {
+        let number_of_nodes_added = update.nodes_added.len() as u64;
+
+        for (rel_index, (hash, node)) in update.nodes_added.into_iter().enumerate() {
             let node = match node {
                 Node::Binary { left, right } => {
                     let left = match left {
-                        Child::Id(idx) => idx,
-                        Child::Hash(hash) => {
-                            *indices.get(&hash).expect("Left child should have an index")
-                        }
+                        NodeRef::StorageIndex(idx) => idx,
+                        NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
                     let right = match right {
-                        Child::Id(idx) => idx,
-                        Child::Hash(hash) => *indices
-                            .get(&hash)
-                            .expect("Right child should have an index"),
+                        NodeRef::StorageIndex(idx) => idx,
+                        NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
                     StoredNode::Binary { left, right }
                 }
                 Node::Edge { child, path } => {
                     let child = match child {
-                        Child::Id(idx) => idx,
-                        Child::Hash(hash) => {
-                            *indices.get(&hash).expect("Child should have an index")
-                        }
+                        NodeRef::StorageIndex(idx) => idx,
+                        NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
                     StoredNode::Edge { child, path }
@@ -887,14 +943,15 @@ mod tests {
                 Node::LeafEdge { path } => StoredNode::LeafEdge { path },
             };
 
-            storage
-                .nodes
-                .insert(*indices.get(&hash).unwrap(), (hash, node));
+            let index = storage.next_index + (rel_index as u64);
+
+            storage.nodes.insert(index, (hash, node));
         }
 
-        let index = *indices.get(&update.root).unwrap();
+        let storage_root_index = storage.next_index + number_of_nodes_added - 1;
+        storage.next_index += number_of_nodes_added;
 
-        (update.root, index)
+        (root_hash, storage_root_index)
     }
 
     #[test]
@@ -1221,7 +1278,7 @@ mod tests {
             uut.set(&storage, key1.clone(), val1).unwrap();
             uut.set(&storage, key2.clone(), val2).unwrap();
 
-            let root = commit_and_persist(uut, &mut storage);
+            let root = commit_and_persist_with_pruning(uut, &mut storage);
 
             let uut = TestTree::new(root.1);
 
@@ -1267,14 +1324,14 @@ mod tests {
                 let key = key.view_bits();
                 uut.set(&storage, key.to_owned(), *val).unwrap();
             }
-            let root = commit_and_persist(uut, &mut storage);
+            let root = commit_and_persist_with_pruning(uut, &mut storage);
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
             let mut uut = TestTree::new(root.1);
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&storage, key, val).unwrap();
-            let (root_hash, _) = commit_and_persist(uut, &mut storage);
+            let (root_hash, _) = commit_and_persist_with_pruning(uut, &mut storage);
             let expect = felt!("0x5f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
 
             assert_eq!(root_hash, expect);
@@ -1293,15 +1350,15 @@ mod tests {
             let mut uut = TestTree::empty();
             let mut storage = TestStorage::default();
             uut.set(&storage, key0.clone(), val0).unwrap();
-            let root0 = commit_and_persist(uut, &mut storage);
+            let root0 = commit_and_persist_without_pruning(uut, &mut storage);
 
             let mut uut = TestTree::new(root0.1);
             uut.set(&storage, key1.clone(), val1).unwrap();
-            let root1 = commit_and_persist(uut, &mut storage);
+            let root1 = commit_and_persist_without_pruning(uut, &mut storage);
 
             let mut uut = TestTree::new(root1.1);
             uut.set(&storage, key2.clone(), val2).unwrap();
-            let root2 = commit_and_persist(uut, &mut storage);
+            let root2 = commit_and_persist_without_pruning(uut, &mut storage);
 
             let uut = TestTree::new(root0.1);
             assert_eq!(uut.get(&storage, key0.clone()).unwrap(), Some(val0));
@@ -1332,15 +1389,15 @@ mod tests {
             let mut uut = TestTree::empty();
             let mut storage = TestStorage::default();
             uut.set(&storage, key0.clone(), val0).unwrap();
-            let root0 = commit_and_persist(uut, &mut storage);
+            let root0 = commit_and_persist_without_pruning(uut, &mut storage);
 
             let mut uut = TestTree::new(root0.1);
             uut.set(&storage, key1.clone(), val1).unwrap();
-            let root1 = commit_and_persist(uut, &mut storage);
+            let root1 = commit_and_persist_without_pruning(uut, &mut storage);
 
             let mut uut = TestTree::new(root0.1);
             uut.set(&storage, key2.clone(), val2).unwrap();
-            let root2 = commit_and_persist(uut, &mut storage);
+            let root2 = commit_and_persist_without_pruning(uut, &mut storage);
 
             let uut = TestTree::new(root0.1);
             assert_eq!(uut.get(&storage, key0.clone()).unwrap(), Some(val0));
@@ -1367,13 +1424,13 @@ mod tests {
             let val = felt!("0x12345678");
             uut.set(&storage, key, val).unwrap();
 
-            let root0 = commit_and_persist(uut, &mut storage);
+            let root0 = commit_and_persist_with_pruning(uut, &mut storage);
 
             let uut = TestTree::new(root0.1);
-            let root1 = commit_and_persist(uut, &mut storage);
+            let root1 = commit_and_persist_with_pruning(uut, &mut storage);
 
             let uut = TestTree::new(root1.1);
-            let root2 = commit_and_persist(uut, &mut storage);
+            let root2 = commit_and_persist_with_pruning(uut, &mut storage);
 
             assert_eq!(root0.0, root1.0);
             assert_eq!(root0.0, root2.0);
@@ -1400,7 +1457,7 @@ mod tests {
             uut.set(&storage, felt!("0x87").view_bits().to_owned(), felt!("0x2"))
                 .unwrap();
 
-            let (root, _) = commit_and_persist(uut, &mut storage);
+            let (root, _) = commit_and_persist_with_pruning(uut, &mut storage);
 
             assert_eq!(
                 root,
@@ -1447,12 +1504,83 @@ mod tests {
                 tree.set(&storage, key, val).unwrap();
             }
 
-            let root = tree.commit(&storage).unwrap().root;
+            let root = tree.commit(&storage).unwrap().root_hash();
 
             let expected =
                 felt!("0x6ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
 
             assert_eq!(root, expected);
+        }
+
+        #[test]
+        fn same_subtrees_should_not_cause_pruning_to_fail() {
+            let mut uut = TestTree::empty();
+            let mut storage = TestStorage::default();
+
+            macro_rules! set {
+                ($uut:expr,$address:expr,$value:expr) => {
+                    $uut.set(&storage, $address.view_bits().to_owned(), $value)
+                        .unwrap()
+                };
+            }
+
+            set!(
+                uut,
+                felt!("0x5c5e36947656f78c487b42ca69d96e79c01eac62f50d996f3972c9851bd5f66"),
+                felt!("0x15b38")
+            );
+
+            let root = commit_and_persist_with_pruning(uut, &mut storage);
+            let mut uut = TestTree::new(root.1);
+            set!(
+                uut,
+                felt!("0x5c5e36947656f78c487b42ca69d96e79c01eac62f50d996f3972c9851bd5f64"),
+                felt!("0x15b38")
+            );
+
+            let root = commit_and_persist_with_pruning(uut, &mut storage);
+            let mut uut = TestTree::new(root.1);
+
+            let mut visited = vec![];
+            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
+                visited.push((node.clone(), path.to_bitvec()));
+                ControlFlow::Continue::<(), Visit>(Default::default())
+            };
+            uut.dfs(&storage, &mut visitor_fn).unwrap();
+
+            set!(
+                uut,
+                felt!("0x5c5e36947656f78c487b42ca69d96e79c01eac62f50d996f3972c9851bd5f66"),
+                felt!("0xf502")
+            );
+
+            let root = commit_and_persist_with_pruning(uut, &mut storage);
+            let mut uut = TestTree::new(root.1);
+
+            let mut visited = vec![];
+            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
+                visited.push((node.clone(), path.to_bitvec()));
+                ControlFlow::Continue::<(), Visit>(Default::default())
+            };
+            uut.dfs(&storage, &mut visitor_fn).unwrap();
+
+            set!(
+                uut,
+                felt!("0x5c5e36947656f78c487b42ca69d96e79c01eac62f50d996f3972c9851bd5f66"),
+                felt!("0xd59e")
+            );
+            set!(
+                uut,
+                felt!("0x5c5e36947656f78c487b42ca69d96e79c01eac62f50d996f3972c9851bd5f68"),
+                felt!("0x859a")
+            );
+
+            let mut visited = vec![];
+            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
+                visited.push((node.clone(), path.to_bitvec()));
+                ControlFlow::Continue::<(), Visit>(Default::default())
+            };
+            uut.dfs(&storage, &mut visitor_fn).unwrap();
         }
     }
 
@@ -1502,6 +1630,7 @@ mod tests {
                 vec![
                     (
                         InternalNode::Edge(EdgeNode {
+                            storage_index: None,
                             height: 0,
                             path: key.view_bits().into(),
                             child: Rc::new(RefCell::new(InternalNode::Leaf))
@@ -1539,6 +1668,7 @@ mod tests {
             let expected_2 = (InternalNode::Leaf, key_left.view_bits().into());
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
+                    storage_index: None,
                     height: 250,
                     left: Rc::new(RefCell::new(expected_2.0.clone())),
                     right: Rc::new(RefCell::new(expected_3.0.clone())),
@@ -1547,6 +1677,7 @@ mod tests {
             );
             let expected_0 = (
                 InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path: bitvec![u8, Msb0; 0; 250],
                     child: Rc::new(RefCell::new(expected_1.0.clone())),
@@ -1609,6 +1740,7 @@ mod tests {
             let expected_6 = (InternalNode::Leaf, key_c.view_bits().into());
             let expected_5 = (
                 InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 250,
                     path: bitvec![u8, Msb0; 1; 1],
                     child: Rc::new(RefCell::new(expected_6.0.clone())),
@@ -1619,6 +1751,7 @@ mod tests {
             let expected_3 = (InternalNode::Leaf, key_a.view_bits().into());
             let expected_2 = (
                 InternalNode::Binary(BinaryNode {
+                    storage_index: None,
                     height: 250,
                     left: Rc::new(RefCell::new(expected_3.0.clone())),
                     right: Rc::new(RefCell::new(expected_4.0.clone())),
@@ -1627,6 +1760,7 @@ mod tests {
             );
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
+                    storage_index: None,
                     height: 249,
                     left: Rc::new(RefCell::new(expected_2.0.clone())),
                     right: Rc::new(RefCell::new(expected_5.0.clone())),
@@ -1635,6 +1769,7 @@ mod tests {
             );
             let expected_0 = (
                 InternalNode::Edge(EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path: path_to_1,
                     child: Rc::new(RefCell::new(expected_1.0.clone())),
@@ -1654,7 +1789,7 @@ mod tests {
 
     mod proofs {
         use crate::storage::Storage;
-        use crate::tree::tests::commit_and_persist;
+        use crate::tree::tests::commit_and_persist_with_pruning;
         use pathfinder_common::hash::PedersenHash;
         use pathfinder_common::trie::TrieNode;
 
@@ -1775,7 +1910,7 @@ mod tests {
                     .zip(values.iter())
                     .for_each(|(k, v)| uut.set(&storage, k.view_bits().to_owned(), *v).unwrap());
 
-                let root = commit_and_persist(uut, &mut storage);
+                let root = commit_and_persist_with_pruning(uut, &mut storage);
 
                 Self {
                     keys,
@@ -1834,7 +1969,7 @@ mod tests {
 
             uut.set(&storage, key1.clone(), value_1).unwrap();
             uut.set(&storage, key2.clone(), value_2).unwrap();
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
 
@@ -1873,7 +2008,7 @@ mod tests {
             uut.set(&storage, key2.clone(), value_2).unwrap();
             uut.set(&storage, key3.clone(), value_3).unwrap();
 
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
             let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
@@ -1905,7 +2040,7 @@ mod tests {
 
             uut.set(&storage, key1.clone(), value_1).unwrap();
 
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
             let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
@@ -1931,7 +2066,7 @@ mod tests {
 
             uut.set(&storage, key1.clone(), value_1).unwrap();
 
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
             let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
@@ -1957,7 +2092,7 @@ mod tests {
 
             uut.set(&storage, key1.clone(), value_1).unwrap();
 
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
             let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
@@ -1988,7 +2123,7 @@ mod tests {
             uut.set(&storage, key1.clone(), value_1).unwrap();
             uut.set(&storage, key2.clone(), value_2).unwrap();
 
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
             let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
@@ -2101,7 +2236,7 @@ mod tests {
             uut.set(&storage, key1.clone(), value_1).unwrap();
             uut.set(&storage, key2.clone(), value_2).unwrap();
 
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let mut proofs = get_proofs(&keys, root_idx, &storage).unwrap();
 
@@ -2143,7 +2278,7 @@ mod tests {
             uut.set(&storage, key1.clone(), value_1).unwrap();
             uut.set(&storage, key2.clone(), value_2).unwrap();
 
-            let (root, root_idx) = commit_and_persist(uut, &mut storage);
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let mut proofs = get_proofs(&keys, root_idx, &storage).unwrap();
 

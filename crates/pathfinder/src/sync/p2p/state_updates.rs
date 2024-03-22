@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
@@ -7,12 +6,11 @@ use pathfinder_common::{
     state_update::{ContractUpdates, StateUpdateCounts},
     BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment,
 };
-use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::{
     contract_state::{update_contract_state, ContractStateUpdateResult},
     StorageCommitmentTree,
 };
-use pathfinder_storage::{Node, Storage};
+use pathfinder_storage::{Storage, TrieUpdate};
 use tokio::task::spawn_blocking;
 
 #[derive(Debug, thiserror::Error)]
@@ -154,7 +152,7 @@ pub(super) struct VerificationOk {
     block_hash: BlockHash,
     storage_commitment: StorageCommitment,
     contract_update_results: Vec<ContractStateUpdateResult>,
-    trie_nodes: HashMap<Felt, Node>,
+    trie_update: TrieUpdate,
     contract_updates: ContractUpdates,
 }
 
@@ -301,7 +299,7 @@ fn verify_one(
     }
 
     // Apply storage commitment tree changes.
-    let (computed_storage_commitment, nodes) = storage_commitment_tree
+    let (computed_storage_commitment, trie_update) = storage_commitment_tree
         .commit()
         .context("Apply storage commitment tree updates")?;
 
@@ -320,7 +318,7 @@ fn verify_one(
             block_hash,
             storage_commitment,
             contract_update_results,
-            trie_nodes: nodes,
+            trie_update,
             contract_updates,
         },
     ))

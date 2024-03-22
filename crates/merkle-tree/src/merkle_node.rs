@@ -16,7 +16,7 @@ use pathfinder_common::hash::FeltHash;
 pub enum InternalNode {
     /// A node that has not been fetched from storage yet.
     ///
-    /// As such, all we know is its hash.
+    /// As such, all we know is its index.
     Unresolved(u64),
     /// A branch node with exactly two children.
     Binary(BinaryNode),
@@ -29,6 +29,8 @@ pub enum InternalNode {
 /// Describes the [InternalNode::Binary] variant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
+    /// The storage index of this node (if it was loaded from storage).
+    pub storage_index: Option<u64>,
     /// The height of this node in the tree.
     pub height: usize,
     /// [Left](Direction::Left) child.
@@ -39,6 +41,8 @@ pub struct BinaryNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EdgeNode {
+    /// The storage index of this node (if it was loaded from storage).
+    pub storage_index: Option<u64>,
     /// The starting height of this node in the tree.
     pub height: usize,
     /// The path this edge takes.
@@ -137,6 +141,15 @@ impl InternalNode {
     pub fn is_leaf(&self) -> bool {
         matches!(self, InternalNode::Leaf)
     }
+
+    pub fn storage_index(&self) -> Option<u64> {
+        match self {
+            InternalNode::Unresolved(storage_index) => Some(*storage_index),
+            InternalNode::Binary(binary) => binary.storage_index,
+            InternalNode::Edge(edge) => edge.storage_index,
+            InternalNode::Leaf => None,
+        }
+    }
 }
 
 impl EdgeNode {
@@ -209,6 +222,7 @@ mod tests {
         #[test]
         fn direction() {
             let uut = BinaryNode {
+                storage_index: None,
                 height: 1,
                 left: Rc::new(RefCell::new(InternalNode::Unresolved(1))),
                 right: Rc::new(RefCell::new(InternalNode::Unresolved(2))),
@@ -233,6 +247,7 @@ mod tests {
             let right = Rc::new(RefCell::new(InternalNode::Unresolved(2)));
 
             let uut = BinaryNode {
+                storage_index: None,
                 height: 1,
                 left: left.clone(),
                 right: right.clone(),
@@ -296,6 +311,7 @@ mod tests {
                 let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
 
                 let uut = EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path: key.view_bits().to_bitvec(),
                     child,
@@ -312,6 +328,7 @@ mod tests {
                 let path = key.view_bits()[..45].to_bitvec();
 
                 let uut = EdgeNode {
+                    storage_index: None,
                     height: 0,
                     path,
                     child,
@@ -328,6 +345,7 @@ mod tests {
                 let path = key.view_bits()[50..].to_bitvec();
 
                 let uut = EdgeNode {
+                    storage_index: None,
                     height: 50,
                     path,
                     child,
@@ -344,6 +362,7 @@ mod tests {
                 let path = key.view_bits()[230..235].to_bitvec();
 
                 let uut = EdgeNode {
+                    storage_index: None,
                     height: 230,
                     path,
                     child,
