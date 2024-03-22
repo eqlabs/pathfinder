@@ -15,7 +15,10 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let (insert_tx, insert_rx) = mpsc::channel();
     let (transform_tx, transform_rx) =
         flume::unbounded::<(Vec<u8>, i64, Vec<u8>, Vec<u8>, Vec<u8>)>();
-    for _ in 0..thread::available_parallelism().unwrap().get() {
+    for _ in 0..thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(4)
+    {
         let insert_tx = insert_tx.clone();
         let transform_rx = transform_rx.clone();
         let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
