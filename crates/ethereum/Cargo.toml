@@ -10,13 +10,13 @@ rust-version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-const-decoder = "0.3.0"
+const-decoder = { workspace = true }
 hex = { workspace = true }
-keccak-hash = "0.10.0"
+keccak-hash = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

@@ -24,14 +24,14 @@ base64 = { workspace = true, optional = true }
 bitvec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
-console-subscriber = { version = "0.1.10", optional = true }
+console-subscriber = { workspace = true, optional = true }
 fake = { workspace = true }
 futures = { workspace = true }
 ipnet = { workspace = true }
-jemallocator = "0.5.4"
+jemallocator = { workspace = true }
 lazy_static = { workspace = true }
 metrics = { workspace = true }
-metrics-exporter-prometheus = "0.11.0"
+metrics-exporter-prometheus = { workspace = true }
 p2p = { path = "../p2p", optional = true }
 p2p_proto = { path = "../p2p_proto", optional = true }
 pathfinder-common = { path = "../common" }
@@ -56,36 +56,32 @@ serde_json = { workspace = true, features = [
 smallvec = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
-tempfile = "3.8"
-thiserror = "1.0.48"
-time = { version = "0.3.28", features = ["macros"] }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
-tokio-stream = "0.1.14"
+tokio-stream = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.17", features = [
-    "env-filter",
-    "time",
-    "ansi",
-] }
-url = "2.4.1"
-warp = "0.3.5"
-zeroize = { version = "1.6.0", optional = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "time", "ansi"] }
+url = { workspace = true }
+warp = { workspace = true }
+zeroize = { workspace = true, optional = true }
 zstd = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
-const-decoder = "0.3.0"
+const-decoder = { workspace = true }
 flate2 = { workspace = true }
 http = { workspace = true }
-mockall = "0.11.4"
+mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
 pretty_assertions_sorted = { workspace = true }
-proptest = "1.2.0"
-rand_chacha = "0.3.1"
+proptest = { workspace = true }
+rand_chacha = { workspace = true }
 rstest = { workspace = true }
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
