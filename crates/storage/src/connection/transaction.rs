@@ -488,7 +488,7 @@ pub(crate) mod dto {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::*;
     use pathfinder_crypto::Felt;
-    use serde::{ser::SerializeSeq, Deserialize, Serialize};
+    use serde::{Deserialize, Serialize};
 
     /// Minimally encoded Felt value.
     #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -499,17 +499,9 @@ pub(crate) mod dto {
         where
             S: serde::Serializer,
         {
-            let len = self
-                .0
-                .to_be_bytes()
-                .into_iter()
-                .skip_while(|&x| x == 0)
-                .count();
-            let mut seq = serializer.serialize_seq(Some(len))?;
-            for elem in self.0.to_be_bytes().into_iter().skip_while(|&x| x == 0) {
-                seq.serialize_element(&elem)?;
-            }
-            seq.end()
+            let bytes = self.0.to_be_bytes();
+            let zeros = bytes.iter().take_while(|&&x| x == 0).count();
+            bytes[zeros..].serialize(serializer)
         }
     }
 

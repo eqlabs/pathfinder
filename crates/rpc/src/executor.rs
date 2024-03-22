@@ -91,7 +91,7 @@ pub(crate) fn map_broadcasted_transaction(
     };
 
     let deployed_address = match &transaction {
-        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V0V1(tx)) => {
+        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V1(tx)) => {
             Some(starknet_api::core::ContractAddress(
                 PatriciaKey::try_from(tx.deployed_contract_address().0.into_starkfelt())
                     .expect("No sender address overflow expected"),
@@ -128,7 +128,7 @@ pub(crate) fn map_broadcasted_transaction(
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(tx)) => {
             tx.version.has_query_version()
         }
-        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V0V1(tx)) => {
+        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V1(tx)) => {
             tx.version.has_query_version()
         }
         BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V3(tx)) => {
