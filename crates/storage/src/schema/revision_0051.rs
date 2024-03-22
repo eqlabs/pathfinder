@@ -112,14 +112,6 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut rows = query_stmt.query([])?;
     let mut progress = 0;
     loop {
-        if progress_logged.elapsed() > LOG_RATE {
-            progress_logged = Instant::now();
-            tracing::info!(
-                "Migrating rows: {:.2}%",
-                (progress as f64 / count as f64) * 100.0
-            );
-        }
-
         let mut batch_size = 0;
         for _ in 0..BATCH_SIZE {
             match rows.next() {
@@ -145,6 +137,13 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             }
         }
         for _ in 0..batch_size {
+            if progress % 1000 == 0 && progress_logged.elapsed() > LOG_RATE {
+                progress_logged = Instant::now();
+                tracing::info!(
+                    "Migrating rows: {:.2}%",
+                    (progress as f64 / count as f64) * 100.0
+                );
+            }
             let (hash, idx, block_hash, transaction, receipt, events) = insert_rx.recv()?;
             insert_stmt.execute(params![hash, idx, block_hash, transaction, receipt, events])?;
             progress += 1;
