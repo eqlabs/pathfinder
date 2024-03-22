@@ -483,42 +483,86 @@ pub(super) fn transaction_block_hash(
 }
 
 pub(crate) mod dto {
+    use std::fmt;
+
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::*;
     use pathfinder_crypto::Felt;
-    use serde::{Deserialize, Serialize};
-    use smallvec::SmallVec;
+    use serde::{ser::SerializeSeq, Deserialize, Serialize};
 
     /// Minimally encoded Felt value.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-    #[serde(deny_unknown_fields)]
-    pub struct MinimalFelt(SmallVec<[u8; 32]>);
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    pub struct MinimalFelt(Felt);
 
-    impl<T> Dummy<T> for MinimalFelt {
-        fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
-            let felt: Felt = Dummy::dummy_with_rng(config, rng);
-            felt.into()
+    impl serde::Serialize for MinimalFelt {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            let len = self
+                .0
+                .to_be_bytes()
+                .into_iter()
+                .skip_while(|&x| x == 0)
+                .count();
+            let mut seq = serializer.serialize_seq(Some(len))?;
+            for elem in self.0.to_be_bytes().into_iter().skip_while(|&x| x == 0) {
+                seq.serialize_element(&elem)?;
+            }
+            seq.end()
+        }
+    }
+
+    impl<'de> serde::Deserialize<'de> for MinimalFelt {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            struct Visitor;
+
+            impl<'de> serde::de::Visitor<'de> for Visitor {
+                type Value = MinimalFelt;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    formatter.write_str("a sequence")
+                }
+
+                fn visit_seq<B>(self, mut seq: B) -> Result<Self::Value, B::Error>
+                where
+                    B: serde::de::SeqAccess<'de>,
+                {
+                    let len = seq.size_hint().unwrap();
+                    let mut bytes = [0; 32];
+                    let num_zeros = bytes.len() - len;
+                    let mut i = num_zeros;
+                    while let Some(value) = seq.next_element()? {
+                        bytes[i] = value;
+                        i += 1;
+                    }
+                    Ok(MinimalFelt(Felt::from_be_bytes(bytes).unwrap()))
+                }
+            }
+
+            deserializer.deserialize_seq(Visitor)
         }
     }
 
     impl From<Felt> for MinimalFelt {
         fn from(value: Felt) -> Self {
-            Self(
-                value
-                    .to_be_bytes()
-                    .into_iter()
-                    .skip_while(|&x| x == 0)
-                    .collect(),
-            )
+            Self(value)
         }
     }
 
     impl From<MinimalFelt> for Felt {
         fn from(value: MinimalFelt) -> Self {
-            let mut bytes = [0; 32];
-            let num_zeros = bytes.len() - value.0.len();
-            bytes[num_zeros..].copy_from_slice(&value.0);
-            Felt::from_be_bytes(bytes).unwrap()
+            value.0
+        }
+    }
+
+    impl<T> Dummy<T> for MinimalFelt {
+        fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
+            let felt: Felt = Dummy::dummy_with_rng(config, rng);
+            felt.into()
         }
     }
 

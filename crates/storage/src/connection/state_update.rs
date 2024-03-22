@@ -6,7 +6,6 @@ use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
-use smallvec::SmallVec;
 
 use crate::{prelude::*, BlockId};
 
@@ -323,7 +322,7 @@ pub(super) fn state_update_counts(
     tx: &Transaction<'_>,
     block: BlockId,
     max_len: NonZeroUsize,
-) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
+) -> anyhow::Result<Vec<StateUpdateCounts>> {
     let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
         return Ok(Default::default());
     };
@@ -348,7 +347,7 @@ pub(super) fn state_update_counts(
         })
         .context("Querying state update counts")?;
 
-    let mut ret = SmallVec::<[StateUpdateCounts; 10]>::new();
+    let mut ret = Vec::new();
 
     while let Some(stat) = counts
         .next()

@@ -26,7 +26,6 @@ use pathfinder_common::{
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
     StorageValue,
 };
-use smallvec::SmallVec;
 use tokio::{sync::RwLock, task::spawn_blocking};
 
 use crate::client::{conv::TryFromDto, peer_aware};
@@ -213,7 +212,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         getter: Arc<
-            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>>
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<Vec<StateUpdateCounts>>
                 + Send
                 + Sync
                 + 'static,
@@ -349,9 +348,9 @@ impl Client {
         &self,
         start: BlockNumber,
         stop_inclusive: BlockNumber,
-        counts: &mut SmallVec<[StateUpdateCounts; 10]>,
+        counts: &mut Vec<StateUpdateCounts>,
         getter: Arc<
-            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>>
+            impl Fn(BlockNumber, NonZeroUsize) -> anyhow::Result<Vec<StateUpdateCounts>>
                 + Send
                 + Sync
                 + 'static,
