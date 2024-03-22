@@ -65,7 +65,6 @@ use libp2p::swarm::{
     ConnectionDenied, ConnectionHandler, ConnectionId, NetworkBehaviour, NotifyHandler, THandler,
     THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
-use smallvec::SmallVec;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt, io,
@@ -263,7 +262,7 @@ where
     TCodec: Codec + Clone + Send + 'static,
 {
     /// The supported protocols.
-    protocols: SmallVec<[TCodec::Protocol; 2]>,
+    protocols: Vec<TCodec::Protocol>,
     /// The next (local) request ID.
     next_outbound_request_id: OutboundRequestId,
     /// The next (inbound) request ID.
@@ -277,10 +276,10 @@ where
         VecDeque<ToSwarm<Event<TCodec::Request, TCodec::Response>, OutboundMessage<TCodec>>>,
     /// The currently connected peers, their pending outbound and inbound responses and their known,
     /// reachable addresses, if any.
-    connected: HashMap<PeerId, SmallVec<[Connection; 2]>>,
+    connected: HashMap<PeerId, Vec<Connection>>,
     /// Requests that have not yet been sent and are waiting for a connection
     /// to be established.
-    pending_outbound_requests: HashMap<PeerId, SmallVec<[OutboundMessage<TCodec>; 10]>>,
+    pending_outbound_requests: HashMap<PeerId, Vec<OutboundMessage<TCodec>>>,
 }
 
 impl<TCodec> Behaviour<TCodec>
