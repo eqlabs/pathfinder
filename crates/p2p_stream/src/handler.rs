@@ -37,7 +37,6 @@ use libp2p::swarm::{
     handler::{ConnectionHandler, ConnectionHandlerEvent, StreamUpgradeError},
     SubstreamProtocol,
 };
-use smallvec::SmallVec;
 use std::{
     collections::VecDeque,
     fmt, io,
@@ -55,7 +54,7 @@ where
     TCodec: Codec,
 {
     /// The supported inbound protocols.
-    inbound_protocols: SmallVec<[TCodec::Protocol; 2]>,
+    inbound_protocols: Vec<TCodec::Protocol>,
     /// The request/streaming-response message codec.
     codec: TCodec,
     /// Queue of events to emit in `poll()`.
@@ -97,7 +96,7 @@ where
     TCodec: Codec + Send + Clone + 'static,
 {
     pub(super) fn new(
-        inbound_protocols: SmallVec<[TCodec::Protocol; 2]>,
+        inbound_protocols: Vec<TCodec::Protocol>,
         codec: TCodec,
         substream_timeout: Duration,
         inbound_request_id: Arc<AtomicU64>,
@@ -387,7 +386,7 @@ impl<TCodec: Codec> fmt::Debug for Event<TCodec> {
 pub struct OutboundMessage<TCodec: Codec> {
     pub(crate) request_id: OutboundRequestId,
     pub(crate) request: TCodec::Request,
-    pub(crate) protocols: SmallVec<[TCodec::Protocol; 2]>,
+    pub(crate) protocols: Vec<TCodec::Protocol>,
 }
 
 impl<TCodec> fmt::Debug for OutboundMessage<TCodec>

@@ -57,7 +57,7 @@ pub(super) fn counts_stream(
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
-    let mut batch = smallvec::SmallVec::<[StateUpdateCounts; 10]>::default();
+    let mut batch = Vec::new();
 
     while start <= stop_inclusive {
         if let Some(counts) = batch.pop() {
