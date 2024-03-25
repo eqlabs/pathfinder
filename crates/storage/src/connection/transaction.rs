@@ -638,9 +638,15 @@ pub(crate) mod dto {
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
-        pub builtin_instance_counter: BuiltinCounters,
+        pub builtins: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
+        pub data_availability: ExecutionDataAvailability,
+    }
+
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct ExecutionDataAvailability {
         // TODO make these mandatory once some new release makes resyncing necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
@@ -649,10 +655,13 @@ pub(crate) mod dto {
     impl From<&ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
         fn from(value: &ExecutionResources) -> Self {
             Self {
-                builtins: value.builtin_instance_counter.into(),
+                builtins: value.builtins.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                data_availability: match (value.l1_gas, value.l1_data_gas) {
+                data_availability: match (
+                    value.data_availability.l1_gas,
+                    value.data_availability.l1_data_gas,
+                ) {
                     (Some(l1_gas), Some(l1_data_gas)) => {
                         pathfinder_common::receipt::ExecutionDataAvailability {
                             l1_gas,
@@ -668,11 +677,13 @@ pub(crate) mod dto {
     impl From<&pathfinder_common::receipt::ExecutionResources> for ExecutionResources {
         fn from(value: &pathfinder_common::receipt::ExecutionResources) -> Self {
             Self {
-                builtin_instance_counter: (&value.builtins).into(),
+                builtins: (&value.builtins).into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                l1_gas: Some(value.data_availability.l1_gas),
-                l1_data_gas: Some(value.data_availability.l1_data_gas),
+                data_availability: ExecutionDataAvailability {
+                    l1_gas: Some(value.data_availability.l1_gas),
+                    l1_data_gas: Some(value.data_availability.l1_data_gas),
+                },
             }
         }
     }
@@ -686,11 +697,13 @@ pub(crate) mod dto {
             };
 
             Self {
-                builtin_instance_counter: Faker.fake_with_rng(rng),
+                builtins: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                l1_gas,
-                l1_data_gas,
+                data_availability: ExecutionDataAvailability {
+                    l1_gas,
+                    l1_data_gas,
+                },
             }
         }
     }
@@ -700,41 +713,41 @@ pub(crate) mod dto {
     // ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct BuiltinCounters {
-        pub output_builtin: u64,
-        pub pedersen_builtin: u64,
-        pub range_check_builtin: u64,
-        pub ecdsa_builtin: u64,
-        pub bitwise_builtin: u64,
-        pub ec_op_builtin: u64,
-        pub keccak_builtin: u64,
-        pub poseidon_builtin: u64,
-        pub segment_arena_builtin: u64,
+        pub output: u64,
+        pub pedersen: u64,
+        pub range_check: u64,
+        pub ecdsa: u64,
+        pub bitwise: u64,
+        pub ec_op: u64,
+        pub keccak: u64,
+        pub poseidon: u64,
+        pub segment_arena: u64,
     }
 
     impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {
         fn from(value: BuiltinCounters) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
             let BuiltinCounters {
-                output_builtin,
-                pedersen_builtin,
-                range_check_builtin,
-                ecdsa_builtin,
-                bitwise_builtin,
-                ec_op_builtin,
-                keccak_builtin,
-                poseidon_builtin,
-                segment_arena_builtin,
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
             } = value;
             Self {
-                output: output_builtin,
-                pedersen: pedersen_builtin,
-                range_check: range_check_builtin,
-                ecdsa: ecdsa_builtin,
-                bitwise: bitwise_builtin,
-                ec_op: ec_op_builtin,
-                keccak: keccak_builtin,
-                poseidon: poseidon_builtin,
-                segment_arena: segment_arena_builtin,
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
             }
         }
     }
@@ -743,26 +756,26 @@ pub(crate) mod dto {
         fn from(value: &pathfinder_common::receipt::BuiltinCounters) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
             let pathfinder_common::receipt::BuiltinCounters {
-                output: output_builtin,
-                pedersen: pedersen_builtin,
-                range_check: range_check_builtin,
-                ecdsa: ecdsa_builtin,
-                bitwise: bitwise_builtin,
-                ec_op: ec_op_builtin,
-                keccak: keccak_builtin,
-                poseidon: poseidon_builtin,
-                segment_arena: segment_arena_builtin,
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
             } = value.clone();
             Self {
-                output_builtin,
-                pedersen_builtin,
-                range_check_builtin,
-                ecdsa_builtin,
-                bitwise_builtin,
-                ec_op_builtin,
-                keccak_builtin,
-                poseidon_builtin,
-                segment_arena_builtin,
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
             }
         }
     }
@@ -770,15 +783,15 @@ pub(crate) mod dto {
     impl<T> Dummy<T> for BuiltinCounters {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
-                output_builtin: rng.next_u32() as u64,
-                pedersen_builtin: rng.next_u32() as u64,
-                range_check_builtin: rng.next_u32() as u64,
-                ecdsa_builtin: rng.next_u32() as u64,
-                bitwise_builtin: rng.next_u32() as u64,
-                ec_op_builtin: rng.next_u32() as u64,
-                keccak_builtin: rng.next_u32() as u64,
-                poseidon_builtin: rng.next_u32() as u64,
-                segment_arena_builtin: 0, // Not used in p2p
+                output: rng.next_u32() as u64,
+                pedersen: rng.next_u32() as u64,
+                range_check: rng.next_u32() as u64,
+                ecdsa: rng.next_u32() as u64,
+                bitwise: rng.next_u32() as u64,
+                ec_op: rng.next_u32() as u64,
+                keccak: rng.next_u32() as u64,
+                poseidon: rng.next_u32() as u64,
+                segment_arena: 0, // Not used in p2p
             }
         }
     }
@@ -828,13 +841,10 @@ pub(crate) mod dto {
         }
     }
 
-    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     pub enum ExecutionStatus {
-        // This must be the default as pre v0.12.1 receipts did not contain this value and
-        // were always success as reverted did not exist.
-        #[default]
         Succeeded,
-        Reverted,
+        Reverted { reason: String },
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -844,7 +854,7 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 transaction receipt data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct ReceiptV0 {
         pub actual_fee: MinimalFelt,
@@ -852,11 +862,7 @@ pub(crate) mod dto {
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: MinimalFelt,
         pub transaction_index: TransactionIndex,
-        // Introduced in v0.12.1
         pub execution_status: ExecutionStatus,
-        // Introduced in v0.12.1
-        /// Only present if status is [ExecutionStatus::Reverted].
-        pub revert_error: Option<String>,
     }
 
     impl From<Receipt> for pathfinder_common::receipt::Receipt {
@@ -871,7 +877,6 @@ pub(crate) mod dto {
                 transaction_hash,
                 transaction_index,
                 execution_status,
-                revert_error,
             }) = value;
 
             common::Receipt {
@@ -882,9 +887,9 @@ pub(crate) mod dto {
                 transaction_index,
                 execution_status: match execution_status {
                     ExecutionStatus::Succeeded => common::ExecutionStatus::Succeeded,
-                    ExecutionStatus::Reverted => common::ExecutionStatus::Reverted {
-                        reason: revert_error.unwrap_or_default(),
-                    },
+                    ExecutionStatus::Reverted { reason } => {
+                        common::ExecutionStatus::Reverted { reason }
+                    }
                 },
             }
         }
@@ -892,53 +897,24 @@ pub(crate) mod dto {
 
     impl From<&pathfinder_common::receipt::Receipt> for Receipt {
         fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
-            let (execution_status, revert_error) = match &value.execution_status {
-                receipt::ExecutionStatus::Succeeded => (ExecutionStatus::Succeeded, None),
-                receipt::ExecutionStatus::Reverted { reason } => {
-                    (ExecutionStatus::Reverted, Some(reason.clone()))
-                }
-            };
-
             Self::V0(ReceiptV0 {
                 actual_fee: value.actual_fee.as_inner().to_owned().into(),
                 execution_resources: Some((&value.execution_resources).into()),
                 l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
                 transaction_hash: value.transaction_hash.as_inner().to_owned().into(),
                 transaction_index: value.transaction_index,
-                execution_status,
-                revert_error,
+                execution_status: match &value.execution_status {
+                    receipt::ExecutionStatus::Succeeded => ExecutionStatus::Succeeded,
+                    receipt::ExecutionStatus::Reverted { reason } => ExecutionStatus::Reverted {
+                        reason: reason.clone(),
+                    },
+                },
             })
         }
     }
 
-    impl<T> Dummy<T> for ReceiptV0 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let execution_status = Faker.fake_with_rng(rng);
-            let revert_error = (execution_status == ExecutionStatus::Reverted).then(|| {
-                let error: String = Faker.fake_with_rng(rng);
-                if error.is_empty() {
-                    "Revert error".to_string()
-                } else {
-                    error
-                }
-            });
-
-            // Those fields that were missing in very old receipts are always present
-            ReceiptV0 {
-                actual_fee: Faker.fake_with_rng(rng),
-                execution_resources: Some(Faker.fake_with_rng(rng)),
-                l2_to_l1_messages: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-                transaction_index: Faker.fake_with_rng(rng),
-                execution_status,
-                revert_error,
-            }
-        }
-    }
-
-    #[derive(Copy, Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     pub enum DataAvailabilityMode {
-        #[default]
         L1,
         L2,
     }
@@ -987,6 +963,8 @@ pub(crate) mod dto {
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     pub struct ResourceBound {
+        // TODO These are also likely to be close to zero, should we use the same trick as for
+        // felts?
         pub max_amount: ResourceAmount,
         pub max_price_per_unit: ResourcePricePerUnit,
     }
@@ -1035,7 +1013,7 @@ pub(crate) mod dto {
         InvokeV0(InvokeTransactionV0),
         InvokeV1(InvokeTransactionV1),
         InvokeV3(InvokeTransactionV3),
-        L1Handler(L1HandlerTransaction),
+        L1HandlerV0(L1HandlerTransactionV0),
     }
 
     impl From<&pathfinder_common::transaction::Transaction> for Transaction {
@@ -1324,7 +1302,7 @@ pub(crate) mod dto {
                     calldata,
                 }) => Self::V0 {
                     hash: transaction_hash.as_inner().to_owned().into(),
-                    variant: TransactionVariantV0::L1Handler(self::L1HandlerTransaction {
+                    variant: TransactionVariantV0::L1HandlerV0(self::L1HandlerTransactionV0 {
                         contract_address: contract_address.as_inner().to_owned().into(),
                         entry_point_selector: entry_point_selector.as_inner().to_owned().into(),
                         nonce: nonce.as_inner().to_owned().into(),
@@ -1332,7 +1310,6 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        version: TransactionVersion::ZERO.0.into(),
                     }),
                 },
             }
@@ -1631,13 +1608,11 @@ pub(crate) mod dto {
                 Transaction::V0 {
                     hash: _,
                     variant:
-                        TransactionVariantV0::L1Handler(L1HandlerTransaction {
+                        TransactionVariantV0::L1HandlerV0(L1HandlerTransactionV0 {
                             contract_address,
                             entry_point_selector,
                             nonce,
                             calldata,
-                            // This should always be zero.
-                            version: _,
                         }),
                 } => TransactionVariant::L1Handler(
                     pathfinder_common::transaction::L1HandlerTransaction {
@@ -1669,8 +1644,8 @@ pub(crate) mod dto {
         pub class_hash: MinimalFelt,
         pub max_fee: MinimalFelt,
         pub nonce: MinimalFelt,
-        pub sender_address: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
+        pub sender_address: MinimalFelt,
     }
 
     impl<T> Dummy<T> for DeclareTransactionV0V1 {
@@ -1692,8 +1667,8 @@ pub(crate) mod dto {
         pub class_hash: MinimalFelt,
         pub max_fee: MinimalFelt,
         pub nonce: MinimalFelt,
-        pub sender_address: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
+        pub sender_address: MinimalFelt,
         pub compiled_class_hash: MinimalFelt,
     }
 
@@ -1702,33 +1677,28 @@ pub(crate) mod dto {
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV3 {
         pub class_hash: MinimalFelt,
-
         pub nonce: MinimalFelt,
         pub nonce_data_availability_mode: DataAvailabilityMode,
         pub fee_data_availability_mode: DataAvailabilityMode,
         pub resource_bounds: ResourceBounds,
         pub tip: Tip,
         pub paymaster_data: Vec<MinimalFelt>,
-
-        pub sender_address: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
-        pub compiled_class_hash: MinimalFelt,
-
         pub account_deployment_data: Vec<MinimalFelt>,
+        pub sender_address: MinimalFelt,
+        pub compiled_class_hash: MinimalFelt,
     }
 
     impl<T> Dummy<T> for DeclareTransactionV3 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
                 class_hash: Faker.fake_with_rng(rng),
-
                 nonce: Faker.fake_with_rng(rng),
                 nonce_data_availability_mode: Faker.fake_with_rng(rng),
                 fee_data_availability_mode: Faker.fake_with_rng(rng),
                 resource_bounds: Faker.fake_with_rng(rng),
                 tip: Faker.fake_with_rng(rng),
                 paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
-
                 sender_address: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
                 compiled_class_hash: Faker.fake_with_rng(rng),
@@ -1742,10 +1712,10 @@ pub(crate) mod dto {
     #[serde(deny_unknown_fields)]
     pub struct DeployTransaction {
         pub contract_address: MinimalFelt,
+        pub version: MinimalFelt,
         pub contract_address_salt: MinimalFelt,
         pub class_hash: MinimalFelt,
         pub constructor_calldata: Vec<MinimalFelt>,
-        pub version: MinimalFelt,
     }
 
     impl<T> Dummy<T> for DeployTransaction {
@@ -1803,15 +1773,14 @@ pub(crate) mod dto {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountTransactionV3 {
+        pub sender_address: MinimalFelt,
+        pub signature: Vec<MinimalFelt>,
         pub nonce: MinimalFelt,
         pub nonce_data_availability_mode: DataAvailabilityMode,
         pub fee_data_availability_mode: DataAvailabilityMode,
         pub resource_bounds: ResourceBounds,
         pub tip: Tip,
         pub paymaster_data: Vec<MinimalFelt>,
-
-        pub sender_address: MinimalFelt,
-        pub signature: Vec<MinimalFelt>,
         pub contract_address_salt: MinimalFelt,
         pub constructor_calldata: Vec<MinimalFelt>,
         pub class_hash: MinimalFelt,
@@ -1855,10 +1824,6 @@ pub(crate) mod dto {
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV0 {
         pub calldata: Vec<MinimalFelt>,
-        // contract_address is the historic name for this field. sender_address was
-        // introduced with starknet v0.11. Although the gateway no longer uses the historic
-        // name at all, this alias must be kept until a database migration fixes all historic
-        // transaction naming, or until regenesis removes them all.
         pub sender_address: MinimalFelt,
         pub entry_point_selector: MinimalFelt,
         pub entry_point_type: Option<EntryPointType>,
@@ -1884,11 +1849,6 @@ pub(crate) mod dto {
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV1 {
         pub calldata: Vec<MinimalFelt>,
-        // contract_address is the historic name for this field. sender_address was
-        // introduced with starknet v0.11. Although the gateway no longer uses the historic
-        // name at all, this alias must be kept until a database migration fixes all historic
-        // transaction naming, or until regenesis removes them all.
-        #[serde(alias = "contract_address")]
         pub sender_address: MinimalFelt,
         pub max_fee: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
@@ -1899,18 +1859,16 @@ pub(crate) mod dto {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV3 {
+        pub signature: Vec<MinimalFelt>,
         pub nonce: MinimalFelt,
         pub nonce_data_availability_mode: DataAvailabilityMode,
         pub fee_data_availability_mode: DataAvailabilityMode,
         pub resource_bounds: ResourceBounds,
         pub tip: Tip,
         pub paymaster_data: Vec<MinimalFelt>,
-
-        pub sender_address: MinimalFelt,
-        pub signature: Vec<MinimalFelt>,
-        pub calldata: Vec<MinimalFelt>,
-
         pub account_deployment_data: Vec<MinimalFelt>,
+        pub calldata: Vec<MinimalFelt>,
+        pub sender_address: MinimalFelt,
     }
 
     impl<T> Dummy<T> for InvokeTransactionV3 {
@@ -1934,35 +1892,22 @@ pub(crate) mod dto {
     /// Represents deserialized L2 "L1 handler" transaction data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct L1HandlerTransaction {
+    pub struct L1HandlerTransactionV0 {
         pub contract_address: MinimalFelt,
         pub entry_point_selector: MinimalFelt,
-        // FIXME: remove once starkware fixes their gateway bug which was missing this field.
         pub nonce: MinimalFelt,
         pub calldata: Vec<MinimalFelt>,
-        pub version: MinimalFelt,
     }
 
-    impl<T> Dummy<T> for L1HandlerTransaction {
+    impl<T> Dummy<T> for L1HandlerTransactionV0 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
-                // TODO verify this is the only realistic value
-                version: TransactionVersion::ZERO.0.into(),
-
                 contract_address: Faker.fake_with_rng(rng),
                 entry_point_selector: Faker.fake_with_rng(rng),
                 nonce: Faker.fake_with_rng(rng),
                 calldata: Faker.fake_with_rng(rng),
             }
         }
-    }
-
-    /// Describes L2 transaction failure details.
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct Failure {
-        pub code: String,
-        pub error_message: String,
     }
 }
 
