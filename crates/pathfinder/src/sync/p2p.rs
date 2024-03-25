@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_variables)]
 mod class_definitions;
+mod events;
 mod headers;
 mod receipts;
 mod state_updates;
