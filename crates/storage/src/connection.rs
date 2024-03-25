@@ -122,6 +122,9 @@ impl<'inner> Transaction<'inner> {
         contract: ContractAddress,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            trie::delete_contract_state_hashes(self, contract)?;
+        }
         trie::insert_contract_state_hash(self, block_number, contract, state_hash)
     }
 
@@ -544,15 +547,10 @@ impl<'inner> Transaction<'inner> {
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            trie::delete_class_roots(self)?;
+        }
         trie::insert_class_root(self, block_number, root)
-    }
-
-    pub fn insert_or_update_class_root(
-        &self,
-        block_number: BlockNumber,
-        root: Option<u64>,
-    ) -> anyhow::Result<()> {
-        trie::insert_or_update_class_root(self, block_number, root)
     }
 
     pub fn insert_storage_root(
@@ -560,15 +558,10 @@ impl<'inner> Transaction<'inner> {
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            trie::delete_storage_roots(self)?;
+        }
         trie::insert_storage_root(self, block_number, root)
-    }
-
-    pub fn insert_or_update_storage_root(
-        &self,
-        block_number: BlockNumber,
-        root: Option<u64>,
-    ) -> anyhow::Result<()> {
-        trie::insert_or_update_storage_root(self, block_number, root)
     }
 
     pub fn insert_contract_root(
@@ -577,16 +570,10 @@ impl<'inner> Transaction<'inner> {
         contract: ContractAddress,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            trie::delete_contract_roots(self, contract)?;
+        }
         trie::insert_contract_root(self, block_number, contract, root)
-    }
-
-    pub fn insert_or_update_contract_root(
-        &self,
-        block_number: BlockNumber,
-        contract: ContractAddress,
-        root: Option<u64>,
-    ) -> anyhow::Result<()> {
-        trie::insert_or_update_contract_root(self, block_number, contract, root)
     }
 
     pub fn insert_state_update(

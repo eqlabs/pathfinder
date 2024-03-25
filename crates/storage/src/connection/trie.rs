@@ -101,6 +101,12 @@ pub(super) fn contract_root(
         .map_err(Into::into)
 }
 
+pub(super) fn delete_class_roots(tx: &Transaction<'_>) -> anyhow::Result<()> {
+    let mut stmt = tx.inner().prepare_cached("DELETE FROM class_roots")?;
+    stmt.execute([])?;
+    Ok(())
+}
+
 pub(super) fn insert_class_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
@@ -113,15 +119,14 @@ pub(super) fn insert_class_root(
     Ok(())
 }
 
-pub(super) fn insert_or_update_class_root(
+pub(super) fn delete_contract_state_hashes(
     tx: &Transaction<'_>,
-    block_number: BlockNumber,
-    root: Option<u64>,
+    contract: ContractAddress,
 ) -> anyhow::Result<()> {
-    tx.inner().execute(
-        "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
-        params![&block_number, &root],
-    )?;
+    let mut stmt = tx
+        .inner()
+        .prepare_cached("DELETE FROM contract_state_hashes WHERE contract_address = ?")?;
+    stmt.execute(params![&contract])?;
     Ok(())
 }
 
@@ -152,6 +157,12 @@ pub(super) fn contract_state_hash(
         .map_err(Into::into)
 }
 
+pub(super) fn delete_storage_roots(tx: &Transaction<'_>) -> anyhow::Result<()> {
+    let mut stmt = tx.inner().prepare_cached("DELETE FROM storage_roots")?;
+    stmt.execute([])?;
+    Ok(())
+}
+
 pub(super) fn insert_storage_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
@@ -164,15 +175,14 @@ pub(super) fn insert_storage_root(
     Ok(())
 }
 
-pub(super) fn insert_or_update_storage_root(
+pub(super) fn delete_contract_roots(
     tx: &Transaction<'_>,
-    block_number: BlockNumber,
-    root: Option<u64>,
+    contract: ContractAddress,
 ) -> anyhow::Result<()> {
-    tx.inner().execute(
-        "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
-        params![&block_number, &root],
-    )?;
+    let mut stmt = tx
+        .inner()
+        .prepare_cached("DELETE FROM contract_roots WHERE contract_address = ?")?;
+    stmt.execute(params![&contract])?;
     Ok(())
 }
 
@@ -184,19 +194,6 @@ pub(super) fn insert_contract_root(
 ) -> anyhow::Result<()> {
     tx.inner().execute(
         "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
-        params![&block_number, &contract, &root],
-    )?;
-    Ok(())
-}
-
-pub(super) fn insert_or_update_contract_root(
-    tx: &Transaction<'_>,
-    block_number: BlockNumber,
-    contract: ContractAddress,
-    root: Option<u64>,
-) -> anyhow::Result<()> {
-    tx.inner().execute(
-        "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
         params![&block_number, &contract, &root],
     )?;
     Ok(())

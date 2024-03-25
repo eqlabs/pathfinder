@@ -198,7 +198,7 @@ pub fn revert_contract_state(
                 };
 
                 transaction
-                    .insert_or_update_contract_root(target_block, contract_address, root_index)
+                    .insert_contract_root(target_block, contract_address, root_index)
                     .context("Inserting contract's root index")?;
 
                 root
