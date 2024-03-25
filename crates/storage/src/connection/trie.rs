@@ -96,6 +96,10 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            self.delete_class_roots()?;
+        }
+
         self.inner().execute(
             "INSERT INTO class_roots (block_number, root_index) VALUES(?, ?)",
             params![&block_number, &root],
@@ -103,15 +107,9 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn insert_or_update_class_root(
-        &self,
-        block_number: BlockNumber,
-        root: Option<u64>,
-    ) -> anyhow::Result<()> {
-        self.inner().execute(
-            "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &root],
-        )?;
+    fn delete_class_roots(&self) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached("DELETE FROM class_roots")?;
+        stmt.execute([])?;
         Ok(())
     }
 
@@ -121,9 +119,21 @@ impl Transaction<'_> {
         contract: ContractAddress,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            self.delete_contract_state_hashes(contract)?;
+        }
+
         self.inner().execute("INSERT INTO contract_state_hashes(block_number, contract_address, state_hash) VALUES(?,?,?)", 
         params![&block_number, &contract, &state_hash])?;
 
+        Ok(())
+    }
+
+    fn delete_contract_state_hashes(&self, contract: ContractAddress) -> anyhow::Result<()> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("DELETE FROM contract_state_hashes WHERE contract_address = ?")?;
+        stmt.execute(params![&contract])?;
         Ok(())
     }
 
@@ -147,6 +157,10 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            self.delete_storage_roots()?;
+        }
+
         self.inner().execute(
             "INSERT INTO storage_roots (block_number, root_index) VALUES(?, ?)",
             params![&block_number, &root],
@@ -154,15 +168,9 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn insert_or_update_storage_root(
-        &self,
-        block_number: BlockNumber,
-        root: Option<u64>,
-    ) -> anyhow::Result<()> {
-        self.inner().execute(
-            "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &root],
-        )?;
+    fn delete_storage_roots(&self) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached("DELETE FROM storage_roots")?;
+        stmt.execute([])?;
         Ok(())
     }
 
@@ -172,6 +180,10 @@ impl Transaction<'_> {
         contract: ContractAddress,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
+        if self.prune_merkle_tries {
+            self.delete_contract_roots(contract)?;
+        }
+
         self.inner().execute(
         "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
         params![&block_number, &contract, &root],
@@ -179,16 +191,11 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn insert_or_update_contract_root(
-        &self,
-        block_number: BlockNumber,
-        contract: ContractAddress,
-        root: Option<u64>,
-    ) -> anyhow::Result<()> {
-        self.inner().execute(
-        "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
-        params![&block_number, &contract, &root],
-    )?;
+    fn delete_contract_roots(&self, contract: ContractAddress) -> anyhow::Result<()> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("DELETE FROM contract_roots WHERE contract_address = ?")?;
+        stmt.execute(params![&contract])?;
         Ok(())
     }
 }

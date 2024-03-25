@@ -1,7 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHeader, BlockNumber, ClassCommitment, ClassCommitmentLeafHash, ContractStateHash,
-    StorageCommitment,
+    BlockHeader, BlockNumber, ClassCommitment, ClassCommitmentLeafHash, StorageCommitment,
 };
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_storage::Transaction;
@@ -61,19 +60,9 @@ fn revert_contract_updates(
                 contract_update,
             )?;
 
-            let expected_contract_state_hash = transaction
-                .contract_state_hash(target_block, contract_address)
-                .context("Fetching expected contract state hash")?
-                // non-existent contracts are mapped to a zero state hash
-                .unwrap_or(ContractStateHash::ZERO);
-            if expected_contract_state_hash != state_hash {
-                anyhow::bail!(
-                    "Contract state hash mismatch: address {} computed {} expected {}",
-                    contract_address,
-                    state_hash,
-                    expected_contract_state_hash
-                );
-            }
+            transaction
+                .insert_contract_state_hash(target_block, contract_address, state_hash)
+                .context("Inserting reverted contract state hash")?;
 
             global_tree
                 .set(contract_address, state_hash)
@@ -105,7 +94,7 @@ fn revert_contract_updates(
         };
 
         transaction
-            .insert_or_update_storage_root(target_block, root_idx)
+            .insert_storage_root(target_block, root_idx)
             .context("Inserting storage root index")?;
         tracing::debug!(%target_block, %storage_commitment, "Committed global state tree");
     } else {
@@ -167,7 +156,7 @@ fn revert_class_updates(
         };
 
         transaction
-            .insert_or_update_class_root(target_block, root_idx)
+            .insert_class_root(target_block, root_idx)
             .context("Inserting class root index")?;
 
         tracing::debug!(%target_block, %class_commitment, "Committed class trie");
