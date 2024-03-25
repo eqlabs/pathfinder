@@ -8,6 +8,7 @@ use primitive_types::H160;
 mod checkpoint;
 mod class_definitions;
 mod error;
+mod events;
 mod headers;
 mod receipts;
 mod state_updates;
