@@ -302,6 +302,14 @@ impl<'inner> Transaction<'inner> {
         )
     }
 
+    pub fn event_counts(
+        &self,
+        block: BlockId,
+        max_len: NonZeroUsize,
+    ) -> anyhow::Result<Vec<usize>> {
+        block::event_counts(self, block, max_len)
+    }
+
     pub fn insert_sierra_class(
         &self,
         sierra_hash: &SierraHash,
@@ -601,6 +609,10 @@ impl<'inner> Transaction<'inner> {
         &self,
     ) -> anyhow::Result<Option<BlockNumber>> {
         block::highest_block_with_all_class_definitions_downloaded(self)
+    }
+
+    pub fn highest_block_with_all_events_downloaded(&self) -> anyhow::Result<Option<BlockNumber>> {
+        block::highest_block_with_all_events_downloaded(self)
     }
 
     pub fn state_update_counts(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateCounts>> {

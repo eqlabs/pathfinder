@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice, StarknetVersion};
 
@@ -507,6 +509,56 @@ pub(super) fn highest_block_with_all_class_definitions_downloaded(
     stmt.query_row([], |row| row.get_block_number(0))
         .optional()
         .context("Querying highest block with all class definitions downloaded")
+}
+
+pub(super) fn highest_block_with_all_events_downloaded(
+    tx: &Transaction<'_>,
+) -> anyhow::Result<Option<BlockNumber>> {
+    let mut stmt = tx.inner().prepare_cached(
+        r"SELECT block_number
+        FROM starknet_events_filters
+        ORDER BY block_number DESC
+        LIMIT 1",
+    )?;
+    stmt.query_row([], |row| row.get_block_number(0))
+        .optional()
+        .context("Querying highest block with events")
+}
+
+pub fn event_counts(
+    tx: &Transaction<'_>,
+    block: BlockId,
+    max_len: NonZeroUsize,
+) -> anyhow::Result<Vec<usize>> {
+    let Some((block_number, _)) = block_id(tx, block).context("Querying block header")? else {
+        return Ok(Default::default());
+    };
+
+    let mut stmt = tx
+        .inner()
+        .prepare_cached(
+            "SELECT event_count FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
+        )
+        .context("Preparing get event counts statement")?;
+
+    let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
+    let mut counts = stmt
+        .query_map(params![&block_number, &max_len], |row| Ok(row.get(0)?))
+        .context("Querying event counts")?;
+
+    let mut ret = Vec::new();
+
+    while let Some(stat) = counts
+        .next()
+        .transpose()
+        .context("Iterating over event counts rows")?
+    {
+        ret.push(stat);
+    }
+
+    ret.reverse();
+
+    Ok(ret)
 }
 
 #[cfg(test)]
