@@ -499,7 +499,7 @@ pub(crate) mod dto {
         where
             S: serde::Serializer,
         {
-            let bytes = self.0.to_be_bytes();
+            let bytes = self.0.as_be_bytes();
             let zeros = bytes.iter().take_while(|&&x| x == 0).count();
             bytes[zeros..].serialize(serializer)
         }
