@@ -699,7 +699,6 @@ pub(crate) mod dto {
     // store these counters perfectly. Failure would be far more costly than simply
     // ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
-    #[serde(default)]
     pub struct BuiltinCounters {
         pub output_builtin: u64,
         pub pedersen_builtin: u64,
@@ -848,18 +847,15 @@ pub(crate) mod dto {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ReceiptV0 {
-        #[serde(default)]
         pub actual_fee: MinimalFelt,
         pub execution_resources: Option<ExecutionResources>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: MinimalFelt,
         pub transaction_index: TransactionIndex,
         // Introduced in v0.12.1
-        #[serde(default)]
         pub execution_status: ExecutionStatus,
         // Introduced in v0.12.1
         /// Only present if status is [ExecutionStatus::Reverted].
-        #[serde(default)]
         pub revert_error: Option<String>,
     }
 
@@ -1016,20 +1012,29 @@ pub(crate) mod dto {
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
-        V0(TransactionV0),
+        V0 {
+            hash: MinimalFelt,
+            variant: TransactionVariantV0,
+        },
     }
 
     /// Represents deserialized L2 transaction data.
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    pub enum TransactionV0 {
-        Declare(DeclareTransaction),
+    pub enum TransactionVariantV0 {
+        DeclareV0(DeclareTransactionV0V1),
+        DeclareV1(DeclareTransactionV0V1),
+        DeclareV2(DeclareTransactionV2),
+        DeclareV3(DeclareTransactionV3),
         // FIXME regenesis: remove Deploy txn type after regenesis
         // We are keeping this type of transaction until regenesis
         // only to support older pre-0.11.0 blocks
         Deploy(DeployTransaction),
-        DeployAccount(DeployAccountTransaction),
-        Invoke(InvokeTransaction),
+        DeployAccountV1(DeployAccountTransactionV1),
+        DeployAccountV3(DeployAccountTransactionV3),
+        InvokeV0(InvokeTransactionV0),
+        InvokeV1(InvokeTransactionV1),
+        InvokeV3(InvokeTransactionV3),
         L1Handler(L1HandlerTransaction),
     }
 
@@ -1046,8 +1051,9 @@ pub(crate) mod dto {
                     nonce,
                     sender_address,
                     signature,
-                }) => Self::V0(TransactionV0::Declare(DeclareTransaction::V0(
-                    self::DeclareTransactionV0V1 {
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::DeclareV0(self::DeclareTransactionV0V1 {
                         class_hash: class_hash.as_inner().to_owned().into(),
                         max_fee: max_fee.as_inner().to_owned().into(),
                         nonce: nonce.as_inner().to_owned().into(),
@@ -1056,17 +1062,17 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                    },
-                ))),
+                    }),
+                },
                 DeclareV1(DeclareTransactionV0V1 {
                     class_hash,
                     max_fee,
                     nonce,
                     sender_address,
                     signature,
-                }) => Self::V0(TransactionV0::Declare(DeclareTransaction::V1(
-                    self::DeclareTransactionV0V1 {
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::DeclareV1(self::DeclareTransactionV0V1 {
                         class_hash: class_hash.as_inner().to_owned().into(),
                         max_fee: max_fee.as_inner().to_owned().into(),
                         nonce: nonce.as_inner().to_owned().into(),
@@ -1075,9 +1081,8 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                    },
-                ))),
+                    }),
+                },
                 DeclareV2(DeclareTransactionV2 {
                     class_hash,
                     max_fee,
@@ -1085,8 +1090,9 @@ pub(crate) mod dto {
                     sender_address,
                     signature,
                     compiled_class_hash,
-                }) => Self::V0(TransactionV0::Declare(DeclareTransaction::V2(
-                    self::DeclareTransactionV2 {
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::DeclareV2(self::DeclareTransactionV2 {
                         class_hash: class_hash.as_inner().to_owned().into(),
                         max_fee: max_fee.as_inner().to_owned().into(),
                         nonce: nonce.as_inner().to_owned().into(),
@@ -1095,10 +1101,9 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
                         compiled_class_hash: compiled_class_hash.as_inner().to_owned().into(),
-                    },
-                ))),
+                    }),
+                },
                 DeclareV3(DeclareTransactionV3 {
                     class_hash,
                     nonce,
@@ -1111,8 +1116,9 @@ pub(crate) mod dto {
                     account_deployment_data,
                     sender_address,
                     compiled_class_hash,
-                }) => Self::V0(TransactionV0::Declare(DeclareTransaction::V3(
-                    self::DeclareTransactionV3 {
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::DeclareV3(self::DeclareTransactionV3 {
                         class_hash: class_hash.as_inner().to_owned().into(),
                         nonce: nonce.as_inner().to_owned().into(),
                         nonce_data_availability_mode: nonce_data_availability_mode.into(),
@@ -1128,31 +1134,32 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
                         compiled_class_hash: compiled_class_hash.as_inner().to_owned().into(),
                         account_deployment_data: account_deployment_data
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                    },
-                ))),
+                    }),
+                },
                 Deploy(DeployTransaction {
                     contract_address,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
                     version,
-                }) => Self::V0(TransactionV0::Deploy(self::DeployTransaction {
-                    contract_address: contract_address.as_inner().to_owned().into(),
-                    contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
-                    class_hash: class_hash.as_inner().to_owned().into(),
-                    constructor_calldata: constructor_calldata
-                        .into_iter()
-                        .map(|x| x.as_inner().to_owned().into())
-                        .collect(),
-                    transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                    version: version.0.into(),
-                })),
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::Deploy(self::DeployTransaction {
+                        contract_address: contract_address.as_inner().to_owned().into(),
+                        contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
+                        class_hash: class_hash.as_inner().to_owned().into(),
+                        constructor_calldata: constructor_calldata
+                            .into_iter()
+                            .map(|x| x.as_inner().to_owned().into())
+                            .collect(),
+                        version: version.0.into(),
+                    }),
+                },
                 DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address,
                     max_fee,
@@ -1161,24 +1168,29 @@ pub(crate) mod dto {
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) => Self::V0(TransactionV0::DeployAccount(
-                    self::DeployAccountTransaction::V1(self::DeployAccountTransactionV1 {
-                        contract_address: contract_address.as_inner().to_owned().into(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                        max_fee: max_fee.as_inner().to_owned().into(),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| x.as_inner().to_owned().into())
-                            .collect(),
-                        nonce: nonce.as_inner().to_owned().into(),
-                        contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
-                        constructor_calldata: constructor_calldata
-                            .into_iter()
-                            .map(|x| x.as_inner().to_owned().into())
-                            .collect(),
-                        class_hash: class_hash.as_inner().to_owned().into(),
-                    }),
-                )),
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::DeployAccountV1(
+                        self::DeployAccountTransactionV1 {
+                            contract_address: contract_address.as_inner().to_owned().into(),
+                            max_fee: max_fee.as_inner().to_owned().into(),
+                            signature: signature
+                                .into_iter()
+                                .map(|x| x.as_inner().to_owned().into())
+                                .collect(),
+                            nonce: nonce.as_inner().to_owned().into(),
+                            contract_address_salt: contract_address_salt
+                                .as_inner()
+                                .to_owned()
+                                .into(),
+                            constructor_calldata: constructor_calldata
+                                .into_iter()
+                                .map(|x| x.as_inner().to_owned().into())
+                                .collect(),
+                            class_hash: class_hash.as_inner().to_owned().into(),
+                        },
+                    ),
+                },
                 DeployAccountV3(DeployAccountTransactionV3 {
                     contract_address,
                     signature,
@@ -1191,31 +1203,36 @@ pub(crate) mod dto {
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) => Self::V0(TransactionV0::DeployAccount(
-                    self::DeployAccountTransaction::V3(self::DeployAccountTransactionV3 {
-                        nonce: nonce.as_inner().to_owned().into(),
-                        nonce_data_availability_mode: nonce_data_availability_mode.into(),
-                        fee_data_availability_mode: fee_data_availability_mode.into(),
-                        resource_bounds: resource_bounds.into(),
-                        tip,
-                        paymaster_data: paymaster_data
-                            .into_iter()
-                            .map(|x| x.as_inner().to_owned().into())
-                            .collect(),
-                        sender_address: contract_address.as_inner().to_owned().into(),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| x.as_inner().to_owned().into())
-                            .collect(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                        contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
-                        constructor_calldata: constructor_calldata
-                            .into_iter()
-                            .map(|x| x.as_inner().to_owned().into())
-                            .collect(),
-                        class_hash: class_hash.as_inner().to_owned().into(),
-                    }),
-                )),
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::DeployAccountV3(
+                        self::DeployAccountTransactionV3 {
+                            nonce: nonce.as_inner().to_owned().into(),
+                            nonce_data_availability_mode: nonce_data_availability_mode.into(),
+                            fee_data_availability_mode: fee_data_availability_mode.into(),
+                            resource_bounds: resource_bounds.into(),
+                            tip,
+                            paymaster_data: paymaster_data
+                                .into_iter()
+                                .map(|x| x.as_inner().to_owned().into())
+                                .collect(),
+                            sender_address: contract_address.as_inner().to_owned().into(),
+                            signature: signature
+                                .into_iter()
+                                .map(|x| x.as_inner().to_owned().into())
+                                .collect(),
+                            contract_address_salt: contract_address_salt
+                                .as_inner()
+                                .to_owned()
+                                .into(),
+                            constructor_calldata: constructor_calldata
+                                .into_iter()
+                                .map(|x| x.as_inner().to_owned().into())
+                                .collect(),
+                            class_hash: class_hash.as_inner().to_owned().into(),
+                        },
+                    ),
+                },
                 InvokeV0(InvokeTransactionV0 {
                     calldata,
                     sender_address,
@@ -1223,8 +1240,9 @@ pub(crate) mod dto {
                     entry_point_type,
                     max_fee,
                     signature,
-                }) => Self::V0(TransactionV0::Invoke(InvokeTransaction::V0(
-                    self::InvokeTransactionV0 {
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::InvokeV0(self::InvokeTransactionV0 {
                         calldata: calldata
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
@@ -1237,17 +1255,17 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                    },
-                ))),
+                    }),
+                },
                 InvokeV1(InvokeTransactionV1 {
                     calldata,
                     sender_address,
                     max_fee,
                     signature,
                     nonce,
-                }) => Self::V0(TransactionV0::Invoke(InvokeTransaction::V1(
-                    self::InvokeTransactionV1 {
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::InvokeV1(self::InvokeTransactionV1 {
                         calldata: calldata
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
@@ -1259,9 +1277,8 @@ pub(crate) mod dto {
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
                         nonce: nonce.as_inner().to_owned().into(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                    },
-                ))),
+                    }),
+                },
                 InvokeV3(InvokeTransactionV3 {
                     signature,
                     nonce,
@@ -1273,8 +1290,9 @@ pub(crate) mod dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
-                }) => Self::V0(TransactionV0::Invoke(InvokeTransaction::V3(
-                    self::InvokeTransactionV3 {
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::InvokeV3(self::InvokeTransactionV3 {
                         nonce: nonce.as_inner().to_owned().into(),
                         nonce_data_availability_mode: nonce_data_availability_mode.into(),
                         fee_data_availability_mode: fee_data_availability_mode.into(),
@@ -1289,7 +1307,6 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
                         calldata: calldata
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
@@ -1298,24 +1315,26 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                    },
-                ))),
+                    }),
+                },
                 L1Handler(L1HandlerTransaction {
                     contract_address,
                     entry_point_selector,
                     nonce,
                     calldata,
-                }) => Self::V0(TransactionV0::L1Handler(self::L1HandlerTransaction {
-                    contract_address: contract_address.as_inner().to_owned().into(),
-                    entry_point_selector: entry_point_selector.as_inner().to_owned().into(),
-                    nonce: nonce.as_inner().to_owned().into(),
-                    calldata: calldata
-                        .into_iter()
-                        .map(|x| x.as_inner().to_owned().into())
-                        .collect(),
-                    transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                    version: TransactionVersion::ZERO.0.into(),
-                })),
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::L1Handler(self::L1HandlerTransaction {
+                        contract_address: contract_address.as_inner().to_owned().into(),
+                        entry_point_selector: entry_point_selector.as_inner().to_owned().into(),
+                        nonce: nonce.as_inner().to_owned().into(),
+                        calldata: calldata
+                            .into_iter()
+                            .map(|x| x.as_inner().to_owned().into())
+                            .collect(),
+                        version: TransactionVersion::ZERO.0.into(),
+                    }),
+                },
             }
         }
     }
@@ -1326,16 +1345,17 @@ pub(crate) mod dto {
 
             let hash = value.hash();
             let variant = match value {
-                Transaction::V0(TransactionV0::Declare(DeclareTransaction::V0(
-                    DeclareTransactionV0V1 {
-                        class_hash,
-                        max_fee,
-                        nonce,
-                        sender_address,
-                        signature,
-                        transaction_hash: _,
-                    },
-                ))) => TransactionVariant::DeclareV0(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::DeclareV0(DeclareTransactionV0V1 {
+                            class_hash,
+                            max_fee,
+                            nonce,
+                            sender_address,
+                            signature,
+                        }),
+                } => TransactionVariant::DeclareV0(
                     pathfinder_common::transaction::DeclareTransactionV0V1 {
                         class_hash: ClassHash(class_hash.into()),
                         max_fee: Fee(max_fee.into()),
@@ -1347,16 +1367,17 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0(TransactionV0::Declare(DeclareTransaction::V1(
-                    DeclareTransactionV0V1 {
-                        class_hash,
-                        max_fee,
-                        nonce,
-                        sender_address,
-                        signature,
-                        transaction_hash: _,
-                    },
-                ))) => TransactionVariant::DeclareV1(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::DeclareV1(DeclareTransactionV0V1 {
+                            class_hash,
+                            max_fee,
+                            nonce,
+                            sender_address,
+                            signature,
+                        }),
+                } => TransactionVariant::DeclareV1(
                     pathfinder_common::transaction::DeclareTransactionV0V1 {
                         class_hash: ClassHash(class_hash.into()),
                         max_fee: Fee(max_fee.into()),
@@ -1368,17 +1389,18 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0(TransactionV0::Declare(DeclareTransaction::V2(
-                    DeclareTransactionV2 {
-                        class_hash,
-                        max_fee,
-                        nonce,
-                        sender_address,
-                        signature,
-                        transaction_hash: _,
-                        compiled_class_hash,
-                    },
-                ))) => TransactionVariant::DeclareV2(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::DeclareV2(DeclareTransactionV2 {
+                            class_hash,
+                            max_fee,
+                            nonce,
+                            sender_address,
+                            signature,
+                            compiled_class_hash,
+                        }),
+                } => TransactionVariant::DeclareV2(
                     pathfinder_common::transaction::DeclareTransactionV2 {
                         class_hash: ClassHash(class_hash.into()),
                         max_fee: Fee(max_fee.into()),
@@ -1391,22 +1413,23 @@ pub(crate) mod dto {
                         compiled_class_hash: CasmHash::new_or_panic(compiled_class_hash.into()),
                     },
                 ),
-                Transaction::V0(TransactionV0::Declare(DeclareTransaction::V3(
-                    DeclareTransactionV3 {
-                        class_hash,
-                        nonce,
-                        nonce_data_availability_mode,
-                        fee_data_availability_mode,
-                        resource_bounds,
-                        tip,
-                        paymaster_data,
-                        sender_address,
-                        signature,
-                        transaction_hash: _,
-                        compiled_class_hash,
-                        account_deployment_data,
-                    },
-                ))) => TransactionVariant::DeclareV3(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::DeclareV3(DeclareTransactionV3 {
+                            class_hash,
+                            nonce,
+                            nonce_data_availability_mode,
+                            fee_data_availability_mode,
+                            resource_bounds,
+                            tip,
+                            paymaster_data,
+                            sender_address,
+                            signature,
+                            compiled_class_hash,
+                            account_deployment_data,
+                        }),
+                } => TransactionVariant::DeclareV3(
                     pathfinder_common::transaction::DeclareTransactionV3 {
                         class_hash: ClassHash(class_hash.into()),
                         nonce: TransactionNonce(nonce.into()),
@@ -1430,14 +1453,17 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0(TransactionV0::Deploy(DeployTransaction {
-                    contract_address,
-                    contract_address_salt,
-                    class_hash,
-                    constructor_calldata,
-                    transaction_hash: _,
-                    version,
-                })) => {
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::Deploy(DeployTransaction {
+                            contract_address,
+                            contract_address_salt,
+                            class_hash,
+                            constructor_calldata,
+                            version,
+                        }),
+                } => {
                     TransactionVariant::Deploy(pathfinder_common::transaction::DeployTransaction {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
                         contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
@@ -1449,18 +1475,19 @@ pub(crate) mod dto {
                         version: TransactionVersion(version.into()),
                     })
                 }
-                Transaction::V0(TransactionV0::DeployAccount(DeployAccountTransaction::V1(
-                    DeployAccountTransactionV1 {
-                        contract_address,
-                        transaction_hash: _,
-                        max_fee,
-                        signature,
-                        nonce,
-                        contract_address_salt,
-                        constructor_calldata,
-                        class_hash,
-                    },
-                ))) => TransactionVariant::DeployAccountV1(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::DeployAccountV1(DeployAccountTransactionV1 {
+                            contract_address,
+                            max_fee,
+                            signature,
+                            nonce,
+                            contract_address_salt,
+                            constructor_calldata,
+                            class_hash,
+                        }),
+                } => TransactionVariant::DeployAccountV1(
                     pathfinder_common::transaction::DeployAccountTransactionV1 {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
                         max_fee: Fee(max_fee.into()),
@@ -1477,22 +1504,23 @@ pub(crate) mod dto {
                         class_hash: ClassHash(class_hash.into()),
                     },
                 ),
-                Transaction::V0(TransactionV0::DeployAccount(DeployAccountTransaction::V3(
-                    DeployAccountTransactionV3 {
-                        nonce,
-                        nonce_data_availability_mode,
-                        fee_data_availability_mode,
-                        resource_bounds,
-                        tip,
-                        paymaster_data,
-                        sender_address,
-                        signature,
-                        transaction_hash: _,
-                        contract_address_salt,
-                        constructor_calldata,
-                        class_hash,
-                    },
-                ))) => TransactionVariant::DeployAccountV3(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::DeployAccountV3(DeployAccountTransactionV3 {
+                            nonce,
+                            nonce_data_availability_mode,
+                            fee_data_availability_mode,
+                            resource_bounds,
+                            tip,
+                            paymaster_data,
+                            sender_address,
+                            signature,
+                            contract_address_salt,
+                            constructor_calldata,
+                            class_hash,
+                        }),
+                } => TransactionVariant::DeployAccountV3(
                     pathfinder_common::transaction::DeployAccountTransactionV3 {
                         contract_address: ContractAddress::new_or_panic(sender_address.into()),
                         signature: signature
@@ -1516,17 +1544,18 @@ pub(crate) mod dto {
                         class_hash: ClassHash(class_hash.into()),
                     },
                 ),
-                Transaction::V0(TransactionV0::Invoke(InvokeTransaction::V0(
-                    InvokeTransactionV0 {
-                        calldata,
-                        sender_address,
-                        entry_point_selector,
-                        entry_point_type,
-                        max_fee,
-                        signature,
-                        transaction_hash: _,
-                    },
-                ))) => TransactionVariant::InvokeV0(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::InvokeV0(InvokeTransactionV0 {
+                            calldata,
+                            sender_address,
+                            entry_point_selector,
+                            entry_point_type,
+                            max_fee,
+                            signature,
+                        }),
+                } => TransactionVariant::InvokeV0(
                     pathfinder_common::transaction::InvokeTransactionV0 {
                         calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
@@ -1539,16 +1568,17 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0(TransactionV0::Invoke(InvokeTransaction::V1(
-                    InvokeTransactionV1 {
-                        calldata,
-                        sender_address,
-                        max_fee,
-                        signature,
-                        nonce,
-                        transaction_hash: _,
-                    },
-                ))) => TransactionVariant::InvokeV1(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::InvokeV1(InvokeTransactionV1 {
+                            calldata,
+                            sender_address,
+                            max_fee,
+                            signature,
+                            nonce,
+                        }),
+                } => TransactionVariant::InvokeV1(
                     pathfinder_common::transaction::InvokeTransactionV1 {
                         calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
@@ -1560,21 +1590,22 @@ pub(crate) mod dto {
                         nonce: TransactionNonce(nonce.into()),
                     },
                 ),
-                Transaction::V0(TransactionV0::Invoke(InvokeTransaction::V3(
-                    InvokeTransactionV3 {
-                        nonce,
-                        nonce_data_availability_mode,
-                        fee_data_availability_mode,
-                        resource_bounds,
-                        tip,
-                        paymaster_data,
-                        sender_address,
-                        signature,
-                        transaction_hash: _,
-                        calldata,
-                        account_deployment_data,
-                    },
-                ))) => TransactionVariant::InvokeV3(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::InvokeV3(InvokeTransactionV3 {
+                            nonce,
+                            nonce_data_availability_mode,
+                            fee_data_availability_mode,
+                            resource_bounds,
+                            tip,
+                            paymaster_data,
+                            sender_address,
+                            signature,
+                            calldata,
+                            account_deployment_data,
+                        }),
+                } => TransactionVariant::InvokeV3(
                     pathfinder_common::transaction::InvokeTransactionV3 {
                         signature: signature
                             .into_iter()
@@ -1597,15 +1628,18 @@ pub(crate) mod dto {
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
                     },
                 ),
-                Transaction::V0(TransactionV0::L1Handler(L1HandlerTransaction {
-                    contract_address,
-                    entry_point_selector,
-                    nonce,
-                    calldata,
-                    transaction_hash: _,
-                    // This should always be zero.
-                    version: _,
-                })) => TransactionVariant::L1Handler(
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::L1Handler(L1HandlerTransaction {
+                            contract_address,
+                            entry_point_selector,
+                            nonce,
+                            calldata,
+                            // This should always be zero.
+                            version: _,
+                        }),
+                } => TransactionVariant::L1Handler(
                     pathfinder_common::transaction::L1HandlerTransaction {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
                         entry_point_selector: EntryPoint(entry_point_selector.into()),
@@ -1622,66 +1656,33 @@ pub(crate) mod dto {
     impl Transaction {
         /// Returns hash of the transaction
         pub fn hash(&self) -> TransactionHash {
-            TransactionHash(
-                match self {
-                    Transaction::V0(TransactionV0::Declare(t)) => match t {
-                        DeclareTransaction::V0(t) => t.transaction_hash.clone(),
-                        DeclareTransaction::V1(t) => t.transaction_hash.clone(),
-                        DeclareTransaction::V2(t) => t.transaction_hash.clone(),
-                        DeclareTransaction::V3(t) => t.transaction_hash.clone(),
-                    },
-                    Transaction::V0(TransactionV0::Deploy(t)) => t.transaction_hash.clone(),
-                    Transaction::V0(TransactionV0::DeployAccount(t)) => match t {
-                        DeployAccountTransaction::V1(t) => t.transaction_hash.clone(),
-                        DeployAccountTransaction::V3(t) => t.transaction_hash.clone(),
-                    },
-                    Transaction::V0(TransactionV0::Invoke(t)) => match t {
-                        InvokeTransaction::V0(t) => t.transaction_hash.clone(),
-                        InvokeTransaction::V1(t) => t.transaction_hash.clone(),
-                        InvokeTransaction::V3(t) => t.transaction_hash.clone(),
-                    },
-                    Transaction::V0(TransactionV0::L1Handler(t)) => t.transaction_hash.clone(),
-                }
-                .into(),
-            )
-        }
-    }
-
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-    pub enum DeclareTransaction {
-        V0(DeclareTransactionV0V1),
-        V1(DeclareTransactionV0V1),
-        V2(DeclareTransactionV2),
-        V3(DeclareTransactionV3),
-    }
-
-    impl<T> Dummy<T> for DeclareTransaction {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            match rng.gen_range(0..=3) {
-                0 => {
-                    let mut v0: DeclareTransactionV0V1 = Faker.fake_with_rng(rng);
-                    v0.nonce = TransactionNonce::ZERO.0.into();
-                    Self::V0(v0)
-                }
-                1 => Self::V1(Faker.fake_with_rng(rng)),
-                2 => Self::V2(Faker.fake_with_rng(rng)),
-                3 => Self::V3(Faker.fake_with_rng(rng)),
-                _ => unreachable!(),
+            match self {
+                Transaction::V0 { hash, .. } => TransactionHash(hash.to_owned().into()),
             }
         }
     }
 
     /// A version 0 or 1 declare transaction.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV0V1 {
         pub class_hash: MinimalFelt,
         pub max_fee: MinimalFelt,
         pub nonce: MinimalFelt,
         pub sender_address: MinimalFelt,
-        #[serde(default)]
         pub signature: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
+    }
+
+    impl<T> Dummy<T> for DeclareTransactionV0V1 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                class_hash: Faker.fake_with_rng(rng),
+                max_fee: Faker.fake_with_rng(rng),
+                nonce: TransactionNonce::ZERO.0.into(),
+                sender_address: Faker.fake_with_rng(rng),
+                signature: Faker.fake_with_rng(rng),
+            }
+        }
     }
 
     /// A version 2 declare transaction.
@@ -1692,9 +1693,7 @@ pub(crate) mod dto {
         pub max_fee: MinimalFelt,
         pub nonce: MinimalFelt,
         pub sender_address: MinimalFelt,
-        #[serde(default)]
         pub signature: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
         pub compiled_class_hash: MinimalFelt,
     }
 
@@ -1712,16 +1711,10 @@ pub(crate) mod dto {
         pub paymaster_data: Vec<MinimalFelt>,
 
         pub sender_address: MinimalFelt,
-        #[serde(default)]
         pub signature: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
         pub compiled_class_hash: MinimalFelt,
 
         pub account_deployment_data: Vec<MinimalFelt>,
-    }
-
-    fn transaction_version_zero() -> MinimalFelt {
-        TransactionVersion::ZERO.0.into()
     }
 
     impl<T> Dummy<T> for DeclareTransactionV3 {
@@ -1738,7 +1731,6 @@ pub(crate) mod dto {
 
                 sender_address: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
                 compiled_class_hash: Faker.fake_with_rng(rng),
                 account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
             }
@@ -1753,8 +1745,6 @@ pub(crate) mod dto {
         pub contract_address_salt: MinimalFelt,
         pub class_hash: MinimalFelt,
         pub constructor_calldata: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
-        #[serde(default = "transaction_version_zero")]
         pub version: MinimalFelt,
     }
 
@@ -1766,23 +1756,14 @@ pub(crate) mod dto {
                 contract_address_salt: Faker.fake_with_rng(rng),
                 class_hash: Faker.fake_with_rng(rng),
                 constructor_calldata: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
             }
         }
-    }
-
-    /// Represents deserialized L2 deploy account transaction data.
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
-    pub enum DeployAccountTransaction {
-        V1(DeployAccountTransactionV1),
-        V3(DeployAccountTransactionV3),
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountTransactionV1 {
         pub contract_address: MinimalFelt,
-        pub transaction_hash: MinimalFelt,
         pub max_fee: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
         pub nonce: MinimalFelt,
@@ -1806,7 +1787,6 @@ pub(crate) mod dto {
                 .as_inner()
                 .to_owned()
                 .into(),
-                transaction_hash: Faker.fake_with_rng(rng),
                 max_fee: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
                 nonce: Faker.fake_with_rng(rng),
@@ -1832,7 +1812,6 @@ pub(crate) mod dto {
 
         pub sender_address: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
         pub contract_address_salt: MinimalFelt,
         pub constructor_calldata: Vec<MinimalFelt>,
         pub class_hash: MinimalFelt,
@@ -1861,7 +1840,6 @@ pub(crate) mod dto {
                 .to_owned()
                 .into(),
                 signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
                 contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
                 constructor_calldata: constructor_calldata
                     .into_iter()
@@ -1870,14 +1848,6 @@ pub(crate) mod dto {
                 class_hash: class_hash.as_inner().to_owned().into(),
             }
         }
-    }
-
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
-    #[serde(deny_unknown_fields)]
-    pub enum InvokeTransaction {
-        V0(InvokeTransactionV0),
-        V1(InvokeTransactionV1),
-        V3(InvokeTransactionV3),
     }
 
     /// Represents deserialized L2 invoke transaction v0 data.
@@ -1894,7 +1864,6 @@ pub(crate) mod dto {
         pub entry_point_type: Option<EntryPointType>,
         pub max_fee: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
     }
 
     impl<T> Dummy<T> for InvokeTransactionV0 {
@@ -1906,7 +1875,6 @@ pub(crate) mod dto {
                 entry_point_type: None,
                 max_fee: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
             }
         }
     }
@@ -1925,7 +1893,6 @@ pub(crate) mod dto {
         pub max_fee: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
         pub nonce: MinimalFelt,
-        pub transaction_hash: MinimalFelt,
     }
 
     /// Represents deserialized L2 invoke transaction v3 data.
@@ -1941,7 +1908,6 @@ pub(crate) mod dto {
 
         pub sender_address: MinimalFelt,
         pub signature: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
         pub calldata: Vec<MinimalFelt>,
 
         pub account_deployment_data: Vec<MinimalFelt>,
@@ -1959,7 +1925,6 @@ pub(crate) mod dto {
 
                 sender_address: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
                 calldata: Faker.fake_with_rng(rng),
                 account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
             }
@@ -1973,10 +1938,8 @@ pub(crate) mod dto {
         pub contract_address: MinimalFelt,
         pub entry_point_selector: MinimalFelt,
         // FIXME: remove once starkware fixes their gateway bug which was missing this field.
-        #[serde(default)]
         pub nonce: MinimalFelt,
         pub calldata: Vec<MinimalFelt>,
-        pub transaction_hash: MinimalFelt,
         pub version: MinimalFelt,
     }
 
@@ -1990,7 +1953,6 @@ pub(crate) mod dto {
                 entry_point_selector: Faker.fake_with_rng(rng),
                 nonce: Faker.fake_with_rng(rng),
                 calldata: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
             }
         }
     }
