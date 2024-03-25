@@ -97,6 +97,10 @@ impl Sync {
             .await
             .context("Syncing state updates")?;
 
+        self.sync_class_definitions(head)
+            .await
+            .context("Syncing class definitions")?;
+
         Ok(())
     }
 
