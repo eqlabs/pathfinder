@@ -41,15 +41,6 @@ impl<T> PeerData<T> {
     }
 }
 
-impl<T> PeerData<T> {
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> PeerData<U> {
-        PeerData {
-            peer: self.peer,
-            data: f(self.data),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum Class {
     Cairo {
