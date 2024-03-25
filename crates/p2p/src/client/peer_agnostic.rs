@@ -156,64 +156,65 @@ impl Client {
         };
 
         async_stream::stream! {
-            // Loop which refreshes peer set once we exhaust it.
-            loop {
-                let peers = self
-                    .get_update_peers_with_sync_capability(protocol::Headers::NAME)
-                    .await;
+        // Loop which refreshes peer set once we exhaust it.
+        loop {
+            let peers = self
+                .get_update_peers_with_sync_capability(protocol::Headers::NAME)
+                .await;
 
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let limit = start.get().max(stop.get()) - start.get().min(stop.get());
+            // Attempt each peer.
+            'next_peer: for peer in peers {
+                let limit = start.get().max(stop.get()) - start.get().min(stop.get());
 
-                    let request = BlockHeadersRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction,
-                            limit,
-                            step: 1.into(),
-                        },
-                    };
+                let request = BlockHeadersRequest {
+                    iteration: Iteration {
+                        start: start.get().into(),
+                        direction,
+                        limit,
+                        step: 1.into(),
+                    },
+                };
 
-                    let mut responses = match self.inner.send_headers_sync_request(peer, request).await
-                    {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Headers request failed");
-                            continue 'next_peer;
-                        }
-                    };
+                let mut responses = match self.inner.send_headers_sync_request(peer, request).await
+                {
+                    Ok(x) => x,
+                    Err(error) => {
+                        // Failed to establish connection, try next peer.
+                        tracing::debug!(%peer, reason=%error, "Headers request failed");
+                        continue 'next_peer;
+                    }
+                };
 
-                    while let Some(signed_header) = responses.next().await {
-                        let signed_header = match signed_header {
-                            BlockHeadersResponse::Header(hdr) =>
+                while let Some(signed_header) = responses.next().await {
+                    let signed_header = match signed_header {
+                        BlockHeadersResponse::Header(hdr) => {
                             match SignedBlockHeader::try_from_dto(*hdr) {
                                 Ok(hdr) => hdr,
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Header stream failed");
                                     continue 'next_peer;
-                                },
-                            },
-                            BlockHeadersResponse::Fin => {
-                                tracing::debug!(%peer, "Header stream Fin");
-                                continue 'next_peer;
+                                }
                             }
-                        };
+                        }
+                        BlockHeadersResponse::Fin => {
+                            tracing::debug!(%peer, "Header stream Fin");
+                            continue 'next_peer;
+                        }
+                    };
 
-                        start = match direction {
-                            Direction::Forward => start + 1,
-                            // unwrap_or_default is safe as this is the genesis edge case,
-                            // at which point the loop will complete at the end of this iteration.
-                            Direction::Backward => start.parent().unwrap_or_default(),
-                        };
+                    start = match direction {
+                        Direction::Forward => start + 1,
+                        // unwrap_or_default is safe as this is the genesis edge case,
+                        // at which point the loop will complete at the end of this iteration.
+                        Direction::Backward => start.parent().unwrap_or_default(),
+                    };
 
-                        yield PeerData::new(peer, signed_header);
-                    }
-
-                    // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
+                    yield PeerData::new(peer, signed_header);
                 }
+
+                // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
             }
+        }
         }
     }
 
@@ -426,18 +427,15 @@ impl Client {
                         },
                     };
 
-                    let mut responses = match self
-                        .inner
-                        .send_classes_sync_request(peer, request)
-                        .await
-                    {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Classes request failed");
-                            continue 'next_peer;
-                        }
-                    };
+                    let mut responses =
+                        match self.inner.send_classes_sync_request(peer, request).await {
+                            Ok(x) => x,
+                            Err(error) => {
+                                // Failed to establish connection, try next peer.
+                                tracing::debug!(%peer, reason=%error, "Classes request failed");
+                                continue 'next_peer;
+                            }
+                        };
 
                     // Get number of declared classes for this block
                     let mut current = declared_class_counts_stream.next().await
@@ -445,25 +443,38 @@ impl Client {
 
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
-                            ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _ , class_hash }) => {
-                                yield PeerData::new(peer, Class::Cairo {
-                                    block_number: start,
-                                    hash: ClassHash(class_hash.0),
-                                    definition: CairoDefinition::try_from_dto(class)?.0,
-                                });
-                            },
-                            ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _, class_hash }) => {
+                            ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                                class,
+                                domain: _,
+                                class_hash,
+                            }) => {
+                                yield PeerData::new(
+                                    peer,
+                                    Class::Cairo {
+                                        block_number: start,
+                                        hash: ClassHash(class_hash.0),
+                                        definition: CairoDefinition::try_from_dto(class)?.0,
+                                    },
+                                );
+                            }
+                            ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                                class,
+                                domain: _,
+                                class_hash,
+                            }) => {
                                 let definition = SierraDefinition::try_from_dto(class)?;
-                                yield PeerData::new(peer, Class::Sierra {
-                                    block_number: start,
-                                    sierra_hash: SierraHash(class_hash.0),
-                                    sierra_definition: definition.sierra,
-                                    casm_definition: definition.casm,
-                                });
-                            },
+                                yield PeerData::new(
+                                    peer,
+                                    Class::Sierra {
+                                        block_number: start,
+                                        sierra_hash: SierraHash(class_hash.0),
+                                        sierra_definition: definition.sierra,
+                                        casm_definition: definition.casm,
+                                    },
+                                );
+                            }
                             ClassesResponse::Fin => {
-                                if current == 0
-                                {
+                                if current == 0 {
                                     // All the counters for this block have been exhausted which means
                                     // that this block is complete.
                                     if start < stop_inclusive {
