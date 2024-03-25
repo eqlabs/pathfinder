@@ -209,7 +209,7 @@ impl TxnReceipt {
                 contract_address: tx.contract_address,
                 common,
             },
-            TransactionVariant::DeployAccountV0V1(tx) => Self::DeployAccount {
+            TransactionVariant::DeployAccountV1(tx) => Self::DeployAccount {
                 contract_address: tx.contract_address,
                 common,
             },
@@ -252,7 +252,7 @@ impl PendingTxnReceipt {
                 contract_address: tx.contract_address,
                 common,
             },
-            TransactionVariant::DeployAccountV0V1(tx) => Self::DeployAccount {
+            TransactionVariant::DeployAccountV1(tx) => Self::DeployAccount {
                 contract_address: tx.contract_address,
                 common,
             },
@@ -361,7 +361,7 @@ impl CommonReceiptProperties {
         finality_status: v06::FinalityStatus,
     ) -> Self {
         let actual_fee = FeePayment {
-            amount: receipt.actual_fee.unwrap_or_default(),
+            amount: receipt.actual_fee,
             unit: transaction.version().into(),
         };
 
@@ -398,7 +398,7 @@ impl PendingCommonReceiptProperties {
         finality_status: v06::FinalityStatus,
     ) -> Self {
         let actual_fee = FeePayment {
-            amount: receipt.actual_fee.unwrap_or_default(),
+            amount: receipt.actual_fee,
             unit: transaction.version().into(),
         };
 

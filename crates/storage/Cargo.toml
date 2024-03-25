@@ -10,13 +10,14 @@ rust-version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
-bincode = "2.0.0-rc.3"
+bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 bitvec = { workspace = true }
 bloomfilter = "1.0.12"
 cached = { workspace = true }
 const_format = { workspace = true }
 data-encoding = "2.4.0"
 fake = { workspace = true }
+flume = { version = "0.11.0", default-features = false, features = ["eventual-fairness"] }
 hex = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
@@ -35,7 +36,6 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
-smallvec = { workspace = true }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }

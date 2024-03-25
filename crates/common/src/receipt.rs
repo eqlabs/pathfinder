@@ -2,7 +2,7 @@ use crate::prelude::*;
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Receipt {
-    pub actual_fee: Option<Fee>,
+    pub actual_fee: Fee,
     pub execution_resources: ExecutionResources,
     pub l2_to_l1_messages: Vec<L2ToL1Message>,
     pub execution_status: ExecutionStatus,

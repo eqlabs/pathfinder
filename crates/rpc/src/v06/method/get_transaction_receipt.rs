@@ -459,7 +459,7 @@ pub mod types {
             block_number: BlockNumber,
             transaction: pathfinder_common::transaction::Transaction,
         ) -> Self {
-            let fee_amount = receipt.actual_fee.unwrap_or_default();
+            let fee_amount = receipt.actual_fee;
             let fee_unit = match transaction.version() {
                 TransactionVersion::ZERO | TransactionVersion::ONE | TransactionVersion::TWO => {
                     PriceUnit::Wei
@@ -509,7 +509,7 @@ pub mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                TransactionVariant::DeployAccountV0V1(tx) => {
+                TransactionVariant::DeployAccountV1(tx) => {
                     Self::DeployAccount(DeployAccountTransactionReceipt {
                         common,
                         contract_address: tx.contract_address,
@@ -606,7 +606,7 @@ pub mod types {
             events: Vec<pathfinder_common::event::Event>,
             transaction: &pathfinder_common::transaction::Transaction,
         ) -> Self {
-            let fee_amount = receipt.actual_fee.unwrap_or_default();
+            let fee_amount = receipt.actual_fee;
             let fee_unit = PriceUnit::for_transaction_version(&transaction.version());
 
             let actual_fee = FeePayment::V06 {
@@ -649,7 +649,7 @@ pub mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                TransactionVariant::DeployAccountV0V1(tx) => {
+                TransactionVariant::DeployAccountV1(tx) => {
                     Self::DeployAccount(PendingDeployAccountTransactionReceipt {
                         common,
                         contract_address: tx.contract_address,

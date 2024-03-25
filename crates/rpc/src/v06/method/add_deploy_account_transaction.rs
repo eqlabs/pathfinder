@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
 use crate::v02::types::request::{
-    BroadcastedDeployAccountTransaction, BroadcastedDeployAccountTransactionV0V1,
+    BroadcastedDeployAccountTransaction, BroadcastedDeployAccountTransactionV1,
 };
 use pathfinder_common::{ContractAddress, TransactionHash};
 use starknet_gateway_client::GatewayApi;
@@ -119,8 +119,8 @@ pub(crate) async fn add_deploy_account_transaction_impl(
     use starknet_gateway_types::request::add_transaction;
 
     match tx {
-        BroadcastedDeployAccountTransaction::V0V1(
-            tx @ BroadcastedDeployAccountTransactionV0V1 { version, .. },
+        BroadcastedDeployAccountTransaction::V1(
+            tx @ BroadcastedDeployAccountTransactionV1 { version, .. },
         ) if version.without_query_version() == 0 => {
             context
                 .sequencer
@@ -136,8 +136,8 @@ pub(crate) async fn add_deploy_account_transaction_impl(
                 ))
                 .await
         }
-        BroadcastedDeployAccountTransaction::V0V1(
-            tx @ BroadcastedDeployAccountTransactionV0V1 { version, .. },
+        BroadcastedDeployAccountTransaction::V1(
+            tx @ BroadcastedDeployAccountTransactionV1 { version, .. },
         ) if version.without_query_version() == 1 => {
             context
                 .sequencer
@@ -153,7 +153,7 @@ pub(crate) async fn add_deploy_account_transaction_impl(
                 ))
                 .await
         }
-        BroadcastedDeployAccountTransaction::V0V1(_) => Err(SequencerError::StarknetError(
+        BroadcastedDeployAccountTransaction::V1(_) => Err(SequencerError::StarknetError(
             starknet_gateway_types::error::StarknetError {
                 code: KnownStarknetErrorCode::InvalidTransactionVersion.into(),
                 message: "".to_string(),
@@ -264,31 +264,29 @@ mod tests {
     fn get_input() -> AddDeployAccountTransactionInput {
         AddDeployAccountTransactionInput {
             deploy_account_transaction: Transaction::DeployAccount(
-                BroadcastedDeployAccountTransaction::V0V1(
-                    BroadcastedDeployAccountTransactionV0V1 {
-                        version: TransactionVersion::ONE,
-                        max_fee: fee!("0xbf391377813"),
-                        signature: vec![
-                            transaction_signature_elem!(
-                                "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                            ),
-                            transaction_signature_elem!(
-                                "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                            ),
-                        ],
-                        nonce: TransactionNonce::ZERO,
+                BroadcastedDeployAccountTransaction::V1(BroadcastedDeployAccountTransactionV1 {
+                    version: TransactionVersion::ONE,
+                    max_fee: fee!("0xbf391377813"),
+                    signature: vec![
+                        transaction_signature_elem!(
+                            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                        ),
+                        transaction_signature_elem!(
+                            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                        ),
+                    ],
+                    nonce: TransactionNonce::ZERO,
 
-                        contract_address_salt: contract_address_salt!(
-                            "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
-                        ),
-                        constructor_calldata: vec![call_param!(
-                            "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                        )],
-                        class_hash: class_hash!(
-                            "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
-                        ),
-                    },
-                ),
+                    contract_address_salt: contract_address_salt!(
+                        "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
+                    ),
+                    constructor_calldata: vec![call_param!(
+                        "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                    )],
+                    class_hash: class_hash!(
+                        "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
+                    ),
+                }),
             ),
         }
     }

@@ -92,7 +92,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 // Only these two values are allowed in storage
                 version: if x.version.is_zero() { 0 } else { 1 },
             }),
-            DeployAccountV0V1(x) => {
+            DeployAccountV1(x) => {
                 proto::TransactionVariant::DeployAccountV1(proto::DeployAccountV1 {
                     max_fee: x.max_fee.0,
                     signature: AccountSignature {
@@ -198,7 +198,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
             .unwrap_or_default();
         let common = ReceiptCommon {
             transaction_hash: Hash(self.1.transaction_hash.0),
-            actual_fee: self.1.actual_fee.unwrap_or_default().0,
+            actual_fee: self.1.actual_fee.0,
             messages_sent: self
                 .1
                 .l2_to_l1_messages
@@ -243,7 +243,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
                 common,
                 contract_address: x.contract_address.0,
             }),
-            TransactionVariant::DeployAccountV0V1(x) => {
+            TransactionVariant::DeployAccountV1(x) => {
                 DeployAccount(DeployAccountTransactionReceipt {
                     common,
                     contract_address: x.contract_address.0,

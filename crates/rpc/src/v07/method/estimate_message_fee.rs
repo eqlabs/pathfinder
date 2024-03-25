@@ -130,8 +130,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_estimate_message_fee() {
-        dbg!(EntryPoint::hashed(b"l1_handler"));
-
         let expected = FeeEstimate {
             gas_consumed: 14647.into(),
             gas_price: 2.into(),

@@ -25,7 +25,6 @@ pub use event::{EmittedEvent, EventFilter, EventFilterError, PageOfEvents};
 
 pub(crate) use reorg_counter::ReorgCounter;
 
-use smallvec::SmallVec;
 pub use transaction::TransactionStatus;
 
 pub use trie::{Child, Node, StoredNode};
@@ -573,7 +572,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         block: BlockId,
         max_len: NonZeroUsize,
-    ) -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
+    ) -> anyhow::Result<Vec<StateUpdateCounts>> {
         state_update::state_update_counts(self, block, max_len)
     }
 
@@ -631,6 +630,7 @@ impl<'inner> Transaction<'inner> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TransactionData {
     pub transaction: StarknetTransaction,
     pub receipt: Option<Receipt>,

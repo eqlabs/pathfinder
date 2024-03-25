@@ -630,7 +630,7 @@ pub(crate) mod transaction {
             };
 
             Self {
-                actual_fee,
+                actual_fee: Some(actual_fee),
                 events,
                 execution_resources: Some(execution_resources.into()),
                 l1_to_l2_consumed_message: None,
@@ -712,7 +712,7 @@ pub(crate) mod transaction {
 
             (
                 common::Receipt {
-                    actual_fee,
+                    actual_fee: actual_fee.unwrap_or_default(),
                     execution_resources: execution_resources.unwrap_or_default().into(),
                     l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                     transaction_hash,
@@ -1048,10 +1048,9 @@ pub(crate) mod transaction {
                     transaction_hash,
                     version,
                 }),
-                DeployAccountV0V1(DeployAccountTransactionV0V1 {
+                DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address,
                     max_fee,
-                    version,
                     signature,
                     nonce,
                     contract_address_salt,
@@ -1062,7 +1061,7 @@ pub(crate) mod transaction {
                         contract_address,
                         transaction_hash,
                         max_fee,
-                        version,
+                        version: TransactionVersion::ONE,
                         signature,
                         nonce,
                         contract_address_salt,
@@ -1282,11 +1281,10 @@ pub(crate) mod transaction {
                         constructor_calldata,
                         class_hash,
                     },
-                )) => TransactionVariant::DeployAccountV0V1(
-                    pathfinder_common::transaction::DeployAccountTransactionV0V1 {
+                )) if version == TransactionVersion::ONE => TransactionVariant::DeployAccountV1(
+                    pathfinder_common::transaction::DeployAccountTransactionV1 {
                         contract_address,
                         max_fee,
-                        version,
                         signature,
                         nonce,
                         contract_address_salt,
@@ -1294,6 +1292,9 @@ pub(crate) mod transaction {
                         class_hash,
                     },
                 ),
+                Transaction::DeployAccount(DeployAccountTransaction::V0V1(
+                    DeployAccountTransactionV0V1 { version, .. },
+                )) => panic!("unexpected deploy account transaction version {version:?}"),
                 Transaction::DeployAccount(DeployAccountTransaction::V3(
                     DeployAccountTransactionV3 {
                         nonce,

@@ -127,7 +127,7 @@ pub mod request {
                     BroadcastedInvokeTransaction::V3(tx) => tx.version,
                 },
                 BroadcastedTransaction::DeployAccount(deploy_account) => match deploy_account {
-                    BroadcastedDeployAccountTransaction::V0V1(tx) => tx.version,
+                    BroadcastedDeployAccountTransaction::V1(tx) => tx.version,
                     BroadcastedDeployAccountTransaction::V3(tx) => tx.version,
                 },
             }
@@ -259,14 +259,14 @@ pub mod request {
         serde(untagged)
     )]
     pub enum BroadcastedDeployAccountTransaction {
-        V0V1(BroadcastedDeployAccountTransactionV0V1),
+        V1(BroadcastedDeployAccountTransactionV1),
         V3(BroadcastedDeployAccountTransactionV3),
     }
 
     impl BroadcastedDeployAccountTransaction {
         pub fn deployed_contract_address(&self) -> ContractAddress {
             match self {
-                Self::V0V1(tx) => tx.deployed_contract_address(),
+                Self::V1(tx) => tx.deployed_contract_address(),
                 Self::V3(tx) => tx.deployed_contract_address(),
             }
         }
@@ -288,15 +288,15 @@ pub mod request {
             let v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
             match version.version.without_query_version() {
-                0 | 1 => Ok(Self::V0V1(
-                    BroadcastedDeployAccountTransactionV0V1::deserialize(&v)
+                1 => Ok(Self::V1(
+                    BroadcastedDeployAccountTransactionV1::deserialize(&v)
                         .map_err(de::Error::custom)?,
                 )),
                 3 => Ok(Self::V3(
                     BroadcastedDeployAccountTransactionV3::deserialize(&v)
                         .map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 0 or 1")),
+                v => Err(de::Error::custom(format!("invalid version {v}"))),
             }
         }
     }
@@ -305,7 +305,7 @@ pub mod request {
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
-    pub struct BroadcastedDeployAccountTransactionV0V1 {
+    pub struct BroadcastedDeployAccountTransactionV1 {
         // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
         pub version: TransactionVersion,
         pub max_fee: Fee,
@@ -318,7 +318,7 @@ pub mod request {
         pub class_hash: ClassHash,
     }
 
-    impl BroadcastedDeployAccountTransactionV0V1 {
+    impl BroadcastedDeployAccountTransactionV1 {
         pub fn deployed_contract_address(&self) -> ContractAddress {
             ContractAddress::deployed_contract_address(
                 self.constructor_calldata.iter().copied(),
@@ -526,12 +526,11 @@ pub mod request {
                         account_deployment_data: declare.account_deployment_data,
                     })
                 }
-                BroadcastedTransaction::DeployAccount(
-                    BroadcastedDeployAccountTransaction::V0V1(deploy),
-                ) => TransactionVariant::DeployAccountV0V1(DeployAccountTransactionV0V1 {
+                BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction::V1(
+                    deploy,
+                )) => TransactionVariant::DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address: deploy.deployed_contract_address(),
                     max_fee: deploy.max_fee,
-                    version: deploy.version,
                     signature: deploy.signature,
                     nonce: deploy.nonce,
                     contract_address_salt: deploy.contract_address_salt,

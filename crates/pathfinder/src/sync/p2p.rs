@@ -24,7 +24,6 @@ use pathfinder_common::{
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
-use smallvec::SmallVec;
 use tokio::task::spawn_blocking;
 
 use crate::state::block_hash::{
@@ -406,7 +405,7 @@ impl Sync {
         let storage = self.storage.clone();
         let getter = move |start: BlockNumber,
                            limit: NonZeroUsize|
-              -> anyhow::Result<SmallVec<[StateUpdateCounts; 10]>> {
+              -> anyhow::Result<Vec<StateUpdateCounts>> {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;

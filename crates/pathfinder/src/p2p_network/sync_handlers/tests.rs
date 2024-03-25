@@ -375,7 +375,7 @@ mod prop {
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
                             match &mut txn.variant {
                                 TransactionVariant::Deploy(x) => x.contract_address = ContractAddress::ZERO,
-                                TransactionVariant::DeployAccountV0V1(x) => x.contract_address = ContractAddress::ZERO,
+                                TransactionVariant::DeployAccountV1(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
                                 _ => {}
                             };

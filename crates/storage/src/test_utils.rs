@@ -110,7 +110,7 @@ pub(crate) fn create_transactions_and_receipts(
 
     let tx_receipt = transactions.enumerate().map(|(i, tx)| {
         let receipt = Receipt {
-            actual_fee: None,
+            actual_fee: Fee::ZERO,
             execution_resources: ExecutionResources {
                 builtins: Default::default(),
                 n_steps: i as u64 + 987,
