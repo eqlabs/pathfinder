@@ -23,7 +23,7 @@ use pathfinder_common::{BlockHash, BlockNumber};
 use anyhow::Context;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::OptionalExtension;
+use rusqlite::{OpenFlags, OptionalExtension};
 
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
@@ -193,8 +193,21 @@ impl StorageBuilder {
     /// This should be called __once__ at the start of the application,
     /// and passed to the various components which require access to the database.
     pub fn migrate(self) -> anyhow::Result<StorageManager> {
-        let mut connection =
-            rusqlite::Connection::open(&self.database_path).context("Opening DB for migration")?;
+        let mut open_flags = OpenFlags::default();
+        open_flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
+        let (mut connection, is_new_database) =
+            rusqlite::Connection::open_with_flags(&self.database_path, open_flags)
+                .map_or_else(
+                    |e| {
+                        if e.sqlite_error_code() == Some(rusqlite::ErrorCode::CannotOpen) {
+                            rusqlite::Connection::open(&self.database_path).map(|c| (c, true))
+                        } else {
+                            Err(e)
+                        }
+                    },
+                    |c| Ok((c, false)),
+                )
+                .context("Opening DB for migration")?;
 
         // Migration is done with rollback journal mode. Otherwise dropped tables
         // get copied into the WAL which is prohibitively expensive for large
@@ -210,7 +223,8 @@ impl StorageBuilder {
         setup_journal_mode(&mut connection, self.journal_mode).context("Setting journal mode")?;
 
         // Validate that configuration matches database flags & default to the DB setting.
-        let prune_merkle_tries = self.determine_if_pruning_is_enabled(&mut connection)?;
+        let prune_merkle_tries =
+            self.determine_if_pruning_is_enabled(&mut connection, is_new_database)?;
         if prune_merkle_tries {
             tracing::info!("Merkle trie pruning enabled");
         } else {
@@ -235,10 +249,11 @@ impl StorageBuilder {
     /// Takes the configured value (if present) as an input.
     /// - If there is no explicitly requested configuration (default): uses the DB setting.
     /// - If there's an explicitly requested setting: uses it if matches DB setting, enables
-    ///   pruning and sets flag only if tries are empty.
+    ///   pruning and sets flag in the database.
     fn determine_if_pruning_is_enabled(
         &self,
         connection: &mut rusqlite::Connection,
+        is_new_database: bool,
     ) -> anyhow::Result<bool> {
         let prune_flag_is_set = connection
             .query_row(
@@ -249,12 +264,6 @@ impl StorageBuilder {
             .optional()
             .map(|x| x.is_some())?;
 
-        let tries_are_non_empty: bool = connection.query_row(
-            "SELECT EXISTS (SELECT 1 FROM trie_storage) OR EXISTS (SELECT 1 FROM trie_contracts) OR EXISTS (SELECT 1 FROM trie_class)",
-            [],
-            |row| row.get(0),
-        )?;
-
         match self.prune_merkle_tries {
             Some(prune_merkle_tries) => {
                 // If the requested pruning setting matches the flag just use that.
@@ -263,8 +272,8 @@ impl StorageBuilder {
                 }
 
                 if prune_merkle_tries {
-                    // If the flag is not set check if the tries are empty and enable it.
-                    if tries_are_non_empty {
+                    // If the flag is not set check if this is a new database and enable it.
+                    if !is_new_database {
                         anyhow::bail!("Cannot enable Merkle trie pruning on a database that was not created with it enabled.");
                     }
 
