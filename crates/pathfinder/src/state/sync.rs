@@ -990,7 +990,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
                 .block_header(target_block.into())
                 .context("Fetching target block header")?
                 .context("Expected target header to exist")?;
-            revert::revert_starknet_state(&transaction, head, target_block, target_header, false)?;
+            revert::revert_starknet_state(&transaction, head, target_block, target_header)?;
         }
 
         // Purge each block one at a time.
