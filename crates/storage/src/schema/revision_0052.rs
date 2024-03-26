@@ -9,7 +9,7 @@ use anyhow::Context;
 use rusqlite::params;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
-    tracing::info!("migrating starknet_transactions to new format");
+    tracing::info!("Migrating starknet_transactions to new format");
 
     let mut transformers = Vec::new();
     let (insert_tx, insert_rx) = mpsc::channel();
