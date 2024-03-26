@@ -272,6 +272,27 @@ pub trait RowExt {
         Ok(addr)
     }
 
+    fn get_optional_storage_value<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<StorageValue>> {
+        Ok(self.get_optional_felt(index)?.map(StorageValue))
+    }
+
+    fn get_optional_nonce<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<ContractNonce>> {
+        Ok(self.get_optional_felt(index)?.map(ContractNonce))
+    }
+
+    fn get_optional_class_hash<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<ClassHash>> {
+        Ok(self.get_optional_felt(index)?.map(ClassHash))
+    }
+
     fn get_reorg_counter<Index: RowIndex>(
         &self,
         index: Index,

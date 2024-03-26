@@ -30,14 +30,13 @@
 use futures::future::{ready, Ready};
 use libp2p::core::upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
 use libp2p::swarm::Stream;
-use smallvec::SmallVec;
 
 /// Response substream upgrade protocol.
 ///
 /// Receives a request and sends responses.
 #[derive(Debug)]
 pub struct Protocol<P> {
-    pub(crate) protocols: SmallVec<[P; 2]>,
+    pub(crate) protocols: Vec<P>,
 }
 
 impl<P> UpgradeInfo for Protocol<P>
@@ -45,7 +44,7 @@ where
     P: AsRef<str> + Clone,
 {
     type Info = P;
-    type InfoIter = smallvec::IntoIter<[Self::Info; 2]>;
+    type InfoIter = std::vec::IntoIter<Self::Info>;
 
     fn protocol_info(&self) -> Self::InfoIter {
         self.protocols.clone().into_iter()

@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use crate::ContractsStorageTree;
 use anyhow::Context;
 use pathfinder_common::{
-    BlockNumber, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
-    StorageAddress, StorageValue,
+    state_update::ReverseContractUpdate, BlockNumber, ClassHash, ContractAddress, ContractNonce,
+    ContractRoot, ContractStateHash, StorageAddress, StorageValue,
 };
 use pathfinder_crypto::{hash::pedersen_hash, Felt};
-use pathfinder_storage::{Node, Transaction};
+use pathfinder_storage::{Transaction, TrieUpdate};
 
 #[derive(Debug)]
 pub struct ContractStateUpdateResult {
@@ -15,8 +15,7 @@ pub struct ContractStateUpdateResult {
     pub contract_address: ContractAddress,
     root: ContractRoot,
     did_storage_updates: bool,
-    // trie nodes to be inserted into the database
-    nodes: HashMap<Felt, Node>,
+    trie_update: TrieUpdate,
 }
 
 impl ContractStateUpdateResult {
@@ -27,9 +26,9 @@ impl ContractStateUpdateResult {
     pub fn insert(self, block: BlockNumber, transaction: &Transaction<'_>) -> anyhow::Result<()> {
         // Insert nodes only if we made storage updates.
         if self.did_storage_updates {
-            let root_index = if !self.root.0.is_zero() && !self.nodes.is_empty() {
+            let root_index = if !self.root.0.is_zero() && !self.trie_update.nodes_added.is_empty() {
                 let root_index = transaction
-                    .insert_contract_trie(self.root, &self.nodes)
+                    .insert_contract_trie(&self.trie_update)
                     .context("Persisting contract trie")?;
                 Some(root_index)
             } else {
@@ -58,7 +57,7 @@ pub fn update_contract_state(
     block: BlockNumber,
 ) -> anyhow::Result<ContractStateUpdateResult> {
     // Load the contract tree and insert the updates.
-    let (new_root, nodes) = if !updates.is_empty() {
+    let (new_root, trie_update) = if !updates.is_empty() {
         let mut contract_tree = match block.parent() {
             Some(parent) => ContractsStorageTree::load(transaction, contract_address, parent)
                 .context("Loading contract storage tree")?
@@ -72,11 +71,11 @@ pub fn update_contract_state(
                 .set(*key, *value)
                 .context("Update contract storage tree")?;
         }
-        let (contract_root, nodes) = contract_tree
+        let (contract_root, trie_update) = contract_tree
             .commit()
             .context("Apply contract storage tree changes")?;
 
-        (contract_root, nodes)
+        (contract_root, trie_update)
     } else {
         let current_root = transaction
             .contract_root(block, contract_address)
@@ -86,7 +85,7 @@ pub fn update_contract_state(
         (current_root, Default::default())
     };
 
-    let class_hash = if contract_address == ContractAddress::ONE {
+    let class_hash = if contract_address.is_system_contract() {
         // This is a special system contract at address 0x1, which doesn't have a class hash.
         ClassHash::ZERO
     } else if let Some(class_hash) = new_class_hash {
@@ -115,7 +114,7 @@ pub fn update_contract_state(
         state_hash,
         root: new_root,
         did_storage_updates: !updates.is_empty(),
-        nodes,
+        trie_update,
     })
 }
 
@@ -135,6 +134,93 @@ pub fn calculate_contract_state_hash(
     // Compare this with the HashChain construction used in the contract_hash: the number of
     // elements is not hashed to this hash, and this is supposed to be different.
     ContractStateHash(hash)
+}
+
+/// Reverts Merkle tree state for a contract.
+///
+/// Takes Merkle tree state at `head` and applies reverse updates.
+pub fn revert_contract_state(
+    transaction: &Transaction<'_>,
+    contract_address: ContractAddress,
+    head: BlockNumber,
+    target_block: BlockNumber,
+    contract_update: ReverseContractUpdate,
+) -> anyhow::Result<ContractStateHash> {
+    tracing::debug!(%contract_address, "Rolling back");
+
+    match contract_update {
+        ReverseContractUpdate::Deleted => {
+            tracing::debug!(%contract_address, "Contract has been deleted");
+            Ok(ContractStateHash::ZERO)
+        }
+        ReverseContractUpdate::Updated(update) => {
+            let class_hash = match update.class {
+                Some(class_hash) => class_hash.class_hash(),
+                None => {
+                    if contract_address.is_system_contract() {
+                        // system contracts have no class hash
+                        ClassHash::ZERO
+                    } else {
+                        transaction
+                            .contract_class_hash(target_block.into(), contract_address)?
+                            .unwrap()
+                    }
+                }
+            };
+
+            let nonce = match update.nonce {
+                Some(nonce) => nonce,
+                None => transaction
+                    .contract_nonce(contract_address, target_block.into())
+                    .context("Getting contract nonce")?
+                    .unwrap_or_default(),
+            };
+
+            // Apply storage updates
+            let root = if !update.storage.is_empty() {
+                let mut tree = ContractsStorageTree::load(transaction, contract_address, head)
+                    .context("Loading contract state")?;
+
+                for (address, value) in update.storage {
+                    tree.set(address, value)
+                        .context("Updating contract state")?;
+                }
+
+                let (root, trie_update) = tree.commit().context("Committing contract state")?;
+
+                let root_index = if !root.0.is_zero() && !trie_update.nodes_added.is_empty() {
+                    let root_index = transaction
+                        .insert_contract_trie(&trie_update)
+                        .context("Persisting contract trie")?;
+                    Some(root_index)
+                } else {
+                    None
+                };
+
+                transaction
+                    .insert_or_update_contract_root(target_block, contract_address, root_index)
+                    .context("Inserting contract's root index")?;
+
+                root
+            } else {
+                transaction
+                    .contract_root(head, contract_address)?
+                    .context("Fetching current contract root")?
+            };
+
+            let state_hash = if contract_address.is_system_contract() && root == ContractRoot::ZERO
+            {
+                // special case: if the contract trie is empty the system contract should be deleted
+                ContractStateHash::ZERO
+            } else {
+                calculate_contract_state_hash(class_hash, root, nonce)
+            };
+
+            tracing::debug!(%state_hash, %contract_address, "Contract state rolled back");
+
+            Ok(state_hash)
+        }
+    }
 }
 
 #[cfg(test)]

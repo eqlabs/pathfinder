@@ -11,20 +11,6 @@ pub struct AffinePoint {
     pub infinity: bool,
 }
 
-/// Create a ProjectivePoint from two decimal strings (x,y)
-#[allow(unused_macros)]
-macro_rules! affine_point_str {
-    ($x:expr,$y:expr) => {
-        AffinePoint {
-            x: $crate::algebra::field::montfelt_dec!($x),
-            y: $crate::algebra::field::montfelt_dec!($y),
-            infinity: false,
-        }
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use affine_point_str; // export it
-
 impl From<&ProjectivePoint> for AffinePoint {
     fn from(p: &ProjectivePoint) -> Self {
         let zinv = p.z.inverse().unwrap();
@@ -43,6 +29,17 @@ impl AffinePoint {
     pub const fn from_raw(x: [u64; 4], y: [u64; 4]) -> Self {
         let x = MontFelt::from_raw(x);
         let y = MontFelt::from_raw(y);
+        Self {
+            x,
+            y,
+            infinity: false,
+        }
+    }
+
+    /// Create a point from (x,y) in hexadecimal
+    pub const fn from_hex(x: &str, y: &str) -> Self {
+        let x = MontFelt::from_hex(x);
+        let y = MontFelt::from_hex(y);
         Self {
             x,
             y,

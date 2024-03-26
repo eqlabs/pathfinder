@@ -15,7 +15,7 @@ mod trie;
 
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::StateUpdateCounts;
+use pathfinder_common::state_update::{ReverseContractUpdate, StateUpdateCounts};
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 
@@ -27,9 +27,13 @@ pub(crate) use reorg_counter::ReorgCounter;
 
 pub use transaction::TransactionStatus;
 
-pub use trie::{Child, Node, StoredNode};
+pub use trie::{Node, NodeRef, StoredNode, TrieUpdate};
 
-use pathfinder_common::*;
+use pathfinder_common::{
+    BlockCommitmentSignature, BlockHash, BlockHeader, BlockNumber, CasmHash,
+    ClassCommitmentLeafHash, ClassHash, ContractAddress, ContractNonce, ContractRoot,
+    ContractStateHash, SierraHash, StateUpdate, StorageAddress, StorageValue, TransactionHash,
+};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::EthereumStateUpdate;
 
@@ -444,30 +448,18 @@ impl<'inner> Transaction<'inner> {
     }
 
     /// Stores the class trie information.
-    pub fn insert_class_trie(
-        &self,
-        root: ClassCommitment,
-        nodes: &HashMap<Felt, Node>,
-    ) -> anyhow::Result<u64> {
-        trie::trie_class::insert(self, root.0, nodes)
+    pub fn insert_class_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
+        trie::trie_class::insert(self, update)
     }
 
     /// Stores a single contract's storage trie information.
-    pub fn insert_contract_trie(
-        &self,
-        root: ContractRoot,
-        nodes: &HashMap<Felt, Node>,
-    ) -> anyhow::Result<u64> {
-        trie::trie_contracts::insert(self, root.0, nodes)
+    pub fn insert_contract_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
+        trie::trie_contracts::insert(self, update)
     }
 
     /// Stores the global starknet storage trie information.
-    pub fn insert_storage_trie(
-        &self,
-        root: StorageCommitment,
-        nodes: &HashMap<Felt, Node>,
-    ) -> anyhow::Result<u64> {
-        trie::trie_storage::insert(self, root.0, nodes)
+    pub fn insert_storage_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
+        trie::trie_storage::insert(self, update)
     }
 
     pub fn class_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
@@ -526,12 +518,28 @@ impl<'inner> Transaction<'inner> {
         trie::insert_class_root(self, block_number, root)
     }
 
+    pub fn insert_or_update_class_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u64>,
+    ) -> anyhow::Result<()> {
+        trie::insert_or_update_class_root(self, block_number, root)
+    }
+
     pub fn insert_storage_root(
         &self,
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
         trie::insert_storage_root(self, block_number, root)
+    }
+
+    pub fn insert_or_update_storage_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u64>,
+    ) -> anyhow::Result<()> {
+        trie::insert_or_update_storage_root(self, block_number, root)
     }
 
     pub fn insert_contract_root(
@@ -541,6 +549,15 @@ impl<'inner> Transaction<'inner> {
         root: Option<u64>,
     ) -> anyhow::Result<()> {
         trie::insert_contract_root(self, block_number, contract, root)
+    }
+
+    pub fn insert_or_update_contract_root(
+        &self,
+        block_number: BlockNumber,
+        contract: ContractAddress,
+        root: Option<u64>,
+    ) -> anyhow::Result<()> {
+        trie::insert_or_update_contract_root(self, block_number, contract, root)
     }
 
     pub fn insert_state_update(
@@ -599,6 +616,22 @@ impl<'inner> Transaction<'inner> {
         block_id: BlockId,
     ) -> anyhow::Result<bool> {
         state_update::contract_exists(self, contract_address, block_id)
+    }
+
+    pub fn reverse_contract_updates(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<HashMap<ContractAddress, ReverseContractUpdate>> {
+        state_update::reverse_updates(self, from_block, to_block)
+    }
+
+    pub fn reverse_sierra_class_updates(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<Vec<(SierraHash, Option<CasmHash>)>> {
+        state_update::reverse_sierra_class_updates(self, from_block, to_block)
     }
 
     pub fn insert_signature(

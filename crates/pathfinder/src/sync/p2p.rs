@@ -4,9 +4,6 @@ mod receipts;
 mod state_updates;
 mod transactions;
 
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-
 use anyhow::Context;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -16,7 +13,6 @@ use p2p_proto::{
     receipt::{ReceiptsRequest, ReceiptsResponse},
     transaction::{TransactionsRequest, TransactionsResponse},
 };
-use pathfinder_common::state_update::StateUpdateCounts;
 use pathfinder_common::{
     receipt::Receipt, transaction::Transaction, BlockHash, BlockHeader, BlockNumber,
     TransactionIndex,
@@ -402,30 +398,18 @@ impl Sync {
     }
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
-        let storage = self.storage.clone();
-        let getter = move |start: BlockNumber,
-                           limit: NonZeroUsize|
-              -> anyhow::Result<Vec<StateUpdateCounts>> {
-            let mut db = storage
-                .connection()
-                .context("Creating database connection")?;
-            let db = db.transaction().context("Creating database transaction")?;
-            let counts = db
-                .state_update_counts(start.into(), limit)
-                .context("Querying state updates")?;
-            Ok(counts)
-        };
-        let getter = Arc::new(getter);
-
         if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
         {
-            let getter = getter.clone();
             let result = self
                 .p2p
                 .clone()
-                .contract_updates_stream(start, stop, getter)
+                .contract_updates_stream(
+                    start,
+                    stop,
+                    state_updates::counts_stream(self.storage.clone(), start, stop),
+                )
                 .map_err(Into::into)
                 .and_then(state_updates::verify_signature)
                 .try_chunks(100)

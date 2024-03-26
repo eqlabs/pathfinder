@@ -10,12 +10,12 @@ rust-version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
-bincode = { version = "2.0.0-rc.3", features = ["serde"] }
+bincode = { workspace = true, features = ["serde"] }
 bitvec = { workspace = true }
-bloomfilter = "1.0.12"
+bloomfilter = { workspace = true }
 cached = { workspace = true }
 const_format = { workspace = true }
-data-encoding = "2.4.0"
+data-encoding = { workspace = true }
 fake = { workspace = true }
 flume = { version = "0.11.0", default-features = false, features = ["eventual-fairness"] }
 hex = { workspace = true }
@@ -25,10 +25,10 @@ pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
 primitive-types = { workspace = true }
-r2d2 = "0.8.10"
-r2d2_sqlite = "0.21.0"
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
 rand = { workspace = true }
-rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }
+rusqlite = { workspace = true, features = ["bundled", "functions"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",
@@ -46,6 +46,6 @@ zstd = { workspace = true }
 assert_matches = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
-tempfile = "3.6"
-test-log = { workspace = true }
+tempfile = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }

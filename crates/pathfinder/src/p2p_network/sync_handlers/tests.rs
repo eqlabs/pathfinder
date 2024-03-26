@@ -30,6 +30,7 @@ fn get_next_block_number(
     );
 }
 
+#[cfg(test)]
 mod boundary_conditions {
     use super::I64_MAX;
     use crate::p2p_network::sync_handlers::{

@@ -2,6 +2,7 @@ mod class;
 pub mod l1;
 pub mod l2;
 mod pending;
+pub mod revert;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
@@ -981,6 +982,17 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .increment_reorg_counter()
             .context("Incrementing reorg counter")?;
 
+        // Roll back Merkle trie updates.
+        //
+        // If we're rolling back genesis then there will be no blocks left so state will be empty.
+        if let Some(target_block) = reorg_tail.parent() {
+            let target_header = transaction
+                .block_header(target_block.into())
+                .context("Fetching target block header")?
+                .context("Expected target header to exist")?;
+            revert::revert_starknet_state(&transaction, head, target_block, target_header, false)?;
+        }
+
         // Purge each block one at a time.
         //
         // This is done 1-by-1 to allow sending the reorg'd block data
@@ -1110,13 +1122,13 @@ fn update_starknet_state(
     }
 
     // Apply storage commitment tree changes.
-    let (storage_commitment, nodes) = storage_commitment_tree
+    let (storage_commitment, trie_update) = storage_commitment_tree
         .commit()
         .context("Apply storage commitment tree updates")?;
 
     let root_idx = if !storage_commitment.0.is_zero() {
         let root_idx = transaction
-            .insert_storage_trie(storage_commitment, &nodes)
+            .insert_storage_trie(&trie_update)
             .context("Persisting storage trie")?;
 
         Some(root_idx)
@@ -1149,13 +1161,13 @@ fn update_starknet_state(
     }
 
     // Apply all class commitment tree changes.
-    let (class_commitment, nodes) = class_commitment_tree
+    let (class_commitment, trie_update) = class_commitment_tree
         .commit()
         .context("Apply class commitment tree updates")?;
 
     let class_root_idx = if !class_commitment.0.is_zero() {
         let class_root_idx = transaction
-            .insert_class_trie(class_commitment, &nodes)
+            .insert_class_trie(&trie_update)
             .context("Persisting class trie")?;
 
         Some(class_root_idx)

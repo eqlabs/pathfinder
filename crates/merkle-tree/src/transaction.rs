@@ -51,7 +51,9 @@ impl TransactionOrEventTree {
     }
 
     pub fn commit(self) -> anyhow::Result<Felt> {
-        self.tree.commit(&NullStorage {}).map(|update| update.root)
+        self.tree
+            .commit(&NullStorage {})
+            .map(|update| update.root_hash())
     }
 }
 

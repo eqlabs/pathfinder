@@ -10,55 +10,38 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-async-stream = "0.3.5"
+async-stream = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 futures = { workspace = true }
 ipnet = { workspace = true }
-libp2p = { version = "0.53.0", default-features = false, features = [
-    "autonat",
-    "dcutr",
-    "dns",
-    "gossipsub",
-    "identify",
-    "kad",
-    "macros",
-    "noise",
-    "ping",
-    "relay",
-    "request-response",
-    "serde",
-    "tcp",
-    "tokio",
-    "yamux",
-] }
+libp2p = { workspace = true, features = ["autonat", "dcutr", "dns", "gossipsub", "identify", "kad", "macros", "noise", "ping", "relay", "request-response", "serde", "tcp", "tokio", "yamux"] }
 p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
-prost = "0.12.1"
+prost = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sha2 = "0.10.7"
+sha2 = { workspace = true }
 sha3 = { workspace = true }
-smallvec = { workspace = true }
-tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "sync"] }
-tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-unsigned-varint = { version = "0.8.0", features = ["futures"] }
-void = "1.0.2"
-zeroize = "1.6.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+unsigned-varint = { workspace = true, features = ["futures"] }
+void = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
-env_logger = "0.10.0"
+env_logger = { workspace = true }
 fake = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 rstest = { workspace = true }
-test-log = { workspace = true }
-tokio = { version = "1.32.0", features = ["test-util"] }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+test-log = { workspace = true, features = ["trace"] }
+tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
