@@ -23,7 +23,8 @@ pub(super) enum ContractDiffSyncError {
     StateDiffCommitmentMismatch(PeerData<BlockNumber>),
 }
 
-/// Returns the first block number whose state update is missing in storage, counting from genesis
+/// Returns the first block number whose state update is missing, counting from genesis
+/// or `None` if all class definitions up to `head` are present.
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
@@ -34,14 +35,12 @@ pub(super) async fn next_missing(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
-        if let Some(highest) = db
+        let highest = db
             .highest_block_with_state_update()
             .context("Querying highest block with state update")?
-        {
-            Ok((highest < head).then_some(highest + 1))
-        } else {
-            Ok(Some(BlockNumber::GENESIS))
-        }
+            .unwrap_or_default();
+
+        Ok((highest < head).then_some(highest + 1))
     })
     .await
     .context("Joining blocking task")?

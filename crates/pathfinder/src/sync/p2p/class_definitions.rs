@@ -28,6 +28,7 @@ pub struct ClassWithLayout {
 }
 
 /// Returns the first block number which is missing at least one class definition, counting from genesis
+/// or `None` if all class definitions up to `head` are present.
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
@@ -38,14 +39,12 @@ pub(super) async fn next_missing(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
-        if let Some(highest) = db
+        let highest = db
             .highest_block_with_all_class_definitions_downloaded()
-            .context("Querying highest block with all class definitions")?
-        {
-            Ok((highest < head).then_some(highest + 1))
-        } else {
-            Ok(Some(BlockNumber::GENESIS))
-        }
+            .context("Querying highest block with any class definitions")?
+            .unwrap_or_default();
+
+        Ok((highest < head).then_some(highest + 1))
     })
     .await
     .context("Joining blocking task")?
