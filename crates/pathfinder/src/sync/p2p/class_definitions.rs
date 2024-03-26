@@ -16,7 +16,7 @@ pub(super) enum ClassDefinitionSyncError {
     #[error(transparent)]
     ClassDefinitionStreamError(#[from] anyhow::Error),
     #[error("Invalid class definition layout")]
-    BadLayout(PeerData<(BlockNumber, ClassHash, serde_json::Error)>),
+    BadLayout(Box<PeerData<(BlockNumber, ClassHash, serde_json::Error)>>),
     #[error("Class hash verification failed")]
     BadClassHash(PeerData<(BlockNumber, ClassHash)>),
 }
@@ -99,7 +99,7 @@ pub(super) fn declared_class_counts_stream(
     }
 }
 
-pub(super) fn verify_layout<'a>(
+pub(super) fn verify_layout(
     peer_data: PeerData<Class>,
 ) -> Result<PeerData<ClassWithLayout>, ClassDefinitionSyncError> {
     let PeerData { peer, data } = peer_data;
@@ -110,7 +110,10 @@ pub(super) fn verify_layout<'a>(
             definition,
         } => {
             let layout = serde_json::from_slice(&definition).map_err(|e| {
-                ClassDefinitionSyncError::BadLayout(PeerData::new(peer, (block_number, hash, e)))
+                ClassDefinitionSyncError::BadLayout(Box::new(PeerData::new(
+                    peer,
+                    (block_number, hash, e),
+                )))
             })?;
             Ok(PeerData::new(
                 peer,
@@ -131,10 +134,10 @@ pub(super) fn verify_layout<'a>(
             casm_definition,
         } => {
             let layout = serde_json::from_slice(&sierra_definition).map_err(|e| {
-                ClassDefinitionSyncError::BadLayout(PeerData::new(
+                ClassDefinitionSyncError::BadLayout(Box::new(PeerData::new(
                     peer,
                     (block_number, ClassHash(sierra_hash.0), e),
-                ))
+                )))
             })?;
             Ok(PeerData::new(
                 peer,
