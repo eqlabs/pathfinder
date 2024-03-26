@@ -13,8 +13,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 
     let mut transformers = Vec::new();
     let (insert_tx, insert_rx) = mpsc::channel();
-    let (transform_tx, transform_rx) =
-        flume::unbounded::<(Vec<u8>, i64, Vec<u8>, Vec<u8>, Vec<u8>)>();
+    let (transform_tx, transform_rx) = flume::unbounded::<(Vec<u8>, i64, i64, Vec<u8>, Vec<u8>)>();
     for _ in 0..thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(4)
@@ -23,7 +22,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         let transform_rx = transform_rx.clone();
         let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
         let transformer = thread::spawn(move || {
-            for (hash, idx, block_hash, transaction, receipt) in transform_rx.iter() {
+            for (hash, idx, block_number, transaction, receipt) in transform_rx.iter() {
                 // Load old DTOs.
                 let transaction = zstd::decode_all(transaction.as_slice())
                     .context("Decompressing transaction")
@@ -74,7 +73,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 
                 // Store the updated values.
                 if let Err(err) =
-                    insert_tx.send((hash, idx, block_hash, transaction, receipt, events))
+                    insert_tx.send((hash, idx, block_number, transaction, receipt, events))
                 {
                     panic!("Failed to send transaction: {:?}", err);
                 }
@@ -92,20 +91,24 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
         r"
         CREATE TABLE starknet_transactions_new (
-            hash        BLOB PRIMARY KEY,
-            idx         INTEGER NOT NULL,
-            block_hash  BLOB NOT NULL,
-            tx          BLOB,
-            receipt     BLOB,
-            events      BLOB
+            hash         BLOB PRIMARY KEY,
+            idx          INTEGER NOT NULL,
+            block_number INTEGER NOT NULL,
+            tx           BLOB,
+            receipt      BLOB,
+            events       BLOB
         )",
         [],
     )
     .context("Creating starknet_transactions_new table")?;
-    let mut query_stmt =
-        tx.prepare("SELECT hash, idx, block_hash, tx, receipt FROM starknet_transactions")?;
+    let mut query_stmt = tx.prepare(
+        r"
+        SELECT starknet_transactions.hash, idx, tx, receipt, block_headers.number FROM starknet_transactions
+        LEFT JOIN block_headers ON block_headers.hash = starknet_transactions.block_hash
+        ",
+    )?;
     let mut insert_stmt = tx.prepare(
-        r"INSERT INTO starknet_transactions_new (hash, idx, block_hash, tx, receipt, events)
+        r"INSERT INTO starknet_transactions_new (hash, idx, block_number, tx, receipt, events)
                                          VALUES (?, ?, ?, ?, ?, ?)",
     )?;
     const BATCH_SIZE: usize = 10_000;
@@ -118,14 +121,14 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 Ok(Some(row)) => {
                     let hash = row.get_ref_unwrap("hash").as_blob()?;
                     let idx = row.get_ref_unwrap("idx").as_i64()?;
-                    let block_hash = row.get_ref_unwrap("block_hash").as_blob()?;
                     let transaction = row.get_ref_unwrap("tx").as_blob()?;
                     let receipt = row.get_ref_unwrap("receipt").as_blob()?;
+                    let block_number = row.get_ref_unwrap("number").as_i64()?;
                     transform_tx
                         .send((
                             hash.to_vec(),
                             idx,
-                            block_hash.to_vec(),
+                            block_number,
                             transaction.to_vec(),
                             receipt.to_vec(),
                         ))
@@ -144,8 +147,15 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     (progress as f64 / count as f64) * 100.0
                 );
             }
-            let (hash, idx, block_hash, transaction, receipt, events) = insert_rx.recv()?;
-            insert_stmt.execute(params![hash, idx, block_hash, transaction, receipt, events])?;
+            let (hash, idx, block_number, transaction, receipt, events) = insert_rx.recv()?;
+            insert_stmt.execute(params![
+                hash,
+                idx,
+                block_number,
+                transaction,
+                receipt,
+                events
+            ])?;
             progress += 1;
         }
         if batch_size < BATCH_SIZE {
@@ -170,9 +180,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         [],
     )
     .context("Renaming starknet_transactions_new to starknet_transactions")?;
-    tracing::info!("Creating block_hash index on starknet_transactions");
+    tracing::info!("Creating block_number index on starknet_transactions");
     tx.execute(
-        "CREATE INDEX starknet_transactions_block_hash ON starknet_transactions(block_hash)",
+        "CREATE INDEX starknet_transactions_block_number ON starknet_transactions(block_number)",
         [],
     )
     .context("Creating index on block_headers")?;

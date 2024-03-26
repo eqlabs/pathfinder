@@ -54,16 +54,15 @@ pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Resul
             return Ok(Output::Pending(receipt));
         }
 
-        let (transaction, receipt, events, block_hash) = db_tx
+        let (transaction, receipt, events, block_number) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Reading transaction receipt from database")?
             .ok_or(Error::TxnHashNotFound)?;
 
-        let block_number = db_tx
-            .block_id(block_hash.into())
-            .context("Querying block number")?
-            .context("Block number info missing")?
-            .0;
+        let block_hash = db_tx
+            .block_hash(block_number.into())
+            .context("Querying block hash")?
+            .context("Block hash info missing")?;
 
         let l1_accepted = db_tx
             .block_is_l1_accepted(block_number.into())

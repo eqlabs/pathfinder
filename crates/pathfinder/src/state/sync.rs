@@ -915,7 +915,7 @@ async fn l2_update(
             .collect::<Vec<_>>();
 
         transaction
-            .insert_transaction_data(header.hash, header.number, &transaction_data)
+            .insert_transaction_data(header.number, &transaction_data)
             .context("Insert transaction data into database")?;
 
         // Insert state updates

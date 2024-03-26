@@ -37,7 +37,6 @@ pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -
          }| {
             tx.insert_block_header(&header.header).unwrap();
             tx.insert_transaction_data(
-                header.header.hash,
                 header.header.number,
                 &transaction_data
                     .iter()

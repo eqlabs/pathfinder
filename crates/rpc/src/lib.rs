@@ -597,13 +597,13 @@ pub mod test_utils {
             },
         ];
         db_txn
-            .insert_transaction_data(header0.hash, header0.number, &transaction_data0)
+            .insert_transaction_data(header0.number, &transaction_data0)
             .unwrap();
         db_txn
-            .insert_transaction_data(header1.hash, header1.number, &transaction_data1)
+            .insert_transaction_data(header1.number, &transaction_data1)
             .unwrap();
         db_txn
-            .insert_transaction_data(header2.hash, header2.number, &transaction_data2)
+            .insert_transaction_data(header2.number, &transaction_data2)
             .unwrap();
 
         // Mark block 0 as L1 accepted.

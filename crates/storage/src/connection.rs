@@ -88,7 +88,7 @@ type TransactionWithReceipt = (
     StarknetTransaction,
     Receipt,
     Vec<pathfinder_common::event::Event>,
-    BlockHash,
+    BlockNumber,
 );
 
 type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
@@ -167,6 +167,10 @@ impl<'inner> Transaction<'inner> {
         block::block_hash(self, block)
     }
 
+    pub fn block_number(&self, block: BlockId) -> anyhow::Result<Option<BlockNumber>> {
+        block::block_number(self, block)
+    }
+
     pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
         block::block_exists(self, block)
     }
@@ -209,20 +213,19 @@ impl<'inner> Transaction<'inner> {
     /// Inserts the transaction, receipt and event data.
     pub fn insert_transaction_data(
         &self,
-        block_hash: BlockHash,
         block_number: BlockNumber,
         transaction_data: &[TransactionData],
     ) -> anyhow::Result<()> {
-        transaction::insert_transactions(self, block_hash, block_number, transaction_data)
+        transaction::insert_transactions(self, block_number, transaction_data)
     }
 
     pub fn update_receipt(
         &self,
-        block_hash: BlockHash,
+        block_number: BlockNumber,
         transaction_idx: usize,
         receipt: &Receipt,
     ) -> anyhow::Result<()> {
-        transaction::update_receipt(self, block_hash, transaction_idx, receipt)
+        transaction::update_receipt(self, block_number, transaction_idx, receipt)
     }
 
     pub fn transaction_block_hash(

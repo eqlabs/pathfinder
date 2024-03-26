@@ -338,7 +338,6 @@ pub(crate) mod tests {
                 ..Default::default()
             };
             tx.insert_transaction_data(
-                next_block_header.hash,
                 next_block_header.number,
                 transactions
                     .iter()

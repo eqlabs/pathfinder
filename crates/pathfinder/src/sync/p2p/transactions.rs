@@ -14,7 +14,6 @@ pub(super) async fn persist(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
         db.insert_transaction_data(
-            block.hash,
             block.number,
             &transactions
                 .into_iter()

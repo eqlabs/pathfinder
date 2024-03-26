@@ -16,7 +16,6 @@ pub enum TransactionStatus {
 
 pub(super) fn insert_transactions(
     tx: &Transaction<'_>,
-    block_hash: BlockHash,
     block_number: BlockNumber,
     transaction_data: &[TransactionData],
 ) -> anyhow::Result<()> {
@@ -71,12 +70,12 @@ pub(super) fn insert_transactions(
             None => None,
         };
 
-        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt,  events) 
-                                                                  VALUES (:hash, :idx, :block_hash, :tx, :receipt, :events)",
+        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_number,  tx,  receipt,  events) 
+                                                                  VALUES (:hash, :idx, :block_number, :tx, :receipt, :events)",
             named_params![
                 ":hash": &transaction.hash(),
                 ":idx": &i.try_into_sql_int()?,
-                ":block_hash": &block_hash,
+                ":block_number": &block_number,
                 ":tx": &tx_data,
                 ":receipt": &serialized_receipt,
                 ":events": &serialized_events,
@@ -94,7 +93,7 @@ pub(super) fn insert_transactions(
 
 pub(super) fn update_receipt(
     tx: &Transaction<'_>,
-    block_hash: BlockHash,
+    block_number: BlockNumber,
     transaction_idx: usize,
     receipt: &Receipt,
 ) -> anyhow::Result<()> {
@@ -121,12 +120,12 @@ pub(super) fn update_receipt(
         .execute(
             r"
             UPDATE starknet_transactions SET receipt = :receipt, execution_status = :execution_status
-            WHERE block_hash = :block_hash AND idx = :idx;
+            WHERE block_number = :block_number AND idx = :idx;
             ",
             named_params![
                 ":receipt": &serialized_receipt,
                 ":execution_status": &execution_status,
-                ":block_hash": &block_hash,
+                ":block_number": &block_number,
                 ":idx": &transaction_idx.try_into_sql_int()?,
             ],
         )
@@ -171,7 +170,7 @@ pub(super) fn transaction_with_receipt(
         .inner()
         .prepare(
             r"
-            SELECT tx, receipt, block_hash, events
+            SELECT tx, receipt, block_number, events
             FROM starknet_transactions
             WHERE hash = ?1
             ",
@@ -212,7 +211,7 @@ pub(super) fn transaction_with_receipt(
             .context("Deserializing events")?
             .0;
 
-    let block_hash = row.get_block_hash("block_hash")?;
+    let block_number = row.get_block_number("block_number")?;
 
     Ok(Some((
         transaction.into(),
@@ -220,7 +219,7 @@ pub(super) fn transaction_with_receipt(
         match events {
             dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
         },
-        block_hash,
+        block_number,
     )))
 }
 
@@ -229,18 +228,18 @@ pub(super) fn transaction_at_block(
     block: BlockId,
     index: usize,
 ) -> anyhow::Result<Option<StarknetTransaction>> {
-    // Identify block hash
-    let Some(block_hash) = tx.block_hash(block)? else {
+    // Identify block number
+    let Some(block_number) = tx.block_number(block)? else {
         return Ok(None);
     };
 
     let mut stmt = tx
         .inner()
-        .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? AND idx = ?")
+        .prepare("SELECT tx FROM starknet_transactions WHERE block_number = ? AND idx = ?")
         .context("Preparing statement")?;
 
     let mut rows = stmt
-        .query(params![&block_hash, &index.try_into_sql_int()?])
+        .query(params![&block_number, &index.try_into_sql_int()?])
         .context("Executing query")?;
 
     let row = match rows.next()? {
@@ -267,9 +266,7 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
         BlockId::Number(number) => tx
             .inner()
             .query_row(
-                "SELECT COUNT(*) FROM starknet_transactions
-                JOIN block_headers ON starknet_transactions.block_hash = block_headers.hash
-                WHERE number = ?1",
+                "SELECT COUNT(*) FROM starknet_transactions WHERE block_number = ?1",
                 params![&number],
                 |row| row.get(0),
             )
@@ -277,15 +274,17 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
         BlockId::Hash(hash) => tx
             .inner()
             .query_row(
-                "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
+                "SELECT COUNT(*) FROM starknet_transactions
+                JOIN block_headers ON starknet_transactions.block_number = block_headers.number
+                WHERE block_headers.hash = ?1",
                 params![&hash],
                 |row| row.get(0),
             )
             .context("Counting transactions"),
         BlockId::Latest => {
             // First get the latest block
-            let block = match tx.block_hash(BlockId::Latest)? {
-                Some(hash) => hash,
+            let block = match tx.block_number(BlockId::Latest)? {
+                Some(number) => number,
                 None => return Ok(0),
             };
 
@@ -298,7 +297,7 @@ pub(super) fn transaction_data_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<TransactionDataForBlock>>> {
-    let Some(block_hash) = tx.block_hash(block)? else {
+    let Some(block_number) = dbg!(tx.block_number(block))? else {
         return Ok(None);
     };
 
@@ -308,14 +307,14 @@ pub(super) fn transaction_data_for_block(
             r"
             SELECT tx, receipt, events
             FROM starknet_transactions
-            WHERE block_hash = ?
+            WHERE block_number = ?
             ORDER BY idx ASC
             ",
         )
         .context("Preparing statement")?;
 
     let mut rows = stmt
-        .query(params![&block_hash])
+        .query(params![&block_number])
         .context("Executing query")?;
 
     let mut data = Vec::new();
@@ -366,17 +365,17 @@ pub(super) fn transactions_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<StarknetTransaction>>> {
-    let Some(block_hash) = tx.block_hash(block)? else {
+    let Some(block_number) = tx.block_number(block)? else {
         return Ok(None);
     };
 
     let mut stmt = tx
         .inner()
-        .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .prepare("SELECT tx FROM starknet_transactions WHERE block_number = ? ORDER BY idx ASC")
         .context("Preparing statement")?;
 
     let mut rows = stmt
-        .query(params![&block_hash])
+        .query(params![&block_number])
         .context("Executing query")?;
 
     let mut data = Vec::new();
@@ -401,7 +400,7 @@ pub(super) fn events_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
-    let Some(block_hash) = tx.block_hash(block)? else {
+    let Some(block_number) = tx.block_number(block)? else {
         return Ok(None);
     };
 
@@ -411,14 +410,14 @@ pub(super) fn events_for_block(
             r"
             SELECT hash, events
             FROM starknet_transactions
-            WHERE block_hash = ?
+            WHERE block_number = ?
             ORDER BY idx ASC
             ",
         )
         .context("Preparing statement")?;
 
     let mut rows = stmt
-        .query(params![&block_hash])
+        .query(params![&block_number])
         .context("Executing query")?;
 
     let mut data = Vec::new();
@@ -451,17 +450,19 @@ pub(super) fn transaction_hashes_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<TransactionHash>>> {
-    let Some(block_hash) = tx.block_hash(block)? else {
+    let Some(block_number) = tx.block_number(block)? else {
         return Ok(None);
     };
 
     let mut stmt = tx
         .inner()
-        .prepare("SELECT hash FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+        .prepare("SELECT hash FROM starknet_transactions WHERE block_number = ? ORDER BY idx ASC")
         .context("Preparing statement")?;
 
     let data = stmt
-        .query_map(params![&block_hash], |row| row.get_transaction_hash("hash"))
+        .query_map(params![&block_number], |row| {
+            row.get_transaction_hash("hash")
+        })
         .context("Executing query")?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -474,7 +475,11 @@ pub(super) fn transaction_block_hash(
 ) -> anyhow::Result<Option<BlockHash>> {
     tx.inner()
         .query_row(
-            "SELECT block_hash FROM starknet_transactions WHERE hash = ?",
+            r"
+            SELECT block_headers.hash FROM starknet_transactions
+            JOIN block_headers ON starknet_transactions.block_number = block_headers.number
+            WHERE starknet_transactions.hash = ?
+            ",
             params![&hash],
             |row| row.get_block_hash(0),
         )
@@ -2089,7 +2094,6 @@ mod tests {
         db_tx.insert_block_header(&header).unwrap();
         db_tx
             .insert_transaction_data(
-                header.hash,
                 header.number,
                 &body
                     .clone()
@@ -2135,7 +2139,7 @@ mod tests {
         assert_eq!(result.0, transaction);
         assert_eq!(result.1, receipt);
         assert_eq!(result.2, vec![]);
-        assert_eq!(result.3, header.hash);
+        assert_eq!(result.3, header.number);
 
         let invalid =
             super::transaction_with_receipt(&tx, transaction_hash_bytes!(b"invalid")).unwrap();
@@ -2217,6 +2221,10 @@ mod tests {
 
         let invalid_block =
             super::transaction_data_for_block(&tx, BlockNumber::MAX.into()).unwrap();
+        assert_eq!(invalid_block, None);
+
+        let invalid_block =
+            super::transaction_data_for_block(&tx, block_hash!("0x123").into()).unwrap();
         assert_eq!(invalid_block, None);
     }
 

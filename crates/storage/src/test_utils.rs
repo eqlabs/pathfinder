@@ -192,7 +192,6 @@ pub fn setup_test_storage() -> (Storage, TestData) {
     for (i, header) in headers.iter().enumerate() {
         tx.insert_block_header(header).unwrap();
         tx.insert_transaction_data(
-            header.hash,
             header.number,
             &transactions_and_receipts
                 [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK]

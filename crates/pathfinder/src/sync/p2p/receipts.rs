@@ -14,7 +14,7 @@ pub(super) async fn persist(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
         for (transaction_idx, receipt) in receipts.into_iter().enumerate() {
-            db.update_receipt(block.hash, transaction_idx, &receipt)
+            db.update_receipt(block.number, transaction_idx, &receipt)
                 .context("Updating receipt")?;
         }
         db.commit().context("Committing database transaction")

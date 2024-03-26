@@ -492,7 +492,6 @@ mod tests {
 
         tx.insert_block_header(&header).unwrap();
         tx.insert_transaction_data(
-            header.hash,
             header.number,
             &vec![
                 TransactionData {
