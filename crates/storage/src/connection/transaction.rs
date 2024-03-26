@@ -963,8 +963,6 @@ pub(crate) mod dto {
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     pub struct ResourceBound {
-        // TODO These are also likely to be close to zero, should we use the same trick as for
-        // felts?
         pub max_amount: ResourceAmount,
         pub max_price_per_unit: ResourcePricePerUnit,
     }

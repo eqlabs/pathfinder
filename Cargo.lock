@@ -6217,7 +6217,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "smallvec",
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",

@@ -53,7 +53,6 @@ serde_json = { workspace = true, features = [
     "arbitrary_precision",
     "raw_value",
 ] }
-smallvec = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 tempfile = { workspace = true }

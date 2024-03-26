@@ -168,7 +168,14 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
         "ALTER TABLE starknet_transactions_new RENAME TO starknet_transactions",
         [],
-    )?;
+    )
+    .context("Renaming starknet_transactions_new to starknet_transactions")?;
+    tracing::info!("Creating block_hash index on starknet_transactions");
+    tx.execute(
+        "CREATE INDEX starknet_transactions_block_hash ON starknet_transactions(block_hash)",
+        [],
+    )
+    .context("Creating index on block_headers")?;
     Ok(())
 }
 
