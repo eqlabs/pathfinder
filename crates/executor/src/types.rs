@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use blockifier::{
-    execution::call_info::OrderedL2ToL1Message, transaction::objects::TransactionExecutionInfo,
+    execution::call_info::OrderedL2ToL1Message,
+    transaction::objects::{GasVector, TransactionExecutionInfo},
 };
 use pathfinder_common::{
     CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
@@ -35,17 +36,28 @@ impl FeeEstimate {
         gas_price: u128,
         data_gas_price: u128,
         unit: PriceUnit,
+        minimal_l1_gas_amount_vector: Option<GasVector>,
     ) -> FeeEstimate {
         let data_gas_consumed = tx_info.da_gas.l1_data_gas;
         let data_gas_fee = data_gas_consumed.saturating_mul(data_gas_price);
         let gas_consumed = tx_info.actual_fee.0.saturating_sub(data_gas_fee) / gas_price.max(1);
+
+        let (minimal_gas_consumed, minimal_data_gas_consumed) = minimal_l1_gas_amount_vector
+            .map(|v| (v.l1_gas, v.l1_data_gas))
+            .unwrap_or_default();
+
+        let gas_consumed = gas_consumed.max(minimal_gas_consumed);
+        let data_gas_consumed = data_gas_consumed.max(minimal_data_gas_consumed);
+        let overall_fee = gas_consumed
+            .saturating_mul(gas_price)
+            .saturating_add(data_gas_consumed.saturating_mul(data_gas_price));
 
         FeeEstimate {
             gas_consumed: gas_consumed.into(),
             gas_price: gas_price.into(),
             data_gas_consumed: data_gas_consumed.into(),
             data_gas_price: data_gas_price.into(),
-            overall_fee: tx_info.actual_fee.0.into(),
+            overall_fee: overall_fee.into(),
             unit,
         }
     }

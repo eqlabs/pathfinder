@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- `starknet_estimateFee` and `starknet_simulateTransactions` can return fee estimates below the minimum fee expected by the sequencer for trivial transactions.
+
 ## [0.11.3] - 2024-03-13
 
 ### Fixed
