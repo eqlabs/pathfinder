@@ -27,6 +27,19 @@ pub(super) fn class_root_index(
         .map_err(Into::into)
 }
 
+pub(super) fn class_root_exists(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+) -> anyhow::Result<bool> {
+    tx.inner()
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM class_roots WHERE block_number=?)",
+            params![&block_number],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(Into::into)
+}
+
 pub(super) fn storage_root_index(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
@@ -39,6 +52,19 @@ pub(super) fn storage_root_index(
         )
         .optional()
         .map(|x| x.flatten())
+        .map_err(Into::into)
+}
+
+pub(super) fn storage_root_exists(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+) -> anyhow::Result<bool> {
+    tx.inner()
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM storage_roots WHERE block_number=?)",
+            params![&block_number],
+            |row| row.get::<_, bool>(0),
+        )
         .map_err(Into::into)
 }
 

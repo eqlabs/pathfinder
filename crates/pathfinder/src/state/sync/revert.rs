@@ -46,12 +46,7 @@ fn revert_contract_updates(
     expected_storage_commitment: StorageCommitment,
     force: bool,
 ) -> anyhow::Result<()> {
-    let state_root_exists = match transaction.storage_root_index(target_block)? {
-        None => false,
-        Some(root_idx) => transaction.storage_trie_node(root_idx)?.is_some(),
-    };
-
-    if force || !state_root_exists {
+    if force || !transaction.storage_root_exists(target_block)? {
         let updates = transaction.reverse_contract_updates(head, target_block)?;
 
         let mut global_tree = StorageCommitmentTree::load(transaction, head)
@@ -127,12 +122,7 @@ fn revert_class_updates(
     expected_class_commitment: ClassCommitment,
     force: bool,
 ) -> anyhow::Result<()> {
-    let class_root_exists = match transaction.class_root_index(target_block)? {
-        None => false,
-        Some(root_idx) => transaction.class_trie_node(root_idx)?.is_some(),
-    };
-
-    if force || !class_root_exists {
+    if force || !transaction.class_root_exists(target_block)? {
         let updates = transaction.reverse_sierra_class_updates(head, target_block)?;
 
         let mut class_tree = ClassCommitmentTree::load(transaction, head)

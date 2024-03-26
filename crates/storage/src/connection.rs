@@ -478,8 +478,16 @@ impl<'inner> Transaction<'inner> {
         trie::class_root_index(self, block)
     }
 
+    pub fn class_root_exists(&self, block: BlockNumber) -> anyhow::Result<bool> {
+        trie::class_root_exists(self, block)
+    }
+
     pub fn storage_root_index(&self, block: BlockNumber) -> anyhow::Result<Option<u64>> {
         trie::storage_root_index(self, block)
+    }
+
+    pub fn storage_root_exists(&self, block: BlockNumber) -> anyhow::Result<bool> {
+        trie::storage_root_exists(self, block)
     }
 
     pub fn contract_root_index(
