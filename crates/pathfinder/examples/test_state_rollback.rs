@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
 
     let to_header = tx.block_header(to.into()).unwrap().unwrap();
 
-    pathfinder_lib::state::revert::revert_starknet_state(&tx, from, to, to_header, true)?;
+    pathfinder_lib::state::revert::revert_starknet_state(&tx, from, to, to_header)?;
 
     tracing::info!(
         from=%from,

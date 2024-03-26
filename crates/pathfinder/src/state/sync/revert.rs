@@ -15,21 +15,18 @@ pub fn revert_starknet_state(
     head: BlockNumber,
     target_block: BlockNumber,
     target_header: BlockHeader,
-    force: bool,
 ) -> Result<(), anyhow::Error> {
     revert_contract_updates(
         transaction,
         head,
         target_block,
         target_header.storage_commitment,
-        force,
     )?;
     revert_class_updates(
         transaction,
         head,
         target_block,
         target_header.class_commitment,
-        force,
     )?;
     Ok(())
 }
@@ -43,9 +40,8 @@ fn revert_contract_updates(
     head: BlockNumber,
     target_block: BlockNumber,
     expected_storage_commitment: StorageCommitment,
-    force: bool,
 ) -> anyhow::Result<()> {
-    if force || !transaction.storage_root_exists(target_block)? {
+    if !transaction.storage_root_exists(target_block)? {
         let updates = transaction.reverse_contract_updates(head, target_block)?;
 
         let mut global_tree = StorageCommitmentTree::load(transaction, head)
@@ -109,9 +105,8 @@ fn revert_class_updates(
     head: BlockNumber,
     target_block: BlockNumber,
     expected_class_commitment: ClassCommitment,
-    force: bool,
 ) -> anyhow::Result<()> {
-    if force || !transaction.class_root_exists(target_block)? {
+    if !transaction.class_root_exists(target_block)? {
         let updates = transaction.reverse_sierra_class_updates(head, target_block)?;
 
         let mut class_tree = ClassCommitmentTree::load(transaction, head)
