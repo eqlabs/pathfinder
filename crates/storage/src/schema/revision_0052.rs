@@ -140,7 +140,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             if progress % 1000 == 0 && progress_logged.elapsed() > LOG_RATE {
                 progress_logged = Instant::now();
                 tracing::info!(
-                    "Migrating rows: {:.2}%",
+                    "Migrating transactions: {:.2}%",
                     (progress as f64 / count as f64) * 100.0
                 );
             }
