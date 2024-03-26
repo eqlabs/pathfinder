@@ -99,7 +99,7 @@ pub(super) fn declared_class_counts_stream(
     }
 }
 
-pub(super) async fn verify_layout<'a>(
+pub(super) fn verify_layout<'a>(
     peer_data: PeerData<Class>,
 ) -> Result<PeerData<ClassWithLayout>, ClassDefinitionSyncError> {
     let PeerData { peer, data } = peer_data;

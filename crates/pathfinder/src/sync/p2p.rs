@@ -461,7 +461,8 @@ impl Sync {
                     ),
                 )
                 .map_err(Into::into)
-                .and_then(class_definitions::verify_layout)
+                .map_ok(class_definitions::verify_layout)
+                .and_then(std::future::ready)
                 .and_then(class_definitions::verify_hash)
                 .try_chunks(1000)
                 .map_err(|e| e.1)
