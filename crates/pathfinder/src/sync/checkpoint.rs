@@ -115,8 +115,7 @@ impl Sync {
             tracing::info!("Syncing headers");
 
             // TODO: consider .inspect_ok(tracing::trace!) for each stage.
-            let result = self
-                .p2p
+            self.p2p
                 .clone()
                 // TODO: consider buffering in the client to reduce request latency.
                 .header_stream(gap.head, gap.tail, true)

@@ -50,7 +50,7 @@ impl Sync {
                 storage: self.storage.clone(),
                 p2p: self.p2p.clone(),
                 eth_client: self.eth_client.clone(),
-                eth_address: self.eth_address.clone(),
+                eth_address: self.eth_address,
             }
             .run(checkpoint.clone())
             .await;
