@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
-use pathfinder_common::{BlockNumber, TransactionHash};
+use pathfinder_common::{BlockNumber, EventCommitment, TransactionHash};
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
@@ -84,8 +84,32 @@ pub(super) fn counts_stream(
 
 pub(super) async fn verify_commitment(
     events: PeerData<(BlockNumber, Vec<(TransactionHash, Vec<Event>)>)>,
+    expected_commitment: EventCommitment,
 ) -> Result<PeerData<(BlockNumber, Vec<(TransactionHash, Vec<Event>)>)>, SyncError> {
-    todo!()
+    use crate::state::block_hash::calculate_event_commitment;
+    let PeerData {
+        peer,
+        data: (block_number, transaction_events),
+    } = events;
+    let error = || SyncError::EventCommitmentMismatch(peer);
+    let (commitment, transation_events) = tokio::task::spawn_blocking(move || {
+        calculate_event_commitment(
+            &transaction_events
+                .iter()
+                .map(|(_, events)| events.as_slice())
+                .collect::<Vec<_>>(),
+        )
+        .map(|commitment| (commitment, transaction_events))
+    })
+    .await
+    .map_err(|_| error())?
+    .map_err(|_| error())?;
+
+    if commitment == expected_commitment {
+        Ok(PeerData::new(peer, (block_number, transation_events)))
+    } else {
+        Err(error())
+    }
 }
 
 pub(super) async fn persist(

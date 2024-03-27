@@ -52,12 +52,13 @@ pub fn verify_block_hash(
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let transaction_commitment =
         calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
-    let events: Vec<_> = block
-        .transaction_receipts
-        .iter()
-        .map(|(_, events)| events.clone())
-        .collect();
-    let event_commitment = calculate_event_commitment(&events)?;
+    let event_commitment = calculate_event_commitment(
+        &block
+            .transaction_receipts
+            .iter()
+            .map(|(_, events)| events.as_slice())
+            .collect::<Vec<_>>(),
+    )?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
         anyhow::ensure!(
@@ -431,13 +432,13 @@ fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
 /// The event commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
-pub fn calculate_event_commitment(events: &[Vec<Event>]) -> Result<EventCommitment> {
+pub fn calculate_event_commitment(transaction_events: &[&[Event]]) -> Result<EventCommitment> {
     use rayon::prelude::*;
 
     let mut event_hashes = Vec::new();
     rayon::scope(|s| {
         s.spawn(|_| {
-            event_hashes = events
+            event_hashes = transaction_events
                 .par_iter()
                 .flat_map(|events| events.par_iter())
                 .map(calculate_event_hash)
