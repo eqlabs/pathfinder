@@ -1,10 +1,4 @@
 #![allow(dead_code, unused_variables)]
-mod class_definitions;
-mod headers;
-mod receipts;
-mod state_updates;
-mod transactions;
-
 use anyhow::Context;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -27,9 +21,11 @@ use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
 
-use state_updates::ContractDiffSyncError;
-
-use self::class_definitions::ClassDefinitionSyncError;
+use crate::sync::class_definitions;
+use crate::sync::headers;
+use crate::sync::receipts;
+use crate::sync::state_updates;
+use crate::sync::transactions;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -428,6 +424,7 @@ impl Sync {
                 .try_fold((), |_, _| std::future::ready(Ok(())))
                 .await;
 
+            use state_updates::ContractDiffSyncError;
             match result {
                 Ok(()) => {
                     tracing::info!("Syncing contract updates complete");
@@ -476,6 +473,7 @@ impl Sync {
                 .try_fold((), |_, _| std::future::ready(Ok(())))
                 .await;
 
+            use crate::sync::class_definitions::ClassDefinitionSyncError;
             match result {
                 Ok(()) => {
                     tracing::info!("Syncing contract updates complete");
