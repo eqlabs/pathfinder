@@ -22,6 +22,7 @@ use crate::state::block_hash::{
 };
 
 use crate::sync::class_definitions;
+use crate::sync::error::SyncError;
 use crate::sync::headers;
 use crate::sync::receipts;
 use crate::sync::state_updates;
@@ -30,11 +31,11 @@ use crate::sync::transactions;
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
 pub struct Sync {
-    storage: Storage,
-    p2p: P2PClient,
+    pub storage: Storage,
+    pub p2p: P2PClient,
     // TODO: merge these two inside the client.
-    eth_client: pathfinder_ethereum::EthereumClient,
-    eth_address: H160,
+    pub eth_client: pathfinder_ethereum::EthereumClient,
+    pub eth_address: H160,
 }
 
 impl Sync {
@@ -51,14 +52,9 @@ impl Sync {
         }
     }
 
-    /// Syncs using p2p until the latest Ethereum checkpoint.
-    pub async fn run(&self) -> anyhow::Result<()> {
+    /// Syncs using p2p until the given Ethereum checkpoint.
+    pub async fn run(&self, checkpoint: EthereumStateUpdate) -> Result<(), SyncError> {
         use pathfinder_ethereum::EthereumApi;
-        let checkpoint = self
-            .eth_client
-            .get_starknet_state(&self.eth_address)
-            .await
-            .context("Fetching latest L1 checkpoint")?;
 
         let local_state = LocalState::from_db(self.storage.clone(), checkpoint.clone())
             .await
@@ -108,7 +104,7 @@ impl Sync {
     /// guarantee that all sync'd headers are secured by L1.
     ///
     /// No guarantees are made about any headers newer than the anchor.
-    async fn sync_headers(&self, anchor: EthereumStateUpdate) -> anyhow::Result<()> {
+    async fn sync_headers(&self, anchor: EthereumStateUpdate) -> Result<(), SyncError> {
         while let Some(gap) =
             headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
                 .await
@@ -138,24 +134,7 @@ impl Sync {
                 .inspect_ok(|x| tracing::info!(tail=%x.data.header.number, "Header chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_state, _x| std::future::ready(Ok(())))
-                .await;
-
-            match result {
-                Ok(()) => {
-                    tracing::info!("Syncing headers complete");
-                }
-                Err(error) => {
-                    if let Some(peer_data) = error.peer_id_and_data() {
-                        // TODO: punish peer.
-                        tracing::debug!(
-                            peer=%peer_data.peer, block=%peer_data.data.header.number, %error,
-                            "Error while streaming headers"
-                        );
-                    } else {
-                        tracing::debug!(%error, "Error while streaming headers");
-                    }
-                }
-            }
+                .await?;
         }
 
         Ok(())
