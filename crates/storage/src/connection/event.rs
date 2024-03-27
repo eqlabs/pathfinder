@@ -242,7 +242,7 @@ fn scan_block_into(
         return Ok(BlockScanResult::NoSuchBlock);
     };
 
-    let events = tx.events_for_block(block_header.hash.into())?;
+    let events = tx.events_for_block(block_number.into())?;
     let Some(events) = events else {
         return Ok(BlockScanResult::NoSuchBlock);
     };
