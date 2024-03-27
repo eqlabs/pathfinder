@@ -11,15 +11,7 @@ use starknet_gateway_types::class_hash::from_parts::{
 };
 use tokio::task::spawn_blocking;
 
-#[derive(Debug, thiserror::Error)]
-pub(super) enum ClassDefinitionSyncError {
-    #[error(transparent)]
-    ClassDefinitionStreamError(#[from] anyhow::Error),
-    #[error("Invalid class definition layout")]
-    BadLayout(Box<PeerData<(BlockNumber, ClassHash, serde_json::Error)>>),
-    #[error("Class hash verification failed")]
-    BadClassHash(PeerData<(BlockNumber, ClassHash)>),
-}
+use crate::sync::error::SyncError;
 
 #[derive(Debug)]
 pub struct ClassWithLayout {
@@ -101,7 +93,7 @@ pub(super) fn declared_class_counts_stream(
 
 pub(super) fn verify_layout(
     peer_data: PeerData<Class>,
-) -> Result<PeerData<ClassWithLayout>, ClassDefinitionSyncError> {
+) -> Result<PeerData<ClassWithLayout>, SyncError> {
     let PeerData { peer, data } = peer_data;
     match data {
         Class::Cairo {
@@ -110,10 +102,7 @@ pub(super) fn verify_layout(
             definition,
         } => {
             let layout = serde_json::from_slice(&definition).map_err(|e| {
-                ClassDefinitionSyncError::BadLayout(Box::new(PeerData::new(
-                    peer,
-                    (block_number, hash, e),
-                )))
+                SyncError::BadClassLayout(Box::new(PeerData::new(peer, (block_number, hash, e))))
             })?;
             Ok(PeerData::new(
                 peer,
@@ -134,7 +123,7 @@ pub(super) fn verify_layout(
             casm_definition,
         } => {
             let layout = serde_json::from_slice(&sierra_definition).map_err(|e| {
-                ClassDefinitionSyncError::BadLayout(Box::new(PeerData::new(
+                SyncError::BadClassLayout(Box::new(PeerData::new(
                     peer,
                     (block_number, ClassHash(sierra_hash.0), e),
                 )))
@@ -157,16 +146,11 @@ pub(super) fn verify_layout(
 
 pub(super) async fn verify_hash(
     peer_data: PeerData<ClassWithLayout>,
-) -> Result<PeerData<Class>, ClassDefinitionSyncError> {
+) -> Result<PeerData<Class>, SyncError> {
     let PeerData { peer, data } = peer_data;
     let ClassWithLayout { class, layout } = data;
 
-    let err = || {
-        ClassDefinitionSyncError::BadClassHash(PeerData::new(
-            peer,
-            (class.block_number(), class.hash()),
-        ))
-    };
+    let err = || SyncError::BadClassHash(PeerData::new(peer, (class.block_number(), class.hash())));
 
     let computed = tokio::task::spawn_blocking(move || match layout {
         ClassDefinition::Cairo(c) => compute_cairo_class_hash(
@@ -190,7 +174,7 @@ pub(super) async fn verify_hash(
     if computed == class.hash() {
         Ok(PeerData::new(peer, class))
     } else {
-        Err(ClassDefinitionSyncError::BadClassHash(PeerData::new(
+        Err(SyncError::BadClassHash(PeerData::new(
             peer,
             (class.block_number(), class.hash()),
         )))
@@ -200,7 +184,7 @@ pub(super) async fn verify_hash(
 pub(super) async fn persist(
     storage: Storage,
     classes: Vec<PeerData<Class>>,
-) -> Result<BlockNumber, ClassDefinitionSyncError> {
+) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut connection = storage
             .connection()

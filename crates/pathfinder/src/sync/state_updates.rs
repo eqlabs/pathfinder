@@ -13,15 +13,7 @@ use pathfinder_merkle_tree::{
 use pathfinder_storage::{Storage, TrieUpdate};
 use tokio::task::spawn_blocking;
 
-#[derive(Debug, thiserror::Error)]
-pub(super) enum ContractDiffSyncError {
-    #[error(transparent)]
-    DatabaseOrComputeError(#[from] anyhow::Error),
-    #[error("Signature verification failed")]
-    SignatureVerification(PeerData<BlockNumber>),
-    #[error("State diff commitment mismatch")]
-    StateDiffCommitmentMismatch(PeerData<BlockNumber>),
-}
+use crate::sync::error::SyncError;
 
 /// Returns the first block number whose state update is missing, counting from genesis
 /// or `None` if all class definitions up to `head` are present.
@@ -97,14 +89,14 @@ pub(super) fn contract_update_counts_stream(
 
 pub(super) async fn verify_signature(
     contract_updates: PeerData<(BlockNumber, ContractUpdates)>,
-) -> Result<PeerData<(BlockNumber, ContractUpdates)>, ContractDiffSyncError> {
+) -> Result<PeerData<(BlockNumber, ContractUpdates)>, SyncError> {
     todo!()
 }
 
 pub(super) async fn persist(
     storage: Storage,
     contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
-) -> Result<BlockNumber, ContractDiffSyncError> {
+) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut connection = storage
             .connection()
@@ -160,7 +152,7 @@ pub(super) async fn _update_and_verify_state_trie(
     storage: Storage,
     contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
     verify_trie_hashes: bool,
-) -> Result<Vec<PeerData<VerificationOk>>, ContractDiffSyncError> {
+) -> Result<Vec<PeerData<VerificationOk>>, SyncError> {
     tokio::task::spawn_blocking(move || {
         contract_updates
             .into_iter()
@@ -175,7 +167,7 @@ fn verify_one(
     storage: Storage,
     contract_updates: PeerData<(BlockNumber, ContractUpdates)>,
     verify_hashes: bool,
-) -> Result<PeerData<VerificationOk>, ContractDiffSyncError> {
+) -> Result<PeerData<VerificationOk>, SyncError> {
     use rayon::prelude::*;
 
     let peer = contract_updates.peer;
@@ -303,9 +295,10 @@ fn verify_one(
         .context("Apply storage commitment tree updates")?;
 
     if storage_commitment != computed_storage_commitment {
-        return Err(ContractDiffSyncError::StateDiffCommitmentMismatch(
-            PeerData::new(peer, block_number),
-        ));
+        return Err(SyncError::StateDiffCommitmentMismatch(PeerData::new(
+            peer,
+            block_number,
+        )));
     }
 
     contract_update_results.extend(system_contract_update_results);

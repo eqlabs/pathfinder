@@ -1,10 +1,4 @@
 #![allow(dead_code, unused_variables)]
-mod class_definitions;
-mod headers;
-mod receipts;
-mod state_updates;
-mod transactions;
-
 use anyhow::Context;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -27,18 +21,21 @@ use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
 
-use state_updates::ContractDiffSyncError;
-
-use self::class_definitions::ClassDefinitionSyncError;
+use crate::sync::class_definitions;
+use crate::sync::error::SyncError;
+use crate::sync::headers;
+use crate::sync::receipts;
+use crate::sync::state_updates;
+use crate::sync::transactions;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
 pub struct Sync {
-    storage: Storage,
-    p2p: P2PClient,
+    pub storage: Storage,
+    pub p2p: P2PClient,
     // TODO: merge these two inside the client.
-    eth_client: pathfinder_ethereum::EthereumClient,
-    eth_address: H160,
+    pub eth_client: pathfinder_ethereum::EthereumClient,
+    pub eth_address: H160,
 }
 
 impl Sync {
@@ -55,14 +52,9 @@ impl Sync {
         }
     }
 
-    /// Syncs using p2p until the latest Ethereum checkpoint.
-    pub async fn run(&self) -> anyhow::Result<()> {
+    /// Syncs using p2p until the given Ethereum checkpoint.
+    pub async fn run(&self, checkpoint: EthereumStateUpdate) -> Result<(), SyncError> {
         use pathfinder_ethereum::EthereumApi;
-        let checkpoint = self
-            .eth_client
-            .get_starknet_state(&self.eth_address)
-            .await
-            .context("Fetching latest L1 checkpoint")?;
 
         let local_state = LocalState::from_db(self.storage.clone(), checkpoint.clone())
             .await
@@ -86,21 +78,14 @@ impl Sync {
         let head = anchor.block_number;
 
         // Sync missing headers in reverse chronological order, from the new anchor to genesis.
-        self.sync_headers(anchor).await.context("Syncing headers")?;
+        self.sync_headers(anchor).await?;
 
-        // Sync missing transactions in chronological order for all synced headers.
+        // Sync the rest of the data in chronological order.
         self.sync_transactions()
             .await
             .context("Syncing transactions")?;
-
-        // Sync the rest of the data in chronological order.
-        self.sync_state_updates(head)
-            .await
-            .context("Syncing state updates")?;
-
-        self.sync_class_definitions(head)
-            .await
-            .context("Syncing class definitions")?;
+        self.sync_state_updates(head).await?;
+        self.sync_class_definitions(head).await?;
 
         Ok(())
     }
@@ -112,7 +97,7 @@ impl Sync {
     /// guarantee that all sync'd headers are secured by L1.
     ///
     /// No guarantees are made about any headers newer than the anchor.
-    async fn sync_headers(&self, anchor: EthereumStateUpdate) -> anyhow::Result<()> {
+    async fn sync_headers(&self, anchor: EthereumStateUpdate) -> Result<(), SyncError> {
         while let Some(gap) =
             headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
                 .await
@@ -123,8 +108,7 @@ impl Sync {
             tracing::info!("Syncing headers");
 
             // TODO: consider .inspect_ok(tracing::trace!) for each stage.
-            let result = self
-                .p2p
+            self.p2p
                 .clone()
                 // TODO: consider buffering in the client to reduce request latency.
                 .header_stream(gap.head, gap.tail, true)
@@ -142,24 +126,7 @@ impl Sync {
                 .inspect_ok(|x| tracing::info!(tail=%x.data.header.number, "Header chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_state, _x| std::future::ready(Ok(())))
-                .await;
-
-            match result {
-                Ok(()) => {
-                    tracing::info!("Syncing headers complete");
-                }
-                Err(error) => {
-                    if let Some(peer_data) = error.peer_id_and_data() {
-                        // TODO: punish peer.
-                        tracing::debug!(
-                            peer=%peer_data.peer, block=%peer_data.data.header.number, %error,
-                            "Error while streaming headers"
-                        );
-                    } else {
-                        tracing::debug!(%error, "Error while streaming headers");
-                    }
-                }
-            }
+                .await?;
         }
 
         Ok(())
@@ -404,13 +371,12 @@ impl Sync {
         }
     }
 
-    async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
+    async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {
         if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
         {
-            let result = self
-                .p2p
+            self.p2p
                 .clone()
                 .contract_updates_stream(
                     start,
@@ -426,34 +392,18 @@ impl Sync {
                 .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_, _| std::future::ready(Ok(())))
-                .await;
-
-            match result {
-                Ok(()) => {
-                    tracing::info!("Syncing contract updates complete");
-                }
-                Err(ContractDiffSyncError::SignatureVerification(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: signature verification failed");
-                }
-                Err(ContractDiffSyncError::StateDiffCommitmentMismatch(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: state diff commitment mismatch");
-                }
-                Err(ContractDiffSyncError::DatabaseOrComputeError(error)) => {
-                    tracing::debug!(%error, "Error while streaming contract updates");
-                }
-            }
+                .await?;
         }
 
         Ok(())
     }
 
-    async fn sync_class_definitions(&self, stop: BlockNumber) -> anyhow::Result<()> {
+    async fn sync_class_definitions(&self, stop: BlockNumber) -> Result<(), SyncError> {
         if let Some(start) = class_definitions::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next block with missing class definition(s)")?
         {
-            let result = self
-                .p2p
+            self.p2p
                 .clone()
                 .class_definitions_stream(
                     start,
@@ -474,22 +424,7 @@ impl Sync {
                 .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_, _| std::future::ready(Ok(())))
-                .await;
-
-            match result {
-                Ok(()) => {
-                    tracing::info!("Syncing contract updates complete");
-                }
-                Err(ClassDefinitionSyncError::ClassDefinitionStreamError(error)) => {
-                    tracing::debug!(%error, "Error while streaming class definitions")
-                }
-                Err(ClassDefinitionSyncError::BadLayout(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
-                }
-                Err(ClassDefinitionSyncError::BadClassHash(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
-                }
-            }
+                .await?;
         }
 
         Ok(())
