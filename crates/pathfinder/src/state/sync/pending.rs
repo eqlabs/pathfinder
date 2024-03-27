@@ -97,7 +97,7 @@ mod tests {
         BlockHash, BlockNumber, BlockTimestamp, GasPrice, StarknetVersion, StateCommitment,
         StateUpdate,
     };
-    use pathfinder_storage::Storage;
+    use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{Block, L1DataAvailabilityMode, PendingBlock, Status};
     use tokio::sync::watch;
@@ -179,7 +179,7 @@ mod tests {
                 tx,
                 sequencer,
                 std::time::Duration::ZERO,
-                Storage::in_memory().unwrap(),
+                StorageBuilder::in_memory().unwrap(),
                 latest,
                 current,
             )
@@ -253,7 +253,7 @@ mod tests {
                 tx,
                 sequencer,
                 std::time::Duration::ZERO,
-                Storage::in_memory().unwrap(),
+                StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
             )

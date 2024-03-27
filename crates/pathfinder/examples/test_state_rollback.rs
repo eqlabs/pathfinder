@@ -2,7 +2,7 @@ use std::{num::NonZeroU32, time::Instant};
 
 use anyhow::Context;
 use pathfinder_common::BlockNumber;
-use pathfinder_storage::{BlockId, JournalMode, Storage};
+use pathfinder_storage::{BlockId, StorageBuilder};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -11,7 +11,8 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let database_path = std::env::args().nth(1).unwrap();
-    let storage = Storage::migrate(database_path.into(), JournalMode::WAL, 1)?
+    let storage = StorageBuilder::file(database_path.into())
+        .migrate()?
         .create_pool(NonZeroU32::new(10).unwrap())?;
     let mut db = storage
         .connection()

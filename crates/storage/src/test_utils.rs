@@ -1,6 +1,5 @@
 use crate::{EmittedEvent, TransactionData};
 
-use super::Storage;
 use pathfinder_common::event::Event;
 use pathfinder_common::macro_prelude::*;
 use pathfinder_common::receipt::{ExecutionDataAvailability, ExecutionResources, Receipt};
@@ -181,8 +180,8 @@ pub struct TestData {
 }
 
 // Creates a storage instance in memory with a set of expected emitted event
-pub fn setup_test_storage() -> (Storage, TestData) {
-    let storage = Storage::in_memory().unwrap();
+pub fn setup_test_storage() -> (crate::Storage, TestData) {
+    let storage = crate::StorageBuilder::in_memory().unwrap();
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
 

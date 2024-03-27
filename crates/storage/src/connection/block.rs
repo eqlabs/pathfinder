@@ -521,7 +521,7 @@ mod tests {
 
     // Create test database filled with block headers.
     fn setup() -> (Connection, Vec<BlockHeader>) {
-        let storage = crate::Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -697,7 +697,7 @@ mod tests {
 
         #[test]
         fn empty_chain_returns_none() {
-            let storage = crate::Storage::in_memory().unwrap();
+            let storage = crate::StorageBuilder::in_memory().unwrap();
             let mut db = storage.connection().unwrap();
             let db = db.transaction().unwrap();
 
@@ -730,7 +730,7 @@ mod tests {
 
         #[test]
         fn gap_in_chain() {
-            let storage = crate::Storage::in_memory().unwrap();
+            let storage = crate::StorageBuilder::in_memory().unwrap();
             let mut db = storage.connection().unwrap();
             let db = db.transaction().unwrap();
 
@@ -759,7 +759,7 @@ mod tests {
 
         #[test]
         fn empty_chain_returns_none() {
-            let storage = crate::Storage::in_memory().unwrap();
+            let storage = crate::StorageBuilder::in_memory().unwrap();
             let mut db = storage.connection().unwrap();
             let db = db.transaction().unwrap();
 
@@ -772,7 +772,7 @@ mod tests {
 
         #[test]
         fn target_without_parent_returns_target() {
-            let storage = crate::Storage::in_memory().unwrap();
+            let storage = crate::StorageBuilder::in_memory().unwrap();
             let mut db = storage.connection().unwrap();
             let db = db.transaction().unwrap();
 

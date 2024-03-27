@@ -245,6 +245,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
         default_value = "100000"
     )]
     get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
+
+    #[arg(
+        long = "storage.prune-state-tries",
+        long_help = r"When enabled, only the last state of the Merkle tries is kept in the database. \
+            This can be used to reduce the disk space usage at the cost of only being able to provide storage proofs for the latest block.",
+        env = "PATHFINDER_PRUNE_MERKLE_TRIES",
+        value_name = "BOOL"
+    )]
+    prune_merkle_tries: Option<bool>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -552,6 +561,7 @@ pub struct Config {
     pub event_bloom_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
+    pub prune_merkle_tries: Option<bool>,
 }
 
 pub struct Ethereum {
@@ -768,6 +778,7 @@ impl Config {
             get_events_max_uncached_bloom_filters_to_load: cli
                 .get_events_max_uncached_bloom_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
+            prune_merkle_tries: cli.prune_merkle_tries,
         }
     }
 }

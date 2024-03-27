@@ -48,16 +48,19 @@ type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionMana
 pub struct Connection {
     connection: PooledConnection,
     bloom_filter_cache: Arc<crate::bloom::Cache>,
+    prune_merkle_tries: bool,
 }
 
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
         bloom_filter_cache: Arc<crate::bloom::Cache>,
+        prune_merkle_tries: bool,
     ) -> Self {
         Self {
             connection,
             bloom_filter_cache,
+            prune_merkle_tries,
         }
     }
 
@@ -66,6 +69,7 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
+            prune_merkle_tries: self.prune_merkle_tries,
         })
     }
 
@@ -77,6 +81,7 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
+            prune_merkle_tries: self.prune_merkle_tries,
         })
     }
 }
@@ -84,6 +89,7 @@ impl Connection {
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
     bloom_filter_cache: Arc<crate::bloom::Cache>,
+    prune_merkle_tries: bool,
 }
 
 type TransactionWithReceipt = (
@@ -106,6 +112,7 @@ impl<'inner> Transaction<'inner> {
         Self {
             transaction: tx,
             bloom_filter_cache: Arc::new(crate::bloom::Cache::with_size(1)),
+            prune_merkle_tries: false,
         }
     }
 
@@ -454,16 +461,25 @@ impl<'inner> Transaction<'inner> {
 
     /// Stores the class trie information.
     pub fn insert_class_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
+        if self.prune_merkle_tries {
+            trie::trie_class::remove(self, &update.nodes_removed)?;
+        }
         trie::trie_class::insert(self, update)
     }
 
     /// Stores a single contract's storage trie information.
     pub fn insert_contract_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
+        if self.prune_merkle_tries {
+            trie::trie_contracts::remove(self, &update.nodes_removed)?;
+        }
         trie::trie_contracts::insert(self, update)
     }
 
     /// Stores the global starknet storage trie information.
     pub fn insert_storage_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
+        if self.prune_merkle_tries {
+            trie::trie_storage::remove(self, &update.nodes_removed)?;
+        }
         trie::trie_storage::insert(self, update)
     }
 

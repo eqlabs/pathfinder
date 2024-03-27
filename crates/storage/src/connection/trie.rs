@@ -202,6 +202,9 @@ pub(super) fn insert_or_update_contract_root(
     Ok(())
 }
 
+const METRIC_TRIE_NODES_REMOVED: &str = "pathfinder_storage_trie_nodes_deleted_total";
+const METRIC_TRIE_NODES_ADDED: &str = "pathfinder_storage_trie_nodes_added_total";
+
 mod macros {
     /// Generates the `insert`, `node` and `hash` trie functions for the given table name, within
     /// a module with the table name.
@@ -209,6 +212,25 @@ mod macros {
         ($table: ident) => {
             pub(super) mod $table {
                 use super::*;
+
+                pub fn remove(tx: &Transaction<'_>, removed: &[u64]) -> anyhow::Result<()> {
+                    let mut stmt = tx
+                        .inner()
+                        .prepare_cached(concat!(
+                            "DELETE FROM ",
+                            stringify!($table),
+                            " WHERE idx = ?",
+                        ))
+                        .context("Creating delete statement")?;
+
+                    let number_of_nodes_removed = removed.len() as u64;
+                    metrics::counter!(METRIC_TRIE_NODES_REMOVED, number_of_nodes_removed, "table" => stringify!($table));
+
+                    for idx in removed {
+                        stmt.execute(params![idx]).context("Deleting node")?;
+                    }
+                    Ok(())
+                }
 
                 /// Stores the node data for this trie and returns the index of the root.
                 pub fn insert(tx: &Transaction<'_>, update: &TrieUpdate) -> anyhow::Result<u64> {
@@ -275,6 +297,8 @@ mod macros {
                             .context("Inserting node")?;
 
                         indices.insert(idx, storage_idx);
+
+                        metrics::increment_counter!(METRIC_TRIE_NODES_ADDED, "table" => stringify!($table));
                     }
 
                     Ok(*indices
@@ -548,7 +572,10 @@ mod tests {
 
     #[test]
     fn class_roots() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
@@ -583,7 +610,10 @@ mod tests {
 
     #[test]
     fn storage_roots() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
@@ -618,7 +648,10 @@ mod tests {
 
     #[test]
     fn contract_roots() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let c1 = contract_address_bytes!(b"first");
@@ -902,6 +935,28 @@ mod tests {
         }
 
         #[test]
+        fn removed_nodes() {
+            let mut db = setup_db();
+            let tx = db.transaction().unwrap();
+            let tx = crate::Transaction::new(tx);
+
+            let update = TrieUpdate {
+                nodes_added: vec![(
+                    felt_bytes!(b"root"),
+                    Node::LeafEdge {
+                        path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1],
+                    },
+                )],
+                nodes_removed: Default::default(),
+            };
+
+            let root_idx = test_table::insert(&tx, &update).unwrap();
+
+            test_table::remove(&tx, &[root_idx]).unwrap();
+            assert!(test_table::node(&tx, root_idx).unwrap().is_none());
+        }
+
+        #[test]
         fn id_children() {
             // Insert nodes which use ids as children instead of indexes.
             // The ids don't actually need to point to real nodes since this
@@ -964,7 +1019,10 @@ mod tests {
 
     #[test]
     fn contract_state_hash() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let contract = contract_address_bytes!(b"address");
