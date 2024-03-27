@@ -85,9 +85,7 @@ impl Sync {
             .await
             .context("Syncing transactions")?;
         self.sync_state_updates(head).await?;
-        self.sync_class_definitions(head)
-            .await
-            .context("Syncing class definitions")?;
+        self.sync_class_definitions(head).await?;
 
         Ok(())
     }
@@ -400,13 +398,12 @@ impl Sync {
         Ok(())
     }
 
-    async fn sync_class_definitions(&self, stop: BlockNumber) -> anyhow::Result<()> {
+    async fn sync_class_definitions(&self, stop: BlockNumber) -> Result<(), SyncError> {
         if let Some(start) = class_definitions::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next block with missing class definition(s)")?
         {
-            let result = self
-                .p2p
+            self.p2p
                 .clone()
                 .class_definitions_stream(
                     start,
@@ -427,23 +424,7 @@ impl Sync {
                 .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_, _| std::future::ready(Ok(())))
-                .await;
-
-            use crate::sync::class_definitions::ClassDefinitionSyncError;
-            match result {
-                Ok(()) => {
-                    tracing::info!("Syncing contract updates complete");
-                }
-                Err(ClassDefinitionSyncError::ClassDefinitionStreamError(error)) => {
-                    tracing::debug!(%error, "Error while streaming class definitions")
-                }
-                Err(ClassDefinitionSyncError::BadLayout(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
-                }
-                Err(ClassDefinitionSyncError::BadClassHash(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
-                }
-            }
+                .await?;
         }
 
         Ok(())
