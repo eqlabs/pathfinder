@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use anyhow::Result;
 use pathfinder_common::{
     BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset,
@@ -38,8 +40,8 @@ impl<Inner: ToSql> ToSql for Option<Inner> {
 
 impl ToSql for StarknetVersion {
     fn to_sql(&self) -> ToSqlOutput<'_> {
-        use rusqlite::types::ValueRef;
-        ToSqlOutput::Borrowed(ValueRef::Text(self.as_str().as_bytes()))
+        use rusqlite::types::Value;
+        ToSqlOutput::Owned(Value::Text(self.to_string()))
     }
 }
 
@@ -213,7 +215,7 @@ pub trait RowExt {
             .unwrap_or_default()
             .to_string();
 
-        Ok(StarknetVersion::from(s))
+        Ok(StarknetVersion::from_str(&s).expect("invalid Starknet version"))
     }
 
     fn get_transaction_commitment<Index: RowIndex>(

@@ -50,7 +50,7 @@ pub fn verify_block_hash(
         .expect("too many transactions in block");
 
     let transaction_final_hash_type =
-        TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
+        TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let transaction_commitment =
         calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
     let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
@@ -299,14 +299,13 @@ pub enum TransactionCommitmentFinalHashType {
 }
 
 impl TransactionCommitmentFinalHashType {
-    pub fn for_version(version: &StarknetVersion) -> anyhow::Result<Self> {
-        const V_0_11_1: semver::Version = semver::Version::new(0, 11, 1);
-
-        Ok(match version.parse_as_semver()? {
-            None => Self::SignatureIncludedForInvokeOnly,
-            Some(v) if v < V_0_11_1 => Self::SignatureIncludedForInvokeOnly,
-            Some(_) => Self::Normal,
-        })
+    pub fn for_version(version: &StarknetVersion) -> Self {
+        const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
+        if version < &V_0_11_1 {
+            Self::SignatureIncludedForInvokeOnly
+        } else {
+            Self::Normal
+        }
     }
 }
 

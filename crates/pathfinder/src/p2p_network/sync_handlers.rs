@@ -171,7 +171,7 @@ fn get_header(
                     n_leaves: txn_count,
                     root: Hash(Felt::ZERO), // TODO
                 },
-                protocol_version: header.starknet_version.take_inner(),
+                protocol_version: header.starknet_version.to_string(),
                 gas_price_wei: header.eth_l1_gas_price.0,
                 gas_price_fri: header.strk_l1_gas_price.0,
                 data_gas_price_wei: header.eth_l1_data_gas_price.0,

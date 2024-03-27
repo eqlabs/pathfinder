@@ -2,7 +2,7 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
-use std::ops::Rem;
+use std::{fmt::Display, ops::Rem, str::FromStr};
 
 use anyhow::Context;
 use fake::Dummy;
@@ -426,47 +426,49 @@ impl std::fmt::Display for Chain {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Dummy)]
-pub struct StarknetVersion(String);
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Dummy)]
+pub struct StarknetVersion(u8, u8, u8, u8);
 
 impl StarknetVersion {
-    pub fn new(major: u64, minor: u64, patch: u64) -> Self {
-        StarknetVersion(format!("{major}.{minor}.{patch}"))
-    }
-
-    /// Parses the version string.
-    ///
-    /// Note: there are known deviations from semver such as version 0.11.0.2, which
-    /// will be truncated to 0.11.0 to still allow for parsing.
-    pub fn parse_as_semver(&self) -> anyhow::Result<Option<semver::Version>> {
-        // Truncate the 4th segment if present. This is a work-around for semver violating
-        // version strings like `0.11.0.2`.
-        let str = if self.0.is_empty() {
-            return Ok(None);
-        } else {
-            &self.0
-        };
-        let truncated = str
-            .match_indices('.')
-            .nth(2)
-            .map(|(index, _)| str.split_at(index).0)
-            .unwrap_or(str);
-
-        Some(semver::Version::parse(truncated).context("Parsing semver string")).transpose()
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    pub fn take_inner(self) -> String {
-        self.0
+    pub const fn new(a: u8, b: u8, c: u8, d: u8) -> Self {
+        StarknetVersion(a, b, c, d)
     }
 }
 
-impl From<String> for StarknetVersion {
-    fn from(value: String) -> Self {
-        Self(value)
+impl FromStr for StarknetVersion {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Ok(StarknetVersion::new(0, 0, 0, 0));
+        }
+
+        let parts: Vec<_> = s.split('.').collect();
+        anyhow::ensure!(
+            parts.len() == 3 || parts.len() == 4,
+            "Invalid version string, expected 3 or 4 parts but got {}",
+            parts.len()
+        );
+
+        let a = parts[0].parse()?;
+        let b = parts[1].parse()?;
+        let c = parts[2].parse()?;
+        let d = parts.get(3).map(|x| x.parse()).transpose()?.unwrap_or(0);
+
+        Ok(StarknetVersion(a, b, c, d))
+    }
+}
+
+impl Display for StarknetVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0 == 0 && self.1 == 0 && self.2 == 0 && self.3 == 0 {
+            return Ok(());
+        }
+        if self.3 == 0 {
+            write!(f, "{}.{}.{}", self.0, self.1, self.2)
+        } else {
+            write!(f, "{}.{}.{}.{}", self.0, self.1, self.2, self.3)
+        }
     }
 }
 
@@ -622,21 +624,29 @@ mod tests {
 
     mod starknet_version {
         use super::super::StarknetVersion;
+        use std::str::FromStr;
 
         #[test]
-        fn valid_semver() {
-            let version = serde_json::from_str::<StarknetVersion>(r#""0.11.0""#).unwrap();
-            assert_eq!(version, StarknetVersion::new(0, 11, 0));
+        fn valid_version_parsing() {
+            let cases = [
+                ("1.2.3.4", "1.2.3.4", StarknetVersion::new(1, 2, 3, 4)),
+                ("1.2.3", "1.2.3", StarknetVersion::new(1, 2, 3, 0)),
+                ("1.2.3.0", "1.2.3", StarknetVersion::new(1, 2, 3, 0)),
+                ("", "", StarknetVersion::new(0, 0, 0, 0)),
+            ];
+
+            for (input, output, actual) in cases.iter() {
+                let version = StarknetVersion::from_str(input).unwrap();
+                assert_eq!(version, *actual);
+                assert_eq!(version.to_string(), *output);
+            }
         }
 
         #[test]
-        fn invalid_semver_is_coerced() {
-            let version = serde_json::from_str::<StarknetVersion>(r#""0.11.0.2""#)
-                .unwrap()
-                .parse_as_semver()
-                .unwrap()
-                .unwrap();
-            assert_eq!(version, semver::Version::new(0, 11, 0));
+        fn invalid_version_parsing() {
+            assert!(StarknetVersion::from_str("1.2").is_err());
+            assert!(StarknetVersion::from_str("1").is_err());
+            assert!(StarknetVersion::from_str("1.2.a").is_err());
         }
     }
 

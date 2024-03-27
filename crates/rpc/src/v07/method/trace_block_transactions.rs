@@ -33,7 +33,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
@@ -82,7 +82,7 @@ pub(crate) mod tests {
                 .with_starknet_version(last_block_header.starknet_version)
                 .with_sequencer_address(last_block_header.sequencer_address)
                 .with_timestamp(last_block_header.timestamp)
-                .with_starknet_version(StarknetVersion::new(0, 13, 1))
+                .with_starknet_version(StarknetVersion::new(0, 13, 1, 0))
                 .with_l1_da_mode(L1DataAvailabilityMode::Blob)
                 .finalize_with_hash(block_hash!("0x1"));
             tx.insert_block_header(&next_block_header)?;
@@ -175,7 +175,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
