@@ -2,7 +2,7 @@ use p2p::PeerData;
 use pathfinder_common::SignedBlockHeader;
 
 #[derive(Debug, thiserror::Error)]
-pub(super) enum HeaderSyncError {
+pub(super) enum SyncError {
     #[error(transparent)]
     DatabaseError(#[from] anyhow::Error),
     #[error("Signature verification failed")]
@@ -13,13 +13,13 @@ pub(super) enum HeaderSyncError {
     Discontinuity(PeerData<SignedBlockHeader>),
 }
 
-impl HeaderSyncError {
+impl SyncError {
     pub fn peer_id_and_data(&self) -> Option<&PeerData<SignedBlockHeader>> {
         match self {
-            HeaderSyncError::DatabaseError(_) => None,
-            HeaderSyncError::BadSignature(x) => Some(x),
-            HeaderSyncError::BadBlockHash(x) => Some(x),
-            HeaderSyncError::Discontinuity(x) => Some(x),
+            SyncError::DatabaseError(_) => None,
+            SyncError::BadSignature(x) => Some(x),
+            SyncError::BadBlockHash(x) => Some(x),
+            SyncError::Discontinuity(x) => Some(x),
         }
     }
 }

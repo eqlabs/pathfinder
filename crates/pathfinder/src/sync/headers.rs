@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_variables)]
-use crate::sync::error::HeaderSyncError;
+use crate::sync::error::SyncError;
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{
@@ -8,7 +8,7 @@ use pathfinder_common::{
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
-type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, HeaderSyncError>;
+type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 
 /// Describes a gap in the stored headers.
 ///
@@ -99,7 +99,7 @@ pub(super) fn check_continuity(
         Some(Ok(input))
     } else {
         expected.2 = true;
-        Some(Err(HeaderSyncError::Discontinuity(input)))
+        Some(Err(SyncError::Discontinuity(input)))
     };
 
     std::future::ready(result)
@@ -109,11 +109,11 @@ pub(super) fn check_continuity(
 pub(super) async fn verify(signed_header: PeerData<SignedBlockHeader>) -> SignedHeaderResult {
     tokio::task::spawn_blocking(move || {
         if !signed_header.data.verify_signature() {
-            return Err(HeaderSyncError::BadSignature(signed_header));
+            return Err(SyncError::BadSignature(signed_header));
         }
 
         if !signed_header.data.header.verify_hash() {
-            return Err(HeaderSyncError::BadBlockHash(signed_header));
+            return Err(SyncError::BadBlockHash(signed_header));
         }
 
         Ok(signed_header)
