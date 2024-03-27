@@ -443,6 +443,27 @@ pub(super) fn first_block_without_receipts(
     }
 }
 
+pub(super) fn highest_block_with_all_class_definitions_downloaded(
+    tx: &Transaction<'_>,
+) -> anyhow::Result<Option<BlockNumber>> {
+    let mut stmt = tx.inner().prepare_cached(
+        r"SELECT block_headers.number
+        FROM block_headers
+        JOIN (
+            SELECT COUNT(1) as count, block_number
+            FROM class_definitions
+            GROUP BY block_number
+            ORDER BY block_number DESC
+        )
+        ON block_headers.number = block_number
+        WHERE block_headers.declared_classes_count = count
+        ORDER BY block_headers.number DESC LIMIT 1",
+    )?;
+    stmt.query_row([], |row| row.get_block_number(0))
+        .optional()
+        .context("Querying highest block with all class definitions downloaded")
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;

@@ -1,4 +1,5 @@
 #![allow(dead_code, unused_variables)]
+mod class_definitions;
 mod headers;
 mod receipts;
 mod state_updates;
@@ -26,6 +27,8 @@ use crate::state::block_hash::{
 };
 
 use state_updates::ContractDiffSyncError;
+
+use self::class_definitions::ClassDefinitionSyncError;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -93,6 +96,10 @@ impl Sync {
         self.sync_state_updates(head)
             .await
             .context("Syncing state updates")?;
+
+        self.sync_class_definitions(head)
+            .await
+            .context("Syncing class definitions")?;
 
         Ok(())
     }
@@ -404,7 +411,7 @@ impl Sync {
                 .contract_updates_stream(
                     start,
                     stop,
-                    state_updates::counts_stream(self.storage.clone(), start, stop),
+                    state_updates::contract_update_counts_stream(self.storage.clone(), start, stop),
                 )
                 .map_err(Into::into)
                 .and_then(state_updates::verify_signature)
@@ -429,6 +436,54 @@ impl Sync {
                 }
                 Err(ContractDiffSyncError::DatabaseOrComputeError(error)) => {
                     tracing::debug!(%error, "Error while streaming contract updates");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn sync_class_definitions(&self, stop: BlockNumber) -> anyhow::Result<()> {
+        if let Some(start) = class_definitions::next_missing(self.storage.clone(), stop)
+            .await
+            .context("Finding next block with missing class definition(s)")?
+        {
+            let result = self
+                .p2p
+                .clone()
+                .class_definitions_stream(
+                    start,
+                    stop,
+                    class_definitions::declared_class_counts_stream(
+                        self.storage.clone(),
+                        start,
+                        stop,
+                    ),
+                )
+                .map_err(Into::into)
+                .map_ok(class_definitions::verify_layout)
+                .and_then(std::future::ready)
+                .and_then(class_definitions::verify_hash)
+                .try_chunks(1000)
+                .map_err(|e| e.1)
+                .and_then(|x| class_definitions::persist(self.storage.clone(), x))
+                .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
+                // Drive stream to completion.
+                .try_fold((), |_, _| std::future::ready(Ok(())))
+                .await;
+
+            match result {
+                Ok(()) => {
+                    tracing::info!("Syncing contract updates complete");
+                }
+                Err(ClassDefinitionSyncError::ClassDefinitionStreamError(error)) => {
+                    tracing::debug!(%error, "Error while streaming class definitions")
+                }
+                Err(ClassDefinitionSyncError::BadLayout(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
+                }
+                Err(ClassDefinitionSyncError::BadClassHash(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
                 }
             }
         }

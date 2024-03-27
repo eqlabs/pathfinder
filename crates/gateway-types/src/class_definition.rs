@@ -7,6 +7,12 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
+#[derive(Debug, Deserialize)]
+pub enum ClassDefinition<'a> {
+    Sierra(Sierra<'a>),
+    Cairo(Cairo<'a>),
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sierra<'a> {

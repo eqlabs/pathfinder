@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+
+use anyhow::Context;
 use pathfinder_common::{
     receipt::{
         BuiltinCounters, ExecutionDataAvailability, ExecutionResources, ExecutionStatus,
@@ -11,13 +14,16 @@ use pathfinder_common::{
         ResourceBound, ResourceBounds, Transaction, TransactionVariant,
     },
     AccountDeploymentDataElem, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
-    BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassCommitment, ClassHash,
-    ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress,
+    BlockHeader, BlockNumber, BlockTimestamp, ByteCodeOffset, CallParam, CasmHash, ClassCommitment,
+    ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress,
     EventCommitment, EventData, EventKey, Fee, GasPrice, L1DataAvailabilityMode,
     L2ToL1MessagePayloadElem, SequencerAddress, SignedBlockHeader, StateCommitment,
     StorageCommitment, TransactionCommitment, TransactionHash, TransactionIndex, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
+use pathfinder_crypto::Felt;
+use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 
 /// We don't want to introduce circular dependencies between crates
 /// and we need to work around for the orphan rule - implement conversion fns for types ourside our crate.
@@ -382,5 +388,142 @@ impl TryFromDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilit
             Calldata => Self::Calldata,
             Blob => Self::Blob,
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct CairoDefinition(pub Vec<u8>);
+
+impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
+    fn try_from_dto(dto: p2p_proto::class::Cairo0Class) -> anyhow::Result<Self> {
+        #[derive(Debug, Serialize)]
+        struct SelectorAndOffset {
+            pub selector: EntryPoint,
+            pub offset: ByteCodeOffset,
+        }
+
+        #[derive(Debug, Serialize)]
+        struct CairoEntryPoints {
+            #[serde(rename = "EXTERNAL")]
+            pub external: Vec<SelectorAndOffset>,
+            #[serde(rename = "L1_HANDLER")]
+            pub l1_handler: Vec<SelectorAndOffset>,
+            #[serde(rename = "CONSTRUCTOR")]
+            pub constructor: Vec<SelectorAndOffset>,
+        }
+
+        #[derive(Debug, Serialize)]
+        #[serde(deny_unknown_fields)]
+        struct Cairo<'a> {
+            // Contract ABI, which has no schema definition.
+            pub abi: Cow<'a, RawValue>,
+            // Main program definition. __We assume that this is valid JSON.__
+            pub program: Cow<'a, RawValue>,
+            // The contract entry points.
+            pub entry_points_by_type: CairoEntryPoints,
+        }
+
+        let from_dto = |x: Vec<p2p_proto::class::EntryPoint>| {
+            x.into_iter()
+                .map(|e| SelectorAndOffset {
+                    selector: EntryPoint(e.selector),
+                    offset: ByteCodeOffset(e.offset),
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let abi = dto.abi;
+        let program = dto.program;
+        let external = from_dto(dto.externals);
+        let l1_handler = from_dto(dto.l1_handlers);
+        let constructor = from_dto(dto.constructors);
+
+        #[derive(Debug, Deserialize)]
+        struct Abi<'a>(#[serde(borrow)] &'a RawValue);
+
+        let class_def = Cairo {
+            abi: Cow::Borrowed(serde_json::from_slice::<Abi<'_>>(&abi).unwrap().0),
+            program: serde_json::from_slice(&program)
+                .context("verify that cairo class program is UTF-8")?,
+            entry_points_by_type: CairoEntryPoints {
+                external,
+                l1_handler,
+                constructor,
+            },
+        };
+        let class_def =
+            serde_json::to_vec(&class_def).context("serialize cairo class definition")?;
+        Ok(Self(class_def))
+    }
+}
+
+#[derive(Debug)]
+pub struct SierraDefinition {
+    pub sierra: Vec<u8>,
+    pub casm: Vec<u8>,
+}
+
+impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
+    fn try_from_dto(dto: p2p_proto::class::Cairo1Class) -> anyhow::Result<Self> {
+        #[derive(Debug, Serialize)]
+        pub struct SelectorAndFunctionIndex {
+            pub selector: EntryPoint,
+            pub function_idx: u64,
+        }
+
+        #[derive(Debug, Serialize)]
+        pub struct SierraEntryPoints {
+            #[serde(rename = "EXTERNAL")]
+            pub external: Vec<SelectorAndFunctionIndex>,
+            #[serde(rename = "L1_HANDLER")]
+            pub l1_handler: Vec<SelectorAndFunctionIndex>,
+            #[serde(rename = "CONSTRUCTOR")]
+            pub constructor: Vec<SelectorAndFunctionIndex>,
+        }
+
+        #[derive(Debug, Serialize)]
+        pub struct Sierra<'a> {
+            /// Contract ABI.
+            pub abi: Cow<'a, str>,
+
+            /// Main program definition.
+            pub sierra_program: Vec<Felt>,
+
+            // Version
+            pub contract_class_version: Cow<'a, str>,
+
+            /// The contract entry points
+            pub entry_points_by_type: SierraEntryPoints,
+        }
+
+        let from_dto = |x: Vec<p2p_proto::class::SierraEntryPoint>| {
+            x.into_iter()
+                .map(|e| SelectorAndFunctionIndex {
+                    selector: EntryPoint(e.selector),
+                    function_idx: e.index,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let abi = std::str::from_utf8(&dto.abi).context("parsing abi as utf8")?;
+        let entry_points = SierraEntryPoints {
+            external: from_dto(dto.entry_points.externals),
+            l1_handler: from_dto(dto.entry_points.l1_handlers),
+            constructor: from_dto(dto.entry_points.constructors),
+        };
+        let program = dto.program;
+        let contract_class_version = dto.contract_class_version;
+        let casm = dto.compiled;
+
+        let sierra = Sierra {
+            abi: Cow::Borrowed(abi),
+            sierra_program: program,
+            contract_class_version: contract_class_version.into(),
+            entry_points_by_type: entry_points,
+        };
+
+        let sierra = serde_json::to_vec(&sierra).context("serialize sierra class definition")?;
+
+        Ok(Self { sierra, casm })
     }
 }

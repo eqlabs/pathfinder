@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{
-    state_update::{ContractUpdates, StateUpdateCounts},
+    state_update::{ContractUpdateCounts, ContractUpdates},
     BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment,
 };
 use pathfinder_merkle_tree::{
@@ -23,7 +23,8 @@ pub(super) enum ContractDiffSyncError {
     StateDiffCommitmentMismatch(PeerData<BlockNumber>),
 }
 
-/// Returns the first block number whose state update is missing in storage, counting from genesis
+/// Returns the first block number whose state update is missing, counting from genesis
+/// or `None` if all class definitions up to `head` are present.
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
@@ -34,24 +35,22 @@ pub(super) async fn next_missing(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
-        if let Some(highest) = db
+        let highest = db
             .highest_block_with_state_update()
             .context("Querying highest block with state update")?
-        {
-            Ok((highest < head).then_some(highest + 1))
-        } else {
-            Ok(Some(BlockNumber::GENESIS))
-        }
+            .unwrap_or_default();
+
+        Ok((highest < head).then_some(highest + 1))
     })
     .await
     .context("Joining blocking task")?
 }
 
-pub(super) fn counts_stream(
+pub(super) fn contract_update_counts_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop_inclusive: BlockNumber,
-) -> impl futures::Stream<Item = anyhow::Result<StateUpdateCounts>> {
+) -> impl futures::Stream<Item = anyhow::Result<ContractUpdateCounts>> {
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
@@ -78,7 +77,7 @@ pub(super) fn counts_stream(
                 .connection()
                 .context("Creating database connection")?;
             let db = db.transaction().context("Creating database transaction")?;
-            db.state_update_counts(start.into(), batch_size)
+            db.contract_update_counts(start.into(), batch_size)
                 .context("Querying state update counts")
         })
         .await

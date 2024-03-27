@@ -1,5 +1,3 @@
-use std::num::NonZeroUsize;
-
 use anyhow::Context;
 use futures::SinkExt;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
@@ -142,12 +140,8 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            let counts =
-                db_tx.state_update_counts(block_number.into(), NonZeroUsize::new(1).unwrap())?;
-
-            if !counts.is_empty() {
-                let counts = counts[0];
-
+            let counts = db_tx.state_update_counts(block_number.into())?;
+            if let Some(counts) = counts {
                 let txn_count = header
                     .transaction_count
                     .try_into()

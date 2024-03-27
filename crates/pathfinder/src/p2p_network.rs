@@ -7,7 +7,6 @@ use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
 use tracing::Instrument;
 
-pub mod client;
 mod sync_handlers;
 
 use sync_handlers::{

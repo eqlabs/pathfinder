@@ -14,7 +14,9 @@ pub(crate) mod transaction;
 mod trie;
 
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::{ReverseContractUpdate, StateUpdateCounts};
+use pathfinder_common::state_update::{
+    ContractUpdateCounts, ReverseContractUpdate, StateUpdateCounts,
+};
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 
@@ -580,13 +582,32 @@ impl<'inner> Transaction<'inner> {
         state_update::highest_block_with_state_update(self)
     }
 
-    /// Items are sorted in descending order.
-    pub fn state_update_counts(
+    pub fn highest_block_with_all_class_definitions_downloaded(
         &self,
-        block: BlockId,
-        max_len: NonZeroUsize,
-    ) -> anyhow::Result<Vec<StateUpdateCounts>> {
-        state_update::state_update_counts(self, block, max_len)
+    ) -> anyhow::Result<Option<BlockNumber>> {
+        block::highest_block_with_all_class_definitions_downloaded(self)
+    }
+
+    pub fn state_update_counts(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateCounts>> {
+        state_update::state_update_counts(self, block)
+    }
+
+    /// Items are sorted in descending order.
+    pub fn contract_update_counts(
+        &self,
+        start_block: BlockId,
+        max_num_blocks: NonZeroUsize,
+    ) -> anyhow::Result<Vec<ContractUpdateCounts>> {
+        state_update::contract_update_counts(self, start_block, max_num_blocks)
+    }
+
+    /// Items are sorted in descending order.
+    pub fn declared_classes_counts(
+        &self,
+        start_block: BlockId,
+        max_num_blocks: NonZeroUsize,
+    ) -> anyhow::Result<Vec<usize>> {
+        state_update::declared_classes_counts(self, start_block, max_num_blocks)
     }
 
     pub fn storage_value(
