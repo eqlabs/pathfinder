@@ -78,18 +78,13 @@ impl Sync {
         let head = anchor.block_number;
 
         // Sync missing headers in reverse chronological order, from the new anchor to genesis.
-        self.sync_headers(anchor).await.context("Syncing headers")?;
+        self.sync_headers(anchor).await?;
 
-        // Sync missing transactions in chronological order for all synced headers.
+        // Sync the rest of the data in chronological order.
         self.sync_transactions()
             .await
             .context("Syncing transactions")?;
-
-        // Sync the rest of the data in chronological order.
-        self.sync_state_updates(head)
-            .await
-            .context("Syncing state updates")?;
-
+        self.sync_state_updates(head).await?;
         self.sync_class_definitions(head)
             .await
             .context("Syncing class definitions")?;
@@ -378,13 +373,12 @@ impl Sync {
         }
     }
 
-    async fn sync_state_updates(&self, stop: BlockNumber) -> anyhow::Result<()> {
+    async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {
         if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
         {
-            let result = self
-                .p2p
+            self.p2p
                 .clone()
                 .contract_updates_stream(
                     start,
@@ -400,23 +394,7 @@ impl Sync {
                 .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_, _| std::future::ready(Ok(())))
-                .await;
-
-            use state_updates::ContractDiffSyncError;
-            match result {
-                Ok(()) => {
-                    tracing::info!("Syncing contract updates complete");
-                }
-                Err(ContractDiffSyncError::SignatureVerification(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: signature verification failed");
-                }
-                Err(ContractDiffSyncError::StateDiffCommitmentMismatch(peer_data)) => {
-                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Error while streaming contract updates: state diff commitment mismatch");
-                }
-                Err(ContractDiffSyncError::DatabaseOrComputeError(error)) => {
-                    tracing::debug!(%error, "Error while streaming contract updates");
-                }
-            }
+                .await?;
         }
 
         Ok(())

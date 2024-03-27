@@ -109,7 +109,7 @@ pub(super) fn check_continuity(
 pub(super) async fn verify(signed_header: PeerData<SignedBlockHeader>) -> SignedHeaderResult {
     tokio::task::spawn_blocking(move || {
         if !signed_header.data.verify_signature() {
-            return Err(SyncError::BadSignature(signed_header));
+            return Err(SyncError::BadHeaderSignature(signed_header));
         }
 
         if !signed_header.data.header.verify_hash() {
