@@ -185,7 +185,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         "CREATE INDEX starknet_transactions_block_number ON starknet_transactions(block_number)",
         [],
     )
-    .context("Creating index on block_headers")?;
+    .context("Creating index on block numbers")?;
     Ok(())
 }
 
