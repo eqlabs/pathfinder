@@ -297,7 +297,7 @@ pub(super) fn transaction_data_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<TransactionDataForBlock>>> {
-    let Some(block_number) = dbg!(tx.block_number(block))? else {
+    let Some(block_number) = tx.block_number(block)? else {
         return Ok(None);
     };
 
