@@ -29,7 +29,7 @@ impl Transaction {
             TransactionVariant::DeclareV2(_) => TransactionVersion::TWO,
             TransactionVariant::DeclareV3(_) => TransactionVersion::THREE,
             TransactionVariant::Deploy(tx) => tx.version,
-            TransactionVariant::DeployAccountV0V1(tx) => tx.version,
+            TransactionVariant::DeployAccountV1(_) => TransactionVersion::ONE,
             TransactionVariant::DeployAccountV3(_) => TransactionVersion::THREE,
             TransactionVariant::InvokeV0(_) => TransactionVersion::ZERO,
             TransactionVariant::InvokeV1(_) => TransactionVersion::ONE,
@@ -46,10 +46,7 @@ pub enum TransactionVariant {
     DeclareV2(DeclareTransactionV2),
     DeclareV3(DeclareTransactionV3),
     Deploy(DeployTransaction),
-    // FIXME: This should get separated into v0 and v1 variants.
-    //        Currently this allows for ambiguity as version is
-    //        flexible.
-    DeployAccountV0V1(DeployAccountTransactionV0V1),
+    DeployAccountV1(DeployAccountTransactionV1),
     DeployAccountV3(DeployAccountTransactionV3),
     InvokeV0(InvokeTransactionV0),
     InvokeV1(InvokeTransactionV1),
@@ -86,7 +83,7 @@ impl TransactionVariant {
             TransactionVariant::DeclareV2(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::DeclareV3(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::Deploy(tx) => tx.calculate_hash(chain_id),
-            TransactionVariant::DeployAccountV0V1(tx) => tx.calculate_hash(chain_id, query_only),
+            TransactionVariant::DeployAccountV1(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::DeployAccountV3(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::InvokeV0(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::InvokeV1(tx) => tx.calculate_hash(chain_id, query_only),
@@ -124,9 +121,9 @@ impl From<DeployTransaction> for TransactionVariant {
         Self::Deploy(value)
     }
 }
-impl From<DeployAccountTransactionV0V1> for TransactionVariant {
-    fn from(value: DeployAccountTransactionV0V1) -> Self {
-        Self::DeployAccountV0V1(value)
+impl From<DeployAccountTransactionV1> for TransactionVariant {
+    fn from(value: DeployAccountTransactionV1) -> Self {
+        Self::DeployAccountV1(value)
     }
 }
 impl From<DeployAccountTransactionV3> for TransactionVariant {
@@ -199,10 +196,9 @@ pub struct DeployTransaction {
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
-pub struct DeployAccountTransactionV0V1 {
+pub struct DeployAccountTransactionV1 {
     pub contract_address: ContractAddress,
     pub max_fee: Fee,
-    pub version: TransactionVersion,
     pub signature: Vec<TransactionSignatureElem>,
     pub nonce: TransactionNonce,
     pub contract_address_salt: ContractAddressSalt,
@@ -377,7 +373,7 @@ impl DeployTransaction {
     }
 }
 
-impl DeployAccountTransactionV0V1 {
+impl DeployAccountTransactionV1 {
     fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         let constructor_calldata_hash = std::iter::once(self.class_hash.0)
             .chain(std::iter::once(self.contract_address_salt.0))
@@ -389,7 +385,7 @@ impl DeployAccountTransactionV0V1 {
 
         PreV3Hasher {
             prefix: felt_bytes!(b"deploy_account"),
-            version: self.version.with_query_only(query_only),
+            version: TransactionVersion::ONE.with_query_only(query_only),
             address: self.contract_address,
             data_hash: constructor_calldata_hash,
             max_fee: self.max_fee,
@@ -973,12 +969,11 @@ mod tests {
             hash: transaction_hash!(
                 "0x63b72dba5a1b5cdd2585b0c7103242244860453f7013023c1a21f32e1863ec"
             ),
-            variant: TransactionVariant::DeployAccountV0V1(DeployAccountTransactionV0V1 {
+            variant: TransactionVariant::DeployAccountV1(DeployAccountTransactionV1 {
                 contract_address: contract_address!(
                     "0x3faed8332496d9de9c546e7942b35ba3ea323a6af72d6033f746ea60ecc02ef"
                 ),
                 max_fee: fee!("0xb48040809d4b"),
-                version: TransactionVersion::ONE,
                 signature: vec![
                     transaction_signature_elem!(
                         "0x463d21c552a810c59be86c336c0cc68f28e3815eafbe1a2eaf9b3a6fe1c2b82"

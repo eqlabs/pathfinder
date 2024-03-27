@@ -1,5 +1,6 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::{transaction as common, SignedBlockHeader};
 use pathfinder_common::{ClassHash, SierraHash, StateUpdate};
@@ -8,7 +9,7 @@ use rand::Rng;
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Block {
     pub header: SignedBlockHeader,
-    pub transaction_data: Vec<(common::Transaction, Receipt)>,
+    pub transaction_data: Vec<(common::Transaction, Receipt, Vec<Event>)>,
     pub state_update: StateUpdate,
     pub cairo_defs: Vec<(ClassHash, Vec<u8>)>, // Cairo 0 definitions
     pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
@@ -36,12 +37,15 @@ pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -
          }| {
             tx.insert_block_header(&header.header).unwrap();
             tx.insert_transaction_data(
-                header.header.hash,
                 header.header.number,
                 &transaction_data
                     .iter()
                     .cloned()
-                    .map(|(tx, receipt)| (tx, Some(receipt)))
+                    .map(|(tx, receipt, events)| crate::TransactionData {
+                        transaction: tx,
+                        receipt: Some(receipt),
+                        events: Some(events),
+                    })
                     .collect::<Vec<_>>(),
             )
             .unwrap();
@@ -87,6 +91,7 @@ pub mod init {
     use std::collections::{HashMap, HashSet};
 
     use fake::{Fake, Faker};
+    use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
@@ -150,21 +155,26 @@ pub mod init {
                 let t: common::Transaction = t.into();
                 let transaction_hash = t.hash;
 
-                let r: Receipt = crate::connection::transaction::dto::Receipt {
-                    transaction_hash,
-                    transaction_index: TransactionIndex::new_or_panic(
-                        i.try_into().expect("u64 is at least as wide as usize"),
-                    ),
-                    events: fake_non_empty_with_rng(rng),
-                    ..Faker.fake_with_rng(rng)
-                }
+                let r: Receipt = crate::connection::transaction::dto::Receipt::V0(
+                    crate::connection::transaction::dto::ReceiptV0 {
+                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
+                        transaction_index: TransactionIndex::new_or_panic(
+                            i.try_into().expect("u64 is at least as wide as usize"),
+                        ),
+                        ..Faker.fake_with_rng(rng)
+                    },
+                )
                 .into();
-                (t, r)
+                let e: Vec<Event> = fake_non_empty_with_rng(rng);
+                (t, r, e)
             })
             .collect::<Vec<_>>();
 
             header.transaction_count = transaction_data.len();
-            header.event_count = transaction_data.iter().map(|(_, r)| r.events.len()).sum();
+            header.event_count = transaction_data
+                .iter()
+                .map(|(_, _, events)| events.len())
+                .sum();
 
             let block_hash = header.hash;
             let state_commitment = header.state_commitment;

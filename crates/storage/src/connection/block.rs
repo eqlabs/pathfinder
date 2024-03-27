@@ -132,9 +132,7 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
 
     tx.inner()
         .execute(
-            r"DELETE FROM starknet_transactions WHERE block_hash = (
-                SELECT hash FROM canonical_blocks WHERE number = ?
-            )",
+            "DELETE FROM starknet_transactions WHERE block_number = ?",
             params![&block],
         )
         .context("Deleting transactions")?;
@@ -250,7 +248,54 @@ pub(super) fn block_hash(
             )
             .optional()
             .map_err(|e| e.into()),
-        BlockId::Hash(hash) => Ok(Some(hash)),
+        BlockId::Hash(hash) => {
+            // This query ensures that the block exists.
+            tx.inner()
+                .query_row(
+                    "SELECT hash FROM canonical_blocks WHERE hash = ?",
+                    params![&hash],
+                    |row| row.get_block_hash(0),
+                )
+                .optional()
+                .map_err(|e| e.into())
+        }
+    }
+}
+
+pub(super) fn block_number(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<BlockNumber>> {
+    match block {
+        BlockId::Latest => tx
+            .inner()
+            .query_row(
+                "SELECT number FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get_block_number(0),
+            )
+            .optional()
+            .map_err(|e| e.into()),
+        BlockId::Number(number) => {
+            // This query ensures that the block exists.
+            tx.inner()
+                .query_row(
+                    "SELECT number FROM canonical_blocks WHERE number = ?",
+                    params![&number],
+                    |row| row.get_block_number(0),
+                )
+                .optional()
+                .map_err(|e| e.into())
+        }
+        BlockId::Hash(hash) => tx
+            .inner()
+            .query_row(
+                "SELECT number FROM canonical_blocks WHERE hash = ?",
+                params![&hash],
+                |row| row.get_block_number(0),
+            )
+            .optional()
+            .map_err(|e| e.into()),
     }
 }
 

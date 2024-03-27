@@ -245,6 +245,7 @@ pub mod test_utils {
     };
     use pathfinder_common::transaction::*;
     use pathfinder_merkle_tree::StorageCommitmentTree;
+    use pathfinder_storage::TransactionData;
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::H160;
     use starknet_gateway_types::reply::GasPrices;
@@ -471,7 +472,7 @@ pub mod test_utils {
                 ..Default::default()
             }),
         };
-        let mut receipt0 = Receipt {
+        let receipt0 = Receipt {
             execution_resources: ExecutionResources {
                 builtins: BuiltinCounters {
                     output: 33,
@@ -535,7 +536,7 @@ pub mod test_utils {
             }],
             ..receipt0.clone()
         };
-        receipt0.events = vec![Event {
+        let events0 = vec![Event {
             data: vec![event_data_bytes!(b"event 0 data")],
             from_address: contract_address_bytes!(b"event 0 from addr"),
             keys: vec![event_key_bytes!(b"event 0 key")],
@@ -551,23 +552,58 @@ pub mod test_utils {
             reason: "Reverted because".to_owned(),
         };
 
-        let transaction_data0 = [(txn0, Some(receipt0))];
-        let transaction_data1 = [(txn1, Some(receipt1)), (txn2, Some(receipt2))];
+        let transaction_data0 = [TransactionData {
+            transaction: txn0,
+            receipt: Some(receipt0),
+            events: Some(events0),
+        }];
+        let transaction_data1 = [
+            TransactionData {
+                transaction: txn1,
+                receipt: Some(receipt1),
+                events: Some(vec![]),
+            },
+            TransactionData {
+                transaction: txn2,
+                receipt: Some(receipt2),
+                events: Some(vec![]),
+            },
+        ];
         let transaction_data2 = [
-            (txn3, Some(receipt3)),
-            (txn4, Some(receipt4)),
-            (txn5, Some(receipt5)),
-            (txn6, Some(receipt6)),
-            (txn_reverted, Some(receipt_reverted)),
+            TransactionData {
+                transaction: txn3,
+                receipt: Some(receipt3),
+                events: Some(vec![]),
+            },
+            TransactionData {
+                transaction: txn4,
+                receipt: Some(receipt4),
+                events: Some(vec![]),
+            },
+            TransactionData {
+                transaction: txn5,
+                receipt: Some(receipt5),
+                events: Some(vec![]),
+            },
+            TransactionData {
+                transaction: txn6,
+                receipt: Some(receipt6),
+                events: Some(vec![]),
+            },
+            TransactionData {
+                transaction: txn_reverted,
+                receipt: Some(receipt_reverted),
+                events: Some(vec![]),
+            },
         ];
         db_txn
-            .insert_transaction_data(header0.hash, header0.number, &transaction_data0)
+            .insert_transaction_data(header0.number, &transaction_data0)
             .unwrap();
         db_txn
-            .insert_transaction_data(header1.hash, header1.number, &transaction_data1)
+            .insert_transaction_data(header1.number, &transaction_data1)
             .unwrap();
         db_txn
-            .insert_transaction_data(header2.hash, header2.number, &transaction_data2)
+            .insert_transaction_data(header2.number, &transaction_data2)
             .unwrap();
 
         // Mark block 0 as L1 accepted.
@@ -625,9 +661,15 @@ pub mod test_utils {
         ];
 
         let transaction_receipts = vec![
-            Receipt {
-                actual_fee: None,
-                events: vec![
+            (
+                Receipt {
+                    actual_fee: Fee::ZERO,
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: transactions[0].hash,
+                    transaction_index: TransactionIndex::new_or_panic(0),
+                    ..Default::default()
+                },
+                vec![
                     Event {
                         data: vec![],
                         from_address: contract_address!("0xabcddddddd"),
@@ -647,27 +689,29 @@ pub mod test_utils {
                         keys: vec![event_key_bytes!(b"pending key 2")],
                     },
                 ],
-                execution_resources: ExecutionResources::default(),
-                transaction_hash: transactions[0].hash,
-                transaction_index: TransactionIndex::new_or_panic(0),
-                ..Default::default()
-            },
-            Receipt {
-                execution_resources: ExecutionResources::default(),
-                transaction_hash: transactions[1].hash,
-                transaction_index: TransactionIndex::new_or_panic(1),
-                ..Default::default()
-            },
-            // Reverted and without events
-            Receipt {
-                execution_resources: ExecutionResources::default(),
-                transaction_hash: transactions[2].hash,
-                transaction_index: TransactionIndex::new_or_panic(2),
-                execution_status: ExecutionStatus::Reverted {
-                    reason: "Reverted!".to_owned(),
+            ),
+            (
+                Receipt {
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: transactions[1].hash,
+                    transaction_index: TransactionIndex::new_or_panic(1),
+                    ..Default::default()
                 },
-                ..Default::default()
-            },
+                vec![],
+            ),
+            // Reverted and without events
+            (
+                Receipt {
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: transactions[2].hash,
+                    transaction_index: TransactionIndex::new_or_panic(2),
+                    execution_status: ExecutionStatus::Reverted {
+                        reason: "Reverted!".to_owned(),
+                    },
+                    ..Default::default()
+                },
+                vec![],
+            ),
         ];
 
         let transactions = transactions.into_iter().map(Into::into).collect();

@@ -31,27 +31,26 @@ pub async fn get_transaction_receipt(
             .get(&db_tx)
             .context("Querying pending data")?;
 
-        if let Some((transaction, receipt)) = pending
+        if let Some((transaction, (receipt, events))) = pending
             .block
             .transactions
             .iter()
             .zip(pending.block.transaction_receipts.iter())
             .find_map(|(t, r)| (t.hash == input.transaction_hash).then(|| (t.clone(), r.clone())))
         {
-            let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
+            let pending = types::PendingTransactionReceipt::from(receipt, events, &transaction);
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
         }
 
-        let (transaction, receipt, block_hash) = db_tx
+        let (transaction, receipt, events, block_number) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Reading transaction receipt from database")?
             .ok_or(GetTransactionReceiptError::TxnHashNotFound)?;
 
-        let block_number = db_tx
-            .block_id(block_hash.into())
-            .context("Querying block number")?
-            .context("Block number info missing")?
-            .0;
+        let block_hash = db_tx
+            .block_hash(block_number.into())
+            .context("Querying block hash")?
+            .context("Block hash info missing")?;
 
         let l1_accepted = db_tx
             .block_is_l1_accepted(block_number.into())
@@ -66,6 +65,7 @@ pub async fn get_transaction_receipt(
         Ok(types::MaybePendingTransactionReceipt::Normal(
             types::TransactionReceipt::with_block_data(
                 receipt,
+                events,
                 finality_status,
                 block_hash,
                 block_number,
@@ -204,6 +204,7 @@ pub mod types {
     impl TransactionReceipt {
         pub fn with_block_data(
             receipt: pathfinder_common::receipt::Receipt,
+            events: Vec<pathfinder_common::event::Event>,
             finality_status: FinalityStatus,
             block_hash: BlockHash,
             block_number: BlockNumber,
@@ -212,9 +213,7 @@ pub mod types {
             let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
-                actual_fee: receipt
-                    .actual_fee
-                    .unwrap_or_else(|| Fee(Default::default())),
+                actual_fee: receipt.actual_fee,
                 block_hash,
                 block_number,
                 messages_sent: receipt
@@ -222,7 +221,7 @@ pub mod types {
                     .into_iter()
                     .map(MessageToL1::from)
                     .collect(),
-                events: receipt.events.into_iter().map(Event::from).collect(),
+                events: events.into_iter().map(Event::from).collect(),
                 revert_reason,
                 execution_status: receipt.execution_status.into(),
                 finality_status,
@@ -240,7 +239,7 @@ pub mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                TransactionVariant::DeployAccountV0V1(tx) => {
+                TransactionVariant::DeployAccountV1(tx) => {
                     Self::DeployAccount(DeployAccountTransactionReceipt {
                         common,
                         contract_address: tx.contract_address,
@@ -339,20 +338,19 @@ pub mod types {
     impl PendingTransactionReceipt {
         pub fn from(
             receipt: pathfinder_common::receipt::Receipt,
+            events: Vec<pathfinder_common::event::Event>,
             transaction: &pathfinder_common::transaction::Transaction,
         ) -> Self {
             let revert_reason = receipt.revert_reason().map(ToOwned::to_owned);
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
-                actual_fee: receipt
-                    .actual_fee
-                    .unwrap_or_else(|| Fee(Default::default())),
+                actual_fee: receipt.actual_fee,
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
                     .map(MessageToL1::from)
                     .collect(),
-                events: receipt.events.into_iter().map(Event::from).collect(),
+                events: events.into_iter().map(Event::from).collect(),
                 revert_reason,
                 execution_status: receipt.execution_status.into(),
                 finality_status: FinalityStatus::AcceptedOnL2,
@@ -370,7 +368,7 @@ pub mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                TransactionVariant::DeployAccountV0V1(tx) => {
+                TransactionVariant::DeployAccountV1(tx) => {
                     Self::DeployAccount(PendingDeployAccountTransactionReceipt {
                         common,
                         contract_address: tx.contract_address,

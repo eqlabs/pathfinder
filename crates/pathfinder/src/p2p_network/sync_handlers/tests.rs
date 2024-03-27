@@ -370,12 +370,12 @@ mod prop {
                         // Block number
                         header.header.number,
                         // List of tuples (Transaction hash, Transaction variant)
-                        transaction_data.into_iter().map(|(t, _)| {
+                        transaction_data.into_iter().map(|(t, _, _)| {
                             let mut txn = workaround::for_legacy_l1_handlers(t);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
                             match &mut txn.variant {
                                 TransactionVariant::Deploy(x) => x.contract_address = ContractAddress::ZERO,
-                                TransactionVariant::DeployAccountV0V1(x) => x.contract_address = ContractAddress::ZERO,
+                                TransactionVariant::DeployAccountV1(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
                                 _ => {}
                             };
@@ -422,9 +422,8 @@ mod prop {
                         // Block number
                         header.header.number,
                         // List of receipts
-                        transaction_data.into_iter().map(|(_, mut r)| {
-                            // P2P receipts don't carry events and transaction index
-                            r.events = vec![];
+                        transaction_data.into_iter().map(|(_, mut r, _)| {
+                            // P2P receipts don't carry transaction index
                             r.transaction_index = TransactionIndex::new_or_panic(0);
                             r
                         }).collect::<Vec<_>>()
@@ -444,7 +443,7 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto(receipt).unwrap(),
+                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 
@@ -469,7 +468,7 @@ mod prop {
                         // Block number
                         header.header.number,
                         // List of tuples (Transaction hash, Event)
-                        transaction_data.into_iter().flat_map(|(_, r)| r.events.into_iter().map(move |event| (r.transaction_hash, event)))
+                        transaction_data.into_iter().flat_map(|(_, r, events)| events.into_iter().map(move |event| (r.transaction_hash, event)))
                             .collect::<Vec<(TransactionHash, Event)>>()
                     )
             ).collect::<Vec<_>>();

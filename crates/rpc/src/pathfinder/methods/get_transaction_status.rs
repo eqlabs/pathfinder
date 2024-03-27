@@ -35,7 +35,7 @@ pub async fn get_transaction_status(
             return Ok(Some(status));
         }
 
-        let Some((_, receipt, block_hash)) = db_tx
+        let Some((_, receipt, _, block_hash)) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Fetching receipt from database")?
         else {
@@ -75,7 +75,7 @@ pub async fn get_transaction_status(
 }
 
 fn pending_status(pending: &PendingBlock, tx_hash: &TransactionHash) -> Option<TransactionStatus> {
-    pending.transaction_receipts.iter().find_map(|rx| {
+    pending.transaction_receipts.iter().find_map(|(rx, _)| {
         if &rx.transaction_hash == tx_hash {
             if rx.is_reverted() {
                 Some(TransactionStatus::Reverted)

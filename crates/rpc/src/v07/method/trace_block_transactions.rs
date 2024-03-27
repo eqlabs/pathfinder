@@ -93,12 +93,23 @@ pub(crate) mod tests {
                 ..Default::default()
             };
             tx.insert_transaction_data(
-                next_block_header.hash,
                 next_block_header.number,
                 &[
-                    (transactions[0].clone(), Some(dummy_receipt.clone())),
-                    (transactions[1].clone(), Some(dummy_receipt.clone())),
-                    (transactions[2].clone(), Some(dummy_receipt.clone())),
+                    pathfinder_storage::TransactionData {
+                        transaction: transactions[0].clone(),
+                        receipt: Some(dummy_receipt.clone()),
+                        events: Some(vec![]),
+                    },
+                    pathfinder_storage::TransactionData {
+                        transaction: transactions[1].clone(),
+                        receipt: Some(dummy_receipt.clone()),
+                        events: Some(vec![]),
+                    },
+                    pathfinder_storage::TransactionData {
+                        transaction: transactions[2].clone(),
+                        receipt: Some(dummy_receipt.clone()),
+                        events: Some(vec![]),
+                    },
                 ],
             )?;
             tx.commit()?;
@@ -222,7 +233,7 @@ pub(crate) mod tests {
                 ..Default::default()
             };
 
-            let transaction_receipts = vec![dummy_receipt; 3];
+            let transaction_receipts = vec![(dummy_receipt, vec![]); 3];
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
                 eth_l1_gas_price_implementation_detail: Some(GasPrice(1)),

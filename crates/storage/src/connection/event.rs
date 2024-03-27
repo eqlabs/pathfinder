@@ -242,8 +242,8 @@ fn scan_block_into(
         return Ok(BlockScanResult::NoSuchBlock);
     };
 
-    let receipts = tx.receipts_for_block(block_header.hash.into())?;
-    let Some(receipts) = receipts else {
+    let events = tx.events_for_block(block_number.into())?;
+    let Some(events) = events else {
         return Ok(BlockScanResult::NoSuchBlock);
     };
 
@@ -253,13 +253,10 @@ fn scan_block_into(
         .map(|keys| keys.iter().collect())
         .collect();
 
-    let events = receipts
+    let events = events
         .into_iter()
-        .flat_map(|receipt| {
-            receipt
-                .events
-                .into_iter()
-                .zip(std::iter::repeat(receipt.transaction_hash))
+        .flat_map(|(transaction_hash, events)| {
+            events.into_iter().zip(std::iter::repeat(transaction_hash))
         })
         .filter(|(event, _)| match filter.contract_address {
             Some(address) => event.from_address == address,
@@ -374,7 +371,9 @@ fn load_bloom(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions_sorted::assert_eq;
 
+    use crate::connection::TransactionData;
     use crate::test_utils;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
@@ -477,13 +476,11 @@ mod tests {
 
         let receipts = vec![
             Receipt {
-                events: expected_events[..3].to_vec(),
                 transaction_hash: transactions[0].hash,
                 transaction_index: pathfinder_common::TransactionIndex::new_or_panic(0),
                 ..Default::default()
             },
             Receipt {
-                events: expected_events[3..].to_vec(),
                 transaction_hash: transactions[1].hash,
                 transaction_index: pathfinder_common::TransactionIndex::new_or_panic(1),
                 ..Default::default()
@@ -495,11 +492,18 @@ mod tests {
 
         tx.insert_block_header(&header).unwrap();
         tx.insert_transaction_data(
-            header.hash,
             header.number,
             &vec![
-                (transactions[0].clone(), Some(receipts[0].clone())),
-                (transactions[1].clone(), Some(receipts[1].clone())),
+                TransactionData {
+                    transaction: transactions[0].clone(),
+                    receipt: Some(receipts[0].clone()),
+                    events: Some(expected_events[..3].to_vec()),
+                },
+                TransactionData {
+                    transaction: transactions[1].clone(),
+                    receipt: Some(receipts[1].clone()),
+                    events: Some(expected_events[3..].to_vec()),
+                },
             ],
         )
         .unwrap();

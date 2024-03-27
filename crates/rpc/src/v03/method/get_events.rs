@@ -374,9 +374,8 @@ fn append_pending_events(
     let pending_events = pending_block
         .transaction_receipts
         .iter()
-        .flat_map(|receipt| {
-            receipt
-                .events
+        .flat_map(|(receipt, events)| {
+            events
                 .iter()
                 .zip(std::iter::repeat(receipt.transaction_hash))
         })

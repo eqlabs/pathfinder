@@ -1,310 +1,203 @@
-//! Structures used for deserializing replies from Starkware's sequencer REST API.
-use pathfinder_common::{
-    BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ContractAddress,
-    EthereumAddress, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-    StateDiffCommitment, TransactionCommitment,
+use std::{
+    mem,
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
 };
-use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
-pub use transaction::DataAvailabilityMode;
+use anyhow::Context;
+use rusqlite::params;
 
-// TODO Make all the gas price fields private and expose getters
+pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
+    tracing::info!("Migrating starknet_transactions to new format");
 
-/// Used to deserialize replies to Starknet block requests.
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Block {
-    pub block_hash: BlockHash,
-    pub block_number: BlockNumber,
+    let mut transformers = Vec::new();
+    let (insert_tx, insert_rx) = mpsc::channel();
+    let (transform_tx, transform_rx) = flume::unbounded::<(Vec<u8>, i64, i64, Vec<u8>, Vec<u8>)>();
+    for _ in 0..thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(4)
+    {
+        let insert_tx = insert_tx.clone();
+        let transform_rx = transform_rx.clone();
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let transformer = thread::spawn(move || {
+            for (hash, idx, block_number, transaction, receipt) in transform_rx.iter() {
+                // Load old DTOs.
+                let transaction = zstd::decode_all(transaction.as_slice())
+                    .context("Decompressing transaction")
+                    .unwrap();
+                let transaction: old_dto::Transaction = serde_json::from_slice(&transaction)
+                    .context("Deserializing transaction")
+                    .unwrap();
+                let transaction = pathfinder_common::transaction::Transaction::from(transaction);
+                let receipt = zstd::decode_all(receipt.as_slice())
+                    .context("Decompressing receipt")
+                    .unwrap();
+                let mut receipt: old_dto::Receipt = serde_json::from_slice(&receipt)
+                    .context("Deserializing receipt")
+                    .unwrap();
+                let events = mem::take(&mut receipt.events);
+                let receipt = pathfinder_common::receipt::Receipt::from(receipt);
 
-    /// Excluded in blocks prior to Starknet 0.9.
-    ///
-    /// This field is an implementation detail. Use the `eth_l1_gas_price`
-    /// method instead of using this field directly.
-    // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
-    #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default, alias = "gas_price", rename = "eth_l1_gas_price")]
-    #[doc(hidden)]
-    pub eth_l1_gas_price_implementation_detail: Option<GasPrice>,
-    /// This field is an implementation detail. Use the `strk_l1_gas_price`
-    /// method instead of using this field directly.
-    #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "strk_l1_gas_price"
-    )]
-    pub strk_l1_gas_price_implementation_detail: Option<GasPrice>,
+                // Serialize into new DTOs.
+                let transaction = crate::transaction::dto::Transaction::from(&transaction);
+                let transaction =
+                    bincode::serde::encode_to_vec(transaction, bincode::config::standard())
+                        .context("Serializing transaction")
+                        .unwrap();
+                let transaction = compressor
+                    .compress(&transaction)
+                    .context("Compressing transaction")
+                    .unwrap();
+                let receipt = crate::transaction::dto::Receipt::from(&receipt);
+                let receipt = bincode::serde::encode_to_vec(receipt, bincode::config::standard())
+                    .context("Serializing receipt")
+                    .unwrap();
+                let receipt = compressor
+                    .compress(&receipt)
+                    .context("Compressing receipt")
+                    .unwrap();
+                let events = bincode::serde::encode_to_vec(
+                    crate::transaction::dto::Events::V0 {
+                        events: events.into_iter().map(Into::into).collect(),
+                    },
+                    bincode::config::standard(),
+                )
+                .context("Serializing events")
+                .unwrap();
+                let events = compressor
+                    .compress(&events)
+                    .context("Compressing events")
+                    .unwrap();
 
-    /// Excluded in blocks prior to Starknet 0.13.1.
-    pub l1_data_gas_price: Option<GasPrices>,
-    /// Excluded in blocks prior to Starknet 0.13.1.
-    ///
-    /// This field is an implementation detail. Use the `eth_l1_gas_price` and
-    /// `strk_l1_gas_price` methods instead.
-    #[serde(rename = "l1_gas_price")]
-    pub l1_gas_price_implementation_detail: Option<GasPrices>,
-
-    pub parent_block_hash: BlockHash,
-    /// Excluded in blocks prior to Starknet 0.8
-    #[serde(default)]
-    pub sequencer_address: Option<SequencerAddress>,
-    // Historical blocks (pre v0.11) still use `state_root`.
-    #[serde(alias = "state_root")]
-    pub state_commitment: StateCommitment,
-    pub status: Status,
-    pub timestamp: BlockTimestamp,
-    #[serde_as(as = "Vec<transaction::Receipt>")]
-    pub transaction_receipts: Vec<(
-        pathfinder_common::receipt::Receipt,
-        Vec<pathfinder_common::event::Event>,
-    )>,
-    #[serde_as(as = "Vec<transaction::Transaction>")]
-    pub transactions: Vec<pathfinder_common::transaction::Transaction>,
-    /// Version metadata introduced in 0.9.1, older blocks will not have it.
-    #[serde(default)]
-    pub starknet_version: StarknetVersion,
-
-    // Introduced in v0.13.1
-    #[serde(default)]
-    pub transaction_commitment: Option<TransactionCommitment>,
-    #[serde(default)]
-    pub event_commitment: Option<EventCommitment>,
-    #[serde(default)]
-    pub l1_da_mode: Option<L1DataAvailabilityMode>,
-}
-
-impl Block {
-    pub fn eth_l1_gas_price(&self) -> Option<GasPrice> {
-        self.l1_gas_price_implementation_detail
-            .map(|p| p.price_in_wei)
-            .or(self.eth_l1_gas_price_implementation_detail)
+                // Store the updated values.
+                if let Err(err) =
+                    insert_tx.send((hash, idx, block_number, transaction, receipt, events))
+                {
+                    panic!("Failed to send transaction: {:?}", err);
+                }
+            }
+        });
+        transformers.push(transformer);
     }
 
-    pub fn strk_l1_gas_price(&self) -> Option<GasPrice> {
-        self.l1_gas_price_implementation_detail
-            .map(|p| p.price_in_fri)
-            .or(self.strk_l1_gas_price_implementation_detail)
-    }
-}
+    let mut progress_logged = Instant::now();
+    const LOG_RATE: Duration = Duration::from_secs(10);
 
-#[serde_as]
-#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(serde::Serialize))]
-pub struct PendingBlock {
-    /// Excluded in blocks prior to Starknet 0.9.
-    ///
-    /// This field is an implementation detail. Use the `eth_l1_gas_price`
-    /// method instead of using this field directly.
-    // TODO: remove alias after Starknet 0.13.0 is deployed on all networks
-    #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(default, alias = "gas_price", rename = "eth_l1_gas_price")]
-    pub eth_l1_gas_price_implementation_detail: Option<GasPrice>,
-    /// This field is an implementation detail. Use the `strk_l1_gas_price`
-    /// method instead of using this field directly.
-    #[serde_as(as = "Option<GasPriceAsHexStr>")]
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "strk_l1_gas_price"
-    )]
-    pub strk_l1_gas_price_implementation_detail: Option<GasPrice>,
-
-    /// Excluded in blocks prior to Starknet 0.13.1.
-    pub l1_data_gas_price: Option<GasPrices>,
-    /// Excluded in blocks prior to Starknet 0.13.1.
-    ///
-    /// This field is an implementation detail. Use the `strk_l1_gas_price`
-    /// method instead of using this field directly.
-    #[serde(rename = "l1_gas_price")]
-    pub l1_gas_price_implementation_detail: Option<GasPrices>,
-
-    #[serde(rename = "parent_block_hash")]
-    pub parent_hash: BlockHash,
-    pub sequencer_address: SequencerAddress,
-    pub status: Status,
-    pub timestamp: BlockTimestamp,
-    #[serde_as(as = "Vec<transaction::Receipt>")]
-    pub transaction_receipts: Vec<(
-        pathfinder_common::receipt::Receipt,
-        Vec<pathfinder_common::event::Event>,
-    )>,
-    #[serde_as(as = "Vec<transaction::Transaction>")]
-    pub transactions: Vec<pathfinder_common::transaction::Transaction>,
-    /// Version metadata introduced in 0.9.1, older blocks will not have it.
-    #[serde(default)]
-    pub starknet_version: StarknetVersion,
-    #[serde(default)]
-    pub l1_da_mode: Option<L1DataAvailabilityMode>,
-}
-
-impl PendingBlock {
-    pub fn eth_l1_gas_price(&self) -> GasPrice {
-        self.l1_gas_price_implementation_detail
-            .map(|p| p.price_in_wei)
-            .or(self.eth_l1_gas_price_implementation_detail)
-            .expect("missing L1 gas price")
-    }
-
-    pub fn strk_l1_gas_price(&self) -> Option<GasPrice> {
-        self.l1_gas_price_implementation_detail
-            .map(|p| p.price_in_fri)
-            .or(self.strk_l1_gas_price_implementation_detail)
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum L1DataAvailabilityMode {
-    #[default]
-    Calldata,
-    Blob,
-}
-
-impl From<L1DataAvailabilityMode> for pathfinder_common::L1DataAvailabilityMode {
-    fn from(value: L1DataAvailabilityMode) -> Self {
-        match value {
-            L1DataAvailabilityMode::Calldata => Self::Calldata,
-            L1DataAvailabilityMode::Blob => Self::Blob,
+    let count = tx.query_row("SELECT COUNT(*) FROM starknet_transactions", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    tx.execute(
+        r"
+        CREATE TABLE starknet_transactions_new (
+            hash         BLOB PRIMARY KEY,
+            idx          INTEGER NOT NULL,
+            block_number INTEGER NOT NULL,
+            tx           BLOB,
+            receipt      BLOB,
+            events       BLOB
+        )",
+        [],
+    )
+    .context("Creating starknet_transactions_new table")?;
+    let mut query_stmt = tx.prepare(
+        r"
+        SELECT starknet_transactions.hash, idx, tx, receipt, block_headers.number FROM starknet_transactions
+        LEFT JOIN block_headers ON block_headers.hash = starknet_transactions.block_hash
+        ",
+    )?;
+    let mut insert_stmt = tx.prepare(
+        r"INSERT INTO starknet_transactions_new (hash, idx, block_number, tx, receipt, events)
+                                         VALUES (?, ?, ?, ?, ?, ?)",
+    )?;
+    const BATCH_SIZE: usize = 10_000;
+    let mut rows = query_stmt.query([])?;
+    let mut progress = 0;
+    loop {
+        let mut batch_size = 0;
+        for _ in 0..BATCH_SIZE {
+            match rows.next() {
+                Ok(Some(row)) => {
+                    let hash = row.get_ref_unwrap("hash").as_blob()?;
+                    let idx = row.get_ref_unwrap("idx").as_i64()?;
+                    let transaction = row.get_ref_unwrap("tx").as_blob()?;
+                    let receipt = row.get_ref_unwrap("receipt").as_blob()?;
+                    let block_number = row.get_ref_unwrap("number").as_i64()?;
+                    transform_tx
+                        .send((
+                            hash.to_vec(),
+                            idx,
+                            block_number,
+                            transaction.to_vec(),
+                            receipt.to_vec(),
+                        ))
+                        .context("Sending transaction to transformer")?;
+                    batch_size += 1;
+                }
+                Ok(None) => break,
+                Err(err) => return Err(err.into()),
+            }
+        }
+        for _ in 0..batch_size {
+            if progress % 1000 == 0 && progress_logged.elapsed() > LOG_RATE {
+                progress_logged = Instant::now();
+                tracing::info!(
+                    "Migrating transactions: {:.2}%",
+                    (progress as f64 / count as f64) * 100.0
+                );
+            }
+            let (hash, idx, block_number, transaction, receipt, events) = insert_rx.recv()?;
+            insert_stmt.execute(params![
+                hash,
+                idx,
+                block_number,
+                transaction,
+                receipt,
+                events
+            ])?;
+            progress += 1;
+        }
+        if batch_size < BATCH_SIZE {
+            // This was the last batch.
+            break;
         }
     }
-}
 
-impl From<pathfinder_common::L1DataAvailabilityMode> for L1DataAvailabilityMode {
-    fn from(value: pathfinder_common::L1DataAvailabilityMode) -> Self {
-        match value {
-            pathfinder_common::L1DataAvailabilityMode::Calldata => Self::Calldata,
-            pathfinder_common::L1DataAvailabilityMode::Blob => Self::Blob,
-        }
-    }
-}
+    drop(insert_tx);
+    drop(transform_tx);
 
-#[serde_as]
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct GasPrices {
-    #[serde_as(as = "GasPriceAsHexStr")]
-    pub price_in_wei: GasPrice,
-    #[serde_as(as = "GasPriceAsHexStr")]
-    pub price_in_fri: GasPrice,
-}
-
-/// Block and transaction status values.
-#[derive(Copy, Clone, Default, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub enum Status {
-    #[serde(rename = "NOT_RECEIVED")]
-    NotReceived,
-    #[serde(rename = "RECEIVED")]
-    Received,
-    #[serde(rename = "PENDING")]
-    Pending,
-    #[serde(rename = "REJECTED")]
-    Rejected,
-    #[serde(rename = "ACCEPTED_ON_L1")]
-    AcceptedOnL1,
-    #[serde(rename = "ACCEPTED_ON_L2")]
-    #[default]
-    AcceptedOnL2,
-    #[serde(rename = "REVERTED")]
-    Reverted,
-    #[serde(rename = "ABORTED")]
-    Aborted,
-}
-
-impl std::fmt::Display for Status {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Status::NotReceived => write!(f, "NOT_RECEIVED"),
-            Status::Received => write!(f, "RECEIVED"),
-            Status::Pending => write!(f, "PENDING"),
-            Status::Rejected => write!(f, "REJECTED"),
-            Status::AcceptedOnL1 => write!(f, "ACCEPTED_ON_L1"),
-            Status::AcceptedOnL2 => write!(f, "ACCEPTED_ON_L2"),
-            Status::Reverted => write!(f, "REVERTED"),
-            Status::Aborted => write!(f, "ABORTED"),
-        }
-    }
-}
-
-/// Types used when deserializing L2 call related data.
-pub mod call {
-    use serde::Deserialize;
-    use serde_with::serde_as;
-    use std::collections::HashMap;
-
-    /// Describes problems encountered during some of call failures .
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct Problems {
-        #[serde_as(as = "HashMap<_, _>")]
-        pub calldata: HashMap<u64, Vec<String>>,
-    }
-}
-
-/// Used to deserialize replies to Starknet transaction requests.
-///
-/// We only care about the statuses so we ignore other fields.
-/// Please note that this does not have to be backwards compatible:
-/// since we only ever use it to deserialize replies from the Starknet
-/// feeder gateway.
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct TransactionStatus {
-    pub status: Status,
-    pub finality_status: transaction_status::FinalityStatus,
-    #[serde(default)]
-    pub execution_status: transaction_status::ExecutionStatus,
-}
-
-/// Types used when deserializing get_transaction replies.
-pub mod transaction_status {
-    use serde::Deserialize;
-
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    pub enum FinalityStatus {
-        #[serde(rename = "NOT_RECEIVED")]
-        NotReceived,
-        #[serde(rename = "RECEIVED")]
-        Received,
-        #[serde(rename = "ACCEPTED_ON_L1")]
-        AcceptedOnL1,
-        #[serde(rename = "ACCEPTED_ON_L2")]
-        AcceptedOnL2,
+    // Ensure that all transformers have finished successfully.
+    for transformer in transformers {
+        transformer.join().unwrap();
     }
 
-    #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum ExecutionStatus {
-        #[default]
-        Succeeded,
-        Reverted,
-        Rejected,
-    }
+    tracing::info!("Dropping old starknet_transactions table");
+    tx.execute("DROP TABLE starknet_transactions", [])?;
+    tracing::info!("Renaming starknet_transactions_new to starknet_transactions");
+    tx.execute(
+        "ALTER TABLE starknet_transactions_new RENAME TO starknet_transactions",
+        [],
+    )
+    .context("Renaming starknet_transactions_new to starknet_transactions")?;
+    tracing::info!("Creating block_number index on starknet_transactions");
+    tx.execute(
+        "CREATE INDEX starknet_transactions_block_number ON starknet_transactions(block_number)",
+        [],
+    )
+    .context("Creating index on block numbers")?;
+    Ok(())
 }
 
-/// Types used when deserializing L2 transaction related data.
-pub(crate) mod transaction {
+pub(crate) mod old_dto {
     use fake::{Dummy, Fake, Faker};
-    use pathfinder_common::{
-        AccountDeploymentDataElem, CallParam, CasmHash, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress, Fee, L1ToL2MessageNonce,
-        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, PaymasterDataElem, ResourceAmount,
-        ResourcePricePerUnit, Tip, TransactionHash, TransactionIndex, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
-    };
+    use pathfinder_common::*;
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-        ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr, TipAsHexStr,
-        TransactionSignatureElemAsDecimalStr,
+        L2ToL1MessagePayloadElemAsDecimalStr, ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr,
+        TipAsHexStr, TransactionSignatureElemAsDecimalStr,
     };
-    use primitive_types::H256;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
 
@@ -344,66 +237,56 @@ pub(crate) mod transaction {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
-        pub data_availability: Option<ExecutionDataAvailability>,
+        // TODO make these mandatory once some new release makes resyncing necessary
+        pub l1_gas: Option<u128>,
+        pub l1_data_gas: Option<u128>,
     }
 
-    impl From<ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
-        fn from(value: ExecutionResources) -> Self {
+    impl From<&ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
+        fn from(value: &ExecutionResources) -> Self {
             Self {
                 builtins: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                data_availability: value.data_availability.unwrap_or_default().into(),
+                data_availability: match (value.l1_gas, value.l1_data_gas) {
+                    (Some(l1_gas), Some(l1_data_gas)) => {
+                        pathfinder_common::receipt::ExecutionDataAvailability {
+                            l1_gas,
+                            l1_data_gas,
+                        }
+                    }
+                    _ => Default::default(),
+                },
             }
         }
     }
 
-    impl From<pathfinder_common::receipt::ExecutionResources> for ExecutionResources {
-        fn from(value: pathfinder_common::receipt::ExecutionResources) -> Self {
+    impl From<&pathfinder_common::receipt::ExecutionResources> for ExecutionResources {
+        fn from(value: &pathfinder_common::receipt::ExecutionResources) -> Self {
             Self {
-                builtin_instance_counter: value.builtins.into(),
+                builtin_instance_counter: (&value.builtins).into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                data_availability: Some(value.data_availability.into()),
-            }
-        }
-    }
-
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct ExecutionDataAvailability {
-        pub l1_gas: u128,
-        pub l1_data_gas: u128,
-    }
-
-    impl From<ExecutionDataAvailability> for pathfinder_common::receipt::ExecutionDataAvailability {
-        fn from(value: ExecutionDataAvailability) -> Self {
-            Self {
-                l1_gas: value.l1_gas,
-                l1_data_gas: value.l1_data_gas,
-            }
-        }
-    }
-
-    impl From<pathfinder_common::receipt::ExecutionDataAvailability> for ExecutionDataAvailability {
-        fn from(value: pathfinder_common::receipt::ExecutionDataAvailability) -> Self {
-            Self {
-                l1_gas: value.l1_gas,
-                l1_data_gas: value.l1_data_gas,
+                l1_gas: Some(value.data_availability.l1_gas),
+                l1_data_gas: Some(value.data_availability.l1_data_gas),
             }
         }
     }
 
     impl<T> Dummy<T> for ExecutionResources {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let (l1_gas, l1_data_gas) = if rng.gen() {
+                (Some(rng.next_u32() as u128), Some(rng.next_u32() as u128))
+            } else {
+                (None, None)
+            };
+
             Self {
                 builtin_instance_counter: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                data_availability: Some(ExecutionDataAvailability {
-                    l1_gas: rng.next_u32() as u128,
-                    l1_data_gas: rng.next_u32() as u128,
-                }),
+                l1_gas,
+                l1_data_gas,
             }
         }
     }
@@ -422,7 +305,7 @@ pub(crate) mod transaction {
         pub ec_op_builtin: u64,
         pub keccak_builtin: u64,
         pub poseidon_builtin: u64,
-        pub segment_arena_builtin: u64, // TODO REMOVE (?)
+        pub segment_arena_builtin: u64,
     }
 
     impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {
@@ -453,30 +336,30 @@ pub(crate) mod transaction {
         }
     }
 
-    impl From<pathfinder_common::receipt::BuiltinCounters> for BuiltinCounters {
-        fn from(value: pathfinder_common::receipt::BuiltinCounters) -> Self {
+    impl From<&pathfinder_common::receipt::BuiltinCounters> for BuiltinCounters {
+        fn from(value: &pathfinder_common::receipt::BuiltinCounters) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
             let pathfinder_common::receipt::BuiltinCounters {
-                output: output_builtin,
-                pedersen: pedersen_builtin,
-                range_check: range_check_builtin,
-                ecdsa: ecdsa_builtin,
-                bitwise: bitwise_builtin,
-                ec_op: ec_op_builtin,
-                keccak: keccak_builtin,
-                poseidon: poseidon_builtin,
-                segment_arena: segment_arena_builtin,
-            } = value;
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
+            } = value.clone();
             Self {
-                output_builtin,
-                pedersen_builtin,
-                range_check_builtin,
-                ecdsa_builtin,
-                bitwise_builtin,
-                ec_op_builtin,
-                keccak_builtin,
-                poseidon_builtin,
-                segment_arena_builtin,
+                output_builtin: output,
+                pedersen_builtin: pedersen,
+                range_check_builtin: range_check,
+                ecdsa_builtin: ecdsa,
+                bitwise_builtin: bitwise,
+                ec_op_builtin: ec_op,
+                keccak_builtin: keccak,
+                poseidon_builtin: poseidon,
+                segment_arena_builtin: segment_arena,
             }
         }
     }
@@ -493,34 +376,6 @@ pub(crate) mod transaction {
                 keccak_builtin: rng.next_u32() as u64,
                 poseidon_builtin: rng.next_u32() as u64,
                 segment_arena_builtin: 0, // Not used in p2p
-            }
-        }
-    }
-
-    /// Represents deserialized L1 to L2 message.
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct L1ToL2Message {
-        #[serde_as(as = "EthereumAddressAsHexStr")]
-        pub from_address: EthereumAddress,
-        #[serde_as(as = "Vec<L1ToL2MessagePayloadElemAsDecimalStr>")]
-        pub payload: Vec<L1ToL2MessagePayloadElem>,
-        pub selector: EntryPoint,
-        pub to_address: ContractAddress,
-        #[serde(default)]
-        pub nonce: Option<L1ToL2MessageNonce>,
-    }
-
-    impl<T> Dummy<T> for L1ToL2Message {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            // Nonces were missing in very old messages, we don't care about it
-            Self {
-                from_address: Faker.fake_with_rng(rng),
-                payload: Faker.fake_with_rng(rng),
-                selector: Faker.fake_with_rng(rng),
-                to_address: Faker.fake_with_rng(rng),
-                nonce: Some(Faker.fake_with_rng(rng)),
             }
         }
     }
@@ -552,13 +407,13 @@ pub(crate) mod transaction {
         }
     }
 
-    impl From<pathfinder_common::receipt::L2ToL1Message> for L2ToL1Message {
-        fn from(value: pathfinder_common::receipt::L2ToL1Message) -> Self {
+    impl From<&pathfinder_common::receipt::L2ToL1Message> for L2ToL1Message {
+        fn from(value: &pathfinder_common::receipt::L2ToL1Message) -> Self {
             let pathfinder_common::receipt::L2ToL1Message {
                 from_address,
                 payload,
                 to_address,
-            } = value;
+            } = value.clone();
             Self {
                 from_address,
                 payload,
@@ -586,7 +441,9 @@ pub(crate) mod transaction {
         pub events: Vec<pathfinder_common::event::Event>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub execution_resources: Option<ExecutionResources>,
-        pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
+        // This field exists in our database but is unused within our code.
+        // It is redundant data that is also contained in the L1 handler.
+        pub l1_to_l2_consumed_message: Option<serde_json::Value>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: TransactionHash,
         pub transaction_index: TransactionIndex,
@@ -599,107 +456,37 @@ pub(crate) mod transaction {
         pub revert_error: Option<String>,
     }
 
-    impl
-        From<(
-            pathfinder_common::receipt::Receipt,
-            Vec<pathfinder_common::event::Event>,
-        )> for Receipt
-    {
-        fn from(
-            (receipt, events): (
-                pathfinder_common::receipt::Receipt,
-                Vec<pathfinder_common::event::Event>,
-            ),
-        ) -> Self {
-            let pathfinder_common::receipt::Receipt {
-                actual_fee,
-                execution_resources,
-                l2_to_l1_messages,
-                execution_status,
-                transaction_hash,
-                transaction_index,
-            } = receipt;
-
-            let (execution_status, revert_error) = match execution_status {
-                pathfinder_common::receipt::ExecutionStatus::Succeeded => {
-                    (ExecutionStatus::Succeeded, None)
-                }
-                pathfinder_common::receipt::ExecutionStatus::Reverted { reason } => {
-                    (ExecutionStatus::Reverted, Some(reason))
+    impl From<&pathfinder_common::receipt::Receipt> for Receipt {
+        fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
+            let (execution_status, revert_error) = match &value.execution_status {
+                receipt::ExecutionStatus::Succeeded => (ExecutionStatus::Succeeded, None),
+                receipt::ExecutionStatus::Reverted { reason } => {
+                    (ExecutionStatus::Reverted, Some(reason.clone()))
                 }
             };
 
             Self {
-                actual_fee: Some(actual_fee),
-                events,
-                execution_resources: Some(execution_resources.into()),
+                actual_fee: Some(value.actual_fee),
+                events: vec![],
+                execution_resources: Some((&value.execution_resources).into()),
+                // We don't care about this field anymore.
                 l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
-                transaction_hash,
-                transaction_index,
+                l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
+                transaction_hash: value.transaction_hash,
+                transaction_index: value.transaction_index,
                 execution_status,
                 revert_error,
             }
         }
     }
 
-    impl<'de>
-        serde_with::DeserializeAs<
-            'de,
-            (
-                pathfinder_common::receipt::Receipt,
-                Vec<pathfinder_common::event::Event>,
-            ),
-        > for Receipt
-    {
-        fn deserialize_as<D>(
-            deserializer: D,
-        ) -> Result<
-            (
-                pathfinder_common::receipt::Receipt,
-                Vec<pathfinder_common::event::Event>,
-            ),
-            D::Error,
-        >
-        where
-            D: serde::Deserializer<'de>,
-        {
-            Self::deserialize(deserializer).map(Into::into)
-        }
-    }
-
-    impl
-        serde_with::SerializeAs<(
-            pathfinder_common::receipt::Receipt,
-            Vec<pathfinder_common::event::Event>,
-        )> for Receipt
-    {
-        fn serialize_as<S>(
-            (receipt, events): &(
-                pathfinder_common::receipt::Receipt,
-                Vec<pathfinder_common::event::Event>,
-            ),
-            serializer: S,
-        ) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            Self::from((receipt.clone(), events.clone())).serialize(serializer)
-        }
-    }
-
-    impl From<Receipt>
-        for (
-            pathfinder_common::receipt::Receipt,
-            Vec<pathfinder_common::event::Event>,
-        )
-    {
+    impl From<Receipt> for pathfinder_common::receipt::Receipt {
         fn from(value: Receipt) -> Self {
             use pathfinder_common::receipt as common;
 
             let Receipt {
                 actual_fee,
-                events,
+                events: _,
                 execution_resources,
                 // This information is redundant as it is already in the transaction itself.
                 l1_to_l2_consumed_message: _,
@@ -710,22 +497,19 @@ pub(crate) mod transaction {
                 revert_error,
             } = value;
 
-            (
-                common::Receipt {
-                    actual_fee: actual_fee.unwrap_or_default(),
-                    execution_resources: execution_resources.unwrap_or_default().into(),
-                    l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
-                    transaction_hash,
-                    transaction_index,
-                    execution_status: match execution_status {
-                        ExecutionStatus::Succeeded => common::ExecutionStatus::Succeeded,
-                        ExecutionStatus::Reverted => common::ExecutionStatus::Reverted {
-                            reason: revert_error.unwrap_or_default(),
-                        },
+            common::Receipt {
+                actual_fee: actual_fee.unwrap_or_default(),
+                execution_resources: (&execution_resources.unwrap_or_default()).into(),
+                l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
+                transaction_hash,
+                transaction_index,
+                execution_status: match execution_status {
+                    ExecutionStatus::Succeeded => common::ExecutionStatus::Succeeded,
+                    ExecutionStatus::Reverted => common::ExecutionStatus::Reverted {
+                        reason: revert_error.unwrap_or_default(),
                     },
                 },
-                events,
-            )
+            }
         }
     }
 
@@ -932,38 +716,13 @@ pub(crate) mod transaction {
         }
     }
 
-    impl<'de> serde_with::DeserializeAs<'de, pathfinder_common::transaction::Transaction>
-        for Transaction
-    {
-        fn deserialize_as<D>(
-            deserializer: D,
-        ) -> Result<pathfinder_common::transaction::Transaction, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            Self::deserialize(deserializer).map(Into::into)
-        }
-    }
-
-    impl serde_with::SerializeAs<pathfinder_common::transaction::Transaction> for Transaction {
-        fn serialize_as<S>(
-            source: &pathfinder_common::transaction::Transaction,
-            serializer: S,
-        ) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            Self::from(source.clone()).serialize(serializer)
-        }
-    }
-
-    impl From<pathfinder_common::transaction::Transaction> for Transaction {
-        fn from(value: pathfinder_common::transaction::Transaction) -> Self {
+    impl From<&pathfinder_common::transaction::Transaction> for Transaction {
+        fn from(value: &pathfinder_common::transaction::Transaction) -> Self {
             use pathfinder_common::transaction::TransactionVariant::*;
             use pathfinder_common::transaction::*;
 
             let transaction_hash = value.hash;
-            match value.variant {
+            match value.variant.clone() {
                 DeclareV0(DeclareTransactionV0V1 {
                     class_hash,
                     max_fee,
@@ -1281,20 +1040,24 @@ pub(crate) mod transaction {
                         constructor_calldata,
                         class_hash,
                     },
-                )) if version == TransactionVersion::ONE => TransactionVariant::DeployAccountV1(
-                    pathfinder_common::transaction::DeployAccountTransactionV1 {
-                        contract_address,
-                        max_fee,
-                        signature,
-                        nonce,
-                        contract_address_salt,
-                        constructor_calldata,
-                        class_hash,
-                    },
-                ),
+                )) if version.without_query_version()
+                    == TransactionVersion::ONE.without_query_version() =>
+                {
+                    TransactionVariant::DeployAccountV1(
+                        pathfinder_common::transaction::DeployAccountTransactionV1 {
+                            contract_address,
+                            max_fee,
+                            signature,
+                            nonce,
+                            contract_address_salt,
+                            constructor_calldata,
+                            class_hash,
+                        },
+                    )
+                }
                 Transaction::DeployAccount(DeployAccountTransaction::V0V1(
                     DeployAccountTransactionV0V1 { version, .. },
-                )) => panic!("unexpected deploy account transaction version {version:?}"),
+                )) => panic!("unexpected version for DeployAccountV0V1: {version:?}"),
                 Transaction::DeployAccount(DeployAccountTransaction::V3(
                     DeployAccountTransactionV3 {
                         nonce,
@@ -1606,6 +1369,10 @@ pub(crate) mod transaction {
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
     }
 
+    const fn transaction_version_zero() -> TransactionVersion {
+        TransactionVersion::ZERO
+    }
+
     impl<T> Dummy<T> for DeclareTransactionV3 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
@@ -1627,10 +1394,6 @@ pub(crate) mod transaction {
         }
     }
 
-    const fn transaction_version_zero() -> TransactionVersion {
-        TransactionVersion::ZERO
-    }
-
     /// Represents deserialized L2 deploy transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -1650,7 +1413,7 @@ pub(crate) mod transaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
                 version: TransactionVersion(Felt::from_u64(rng.gen_range(0..=1))),
-                contract_address: Faker.fake_with_rng(rng),
+                contract_address: ContractAddress::ZERO, // Faker.fake_with_rng(rng), FIXME
                 contract_address_salt: Faker.fake_with_rng(rng),
                 class_hash: Faker.fake_with_rng(rng),
                 constructor_calldata: Faker.fake_with_rng(rng),
@@ -1977,42 +1740,6 @@ pub(crate) mod transaction {
         pub version: TransactionVersion,
     }
 
-    impl L1HandlerTransaction {
-        pub fn calculate_message_hash(&self) -> H256 {
-            use sha3::{Digest, Keccak256};
-
-            let Some((from_address, payload)) = self.calldata.split_first() else {
-                // This would indicate a pretty severe error in the L1 transaction.
-                // But since we haven't encoded this during serialization, this could in
-                // theory mess us up here.
-                //
-                // We should incorporate this into the deserialization instead. Returning an
-                // error here is unergonomic and far too late.
-                return H256::zero();
-            };
-
-            let mut hash = Keccak256::new();
-
-            // This is an ethereum address
-            hash.update(from_address.0.as_be_bytes());
-            hash.update(self.contract_address.0.as_be_bytes());
-            hash.update(self.nonce.0.as_be_bytes());
-            hash.update(self.entry_point_selector.0.as_be_bytes());
-
-            // Pad the u64 to 32 bytes to match a felt.
-            hash.update([0u8; 24]);
-            hash.update((payload.len() as u64).to_be_bytes());
-
-            for elem in payload {
-                hash.update(elem.0.as_be_bytes());
-            }
-
-            let hash = <[u8; 32]>::from(hash.finalize());
-
-            hash.into()
-        }
-    }
-
     impl<T> Dummy<T> for L1HandlerTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
@@ -2028,656 +1755,11 @@ pub(crate) mod transaction {
         }
     }
 
-    impl From<DeclareTransaction> for Transaction {
-        fn from(tx: DeclareTransaction) -> Self {
-            Self::Declare(tx)
-        }
-    }
-
-    impl From<DeployTransaction> for Transaction {
-        fn from(tx: DeployTransaction) -> Self {
-            Self::Deploy(tx)
-        }
-    }
-
-    impl From<InvokeTransaction> for Transaction {
-        fn from(tx: InvokeTransaction) -> Self {
-            Self::Invoke(tx)
-        }
-    }
-
-    impl From<L1HandlerTransaction> for Transaction {
-        fn from(tx: L1HandlerTransaction) -> Self {
-            Self::L1Handler(tx)
-        }
-    }
-
-    impl From<InvokeTransactionV0> for InvokeTransaction {
-        fn from(tx: InvokeTransactionV0) -> Self {
-            Self::V0(tx)
-        }
-    }
-
-    impl From<InvokeTransactionV1> for InvokeTransaction {
-        fn from(tx: InvokeTransactionV1) -> Self {
-            Self::V1(tx)
-        }
-    }
-
     /// Describes L2 transaction failure details.
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Failure {
         pub code: String,
         pub error_message: String,
-    }
-}
-
-/// Used to deserialize replies to StarkNet state update requests.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct StateUpdate {
-    /// Gets default value for pending state updates.
-    #[serde(default)]
-    pub block_hash: BlockHash,
-    /// Gets default value for pending state updates.
-    #[serde(default)]
-    pub new_root: StateCommitment,
-    pub old_root: StateCommitment,
-    pub state_diff: state_update::StateDiff,
-}
-
-impl From<StateUpdate> for pathfinder_common::StateUpdate {
-    fn from(mut gateway: StateUpdate) -> Self {
-        let mut state_update = pathfinder_common::StateUpdate::default()
-            .with_block_hash(gateway.block_hash)
-            .with_parent_state_commitment(gateway.old_root)
-            .with_state_commitment(gateway.new_root);
-
-        // Extract the known system contract updates from the normal contract updates.
-        // This must occur before we map the contract updates, since we want to first remove
-        // the system contract updates.
-        //
-        // Currently this is only the contract at address 0x1.
-        //
-        // As of starknet v0.12.0 these are embedded in this way, but in the future will be
-        // a separate property in the state diff.
-        if let Some((address, storage_updates)) = gateway
-            .state_diff
-            .storage_diffs
-            .remove_entry(&ContractAddress::ONE)
-        {
-            for state_update::StorageDiff { key, value } in storage_updates {
-                state_update = state_update.with_system_storage_update(address, key, value);
-            }
-        }
-
-        // Aggregate contract deployments, storage, nonce and class replacements into contract updates.
-        for (address, storage_updates) in gateway.state_diff.storage_diffs {
-            for state_update::StorageDiff { key, value } in storage_updates {
-                state_update = state_update.with_storage_update(address, key, value);
-            }
-        }
-
-        for state_update::DeployedContract {
-            address,
-            class_hash,
-        } in gateway.state_diff.deployed_contracts
-        {
-            state_update = state_update.with_deployed_contract(address, class_hash);
-        }
-
-        for (address, nonce) in gateway.state_diff.nonces {
-            state_update = state_update.with_contract_nonce(address, nonce);
-        }
-
-        for state_update::ReplacedClass {
-            address,
-            class_hash,
-        } in gateway.state_diff.replaced_classes
-        {
-            state_update = state_update.with_replaced_class(address, class_hash);
-        }
-
-        for state_update::DeclaredSierraClass {
-            class_hash,
-            compiled_class_hash,
-        } in gateway.state_diff.declared_classes
-        {
-            state_update = state_update.with_declared_sierra_class(class_hash, compiled_class_hash);
-        }
-
-        state_update.declared_cairo_classes = gateway.state_diff.old_declared_contracts;
-
-        state_update
-    }
-}
-
-/// Types used when deserializing state update related data.
-pub mod state_update {
-    use pathfinder_common::{
-        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
-        StorageValue,
-    };
-    use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
-    use std::collections::{HashMap, HashSet};
-
-    /// L2 state diff.
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-    #[serde(deny_unknown_fields)]
-    pub struct StateDiff {
-        #[serde_as(as = "HashMap<_, Vec<_>>")]
-        pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
-        pub deployed_contracts: Vec<DeployedContract>,
-        pub old_declared_contracts: HashSet<ClassHash>,
-        pub declared_classes: Vec<DeclaredSierraClass>,
-        pub nonces: HashMap<ContractAddress, ContractNonce>,
-        pub replaced_classes: Vec<ReplacedClass>,
-    }
-
-    /// L2 storage diff.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-    #[serde(deny_unknown_fields)]
-    pub struct StorageDiff {
-        pub key: StorageAddress,
-        pub value: StorageValue,
-    }
-
-    /// L2 contract data within state diff.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-    #[serde(deny_unknown_fields)]
-    pub struct DeployedContract {
-        pub address: ContractAddress,
-        /// `class_hash` is the field name from cairo 0.9.0 onwards
-        /// `contract_hash` is the name from cairo before 0.9.0
-        #[serde(alias = "contract_hash")]
-        pub class_hash: ClassHash,
-    }
-
-    /// Describes a newly declared class. Maps Sierra class hash to a Casm hash.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-    #[serde(deny_unknown_fields)]
-    pub struct DeclaredSierraClass {
-        pub class_hash: SierraHash,
-        pub compiled_class_hash: CasmHash,
-    }
-
-    /// Describes a newly replaced class. Maps contract address to a new class.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-    #[serde(deny_unknown_fields)]
-    pub struct ReplacedClass {
-        pub address: ContractAddress,
-        pub class_hash: ClassHash,
-    }
-
-    #[cfg(test)]
-    mod tests {
-        #[test]
-        fn contract_field_backward_compatibility() {
-            use super::DeployedContract;
-
-            use pathfinder_common::macro_prelude::*;
-
-            let expected = DeployedContract {
-                address: contract_address!("0x1"),
-                class_hash: class_hash!("0x2"),
-            };
-
-            // cario <0.9.0
-            assert_eq!(
-                serde_json::from_str::<DeployedContract>(
-                    r#"{"address":"0x01","contract_hash":"0x02"}"#
-                )
-                .unwrap(),
-                expected
-            );
-            // cario >=0.9.0
-            assert_eq!(
-                serde_json::from_str::<DeployedContract>(
-                    r#"{"address":"0x01","class_hash":"0x02"}"#
-                )
-                .unwrap(),
-                expected
-            );
-        }
-    }
-}
-
-/// Used to deserialize replies to Starknet Ethereum contract requests.
-#[serde_as]
-#[derive(Clone, Debug, Deserialize)]
-pub struct EthContractAddresses {
-    #[serde(rename = "Starknet")]
-    #[serde_as(as = "EthereumAddressAsHexStr")]
-    pub starknet: EthereumAddress,
-}
-
-pub mod add_transaction {
-    use pathfinder_common::{ClassHash, ContractAddress, TransactionHash};
-
-    /// API response for an INVOKE_FUNCTION transaction
-    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct InvokeResponse {
-        pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: TransactionHash,
-    }
-
-    /// API response for a DECLARE transaction
-    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct DeclareResponse {
-        pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: TransactionHash,
-        pub class_hash: ClassHash,
-    }
-
-    /// API response for a DEPLOY transaction
-    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct DeployResponse {
-        pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: TransactionHash,
-        pub address: ContractAddress,
-    }
-
-    /// API response for a DEPLOY ACCOUNT transaction
-    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
-    pub struct DeployAccountResponse {
-        pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: TransactionHash,
-    }
-
-    #[cfg(test)]
-    mod serde_test {
-        use super::*;
-
-        use pathfinder_common::macro_prelude::*;
-
-        #[test]
-        fn test_invoke_response() {
-            let result = serde_json::from_str::<InvokeResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"}"#).unwrap();
-            let expected = InvokeResponse {
-                code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: transaction_hash!(
-                    "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
-                ),
-            };
-            assert_eq!(expected, result);
-        }
-
-        #[test]
-        fn test_deploy_response() {
-            let result = serde_json::from_str::<DeployResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f", "address": "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"}"#).unwrap();
-            let expected = DeployResponse {
-                code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: transaction_hash!(
-                    "0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
-                ),
-                address: contract_address!(
-                    "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                ),
-            };
-            assert_eq!(expected, result);
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-pub struct BlockSignature {
-    pub block_number: BlockNumber,
-    pub signature: [BlockCommitmentSignatureElem; 2],
-    pub signature_input: BlockSignatureInput,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-pub struct BlockSignatureInput {
-    pub block_hash: BlockHash,
-    pub state_diff_commitment: StateDiffCommitment,
-}
-
-impl From<BlockSignature> for pathfinder_common::BlockCommitmentSignature {
-    fn from(value: BlockSignature) -> Self {
-        Self {
-            r: value.signature[0],
-            s: value.signature[1],
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::{HashMap, HashSet};
-    use std::str::FromStr;
-
-    use primitive_types::H256;
-
-    use crate::reply::state_update::{
-        DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff,
-    };
-    use crate::reply::transaction::L1HandlerTransaction;
-
-    /// The aim of these tests is to make sure pathfinder is still able to correctly
-    /// deserialize replies from the mainnet sequencer when it still is using some
-    /// previous version of cairo while at the same time the goerli sequencer is
-    /// already using a newer version.
-    mod backward_compatibility {
-        use super::super::StateUpdate;
-        use starknet_gateway_test_fixtures::*;
-
-        #[test]
-        fn block() {
-            use super::super::{Block, PendingBlock};
-
-            // Mainnet block 192 contains an L1_HANDLER transaction without a nonce.
-            serde_json::from_str::<Block>(old::block::NUMBER_192).unwrap();
-            serde_json::from_str::<Block>(v0_8_2::block::GENESIS).unwrap();
-            serde_json::from_str::<Block>(v0_8_2::block::NUMBER_1716).unwrap();
-            serde_json::from_str::<PendingBlock>(v0_8_2::block::PENDING).unwrap();
-            // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_216591).unwrap();
-            // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_216171).unwrap();
-            // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_228457).unwrap();
-            // This is from integration starknet_version 0.13.0 and contains new v3 invoke and deploy account transactions.
-            serde_json::from_str::<Block>(integration::block::NUMBER_319693).unwrap();
-            // This is from integration starknet_version 0.13.0 and contains a new v3 declare transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_319709).unwrap();
-            serde_json::from_str::<PendingBlock>(v0_13_0::block::PENDING).unwrap();
-            // This is from integration starknet_version 0.13.0 and contains data gas prices.
-            serde_json::from_str::<Block>(integration::block::NUMBER_329543).unwrap();
-            serde_json::from_str::<PendingBlock>(v0_13_1::block::PENDING).unwrap();
-        }
-
-        #[test]
-        fn state_update() {
-            // This is from integration starknet_version 0.11 and contains the new declared_classes field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283364).unwrap();
-            // This is from integration starknet_version 0.11 and contains the new replaced_classes field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283428).unwrap();
-        }
-
-        #[test]
-        fn legacy_l1_handler_is_invoke() {
-            // In the times before L1 Handler became an official tx variant,
-            // these were instead served as Invoke V0 txs. This test ensures
-            // that we correctly map these historic txs to L1 Handler.
-            use super::super::transaction::Transaction as TransactionVariant;
-
-            let json = serde_json::json!({
-                "type":"INVOKE_FUNCTION",
-                "calldata":[
-                    "580042449035822898911647251144793933582335302582",
-                    "3241583063705060367416058138609427972824194056099997457116843686898315086623",
-                    "2000000000000000000",
-                    "0",
-                    "725188533692944996190142472767755401716439215485"
-                ],
-                "contract_address":"0x1108cdbe5d82737b9057590adaf97d34e74b5452f0628161d237746b6fe69e",
-                "entry_point_selector":"0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5",
-                "entry_point_type":"L1_HANDLER",
-                "max_fee":"0x0",
-                "signature":[],
-                "transaction_hash":"0x70cad5b0d09ff2b252d3bf040708a89e6f175715f5f550e8d8161fabef01261"
-            });
-
-            let tx: TransactionVariant = serde_json::from_value(json).unwrap();
-
-            assert_matches::assert_matches!(tx, TransactionVariant::L1Handler(_));
-        }
-    }
-
-    #[test]
-    fn from_state_update() {
-        use pathfinder_common::macro_prelude::*;
-
-        let expected = pathfinder_common::StateUpdate::default()
-            .with_block_hash(block_hash_bytes!(b"block hash"))
-            .with_state_commitment(state_commitment_bytes!(b"state commitment"))
-            .with_parent_state_commitment(state_commitment_bytes!(b"parent commitment"))
-            .with_storage_update(
-                contract_address_bytes!(b"contract 0"),
-                storage_address_bytes!(b"storage key 0"),
-                storage_value_bytes!(b"storage val 0"),
-            )
-            .with_deployed_contract(
-                contract_address_bytes!(b"deployed contract"),
-                class_hash_bytes!(b"deployed class"),
-            )
-            .with_declared_cairo_class(class_hash_bytes!(b"cairo 0 0"))
-            .with_declared_cairo_class(class_hash_bytes!(b"cairo 0 1"))
-            .with_declared_sierra_class(
-                sierra_hash_bytes!(b"sierra class"),
-                casm_hash_bytes!(b"casm hash"),
-            )
-            .with_contract_nonce(
-                contract_address_bytes!(b"contract 0"),
-                contract_nonce_bytes!(b"nonce 0"),
-            )
-            .with_contract_nonce(
-                contract_address_bytes!(b"contract 10"),
-                contract_nonce_bytes!(b"nonce 10"),
-            )
-            .with_replaced_class(
-                contract_address_bytes!(b"contract 0"),
-                class_hash_bytes!(b"replaced class"),
-            );
-
-        let gateway = super::StateUpdate {
-            block_hash: block_hash_bytes!(b"block hash"),
-            new_root: state_commitment_bytes!(b"state commitment"),
-            old_root: state_commitment_bytes!(b"parent commitment"),
-            state_diff: super::state_update::StateDiff {
-                storage_diffs: HashMap::from([(
-                    contract_address_bytes!(b"contract 0"),
-                    vec![StorageDiff {
-                        key: storage_address_bytes!(b"storage key 0"),
-                        value: storage_value_bytes!(b"storage val 0"),
-                    }],
-                )]),
-                deployed_contracts: vec![DeployedContract {
-                    address: contract_address_bytes!(b"deployed contract"),
-                    class_hash: class_hash_bytes!(b"deployed class"),
-                }],
-                old_declared_contracts: HashSet::from([
-                    class_hash_bytes!(b"cairo 0 0"),
-                    class_hash_bytes!(b"cairo 0 1"),
-                ]),
-                declared_classes: vec![DeclaredSierraClass {
-                    class_hash: sierra_hash_bytes!(b"sierra class"),
-                    compiled_class_hash: casm_hash_bytes!(b"casm hash"),
-                }],
-                nonces: HashMap::from([
-                    (
-                        contract_address_bytes!(b"contract 0"),
-                        contract_nonce_bytes!(b"nonce 0"),
-                    ),
-                    (
-                        contract_address_bytes!(b"contract 10"),
-                        contract_nonce_bytes!(b"nonce 10"),
-                    ),
-                ]),
-                replaced_classes: vec![ReplacedClass {
-                    address: contract_address_bytes!(b"contract 0"),
-                    class_hash: class_hash_bytes!(b"replaced class"),
-                }],
-            },
-        };
-
-        let common = pathfinder_common::StateUpdate::from(gateway);
-
-        assert_eq!(common, expected);
-    }
-
-    mod receipts {
-        use crate::reply::transaction::{ExecutionStatus, Receipt};
-
-        #[test]
-        fn without_execution_status() {
-            // Execution status was introduced in v0.12.1. Receipts from before this time could not revert
-            // and should therefore always succeed. Receipt below taken from testnet v0.12.0.
-            let json = r#"{
-                "transaction_index": 0,
-                "transaction_hash": "0xff4820a0ae5859fa2f75606effcb5caab34c01f7aecb413c2bd7dc724d603",
-                "l2_to_l1_messages": [],
-                "events": [{
-                    "from_address": "0x783a9097b26eae0586373b2ce0ed3529ddc44069d1e0fbc4f66d42b69d6850d",
-                    "keys": ["0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9"],
-                    "data": [
-                        "0x0",
-                        "0x192688d37fe07a79213990c7bc7d3ca092541db3d9bcba3d7462fb3bfb4265f",
-                        "0x3ecb5eb3ee",
-                        "0x0"
-                    ]
-                }]
-            }"#;
-
-            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
-
-            assert_eq!(receipt.execution_status, ExecutionStatus::Succeeded);
-        }
-
-        #[test]
-        fn succeeded() {
-            // Taken from integration v0.12.1.
-            let json = r#"{
-                "execution_status": "SUCCEEDED",
-                "transaction_index": 0,
-                "transaction_hash": "0x5c01146ca14316ceb337df39653d8cba17593c19aecfa56b7b40005749e159b",
-                "l2_to_l1_messages": [],
-                "events": [],
-                "execution_resources": {
-                    "n_steps": 318,
-                    "builtin_instance_counter": {
-                        "bitwise_builtin": 2,
-                        "range_check_builtin": 8,
-                        "pedersen_builtin": 2
-                    },
-                    "n_memory_holes": 25
-                },
-                "actual_fee": "0x59e58f1d1a0"
-            }"#;
-
-            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
-
-            assert_eq!(receipt.execution_status, ExecutionStatus::Succeeded);
-        }
-
-        #[test]
-        fn reverted() {
-            // Taken from integration v0.12.1 (revert_error was changed to shorten it)
-            let json = r#"{
-                "revert_error": "reason goes here",
-                "execution_status": "REVERTED",
-                "transaction_index": 1,
-                "transaction_hash": "0x19abec18bbacec23c2eee160c70190a48e4b41dd5ff98ad8f247f9393559998",
-                "l2_to_l1_messages": [],
-                "events": [],
-                "actual_fee": "0x247aff6e224"
-            }"#;
-
-            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
-
-            assert_eq!(receipt.execution_status, ExecutionStatus::Reverted);
-            assert_eq!(receipt.revert_error, Some("reason goes here".to_owned()));
-        }
-    }
-
-    #[test]
-    fn eth_contract_addresses_ignores_extra_fields() {
-        // Some gateway mocks include extra addresses, check that we can still parse these.
-        let json = serde_json::json!({
-            "Starknet": "0x12345abcd",
-            "GpsStatementVerifier": "0xaabdde",
-            "MemoryPageFactRegistry": "0xdeadbeef"
-        });
-
-        serde_json::from_value::<crate::reply::EthContractAddresses>(json).unwrap();
-    }
-
-    #[test]
-    fn l1_handler_message_hash() {
-        // Transaction taken from mainnet.
-        let json = serde_json::json!({
-            "transaction_hash": "0x63f36452a4255a9d3f06def95a08bbc295f0de0515adefbf04ee795ed4c3f12",
-            "version": "0x0",
-            "contract_address": "0x73314940630fd6dcda0d772d4c972c4e0a9946bef9dabf4ef84eda8ef542b82",
-            "entry_point_selector": "0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5",
-            "nonce": "0x17824b",
-            "calldata": [
-                "0xae0ee0a63a2ce6baeeffe56e7714fb4efe48d419",
-                "0x2c63ec1313901744d1321b93bda51418cc18998a1562d368960711367f7530f",
-                "0x11e14e1039c000",
-                "0x0"
-            ],
-        });
-
-        let l1_handler = serde_json::from_value::<L1HandlerTransaction>(json).unwrap();
-
-        let message_hash = l1_handler.calculate_message_hash();
-
-        // Taken from starkscan: https://starkscan.co/tx/0x063f36452a4255a9d3f06def95a08bbc295f0de0515adefbf04ee795ed4c3f12
-        let expected =
-            H256::from_str("573aeff3cf703775e8a76a27adee9e80f2ce558a6a38ec87e0249a8b175e5c1a")
-                .unwrap();
-
-        assert_eq!(message_hash, expected);
-    }
-
-    mod block_signature {
-        use pathfinder_common::{
-            block_commitment_signature_elem, block_hash, state_diff_commitment, BlockNumber,
-        };
-
-        use super::super::{BlockSignature, BlockSignatureInput, StateUpdate};
-
-        #[test]
-        fn parse() {
-            let json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
-
-            let expected = BlockSignature {
-                block_number: BlockNumber::new_or_panic(350000),
-                signature: [
-                    block_commitment_signature_elem!(
-                        "0x95e98f5b91d39ae2b1bf77447a4fc01725352ae8b0b2c0a3fe09d43d1d9e57"
-                    ),
-                    block_commitment_signature_elem!(
-                        "0x541b2db8dae6d5ae24b34e427d251edc2e94dcffddd85f207e1b51f2f4bb1ef"
-                    ),
-                ],
-                signature_input: BlockSignatureInput {
-                    block_hash: block_hash!(
-                        "0x6f7342a680d7f99bdfdd859f587c75299e7ffabe62c071ded3a6d8a34cb132c"
-                    ),
-                    state_diff_commitment: state_diff_commitment!(
-                        "0x432e8e2ad833548e1c1077fc298991b055ba1e6f7a17dd332db98f4f428c56c"
-                    ),
-                },
-            };
-
-            let signature: BlockSignature = serde_json::from_str(json).unwrap();
-
-            assert_eq!(signature, expected);
-        }
-
-        #[test]
-        fn state_diff_commitment() {
-            let signature_json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
-            let signature: BlockSignature = serde_json::from_str(signature_json).unwrap();
-
-            let state_update_json =
-                starknet_gateway_test_fixtures::v0_12_2::state_update::BLOCK_350000;
-            let state_update: StateUpdate = serde_json::from_str(state_update_json).unwrap();
-
-            let state_update = pathfinder_common::StateUpdate::from(state_update);
-
-            assert_eq!(
-                state_update.compute_state_diff_commitment(),
-                signature.signature_input.state_diff_commitment
-            )
-        }
     }
 }

@@ -10,13 +10,14 @@ rust-version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
-bincode = { workspace = true }
+bincode = { workspace = true, features = ["serde"] }
 bitvec = { workspace = true }
 bloomfilter = { workspace = true }
 cached = { workspace = true }
 const_format = { workspace = true }
 data-encoding = { workspace = true }
 fake = { workspace = true }
+flume = { version = "0.11.0", default-features = false, features = ["eventual-fairness"] }
 hex = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }

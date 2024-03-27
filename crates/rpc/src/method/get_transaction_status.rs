@@ -31,21 +31,21 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
             .context("Opening database connection")?;
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        if let Some(receipt) = context
+        if let Some((receipt, _)) = context
             .pending_data
             .get(&db_tx)
             .context("Querying pending data")?
             .block
             .transaction_receipts
             .iter()
-            .find(|rx| rx.transaction_hash == input.transaction_hash)
+            .find(|(rx, _)| rx.transaction_hash == input.transaction_hash)
         {
             return Ok(Some(Output::AcceptedOnL2(
                 (&receipt.execution_status).into(),
             )));
         }
 
-        let Some((_, receipt, block_hash)) = db_tx
+        let Some((_, receipt, _, block_hash)) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Fetching receipt from database")?
         else {

@@ -13,6 +13,7 @@ mod state_update;
 pub(crate) mod transaction;
 mod trie;
 
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{
     ContractUpdateCounts, ReverseContractUpdate, StateUpdateCounts,
@@ -84,6 +85,17 @@ pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
     bloom_filter_cache: Arc<crate::bloom::Cache>,
 }
+
+type TransactionWithReceipt = (
+    StarknetTransaction,
+    Receipt,
+    Vec<pathfinder_common::event::Event>,
+    BlockNumber,
+);
+
+type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
+
+type EventsForBlock = (TransactionHash, Vec<Event>);
 
 impl<'inner> Transaction<'inner> {
     // The implementations here are intentionally kept as simple wrappers. This lets the real implementations
@@ -157,6 +169,10 @@ impl<'inner> Transaction<'inner> {
         block::block_hash(self, block)
     }
 
+    pub fn block_number(&self, block: BlockId) -> anyhow::Result<Option<BlockNumber>> {
+        block::block_number(self, block)
+    }
+
     pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
         block::block_exists(self, block)
     }
@@ -199,20 +215,19 @@ impl<'inner> Transaction<'inner> {
     /// Inserts the transaction, receipt and event data.
     pub fn insert_transaction_data(
         &self,
-        block_hash: BlockHash,
         block_number: BlockNumber,
-        transaction_data: &[(StarknetTransaction, Option<Receipt>)],
+        transaction_data: &[TransactionData],
     ) -> anyhow::Result<()> {
-        transaction::insert_transactions(self, block_hash, block_number, transaction_data)
+        transaction::insert_transactions(self, block_number, transaction_data)
     }
 
     pub fn update_receipt(
         &self,
-        block_hash: BlockHash,
+        block_number: BlockNumber,
         transaction_idx: usize,
         receipt: &Receipt,
     ) -> anyhow::Result<()> {
-        transaction::update_receipt(self, block_hash, transaction_idx, receipt)
+        transaction::update_receipt(self, block_number, transaction_idx, receipt)
     }
 
     pub fn transaction_block_hash(
@@ -232,7 +247,7 @@ impl<'inner> Transaction<'inner> {
     pub fn transaction_with_receipt(
         &self,
         hash: TransactionHash,
-    ) -> anyhow::Result<Option<(StarknetTransaction, Receipt, BlockHash)>> {
+    ) -> anyhow::Result<Option<TransactionWithReceipt>> {
         transaction::transaction_with_receipt(self, hash)
     }
 
@@ -247,7 +262,7 @@ impl<'inner> Transaction<'inner> {
     pub fn transaction_data_for_block(
         &self,
         block: BlockId,
-    ) -> anyhow::Result<Option<Vec<(StarknetTransaction, Receipt)>>> {
+    ) -> anyhow::Result<Option<Vec<TransactionDataForBlock>>> {
         transaction::transaction_data_for_block(self, block)
     }
 
@@ -258,8 +273,8 @@ impl<'inner> Transaction<'inner> {
         transaction::transactions_for_block(self, block)
     }
 
-    pub fn receipts_for_block(&self, block: BlockId) -> anyhow::Result<Option<Vec<Receipt>>> {
-        transaction::receipts_for_block(self, block)
+    pub fn events_for_block(&self, block: BlockId) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
+        transaction::events_for_block(self, block)
     }
 
     pub fn transaction_hashes_for_block(
@@ -678,4 +693,11 @@ impl<'inner> Transaction<'inner> {
     pub fn commit(self) -> anyhow::Result<()> {
         Ok(self.transaction.commit()?)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransactionData {
+    pub transaction: StarknetTransaction,
+    pub receipt: Option<Receipt>,
+    pub events: Option<Vec<Event>>,
 }

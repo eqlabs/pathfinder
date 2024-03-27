@@ -1,8 +1,7 @@
 use pathfinder_common::transaction::{
     DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
-    DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
-    InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
-    ResourceBound, ResourceBounds,
+    DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransaction, InvokeTransactionV0,
+    InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction, ResourceBound, ResourceBounds,
 };
 use pathfinder_common::{
     ResourceAmount, ResourcePricePerUnit, Tip, TransactionHash, TransactionVersion,
@@ -43,8 +42,8 @@ impl Serialize for Transaction {
             TransactionVariant::DeclareV2(x) => DeclareV2Helper(x).serialize(serializer),
             TransactionVariant::DeclareV3(x) => DeclareV3Helper(x).serialize(serializer),
             TransactionVariant::Deploy(x) => DeployHelper(x).serialize(serializer),
-            TransactionVariant::DeployAccountV0V1(x) => {
-                DeployAccountV0V1Helper(x).serialize(serializer)
+            TransactionVariant::DeployAccountV1(x) => {
+                DeployAccountV1Helper(x).serialize(serializer)
             }
             TransactionVariant::DeployAccountV3(x) => {
                 DeployAccountV3Helper(x).serialize(serializer)
@@ -62,7 +61,7 @@ struct DeclareV1Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV2Helper<'a>(&'a DeclareTransactionV2);
 struct DeclareV3Helper<'a>(&'a DeclareTransactionV3);
 struct DeployHelper<'a>(&'a DeployTransaction);
-struct DeployAccountV0V1Helper<'a>(&'a DeployAccountTransactionV0V1);
+struct DeployAccountV1Helper<'a>(&'a DeployAccountTransactionV1);
 struct DeployAccountV3Helper<'a>(&'a DeployAccountTransactionV3);
 struct InvokeV0Helper<'a>(&'a InvokeTransactionV0);
 struct InvokeV1Helper<'a>(&'a InvokeTransactionV1);
@@ -174,7 +173,7 @@ impl Serialize for DeployHelper<'_> {
     }
 }
 
-impl Serialize for DeployAccountV0V1Helper<'_> {
+impl Serialize for DeployAccountV1Helper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -182,7 +181,7 @@ impl Serialize for DeployAccountV0V1Helper<'_> {
         let mut s = serializer.serialize_struct("DeployAccount", 8)?;
         s.serialize_field("type", "DEPLOY_ACCOUNT")?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
-        s.serialize_field("version", &TransactionVersionHelper(&self.0.version))?;
+        s.serialize_field("version", "0x1")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
@@ -570,10 +569,9 @@ mod tests {
 
         #[test]
         fn deploy_account_v1() {
-            let original: TransactionVariant = DeployAccountTransactionV0V1 {
+            let original: TransactionVariant = DeployAccountTransactionV1 {
                 contract_address: contract_address!("0xabc"),
                 max_fee: fee!("0x1111"),
-                version: TransactionVersion::ONE,
                 signature: vec![
                     transaction_signature_elem!("0xa1b1"),
                     transaction_signature_elem!("0x1a1b"),

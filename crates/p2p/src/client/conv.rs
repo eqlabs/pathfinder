@@ -9,7 +9,7 @@ use pathfinder_common::{
     state_update::StateUpdateCounts,
     transaction::{
         DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
-        DeployAccountTransactionV0V1, DeployAccountTransactionV3, DeployTransaction,
+        DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransaction,
         InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
         ResourceBound, ResourceBounds, Transaction, TransactionVariant,
     },
@@ -99,7 +99,7 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
     /// ## Important
     ///
     /// This conversion does not compute deployed contract address for deploy account transactions
-    /// ([`TransactionVariant::DeployAccountV0V1`] and [`TransactionVariant::DeployAccountV3`]),
+    /// ([`TransactionVariant::DeployAccountV1`] and [`TransactionVariant::DeployAccountV3`]),
     /// filling it with a zero address instead. The caller is responsible for performing the computation after the conversion succeeds.
     fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
     where
@@ -178,10 +178,9 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                     _ => anyhow::bail!("Invalid deploy transaction version"),
                 },
             }),
-            DeployAccountV1(x) => Self::DeployAccountV0V1(DeployAccountTransactionV0V1 {
+            DeployAccountV1(x) => Self::DeployAccountV1(DeployAccountTransactionV1 {
                 contract_address: ContractAddress::ZERO,
                 max_fee: Fee(x.max_fee),
-                version: TransactionVersion::ONE,
                 signature: x
                     .signature
                     .parts
@@ -265,12 +264,10 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
     }
 }
 
-/// ## Important
-///
-/// This conversion leaves event vector empty and transaction index zeroed.
-/// The caller is responsible filling those with correct values after the conversion succeeds.
-impl TryFromDto<p2p_proto::receipt::Receipt> for Receipt {
-    fn try_from_dto(dto: p2p_proto::receipt::Receipt) -> anyhow::Result<Self> {
+impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
+    fn try_from_dto(
+        (dto, transaction_index): (p2p_proto::receipt::Receipt, TransactionIndex),
+    ) -> anyhow::Result<Self> {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         use p2p_proto::receipt::{
             DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
@@ -283,7 +280,7 @@ impl TryFromDto<p2p_proto::receipt::Receipt> for Receipt {
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
                 transaction_hash: TransactionHash(common.transaction_hash.0),
-                actual_fee: Some(Fee(common.actual_fee)),
+                actual_fee: Fee(common.actual_fee),
                 execution_resources: ExecutionResources {
                     builtins: BuiltinCounters {
                         output: common.execution_resources.builtins.output.into(),
@@ -323,8 +320,7 @@ impl TryFromDto<p2p_proto::receipt::Receipt> for Receipt {
                         reason: common.revert_reason,
                     }
                 },
-                events: vec![],
-                transaction_index: TransactionIndex::new_or_panic(0),
+                transaction_index,
             }),
         }
     }

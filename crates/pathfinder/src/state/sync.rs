@@ -847,7 +847,7 @@ async fn l2_update(
         let event_count = block
             .transaction_receipts
             .iter()
-            .map(|r| r.events.len())
+            .map(|(_, events)| events.len())
             .sum();
 
         // Update L2 database. These types shouldn't be options at this level,
@@ -904,11 +904,18 @@ async fn l2_update(
         let transaction_data = block
             .transactions
             .into_iter()
-            .zip(block.transaction_receipts.into_iter().map(Some))
+            .zip(block.transaction_receipts.into_iter())
+            .map(
+                |(tx, (receipt, events))| pathfinder_storage::TransactionData {
+                    transaction: tx,
+                    receipt: Some(receipt),
+                    events: Some(events),
+                },
+            )
             .collect::<Vec<_>>();
 
         transaction
-            .insert_transaction_data(header.hash, header.number, &transaction_data)
+            .insert_transaction_data(header.number, &transaction_data)
             .context("Insert transaction data into database")?;
 
         // Insert state updates

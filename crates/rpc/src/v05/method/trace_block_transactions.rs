@@ -102,7 +102,7 @@ pub(crate) fn map_gateway_trace(
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
-        TransactionVariant::DeployAccountV0V1(_) | TransactionVariant::DeployAccountV3(_) => {
+        TransactionVariant::DeployAccountV1(_) | TransactionVariant::DeployAccountV3(_) => {
             TransactionTrace::DeployAccount(DeployAccountTxnTrace {
                 constructor_invocation: trace.function_invocation.map(Into::into),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
@@ -338,12 +338,15 @@ pub(crate) mod tests {
                 ..Default::default()
             };
             tx.insert_transaction_data(
-                next_block_header.hash,
                 next_block_header.number,
                 transactions
                     .iter()
                     .cloned()
-                    .map(|t| (t, Some(dummy_receipt.clone())))
+                    .map(|t| pathfinder_storage::TransactionData {
+                        transaction: t,
+                        receipt: Some(dummy_receipt.clone()),
+                        events: Some(vec![]),
+                    })
                     .collect::<Vec<_>>()
                     .as_slice(),
             )?;
@@ -437,8 +440,11 @@ pub(crate) mod tests {
                 ..Default::default()
             };
 
-            let transaction_receipts =
-                vec![dummy_receipt.clone(), dummy_receipt.clone(), dummy_receipt];
+            let transaction_receipts = vec![
+                (dummy_receipt.clone(), vec![]),
+                (dummy_receipt.clone(), vec![]),
+                (dummy_receipt, vec![]),
+            ];
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
                 eth_l1_gas_price_implementation_detail: Some(GasPrice(1)),
