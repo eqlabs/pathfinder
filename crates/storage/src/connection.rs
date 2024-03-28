@@ -589,7 +589,7 @@ impl<'inner> Transaction<'inner> {
         state_update::insert_state_update(self, block_number, state_update)
     }
 
-    pub fn insert_state_update_counts(
+    pub fn update_state_update_counts(
         &self,
         block_number: BlockNumber,
         counts: &StateUpdateCounts,

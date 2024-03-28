@@ -891,7 +891,7 @@ async fn l2_update(
             .context("Inserting block header into database")?;
 
         transaction
-            .insert_state_update_counts(header.number, &state_update.counts())
+            .update_state_update_counts(header.number, &state_update.counts())
             .context("Inserting state update counts into database")?;
 
         // Insert the transactions.
