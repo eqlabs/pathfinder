@@ -285,6 +285,7 @@ impl Client {
                         }
                     };
 
+                    // FIXME backup "current" in case we need to retry this block with the next peer
                     // Get contract update counts for this block
                     let mut current = contract_update_counts_stream.next().await
                         .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
@@ -444,6 +445,7 @@ impl Client {
                             }
                         };
 
+                    // FIXME backup "current" in case we need to retry this block with the next peer
                     // Get number of declared classes for this block
                     let mut current = declared_class_counts_stream.next().await
                         .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
@@ -565,6 +567,9 @@ impl Client {
                             }
                         };
 
+                    // TODO group events by transaction, warning: for pre 0.13.2 blocks this is TRUSTED
+                    // because neither signature nor block hash contain this information
+                    // FIXME backup "current" in case we need to retry this block with the next peer
                     // Get number of events for this block
                     let mut current = event_counts_stream.next().await
                         .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
