@@ -531,7 +531,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<Vec<Event>>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, Vec<Event>)>>> {
         async_stream::try_stream! {
         pin_mut!(event_counts_stream);
 
@@ -581,7 +581,7 @@ impl Client {
                                 if current == 0 {
                                     yield PeerData::new(
                                         peer,
-                                        std::mem::take(&mut events),
+                                        (start, std::mem::take(&mut events)),
                                     );
 
                                     // All the counters for this block have been exhausted which means
