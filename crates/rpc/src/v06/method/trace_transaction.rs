@@ -144,12 +144,7 @@ pub async fn trace_transaction_impl(
         {
             let header = pending.header();
 
-            let starknet_version = header
-                .starknet_version
-                .parse_as_semver()
-                .context("Parsing starknet version")?
-                .unwrap_or(semver::Version::new(0, 0, 0));
-            if starknet_version
+            if header.starknet_version
                 < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
             {
                 return Ok(LocalExecution::Unsupported(pending_tx.clone()));
@@ -171,12 +166,7 @@ pub async fn trace_transaction_impl(
                 .context("Fetching block header")?
                 .context("Block header is missing")?;
 
-            let starknet_version = header
-                .starknet_version
-                .parse_as_semver()
-                .context("Parsing starknet version")?
-                .unwrap_or(semver::Version::new(0, 0, 0));
-            if starknet_version
+            if header.starknet_version
                 < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
             {
                 let transaction = db

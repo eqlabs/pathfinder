@@ -61,7 +61,11 @@ time = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter", "time", "ansi"] }
+tracing-subscriber = { workspace = true, features = [
+    "env-filter",
+    "time",
+    "ansi",
+] }
 url = { workspace = true }
 warp = { workspace = true }
 zeroize = { workspace = true, optional = true }

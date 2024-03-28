@@ -5,6 +5,7 @@ use crate::v02::types::SierraContractClass;
 use anyhow::Context;
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::ChainId;
+use pathfinder_common::StarknetVersion;
 use pathfinder_executor::{ClassInfo, IntoStarkFelt};
 use starknet_api::core::PatriciaKey;
 
@@ -20,7 +21,7 @@ impl From<anyhow::Error> for ExecutionStateError {
 }
 
 pub const VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY:
-    semver::Version = semver::Version::new(0, 13, 0);
+    StarknetVersion = StarknetVersion::new(0, 13, 0, 0);
 
 pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,

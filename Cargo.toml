@@ -35,7 +35,7 @@ lto = true
 opt-level = 3
 
 [workspace.package]
-version = "0.11.3"
+version = "0.11.4"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.76"
@@ -51,7 +51,7 @@ axum = "0.6.19"
 base64 = "0.13.1"
 bincode = "2.0.0-rc.3"
 bitvec = "1.0.1"
-blockifier = "=0.5.0"
+blockifier = "=0.6.0-rc.0"
 bloomfilter = "1.0.12"
 bytes = "1.4.0"
 cached = "0.44.0"

@@ -29,33 +29,30 @@ mod versioned_constants {
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_0: &[u8] =
         include_bytes!("../resources/versioned_constants_13_0.json");
 
-    const STARKNET_VERSION_MATCHING_LATEST_BLOCKIFIER: semver::Version =
-        semver::Version::new(0, 13, 1);
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1: &[u8] =
+        include_bytes!("../resources/versioned_constants_13_1.json");
+
+    const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
+
+    const STARKNET_VERSION_0_13_1_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
 
     lazy_static::lazy_static! {
         pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: VersionedConstants =
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_0).unwrap();
+
+        pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1: VersionedConstants =
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1).unwrap();
     }
 
-    pub(super) fn for_version(
-        version: &StarknetVersion,
-    ) -> anyhow::Result<&'static VersionedConstants> {
-        let versioned_constants = match version.parse_as_semver()? {
-            Some(version) => {
-                // Right now we only properly support two versions: 0.13.0 and 0.13.1.
-                // We use 0.13.0 for all blocks _before_ 0.13.1.
-                if version < STARKNET_VERSION_MATCHING_LATEST_BLOCKIFIER {
-                    &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0
-                } else {
-                    VersionedConstants::latest_constants()
-                }
-            }
-            // The default for blocks that don't have a version number.
-            // This is supposed to be the _oldest_ version we support.
-            None => &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0,
-        };
-
-        Ok(versioned_constants)
+    pub(super) fn for_version(version: &StarknetVersion) -> &'static VersionedConstants {
+        // We use 0.13.0 for all blocks _before_ 0.13.1.
+        if version < &STARKNET_VERSION_0_13_1 {
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0
+        } else if version < &STARKNET_VERSION_0_13_1_1 {
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1
+        } else {
+            VersionedConstants::latest_constants()
+        }
     }
 }
 
@@ -114,7 +111,7 @@ impl<'tx> ExecutionState<'tx> {
             None
         };
 
-        let versioned_constants = versioned_constants::for_version(&self.header.starknet_version)?;
+        let versioned_constants = versioned_constants::for_version(&self.header.starknet_version);
 
         let block_context = pre_process_block(
             &mut cached_state,

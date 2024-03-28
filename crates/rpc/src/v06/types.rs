@@ -8,7 +8,7 @@ use pathfinder_common::{
 };
 use pathfinder_common::{GasPrice, TransactionVersion};
 use serde::Serialize;
-use serde_with::{serde_as, skip_serializing_none};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -34,6 +34,7 @@ pub struct BlockHeader {
     #[serde_as(as = "RpcFelt")]
     pub sequencer_address: SequencerAddress,
     pub l1_gas_price: ResourcePrice,
+    #[serde_as(as = "DisplayFromStr")]
     pub starknet_version: StarknetVersion,
 }
 
