@@ -186,11 +186,6 @@ pub(super) async fn persist(
             .ok_or(anyhow::anyhow!("No class definitions to persist"))?;
 
         for class in classes.into_iter().map(|x| x.data) {
-            let block_hash = transaction
-                .block_hash(class.block_number().into())
-                .context("Getting block hash")?
-                .ok_or(anyhow::anyhow!("Block hash not found"))?;
-
             match class {
                 Class::Cairo {
                     hash, definition, ..
