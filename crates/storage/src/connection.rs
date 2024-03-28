@@ -230,6 +230,15 @@ impl<'inner> Transaction<'inner> {
         transaction::update_receipt(self, block_number, transaction_idx, receipt)
     }
 
+    pub fn update_events(
+        &self,
+        block_number: BlockNumber,
+        transaction_idx: usize,
+        events: &[Event],
+    ) -> anyhow::Result<()> {
+        transaction::update_events(self, block_number, transaction_idx, events)
+    }
+
     pub fn transaction_block_hash(
         &self,
         hash: TransactionHash,

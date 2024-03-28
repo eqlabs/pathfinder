@@ -1,6 +1,7 @@
 //! Contains starknet transaction related code and __not__ database transaction.
 
 use anyhow::Context;
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
@@ -130,6 +131,39 @@ pub(super) fn update_receipt(
             ],
         )
         .context("Inserting transaction data")?;
+
+    Ok(())
+}
+
+pub(super) fn update_events(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    transaction_idx: usize,
+    events: &[Event],
+) -> anyhow::Result<()> {
+    let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+    let events = dto::Events::V0 {
+        events: events.iter().map(|x| x.to_owned().into()).collect(),
+    };
+    let serialized_events = bincode::serde::encode_to_vec(&events, bincode::config::standard())
+        .context("Serializing events")?;
+    let serialized_events = compressor
+        .compress(&serialized_events)
+        .context("Compressing events")?;
+
+    tx.inner()
+        .execute(
+            r"
+            UPDATE starknet_transactions SET events = :events
+            WHERE block_number = :block_number AND idx = :idx;
+            ",
+            named_params![
+                ":receipt": &serialized_events,
+                ":block_number": &block_number,
+                ":idx": &transaction_idx.try_into_sql_int()?,
+            ],
+        )
+        .context("Inserting event data")?;
 
     Ok(())
 }

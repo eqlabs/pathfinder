@@ -120,6 +120,7 @@ pub(super) async fn verify_commitment(
 
 pub(super) async fn persist(
     storage: Storage,
+    // TODO txn hashes not used, so remove them
     events: Vec<PeerData<(BlockNumber, Vec<(TransactionHash, Vec<Event>)>)>>,
 ) -> Result<BlockNumber, EventSyncError> {
     tokio::task::spawn_blocking(move || {
@@ -134,12 +135,11 @@ pub(super) async fn persist(
         ))?;
 
         for (block_number, events_for_block) in events.into_iter().map(|x| x.data) {
-            let block_hash = transaction
-                .block_hash(block_number.into())
-                .context("Getting block hash")?
-                .ok_or(anyhow::anyhow!("Block hash not found"))?;
-
-            todo!("Update event data")
+            for (txn_idx, (_, events)) in events_for_block.into_iter().enumerate() {
+                transaction
+                    .update_events(block_number, txn_idx, &events)
+                    .context("Updating events")?;
+            }
         }
 
         Ok(tail)
