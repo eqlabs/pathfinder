@@ -8,13 +8,20 @@ use std::{
 
 use futures::{pin_mut, StreamExt};
 use libp2p::PeerId;
-use p2p_proto::class::{ClassesRequest, ClassesResponse};
-use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto::{
+    class::{ClassesRequest, ClassesResponse},
+    event::EventsRequest,
+};
+use p2p_proto::{
+    common::{Direction, Iteration},
+    event::EventsResponse,
+};
 use pathfinder_common::{
+    event::Event,
     state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates},
     SierraHash,
 };
@@ -506,6 +513,91 @@ impl Client {
                                     }
                                 } else {
                                     tracing::debug!(%peer, "Premature class definition stream Fin");
+                                    // TODO punish the peer
+                                    continue 'next_peer;
+                                }
+                            }
+                        };
+                    }
+                }
+            }
+        }
+        }
+    }
+
+    /// All events of a single block comprise a single item in the stream.
+    pub fn events_stream(
+        self,
+        mut start: BlockNumber,
+        stop_inclusive: BlockNumber,
+        event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<Vec<Event>>>> {
+        async_stream::try_stream! {
+        pin_mut!(event_counts_stream);
+
+        if start <= stop_inclusive {
+            // Loop which refreshes peer set once we exhaust it.
+            'outer: loop {
+                let peers = self
+                    .get_update_peers_with_sync_capability(protocol::Events::NAME)
+                    .await;
+
+                // Attempt each peer.
+                'next_peer: for peer in peers {
+                    let limit = stop_inclusive.get() - start.get() + 1;
+
+                    let request = EventsRequest {
+                        iteration: Iteration {
+                            start: start.get().into(),
+                            direction: Direction::Forward,
+                            limit,
+                            step: 1.into(),
+                        },
+                    };
+
+                    let mut responses =
+                        match self.inner.send_events_sync_request(peer, request).await {
+                            Ok(x) => x,
+                            Err(error) => {
+                                // Failed to establish connection, try next peer.
+                                tracing::debug!(%peer, reason=%error, "Events request failed");
+                                continue 'next_peer;
+                            }
+                        };
+
+                    // Get number of events for this block
+                    let mut current = event_counts_stream.next().await
+                        .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
+
+                    let mut events = Vec::new();
+
+                    while let Some(contract_diff) = responses.next().await {
+                        match contract_diff {
+                            EventsResponse::Event(event) => {
+                                let event = Event::try_from_dto(event)?;
+                                events.push(event);
+                            }
+                            EventsResponse::Fin => {
+                                if current == 0 {
+                                    yield PeerData::new(
+                                        peer,
+                                        std::mem::take(&mut events),
+                                    );
+
+                                    // All the counters for this block have been exhausted which means
+                                    // that this block is complete.
+                                    if start < stop_inclusive {
+                                        // Move to the next block
+                                        start += 1;
+                                        current = event_counts_stream.next().await
+                                            .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
+                                        tracing::debug!(%peer, "Event stream Fin");
+                                    } else {
+                                        // We're done, terminate the stream
+                                        break 'outer;
+                                    }
+                                } else {
+                                    tracing::debug!(%peer, "Premature event stream Fin");
                                     // TODO punish the peer
                                     continue 'next_peer;
                                 }
