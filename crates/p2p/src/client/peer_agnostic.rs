@@ -448,12 +448,21 @@ impl Client {
                                 domain: _,
                                 class_hash,
                             }) => {
+                                let CairoDefinition(definition) = CairoDefinition::try_from_dto(class)?;
+                                match current.checked_sub(1) {
+                                    Some(x) => current = x,
+                                    None => {
+                                        tracing::debug!(%peer, "Too many classes");
+                                        // TODO punish the peer
+                                        continue 'next_peer;
+                                    }
+                                }
                                 yield PeerData::new(
                                     peer,
                                     Class::Cairo {
                                         block_number: start,
                                         hash: ClassHash(class_hash.0),
-                                        definition: CairoDefinition::try_from_dto(class)?.0,
+                                        definition,
                                     },
                                 );
                             }
@@ -463,6 +472,14 @@ impl Client {
                                 class_hash,
                             }) => {
                                 let definition = SierraDefinition::try_from_dto(class)?;
+                                match current.checked_sub(1) {
+                                    Some(x) => current = x,
+                                    None => {
+                                        tracing::debug!(%peer, "Too many classes");
+                                        // TODO punish the peer
+                                        continue 'next_peer;
+                                    }
+                                }
                                 yield PeerData::new(
                                     peer,
                                     Class::Sierra {
