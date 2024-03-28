@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Support for Starknet v0.13.1.1 (lowered declare transaction fees).
+
 ### Fixed
 
 - `starknet_estimateFee` and `starknet_simulateTransactions` can return fee estimates below the minimum fee expected by the sequencer for trivial transactions.
