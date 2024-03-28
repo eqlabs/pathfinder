@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.11.4] - 2024-03-28
+
 ### Added
 
 - Support for Starknet v0.13.1.1 (lowered declare transaction fees).
