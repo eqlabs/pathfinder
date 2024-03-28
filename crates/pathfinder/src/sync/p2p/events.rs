@@ -10,7 +10,7 @@ use tokio::task::spawn_blocking;
 #[derive(Debug, thiserror::Error)]
 pub(super) enum EventSyncError {
     #[error(transparent)]
-    DatabaseOrComputeError(#[from] anyhow::Error),
+    EventStreamError(#[from] anyhow::Error),
     #[error("Event commitment mismatch")]
     EventCommitmentMismatch(PeerData<BlockNumber>),
 }
