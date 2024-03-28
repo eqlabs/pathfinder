@@ -39,8 +39,10 @@ mod tests {
     #[tokio::test]
     async fn declare_deploy_and_invoke_sierra_class() {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
-            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(0, 13, 1))
-                .await;
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 1, 0,
+            ))
+            .await;
 
         let sierra_definition = include_bytes!("../../../fixtures/contracts/storage_access.json");
         let sierra_hash =

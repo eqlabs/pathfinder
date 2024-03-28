@@ -676,7 +676,7 @@ pub mod test_utils {
             timestamp: BlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
-            starknet_version: StarknetVersion::new(0, 11, 0),
+            starknet_version: StarknetVersion::new(0, 11, 0, 0),
             l1_da_mode: Some(starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata),
         };
 

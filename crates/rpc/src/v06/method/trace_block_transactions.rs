@@ -228,12 +228,7 @@ pub async fn trace_block_transactions_impl(
             }
         };
 
-        let starknet_version = header
-            .starknet_version
-            .parse_as_semver()
-            .context("Parsing starknet version")?
-            .unwrap_or(semver::Version::new(0, 0, 0));
-        if starknet_version
+        if header.starknet_version
             < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
         {
             match input.block_id {

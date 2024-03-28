@@ -15,19 +15,19 @@ pub fn compile_to_casm(
     let definition = serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_definition)
         .context("Parsing Sierra class")?;
 
-    const V_0_11_0: semver::Version = semver::Version::new(0, 11, 0);
-    const V_0_11_1: semver::Version = semver::Version::new(0, 11, 1);
-    const V_0_11_2: semver::Version = semver::Version::new(0, 11, 2);
+    const V_0_11_0: StarknetVersion = StarknetVersion::new(0, 11, 0, 0);
+    const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
+    const V_0_11_2: StarknetVersion = StarknetVersion::new(0, 11, 2, 0);
 
     let result = std::panic::catch_unwind(|| {
-        match version
-            .parse_as_semver()
-            .context("Deciding on compiler version")?
-        {
-            Some(v) if v > V_0_11_2 => v2::compile(definition),
-            Some(v) if v > V_0_11_1 => v1_1_1::compile(definition),
-            Some(v) if v > V_0_11_0 => v1_0_0_rc0::compile(definition),
-            _ => v1_0_0_alpha6::compile(definition),
+        if version > &V_0_11_2 {
+            v2::compile(definition)
+        } else if version > &V_0_11_1 {
+            v1_1_1::compile(definition)
+        } else if version > &V_0_11_0 {
+            v1_0_0_rc0::compile(definition)
+        } else {
+            v1_0_0_alpha6::compile(definition)
         }
     });
 
@@ -297,7 +297,7 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            compile_to_casm(CAIRO_1_0_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 1)).unwrap();
+            compile_to_casm(CAIRO_1_0_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 1, 0)).unwrap();
         }
     }
 
@@ -319,13 +319,17 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            compile_to_casm(CAIRO_1_1_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 2)).unwrap();
+            compile_to_casm(CAIRO_1_1_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 2, 0)).unwrap();
         }
 
         #[test]
         fn regression_stack_overflow() {
             // This class caused a stack-overflow in v2 compilers <= v2.0.1
-            compile_to_casm(CAIRO_2_0_0_STACK_OVERFLOW, &StarknetVersion::new(0, 12, 0)).unwrap();
+            compile_to_casm(
+                CAIRO_2_0_0_STACK_OVERFLOW,
+                &StarknetVersion::new(0, 12, 0, 0),
+            )
+            .unwrap();
         }
     }
 }

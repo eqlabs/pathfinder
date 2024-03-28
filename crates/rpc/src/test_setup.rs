@@ -106,7 +106,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
 }
 
 pub async fn test_context() -> (RpcContext, BlockHeader, ContractAddress, ContractAddress) {
-    test_context_with_starknet_version(StarknetVersion::new(0, 13, 0)).await
+    test_context_with_starknet_version(StarknetVersion::new(0, 13, 0, 0)).await
 }
 
 pub async fn test_context_with_starknet_version(

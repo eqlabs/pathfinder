@@ -7,6 +7,7 @@ use pathfinder_common::{
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use serde_with::DisplayFromStr;
 
 pub use transaction::DataAvailabilityMode;
 
@@ -63,6 +64,7 @@ pub struct Block {
     pub transactions: Vec<pathfinder_common::transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
+    #[serde_as(as = "DisplayFromStr")]
     pub starknet_version: StarknetVersion,
 
     // Introduced in v0.13.1
@@ -130,6 +132,7 @@ pub struct PendingBlock {
     pub transactions: Vec<pathfinder_common::transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
+    #[serde_as(as = "DisplayFromStr")]
     pub starknet_version: StarknetVersion,
     #[serde(default)]
     pub l1_da_mode: Option<L1DataAvailabilityMode>,

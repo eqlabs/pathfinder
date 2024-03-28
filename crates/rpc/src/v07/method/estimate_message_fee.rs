@@ -90,7 +90,7 @@ mod tests {
                     .with_timestamp(BlockTimestamp::new_or_panic(1))
                     .with_eth_l1_gas_price(GasPrice(2))
                     .with_eth_l1_data_gas_price(GasPrice(1))
-                    .with_starknet_version(StarknetVersion::new(0, 13, 1))
+                    .with_starknet_version(StarknetVersion::new(0, 13, 1, 0))
                     .with_l1_da_mode(L1DataAvailabilityMode::Blob)
                     .finalize_with_hash(block1_hash);
                 tx.insert_block_header(&header).unwrap();
