@@ -129,16 +129,16 @@ async fn read(
         let request = match receiver.next().await {
             Some(Ok(Message::Text(x))) => x.into_bytes(),
             Some(Ok(Message::Binary(x))) => x,
-            Some(Ok(Message::Ping(_)))
-            | Some(Ok(Message::Pong(_)))
-            | Some(Ok(Message::Close(_))) => continue,
-            // Both of these are client disconnects according to the axum example
-            // https://docs.rs/axum/0.6.20/axum/extract/ws/index.html#example
+            Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {
+                // Ping and pong messages are handled automatically by axum.
+                continue;
+            }
+            // All of the following indicate client disconnection.
             Some(Err(e)) => {
                 tracing::trace!(error=%e, "Client disconnected");
                 break;
             }
-            None => {
+            Some(Ok(Message::Close(_))) | None => {
                 tracing::trace!("Client disconnected");
                 break;
             }
