@@ -510,7 +510,7 @@ impl Sync {
                     events::counts_stream(self.storage.clone(), start, stop),
                 )
                 .map_err(Into::into)
-                .and_then(|x| events::verify_commitment(x, expected_commitment))
+                .and_then(|x| events::verify_commitment(x, self.storage.clone()))
                 .try_chunks(100)
                 .map_err(|e| e.1)
                 .and_then(|x| events::persist(self.storage.clone(), x))
