@@ -5,7 +5,6 @@ use num_bigint::BigUint;
 use pathfinder_crypto::Felt;
 use serde_with::serde_conv;
 
-
 use crate::{ContractAddress, EventData, EventKey};
 
 #[serde_with::serde_as]

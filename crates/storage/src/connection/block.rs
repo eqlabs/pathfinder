@@ -441,7 +441,7 @@ impl Transaction<'_> {
 
         let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
         let mut counts = stmt
-            .query_map(params![&block_number, &max_len], |row| Ok(row.get(0)?))
+            .query_map(params![&block_number, &max_len], |row| row.get(0))
             .context("Querying event counts")?;
 
         let mut ret = Vec::new();
