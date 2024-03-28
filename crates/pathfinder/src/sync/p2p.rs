@@ -28,9 +28,9 @@ use crate::state::block_hash::{
     calculate_transaction_commitment, TransactionCommitmentFinalHashType,
 };
 
+use class_definitions::ClassDefinitionSyncError;
+use events::EventSyncError;
 use state_updates::ContractDiffSyncError;
-
-use self::class_definitions::ClassDefinitionSyncError;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -489,6 +489,45 @@ impl Sync {
                 }
                 Err(ClassDefinitionSyncError::BadClassHash(peer_data)) => {
                     tracing::debug!(peer=%peer_data.peer, block=%peer_data.data.0, expected_class_hash=%peer_data.data.1, "Class hash verification failed")
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn sync_events(&self, stop: BlockNumber) -> anyhow::Result<()> {
+        if let Some(start) = events::next_missing(self.storage.clone(), stop)
+            .await
+            .context("Finding next block with missing events")?
+        {
+            let result = self
+                .p2p
+                .clone()
+                .events_stream(
+                    start,
+                    stop,
+                    events::counts_stream(self.storage.clone(), start, stop),
+                )
+                .map_err(Into::into)
+                .and_then(|x| events::verify_commitment(x, expected_commitment))
+                .try_chunks(100)
+                .map_err(|e| e.1)
+                .and_then(|x| events::persist(self.storage.clone(), x))
+                .inspect_ok(|x| tracing::info!(tail=%x, "Events chunk synced"))
+                // Drive stream to completion.
+                .try_fold((), |_, _| std::future::ready(Ok(())))
+                .await;
+
+            match result {
+                Ok(()) => {
+                    tracing::info!("Syncing contract updates complete");
+                }
+                Err(EventSyncError::EventStreamError(error)) => {
+                    tracing::debug!(%error, "Error while streaming events");
+                }
+                Err(EventSyncError::EventCommitmentMismatch(peer_data)) => {
+                    tracing::debug!(peer=%peer_data.peer, block=%peer_data.data, "Event commitment verification failed");
                 }
             }
         }
