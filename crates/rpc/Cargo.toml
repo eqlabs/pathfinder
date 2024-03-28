@@ -27,7 +27,6 @@ pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
 primitive-types = { workspace = true, features = ["serde"] }
 reqwest = { workspace = true }
-semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",

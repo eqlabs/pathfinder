@@ -1406,7 +1406,7 @@ pub(crate) mod tests {
         ContractAddress,
         StorageValue,
     ) {
-        setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 0)).await
+        setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 0, 0)).await
     }
 
     #[test_log::test(tokio::test)]

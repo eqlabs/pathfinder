@@ -172,7 +172,7 @@ pub(crate) mod tests {
         assert_eq!(contract_class.class_hash().unwrap().hash(), CAIRO0_HASH);
 
         let (storage, last_block_header, account_contract_address, _, _) =
-            setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1)).await;
+            setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let declare = BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -1402,7 +1402,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1454,7 +1454,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1502,7 +1502,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
