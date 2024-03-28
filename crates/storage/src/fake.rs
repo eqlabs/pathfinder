@@ -51,7 +51,7 @@ pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -
             .unwrap();
             tx.insert_signature(header.header.number, &header.signature)
                 .unwrap();
-            tx.insert_state_update_counts(header.header.number, &header.state_update_counts)
+            tx.update_state_update_counts(header.header.number, &header.state_update_counts)
                 .unwrap();
 
             state_update

@@ -101,7 +101,7 @@ impl Transaction<'_> {
     }
 
     /// Inserts a [StateUpdateCounts] instance into storage.
-    pub fn insert_state_update_counts(
+    pub fn update_state_update_counts(
         &self,
         block_number: BlockNumber,
         counts: &StateUpdateCounts,
