@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use p2p::PeerData;
+use p2p_proto::proto::transaction;
 use pathfinder_common::event::Event;
 use pathfinder_common::{BlockNumber, EventCommitment, TransactionHash};
 use pathfinder_storage::Storage;
@@ -83,33 +84,36 @@ pub(super) fn counts_stream(
 }
 
 pub(super) async fn verify_commitment(
-    events: PeerData<(BlockNumber, Vec<(TransactionHash, Vec<Event>)>)>,
-    expected_commitment: EventCommitment,
-) -> Result<PeerData<(BlockNumber, Vec<(TransactionHash, Vec<Event>)>)>, SyncError> {
+    events: PeerData<(BlockNumber, Vec<Event>)>,
+    storage: Storage,
+) -> Result<PeerData<(BlockNumber, Vec<Event>)>, SyncError> {
     use crate::state::block_hash::calculate_event_commitment;
     let PeerData {
         peer,
-        data: (block_number, transaction_events),
+        data: (block_number, events),
     } = events;
-    let error = || SyncError::EventCommitmentMismatch(peer);
-    let (commitment, transation_events) = tokio::task::spawn_blocking(move || {
-        calculate_event_commitment(
-            &transaction_events
-                .iter()
-                .map(|(_, events)| events.as_slice())
-                .collect::<Vec<_>>(),
-        )
-        .map(|commitment| (commitment, transaction_events))
+    let events = tokio::task::spawn_blocking(move || {
+        let computed = calculate_event_commitment(&[&events]).context("Calculating commitment")?;
+        let mut connection = storage
+            .connection()
+            .context("Creating database connection")?;
+        let transaction = connection
+            .transaction()
+            .context("Creating database transaction")?;
+        let expected = transaction
+            .block_header(block_number.into())
+            .context("Querying block header")?
+            .ok_or(anyhow::anyhow!("Block header not found"))?
+            .event_commitment;
+        if computed != expected {
+            return Err(SyncError::EventCommitmentMismatch(peer));
+        }
+        Ok(events)
     })
     .await
-    .map_err(|_| error())?
-    .map_err(|_| error())?;
+    .context("Joining blocking task")??;
 
-    if commitment == expected_commitment {
-        Ok(PeerData::new(peer, (block_number, transation_events)))
-    } else {
-        Err(error())
-    }
+    Ok(PeerData::new(peer, (block_number, events)))
 }
 
 pub(super) async fn persist(

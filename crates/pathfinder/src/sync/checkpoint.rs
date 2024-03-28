@@ -444,10 +444,10 @@ impl Sync {
                     events::counts_stream(self.storage.clone(), start, stop),
                 )
                 .map_err(Into::into)
-                .and_then(|x| events::verify_commitment(todo!(), todo!()))
+                .and_then(|x| events::verify_commitment(x, self.storage.clone()))
                 .try_chunks(100)
                 .map_err(|e| e.1)
-                .and_then(|x| events::persist(self.storage.clone(), x))
+                .and_then(|x| events::persist(self.storage.clone(), todo!()))
                 .inspect_ok(|x| tracing::info!(tail=%x, "Events chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_, _| std::future::ready(Ok(())))
