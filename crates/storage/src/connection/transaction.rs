@@ -145,7 +145,7 @@ pub(super) fn update_events(
     let events = dto::Events::V0 {
         events: events.iter().map(|x| x.to_owned().into()).collect(),
     };
-    let serialized_events = bincode::serde::encode_to_vec(&events, bincode::config::standard())
+    let serialized_events = bincode::serde::encode_to_vec(events, bincode::config::standard())
         .context("Serializing events")?;
     let serialized_events = compressor
         .compress(&serialized_events)
