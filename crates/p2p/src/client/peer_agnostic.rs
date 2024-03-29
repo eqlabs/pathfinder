@@ -252,6 +252,8 @@ impl Client {
         async_stream::try_stream! {
         pin_mut!(contract_update_counts_stream);
 
+        let mut current_counts_outer = None;
+
         if start <= stop_inclusive {
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
@@ -285,9 +287,17 @@ impl Client {
                         }
                     };
 
-                    // Get contract update counts for this block
-                    let mut current = contract_update_counts_stream.next().await
-                        .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
+                    let mut current_counts = match current_counts_outer {
+                        // Still the same block
+                        Some(backup) => backup,
+                        // Move to the next block
+                        None => {
+                            let x = contract_update_counts_stream.next().await
+                                .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
+                            current_counts_outer = Some(x);
+                            x
+                        }
+                    };
 
                     let mut contract_updates = ContractUpdates::default();
 
@@ -304,10 +314,10 @@ impl Client {
                                 let address = ContractAddress(address.0);
                                 let num_values =
                                     u64::try_from(values.len()).expect("ptr size is 64 bits");
-                                match current.storage_diffs.checked_sub(num_values) {
-                                    Some(x) => current.storage_diffs = x,
+                                match current_counts.storage_diffs.checked_sub(num_values) {
+                                    Some(x) => current_counts.storage_diffs = x,
                                     None => {
-                                        tracing::debug!(%peer, "Too many storage diffs: {num_values} > {}", current.storage_diffs);
+                                        tracing::debug!(%peer, "Too many storage diffs: {num_values} > {}", current_counts.storage_diffs);
                                         // TODO punish the peer
                                         continue 'next_peer;
                                     }
@@ -337,8 +347,8 @@ impl Client {
                                     );
 
                                     if let Some(nonce) = nonce {
-                                        match current.nonce_updates.checked_sub(1) {
-                                            Some(x) => current.nonce_updates = x,
+                                        match current_counts.nonce_updates.checked_sub(1) {
+                                            Some(x) => current_counts.nonce_updates = x,
                                             None => {
                                                 tracing::debug!(%peer, "Too many nonce updates");
                                                 // TODO punish the peer
@@ -350,8 +360,8 @@ impl Client {
                                     }
 
                                     if let Some(class_hash) = class_hash.map(ClassHash) {
-                                        match current.deployed_contracts.checked_sub(1) {
-                                            Some(x) => current.deployed_contracts = x,
+                                        match current_counts.deployed_contracts.checked_sub(1) {
+                                            Some(x) => current_counts.deployed_contracts = x,
                                             None => {
                                                 tracing::debug!(%peer, "Too many deployed contracts");
                                                 // TODO punish the peer
@@ -370,9 +380,9 @@ impl Client {
                                 }
                             }
                             StateDiffsResponse::Fin => {
-                                if current.storage_diffs == 0
-                                    && current.nonce_updates == 0
-                                    && current.deployed_contracts == 0
+                                if current_counts.storage_diffs == 0
+                                    && current_counts.nonce_updates == 0
+                                    && current_counts.deployed_contracts == 0
                                 {
                                     // All the counters for this block have been exhausted which means
                                     // that the state update for this block is complete.
@@ -384,8 +394,9 @@ impl Client {
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = contract_update_counts_stream.next().await
+                                        current_counts = contract_update_counts_stream.next().await
                                             .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
+                                        current_counts_outer = Some(current_counts);
                                         tracing::debug!(%peer, "State diff stream Fin");
                                     } else {
                                         // We're done, terminate the stream
@@ -413,6 +424,8 @@ impl Client {
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<Class>>> {
         async_stream::try_stream! {
         pin_mut!(declared_class_counts_stream);
+
+        let mut current_count_outer = None;
 
         if start <= stop_inclusive {
             // Loop which refreshes peer set once we exhaust it.
@@ -444,9 +457,17 @@ impl Client {
                             }
                         };
 
-                    // Get number of declared classes for this block
-                    let mut current = declared_class_counts_stream.next().await
-                        .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                    let mut current_count = match current_count_outer {
+                        // Still the same block
+                        Some(backup) => backup,
+                        // Move to the next block
+                        None => {
+                            let x = declared_class_counts_stream.next().await
+                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                            current_count_outer = Some(x);
+                            x
+                        }
+                    };
 
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
@@ -456,8 +477,8 @@ impl Client {
                                 class_hash,
                             }) => {
                                 let CairoDefinition(definition) = CairoDefinition::try_from_dto(class)?;
-                                match current.checked_sub(1) {
-                                    Some(x) => current = x,
+                                match current_count.checked_sub(1) {
+                                    Some(x) => current_count = x,
                                     None => {
                                         tracing::debug!(%peer, "Too many classes");
                                         // TODO punish the peer
@@ -479,8 +500,8 @@ impl Client {
                                 class_hash,
                             }) => {
                                 let definition = SierraDefinition::try_from_dto(class)?;
-                                match current.checked_sub(1) {
-                                    Some(x) => current = x,
+                                match current_count.checked_sub(1) {
+                                    Some(x) => current_count = x,
                                     None => {
                                         tracing::debug!(%peer, "Too many classes");
                                         // TODO punish the peer
@@ -498,14 +519,15 @@ impl Client {
                                 );
                             }
                             ClassesResponse::Fin => {
-                                if current == 0 {
-                                    // All the counters for this block have been exhausted which means
+                                if current_count == 0 {
+                                    // The counter for this block has been exhausted which means
                                     // that this block is complete.
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = declared_class_counts_stream.next().await
+                                        current_count = declared_class_counts_stream.next().await
                                             .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                                        current_count_outer = Some(current_count);
                                         tracing::debug!(%peer, "Class definition stream Fin");
                                     } else {
                                         // We're done, terminate the stream
@@ -538,6 +560,8 @@ impl Client {
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>> {
         async_stream::try_stream! {
         pin_mut!(event_counts_stream);
+
+        let mut current_count_outer = None;
 
         if start <= stop_inclusive {
             // Loop which refreshes peer set once we exhaust it.
@@ -572,9 +596,17 @@ impl Client {
                     // Maintain the current transaction hash to group events by transaction
                     // This grouping is TRUSTED for pre 0.13.2 Starknet blocks.
                     let mut current_txn_hash = None;
-                    // Get number of events for this block
-                    let mut current = event_counts_stream.next().await
-                        .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
+                    let mut current_count = match current_count_outer {
+                        // Still the same block
+                        Some(backup) => backup,
+                        // Move to the next block
+                        None => {
+                            let x = event_counts_stream.next().await
+                                .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
+                            current_count_outer = Some(x);
+                            x
+                        }
+                    };
 
                     let mut events = Vec::new();
 
@@ -596,8 +628,8 @@ impl Client {
                                     }
                                 }
 
-                                match current.checked_sub(1) {
-                                    Some(x) => current = x,
+                                match current_count.checked_sub(1) {
+                                    Some(x) => current_count = x,
                                     None => {
                                         tracing::debug!(%peer, "Too many events");
                                         // TODO punish the peer
@@ -606,7 +638,7 @@ impl Client {
                                 }
                             }
                             EventsResponse::Fin => {
-                                if current == 0 {
+                                if current_count == 0 {
                                     yield PeerData::new(
                                         peer,
                                         (start, std::mem::take(&mut events)),
@@ -617,8 +649,9 @@ impl Client {
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
-                                        current = event_counts_stream.next().await
+                                        current_count = event_counts_stream.next().await
                                             .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
+                                        current_count_outer = Some(current_count);
                                         tracing::debug!(%peer, "Event stream Fin");
                                     } else {
                                         // We're done, terminate the stream
