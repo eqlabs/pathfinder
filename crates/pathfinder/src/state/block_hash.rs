@@ -56,7 +56,7 @@ pub fn verify_block_hash(
         &block
             .transaction_receipts
             .iter()
-            .map(|(_, events)| events.as_slice())
+            .flat_map(|(_, events)| events)
             .collect::<Vec<_>>(),
     )?;
 
@@ -432,7 +432,7 @@ fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
 /// The event commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
-pub fn calculate_event_commitment(transaction_events: &[&[Event]]) -> Result<EventCommitment> {
+pub fn calculate_event_commitment(transaction_events: &[&Event]) -> Result<EventCommitment> {
     use rayon::prelude::*;
 
     let mut event_hashes = Vec::new();
@@ -440,8 +440,7 @@ pub fn calculate_event_commitment(transaction_events: &[&[Event]]) -> Result<Eve
         s.spawn(|_| {
             event_hashes = transaction_events
                 .par_iter()
-                .flat_map(|events| events.par_iter())
-                .map(calculate_event_hash)
+                .map(|&e| calculate_event_hash(e))
                 .collect();
         })
     });

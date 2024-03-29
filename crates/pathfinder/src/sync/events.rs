@@ -1,14 +1,14 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
+use p2p::client::peer_agnostic::EventsForBlockByTransaction;
 use p2p::PeerData;
-use p2p_proto::proto::transaction;
-use pathfinder_common::event::Event;
-use pathfinder_common::{BlockNumber, EventCommitment, TransactionHash};
+use pathfinder_common::BlockNumber;
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
 use super::error::SyncError;
+use crate::state::block_hash::calculate_event_commitment;
 
 /// Returns the first block number whose events are missing in storage, counting from genesis
 pub(super) async fn next_missing(
@@ -84,16 +84,16 @@ pub(super) fn counts_stream(
 }
 
 pub(super) async fn verify_commitment(
-    events: PeerData<(BlockNumber, Vec<Event>)>,
+    events: PeerData<EventsForBlockByTransaction>,
     storage: Storage,
-) -> Result<PeerData<(BlockNumber, Vec<Event>)>, SyncError> {
-    use crate::state::block_hash::calculate_event_commitment;
+) -> Result<PeerData<EventsForBlockByTransaction>, SyncError> {
     let PeerData {
         peer,
         data: (block_number, events),
     } = events;
     let events = tokio::task::spawn_blocking(move || {
-        let computed = calculate_event_commitment(&[&events]).context("Calculating commitment")?;
+        let computed = calculate_event_commitment(&events.iter().flatten().collect::<Vec<_>>())
+            .context("Calculating commitment")?;
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;
@@ -118,8 +118,7 @@ pub(super) async fn verify_commitment(
 
 pub(super) async fn persist(
     storage: Storage,
-    // TODO txn hashes not used, so remove them
-    events: Vec<PeerData<(BlockNumber, Vec<(TransactionHash, Vec<Event>)>)>>,
+    events: Vec<PeerData<EventsForBlockByTransaction>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut connection = storage
@@ -133,9 +132,9 @@ pub(super) async fn persist(
         ))?;
 
         for (block_number, events_for_block) in events.into_iter().map(|x| x.data) {
-            for (txn_idx, (_, events)) in events_for_block.into_iter().enumerate() {
+            for (txn_idx, events_for_txn) in events_for_block.into_iter().enumerate() {
                 transaction
-                    .update_events(block_number, txn_idx, &events)
+                    .update_events(block_number, txn_idx, &events_for_txn)
                     .context("Updating events")?;
             }
         }

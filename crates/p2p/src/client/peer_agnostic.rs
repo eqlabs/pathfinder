@@ -23,7 +23,7 @@ use p2p_proto::{
 use pathfinder_common::{
     event::Event,
     state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates},
-    SierraHash,
+    SierraHash, TransactionHash,
 };
 use pathfinder_common::{
     BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
@@ -525,13 +525,17 @@ impl Client {
         }
     }
 
-    /// All events of a single block comprise a single item in the stream.
+    /// ### Important
+    ///
+    /// Events are grouped by block and by transaction. The order of flattened events in a block is guaranteed
+    /// to be correct because the event commitment is part of block hash. However the number of events per transaction
+    /// for __pre 0.13.2__ Starknet blocks is __TRUSTED__ because neither signature nor block hash contain this information.
     pub fn events_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, Vec<Event>)>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>> {
         async_stream::try_stream! {
         pin_mut!(event_counts_stream);
 
@@ -565,6 +569,9 @@ impl Client {
                             }
                         };
 
+                    // Maintain the current transaction hash to group events by transaction
+                    // This grouping is TRUSTED for pre 0.13.2 Starknet blocks.
+                    let mut current_txn_hash = None;
                     // Get number of events for this block
                     let mut current = event_counts_stream.next().await
                         .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
@@ -574,8 +581,29 @@ impl Client {
                     while let Some(contract_diff) = responses.next().await {
                         match contract_diff {
                             EventsResponse::Event(event) => {
+                                let txn_hash = TransactionHash(event.transaction_hash.0);
                                 let event = Event::try_from_dto(event)?;
-                                events.push(event);
+
+                                match current_txn_hash {
+                                    Some(x) if x != txn_hash => {
+                                        // New transaction
+                                        events.push(vec![event]);
+                                        current_txn_hash = Some(txn_hash);
+                                    }
+                                    _ => {
+                                        // Same transaction
+                                        events.last_mut().expect("not empty").push(event);
+                                    }
+                                }
+
+                                match current.checked_sub(1) {
+                                    Some(x) => current = x,
+                                    None => {
+                                        tracing::debug!(%peer, "Too many events");
+                                        // TODO punish the peer
+                                        continue 'next_peer;
+                                    }
+                                }
                             }
                             EventsResponse::Fin => {
                                 if current == 0 {
@@ -647,3 +675,5 @@ impl Default for PeersWithCapability {
         Self::new(Duration::from_secs(60))
     }
 }
+
+pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
