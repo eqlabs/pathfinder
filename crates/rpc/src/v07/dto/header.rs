@@ -1,6 +1,7 @@
 use pathfinder_common::prelude::*;
 use serde::Serialize;
 use serde_with::serde_as;
+use serde_with::DisplayFromStr;
 
 #[serde_as]
 #[derive(Serialize)]
@@ -12,6 +13,7 @@ pub struct Header {
     timestamp: BlockTimestamp,
     sequencer_address: SequencerAddress,
     l1_gas_price: ResourcePrice,
+    #[serde_as(as = "DisplayFromStr")]
     starknet_version: StarknetVersion,
     l1_data_gas_price: ResourcePrice,
     l1_da_mode: L1DaMode,
@@ -50,6 +52,7 @@ pub struct PendingHeader {
     timestamp: BlockTimestamp,
     sequencer_address: SequencerAddress,
     l1_gas_price: ResourcePrice,
+    #[serde_as(as = "DisplayFromStr")]
     starknet_version: StarknetVersion,
     l1_data_gas_price: ResourcePrice,
     l1_da_mode: L1DaMode,
@@ -139,7 +142,7 @@ mod tests {
             eth_l1_data_gas_price: GasPrice(0x7),
             strk_l1_data_gas_price: GasPrice(0x8),
             sequencer_address: sequencer_address!("0x9"),
-            starknet_version: StarknetVersion::new(0, 11, 1),
+            starknet_version: StarknetVersion::new(0, 11, 1, 0),
             l1_da_mode: pathfinder_common::L1DataAvailabilityMode::Calldata,
             ..Default::default()
         };
@@ -182,7 +185,7 @@ mod tests {
             strk_l1_data_gas_price: GasPrice(0x8),
             sequencer_address: sequencer_address!("0x9"),
             state_commitment: state_commitment!("0x10"),
-            starknet_version: StarknetVersion::new(0, 11, 1),
+            starknet_version: StarknetVersion::new(0, 11, 1, 0),
             l1_da_mode: pathfinder_common::L1DataAvailabilityMode::Calldata,
             ..Default::default()
         };

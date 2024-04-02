@@ -439,7 +439,7 @@ async fn check_transactions(
         return Ok(false);
     }
     let transaction_final_hash_type =
-        TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
+        TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let transaction_commitment = spawn_blocking({
         let transactions = transactions.to_vec();
         move || {

@@ -890,9 +890,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.5.0"
+version = "0.6.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93a41962da92cb8daab297c29fb54289a0291d84cd87d82ad8b616948b0f64b1"
+checksum = "5e32cf74759dc6be99389096fd3fa0a8cc9e8cd44dd2c5f0f076f418df69397d"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -5990,7 +5990,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p2p"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -6026,7 +6026,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_proto"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "fake",
@@ -6045,7 +6045,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_proto_derive"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6054,7 +6054,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_stream"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6171,7 +6171,7 @@ checksum = "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef"
 
 [[package]]
 name = "pathfinder"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -6236,7 +6236,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-common"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "bitvec",
@@ -6248,7 +6248,6 @@ dependencies = [
  "primitive-types",
  "rand",
  "rstest",
- "semver",
  "serde",
  "serde_json",
  "serde_with",
@@ -6259,7 +6258,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-compiler"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "cairo-lang-starknet 1.0.0-alpha.6",
@@ -6277,7 +6276,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-crypto"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "ark-ff",
  "assert_matches",
@@ -6294,7 +6293,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-ethereum"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6314,7 +6313,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-executor"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "blockifier",
@@ -6325,7 +6324,6 @@ dependencies = [
  "pathfinder-crypto",
  "pathfinder-storage",
  "primitive-types",
- "semver",
  "serde_json",
  "starknet-gateway-types",
  "starknet_api",
@@ -6335,7 +6333,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-merkle-tree"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "bitvec",
@@ -6351,7 +6349,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-retry"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "tokio",
  "tokio-retry",
@@ -6359,7 +6357,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-rpc"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -6386,7 +6384,6 @@ dependencies = [
  "primitive-types",
  "reqwest",
  "rstest",
- "semver",
  "serde",
  "serde_json",
  "serde_with",
@@ -6408,7 +6405,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-serde"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "num-bigint 0.4.4",
@@ -6423,7 +6420,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-storage"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -8064,7 +8061,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-client"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -8098,7 +8095,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-test-fixtures"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
@@ -8106,7 +8103,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-types"
-version = "0.11.3"
+version = "0.11.5"
 dependencies = [
  "anyhow",
  "assert_matches",

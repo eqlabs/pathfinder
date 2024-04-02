@@ -36,12 +36,7 @@ mod tests {
         ContractClass, DataAvailabilityMode, ResourceBounds, SierraContractClass,
     };
 
-    #[tokio::test]
-    async fn declare_deploy_and_invoke_sierra_class() {
-        let (context, last_block_header, account_contract_address, universal_deployer_address) =
-            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(0, 13, 1))
-                .await;
-
+    fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
         let sierra_definition = include_bytes!("../../../fixtures/contracts/storage_access.json");
         let sierra_hash =
             class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
@@ -58,9 +53,8 @@ mod tests {
 
         let max_fee = Fee::default();
 
-        // declare test class
-        let declare_transaction = BroadcastedTransaction::Declare(
-            BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(
+            BroadcastedDeclareTransactionV2 {
                 version: TransactionVersion::TWO,
                 max_fee,
                 signature: vec![],
@@ -68,10 +62,19 @@ mod tests {
                 contract_class,
                 sender_address: account_contract_address,
                 compiled_class_hash: casm_hash,
-            }),
-        );
-        // deploy with unversal deployer contract
-        let deploy_transaction = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+            },
+        ))
+    }
+
+    fn deploy_transaction(
+        account_contract_address: ContractAddress,
+        universal_deployer_address: ContractAddress,
+    ) -> BroadcastedTransaction {
+        let max_fee = Fee::default();
+        let sierra_hash =
+            class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
+
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
             BroadcastedInvokeTransactionV1 {
                 nonce: transaction_nonce!("0x1"),
                 version: TransactionVersion::ONE,
@@ -94,9 +97,13 @@ mod tests {
                     call_param!("0x0"),
                 ],
             },
-        ));
-        // invoke deployed contract
-        let invoke_transaction = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+        ))
+    }
+
+    fn invoke_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
+        let max_fee = Fee::default();
+
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
             BroadcastedInvokeTransactionV1 {
                 nonce: transaction_nonce!("0x2"),
                 version: TransactionVersion::ONE,
@@ -114,11 +121,14 @@ mod tests {
                     call_param!("0"),
                 ],
             },
-        ));
+        ))
+    }
 
-        // do the same invoke with a v0 transaction
-        let invoke_v0_transaction = BroadcastedTransaction::Invoke(
-            BroadcastedInvokeTransaction::V0(BroadcastedInvokeTransactionV0 {
+    fn invoke_v0_transaction() -> BroadcastedTransaction {
+        let max_fee = Fee::default();
+
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+            BroadcastedInvokeTransactionV0 {
                 version: TransactionVersion::ONE,
                 max_fee,
                 signature: vec![],
@@ -127,12 +137,13 @@ mod tests {
                 ),
                 entry_point_selector: EntryPoint::hashed(b"get_data"),
                 calldata: vec![],
-            }),
-        );
+            },
+        ))
+    }
 
-        // do the same invoke with a v3 transaction
-        let invoke_v3_transaction = BroadcastedTransaction::Invoke(
-            BroadcastedInvokeTransaction::V3(BroadcastedInvokeTransactionV3 {
+    fn invoke_v3_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
                 version: TransactionVersion::THREE,
                 signature: vec![],
                 sender_address: account_contract_address,
@@ -153,8 +164,29 @@ mod tests {
                 account_deployment_data: vec![],
                 nonce_data_availability_mode: DataAvailabilityMode::L1,
                 fee_data_availability_mode: DataAvailabilityMode::L1,
-            }),
-        );
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1() {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 1, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_transaction(account_contract_address);
+        // deploy with unversal deployer contract
+        let deploy_transaction =
+            deploy_transaction(account_contract_address, universal_deployer_address);
+        // invoke deployed contract
+        let invoke_transaction = invoke_transaction(account_contract_address);
+        // do the same invoke with a v0 transaction
+        let invoke_v0_transaction = invoke_v0_transaction();
+        // do the same invoke with a v3 transaction
+        let invoke_v3_transaction = invoke_v3_transaction(account_contract_address);
 
         let input = EstimateFeeInput {
             request: vec![
@@ -177,9 +209,94 @@ mod tests {
             data_gas_price: Some(2.into()),
         };
         let deploy_expected = FeeEstimate {
-            gas_consumed: 15.into(),
+            gas_consumed: 16.into(),
             gas_price: 1.into(),
-            overall_fee: 463.into(),
+            overall_fee: 464.into(),
+            unit: PriceUnit::Wei,
+            data_gas_consumed: Some(224.into()),
+            data_gas_price: Some(2.into()),
+        };
+        let invoke_expected = FeeEstimate {
+            gas_consumed: 12.into(),
+            gas_price: 1.into(),
+            overall_fee: 268.into(),
+            unit: PriceUnit::Wei,
+            data_gas_consumed: Some(128.into()),
+            data_gas_price: Some(2.into()),
+        };
+        let invoke_v0_expected = FeeEstimate {
+            gas_consumed: 10.into(),
+            gas_price: 1.into(),
+            overall_fee: 266.into(),
+            unit: PriceUnit::Wei,
+            data_gas_consumed: Some(128.into()),
+            data_gas_price: Some(2.into()),
+        };
+        let invoke_v3_expected = FeeEstimate {
+            gas_consumed: 12.into(),
+            // STRK gas price is 2
+            gas_price: 2.into(),
+            overall_fee: 280.into(),
+            unit: PriceUnit::Fri,
+            data_gas_consumed: Some(128.into()),
+            data_gas_price: Some(2.into()),
+        };
+        assert_eq!(
+            result,
+            vec![
+                declare_expected,
+                deploy_expected,
+                invoke_expected,
+                invoke_v0_expected,
+                invoke_v3_expected,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1_1() {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 1, 1,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_transaction(account_contract_address);
+        // deploy with unversal deployer contract
+        let deploy_transaction =
+            deploy_transaction(account_contract_address, universal_deployer_address);
+        // invoke deployed contract
+        let invoke_transaction = invoke_transaction(account_contract_address);
+        // do the same invoke with a v0 transaction
+        let invoke_v0_transaction = invoke_v0_transaction();
+        // do the same invoke with a v3 transaction
+        let invoke_v3_transaction = invoke_v3_transaction(account_contract_address);
+
+        let input = EstimateFeeInput {
+            request: vec![
+                declare_transaction,
+                deploy_transaction,
+                invoke_transaction,
+                invoke_v0_transaction,
+                invoke_v3_transaction,
+            ],
+            simulation_flags: SimulationFlags(vec![]),
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input).await.unwrap();
+        let declare_expected = FeeEstimate {
+            gas_consumed: 878.into(),
+            gas_price: 1.into(),
+            overall_fee: 1262.into(),
+            unit: PriceUnit::Wei,
+            data_gas_consumed: Some(192.into()),
+            data_gas_price: Some(2.into()),
+        };
+        let deploy_expected = FeeEstimate {
+            gas_consumed: 16.into(),
+            gas_price: 1.into(),
+            overall_fee: 464.into(),
             unit: PriceUnit::Wei,
             data_gas_consumed: Some(224.into()),
             data_gas_price: Some(2.into()),
