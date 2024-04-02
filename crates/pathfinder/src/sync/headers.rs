@@ -99,7 +99,7 @@ pub(super) fn check_continuity(
         Some(Ok(input))
     } else {
         expected.2 = true;
-        Some(Err(SyncError::Discontinuity(input)))
+        Some(Err(SyncError::Discontinuity(input.peer)))
     };
 
     std::future::ready(result)
@@ -109,11 +109,11 @@ pub(super) fn check_continuity(
 pub(super) async fn verify(signed_header: PeerData<SignedBlockHeader>) -> SignedHeaderResult {
     tokio::task::spawn_blocking(move || {
         if !signed_header.data.verify_signature() {
-            return Err(SyncError::BadHeaderSignature(signed_header));
+            return Err(SyncError::BadHeaderSignature(signed_header.peer));
         }
 
         if !signed_header.data.header.verify_hash() {
-            return Err(SyncError::BadBlockHash(signed_header));
+            return Err(SyncError::BadBlockHash(signed_header.peer));
         }
 
         Ok(signed_header)

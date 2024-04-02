@@ -101,9 +101,8 @@ pub(super) fn verify_layout(
             hash,
             definition,
         } => {
-            let layout = serde_json::from_slice(&definition).map_err(|e| {
-                SyncError::BadClassLayout(Box::new(PeerData::new(peer, (block_number, hash, e))))
-            })?;
+            let layout =
+                serde_json::from_slice(&definition).map_err(|_| SyncError::BadClassLayout(peer))?;
             Ok(PeerData::new(
                 peer,
                 ClassWithLayout {
@@ -122,12 +121,8 @@ pub(super) fn verify_layout(
             sierra_definition,
             casm_definition,
         } => {
-            let layout = serde_json::from_slice(&sierra_definition).map_err(|e| {
-                SyncError::BadClassLayout(Box::new(PeerData::new(
-                    peer,
-                    (block_number, ClassHash(sierra_hash.0), e),
-                )))
-            })?;
+            let layout = serde_json::from_slice(&sierra_definition)
+                .map_err(|_| SyncError::BadClassLayout(peer))?;
             Ok(PeerData::new(
                 peer,
                 ClassWithLayout {
@@ -150,8 +145,6 @@ pub(super) async fn verify_hash(
     let PeerData { peer, data } = peer_data;
     let ClassWithLayout { class, layout } = data;
 
-    let err = || SyncError::BadClassHash(PeerData::new(peer, (class.block_number(), class.hash())));
-
     let computed = tokio::task::spawn_blocking(move || match layout {
         ClassDefinition::Cairo(c) => compute_cairo_class_hash(
             c.abi.as_ref().get().as_bytes(),
@@ -168,17 +161,12 @@ pub(super) async fn verify_hash(
         ),
     })
     .await
-    .map_err(|_| err())?
-    .map_err(|_| err())?;
+    .context("Joining blocking task")?
+    .context("Computing class hash")?;
 
-    if computed == class.hash() {
-        Ok(PeerData::new(peer, class))
-    } else {
-        Err(SyncError::BadClassHash(PeerData::new(
-            peer,
-            (class.block_number(), class.hash()),
-        )))
-    }
+    (computed == class.hash())
+        .then_some(PeerData::new(peer, class))
+        .ok_or(SyncError::BadClassHash(peer))
 }
 
 pub(super) async fn persist(

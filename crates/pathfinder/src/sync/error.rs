@@ -1,4 +1,4 @@
-use p2p::PeerData;
+use p2p::{libp2p::PeerId, PeerData};
 use pathfinder_common::{BlockNumber, ClassHash, SignedBlockHeader};
 
 #[derive(Debug, thiserror::Error)]
@@ -6,17 +6,17 @@ pub(super) enum SyncError {
     #[error(transparent)]
     Other(#[from] anyhow::Error),
     #[error("Header signature verification failed")]
-    BadHeaderSignature(PeerData<SignedBlockHeader>),
+    BadHeaderSignature(PeerId),
     #[error("Block hash verification failed")]
-    BadBlockHash(PeerData<SignedBlockHeader>),
+    BadBlockHash(PeerId),
     #[error("Discontinuity in header chain")]
-    Discontinuity(PeerData<SignedBlockHeader>),
+    Discontinuity(PeerId),
     #[error("State diff signature verification failed")]
-    BadStateDiffSignature(PeerData<BlockNumber>),
+    BadStateDiffSignature(PeerId),
     #[error("State diff commitment mismatch")]
-    StateDiffCommitmentMismatch(PeerData<BlockNumber>),
+    StateDiffCommitmentMismatch(PeerId),
     #[error("Invalid class definition layout")]
-    BadClassLayout(Box<PeerData<(BlockNumber, ClassHash, serde_json::Error)>>),
+    BadClassLayout(PeerId),
     #[error("Class hash verification failed")]
-    BadClassHash(PeerData<(BlockNumber, ClassHash)>),
+    BadClassHash(PeerId),
 }

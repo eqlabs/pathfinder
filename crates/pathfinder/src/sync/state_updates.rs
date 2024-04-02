@@ -295,10 +295,7 @@ fn verify_one(
         .context("Apply storage commitment tree updates")?;
 
     if storage_commitment != computed_storage_commitment {
-        return Err(SyncError::StateDiffCommitmentMismatch(PeerData::new(
-            peer,
-            block_number,
-        )));
+        return Err(SyncError::StateDiffCommitmentMismatch(peer));
     }
 
     contract_update_results.extend(system_contract_update_results);
