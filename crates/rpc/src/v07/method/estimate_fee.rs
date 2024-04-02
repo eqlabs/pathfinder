@@ -209,9 +209,9 @@ mod tests {
             data_gas_price: Some(2.into()),
         };
         let deploy_expected = FeeEstimate {
-            gas_consumed: 15.into(),
+            gas_consumed: 16.into(),
             gas_price: 1.into(),
-            overall_fee: 463.into(),
+            overall_fee: 464.into(),
             unit: PriceUnit::Wei,
             data_gas_consumed: Some(224.into()),
             data_gas_price: Some(2.into()),
@@ -294,9 +294,9 @@ mod tests {
             data_gas_price: Some(2.into()),
         };
         let deploy_expected = FeeEstimate {
-            gas_consumed: 15.into(),
+            gas_consumed: 16.into(),
             gas_price: 1.into(),
-            overall_fee: 463.into(),
+            overall_fee: 464.into(),
             unit: PriceUnit::Wei,
             data_gas_consumed: Some(224.into()),
             data_gas_price: Some(2.into()),

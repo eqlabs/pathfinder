@@ -545,8 +545,8 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_OVERALL_FEE: u64 = 463;
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 15;
+            const UNIVERSAL_DEPLOYER_OVERALL_FEE: u64 = 464;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 16;
             const UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED: u64 = 224;
 
             pub fn universal_deployer(
@@ -735,7 +735,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9fa8")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9fa7")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1087,7 +1087,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9e9c")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9e9b")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),

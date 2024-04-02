@@ -879,9 +879,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.6.0-rc.0"
+version = "0.6.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6457e011283e86eca26a28c7a7d7c2653c1c65a6baff29c5a6474946c37771dc"
+checksum = "5e32cf74759dc6be99389096fd3fa0a8cc9e8cd44dd2c5f0f076f418df69397d"
 dependencies = [
  "anyhow",
  "ark-ec",
