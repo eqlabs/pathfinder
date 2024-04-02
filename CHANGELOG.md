@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.11.5] - 2024-04-02
+
 ### Changed
 
 - blockifier has been upgraded to version 0.6.0-rc.1.
