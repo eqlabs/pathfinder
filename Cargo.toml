@@ -48,7 +48,7 @@ async-trait = "0.1.73"
 axum = { version = "0.6.19", features = ["macros"] }
 base64 = "0.13.1"
 bitvec = "1.0.1"
-blockifier = "=0.6.0-rc.0"
+blockifier = "=0.6.0-rc.1"
 bytes = "1.4.0"
 cached = "0.44.0"
 # This one needs to match the version used by blockifier

@@ -1974,7 +1974,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3008;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3009;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -2040,7 +2040,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff8c75")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff8c74")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -2299,7 +2299,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff85f5")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff85f4")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
