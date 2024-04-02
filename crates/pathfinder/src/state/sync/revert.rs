@@ -1,7 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHeader, BlockNumber, ClassCommitment, ClassCommitmentLeafHash, ContractStateHash,
-    StorageCommitment,
+    BlockHeader, BlockNumber, ClassCommitment, ClassCommitmentLeafHash, StorageCommitment,
 };
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_storage::Transaction;
@@ -16,21 +15,18 @@ pub fn revert_starknet_state(
     head: BlockNumber,
     target_block: BlockNumber,
     target_header: BlockHeader,
-    force: bool,
 ) -> Result<(), anyhow::Error> {
     revert_contract_updates(
         transaction,
         head,
         target_block,
         target_header.storage_commitment,
-        force,
     )?;
     revert_class_updates(
         transaction,
         head,
         target_block,
         target_header.class_commitment,
-        force,
     )?;
     Ok(())
 }
@@ -44,9 +40,8 @@ fn revert_contract_updates(
     head: BlockNumber,
     target_block: BlockNumber,
     expected_storage_commitment: StorageCommitment,
-    force: bool,
 ) -> anyhow::Result<()> {
-    if force || !transaction.storage_root_exists(target_block)? {
+    if !transaction.storage_root_exists(target_block)? {
         let updates = transaction.reverse_contract_updates(head, target_block)?;
 
         let mut global_tree = StorageCommitmentTree::load(transaction, head)
@@ -61,19 +56,9 @@ fn revert_contract_updates(
                 contract_update,
             )?;
 
-            let expected_contract_state_hash = transaction
-                .contract_state_hash(target_block, contract_address)
-                .context("Fetching expected contract state hash")?
-                // non-existent contracts are mapped to a zero state hash
-                .unwrap_or(ContractStateHash::ZERO);
-            if expected_contract_state_hash != state_hash {
-                anyhow::bail!(
-                    "Contract state hash mismatch: address {} computed {} expected {}",
-                    contract_address,
-                    state_hash,
-                    expected_contract_state_hash
-                );
-            }
+            transaction
+                .insert_contract_state_hash(target_block, contract_address, state_hash)
+                .context("Inserting reverted contract state hash")?;
 
             global_tree
                 .set(contract_address, state_hash)
@@ -105,7 +90,7 @@ fn revert_contract_updates(
         };
 
         transaction
-            .insert_or_update_storage_root(target_block, root_idx)
+            .insert_storage_root(target_block, root_idx)
             .context("Inserting storage root index")?;
         tracing::debug!(%target_block, %storage_commitment, "Committed global state tree");
     } else {
@@ -120,9 +105,8 @@ fn revert_class_updates(
     head: BlockNumber,
     target_block: BlockNumber,
     expected_class_commitment: ClassCommitment,
-    force: bool,
 ) -> anyhow::Result<()> {
-    if force || !transaction.class_root_exists(target_block)? {
+    if !transaction.class_root_exists(target_block)? {
         let updates = transaction.reverse_sierra_class_updates(head, target_block)?;
 
         let mut class_tree = ClassCommitmentTree::load(transaction, head)
@@ -167,7 +151,7 @@ fn revert_class_updates(
         };
 
         transaction
-            .insert_or_update_class_root(target_block, root_idx)
+            .insert_class_root(target_block, root_idx)
             .context("Inserting class root index")?;
 
         tracing::debug!(%target_block, %class_commitment, "Committed class trie");
