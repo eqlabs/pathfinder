@@ -7,9 +7,14 @@ use rusqlite::params;
 use crate::params::RowExt;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
+    tracing::info!("Creating new version column in block_headers");
     tx.execute("ALTER TABLE block_headers ADD COLUMN version INTEGER", [])
         .context("Adding version column to block_headers")?;
 
+    let count = tx.query_row("SELECT COUNT(*) FROM starknet_versions", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    let mut progress = 0;
     let mut stmt = tx.prepare("SELECT id, version FROM starknet_versions")?;
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
@@ -23,8 +28,14 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             params![version, id],
         )
         .context("Updating block_headers with version_id_new")?;
+        progress += 1;
+        tracing::info!(
+            "Updating versions format: {:.2}%",
+            (progress as f64 / count as f64) * 100.0
+        );
     }
 
+    tracing::info!("Dropping old version_id column and starknet_versions table");
     tx.execute("ALTER TABLE block_headers DROP COLUMN version_id", [])
         .context("Dropping version_id column from block_headers")?;
     tx.execute("DROP TABLE starknet_versions", [])
