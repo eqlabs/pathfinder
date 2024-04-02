@@ -290,16 +290,15 @@ pub(super) fn block_header(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<BlockHeader>> {
-    const BASE_SQL: &str = "SELECT * FROM block_headers";
     let sql = match block {
-        BlockId::Latest => format!("{BASE_SQL} ORDER BY number DESC LIMIT 1"),
-        BlockId::Number(_) => format!("{BASE_SQL} WHERE number = ?"),
-        BlockId::Hash(_) => format!("{BASE_SQL} WHERE hash = ?"),
+        BlockId::Latest => "SELECT * FROM block_headers ORDER BY number DESC LIMIT 1",
+        BlockId::Number(_) => "SELECT * FROM block_headers WHERE number = ?",
+        BlockId::Hash(_) => "SELECT * FROM block_headers WHERE hash = ?",
     };
 
     let mut stmt = tx
         .inner()
-        .prepare_cached(&sql)
+        .prepare_cached(sql)
         .context("Preparing block header query")?;
 
     let header = match block {
