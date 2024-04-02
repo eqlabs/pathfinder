@@ -3,12 +3,10 @@ use pathfinder_ethereum::EthereumStateUpdate;
 
 use crate::prelude::*;
 
-pub(super) fn upsert_l1_state(
-    tx: &Transaction<'_>,
-    update: &EthereumStateUpdate,
-) -> anyhow::Result<()> {
-    tx.inner().execute(
-        r"INSERT OR REPLACE INTO l1_state (
+impl Transaction<'_> {
+    pub fn upsert_l1_state(&self, update: &EthereumStateUpdate) -> anyhow::Result<()> {
+        self.inner().execute(
+            r"INSERT OR REPLACE INTO l1_state (
                     starknet_block_number,
                     starknet_block_hash,
                     starknet_state_root
@@ -17,21 +15,21 @@ pub(super) fn upsert_l1_state(
                     :starknet_block_hash,
                     :starknet_state_root
                 )",
-        named_params! {
-            ":starknet_block_number": &update.block_number,
-            ":starknet_block_hash": &update.block_hash,
-            ":starknet_state_root": &update.state_root,
-        },
-    )?;
+            named_params! {
+                ":starknet_block_number": &update.block_number,
+                ":starknet_block_hash": &update.block_hash,
+                ":starknet_state_root": &update.state_root,
+            },
+        )?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub(super) fn l1_state_at_number(
-    tx: &Transaction<'_>,
-    block: BlockNumber,
-) -> anyhow::Result<Option<EthereumStateUpdate>> {
-    tx.inner()
+    pub fn l1_state_at_number(
+        &self,
+        block: BlockNumber,
+    ) -> anyhow::Result<Option<EthereumStateUpdate>> {
+        self.inner()
         .query_row(
             r"SELECT starknet_block_number, starknet_block_hash, starknet_state_root FROM l1_state 
             WHERE starknet_block_number = ?",
@@ -50,10 +48,10 @@ pub(super) fn l1_state_at_number(
         )
         .optional()
         .map_err(|e| e.into())
-}
+    }
 
-pub(super) fn latest_l1_state(tx: &Transaction<'_>) -> anyhow::Result<Option<EthereumStateUpdate>> {
-    tx.inner()
+    pub fn latest_l1_state(&self) -> anyhow::Result<Option<EthereumStateUpdate>> {
+        self.inner()
         .query_row(
             r"SELECT starknet_block_number, starknet_block_hash, starknet_state_root FROM l1_state 
             ORDER BY starknet_block_number DESC
@@ -73,6 +71,7 @@ pub(super) fn latest_l1_state(tx: &Transaction<'_>) -> anyhow::Result<Option<Eth
         )
         .optional()
         .map_err(|e| e.into())
+    }
 }
 
 #[cfg(test)]
@@ -104,10 +103,10 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        let result = l1_state_at_number(&tx, BlockNumber::GENESIS).unwrap();
+        let result = tx.l1_state_at_number(BlockNumber::GENESIS).unwrap();
         assert_eq!(result, None);
 
-        let result = latest_l1_state(&tx).unwrap();
+        let result = tx.latest_l1_state().unwrap();
         assert_eq!(result, None);
     }
 
@@ -120,10 +119,10 @@ mod tests {
         let updates = create_updates();
         let expected = updates.last().unwrap().clone();
         for update in updates {
-            upsert_l1_state(&tx, &update).unwrap();
+            tx.upsert_l1_state(&update).unwrap();
         }
 
-        let result = latest_l1_state(&tx).unwrap().unwrap();
+        let result = tx.latest_l1_state().unwrap().unwrap();
         assert_eq!(result, expected);
     }
 
@@ -135,11 +134,11 @@ mod tests {
 
         let updates = create_updates();
         for update in &updates {
-            upsert_l1_state(&tx, update).unwrap();
+            tx.upsert_l1_state(update).unwrap();
         }
 
         for expected in updates {
-            let result = l1_state_at_number(&tx, expected.block_number).unwrap();
+            let result = tx.l1_state_at_number(expected.block_number).unwrap();
 
             assert_eq!(result, Some(expected));
         }
@@ -156,16 +155,17 @@ mod tests {
             block_number: BlockNumber::new_or_panic(10),
             block_hash: block_hash!("0xabdd"),
         };
-        upsert_l1_state(&tx, &original).unwrap();
+        tx.upsert_l1_state(&original).unwrap();
 
         let new_value = EthereumStateUpdate {
             state_root: state_commitment!("0xabcdef"),
             block_number: original.block_number,
             block_hash: block_hash!("0xccdd22"),
         };
-        upsert_l1_state(&tx, &new_value).unwrap();
+        tx.upsert_l1_state(&new_value).unwrap();
 
-        let result = l1_state_at_number(&tx, original.block_number)
+        let result = tx
+            .l1_state_at_number(original.block_number)
             .unwrap()
             .unwrap();
         assert_eq!(result, new_value);

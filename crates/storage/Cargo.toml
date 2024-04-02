@@ -21,6 +21,7 @@ flume = { version = "0.11.0", default-features = false, features = ["eventual-fa
 hex = { workspace = true }
 lazy_static = { workspace = true }
 metrics = { workspace = true }
+paste = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }

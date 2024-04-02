@@ -3,142 +3,139 @@ use pathfinder_common::{BlockNumber, CasmHash, ClassCommitmentLeafHash, ClassHas
 
 use crate::{prelude::*, BlockId};
 
-pub(super) fn insert_sierra_class(
-    transaction: &Transaction<'_>,
-    sierra_hash: &SierraHash,
-    sierra_definition: &[u8],
-    casm_hash: &CasmHash,
-    casm_definition: &[u8],
-) -> anyhow::Result<()> {
-    let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-    let sierra_definition = compressor
-        .compress(sierra_definition)
-        .context("Compressing sierra definition")?;
-    let casm_definition = compressor
-        .compress(casm_definition)
-        .context("Compressing casm definition")?;
+impl Transaction<'_> {
+    pub fn insert_sierra_class(
+        &self,
+        sierra_hash: &SierraHash,
+        sierra_definition: &[u8],
+        casm_hash: &CasmHash,
+        casm_definition: &[u8],
+    ) -> anyhow::Result<()> {
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
+        let sierra_definition = compressor
+            .compress(sierra_definition)
+            .context("Compressing sierra definition")?;
+        let casm_definition = compressor
+            .compress(casm_definition)
+            .context("Compressing casm definition")?;
 
-    transaction
-        .inner()
-        .execute(
-            r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
-            params![sierra_hash, &sierra_definition],
-        )
-        .context("Inserting sierra definition")?;
+        self.inner()
+            .execute(
+                r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
+                params![sierra_hash, &sierra_definition],
+            )
+            .context("Inserting sierra definition")?;
 
-    transaction
-        .inner()
-        .execute(
-            r"INSERT OR REPLACE INTO casm_definitions
+        self.inner()
+            .execute(
+                r"INSERT OR REPLACE INTO casm_definitions
                 (hash, definition, compiled_class_hash)
             VALUES
                 (:hash, :definition, :compiled_class_hash)",
-            named_params! {
-                ":hash": sierra_hash,
-                ":definition": &casm_definition,
-                ":compiled_class_hash": casm_hash,
-            },
-        )
-        .context("Inserting casm definition")?;
+                named_params! {
+                    ":hash": sierra_hash,
+                    ":definition": &casm_definition,
+                    ":compiled_class_hash": casm_hash,
+                },
+            )
+            .context("Inserting casm definition")?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub(super) fn insert_cairo_class(
-    transaction: &Transaction<'_>,
-    cairo_hash: ClassHash,
-    definition: &[u8],
-) -> anyhow::Result<()> {
-    let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-    let definition = compressor
-        .compress(definition)
-        .context("Compressing cairo definition")?;
+    pub fn insert_cairo_class(
+        &self,
+        cairo_hash: ClassHash,
+        definition: &[u8],
+    ) -> anyhow::Result<()> {
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
+        let definition = compressor
+            .compress(definition)
+            .context("Compressing cairo definition")?;
 
-    transaction
-        .inner()
-        .execute(
-            r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
-            params![&cairo_hash, &definition],
-        )
-        .context("Inserting cairo definition")?;
+        self.inner()
+            .execute(
+                r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
+                params![&cairo_hash, &definition],
+            )
+            .context("Inserting cairo definition")?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-/// Returns whether or not the given class definitions exist.
-pub(super) fn classes_exist(
-    transaction: &Transaction<'_>,
-    classes: &[ClassHash],
-) -> anyhow::Result<Vec<bool>> {
-    let mut stmt = transaction
-        .inner()
-        .prepare_cached("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+    /// Returns whether the Sierra or Cairo class definition exists in the database.
+    ///
+    /// Note that this does not indicate that the class is actually declared -- only that we stored it.
+    pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("SELECT 1 FROM class_definitions WHERE hash = ?")?;
 
-    Ok(classes
-        .iter()
-        .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
-        .collect::<Result<Vec<_>, _>>()?)
-}
+        Ok(classes
+            .iter()
+            .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
+            .collect::<Result<Vec<_>, _>>()?)
+    }
 
-pub(super) fn class_definition(
-    transaction: &Transaction<'_>,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<Vec<u8>>> {
-    self::class_definition_with_block_number(transaction, class_hash)
-        .map(|option| option.map(|(_block_number, definition)| definition))
-}
+    /// Returns the uncompressed class definition.
+    pub fn class_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
+        self.class_definition_with_block_number(class_hash)
+            .map(|option| option.map(|(_block_number, definition)| definition))
+    }
 
-pub(super) fn class_definition_with_block_number(
-    transaction: &Transaction<'_>,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
-    let from_row = |row: &rusqlite::Row<'_>| {
-        let definition = row.get_blob(0).map(|x| x.to_vec())?;
-        let block_number = row.get_optional_block_number(1)?;
-        Ok((block_number, definition))
-    };
+    /// Returns the uncompressed class definition as well as the block number at which it was declared.
+    pub fn class_definition_with_block_number(
+        &self,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+        let from_row = |row: &rusqlite::Row<'_>| {
+            let definition = row.get_blob(0).map(|x| x.to_vec())?;
+            let block_number = row.get_optional_block_number(1)?;
+            Ok((block_number, definition))
+        };
 
-    let mut stmt = transaction
-        .inner()
-        .prepare_cached("SELECT definition, block_number FROM class_definitions WHERE hash = ?")?;
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT definition, block_number FROM class_definitions WHERE hash = ?",
+        )?;
 
-    let result = stmt
-        .query_row(params![&class_hash], from_row)
-        .optional()
-        .context("Querying for class definition")?;
+        let result = stmt
+            .query_row(params![&class_hash], from_row)
+            .optional()
+            .context("Querying for class definition")?;
 
-    let Some((block_number, definition)) = result else {
-        return Ok(None);
-    };
-    let definition =
-        zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
+        let Some((block_number, definition)) = result else {
+            return Ok(None);
+        };
+        let definition =
+            zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
 
-    Ok(Some((block_number, definition)))
-}
+        Ok(Some((block_number, definition)))
+    }
 
-pub(super) fn compressed_class_definition_at(
-    tx: &Transaction<'_>,
-    block_id: BlockId,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<Vec<u8>>> {
-    self::compressed_class_definition_at_with_block_number(tx, block_id, class_hash)
-        .map(|option| option.map(|(_block_number, definition)| definition))
-}
+    /// Returns the compressed class definition if it has been declared at `block_id`.
+    pub fn compressed_class_definition_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.compressed_class_definition_at_with_block_number(block_id, class_hash)
+            .map(|option| option.map(|(_block_number, definition)| definition))
+    }
 
-pub(super) fn compressed_class_definition_at_with_block_number(
-    tx: &Transaction<'_>,
-    block_id: BlockId,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
-    let from_row = |row: &rusqlite::Row<'_>| {
-        let definition = row.get_blob(0).map(|x| x.to_vec())?;
-        let block_number = row.get_block_number(1)?;
-        Ok((block_number, definition))
-    };
+    pub fn compressed_class_definition_at_with_block_number(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
+        let from_row = |row: &rusqlite::Row<'_>| {
+            let definition = row.get_blob(0).map(|x| x.to_vec())?;
+            let block_number = row.get_block_number(1)?;
+            Ok((block_number, definition))
+        };
 
-    match block_id {
+        match block_id {
         BlockId::Latest => {
-            let mut stmt = tx.inner().prepare_cached(
+            let mut stmt = self.inner().prepare_cached(
                 "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
             )?;
             stmt.query_row(
@@ -147,7 +144,7 @@ pub(super) fn compressed_class_definition_at_with_block_number(
             )
         }
         BlockId::Number(number) => {
-            let mut stmt = tx.inner().prepare_cached(
+            let mut stmt = self.inner().prepare_cached(
                 "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number <= ?",
             )?;
             stmt.query_row(
@@ -156,7 +153,7 @@ pub(super) fn compressed_class_definition_at_with_block_number(
             )
         }
         BlockId::Hash(hash) => {
-            let mut stmt = tx.inner().prepare_cached(
+            let mut stmt = self.inner().prepare_cached(
                 r"SELECT definition, block_number FROM class_definitions
                 WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
             )?;
@@ -168,70 +165,74 @@ pub(super) fn compressed_class_definition_at_with_block_number(
     }
     .optional()
     .context("Querying for class definition")
-}
+    }
 
-pub(super) fn class_definition_at(
-    tx: &Transaction<'_>,
-    block_id: BlockId,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<Vec<u8>>> {
-    self::class_definition_at_with_block_number(tx, block_id, class_hash)
-        .map(|option| option.map(|(_block_number, definition)| definition))
-}
+    /// Returns the uncompressed class definition if it has been declared at `block_id`.
+    pub fn class_definition_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.class_definition_at_with_block_number(block_id, class_hash)
+            .map(|option| option.map(|(_block_number, definition)| definition))
+    }
 
-pub(super) fn class_definition_at_with_block_number(
-    tx: &Transaction<'_>,
-    block_id: BlockId,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
-    let definition = compressed_class_definition_at_with_block_number(tx, block_id, class_hash)?;
-    let Some((block_number, definition)) = definition else {
-        return Ok(None);
-    };
-    let definition =
-        zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
+    /// Returns the uncompressed class definition if it has been declared at `block_id`, as well as
+    /// the block number at which it was declared.
+    pub fn class_definition_at_with_block_number(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
+        let definition =
+            self.compressed_class_definition_at_with_block_number(block_id, class_hash)?;
+        let Some((block_number, definition)) = definition else {
+            return Ok(None);
+        };
+        let definition =
+            zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
 
-    Ok(Some((block_number, definition)))
-}
+        Ok(Some((block_number, definition)))
+    }
 
-pub(super) fn casm_definition(
-    transaction: &Transaction<'_>,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<Vec<u8>>> {
-    // Don't reuse the "_with_block_number" impl here since the suffixed one requires a join that this one doesn't.
-    let definition = transaction
-        .inner()
-        .query_row(
-            "SELECT definition FROM casm_definitions WHERE hash = ?",
-            params![&class_hash],
-            |row| row.get_blob(0).map(|x| x.to_vec()),
-        )
-        .optional()
-        .context("Querying for compiled class definition")?;
+    /// Returns the uncompressed compiled class definition.
+    pub fn casm_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
+        // Don't reuse the "_with_block_number" impl here since the suffixed one requires a join that this one doesn't.
+        let definition = self
+            .inner()
+            .query_row(
+                "SELECT definition FROM casm_definitions WHERE hash = ?",
+                params![&class_hash],
+                |row| row.get_blob(0).map(|x| x.to_vec()),
+            )
+            .optional()
+            .context("Querying for compiled class definition")?;
 
-    let Some(definition) = definition else {
-        return Ok(None);
-    };
-    let definition = zstd::decode_all(definition.as_slice())
-        .context("Decompressing compiled class definition")?;
+        let Some(definition) = definition else {
+            return Ok(None);
+        };
+        let definition = zstd::decode_all(definition.as_slice())
+            .context("Decompressing compiled class definition")?;
 
-    Ok(Some(definition))
-}
+        Ok(Some(definition))
+    }
 
-pub(super) fn casm_definition_with_block_number(
-    transaction: &Transaction<'_>,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
-    let from_row = |row: &rusqlite::Row<'_>| {
-        let definition = row.get_blob(0).map(|x| x.to_vec())?;
-        let block_number = row.get_optional_block_number(1)?;
-        Ok((block_number, definition))
-    };
+    /// Returns the uncompressed compiled class definition, as well as the block number at which it
+    ///  was declared.
+    pub fn casm_definition_with_block_number(
+        &self,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+        let from_row = |row: &rusqlite::Row<'_>| {
+            let definition = row.get_blob(0).map(|x| x.to_vec())?;
+            let block_number = row.get_optional_block_number(1)?;
+            Ok((block_number, definition))
+        };
 
-    let result = transaction
-        .inner()
-        .query_row(
-            r"
+        let result = self
+            .inner()
+            .query_row(
+                r"
             SELECT
                 casm_definitions.definition,
                 class_definitions.block_number
@@ -242,43 +243,46 @@ pub(super) fn casm_definition_with_block_number(
                 )
             WHERE
                 casm_definitions.hash = ?",
-            params![&class_hash],
-            from_row,
-        )
-        .optional()
-        .context("Querying for compiled class definition")?;
+                params![&class_hash],
+                from_row,
+            )
+            .optional()
+            .context("Querying for compiled class definition")?;
 
-    let Some((block_number, definition)) = result else {
-        return Ok(None);
-    };
-    let definition = zstd::decode_all(definition.as_slice())
-        .context("Decompressing compiled class definition")?;
+        let Some((block_number, definition)) = result else {
+            return Ok(None);
+        };
+        let definition = zstd::decode_all(definition.as_slice())
+            .context("Decompressing compiled class definition")?;
 
-    Ok(Some((block_number, definition)))
-}
+        Ok(Some((block_number, definition)))
+    }
 
-pub(super) fn casm_definition_at(
-    tx: &Transaction<'_>,
-    block_id: BlockId,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<Vec<u8>>> {
-    self::casm_definition_at_with_block_number(tx, block_id, class_hash)
-        .map(|option| option.map(|(_block_number, definition)| definition))
-}
+    /// Returns the uncompressed compiled class definition if it has been declared at `block_id`.
+    pub fn casm_definition_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.casm_definition_at_with_block_number(block_id, class_hash)
+            .map(|option| option.map(|(_block_number, definition)| definition))
+    }
 
-pub(super) fn casm_definition_at_with_block_number(
-    tx: &Transaction<'_>,
-    block_id: BlockId,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
-    let from_row = |row: &rusqlite::Row<'_>| {
-        let definition = row.get_blob(0).map(|x| x.to_vec())?;
-        let block_number = row.get_optional_block_number(1)?;
-        Ok((block_number, definition))
-    };
+    /// Returns the uncompressed compiled class definition if it has been declared at `block_id`, as well
+    /// as the block number at which it was declared.
+    pub fn casm_definition_at_with_block_number(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
+        let from_row = |row: &rusqlite::Row<'_>| {
+            let definition = row.get_blob(0).map(|x| x.to_vec())?;
+            let block_number = row.get_optional_block_number(1)?;
+            Ok((block_number, definition))
+        };
 
-    let definition = match block_id {
-        BlockId::Latest => tx.inner().query_row(
+        let definition = match block_id {
+        BlockId::Latest => self.inner().query_row(
             r"SELECT
                 casm_definitions.definition,
                 class_definitions.block_number
@@ -293,7 +297,7 @@ pub(super) fn casm_definition_at_with_block_number(
             params![&class_hash],
             from_row,
         ),
-        BlockId::Number(number) => tx.inner().query_row(
+        BlockId::Number(number) => self.inner().query_row(
             r"SELECT
                 casm_definitions.definition,
                 class_definitions.block_number
@@ -308,7 +312,7 @@ pub(super) fn casm_definition_at_with_block_number(
             params![&class_hash, &number],
             from_row,
         ),
-        BlockId::Hash(hash) => tx.inner().query_row(
+        BlockId::Hash(hash) => self.inner().query_row(
             r"SELECT
                 casm_definitions.definition,
                 class_definitions.block_number
@@ -327,23 +331,21 @@ pub(super) fn casm_definition_at_with_block_number(
     .optional()
     .context("Querying for compiled class definition")?;
 
-    let Some((block_number, definition)) = definition else {
-        return Ok(None);
-    };
-    let definition = zstd::decode_all(definition.as_slice())
-        .context("Decompressing compiled class definition")?;
+        let Some((block_number, definition)) = definition else {
+            return Ok(None);
+        };
+        let definition = zstd::decode_all(definition.as_slice())
+            .context("Decompressing compiled class definition")?;
 
-    Ok(Some((block_number, definition)))
-}
+        Ok(Some((block_number, definition)))
+    }
 
-pub(super) fn casm_hash(
-    tx: &Transaction<'_>,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<CasmHash>> {
-    let compiled_class_hash = tx
-        .inner()
-        .query_row(
-            r#"SELECT
+    /// Returns the compiled class hash for a class.
+    pub fn casm_hash(&self, class_hash: ClassHash) -> anyhow::Result<Option<CasmHash>> {
+        let compiled_class_hash = self
+            .inner()
+            .query_row(
+                r#"SELECT
                 casm_definitions.compiled_class_hash
             FROM
                 casm_definitions
@@ -352,22 +354,23 @@ pub(super) fn casm_hash(
                 )
             WHERE
                 casm_definitions.hash = ?"#,
-            params![&class_hash],
-            |row| row.get_casm_hash(0),
-        )
-        .optional()
-        .context("Querying for compiled class definition")?;
+                params![&class_hash],
+                |row| row.get_casm_hash(0),
+            )
+            .optional()
+            .context("Querying for compiled class definition")?;
 
-    Ok(compiled_class_hash)
-}
+        Ok(compiled_class_hash)
+    }
 
-pub(super) fn casm_hash_at(
-    tx: &Transaction<'_>,
-    block_id: BlockId,
-    class_hash: ClassHash,
-) -> anyhow::Result<Option<CasmHash>> {
-    let compiled_class_hash = match block_id {
-        BlockId::Latest => tx.inner().query_row(
+    /// Returns the compiled class hash for a class if it has been declared at `block_id`.
+    pub fn casm_hash_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<CasmHash>> {
+        let compiled_class_hash = match block_id {
+        BlockId::Latest => self.inner().query_row(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
             FROM
@@ -381,7 +384,7 @@ pub(super) fn casm_hash_at(
             params![&class_hash],
             |row| row.get_casm_hash(0),
         ),
-        BlockId::Number(number) => tx.inner().query_row(
+        BlockId::Number(number) => self.inner().query_row(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
             FROM
@@ -395,7 +398,7 @@ pub(super) fn casm_hash_at(
             params![&class_hash, &number],
             |row| row.get_casm_hash(0),
         ),
-        BlockId::Hash(hash) => tx.inner().query_row(
+        BlockId::Hash(hash) => self.inner().query_row(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
             FROM
@@ -413,37 +416,37 @@ pub(super) fn casm_hash_at(
     .optional()
     .context("Querying for class definition")?;
 
-    Ok(compiled_class_hash)
-}
+        Ok(compiled_class_hash)
+    }
 
-pub(super) fn insert_class_commitment_leaf(
-    transaction: &Transaction<'_>,
-    block: BlockNumber,
-    leaf: &ClassCommitmentLeafHash,
-    casm_hash: &CasmHash,
-) -> anyhow::Result<()> {
-    transaction.inner().execute(
-        "INSERT INTO class_commitment_leaves (block_number, leaf, casm) VALUES (?, ?, ?)",
-        params![&block, leaf, casm_hash],
-    )?;
+    pub fn insert_class_commitment_leaf(
+        &self,
+        block: BlockNumber,
+        leaf: &ClassCommitmentLeafHash,
+        casm_hash: &CasmHash,
+    ) -> anyhow::Result<()> {
+        self.inner().execute(
+            "INSERT INTO class_commitment_leaves (block_number, leaf, casm) VALUES (?, ?, ?)",
+            params![&block, leaf, casm_hash],
+        )?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub(super) fn class_commitment_leaf(
-    transaction: &Transaction<'_>,
-    block: BlockNumber,
-    casm_hash: &CasmHash,
-) -> anyhow::Result<Option<ClassCommitmentLeafHash>> {
-    transaction
-        .inner()
-        .query_row(
-            "SELECT leaf FROM class_commitment_leaves WHERE casm = ? AND block_number <= ?",
-            params![casm_hash, &block],
-            |row| row.get_class_commitment_leaf(0),
-        )
-        .optional()
-        .map_err(Into::into)
+    pub fn class_commitment_leaf(
+        &self,
+        block: BlockNumber,
+        casm_hash: &CasmHash,
+    ) -> anyhow::Result<Option<ClassCommitmentLeafHash>> {
+        self.inner()
+            .query_row(
+                "SELECT leaf FROM class_commitment_leaves WHERE casm = ? AND block_number <= ?",
+                params![casm_hash, &block],
+                |row| row.get_class_commitment_leaf(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
@@ -478,7 +481,9 @@ mod tests {
         let (hash, _, _) = setup_class(&transaction);
         let non_existent = class_hash!("0x456");
 
-        let result = super::classes_exist(&transaction, &[hash, non_existent]).unwrap();
+        let result = transaction
+            .class_definitions_exist(&[hash, non_existent])
+            .unwrap();
         let expected = vec![true, false];
         assert_eq!(result, expected);
     }
@@ -494,9 +499,9 @@ mod tests {
         let cairo_hash = class_hash_bytes!(b"cairo hash");
         let cairo_definition = b"example cairo program";
 
-        insert_cairo_class(&tx, cairo_hash, cairo_definition).unwrap();
+        tx.insert_cairo_class(cairo_hash, cairo_definition).unwrap();
 
-        let definition = class_definition(&tx, cairo_hash).unwrap().unwrap();
+        let definition = tx.class_definition(cairo_hash).unwrap().unwrap();
 
         assert_eq!(definition, cairo_definition);
     }
@@ -514,14 +519,8 @@ mod tests {
         let sierra_definition = b"example sierra program";
         let casm_definition = b"compiled sierra program";
 
-        insert_sierra_class(
-            &tx,
-            &sierra_hash,
-            sierra_definition,
-            &casm_hash,
-            casm_definition,
-        )
-        .unwrap();
+        tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+            .unwrap();
 
         let casm_result = tx
             .inner()
@@ -544,7 +543,8 @@ mod tests {
         assert_eq!(casm_result.0, casm_hash);
         assert_eq!(casm_result.1, casm_definition);
 
-        let definition = class_definition(&tx, ClassHash(sierra_hash.0))
+        let definition = tx
+            .class_definition(ClassHash(sierra_hash.0))
             .unwrap()
             .unwrap();
         assert_eq!(definition, sierra_definition);
@@ -564,19 +564,26 @@ mod tests {
         let leaf1 = class_commitment_leaf_hash_bytes!(b"leaf one");
         let casm1 = casm_hash_bytes!(b"casm one");
 
-        insert_class_commitment_leaf(&tx, BlockNumber::GENESIS, &leaf0, &casm0).unwrap();
-        insert_class_commitment_leaf(&tx, BlockNumber::GENESIS + 5, &leaf1, &casm0).unwrap();
-        insert_class_commitment_leaf(&tx, BlockNumber::GENESIS + 5, &leaf1, &casm1).unwrap();
+        tx.insert_class_commitment_leaf(BlockNumber::GENESIS, &leaf0, &casm0)
+            .unwrap();
+        tx.insert_class_commitment_leaf(BlockNumber::GENESIS + 5, &leaf1, &casm0)
+            .unwrap();
+        tx.insert_class_commitment_leaf(BlockNumber::GENESIS + 5, &leaf1, &casm1)
+            .unwrap();
 
-        let result =
-            class_commitment_leaf(&tx, BlockNumber::GENESIS, &casm_hash_bytes!(b"missing"))
-                .unwrap();
+        let result = tx
+            .class_commitment_leaf(BlockNumber::GENESIS, &casm_hash_bytes!(b"missing"))
+            .unwrap();
         assert!(result.is_none());
 
-        let result = class_commitment_leaf(&tx, BlockNumber::GENESIS, &casm0).unwrap();
+        let result = tx
+            .class_commitment_leaf(BlockNumber::GENESIS, &casm0)
+            .unwrap();
         assert_eq!(result, Some(leaf0));
 
-        let result = class_commitment_leaf(&tx, BlockNumber::GENESIS, &casm1).unwrap();
+        let result = tx
+            .class_commitment_leaf(BlockNumber::GENESIS, &casm1)
+            .unwrap();
         assert!(result.is_none());
     }
 }

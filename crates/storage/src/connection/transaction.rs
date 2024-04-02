@@ -1,77 +1,80 @@
 //! Contains starknet transaction related code and __not__ database transaction.
 
 use anyhow::Context;
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
 use crate::{prelude::*, BlockId};
 
-use super::{EventsForBlock, TransactionData, TransactionDataForBlock, TransactionWithReceipt};
+use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
 
 pub enum TransactionStatus {
     L1Accepted,
     L2Accepted,
 }
 
-pub(super) fn insert_transactions(
-    tx: &Transaction<'_>,
-    block_number: BlockNumber,
-    transaction_data: &[TransactionData],
-) -> anyhow::Result<()> {
-    if transaction_data.is_empty() {
-        return Ok(());
-    }
+impl Transaction<'_> {
+    /// Inserts the transaction, receipt and event data.
+    pub fn insert_transaction_data(
+        &self,
+        block_number: BlockNumber,
+        transaction_data: &[TransactionData],
+    ) -> anyhow::Result<()> {
+        if transaction_data.is_empty() {
+            return Ok(());
+        }
 
-    let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-    for (
-        i,
-        TransactionData {
-            transaction,
-            receipt,
-            events,
-        },
-    ) in transaction_data.iter().enumerate()
-    {
-        // Serialize and compress transaction data.
-        let transaction = dto::Transaction::from(transaction);
-        let tx_data = bincode::serde::encode_to_vec(&transaction, bincode::config::standard())
-            .context("Serializing transaction")?;
-        let tx_data = compressor
-            .compress(&tx_data)
-            .context("Compressing transaction")?;
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        for (
+            i,
+            TransactionData {
+                transaction,
+                receipt,
+                events,
+            },
+        ) in transaction_data.iter().enumerate()
+        {
+            // Serialize and compress transaction data.
+            let transaction = dto::Transaction::from(transaction);
+            let tx_data = bincode::serde::encode_to_vec(&transaction, bincode::config::standard())
+                .context("Serializing transaction")?;
+            let tx_data = compressor
+                .compress(&tx_data)
+                .context("Compressing transaction")?;
 
-        let serialized_receipt = match receipt {
-            Some(receipt) => {
-                let receipt = dto::Receipt::from(receipt);
-                let serialized_receipt =
-                    bincode::serde::encode_to_vec(&receipt, bincode::config::standard())
-                        .context("Serializing receipt")?;
-                Some(
-                    compressor
-                        .compress(&serialized_receipt)
-                        .context("Compressing receipt")?,
-                )
-            }
-            None => None,
-        };
+            let serialized_receipt = match receipt {
+                Some(receipt) => {
+                    let receipt = dto::Receipt::from(receipt);
+                    let serialized_receipt =
+                        bincode::serde::encode_to_vec(&receipt, bincode::config::standard())
+                            .context("Serializing receipt")?;
+                    Some(
+                        compressor
+                            .compress(&serialized_receipt)
+                            .context("Compressing receipt")?,
+                    )
+                }
+                None => None,
+            };
 
-        let serialized_events = match events {
-            Some(events) => {
-                let events = bincode::serde::encode_to_vec(
-                    &dto::Events::V0 {
-                        events: events.iter().map(|x| x.to_owned().into()).collect(),
-                    },
-                    bincode::config::standard(),
-                )
-                .context("Serializing events")?;
-                Some(compressor.compress(&events).context("Compressing events")?)
-            }
-            None => None,
-        };
+            let serialized_events = match events {
+                Some(events) => {
+                    let events = bincode::serde::encode_to_vec(
+                        &dto::Events::V0 {
+                            events: events.iter().map(|x| x.to_owned().into()).collect(),
+                        },
+                        bincode::config::standard(),
+                    )
+                    .context("Serializing events")?;
+                    Some(compressor.compress(&events).context("Compressing events")?)
+                }
+                None => None,
+            };
 
-        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_number,  tx,  receipt,  events) 
-                                                                  VALUES (:hash, :idx, :block_number, :tx, :receipt, :events)",
+            self.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_number,  tx,  receipt,  events) 
+                                                                        VALUES (:hash, :idx, :block_number, :tx, :receipt, :events)",
             named_params![
                 ":hash": &transaction.hash(),
                 ":idx": &i.try_into_sql_int()?,
@@ -80,411 +83,420 @@ pub(super) fn insert_transactions(
                 ":receipt": &serialized_receipt,
                 ":events": &serialized_events,
             ]).context("Inserting transaction data")?;
-    }
-
-    let events = transaction_data
-        .iter()
-        .filter_map(|data| data.events.as_ref())
-        .flatten();
-    super::event::insert_block_events(tx, block_number, events)
-        .context("Inserting events into Bloom filter")?;
-    Ok(())
-}
-
-pub(super) fn update_receipt(
-    tx: &Transaction<'_>,
-    block_number: BlockNumber,
-    transaction_idx: usize,
-    receipt: &Receipt,
-) -> anyhow::Result<()> {
-    let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-    let receipt = dto::Receipt::from(receipt);
-    let serialized_receipt = bincode::serde::encode_to_vec(&receipt, bincode::config::standard())
-        .context("Serializing receipt")?;
-    let serialized_receipt = compressor
-        .compress(&serialized_receipt)
-        .context("Compressing receipt")?;
-
-    let execution_status = match receipt {
-        dto::Receipt::V0(dto::ReceiptV0 {
-            execution_status: dto::ExecutionStatus::Succeeded,
-            ..
-        }) => 0,
-        dto::Receipt::V0(dto::ReceiptV0 {
-            execution_status: dto::ExecutionStatus::Reverted { .. },
-            ..
-        }) => 1,
-    };
-
-    tx.inner()
-        .execute(
-            r"
-            UPDATE starknet_transactions SET receipt = :receipt, execution_status = :execution_status
-            WHERE block_number = :block_number AND idx = :idx;
-            ",
-            named_params![
-                ":receipt": &serialized_receipt,
-                ":execution_status": &execution_status,
-                ":block_number": &block_number,
-                ":idx": &transaction_idx.try_into_sql_int()?,
-            ],
-        )
-        .context("Inserting transaction data")?;
-
-    Ok(())
-}
-
-pub(super) fn transaction(
-    tx: &Transaction<'_>,
-    transaction: TransactionHash,
-) -> anyhow::Result<Option<StarknetTransaction>> {
-    let mut stmt = tx
-        .inner()
-        .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?")
-        .context("Preparing statement")?;
-
-    let mut rows = stmt
-        .query(params![&transaction])
-        .context("Executing query")?;
-
-    let row = match rows.next()? {
-        Some(row) => row,
-        None => return Ok(None),
-    };
-
-    let transaction = row.get_ref_unwrap(0).as_blob()?;
-    let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
-    let transaction: dto::Transaction =
-        bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
-            .context("Deserializing transaction")?
-            .0;
-
-    Ok(Some(transaction.into()))
-}
-
-pub(super) fn transaction_with_receipt(
-    tx: &Transaction<'_>,
-    txn_hash: TransactionHash,
-) -> anyhow::Result<Option<TransactionWithReceipt>> {
-    let mut stmt = tx
-        .inner()
-        .prepare(
-            r"
-            SELECT tx, receipt, block_number, events
-            FROM starknet_transactions
-            WHERE hash = ?1
-            ",
-        )
-        .context("Preparing statement")?;
-
-    let mut rows = stmt.query(params![&txn_hash]).context("Executing query")?;
-
-    let row = match rows.next()? {
-        Some(row) => row,
-        None => return Ok(None),
-    };
-
-    let transaction = row.get_ref_unwrap("tx").as_blob()?;
-    let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
-    let transaction: dto::Transaction =
-        bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
-            .context("Deserializing transaction")?
-            .0;
-
-    let receipt = match row.get_ref_unwrap("receipt").as_blob_or_null()? {
-        Some(data) => data,
-        None => return Ok(None),
-    };
-    let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
-    let receipt: dto::Receipt =
-        bincode::serde::decode_from_slice(&receipt, bincode::config::standard())
-            .context("Deserializing receipt")?
-            .0;
-
-    let events = match row.get_ref_unwrap("events").as_blob_or_null()? {
-        Some(data) => data,
-        None => return Ok(None),
-    };
-    let events = zstd::decode_all(events).context("Decompressing events")?;
-    let events: dto::Events =
-        bincode::serde::decode_from_slice(&events, bincode::config::standard())
-            .context("Deserializing events")?
-            .0;
-
-    let block_number = row.get_block_number("block_number")?;
-
-    Ok(Some((
-        transaction.into(),
-        receipt.into(),
-        match events {
-            dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
-        },
-        block_number,
-    )))
-}
-
-pub(super) fn transaction_at_block(
-    tx: &Transaction<'_>,
-    block: BlockId,
-    index: usize,
-) -> anyhow::Result<Option<StarknetTransaction>> {
-    // Identify block number
-    let Some(block_number) = tx.block_number(block)? else {
-        return Ok(None);
-    };
-
-    let mut stmt = tx
-        .inner()
-        .prepare("SELECT tx FROM starknet_transactions WHERE block_number = ? AND idx = ?")
-        .context("Preparing statement")?;
-
-    let mut rows = stmt
-        .query(params![&block_number, &index.try_into_sql_int()?])
-        .context("Executing query")?;
-
-    let row = match rows.next()? {
-        Some(row) => row,
-        None => return Ok(None),
-    };
-
-    let transaction = match row.get_ref_unwrap(0).as_blob_or_null()? {
-        Some(data) => data,
-        None => return Ok(None),
-    };
-
-    let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
-    let transaction: dto::Transaction =
-        bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
-            .context("Deserializing transaction")?
-            .0;
-
-    Ok(Some(transaction.into()))
-}
-
-pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<usize> {
-    match block {
-        BlockId::Number(number) => tx
-            .inner()
-            .query_row(
-                "SELECT COUNT(*) FROM starknet_transactions WHERE block_number = ?1",
-                params![&number],
-                |row| row.get(0),
-            )
-            .context("Counting transactions"),
-        BlockId::Hash(hash) => tx
-            .inner()
-            .query_row(
-                "SELECT COUNT(*) FROM starknet_transactions
-                JOIN block_headers ON starknet_transactions.block_number = block_headers.number
-                WHERE block_headers.hash = ?1",
-                params![&hash],
-                |row| row.get(0),
-            )
-            .context("Counting transactions"),
-        BlockId::Latest => {
-            // First get the latest block
-            let block = match tx.block_number(BlockId::Latest)? {
-                Some(number) => number,
-                None => return Ok(0),
-            };
-
-            transaction_count(tx, block.into())
         }
+
+        let events = transaction_data
+            .iter()
+            .filter_map(|data| data.events.as_ref())
+            .flatten();
+        self.insert_block_events(block_number, events)
+            .context("Inserting events into Bloom filter")?;
+        Ok(())
     }
-}
 
-pub(super) fn transaction_data_for_block(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<Vec<TransactionDataForBlock>>> {
-    let Some(block_number) = tx.block_number(block)? else {
-        return Ok(None);
-    };
+    pub fn update_receipt(
+        &self,
+        block_number: BlockNumber,
+        transaction_idx: usize,
+        receipt: &Receipt,
+    ) -> anyhow::Result<()> {
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let receipt = dto::Receipt::from(receipt);
+        let serialized_receipt =
+            bincode::serde::encode_to_vec(&receipt, bincode::config::standard())
+                .context("Serializing receipt")?;
+        let serialized_receipt = compressor
+            .compress(&serialized_receipt)
+            .context("Compressing receipt")?;
 
-    let mut stmt = tx
-        .inner()
-        .prepare(
-            r"
-            SELECT tx, receipt, events
-            FROM starknet_transactions
-            WHERE block_number = ?
-            ORDER BY idx ASC
-            ",
-        )
-        .context("Preparing statement")?;
+        let execution_status = match receipt {
+            dto::Receipt::V0(dto::ReceiptV0 {
+                execution_status: dto::ExecutionStatus::Succeeded,
+                ..
+            }) => 0,
+            dto::Receipt::V0(dto::ReceiptV0 {
+                execution_status: dto::ExecutionStatus::Reverted { .. },
+                ..
+            }) => 1,
+        };
 
-    let mut rows = stmt
-        .query(params![&block_number])
-        .context("Executing query")?;
+        self
+            .inner()
+            .execute(
+                r"
+                UPDATE starknet_transactions SET receipt = :receipt, execution_status = :execution_status
+                WHERE block_number = :block_number AND idx = :idx;
+                ",
+                named_params![
+                    ":receipt": &serialized_receipt,
+                    ":execution_status": &execution_status,
+                    ":block_number": &block_number,
+                    ":idx": &transaction_idx.try_into_sql_int()?,
+                ],
+            )
+            .context("Inserting transaction data")?;
 
-    let mut data = Vec::new();
-    while let Some(row) = rows.next()? {
-        let receipt = row
-            .get_ref_unwrap("receipt")
-            .as_blob_or_null()?
-            .context("Receipt data missing")?;
-        let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
-        let receipt: dto::Receipt =
-            bincode::serde::decode_from_slice(&receipt, bincode::config::standard())
-                .context("Deserializing transaction receipt")?
-                .0;
+        Ok(())
+    }
 
-        let transaction = row
-            .get_ref_unwrap("tx")
-            .as_blob_or_null()?
-            .context("Transaction data missing")?;
+    pub fn transaction(
+        &self,
+        transaction: TransactionHash,
+    ) -> anyhow::Result<Option<StarknetTransaction>> {
+        let mut stmt = self
+            .inner()
+            .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![&transaction])
+            .context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let transaction = row.get_ref_unwrap(0).as_blob()?;
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction: dto::Transaction =
             bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
                 .context("Deserializing transaction")?
                 .0;
 
-        let events = row
-            .get_ref_unwrap("events")
-            .as_blob_or_null()?
-            .context("Events missing")?;
+        Ok(Some(transaction.into()))
+    }
+
+    pub fn transaction_with_receipt(
+        &self,
+        txn_hash: TransactionHash,
+    ) -> anyhow::Result<Option<TransactionWithReceipt>> {
+        let mut stmt = self
+            .inner()
+            .prepare(
+                r"
+            SELECT tx, receipt, block_number, events
+            FROM starknet_transactions
+            WHERE hash = ?1
+            ",
+            )
+            .context("Preparing statement")?;
+
+        let mut rows = stmt.query(params![&txn_hash]).context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let transaction = row.get_ref_unwrap("tx").as_blob()?;
+        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+        let transaction: dto::Transaction =
+            bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
+                .context("Deserializing transaction")?
+                .0;
+
+        let receipt = match row.get_ref_unwrap("receipt").as_blob_or_null()? {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
+        let receipt: dto::Receipt =
+            bincode::serde::decode_from_slice(&receipt, bincode::config::standard())
+                .context("Deserializing receipt")?
+                .0;
+
+        let events = match row.get_ref_unwrap("events").as_blob_or_null()? {
+            Some(data) => data,
+            None => return Ok(None),
+        };
         let events = zstd::decode_all(events).context("Decompressing events")?;
         let events: dto::Events =
             bincode::serde::decode_from_slice(&events, bincode::config::standard())
                 .context("Deserializing events")?
                 .0;
 
-        data.push((
+        let block_number = row.get_block_number("block_number")?;
+
+        Ok(Some((
             transaction.into(),
             receipt.into(),
             match events {
                 dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
             },
-        ));
+            block_number,
+        )))
     }
 
-    Ok(Some(data))
-}
+    pub fn transaction_at_block(
+        &self,
+        block: BlockId,
+        index: usize,
+    ) -> anyhow::Result<Option<StarknetTransaction>> {
+        // Identify block number
+        let Some(block_number) = self.block_number(block)? else {
+            return Ok(None);
+        };
 
-pub(super) fn transactions_for_block(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<Vec<StarknetTransaction>>> {
-    let Some(block_number) = tx.block_number(block)? else {
-        return Ok(None);
-    };
+        let mut stmt = self
+            .inner()
+            .prepare("SELECT tx FROM starknet_transactions WHERE block_number = ? AND idx = ?")
+            .context("Preparing statement")?;
 
-    let mut stmt = tx
-        .inner()
-        .prepare("SELECT tx FROM starknet_transactions WHERE block_number = ? ORDER BY idx ASC")
-        .context("Preparing statement")?;
+        let mut rows = stmt
+            .query(params![&block_number, &index.try_into_sql_int()?])
+            .context("Executing query")?;
 
-    let mut rows = stmt
-        .query(params![&block_number])
-        .context("Executing query")?;
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
 
-    let mut data = Vec::new();
-    while let Some(row) = rows.next()? {
-        let transaction = row
-            .get_ref_unwrap("tx")
-            .as_blob_or_null()?
-            .context("Transaction data missing")?;
+        let transaction = match row.get_ref_unwrap(0).as_blob_or_null()? {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction: dto::Transaction =
             bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
                 .context("Deserializing transaction")?
                 .0;
 
-        data.push(transaction.into());
+        Ok(Some(transaction.into()))
     }
 
-    Ok(Some(data))
-}
+    pub fn transaction_count(&self, block: BlockId) -> anyhow::Result<usize> {
+        match block {
+            BlockId::Number(number) => self
+                .inner()
+                .query_row(
+                    "SELECT COUNT(*) FROM starknet_transactions WHERE block_number = ?1",
+                    params![&number],
+                    |row| row.get(0),
+                )
+                .context("Counting transactions"),
+            BlockId::Hash(hash) => self
+                .inner()
+                .query_row(
+                    "SELECT COUNT(*) FROM starknet_transactions
+                JOIN block_headers ON starknet_transactions.block_number = block_headers.number
+                WHERE block_headers.hash = ?1",
+                    params![&hash],
+                    |row| row.get(0),
+                )
+                .context("Counting transactions"),
+            BlockId::Latest => {
+                // First get the latest block
+                let block = match self.block_number(BlockId::Latest)? {
+                    Some(number) => number,
+                    None => return Ok(0),
+                };
 
-pub(super) fn events_for_block(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
-    let Some(block_number) = tx.block_number(block)? else {
-        return Ok(None);
-    };
+                self.transaction_count(block.into())
+            }
+        }
+    }
 
-    let mut stmt = tx
-        .inner()
-        .prepare(
-            r"
+    pub fn transaction_data_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<TransactionDataForBlock>>> {
+        let Some(block_number) = self.block_number(block)? else {
+            return Ok(None);
+        };
+
+        let mut stmt = self
+            .inner()
+            .prepare(
+                r"
+            SELECT tx, receipt, events
+            FROM starknet_transactions
+            WHERE block_number = ?
+            ORDER BY idx ASC
+            ",
+            )
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![&block_number])
+            .context("Executing query")?;
+
+        let mut data = Vec::new();
+        while let Some(row) = rows.next()? {
+            let receipt = row
+                .get_ref_unwrap("receipt")
+                .as_blob_or_null()?
+                .context("Receipt data missing")?;
+            let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
+            let receipt: dto::Receipt =
+                bincode::serde::decode_from_slice(&receipt, bincode::config::standard())
+                    .context("Deserializing transaction receipt")?
+                    .0;
+
+            let transaction = row
+                .get_ref_unwrap("tx")
+                .as_blob_or_null()?
+                .context("Transaction data missing")?;
+            let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+            let transaction: dto::Transaction =
+                bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
+                    .context("Deserializing transaction")?
+                    .0;
+
+            let events = row
+                .get_ref_unwrap("events")
+                .as_blob_or_null()?
+                .context("Events missing")?;
+            let events = zstd::decode_all(events).context("Decompressing events")?;
+            let events: dto::Events =
+                bincode::serde::decode_from_slice(&events, bincode::config::standard())
+                    .context("Deserializing events")?
+                    .0;
+
+            data.push((
+                transaction.into(),
+                receipt.into(),
+                match events {
+                    dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
+                },
+            ));
+        }
+
+        Ok(Some(data))
+    }
+
+    pub fn transactions_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<StarknetTransaction>>> {
+        let Some(block_number) = self.block_number(block)? else {
+            return Ok(None);
+        };
+
+        let mut stmt = self
+            .inner()
+            .prepare("SELECT tx FROM starknet_transactions WHERE block_number = ? ORDER BY idx ASC")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![&block_number])
+            .context("Executing query")?;
+
+        let mut data = Vec::new();
+        while let Some(row) = rows.next()? {
+            let transaction = row
+                .get_ref_unwrap("tx")
+                .as_blob_or_null()?
+                .context("Transaction data missing")?;
+            let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+            let transaction: dto::Transaction =
+                bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
+                    .context("Deserializing transaction")?
+                    .0;
+
+            data.push(transaction.into());
+        }
+
+        Ok(Some(data))
+    }
+
+    pub fn events_for_block(&self, block: BlockId) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
+        let Some(block_number) = self.block_number(block)? else {
+            return Ok(None);
+        };
+
+        let mut stmt = self
+            .inner()
+            .prepare(
+                r"
             SELECT hash, events
             FROM starknet_transactions
             WHERE block_number = ?
             ORDER BY idx ASC
             ",
-        )
-        .context("Preparing statement")?;
+            )
+            .context("Preparing statement")?;
 
-    let mut rows = stmt
-        .query(params![&block_number])
-        .context("Executing query")?;
+        let mut rows = stmt
+            .query(params![&block_number])
+            .context("Executing query")?;
 
-    let mut data = Vec::new();
-    while let Some(row) = rows.next()? {
-        let hash = row
-            .get_transaction_hash("hash")
-            .context("Fetching transaction hash")?;
-        let events = row
-            .get_ref_unwrap("events")
-            .as_blob_or_null()?
-            .context("Transaction events missing")?;
-        let events = zstd::decode_all(events).context("Decompressing events")?;
-        let events: dto::Events =
-            bincode::serde::decode_from_slice(&events, bincode::config::standard())
-                .context("Deserializing events")?
-                .0;
+        let mut data = Vec::new();
+        while let Some(row) = rows.next()? {
+            let hash = row
+                .get_transaction_hash("hash")
+                .context("Fetching transaction hash")?;
+            let events = row
+                .get_ref_unwrap("events")
+                .as_blob_or_null()?
+                .context("Transaction events missing")?;
+            let events = zstd::decode_all(events).context("Decompressing events")?;
+            let events: dto::Events =
+                bincode::serde::decode_from_slice(&events, bincode::config::standard())
+                    .context("Deserializing events")?
+                    .0;
 
-        data.push((
-            hash,
-            match events {
-                dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
-            },
-        ));
+            data.push((
+                hash,
+                match events {
+                    dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
+                },
+            ));
+        }
+
+        Ok(Some(data))
     }
 
-    Ok(Some(data))
-}
+    pub fn transaction_hashes_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<TransactionHash>>> {
+        let Some(block_number) = self.block_number(block)? else {
+            return Ok(None);
+        };
 
-pub(super) fn transaction_hashes_for_block(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<Vec<TransactionHash>>> {
-    let Some(block_number) = tx.block_number(block)? else {
-        return Ok(None);
-    };
+        let mut stmt = self
+            .inner()
+            .prepare(
+                "SELECT hash FROM starknet_transactions WHERE block_number = ? ORDER BY idx ASC",
+            )
+            .context("Preparing statement")?;
 
-    let mut stmt = tx
-        .inner()
-        .prepare("SELECT hash FROM starknet_transactions WHERE block_number = ? ORDER BY idx ASC")
-        .context("Preparing statement")?;
+        let data = stmt
+            .query_map(params![&block_number], |row| {
+                row.get_transaction_hash("hash")
+            })
+            .context("Executing query")?
+            .collect::<Result<Vec<_>, _>>()?;
 
-    let data = stmt
-        .query_map(params![&block_number], |row| {
-            row.get_transaction_hash("hash")
-        })
-        .context("Executing query")?
-        .collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(data))
+    }
 
-    Ok(Some(data))
-}
-
-pub(super) fn transaction_block_hash(
-    tx: &Transaction<'_>,
-    hash: TransactionHash,
-) -> anyhow::Result<Option<BlockHash>> {
-    tx.inner()
-        .query_row(
-            r"
+    pub fn transaction_block_hash(
+        &self,
+        hash: TransactionHash,
+    ) -> anyhow::Result<Option<BlockHash>> {
+        self.inner()
+            .query_row(
+                r"
             SELECT block_headers.hash FROM starknet_transactions
             JOIN block_headers ON starknet_transactions.block_number = block_headers.number
             WHERE starknet_transactions.hash = ?
             ",
-            params![&hash],
-            |row| row.get_block_hash(0),
-        )
-        .optional()
-        .map_err(|e| e.into())
+                params![&hash],
+                |row| row.get_block_hash(0),
+            )
+            .optional()
+            .map_err(|e| e.into())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransactionData {
+    pub transaction: StarknetTransaction,
+    pub receipt: Option<Receipt>,
+    pub events: Option<Vec<Event>>,
 }
 
 pub(crate) mod dto {
@@ -2122,10 +2134,10 @@ mod tests {
 
         let (expected, _) = body.first().unwrap().clone();
 
-        let result = super::transaction(&tx, expected.hash).unwrap().unwrap();
+        let result = tx.transaction(expected.hash).unwrap().unwrap();
         assert_eq!(result, expected);
 
-        let invalid = super::transaction(&tx, transaction_hash_bytes!(b"invalid")).unwrap();
+        let invalid = tx.transaction(transaction_hash_bytes!(b"invalid")).unwrap();
         assert_eq!(invalid, None);
     }
 
@@ -2136,7 +2148,8 @@ mod tests {
 
         let (transaction, receipt) = body.first().unwrap().clone();
 
-        let result = super::transaction_with_receipt(&tx, transaction.hash)
+        let result = tx
+            .transaction_with_receipt(transaction.hash)
             .unwrap()
             .unwrap();
         assert_eq!(result.0, transaction);
@@ -2144,8 +2157,9 @@ mod tests {
         assert_eq!(result.2, vec![]);
         assert_eq!(result.3, header.number);
 
-        let invalid =
-            super::transaction_with_receipt(&tx, transaction_hash_bytes!(b"invalid")).unwrap();
+        let invalid = tx
+            .transaction_with_receipt(transaction_hash_bytes!(b"invalid"))
+            .unwrap();
         assert_eq!(invalid, None);
     }
 
@@ -2157,18 +2171,21 @@ mod tests {
         let idx = 5;
         let expected = Some(body[idx].0.clone());
 
-        let by_number = super::transaction_at_block(&tx, header.number.into(), idx).unwrap();
+        let by_number = tx.transaction_at_block(header.number.into(), idx).unwrap();
         assert_eq!(by_number, expected);
-        let by_hash = super::transaction_at_block(&tx, header.hash.into(), idx).unwrap();
+        let by_hash = tx.transaction_at_block(header.hash.into(), idx).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = super::transaction_at_block(&tx, BlockId::Latest, idx).unwrap();
+        let by_latest = tx.transaction_at_block(BlockId::Latest, idx).unwrap();
         assert_eq!(by_latest, expected);
 
-        let invalid_index =
-            super::transaction_at_block(&tx, header.number.into(), body.len() + 1).unwrap();
+        let invalid_index = tx
+            .transaction_at_block(header.number.into(), body.len() + 1)
+            .unwrap();
         assert_eq!(invalid_index, None);
 
-        let invalid_index = super::transaction_at_block(&tx, BlockNumber::MAX.into(), idx).unwrap();
+        let invalid_index = tx
+            .transaction_at_block(BlockNumber::MAX.into(), idx)
+            .unwrap();
         assert_eq!(invalid_index, None);
     }
 
@@ -2177,11 +2194,11 @@ mod tests {
         let (mut db, header, body) = setup();
         let tx = db.transaction().unwrap();
 
-        let by_latest = super::transaction_count(&tx, BlockId::Latest).unwrap();
+        let by_latest = tx.transaction_count(BlockId::Latest).unwrap();
         assert_eq!(by_latest, body.len());
-        let by_number = super::transaction_count(&tx, header.number.into()).unwrap();
+        let by_number = tx.transaction_count(header.number.into()).unwrap();
         assert_eq!(by_number, body.len());
-        let by_hash = super::transaction_count(&tx, header.hash.into()).unwrap();
+        let by_hash = tx.transaction_count(header.hash.into()).unwrap();
         assert_eq!(by_hash, body.len());
     }
 
@@ -2196,15 +2213,16 @@ mod tests {
                 .collect(),
         );
 
-        let by_number = super::transaction_data_for_block(&tx, header.number.into()).unwrap();
+        let by_number = tx.transaction_data_for_block(header.number.into()).unwrap();
         assert_eq!(by_number, expected);
-        let by_hash = super::transaction_data_for_block(&tx, header.hash.into()).unwrap();
+        let by_hash = tx.transaction_data_for_block(header.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = super::transaction_data_for_block(&tx, BlockId::Latest).unwrap();
+        let by_latest = tx.transaction_data_for_block(BlockId::Latest).unwrap();
         assert_eq!(by_latest, expected);
 
-        let invalid_block =
-            super::transaction_data_for_block(&tx, BlockNumber::MAX.into()).unwrap();
+        let invalid_block = tx
+            .transaction_data_for_block(BlockNumber::MAX.into())
+            .unwrap();
         assert_eq!(invalid_block, None);
     }
 
@@ -2215,19 +2233,21 @@ mod tests {
 
         let expected = Some(body.into_iter().map(|(t, _)| t).collect::<Vec<_>>());
 
-        let by_number = super::transactions_for_block(&tx, header.number.into()).unwrap();
+        let by_number = tx.transactions_for_block(header.number.into()).unwrap();
         assert_eq!(by_number, expected);
-        let by_hash = super::transactions_for_block(&tx, header.hash.into()).unwrap();
+        let by_hash = tx.transactions_for_block(header.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = super::transactions_for_block(&tx, BlockId::Latest).unwrap();
+        let by_latest = tx.transactions_for_block(BlockId::Latest).unwrap();
         assert_eq!(by_latest, expected);
 
-        let invalid_block =
-            super::transaction_data_for_block(&tx, BlockNumber::MAX.into()).unwrap();
+        let invalid_block = tx
+            .transaction_data_for_block(BlockNumber::MAX.into())
+            .unwrap();
         assert_eq!(invalid_block, None);
 
-        let invalid_block =
-            super::transaction_data_for_block(&tx, block_hash!("0x123").into()).unwrap();
+        let invalid_block = tx
+            .transaction_data_for_block(block_hash!("0x123").into())
+            .unwrap();
         assert_eq!(invalid_block, None);
     }
 
@@ -2242,15 +2262,18 @@ mod tests {
                 .collect(),
         );
 
-        let by_number = super::transaction_hashes_for_block(&tx, header.number.into()).unwrap();
+        let by_number = tx
+            .transaction_hashes_for_block(header.number.into())
+            .unwrap();
         assert_eq!(by_number, expected);
-        let by_hash = super::transaction_hashes_for_block(&tx, header.hash.into()).unwrap();
+        let by_hash = tx.transaction_hashes_for_block(header.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = super::transaction_hashes_for_block(&tx, BlockId::Latest).unwrap();
+        let by_latest = tx.transaction_hashes_for_block(BlockId::Latest).unwrap();
         assert_eq!(by_latest, expected);
 
-        let invalid_block =
-            super::transaction_hashes_for_block(&tx, BlockNumber::MAX.into()).unwrap();
+        let invalid_block = tx
+            .transaction_hashes_for_block(BlockNumber::MAX.into())
+            .unwrap();
         assert_eq!(invalid_block, None);
     }
 
@@ -2260,11 +2283,12 @@ mod tests {
         let tx = db.transaction().unwrap();
 
         let target = body.first().unwrap().0.hash;
-        let valid = super::transaction_block_hash(&tx, target).unwrap().unwrap();
+        let valid = tx.transaction_block_hash(target).unwrap().unwrap();
         assert_eq!(valid, header.hash);
 
-        let invalid =
-            super::transaction_block_hash(&tx, transaction_hash_bytes!(b"invalid hash")).unwrap();
+        let invalid = tx
+            .transaction_block_hash(transaction_hash_bytes!(b"invalid hash"))
+            .unwrap();
         assert_eq!(invalid, None);
     }
 }

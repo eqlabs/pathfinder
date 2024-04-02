@@ -3,12 +3,10 @@ use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice};
 
 use crate::{prelude::*, BlockId};
 
-pub(super) fn insert_block_header(
-    tx: &Transaction<'_>,
-    header: &BlockHeader,
-) -> anyhow::Result<()> {
-    // Insert the header
-    tx.inner().execute(
+impl Transaction<'_> {
+    pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
+        // Insert the header
+        self.inner().execute(
         r"INSERT INTO block_headers 
                    ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode)
             VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode)",
@@ -33,301 +31,383 @@ pub(super) fn insert_block_header(
         },
     ).context("Inserting block header")?;
 
-    // This must occur after the header is inserted as this table references the header table.
-    tx.inner()
-        .execute(
-            "INSERT INTO canonical_blocks(number, hash) values(?,?)",
-            params![&header.number, &header.hash],
-        )
-        .context("Inserting into canonical_blocks table")?;
+        // This must occur after the header is inserted as this table references the header table.
+        self.inner()
+            .execute(
+                "INSERT INTO canonical_blocks(number, hash) values(?,?)",
+                params![&header.number, &header.hash],
+            )
+            .context("Inserting into canonical_blocks table")?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub(super) fn next_ancestor(
-    tx: &Transaction<'_>,
-    target: BlockNumber,
-) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
-    tx.inner()
-        .query_row(
-            "SELECT number,hash FROM block_headers 
+    /// Returns the closest ancestor header that is in storage.
+    ///
+    /// i.e. returns the latest header with number < target.
+    pub fn next_ancestor(
+        &self,
+        target: BlockNumber,
+    ) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+        self.inner()
+            .query_row(
+                "SELECT number,hash FROM block_headers 
                 WHERE number < ? 
                 ORDER BY number DESC LIMIT 1",
-            params![&target],
-            |row| {
-                let number = row.get_block_number(0)?;
-                let hash = row.get_block_hash(1)?;
-                Ok((number, hash))
-            },
-        )
-        .optional()
-        .map_err(|x| x.into())
-}
+                params![&target],
+                |row| {
+                    let number = row.get_block_number(0)?;
+                    let hash = row.get_block_hash(1)?;
+                    Ok((number, hash))
+                },
+            )
+            .optional()
+            .map_err(|x| x.into())
+    }
 
-pub(super) fn next_ancestor_without_parent(
-    tx: &Transaction<'_>,
-    target: BlockNumber,
-) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
-    tx.inner()
-        .query_row(
-            "SELECT number,hash FROM block_headers t1 
+    /// Searches in reverse chronological order for a block that exists in storage, but whose parent does not.
+    ///
+    /// Note that target is included in the search.
+    pub fn next_ancestor_without_parent(
+        &self,
+        target: BlockNumber,
+    ) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+        self.inner()
+            .query_row(
+                "SELECT number,hash FROM block_headers t1 
                 WHERE number <= ? AND 
                 NOT EXISTS (SELECT * FROM block_headers t2 WHERE t1.number - 1 = t2.number) 
                 ORDER BY number DESC LIMIT 1;",
-            params![&target],
-            |row| {
-                let number = row.get_block_number(0)?;
-                let hash = row.get_block_hash(1)?;
-                Ok((number, hash))
-            },
-        )
-        .optional()
-        .map_err(|x| x.into())
-}
-
-pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
-    tx.inner()
-        .execute(
-            "DELETE FROM starknet_events_filters WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Deleting bloom filter")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM starknet_transactions WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Deleting transactions")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM canonical_blocks WHERE number = ?",
-            params![&block],
-        )
-        .context("Deleting block from canonical_blocks table")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM block_headers WHERE number = ?",
-            params![&block],
-        )
-        .context("Deleting block from block_headers table")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM contract_roots WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Deleting block from contract_roots table")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM class_commitment_leaves WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Deleting block from class_commitment_leaves table")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM contract_state_hashes WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Deleting block from contract_state_hashes table")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM class_roots WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Deleting block from class_roots table")?;
-
-    tx.inner()
-        .execute(
-            "DELETE FROM storage_roots WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Deleting block from storage_roots table")?;
-
-    Ok(())
-}
-
-pub(super) fn block_id(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
-    match block {
-        BlockId::Latest => tx.inner().query_row(
-            "SELECT number, hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
-            [],
-            |row| {
-                let number = row.get_block_number(0)?;
-                let hash = row.get_block_hash(1)?;
-
-                Ok((number, hash))
-            },
-        ),
-        BlockId::Number(number) => tx.inner().query_row(
-            "SELECT hash FROM canonical_blocks WHERE number = ?",
-            params![&number],
-            |row| {
-                let hash = row.get_block_hash(0)?;
-                Ok((number, hash))
-            },
-        ),
-        BlockId::Hash(hash) => tx.inner().query_row(
-            "SELECT number FROM canonical_blocks WHERE hash = ?",
-            params![&hash],
-            |row| {
-                let number = row.get_block_number(0)?;
-                Ok((number, hash))
-            },
-        ),
-    }
-    .optional()
-    .map_err(|e| e.into())
-}
-
-pub(super) fn block_hash(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<BlockHash>> {
-    match block {
-        BlockId::Latest => tx
-            .inner()
-            .query_row(
-                "SELECT hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
-                [],
-                |row| row.get_block_hash(0),
+                params![&target],
+                |row| {
+                    let number = row.get_block_number(0)?;
+                    let hash = row.get_block_hash(1)?;
+                    Ok((number, hash))
+                },
             )
             .optional()
-            .map_err(|e| e.into()),
-        BlockId::Number(number) => tx
-            .inner()
-            .query_row(
+            .map_err(|x| x.into())
+    }
+
+    /// Removes all data related to this block.
+    ///
+    /// This includes block header, block body and state update information.
+    pub fn purge_block(&self, block: BlockNumber) -> anyhow::Result<()> {
+        self.inner()
+            .execute(
+                "DELETE FROM starknet_events_filters WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting bloom filter")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM starknet_transactions WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting transactions")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM canonical_blocks WHERE number = ?",
+                params![&block],
+            )
+            .context("Deleting block from canonical_blocks table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM block_headers WHERE number = ?",
+                params![&block],
+            )
+            .context("Deleting block from block_headers table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM contract_roots WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from contract_roots table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM class_commitment_leaves WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from class_commitment_leaves table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM contract_state_hashes WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from contract_state_hashes table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM class_roots WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from class_roots table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM storage_roots WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from storage_roots table")?;
+
+        Ok(())
+    }
+
+    pub fn block_id(&self, block: BlockId) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+        match block {
+            BlockId::Latest => self.inner().query_row(
+                "SELECT number, hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| {
+                    let number = row.get_block_number(0)?;
+                    let hash = row.get_block_hash(1)?;
+
+                    Ok((number, hash))
+                },
+            ),
+            BlockId::Number(number) => self.inner().query_row(
                 "SELECT hash FROM canonical_blocks WHERE number = ?",
                 params![&number],
-                |row| row.get_block_hash(0),
-            )
-            .optional()
-            .map_err(|e| e.into()),
-        BlockId::Hash(hash) => {
-            // This query ensures that the block exists.
-            tx.inner()
+                |row| {
+                    let hash = row.get_block_hash(0)?;
+                    Ok((number, hash))
+                },
+            ),
+            BlockId::Hash(hash) => self.inner().query_row(
+                "SELECT number FROM canonical_blocks WHERE hash = ?",
+                params![&hash],
+                |row| {
+                    let number = row.get_block_number(0)?;
+                    Ok((number, hash))
+                },
+            ),
+        }
+        .optional()
+        .map_err(|e| e.into())
+    }
+
+    pub fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {
+        match block {
+            BlockId::Latest => self
+                .inner()
                 .query_row(
-                    "SELECT hash FROM canonical_blocks WHERE hash = ?",
-                    params![&hash],
+                    "SELECT hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                    [],
                     |row| row.get_block_hash(0),
                 )
                 .optional()
-                .map_err(|e| e.into())
+                .map_err(|e| e.into()),
+            BlockId::Number(number) => self
+                .inner()
+                .query_row(
+                    "SELECT hash FROM canonical_blocks WHERE number = ?",
+                    params![&number],
+                    |row| row.get_block_hash(0),
+                )
+                .optional()
+                .map_err(|e| e.into()),
+            BlockId::Hash(hash) => {
+                // This query ensures that the block exists.
+                self.inner()
+                    .query_row(
+                        "SELECT hash FROM canonical_blocks WHERE hash = ?",
+                        params![&hash],
+                        |row| row.get_block_hash(0),
+                    )
+                    .optional()
+                    .map_err(|e| e.into())
+            }
         }
     }
-}
 
-pub(super) fn block_number(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<BlockNumber>> {
-    match block {
-        BlockId::Latest => tx
-            .inner()
-            .query_row(
-                "SELECT number FROM canonical_blocks ORDER BY number DESC LIMIT 1",
-                [],
-                |row| row.get_block_number(0),
-            )
-            .optional()
-            .map_err(|e| e.into()),
-        BlockId::Number(number) => {
-            // This query ensures that the block exists.
-            tx.inner()
+    pub fn block_number(&self, block: BlockId) -> anyhow::Result<Option<BlockNumber>> {
+        match block {
+            BlockId::Latest => self
+                .inner()
                 .query_row(
-                    "SELECT number FROM canonical_blocks WHERE number = ?",
-                    params![&number],
+                    "SELECT number FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                    [],
                     |row| row.get_block_number(0),
                 )
                 .optional()
-                .map_err(|e| e.into())
+                .map_err(|e| e.into()),
+            BlockId::Number(number) => {
+                // This query ensures that the block exists.
+                self.inner()
+                    .query_row(
+                        "SELECT number FROM canonical_blocks WHERE number = ?",
+                        params![&number],
+                        |row| row.get_block_number(0),
+                    )
+                    .optional()
+                    .map_err(|e| e.into())
+            }
+            BlockId::Hash(hash) => self
+                .inner()
+                .query_row(
+                    "SELECT number FROM canonical_blocks WHERE hash = ?",
+                    params![&hash],
+                    |row| row.get_block_number(0),
+                )
+                .optional()
+                .map_err(|e| e.into()),
         }
-        BlockId::Hash(hash) => tx
+    }
+
+    pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
+        match block {
+            BlockId::Latest => {
+                let mut stmt = self
+                    .inner()
+                    .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks)")?;
+                stmt.query_row([], |row| row.get(0))
+            }
+            BlockId::Number(number) => {
+                let mut stmt = self.inner().prepare_cached(
+                    "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)",
+                )?;
+                stmt.query_row(params![&number], |row| row.get(0))
+            }
+            BlockId::Hash(hash) => {
+                let mut stmt = self.inner().prepare_cached(
+                    "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)",
+                )?;
+                stmt.query_row(params![&hash], |row| row.get(0))
+            }
+        }
+        .map_err(|e| e.into())
+    }
+
+    pub fn block_header(&self, block: BlockId) -> anyhow::Result<Option<BlockHeader>> {
+        let sql = match block {
+            BlockId::Latest => "SELECT * FROM block_headers ORDER BY number DESC LIMIT 1",
+            BlockId::Number(_) => "SELECT * FROM block_headers WHERE number = ?",
+            BlockId::Hash(_) => "SELECT * FROM block_headers WHERE hash = ?",
+        };
+
+        let mut stmt = self
             .inner()
-            .query_row(
-                "SELECT number FROM canonical_blocks WHERE hash = ?",
-                params![&hash],
-                |row| row.get_block_number(0),
+            .prepare_cached(sql)
+            .context("Preparing block header query")?;
+
+        let header = match block {
+            BlockId::Latest => stmt.query_row([], parse_row_as_header),
+            BlockId::Number(number) => stmt.query_row(params![&number], parse_row_as_header),
+            BlockId::Hash(hash) => stmt.query_row(params![&hash], parse_row_as_header),
+        }
+        .optional()
+        .context("Querying for block header")?;
+
+        let Some(mut header) = header else {
+            return Ok(None);
+        };
+
+        // Fill in parent hash (unless we are at genesis in which case the current ZERO is correct).
+        if header.number != BlockNumber::GENESIS {
+            let parent_hash = self
+                .inner()
+                .query_row(
+                    "SELECT hash FROM block_headers WHERE number = ?",
+                    params![&(header.number - 1)],
+                    |row| row.get_block_hash(0),
+                )
+                .context("Querying parent hash")?;
+
+            header.parent_hash = parent_hash;
+        }
+
+        Ok(Some(header))
+    }
+
+    pub fn block_is_l1_accepted(&self, block: BlockId) -> anyhow::Result<bool> {
+        let Some(l1_l2) = self.l1_l2_pointer().context("Querying L1-L2 pointer")? else {
+            return Ok(false);
+        };
+
+        let Some((block_number, _)) = self.block_id(block).context("Fetching block number")? else {
+            return Ok(false);
+        };
+
+        Ok(block_number <= l1_l2)
+    }
+
+    pub fn first_block_without_transactions(&self) -> anyhow::Result<Option<BlockNumber>> {
+        let mut stmt = self
+            .inner()
+            .prepare(
+                "
+            SELECT number
+            FROM block_headers
+            LEFT JOIN starknet_transactions ON starknet_transactions.block_hash = block_headers.hash
+            GROUP BY block_headers.hash
+            HAVING COUNT(starknet_transactions.idx) = 0
+            ORDER BY number ASC
+            LIMIT 1;
+            ",
             )
-            .optional()
-            .map_err(|e| e.into()),
-    }
-}
+            .context("Preparing first_block_without_transactions query")?;
 
-pub(super) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
-    match block {
-        BlockId::Latest => {
-            let mut stmt = tx
-                .inner()
-                .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks)")?;
-            stmt.query_row([], |row| row.get(0))
-        }
-        BlockId::Number(number) => {
-            let mut stmt = tx
-                .inner()
-                .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)")?;
-            stmt.query_row(params![&number], |row| row.get(0))
-        }
-        BlockId::Hash(hash) => {
-            let mut stmt = tx
-                .inner()
-                .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)")?;
-            stmt.query_row(params![&hash], |row| row.get(0))
+        let mut rows = stmt
+            .query(params![])
+            .context("Executing first_block_without_transactions")?;
+
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get_block_number(0)?)),
+            None => Ok(None),
         }
     }
-    .map_err(|e| e.into())
-}
 
-pub(super) fn block_header(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<BlockHeader>> {
-    let sql = match block {
-        BlockId::Latest => "SELECT * FROM block_headers ORDER BY number DESC LIMIT 1",
-        BlockId::Number(_) => "SELECT * FROM block_headers WHERE number = ?",
-        BlockId::Hash(_) => "SELECT * FROM block_headers WHERE hash = ?",
-    };
-
-    let mut stmt = tx
+    pub fn first_block_without_receipts(&self) -> anyhow::Result<Option<BlockNumber>> {
+        let mut stmt = self
         .inner()
-        .prepare_cached(sql)
-        .context("Preparing block header query")?;
+        .prepare(
+            "
+            SELECT block_headers.number
+            FROM block_headers
+            JOIN starknet_transactions
+            ON starknet_transactions.block_hash = block_headers.hash AND starknet_transactions.receipt IS NULL
+            ORDER BY number ASC
+            LIMIT 1;
+            ",
+        )
+        .context("Preparing first_block_without_transactions query")?;
 
-    let header = match block {
-        BlockId::Latest => stmt.query_row([], parse_row_as_header),
-        BlockId::Number(number) => stmt.query_row(params![&number], parse_row_as_header),
-        BlockId::Hash(hash) => stmt.query_row(params![&hash], parse_row_as_header),
-    }
-    .optional()
-    .context("Querying for block header")?;
+        let mut rows = stmt
+            .query(params![])
+            .context("Executing first_block_without_transactions")?;
 
-    let Some(mut header) = header else {
-        return Ok(None);
-    };
-
-    // Fill in parent hash (unless we are at genesis in which case the current ZERO is correct).
-    if header.number != BlockNumber::GENESIS {
-        let parent_hash = tx
-            .inner()
-            .query_row(
-                "SELECT hash FROM block_headers WHERE number = ?",
-                params![&(header.number - 1)],
-                |row| row.get_block_hash(0),
-            )
-            .context("Querying parent hash")?;
-
-        header.parent_hash = parent_hash;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get_block_number(0)?)),
+            None => Ok(None),
+        }
     }
 
-    Ok(Some(header))
+    pub fn highest_block_with_all_class_definitions_downloaded(
+        &self,
+    ) -> anyhow::Result<Option<BlockNumber>> {
+        let mut stmt = self.inner().prepare_cached(
+            r"SELECT block_headers.number
+        FROM block_headers
+        JOIN (
+            SELECT COUNT(1) as count, block_number
+            FROM class_definitions
+            GROUP BY block_number
+            ORDER BY block_number DESC
+        )
+        ON block_headers.number = block_number
+        WHERE block_headers.declared_classes_count = count
+        ORDER BY block_headers.number DESC LIMIT 1",
+        )?;
+        stmt.query_row([], |row| row.get_block_number(0))
+            .optional()
+            .context("Querying highest block with all class definitions downloaded")
+    }
 }
 
 fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader> {
@@ -380,94 +460,6 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
     };
 
     Ok(header)
-}
-
-pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
-    let Some(l1_l2) = tx.l1_l2_pointer().context("Querying L1-L2 pointer")? else {
-        return Ok(false);
-    };
-
-    let Some((block_number, _)) = tx.block_id(block).context("Fetching block number")? else {
-        return Ok(false);
-    };
-
-    Ok(block_number <= l1_l2)
-}
-
-pub(super) fn first_block_without_transactions(
-    tx: &Transaction<'_>,
-) -> anyhow::Result<Option<BlockNumber>> {
-    let mut stmt = tx
-        .inner()
-        .prepare(
-            "
-            SELECT number
-            FROM block_headers
-            LEFT JOIN starknet_transactions ON starknet_transactions.block_hash = block_headers.hash
-            GROUP BY block_headers.hash
-            HAVING COUNT(starknet_transactions.idx) = 0
-            ORDER BY number ASC
-            LIMIT 1;
-            ",
-        )
-        .context("Preparing first_block_without_transactions query")?;
-
-    let mut rows = stmt
-        .query(params![])
-        .context("Executing first_block_without_transactions")?;
-
-    match rows.next()? {
-        Some(row) => Ok(Some(row.get_block_number(0)?)),
-        None => Ok(None),
-    }
-}
-
-pub(super) fn first_block_without_receipts(
-    tx: &Transaction<'_>,
-) -> anyhow::Result<Option<BlockNumber>> {
-    let mut stmt = tx
-        .inner()
-        .prepare(
-            "
-            SELECT block_headers.number
-            FROM block_headers
-            JOIN starknet_transactions
-            ON starknet_transactions.block_hash = block_headers.hash AND starknet_transactions.receipt IS NULL
-            ORDER BY number ASC
-            LIMIT 1;
-            ",
-        )
-        .context("Preparing first_block_without_transactions query")?;
-
-    let mut rows = stmt
-        .query(params![])
-        .context("Executing first_block_without_transactions")?;
-
-    match rows.next()? {
-        Some(row) => Ok(Some(row.get_block_number(0)?)),
-        None => Ok(None),
-    }
-}
-
-pub(super) fn highest_block_with_all_class_definitions_downloaded(
-    tx: &Transaction<'_>,
-) -> anyhow::Result<Option<BlockNumber>> {
-    let mut stmt = tx.inner().prepare_cached(
-        r"SELECT block_headers.number
-        FROM block_headers
-        JOIN (
-            SELECT COUNT(1) as count, block_number
-            FROM class_definitions
-            GROUP BY block_number
-            ORDER BY block_number DESC
-        )
-        ON block_headers.number = block_number
-        WHERE block_headers.declared_classes_count = count
-        ORDER BY block_headers.number DESC LIMIT 1",
-    )?;
-    stmt.query_row([], |row| row.get_block_number(0))
-        .optional()
-        .context("Querying highest block with all class definitions downloaded")
 }
 
 #[cfg(test)]
@@ -662,10 +654,10 @@ mod tests {
             let mut db = storage.connection().unwrap();
             let db = db.transaction().unwrap();
 
-            let result = next_ancestor(&db, BlockNumber::GENESIS + 10).unwrap();
+            let result = db.next_ancestor(BlockNumber::GENESIS + 10).unwrap();
             assert!(result.is_none());
 
-            let result = next_ancestor(&db, BlockNumber::GENESIS).unwrap();
+            let result = db.next_ancestor(BlockNumber::GENESIS).unwrap();
             assert!(result.is_none());
         }
 
@@ -674,7 +666,7 @@ mod tests {
             let (mut connection, headers) = setup();
             let tx = connection.transaction().unwrap();
 
-            let result = next_ancestor(&tx, headers[2].number + 1).unwrap().unwrap();
+            let result = tx.next_ancestor(headers[2].number + 1).unwrap().unwrap();
             let expected = (headers[2].number, headers[2].hash);
             assert_eq!(result, expected);
         }
@@ -684,7 +676,7 @@ mod tests {
             let (mut connection, headers) = setup();
             let tx = connection.transaction().unwrap();
 
-            let result = next_ancestor(&tx, headers[2].number + 2).unwrap().unwrap();
+            let result = tx.next_ancestor(headers[2].number + 2).unwrap().unwrap();
             let expected = (headers[2].number, headers[2].hash);
             assert_eq!(result, expected);
         }
@@ -706,7 +698,8 @@ mod tests {
 
             db.insert_block_header(&header_after_gap).unwrap();
 
-            let result = next_ancestor(&db, header_after_gap.number + 1)
+            let result = db
+                .next_ancestor(header_after_gap.number + 1)
                 .unwrap()
                 .unwrap();
             let expected = (header_after_gap.number, header_after_gap.hash);
@@ -724,10 +717,14 @@ mod tests {
             let mut db = storage.connection().unwrap();
             let db = db.transaction().unwrap();
 
-            let result = next_ancestor_without_parent(&db, BlockNumber::GENESIS + 10).unwrap();
+            let result = db
+                .next_ancestor_without_parent(BlockNumber::GENESIS + 10)
+                .unwrap();
             assert!(result.is_none());
 
-            let result = next_ancestor_without_parent(&db, BlockNumber::GENESIS).unwrap();
+            let result = db
+                .next_ancestor_without_parent(BlockNumber::GENESIS)
+                .unwrap();
             assert!(result.is_none());
         }
 
@@ -749,13 +746,15 @@ mod tests {
             db.insert_block_header(&header_after_gap).unwrap();
 
             let expected = (genesis.number, genesis.hash);
-            let result = next_ancestor_without_parent(&db, genesis.number)
+            let result = db
+                .next_ancestor_without_parent(genesis.number)
                 .unwrap()
                 .unwrap();
             assert_eq!(result, expected);
 
             let expected = (header_after_gap.number, header_after_gap.hash);
-            let result = next_ancestor_without_parent(&db, header_after_gap.number)
+            let result = db
+                .next_ancestor_without_parent(header_after_gap.number)
                 .unwrap()
                 .unwrap();
             assert_eq!(result, expected);
@@ -773,7 +772,8 @@ mod tests {
                 .finalize_with_hash(block_hash_bytes!(b"target"));
 
             let expected = (headers[0].number, headers[0].hash);
-            let result = next_ancestor_without_parent(&tx, target.number)
+            let result = tx
+                .next_ancestor_without_parent(target.number)
                 .unwrap()
                 .unwrap();
             assert_eq!(result, expected);
@@ -784,7 +784,8 @@ mod tests {
             let (mut connection, headers) = setup();
             let tx = connection.transaction().unwrap();
 
-            let result = next_ancestor_without_parent(&tx, BlockNumber::GENESIS)
+            let result = tx
+                .next_ancestor_without_parent(BlockNumber::GENESIS)
                 .unwrap()
                 .unwrap();
             let expected = (headers[0].number, headers[0].hash);
@@ -809,7 +810,8 @@ mod tests {
             tx.insert_block_header(&tail).unwrap();
             tx.insert_block_header(&target).unwrap();
 
-            let result = next_ancestor_without_parent(&tx, target.number)
+            let result = tx
+                .next_ancestor_without_parent(target.number)
                 .unwrap()
                 .unwrap();
             let expected = (tail.number, tail.hash);
