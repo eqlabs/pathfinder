@@ -1,4 +1,5 @@
 #![allow(dead_code, unused_variables)]
+use crate::sync::error::SyncError;
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{
@@ -7,7 +8,7 @@ use pathfinder_common::{
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
-type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, HeaderSyncError>;
+type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 
 /// Describes a gap in the stored headers.
 ///
@@ -75,29 +76,6 @@ pub(super) async fn next_gap(
     .context("Joining blocking task")?
 }
 
-#[derive(Debug, thiserror::Error)]
-pub(super) enum HeaderSyncError {
-    #[error(transparent)]
-    DatabaseError(#[from] anyhow::Error),
-    #[error("Signature verification failed")]
-    BadSignature(PeerData<SignedBlockHeader>),
-    #[error("Block hash verification failed")]
-    BadBlockHash(PeerData<SignedBlockHeader>),
-    #[error("Discontinuity in header chain")]
-    Discontinuity(PeerData<SignedBlockHeader>),
-}
-
-impl HeaderSyncError {
-    pub fn peer_id_and_data(&self) -> Option<&PeerData<SignedBlockHeader>> {
-        match self {
-            HeaderSyncError::DatabaseError(_) => None,
-            HeaderSyncError::BadSignature(x) => Some(x),
-            HeaderSyncError::BadBlockHash(x) => Some(x),
-            HeaderSyncError::Discontinuity(x) => Some(x),
-        }
-    }
-}
-
 /// Ensures the header block ID matches expectations.
 ///
 /// Intended for use with [scan](futures::StreamExt::scan) which is why
@@ -121,7 +99,7 @@ pub(super) fn check_continuity(
         Some(Ok(input))
     } else {
         expected.2 = true;
-        Some(Err(HeaderSyncError::Discontinuity(input)))
+        Some(Err(SyncError::Discontinuity(input.peer)))
     };
 
     std::future::ready(result)
@@ -131,11 +109,11 @@ pub(super) fn check_continuity(
 pub(super) async fn verify(signed_header: PeerData<SignedBlockHeader>) -> SignedHeaderResult {
     tokio::task::spawn_blocking(move || {
         if !signed_header.data.verify_signature() {
-            return Err(HeaderSyncError::BadSignature(signed_header));
+            return Err(SyncError::BadHeaderSignature(signed_header.peer));
         }
 
         if !signed_header.data.header.verify_hash() {
-            return Err(HeaderSyncError::BadBlockHash(signed_header));
+            return Err(SyncError::BadBlockHash(signed_header.peer));
         }
 
         Ok(signed_header)
