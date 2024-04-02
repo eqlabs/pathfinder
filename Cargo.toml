@@ -117,9 +117,9 @@ sha3 = "0.10"
 # This one needs to match the version used by blockifier
 starknet_api = "=0.10.0"
 syn = "1.0"
-thiserror = "1.0.48"
 tempfile = "3.8"
 test-log = { version = "0.2.12", default-features = false }
+thiserror = "1.0.48"
 time = "0.3.28"
 tokio = "1.32.0"
 tokio-retry = "0.3.0"
