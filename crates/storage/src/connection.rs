@@ -104,7 +104,7 @@ impl<'inner> Transaction<'inner> {
         }
     }
 
-    pub(self) fn inner(&self) -> &rusqlite::Transaction<'_> {
+    fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.transaction
     }
 
