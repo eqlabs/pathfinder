@@ -637,7 +637,7 @@ mod tests {
             StorageAddress, StorageValue,
         };
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::Storage;
+        use pathfinder_storage::StorageBuilder;
         use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::{
             error::{KnownStarknetErrorCode, SequencerError, StarknetError},
@@ -808,7 +808,7 @@ mod tests {
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<()>> {
-            let storage = Storage::in_memory().unwrap();
+            let storage = StorageBuilder::in_memory().unwrap();
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
                 sequencer,
@@ -1189,7 +1189,7 @@ mod tests {
                     chain: Chain::GoerliTestnet,
                     chain_id: ChainId::GOERLI_TESTNET,
                     block_validation_mode: MODE,
-                    storage: Storage::in_memory().unwrap(),
+                    storage: StorageBuilder::in_memory().unwrap(),
                 };
                 let latest_track = tokio::sync::watch::channel(Default::default());
 

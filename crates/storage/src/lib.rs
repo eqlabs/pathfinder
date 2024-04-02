@@ -23,13 +23,14 @@ use pathfinder_common::{BlockHash, BlockNumber};
 use anyhow::Context;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::{OpenFlags, OptionalExtension};
 
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
 /// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
 /// of the [Storage].
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum JournalMode {
     Rollback,
     WAL,
@@ -76,7 +77,7 @@ impl TryFrom<pathfinder_common::BlockId> for BlockId {
 /// Used to create [Connection's](Connection) to the pathfinder database.
 ///
 /// Intended usage:
-/// - Use [Storage::migrate] to create the app's database.
+/// - Use [StorageBuilder] to create the app's database.
 /// - Pass the [Storage] (or clones thereof) to components which require database access.
 /// - Use [Storage::connection] to create connection's to the database, which can in turn
 ///   be used to interact with the various [tables](self).
@@ -89,12 +90,24 @@ struct Inner {
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
     bloom_filter_cache: Arc<bloom::Cache>,
+    prune_merkle_tries: bool,
 }
 
 pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
     bloom_filter_cache: Arc<bloom::Cache>,
+    prune_merkle_tries: bool,
+}
+
+impl std::fmt::Debug for StorageManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StorageManager")
+            .field("database_path", &self.database_path)
+            .field("journal_mode", &self.journal_mode)
+            .field("prune_merkle_tries", &self.prune_merkle_tries)
+            .finish()
+    }
 }
 
 impl StorageManager {
@@ -110,60 +123,45 @@ impl StorageManager {
             database_path: Arc::new(self.database_path.clone()),
             pool,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
+            prune_merkle_tries: self.prune_merkle_tries,
         }))
     }
 }
 
-impl Storage {
-    /// Performs the database schema migration and returns a [storage manager](StorageManager).
-    ///
-    /// This should be called __once__ at the start of the application,
-    /// and passed to the various components which require access to the database.
-    ///
-    /// Panics if u32
-    pub fn migrate(
-        database_path: PathBuf,
-        journal_mode: JournalMode,
-        bloom_filter_cache_size: usize,
-    ) -> anyhow::Result<StorageManager> {
-        let mut connection =
-            rusqlite::Connection::open(&database_path).context("Opening DB for migration")?;
+pub struct StorageBuilder {
+    database_path: PathBuf,
+    journal_mode: JournalMode,
+    bloom_filter_cache_size: usize,
+    prune_merkle_tries: Option<bool>,
+}
 
-        // Migration is done with rollback journal mode. Otherwise dropped tables
-        // get copied into the WAL which is prohibitively expensive for large
-        // tables.
-        setup_journal_mode(&mut connection, JournalMode::Rollback)
-            .context("Setting journal mode to rollback")?;
-        setup_connection(&mut connection, JournalMode::Rollback)
-            .context("Setting up database connection")?;
-
-        migrate_database(&mut connection).context("Migrate database")?;
-
-        // Set the journal mode to the desired value.
-        setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
-
-        connection
-            .close()
-            .map_err(|(_connection, error)| error)
-            .context("Closing DB after setting journal mode")?;
-
-        Ok(StorageManager {
+impl StorageBuilder {
+    pub fn file(database_path: PathBuf) -> Self {
+        Self {
             database_path,
-            journal_mode,
-            bloom_filter_cache: Arc::new(bloom::Cache::with_size(bloom_filter_cache_size)),
-        })
+            journal_mode: JournalMode::WAL,
+            bloom_filter_cache_size: 16,
+            prune_merkle_tries: None,
+        }
     }
 
-    /// Returns a new Sqlite [Connection] to the database.
-    pub fn connection(&self) -> anyhow::Result<Connection> {
-        let conn = self.0.pool.get()?;
-        Ok(Connection::new(conn, self.0.bloom_filter_cache.clone()))
+    pub fn journal_mode(mut self, journal_mode: JournalMode) -> Self {
+        self.journal_mode = journal_mode;
+        self
+    }
+
+    pub fn bloom_filter_cache_size(mut self, bloom_filter_cache_size: usize) -> Self {
+        self.bloom_filter_cache_size = bloom_filter_cache_size;
+        self
+    }
+
+    pub fn prune_merkle_tries(mut self, prune_merkle_tries: Option<bool>) -> Self {
+        self.prune_merkle_tries = prune_merkle_tries;
+        self
     }
 
     /// Convenience function for tests to create an in-memory database.
-    /// Equivalent to [Storage::migrate] with an in-memory backed database.
-    // No longer cfg(test) because needed in benchmarks
-    pub fn in_memory() -> anyhow::Result<Self> {
+    pub fn in_memory() -> anyhow::Result<Storage> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
         lazy_static::lazy_static!(
@@ -183,9 +181,128 @@ impl Storage {
         // therefore holds the database in-place until the pool is established.
         let _conn = rusqlite::Connection::open(&database_path)?;
 
-        let storage = Self::migrate(database_path, JournalMode::Rollback, 16)?;
+        let storage = Self::file(database_path)
+            .journal_mode(JournalMode::Rollback)
+            .migrate()?;
 
         storage.create_pool(NonZeroU32::new(5).unwrap())
+    }
+
+    /// Performs the database schema migration and returns a [storage manager](StorageManager).
+    ///
+    /// This should be called __once__ at the start of the application,
+    /// and passed to the various components which require access to the database.
+    pub fn migrate(self) -> anyhow::Result<StorageManager> {
+        let mut open_flags = OpenFlags::default();
+        open_flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
+        let (mut connection, is_new_database) =
+            rusqlite::Connection::open_with_flags(&self.database_path, open_flags)
+                .map_or_else(
+                    |e| {
+                        if e.sqlite_error_code() == Some(rusqlite::ErrorCode::CannotOpen) {
+                            rusqlite::Connection::open(&self.database_path).map(|c| (c, true))
+                        } else {
+                            Err(e)
+                        }
+                    },
+                    |c| Ok((c, false)),
+                )
+                .context("Opening DB for migration")?;
+
+        // Migration is done with rollback journal mode. Otherwise dropped tables
+        // get copied into the WAL which is prohibitively expensive for large
+        // tables.
+        setup_journal_mode(&mut connection, JournalMode::Rollback)
+            .context("Setting journal mode to rollback")?;
+        setup_connection(&mut connection, JournalMode::Rollback)
+            .context("Setting up database connection")?;
+
+        migrate_database(&mut connection).context("Migrate database")?;
+
+        // Set the journal mode to the desired value.
+        setup_journal_mode(&mut connection, self.journal_mode).context("Setting journal mode")?;
+
+        // Validate that configuration matches database flags & default to the DB setting.
+        let prune_merkle_tries =
+            self.determine_if_pruning_is_enabled(&mut connection, is_new_database)?;
+        if prune_merkle_tries {
+            tracing::info!("Merkle trie pruning enabled");
+        } else {
+            tracing::info!("Merkle trie pruning disabled");
+        }
+
+        connection
+            .close()
+            .map_err(|(_connection, error)| error)
+            .context("Closing DB after migration")?;
+
+        Ok(StorageManager {
+            database_path: self.database_path,
+            journal_mode: self.journal_mode,
+            bloom_filter_cache: Arc::new(bloom::Cache::with_size(self.bloom_filter_cache_size)),
+            prune_merkle_tries,
+        })
+    }
+
+    /// Returns if trie pruning should be enabled.
+    ///
+    /// Takes the configured value (if present) as an input.
+    /// - If there is no explicitly requested configuration (default): uses the DB setting.
+    /// - If there's an explicitly requested setting: uses it if matches DB setting, enables
+    ///   pruning and sets flag in the database.
+    fn determine_if_pruning_is_enabled(
+        &self,
+        connection: &mut rusqlite::Connection,
+        is_new_database: bool,
+    ) -> anyhow::Result<bool> {
+        let prune_flag_is_set = connection
+            .query_row(
+                "SELECT 1 FROM storage_flags WHERE flag = 'prune_tries'",
+                [],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|x| x.is_some())?;
+
+        match self.prune_merkle_tries {
+            Some(prune_merkle_tries) => {
+                // If the requested pruning setting matches the flag just use that.
+                if prune_merkle_tries == prune_flag_is_set {
+                    return Ok(prune_merkle_tries);
+                }
+
+                if prune_merkle_tries {
+                    // If the flag is not set check if this is a new database and enable it.
+                    if !is_new_database {
+                        anyhow::bail!("Cannot enable Merkle trie pruning on a database that was not created with it enabled.");
+                    }
+
+                    connection.execute(
+                        "INSERT OR IGNORE INTO storage_flags (flag) VALUES ('prune_tries')",
+                        [],
+                    )?;
+
+                    tracing::info!("Created new database with Merkle trie pruning enabled.")
+                } else {
+                    anyhow::bail!("Cannot disable Merkle trie pruning on a database that was created with it enabled.");
+                }
+
+                Ok(prune_merkle_tries)
+            }
+            None => Ok(prune_flag_is_set),
+        }
+    }
+}
+
+impl Storage {
+    /// Returns a new Sqlite [Connection] to the database.
+    pub fn connection(&self) -> anyhow::Result<Connection> {
+        let conn = self.0.pool.get()?;
+        Ok(Connection::new(
+            conn,
+            self.0.bloom_filter_cache.clone(),
+            self.0.prune_merkle_tries,
+        ))
     }
 
     pub fn path(&self) -> &Path {
@@ -412,6 +529,16 @@ mod tests {
 
     #[test]
     fn rpc_test_db_is_migrated() {
+        let (_db_dir, db_path) = rpc_test_db_fixture();
+
+        let database = rusqlite::Connection::open(db_path).unwrap();
+        let version = schema_version(&database).unwrap();
+        let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
+
+        assert_eq!(version, expected, "RPC database fixture needs migrating");
+    }
+
+    fn rpc_test_db_fixture() -> (tempfile::TempDir, PathBuf) {
         let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         source_path.push("../rpc/fixtures/mainnet.sqlite");
 
@@ -421,10 +548,20 @@ mod tests {
 
         std::fs::copy(&source_path, &db_path).unwrap();
 
-        let database = rusqlite::Connection::open(db_path).unwrap();
-        let version = schema_version(&database).unwrap();
-        let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
+        (db_dir, db_path)
+    }
 
-        assert_eq!(version, expected, "RPC database fixture needs migrating");
+    #[test]
+    fn enabling_merkle_trie_pruning_fails_without_flag() {
+        let (_db_dir, db_path) = rpc_test_db_fixture();
+
+        assert_eq!(
+            StorageBuilder::file(db_path)
+                .prune_merkle_tries(Some(true))
+                .migrate()
+                .unwrap_err()
+                .to_string(),
+            "Cannot enable Merkle trie pruning on a database that was not created with it enabled."
+        );
     }
 }

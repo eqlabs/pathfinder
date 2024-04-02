@@ -6435,6 +6435,7 @@ dependencies = [
  "flume",
  "hex",
  "lazy_static",
+ "metrics",
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-ethereum",

@@ -449,7 +449,6 @@ pub(super) fn class_commitment_leaf(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Storage;
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_crypto::Felt;
@@ -470,7 +469,10 @@ mod tests {
 
     #[test]
     fn class_existence() {
-        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let transaction = connection.transaction().unwrap();
 
         let (hash, _, _) = setup_class(&transaction);
@@ -483,7 +485,10 @@ mod tests {
 
     #[test]
     fn insert_cairo() {
-        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = connection.transaction().unwrap();
 
         let cairo_hash = class_hash_bytes!(b"cairo hash");
@@ -498,7 +503,10 @@ mod tests {
 
     #[test]
     fn insert_sierra() {
-        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = connection.transaction().unwrap();
 
         let sierra_hash = sierra_hash_bytes!(b"sierra hash");
@@ -544,7 +552,10 @@ mod tests {
 
     #[test]
     fn compiled_class_leaves() {
-        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
+        let mut connection = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = connection.transaction().unwrap();
 
         let leaf0 = class_commitment_leaf_hash_bytes!(b"genesis leaf");

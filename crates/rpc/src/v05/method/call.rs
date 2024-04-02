@@ -190,7 +190,6 @@ mod tests {
             felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ClassHash, ContractAddress,
             GasPrice, StateUpdate, StorageAddress, StorageValue,
         };
-        use pathfinder_storage::Storage;
         use starknet_gateway_test_fixtures::class_definitions::{
             CONTRACT_DEFINITION, CONTRACT_DEFINITION_CLASS_HASH,
         };
@@ -203,7 +202,7 @@ mod tests {
             StorageAddress,
             StorageValue,
         ) {
-            let storage = Storage::in_memory().unwrap();
+            let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
             let mut db = storage.connection().unwrap();
             let tx = db.transaction().unwrap();
 
@@ -467,7 +466,6 @@ mod tests {
 
     mod mainnet {
         use super::*;
-        use pathfinder_storage::JournalMode;
         use std::num::NonZeroU32;
         use std::path::PathBuf;
 
@@ -502,7 +500,8 @@ mod tests {
 
             std::fs::copy(&source_path, &db_path).unwrap();
 
-            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL, 1)
+            let storage = pathfinder_storage::StorageBuilder::file(db_path)
+                .migrate()
                 .unwrap()
                 .create_pool(NonZeroU32::new(1).unwrap())
                 .unwrap();

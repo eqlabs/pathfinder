@@ -79,7 +79,6 @@ pub(super) fn latest_l1_state(tx: &Transaction<'_>) -> anyhow::Result<Option<Eth
 mod tests {
     use super::*;
 
-    use crate::Storage;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, StateCommitment};
     use pathfinder_crypto::Felt;
@@ -101,7 +100,7 @@ mod tests {
 
     #[test]
     fn empty() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -114,7 +113,7 @@ mod tests {
 
     #[test]
     fn latest() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -130,7 +129,7 @@ mod tests {
 
     #[test]
     fn upsert_and_at_number() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -148,7 +147,7 @@ mod tests {
 
     #[test]
     fn upsert_overwrites() {
-        let storage = Storage::in_memory().unwrap();
+        let storage = crate::StorageBuilder::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 

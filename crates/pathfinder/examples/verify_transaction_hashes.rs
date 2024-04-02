@@ -2,7 +2,6 @@ use std::num::NonZeroU32;
 
 use anyhow::Context;
 use pathfinder_common::{BlockNumber, ChainId};
-use pathfinder_storage::{JournalMode, Storage};
 use rayon::prelude::*;
 
 /// Verify transaction hashes in a pathfinder database.
@@ -29,7 +28,8 @@ fn main() -> anyhow::Result<()> {
 
     println!("Migrating database...");
 
-    let storage = Storage::migrate(database_path.into(), JournalMode::WAL, 1)?
+    let storage = pathfinder_storage::StorageBuilder::file(database_path.into())
+        .migrate()?
         .create_pool(NonZeroU32::new(1).unwrap())
         .unwrap();
     let mut db = storage

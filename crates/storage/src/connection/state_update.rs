@@ -876,7 +876,10 @@ mod tests {
 
     #[test]
     fn contract_class_hash() {
-        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
         let tx = db.transaction().unwrap();
 
         let original_class = class_hash!("0xdeadbeef");
@@ -967,7 +970,10 @@ mod tests {
         const CONTRACT_ADDRESS: ContractAddress = contract_address_bytes!(b"contract addr");
 
         fn setup() -> (crate::Connection, StateUpdate, BlockHeader) {
-            let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+            let mut db = crate::StorageBuilder::in_memory()
+                .unwrap()
+                .connection()
+                .unwrap();
             let tx = db.transaction().unwrap();
 
             // Submit the class definitions since this occurs out of band of the header and state diff.
@@ -1113,7 +1119,10 @@ mod tests {
 
         /// Create and inserts a basic state diff for testing.
         fn setup() -> (crate::Connection, StateUpdate, BlockHeader) {
-            let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+            let mut db = crate::StorageBuilder::in_memory()
+                .unwrap()
+                .connection()
+                .unwrap();
             let tx = db.transaction().unwrap();
 
             let header = BlockHeader::builder().finalize_with_hash(block_hash_bytes!(b"hash"));
