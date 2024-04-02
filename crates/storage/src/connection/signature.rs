@@ -3,33 +3,31 @@ use pathfinder_common::{BlockCommitmentSignature, BlockNumber};
 
 use crate::{prelude::*, BlockId};
 
-pub(super) fn insert_signature(
-    tx: &Transaction<'_>,
-    block_number: BlockNumber,
-    signature: &BlockCommitmentSignature,
-) -> anyhow::Result<()> {
-    tx.inner()
-        .execute(
-            r"INSERT INTO block_signatures
-               ( block_number,  signature_r,  signature_s)
-        VALUES (:block_number, :signature_r, :signature_s)",
-            named_params! {
-                ":block_number": &block_number,
-                ":signature_r": &signature.r,
-                ":signature_s": &signature.s,
-            },
-        )
-        .context("Inserting signature")?;
+impl Transaction<'_> {
+    pub fn insert_signature(
+        &self,
+        block_number: BlockNumber,
+        signature: &BlockCommitmentSignature,
+    ) -> anyhow::Result<()> {
+        self.inner()
+            .execute(
+                r"INSERT INTO block_signatures
+                       ( block_number,  signature_r,  signature_s)
+                VALUES (:block_number, :signature_r, :signature_s)",
+                named_params! {
+                    ":block_number": &block_number,
+                    ":signature_r": &signature.r,
+                    ":signature_s": &signature.s,
+                },
+            )
+            .context("Inserting signature")?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub(super) fn signature(
-    tx: &Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<BlockCommitmentSignature>> {
-    match block {
-        BlockId::Latest => tx.inner().query_row(
+    pub fn signature(&self, block: BlockId) -> anyhow::Result<Option<BlockCommitmentSignature>> {
+        match block {
+        BlockId::Latest => self.inner().query_row(
             "SELECT signature_r, signature_s FROM block_signatures ORDER BY block_number DESC LIMIT 1",
             [],
             |row| {
@@ -38,7 +36,7 @@ pub(super) fn signature(
                 Ok(BlockCommitmentSignature { r, s })
             },
         ),
-        BlockId::Number(number) => tx.inner().query_row(
+        BlockId::Number(number) => self.inner().query_row(
             "SELECT signature_r, signature_s FROM block_signatures WHERE block_number = ?",
             params![&number],
             |row| {
@@ -47,7 +45,7 @@ pub(super) fn signature(
                 Ok(BlockCommitmentSignature { r, s })
             },
         ),
-        BlockId::Hash(hash) => tx.inner().query_row(
+        BlockId::Hash(hash) => self.inner().query_row(
             r"SELECT signature_r, signature_s
                 FROM block_signatures
                 JOIN block_headers ON block_signatures.block_number = block_headers.number
@@ -62,6 +60,7 @@ pub(super) fn signature(
     }
     .optional()
     .map_err(|e| e.into())
+    }
 }
 
 #[cfg(test)]

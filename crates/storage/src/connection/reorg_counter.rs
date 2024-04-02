@@ -9,24 +9,26 @@ impl ReorgCounter {
     }
 }
 
-pub(super) fn increment_reorg_counter(tx: &Transaction<'_>) -> anyhow::Result<()> {
-    tx.inner().execute(
-        "UPDATE reorg_counter SET counter=counter+1 WHERE id = 1",
-        [],
-    )?;
-
-    Ok(())
-}
-
-pub(super) fn reorg_counter(tx: &Transaction<'_>) -> anyhow::Result<ReorgCounter> {
-    // This table always contains exactly one row.
-    tx.inner()
-        .query_row(
-            "SELECT counter FROM reorg_counter WHERE id = 1",
+impl Transaction<'_> {
+    pub fn increment_reorg_counter(&self) -> anyhow::Result<()> {
+        self.inner().execute(
+            "UPDATE reorg_counter SET counter=counter+1 WHERE id = 1",
             [],
-            |row| row.get_reorg_counter(0),
-        )
-        .map_err(|e| e.into())
+        )?;
+
+        Ok(())
+    }
+
+    pub fn reorg_counter(&self) -> anyhow::Result<ReorgCounter> {
+        // This table always contains exactly one row.
+        self.inner()
+            .query_row(
+                "SELECT counter FROM reorg_counter WHERE id = 1",
+                [],
+                |row| row.get_reorg_counter(0),
+            )
+            .map_err(|e| e.into())
+    }
 }
 
 #[cfg(test)]
@@ -39,7 +41,7 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        let result = reorg_counter(&tx).unwrap();
+        let result = tx.reorg_counter().unwrap();
         assert_eq!(result, ReorgCounter::new(0));
     }
 
@@ -49,12 +51,12 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        increment_reorg_counter(&tx).unwrap();
-        let result = reorg_counter(&tx).unwrap();
+        tx.increment_reorg_counter().unwrap();
+        let result = tx.reorg_counter().unwrap();
         assert_eq!(result, ReorgCounter::new(1));
 
-        increment_reorg_counter(&tx).unwrap();
-        let result = reorg_counter(&tx).unwrap();
+        tx.increment_reorg_counter().unwrap();
+        let result = tx.reorg_counter().unwrap();
         assert_eq!(result, ReorgCounter::new(2));
     }
 }

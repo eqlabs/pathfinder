@@ -6436,6 +6436,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "metrics",
+ "paste",
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-ethereum",
