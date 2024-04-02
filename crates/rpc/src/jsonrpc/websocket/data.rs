@@ -217,7 +217,7 @@ impl serde::Serialize for BlockHeader {
         map.serialize_entry("eth_l1_data_gas_price", &eth_l1_data_gas_price)?;
         map.serialize_entry("strk_l1_data_gas_price", &strk_l1_data_gas_price)?;
         map.serialize_entry("sequencer_address", &sequencer_address)?;
-        map.serialize_entry("starknet_version", &starknet_version)?;
+        map.serialize_entry("starknet_version", &starknet_version.to_string())?;
         map.serialize_entry("class_commitment", &class_commitment)?;
         map.serialize_entry("event_commitment", &event_commitment)?;
         map.serialize_entry("state_commitment", &state_commitment)?;
