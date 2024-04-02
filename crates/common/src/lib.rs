@@ -433,6 +433,15 @@ impl StarknetVersion {
     pub const fn new(a: u8, b: u8, c: u8, d: u8) -> Self {
         StarknetVersion(a, b, c, d)
     }
+
+    pub fn as_u32(&self) -> u32 {
+        u32::from_le_bytes([self.0, self.1, self.2, self.3])
+    }
+
+    pub fn from_u32(version: u32) -> Self {
+        let [a, b, c, d] = version.to_le_bytes();
+        StarknetVersion(a, b, c, d)
+    }
 }
 
 impl FromStr for StarknetVersion {

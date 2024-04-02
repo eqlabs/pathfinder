@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice, StarknetVersion};
+use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice};
 
 use crate::{prelude::*, BlockId};
 
@@ -7,15 +7,11 @@ pub(super) fn insert_block_header(
     tx: &Transaction<'_>,
     header: &BlockHeader,
 ) -> anyhow::Result<()> {
-    // Intern the starknet version
-    let version_id = intern_starknet_version(tx, &header.starknet_version)
-        .context("Interning starknet version")?;
-
     // Insert the header
     tx.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode)
-            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode)",
+                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode)
+            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
@@ -26,7 +22,7 @@ pub(super) fn insert_block_header(
             ":eth_l1_data_gas_price": &header.eth_l1_data_gas_price.to_be_bytes().as_slice(),
             ":strk_l1_data_gas_price": &header.strk_l1_data_gas_price.to_be_bytes().as_slice(),
             ":sequencer_address": &header.sequencer_address,
-            ":version_id": &version_id,
+            ":version": &header.starknet_version.as_u32(),
             ":transaction_commitment": &header.transaction_commitment,
             ":event_commitment": &header.event_commitment,
             ":class_commitment": &header.class_commitment,
@@ -87,39 +83,6 @@ pub(super) fn next_ancestor_without_parent(
         )
         .optional()
         .map_err(|x| x.into())
-}
-
-fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> anyhow::Result<i64> {
-    let id: Option<i64> = tx
-        .inner()
-        .query_row(
-            "SELECT id FROM starknet_versions WHERE version = ?",
-            params![version],
-            |r| Ok(r.get_unwrap(0)),
-        )
-        .optional()
-        .context("Querying for an existing starknet_version")?;
-
-    let id = if let Some(id) = id {
-        id
-    } else {
-        // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
-        // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
-        // read back with last_insert_rowid
-        let rows = tx
-            .inner()
-            .execute(
-                "INSERT INTO starknet_versions(version) VALUES (?)",
-                params![version],
-            )
-            .context("Inserting unique starknet_version")?;
-
-        anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
-
-        tx.inner().last_insert_rowid()
-    };
-
-    Ok(id)
 }
 
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
@@ -327,17 +290,15 @@ pub(super) fn block_header(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<BlockHeader>> {
-    // TODO: is LEFT JOIN reasonable? It's required because version ID can be null for non-existent versions.
-    const BASE_SQL: &str = "SELECT * FROM block_headers LEFT JOIN starknet_versions ON block_headers.version_id = starknet_versions.id";
     let sql = match block {
-        BlockId::Latest => format!("{BASE_SQL} ORDER BY number DESC LIMIT 1"),
-        BlockId::Number(_) => format!("{BASE_SQL} WHERE number = ?"),
-        BlockId::Hash(_) => format!("{BASE_SQL} WHERE hash = ?"),
+        BlockId::Latest => "SELECT * FROM block_headers ORDER BY number DESC LIMIT 1",
+        BlockId::Number(_) => "SELECT * FROM block_headers WHERE number = ?",
+        BlockId::Hash(_) => "SELECT * FROM block_headers WHERE hash = ?",
     };
 
     let mut stmt = tx
         .inner()
-        .prepare_cached(&sql)
+        .prepare_cached(sql)
         .context("Preparing block header query")?;
 
     let header = match block {

@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anyhow::Result;
 use pathfinder_common::{
     BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset,
@@ -209,13 +207,8 @@ pub trait RowExt {
         &self,
         index: Index,
     ) -> rusqlite::Result<StarknetVersion> {
-        // Older starknet versions were stored as null, map those to empty string.
-        let s = self
-            .get_optional_str(index)?
-            .unwrap_or_default()
-            .to_string();
-
-        Ok(StarknetVersion::from_str(&s).expect("invalid Starknet version"))
+        let v: u32 = self.get_i64(index)?.try_into().unwrap();
+        Ok(StarknetVersion::from_u32(v))
     }
 
     fn get_transaction_commitment<Index: RowIndex>(
