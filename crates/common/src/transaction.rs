@@ -779,6 +779,7 @@ mod tests {
     use super::*;
     use crate::macro_prelude::*;
 
+    // Goerli support was removed, however some of the fixtures originally come from Goerli.
     const GOERLI_TESTNET: ChainId = ChainId(match Felt::from_be_slice(b"SN_GOERLI") {
         Ok(chain_id) => chain_id,
         Err(_) => unreachable!(),

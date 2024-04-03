@@ -484,11 +484,6 @@ mod tests {
     use pathfinder_common::transaction::{EntryPointType, InvokeTransactionV0};
     use pathfinder_crypto::Felt;
 
-    const GOERLI_TESTNET: ChainId = ChainId(match Felt::from_be_slice(b"SN_GOERLI") {
-        Ok(chain_id) => chain_id,
-        Err(_) => unreachable!(),
-    });
-
     #[test]
     fn test_event_hash() {
         let event = Event {
@@ -543,28 +538,22 @@ mod tests {
 
     #[test]
     fn test_number_of_events_in_block() {
-        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let json = starknet_gateway_test_fixtures::v0_8_0::block::MAINNET_2500;
         let block: Block = serde_json::from_str(json).unwrap();
 
         // this expected value comes from processing the raw JSON and counting the number of events
-        const EXPECTED_NUMBER_OF_EVENTS: usize = 55;
+        const EXPECTED_NUMBER_OF_EVENTS: usize = 26;
         assert_eq!(number_of_events_in_block(&block), EXPECTED_NUMBER_OF_EVENTS);
     }
 
     #[test]
     fn test_block_hash_without_sequencer_address() {
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the sequencer address.
-        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_90000;
+        let json = starknet_gateway_test_fixtures::v0_7_0::block::MAINNET_2240;
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(
-                &block,
-                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
-                GOERLI_TESTNET,
-                block.block_hash
-            )
-            .unwrap(),
+            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -573,17 +562,11 @@ mod tests {
     fn test_block_hash_with_sequencer_address() {
         // This tests with a post-0.8.2 block where we have correct sequencer address
         // information in the block itself.
-        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_231579;
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::MAINNET_2800;
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(
-                &block,
-                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
-                GOERLI_TESTNET,
-                block.block_hash
-            )
-            .unwrap(),
+            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -593,34 +576,22 @@ mod tests {
         // This tests with a post-0.8.0 pre-0.8.2 block where we don't have the sequencer
         // address in the JSON but the block hash was calculated with the magic value below
         // instead of zero.
-        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let json = starknet_gateway_test_fixtures::v0_8_0::block::MAINNET_2500;
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(
-                &block,
-                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
-                GOERLI_TESTNET,
-                block.block_hash,
-            )
-            .unwrap(),
+            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash,).unwrap(),
             VerifyResult::Match(_)
         );
     }
 
     #[test]
     fn test_block_hash_0_11_1() {
-        let json = starknet_gateway_test_fixtures::integration::block::NUMBER_285915;
+        let json = starknet_gateway_test_fixtures::v0_11_1::block::MAINNET_65000;
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(
-                &block,
-                Chain::SepoliaIntegration, // Goerli was removed so use any other than Custom
-                GOERLI_TESTNET,
-                block.block_hash,
-            )
-            .unwrap(),
+            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash,).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -629,17 +600,11 @@ mod tests {
     fn test_block_hash_0() {
         // This tests with a pre-0.7 block where the chain ID was hashed into
         // the block hash.
-        let json = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
+        let json = starknet_gateway_test_fixtures::pre_0_7_0::block::MAINNET_GENESIS;
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(
-                &block,
-                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
-                GOERLI_TESTNET,
-                block.block_hash
-            )
-            .unwrap(),
+            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }

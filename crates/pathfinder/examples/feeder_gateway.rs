@@ -29,13 +29,14 @@ pub struct ContractAddresses {
 /// Serve feeder gateway REST endpoints required for pathfinder to sync.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example feeder_gateway ./goerli.sqlite`
+/// `cargo run --release -p pathfinder --example feeder_gateway ./testnet-sepolia.sqlite`
 ///
 /// Then pathfinder can be run with the following arguments to use this tool as a sync source:
 ///
 /// ```text
 /// cargo run --release -p pathfinder -- \
-///     --network custom --chain-id SN_GOERLI2 \
+///     --network custom --chain-id SN_SEPOLIA \
+///     --ethereum.url https://eth-sepolia.alchemyapi.io/v2/YOUR_API_KEY
 ///     --gateway-url http://localhost:8080/gateway \
 ///     --feeder-gateway-url http://localhost:8080/feeder_gateway \
 ///     --data-directory /tmp
@@ -319,7 +320,7 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
             gps: parse("47312450B3Ac8b5b8e247a6bB6d523e7605bDb60"),
         },
         Chain::Custom => ContractAddresses {
-            // former Goerli integration
+            // Formerly also Goerli integration
             core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
         },

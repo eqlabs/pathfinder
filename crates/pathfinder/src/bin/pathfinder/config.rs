@@ -45,7 +45,7 @@ struct Cli {
         long_help = r"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
 
 Examples:
-    infura: https://goerli.infura.io/v3/<PROJECT_ID>
+    infura: https://mainnet.infura.io/v3/<PROJECT_ID>
     geth:   https://localhost:8545",
         value_name = "HTTP(s) URL",
         value_hint = clap::ValueHint::Url,
