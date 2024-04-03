@@ -812,8 +812,8 @@ mod tests {
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
                 sequencer,
-                chain: Chain::GoerliTestnet,
-                chain_id: ChainId::GOERLI_TESTNET,
+                chain: Chain::SepoliaTestnet,
+                chain_id: ChainId::SEPOLIA_TESTNET,
                 block_validation_mode: MODE,
                 storage,
             };
@@ -1186,8 +1186,8 @@ mod tests {
                 let mock = std::sync::Arc::new(mock);
                 let context = L2SyncContext {
                     sequencer: mock,
-                    chain: Chain::GoerliTestnet,
-                    chain_id: ChainId::GOERLI_TESTNET,
+                    chain: Chain::SepoliaTestnet,
+                    chain_id: ChainId::SEPOLIA_TESTNET,
                     block_validation_mode: MODE,
                     storage: StorageBuilder::in_memory().unwrap(),
                 };

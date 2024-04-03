@@ -9,14 +9,8 @@ pub const VERGEN_GIT_DESCRIBE: &str = env!("VERGEN_GIT_DESCRIBE");
 /// User agent used in http clients
 pub const USER_AGENT: &str = concat!("starknet-pathfinder/", env!("VERGEN_GIT_DESCRIBE"));
 
-pub const GOERLI_TESTNET_GENESIS_HASH: BlockHash =
-    block_hash!("07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b");
-
 pub const MAINNET_GENESIS_HASH: BlockHash =
     block_hash!("047C3637B57C2B079B93C61539950C17E868A28F46CDEF28F88521067F21E943");
-
-pub const GOERLI_INTEGRATION_GENESIS_HASH: BlockHash =
-    block_hash!("03ae41b0f023e53151b0c8ab8b9caafb7005d5f41c9ab260276d5bdc49726279");
 
 pub const SEPOLIA_TESTNET_GENESIS_HASH: BlockHash =
     block_hash!("5c627d4aeb51280058bed93c7889bce78114d63baad1be0f0aeb32496d5f19c");

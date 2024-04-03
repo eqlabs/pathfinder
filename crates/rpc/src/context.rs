@@ -57,7 +57,7 @@ impl RpcContext {
 
     #[cfg(test)]
     pub fn for_tests() -> Self {
-        Self::for_tests_on(pathfinder_common::Chain::GoerliTestnet)
+        Self::for_tests_on(pathfinder_common::Chain::SepoliaTestnet)
     }
 
     #[cfg(test)]
@@ -67,14 +67,6 @@ impl RpcContext {
 
         let (chain_id, sequencer) = match chain {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet(GATEWAY_TIMEOUT)),
-            Chain::GoerliTestnet => (
-                ChainId::GOERLI_TESTNET,
-                SequencerClient::goerli_testnet(GATEWAY_TIMEOUT),
-            ),
-            Chain::GoerliIntegration => (
-                ChainId::GOERLI_INTEGRATION,
-                SequencerClient::goerli_integration(GATEWAY_TIMEOUT),
-            ),
             Chain::SepoliaTestnet => (
                 ChainId::SEPOLIA_TESTNET,
                 SequencerClient::sepolia_testnet(GATEWAY_TIMEOUT),

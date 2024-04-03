@@ -289,8 +289,7 @@ async fn serve() -> anyhow::Result<()> {
 
 fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> {
     use pathfinder_common::consts::{
-        GOERLI_INTEGRATION_GENESIS_HASH, GOERLI_TESTNET_GENESIS_HASH, MAINNET_GENESIS_HASH,
-        SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
+        MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
     };
 
     let genesis_hash = tx
@@ -300,8 +299,6 @@ fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> 
 
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => Chain::Mainnet,
-        GOERLI_TESTNET_GENESIS_HASH => Chain::GoerliTestnet,
-        GOERLI_INTEGRATION_GENESIS_HASH => Chain::GoerliIntegration,
         SEPOLIA_TESTNET_GENESIS_HASH => Chain::SepoliaTestnet,
         SEPOLIA_INTEGRATION_GENESIS_HASH => Chain::SepoliaIntegration,
         _other => Chain::Custom,
@@ -321,11 +318,8 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
             core: parse("c662c410C0ECf747543f5bA90660f6ABeBD9C8c4"),
             gps: parse("47312450B3Ac8b5b8e247a6bB6d523e7605bDb60"),
         },
-        Chain::GoerliTestnet => ContractAddresses {
-            core: parse("de29d060D45901Fb19ED6C6e959EB22d8626708e"),
-            gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
-        },
-        Chain::GoerliIntegration | Chain::Custom => ContractAddresses {
+        Chain::Custom => ContractAddresses {
+            // former Goerli integration
             core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
             gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
         },

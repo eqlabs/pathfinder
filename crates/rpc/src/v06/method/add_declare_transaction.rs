@@ -485,7 +485,7 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
     async fn invalid_contract_definition_v2() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
 
         let invalid_contract_class = SierraContractClass {
             sierra_program: vec![],
@@ -567,7 +567,7 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
     async fn insufficient_max_fee() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
 
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V2(
             BroadcastedDeclareTransactionV2 {
@@ -597,7 +597,7 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
     async fn insufficient_account_balance() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
 
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V2(
             BroadcastedDeclareTransactionV2 {
@@ -628,7 +628,7 @@ mod tests {
     #[ignore = "gateway 429"]
     // https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41d1f5206ef58a443e7d3d1ca073171ec25fa75313394318fc83a074a6631c3
     async fn duplicate_v3_transaction() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
 
         let input = BroadcastedDeclareTransactionV3 {
             version: TransactionVersion::THREE,

@@ -154,29 +154,11 @@ mod meta {
         }
     }
 
-    const GOERLI_TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: BlockNumber::new_or_panic(47028),
-        not_verifiable_range: Some(
-            BlockNumber::new_or_panic(119802)..BlockNumber::new_or_panic(148428),
-        ),
-        fallback_sequencer_address: Some(sequencer_address!(
-            "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
-    };
-
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(833),
         not_verifiable_range: None,
         fallback_sequencer_address: Some(sequencer_address!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
-        )),
-    };
-
-    const GOERLI_INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: BlockNumber::new_or_panic(110511),
-        not_verifiable_range: Some(BlockNumber::new_or_panic(0)..BlockNumber::new_or_panic(110511)),
-        fallback_sequencer_address: Some(sequencer_address!(
-            "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         )),
     };
 
@@ -201,8 +183,6 @@ mod meta {
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
         match chain {
             Chain::Mainnet => &MAINNET_METAINFO,
-            Chain::GoerliTestnet => &GOERLI_TESTNET_METAINFO,
-            Chain::GoerliIntegration => &GOERLI_INTEGRATION_METAINFO,
             Chain::SepoliaTestnet => &SEPOLIA_TESTNET_METAINFO,
             Chain::SepoliaIntegration => &SEPOLIA_INTEGRATION_METAINFO,
             Chain::Custom => &CUSTOM_METAINFO,
@@ -502,6 +482,12 @@ mod tests {
     use pathfinder_common::felt;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::transaction::{EntryPointType, InvokeTransactionV0};
+    use pathfinder_crypto::Felt;
+
+    const GOERLI_TESTNET: ChainId = ChainId(match Felt::from_be_slice(b"SN_GOERLI") {
+        Ok(chain_id) => chain_id,
+        Err(_) => unreachable!(),
+    });
 
     #[test]
     fn test_event_hash() {
@@ -574,8 +560,8 @@ mod tests {
         assert_matches!(
             verify_block_hash(
                 &block,
-                Chain::GoerliTestnet,
-                ChainId::GOERLI_TESTNET,
+                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
+                GOERLI_TESTNET,
                 block.block_hash
             )
             .unwrap(),
@@ -593,8 +579,8 @@ mod tests {
         assert_matches!(
             verify_block_hash(
                 &block,
-                Chain::GoerliTestnet,
-                ChainId::GOERLI_TESTNET,
+                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
+                GOERLI_TESTNET,
                 block.block_hash
             )
             .unwrap(),
@@ -613,8 +599,8 @@ mod tests {
         assert_matches!(
             verify_block_hash(
                 &block,
-                Chain::GoerliTestnet,
-                ChainId::GOERLI_TESTNET,
+                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
+                GOERLI_TESTNET,
                 block.block_hash,
             )
             .unwrap(),
@@ -630,8 +616,8 @@ mod tests {
         assert_matches!(
             verify_block_hash(
                 &block,
-                Chain::GoerliIntegration,
-                ChainId::GOERLI_INTEGRATION,
+                Chain::SepoliaIntegration, // Goerli was removed so use any other than Custom
+                GOERLI_TESTNET,
                 block.block_hash,
             )
             .unwrap(),
@@ -649,8 +635,8 @@ mod tests {
         assert_matches!(
             verify_block_hash(
                 &block,
-                Chain::GoerliTestnet,
-                ChainId::GOERLI_TESTNET,
+                Chain::SepoliaTestnet, // Goerli was removed so use any other than Custom
+                GOERLI_TESTNET,
                 block.block_hash
             )
             .unwrap(),

@@ -779,23 +779,28 @@ mod tests {
     use super::*;
     use crate::macro_prelude::*;
 
+    const GOERLI_TESTNET: ChainId = ChainId(match Felt::from_be_slice(b"SN_GOERLI") {
+        Ok(chain_id) => chain_id,
+        Err(_) => unreachable!(),
+    });
+
     #[rstest::rstest]
     #[test]
-    #[case::declare_v0(declare_v0(), ChainId::GOERLI_INTEGRATION)]
+    #[case::declare_v0(declare_v0(), GOERLI_TESTNET)]
     #[case::declare_v1(declare_v1(), ChainId::SEPOLIA_TESTNET)]
     #[case::declare_v2(declare_v2(), ChainId::SEPOLIA_TESTNET)]
-    #[case::declare_v3(declare_v3(), ChainId::GOERLI_INTEGRATION)]
-    #[case::deploy(deploy(), ChainId::GOERLI_TESTNET)]
-    #[case::deploy_legacy(deploy_legacy(), ChainId::GOERLI_TESTNET)]
+    #[case::declare_v3(declare_v3(), GOERLI_TESTNET)]
+    #[case::deploy(deploy(), GOERLI_TESTNET)]
+    #[case::deploy_legacy(deploy_legacy(), GOERLI_TESTNET)]
     #[case::deploy_account_v1(deploy_account_v1(), ChainId::MAINNET)]
-    #[case::deploy_account_v3(deploy_account_v3(), ChainId::GOERLI_INTEGRATION)]
-    #[case::invoke_v0(invoke_v0(), ChainId::GOERLI_TESTNET)]
-    #[case::invoke_v0_legacy(invoke_v0_legacy(), ChainId::GOERLI_TESTNET)]
+    #[case::deploy_account_v3(deploy_account_v3(), GOERLI_TESTNET)]
+    #[case::invoke_v0(invoke_v0(), GOERLI_TESTNET)]
+    #[case::invoke_v0_legacy(invoke_v0_legacy(), GOERLI_TESTNET)]
     #[case::invoke_v1(invoke_v1(), ChainId::MAINNET)]
     #[case::invoke_v3(invoke_v3(), ChainId::SEPOLIA_TESTNET)]
     #[case::l1_handler(l1_handler(), ChainId::MAINNET)]
     #[case::l1_handler_v07(l1_handler_v07(), ChainId::MAINNET)]
-    #[case::l1_handler_legacy(l1_handler_legacy(), ChainId::GOERLI_TESTNET)]
+    #[case::l1_handler_legacy(l1_handler_legacy(), GOERLI_TESTNET)]
     fn verify_hash(#[case] transaction: Transaction, #[case] chain_id: ChainId) {
         assert!(transaction.verify_hash(chain_id));
     }
@@ -1331,7 +1336,7 @@ mod tests {
 
         assert_eq!(
             transaction_hash!("0x00acd1213b669b094390c5b70a447cb2335ee40bbe21c4544db57450aa0e5c04"),
-            invoke.calculate_hash(ChainId::GOERLI_TESTNET, true)
+            invoke.calculate_hash(GOERLI_TESTNET, true)
         );
     }
 }

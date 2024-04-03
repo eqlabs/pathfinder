@@ -311,7 +311,7 @@ mod tests {
     #[ignore = "gateway 429"]
     // https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x29fd7881f14380842414cdfdd8d6c0b1f2174f8916edcfeb1ede1eb26ac3ef0
     async fn duplicate_v3_transaction() {
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
 
         let input = BroadcastedDeployAccountTransactionV3 {
             version: TransactionVersion::THREE,

@@ -374,7 +374,6 @@ impl From<BlockHash> for BlockId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EthereumChain {
     Mainnet,
-    Goerli,
     Sepolia,
     Other(primitive_types::U256),
 }
@@ -383,8 +382,6 @@ pub enum EthereumChain {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chain {
     Mainnet,
-    GoerliTestnet,
-    GoerliIntegration,
     SepoliaTestnet,
     SepoliaIntegration,
     Custom,
@@ -407,8 +404,6 @@ impl ChainId {
     }
 
     pub const MAINNET: Self = Self::from_slice_unwrap(b"SN_MAIN");
-    pub const GOERLI_TESTNET: Self = Self::from_slice_unwrap(b"SN_GOERLI");
-    pub const GOERLI_INTEGRATION: Self = Self::from_slice_unwrap(b"SN_GOERLI");
     pub const SEPOLIA_TESTNET: Self = Self::from_slice_unwrap(b"SN_SEPOLIA");
     pub const SEPOLIA_INTEGRATION: Self = Self::from_slice_unwrap(b"SN_INTEGRATION_SEPOLIA");
 }
@@ -417,8 +412,6 @@ impl std::fmt::Display for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Chain::Mainnet => f.write_str("Mainnet"),
-            Chain::GoerliTestnet => f.write_str("Testnet/Görli"),
-            Chain::GoerliIntegration => f.write_str("Integration/Görli"),
             Chain::SepoliaTestnet => f.write_str("Testnet/Sepolia"),
             Chain::SepoliaIntegration => f.write_str("Integration/Sepolia"),
             Chain::Custom => f.write_str("Custom"),

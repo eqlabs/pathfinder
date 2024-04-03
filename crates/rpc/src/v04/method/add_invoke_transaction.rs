@@ -287,7 +287,7 @@ mod tests {
     async fn duplicate_v3_transaction() {
         use crate::v02::types::request::BroadcastedInvokeTransactionV3;
 
-        let context = RpcContext::for_tests_on(pathfinder_common::Chain::GoerliIntegration);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::SepoliaIntegration);
         let input = BroadcastedInvokeTransactionV3 {
             version: TransactionVersion::THREE,
             signature: vec![
