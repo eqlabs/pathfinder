@@ -639,13 +639,13 @@ impl Client {
                             }
                             EventsResponse::Fin => {
                                 if current_count == 0 {
+                                    // All the counters for this block have been exhausted which means
+                                    // that this block is complete.
                                     yield PeerData::new(
                                         peer,
                                         (start, std::mem::take(&mut events)),
                                     );
 
-                                    // All the counters for this block have been exhausted which means
-                                    // that this block is complete.
                                     if start < stop_inclusive {
                                         // Move to the next block
                                         start += 1;
