@@ -23,6 +23,7 @@ use crate::state::block_hash::{
 
 use crate::sync::class_definitions;
 use crate::sync::error::SyncError;
+use crate::sync::events;
 use crate::sync::headers;
 use crate::sync::receipts;
 use crate::sync::state_updates;
@@ -422,6 +423,32 @@ impl Sync {
                 .map_err(|e| e.1)
                 .and_then(|x| class_definitions::persist(self.storage.clone(), x))
                 .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
+                // Drive stream to completion.
+                .try_fold((), |_, _| std::future::ready(Ok(())))
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn sync_events(&self, stop: BlockNumber) -> anyhow::Result<()> {
+        if let Some(start) = events::next_missing(self.storage.clone(), stop)
+            .await
+            .context("Finding next block with missing events")?
+        {
+            self.p2p
+                .clone()
+                .events_stream(
+                    start,
+                    stop,
+                    events::counts_stream(self.storage.clone(), start, stop),
+                )
+                .map_err(Into::into)
+                .and_then(|x| events::verify_commitment(x, self.storage.clone()))
+                .try_chunks(100)
+                .map_err(|e| e.1)
+                .and_then(|x| events::persist(self.storage.clone(), todo!()))
+                .inspect_ok(|x| tracing::info!(tail=%x, "Events chunk synced"))
                 // Drive stream to completion.
                 .try_fold((), |_, _| std::future::ready(Ok(())))
                 .await?;

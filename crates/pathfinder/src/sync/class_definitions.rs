@@ -50,44 +50,44 @@ pub(super) fn declared_class_counts_stream(
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
-    let mut batch = Vec::<usize>::new();
+        let mut batch = Vec::<usize>::new();
 
-    while start <= stop_inclusive {
-        if let Some(counts) = batch.pop() {
-            yield counts;
-            continue;
+        while start <= stop_inclusive {
+            if let Some(counts) = batch.pop() {
+                yield counts;
+                continue;
+            }
+
+            let batch_size = NonZeroUsize::new(
+                BATCH_SIZE.min(
+                    (stop_inclusive.get() - start.get() + 1)
+                        .try_into()
+                        .expect("ptr size is 64bits"),
+                ),
+            )
+            .expect(">0");
+            let storage = storage.clone();
+
+            batch = tokio::task::spawn_blocking(move || {
+                let mut db = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let db = db.transaction().context("Creating database transaction")?;
+                db.declared_classes_counts(start.into(), batch_size)
+                    .context("Querying declared classes counts")
+            })
+            .await
+            .context("Joining blocking task")??;
+
+            if batch.is_empty() {
+                Err(anyhow::anyhow!(
+                    "No declared classes counts found for range: start {start}, batch_size (batch_size)"
+                ))?;
+                break;
+            }
+
+            start += batch.len().try_into().expect("ptr size is 64bits");
         }
-
-        let batch_size = NonZeroUsize::new(
-            BATCH_SIZE.min(
-                (stop_inclusive.get() - start.get() + 1)
-                    .try_into()
-                    .expect("ptr size is 64bits"),
-            ),
-        )
-        .expect(">0");
-        let storage = storage.clone();
-
-        batch = tokio::task::spawn_blocking(move || {
-            let mut db = storage
-                .connection()
-                .context("Creating database connection")?;
-            let db = db.transaction().context("Creating database transaction")?;
-            db.declared_classes_counts(start.into(), batch_size)
-                .context("Querying declared classes counts")
-        })
-        .await
-        .context("Joining blocking task")??;
-
-        if batch.is_empty() {
-            Err(anyhow::anyhow!(
-                "No declared classes counts found for range: start {start}, batch_size (batch_size)"
-            ))?;
-            break;
-        }
-
-        start += batch.len().try_into().expect("ptr size is 64bits");
-    }
     }
 }
 
@@ -186,11 +186,6 @@ pub(super) async fn persist(
             .ok_or(anyhow::anyhow!("No class definitions to persist"))?;
 
         for class in classes.into_iter().map(|x| x.data) {
-            let block_hash = transaction
-                .block_hash(class.block_number().into())
-                .context("Getting block hash")?
-                .ok_or(anyhow::anyhow!("Block hash not found"))?;
-
             match class {
                 Class::Cairo {
                     hash, definition, ..

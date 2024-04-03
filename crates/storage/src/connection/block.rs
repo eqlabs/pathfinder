@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice};
 
@@ -408,6 +410,52 @@ impl Transaction<'_> {
             .optional()
             .context("Querying highest block with all class definitions downloaded")
     }
+
+    pub fn highest_block_with_all_events_downloaded(&self) -> anyhow::Result<Option<BlockNumber>> {
+        let mut stmt = self.inner().prepare_cached(
+            r"SELECT block_number
+        FROM starknet_events_filters
+        ORDER BY block_number DESC
+        LIMIT 1",
+        )?;
+        stmt.query_row([], |row| row.get_block_number(0))
+            .optional()
+            .context("Querying highest block with events")
+    }
+
+    pub fn event_counts(
+        &self,
+        block: BlockId,
+        max_len: NonZeroUsize,
+    ) -> anyhow::Result<Vec<usize>> {
+        let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
+            return Ok(Default::default());
+        };
+
+        let mut stmt = self
+        .inner()
+        .prepare_cached(
+            "SELECT event_count FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
+        )
+        .context("Preparing get event counts statement")?;
+
+        let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
+        let mut counts = stmt
+            .query_map(params![&block_number, &max_len], |row| row.get(0))
+            .context("Querying event counts")?;
+
+        let mut ret = Vec::new();
+
+        while let Some(stat) = counts
+            .next()
+            .transpose()
+            .context("Iterating over event counts rows")?
+        {
+            ret.push(stat);
+        }
+
+        Ok(ret)
+    }
 }
 
 fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader> {
@@ -468,9 +516,11 @@ mod tests {
     use pathfinder_common::prelude::*;
     use pathfinder_common::L1DataAvailabilityMode;
     use pretty_assertions_sorted::assert_eq;
+    use rstest::rstest;
 
     use super::*;
     use crate::Connection;
+    use crate::StorageBuilder;
 
     // Create test database filled with block headers.
     fn setup() -> (Connection, Vec<BlockHeader>) {
@@ -817,5 +867,35 @@ mod tests {
             let expected = (tail.number, tail.hash);
             assert_eq!(result, expected);
         }
+    }
+
+    #[rstest]
+    #[case::all_missing("UPDATE block_headers SET event_count = 0", 10)]
+    #[case::partially_present("UPDATE block_headers SET event_count = 0 WHERE number > 4", 5)]
+    #[case::all_present("", 0)]
+    fn event_counts(#[case] sql: &str, #[case] num_of_missing_counts: usize) {
+        use crate::fake;
+
+        let storage = StorageBuilder::in_memory().unwrap();
+        let faked = fake::with_n_blocks(&storage, 10);
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+        if !sql.is_empty() {
+            tx.inner().execute_batch(sql).unwrap();
+        }
+
+        let result = tx
+            .event_counts(BlockNumber::GENESIS.into(), NonZeroUsize::new(10).unwrap())
+            .unwrap();
+
+        assert_eq!(
+            result,
+            faked
+                .into_iter()
+                .take(10 - num_of_missing_counts)
+                .map(|block| block.header.header.event_count)
+                .chain(std::iter::repeat(0).take(num_of_missing_counts))
+                .collect::<Vec<_>>()
+        );
     }
 }

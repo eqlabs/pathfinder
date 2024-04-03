@@ -165,7 +165,7 @@ pub(super) async fn persist(
             .context("Persisting block header")?;
             tx.insert_signature(header.number, signature)
                 .context("Persisting block signature")?;
-            tx.insert_state_update_counts(header.number, state_update_counts)
+            tx.update_state_update_counts(header.number, state_update_counts)
                 .context("Persisting state update counts")?;
         }
 

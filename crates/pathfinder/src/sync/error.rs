@@ -19,4 +19,6 @@ pub(super) enum SyncError {
     BadClassLayout(PeerId),
     #[error("Class hash verification failed")]
     BadClassHash(PeerId),
+    #[error("Event commitment mismatch")]
+    EventCommitmentMismatch(PeerId),
 }
