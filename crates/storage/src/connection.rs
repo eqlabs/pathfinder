@@ -95,15 +95,6 @@ impl<'inner> Transaction<'inner> {
     // The implementations here are intentionally kept as simple wrappers. This lets the real implementations
     // be kept in separate files with more reasonable LOC counts and easier test oversight.
 
-    #[cfg(test)]
-    pub(crate) fn new(tx: rusqlite::Transaction<'inner>) -> Self {
-        Self {
-            transaction: tx,
-            bloom_filter_cache: Arc::new(crate::bloom::Cache::with_size(1)),
-            prune_merkle_tries: false,
-        }
-    }
-
     fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.transaction
     }
