@@ -46,44 +46,44 @@ pub(super) fn contract_update_counts_stream(
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
-    let mut batch = Vec::new();
+        let mut batch = Vec::new();
 
-    while start <= stop_inclusive {
-        if let Some(counts) = batch.pop() {
-            yield counts;
-            continue;
+        while start <= stop_inclusive {
+            if let Some(counts) = batch.pop() {
+                yield counts;
+                continue;
+            }
+
+            let batch_size = NonZeroUsize::new(
+                BATCH_SIZE.min(
+                    (stop_inclusive.get() - start.get() + 1)
+                        .try_into()
+                        .expect("ptr size is 64bits"),
+                ),
+            )
+            .expect(">0");
+            let storage = storage.clone();
+
+            batch = tokio::task::spawn_blocking(move || {
+                let mut db = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let db = db.transaction().context("Creating database transaction")?;
+                db.contract_update_counts(start.into(), batch_size)
+                    .context("Querying state update counts")
+            })
+            .await
+            .context("Joining blocking task")??;
+
+            if batch.is_empty() {
+                Err(anyhow::anyhow!(
+                    "No state update counts found for range: start {start}, batch_size (batch_size)"
+                ))?;
+                break;
+            }
+
+            start += batch.len().try_into().expect("ptr size is 64bits");
         }
-
-        let batch_size = NonZeroUsize::new(
-            BATCH_SIZE.min(
-                (stop_inclusive.get() - start.get() + 1)
-                    .try_into()
-                    .expect("ptr size is 64bits"),
-            ),
-        )
-        .expect(">0");
-        let storage = storage.clone();
-
-        batch = tokio::task::spawn_blocking(move || {
-            let mut db = storage
-                .connection()
-                .context("Creating database connection")?;
-            let db = db.transaction().context("Creating database transaction")?;
-            db.contract_update_counts(start.into(), batch_size)
-                .context("Querying state update counts")
-        })
-        .await
-        .context("Joining blocking task")??;
-
-        if batch.is_empty() {
-            Err(anyhow::anyhow!(
-                "No state update counts found for range: start {start}, batch_size (batch_size)"
-            ))?;
-            break;
-        }
-
-        start += batch.len().try_into().expect("ptr size is 64bits");
-    }
     }
 }
 
