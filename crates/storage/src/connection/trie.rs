@@ -270,19 +270,31 @@ impl Transaction<'_> {
         table: &'static str,
     ) -> anyhow::Result<()> {
         if let Some(before_block) = block_number.checked_sub(num_blocks_kept) {
-            // Delete nodes marked as ready for deletion.
-            let num_removed = self
+            // Delete nodes that have already been marked as ready for deletion.
+            let mut select_stmt = self
                 .inner()
-                .execute(
-                    &format!(
-                        r"DELETE FROM {table} WHERE EXISTS (
-                            SELECT 1 FROM {table}_removals WHERE idx = {table}.idx AND block_number <= ?
-                        )"
-                    ),
-                    params![&before_block],
+                .prepare(&format!(
+                    r"SELECT indices FROM {table}_removals WHERE block_number <= ?"
+                ))
+                .context("Creating removal statement")?;
+            let mut rows = select_stmt
+                .query(params![&before_block])
+                .context("Fetching nodes to delete")?;
+            let mut delete_stmt = self
+                .inner()
+                .prepare(&format!(r"DELETE FROM {table} WHERE idx = ?"))
+                .context("Creating delete statement")?;
+            while let Some(row) = rows.next().context("Iterating over rows")? {
+                let (indices, _) = bincode::decode_from_slice::<Vec<u64>, _>(
+                    row.get_blob(0)?,
+                    bincode::config::standard(),
                 )
-                .context("Deleting nodes")?;
-            metrics::counter!(METRIC_TRIE_NODES_REMOVED, num_removed.try_into().unwrap(), "table" => table);
+                .context("Decoding indices")?;
+                for idx in indices.iter() {
+                    delete_stmt.execute(params![idx]).context("Deleting node")?;
+                }
+                metrics::counter!(METRIC_TRIE_NODES_REMOVED, removed.len() as u64, "table" => table);
+            }
 
             // Delete the removal markers.
             self.inner()
