@@ -269,29 +269,31 @@ impl Transaction<'_> {
         num_blocks_kept: u64,
         table: &'static str,
     ) -> anyhow::Result<()> {
-        // Delete nodes marked as ready for deletion.
-        let num_removed = self
-            .inner()
-            .execute(
-                &format!(
-                    r"DELETE FROM {table} WHERE EXISTS (
-                        SELECT 1 FROM {table}_removals WHERE idx = {table}.idx AND block_number <= ?
-                    )"
-                ),
-                params![&block_number],
-            )
-            .context("Deleting nodes")?;
-        metrics::counter!(METRIC_TRIE_NODES_REMOVED, num_removed.try_into().unwrap(), "table" => table);
+        if let Some(before_block) = block_number.checked_sub(num_blocks_kept) {
+            // Delete nodes marked as ready for deletion.
+            let num_removed = self
+                .inner()
+                .execute(
+                    &format!(
+                        r"DELETE FROM {table} WHERE EXISTS (
+                            SELECT 1 FROM {table}_removals WHERE idx = {table}.idx AND block_number <= ?
+                        )"
+                    ),
+                    params![&before_block],
+                )
+                .context("Deleting nodes")?;
+            metrics::counter!(METRIC_TRIE_NODES_REMOVED, num_removed.try_into().unwrap(), "table" => table);
 
-        // Delete the removal markers.
-        self.inner()
-            .execute(
-                &format!(r"DELETE FROM {table}_removals WHERE block_number <= ?"),
-                params![&block_number],
-            )
-            .context("Deleting nodes")?;
+            // Delete the removal markers.
+            self.inner()
+                .execute(
+                    &format!(r"DELETE FROM {table}_removals WHERE block_number <= ?"),
+                    params![&before_block],
+                )
+                .context("Deleting nodes")?;
+        }
 
-        // Mark the input nodes as ready for deletion at block `block_number + num_blocks_kept`.
+        // Mark the input nodes as ready for removal.
         let mut stmt = self
             .inner()
             .prepare(&format!(
@@ -299,7 +301,7 @@ impl Transaction<'_> {
             ))
             .context("Creating removal statement")?;
         for &idx in removed {
-            stmt.execute(params![&idx, &(block_number + num_blocks_kept)])
+            stmt.execute(params![&idx, &block_number])
                 .context("Marking node for deletion")?;
         }
 
