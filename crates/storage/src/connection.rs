@@ -92,7 +92,7 @@ pub struct Transaction<'inner> {
 pub enum TriePruneMode {
     /// Keep all merkle trie history.
     Archive,
-    /// Prune merkle trie history. Only keep the last few blocks, as well as the lastest block.
+    /// Prune merkle trie history. Only keep the last few blocks, as well as the latest block.
     Prune { num_blocks_kept: u64 },
 }
 
