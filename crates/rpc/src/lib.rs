@@ -349,7 +349,9 @@ pub mod test_utils {
             .unwrap();
 
         let (storage_commitment0, trie_update) = storage_commitment_tree.commit().unwrap();
-        let storage_root_idx = db_txn.insert_storage_trie(&trie_update).unwrap();
+        let storage_root_idx = db_txn
+            .insert_storage_trie(&trie_update, BlockNumber::GENESIS)
+            .unwrap();
         db_txn
             .insert_storage_root(BlockNumber::GENESIS, Some(storage_root_idx))
             .unwrap();
@@ -388,7 +390,9 @@ pub mod test_utils {
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let (storage_commitment1, trie_update) = storage_commitment_tree.commit().unwrap();
-        let storage_root_idx = db_txn.insert_storage_trie(&trie_update).unwrap();
+        let storage_root_idx = db_txn
+            .insert_storage_trie(&trie_update, BlockNumber::GENESIS + 1)
+            .unwrap();
         db_txn
             .insert_storage_root(BlockNumber::GENESIS + 1, Some(storage_root_idx))
             .unwrap();
@@ -445,7 +449,9 @@ pub mod test_utils {
             .set(contract2_addr, contract_state_hash)
             .unwrap();
         let (storage_commitment2, trie_update) = storage_commitment_tree.commit().unwrap();
-        let storage_root_idx = db_txn.insert_storage_trie(&trie_update).unwrap();
+        let storage_root_idx = db_txn
+            .insert_storage_trie(&trie_update, BlockNumber::GENESIS + 2)
+            .unwrap();
         db_txn
             .insert_storage_root(BlockNumber::GENESIS + 2, Some(storage_root_idx))
             .unwrap();

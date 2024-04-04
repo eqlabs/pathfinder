@@ -57,7 +57,11 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
-            prune_merkle_tries: self.prune_merkle_tries,
+            trie_prune_mode: if self.prune_merkle_tries {
+                TriePruneMode::Prune { num_blocks_kept: 0 }
+            } else {
+                TriePruneMode::Archive
+            },
         })
     }
 
@@ -69,7 +73,11 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
-            prune_merkle_tries: self.prune_merkle_tries,
+            trie_prune_mode: if self.prune_merkle_tries {
+                TriePruneMode::Prune { num_blocks_kept: 0 }
+            } else {
+                TriePruneMode::Archive
+            },
         })
     }
 }
@@ -77,7 +85,15 @@ impl Connection {
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
     bloom_filter_cache: Arc<crate::bloom::Cache>,
-    prune_merkle_tries: bool,
+    trie_prune_mode: TriePruneMode,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TriePruneMode {
+    /// Keep all merkle trie history.
+    Archive,
+    /// Prune merkle trie history. Only keep the last few blocks, as well as the lastest block.
+    Prune { num_blocks_kept: u64 },
 }
 
 type TransactionWithReceipt = (

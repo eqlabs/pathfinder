@@ -6,7 +6,7 @@ use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 
-use crate::prelude::*;
+use crate::{prelude::*, TriePruneMode};
 
 impl Transaction<'_> {
     pub fn class_root_index(&self, block_number: BlockNumber) -> anyhow::Result<Option<u64>> {
@@ -91,8 +91,10 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
-        if self.prune_merkle_tries {
-            self.delete_class_roots()?;
+        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
+            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
+                self.delete_class_roots(block_number)?;
+            }
         }
 
         self.inner().execute(
@@ -102,9 +104,11 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    fn delete_class_roots(&self) -> anyhow::Result<()> {
-        let mut stmt = self.inner().prepare_cached("DELETE FROM class_roots")?;
-        stmt.execute([])?;
+    fn delete_class_roots(&self, before_block: BlockNumber) -> anyhow::Result<()> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("DELETE FROM class_roots WHERE block_number < ?")?;
+        stmt.execute(params![&before_block])?;
         Ok(())
     }
 
@@ -114,8 +118,10 @@ impl Transaction<'_> {
         contract: ContractAddress,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<()> {
-        if self.prune_merkle_tries {
-            self.delete_contract_state_hashes(contract)?;
+        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
+            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
+                self.delete_contract_state_hashes(contract, block_number)?;
+            }
         }
 
         self.inner().execute("INSERT INTO contract_state_hashes(block_number, contract_address, state_hash) VALUES(?,?,?)", 
@@ -124,11 +130,15 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    fn delete_contract_state_hashes(&self, contract: ContractAddress) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached("DELETE FROM contract_state_hashes WHERE contract_address = ?")?;
-        stmt.execute(params![&contract])?;
+    fn delete_contract_state_hashes(
+        &self,
+        contract: ContractAddress,
+        before_block: BlockNumber,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached(
+            "DELETE FROM contract_state_hashes WHERE contract_address = ? AND block_number < ?",
+        )?;
+        stmt.execute(params![&contract, &before_block])?;
         Ok(())
     }
 
@@ -152,8 +162,10 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
-        if self.prune_merkle_tries {
-            self.delete_storage_roots()?;
+        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
+            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
+                self.delete_storage_roots(block_number)?;
+            }
         }
 
         self.inner().execute(
@@ -163,9 +175,11 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    fn delete_storage_roots(&self) -> anyhow::Result<()> {
-        let mut stmt = self.inner().prepare_cached("DELETE FROM storage_roots")?;
-        stmt.execute([])?;
+    fn delete_storage_roots(&self, before_block: BlockNumber) -> anyhow::Result<()> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("DELETE FROM storage_roots WHERE block_number < ?")?;
+        stmt.execute(params![&before_block])?;
         Ok(())
     }
 
@@ -175,19 +189,25 @@ impl Transaction<'_> {
         contract: ContractAddress,
         root: Option<u64>,
     ) -> anyhow::Result<()> {
-        if self.prune_merkle_tries {
-            self.delete_contract_roots(contract)?;
+        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
+            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
+                self.delete_contract_roots(contract, block_number)?;
+            }
         }
 
         self.inner().execute(
-        "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
-        params![&block_number, &contract, &root],
-    )?;
+            "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
+            params![&block_number, &contract, &root],
+        )?;
         Ok(())
     }
 
-    pub fn insert_contract_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
-        self.insert_trie(update, "trie_contracts")
+    pub fn insert_contract_trie(
+        &self,
+        update: &TrieUpdate,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<u64> {
+        self.insert_trie(update, block_number, "trie_contracts")
     }
 
     pub fn contract_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
@@ -198,8 +218,12 @@ impl Transaction<'_> {
         self.trie_node_hash(index, "trie_contracts")
     }
 
-    pub fn insert_class_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
-        self.insert_trie(update, "trie_class")
+    pub fn insert_class_trie(
+        &self,
+        update: &TrieUpdate,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<u64> {
+        self.insert_trie(update, block_number, "trie_class")
     }
 
     pub fn class_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
@@ -210,8 +234,12 @@ impl Transaction<'_> {
         self.trie_node_hash(index, "trie_class")
     }
 
-    pub fn insert_storage_trie(&self, update: &TrieUpdate) -> anyhow::Result<u64> {
-        self.insert_trie(update, "trie_storage")
+    pub fn insert_storage_trie(
+        &self,
+        update: &TrieUpdate,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<u64> {
+        self.insert_trie(update, block_number, "trie_storage")
     }
 
     pub fn storage_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
@@ -222,33 +250,71 @@ impl Transaction<'_> {
         self.trie_node_hash(index, "trie_storage")
     }
 
-    fn delete_contract_roots(&self, contract: ContractAddress) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached("DELETE FROM contract_roots WHERE contract_address = ?")?;
-        stmt.execute(params![&contract])?;
+    fn delete_contract_roots(
+        &self,
+        contract: ContractAddress,
+        before_block: BlockNumber,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached(
+            "DELETE FROM contract_roots WHERE contract_address = ? AND block_number < ?",
+        )?;
+        stmt.execute(params![&contract, &before_block])?;
         Ok(())
     }
 
-    fn remove_trie(&self, removed: &[u64], table: &'static str) -> anyhow::Result<()> {
+    fn remove_trie(
+        &self,
+        removed: &[u64],
+        block_number: BlockNumber,
+        num_blocks_kept: u64,
+        table: &'static str,
+    ) -> anyhow::Result<()> {
+        // Delete nodes marked as ready for deletion.
+        let num_removed = self
+            .inner()
+            .execute(
+                &format!(
+                    r"DELETE FROM {table} WHERE EXISTS (
+                        SELECT 1 FROM {table}_removals WHERE idx = {table}.idx AND block_number <= ?
+                    )"
+                ),
+                params![&block_number],
+            )
+            .context("Deleting nodes")?;
+        metrics::counter!(METRIC_TRIE_NODES_REMOVED, num_removed.try_into().unwrap(), "table" => table);
+
+        // Delete the removal markers.
+        self.inner()
+            .execute(
+                &format!(r"DELETE FROM {table}_removals WHERE block_number <= ?"),
+                params![&block_number],
+            )
+            .context("Deleting nodes")?;
+
+        // Mark the input nodes as ready for deletion at block `block_number + num_blocks_kept`.
         let mut stmt = self
             .inner()
-            .prepare_cached(&format!("DELETE FROM {table} WHERE idx = ?"))
-            .context("Creating delete statement")?;
-
-        let number_of_nodes_removed = removed.len() as u64;
-        metrics::counter!(METRIC_TRIE_NODES_REMOVED, number_of_nodes_removed, "table" => table);
-
-        for idx in removed {
-            stmt.execute(params![idx]).context("Deleting node")?;
+            .prepare(&format!(
+                r"INSERT INTO {table}_removals (idx, block_number) VALUES (?, ?)"
+            ))
+            .context("Creating removal statement")?;
+        for &idx in removed {
+            stmt.execute(params![&idx, &(block_number + num_blocks_kept)])
+                .context("Marking node for deletion")?;
         }
+
         Ok(())
     }
 
     /// Stores the node data for a trie and returns the index of the root.
-    fn insert_trie(&self, update: &TrieUpdate, table: &'static str) -> anyhow::Result<u64> {
-        if self.prune_merkle_tries {
-            self.remove_trie(&update.nodes_removed, table)?;
+    fn insert_trie(
+        &self,
+        update: &TrieUpdate,
+        block_number: BlockNumber,
+        table: &'static str,
+    ) -> anyhow::Result<u64> {
+        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
+            self.remove_trie(&update.nodes_removed, block_number, num_blocks_kept, table)?;
         }
 
         assert!(
@@ -646,7 +712,9 @@ mod tests {
             ..Default::default()
         };
 
-        let idx0 = tx.insert_contract_trie(&update).unwrap();
+        let idx0 = tx
+            .insert_contract_trie(&update, BlockNumber::GENESIS)
+            .unwrap();
 
         let result1 = tx.contract_root_index(BlockNumber::GENESIS, c1).unwrap();
         assert_eq!(result1, None);
@@ -669,7 +737,9 @@ mod tests {
             ..Default::default()
         };
 
-        let idx1 = tx.insert_contract_trie(&update).unwrap();
+        let idx1 = tx
+            .insert_contract_trie(&update, BlockNumber::GENESIS + 1)
+            .unwrap();
 
         tx.insert_contract_root(BlockNumber::GENESIS + 1, c1, Some(idx1))
             .unwrap();
@@ -708,7 +778,9 @@ mod tests {
             nodes_added: nodes,
             ..Default::default()
         };
-        let idx2 = tx.insert_contract_trie(&update).unwrap();
+        let idx2 = tx
+            .insert_contract_trie(&update, BlockNumber::GENESIS + 10)
+            .unwrap();
 
         tx.insert_contract_root(BlockNumber::GENESIS + 10, c1, Some(idx2))
             .unwrap();

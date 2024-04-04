@@ -1128,7 +1128,7 @@ fn update_starknet_state(
 
     let root_idx = if !storage_commitment.0.is_zero() {
         let root_idx = transaction
-            .insert_storage_trie(&trie_update)
+            .insert_storage_trie(&trie_update, block)
             .context("Persisting storage trie")?;
 
         Some(root_idx)
@@ -1167,7 +1167,7 @@ fn update_starknet_state(
 
     let class_root_idx = if !class_commitment.0.is_zero() {
         let class_root_idx = transaction
-            .insert_class_trie(&trie_update)
+            .insert_class_trie(&trie_update, block)
             .context("Persisting class trie")?;
 
         Some(class_root_idx)
