@@ -30,15 +30,15 @@ cargo run -p p2p --example generate_key
 Starting up the bootstrap node:
 
 ```shell
-RUST_LOG=info cargo run -p p2p --bin bootstrap -- --network goerli-testnet --identity-config-file ./identity.json --listen-on /ip4/127.0.0.1/tcp/4000 --bootstrap-interval-seconds 3
+RUST_LOG=info cargo run -p p2p --bin bootstrap -- --network sepolia-testnet --identity-config-file ./identity.json --listen-on /ip4/127.0.0.1/tcp/4000 --bootstrap-interval-seconds 3
 ````
 
 And then starting three peers that initially connect to the bootstrap node:
 
 ```shell
-RUST_LOG=debug cargo run -p pathfinder --features p2p -- --network goerli-testnet --ethereum.url <infura or alchemy testnet url> --p2p.listen-on /ip4/127.0.0.1/tcp/4001 --p2p.bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/<pubkey from identity.json>
-RUST_LOG=debug cargo run -p pathfinder --features p2p -- --network goerli-testnet --ethereum.url <infura or alchemy testnet url> --p2p.listen-on /ip4/127.0.0.1/tcp/4002 --p2p.bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/<pubkey from identity.json>
-RUST_LOG=debug cargo run -p pathfinder --features p2p -- --network goerli-testnet --ethereum.url <infura or alchemy testnet url> --p2p.listen-on /ip4/127.0.0.1/tcp/4003 --p2p.bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/<pubkey from identity.json>
+RUST_LOG=debug cargo run -p pathfinder --features p2p -- --network sepolia-testnet --ethereum.url <infura or alchemy testnet url> --p2p.listen-on /ip4/127.0.0.1/tcp/4001 --p2p.bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/<pubkey from identity.json>
+RUST_LOG=debug cargo run -p pathfinder --features p2p -- --network sepolia-testnet --ethereum.url <infura or alchemy testnet url> --p2p.listen-on /ip4/127.0.0.1/tcp/4002 --p2p.bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/<pubkey from identity.json>
+RUST_LOG=debug cargo run -p pathfinder --features p2p -- --network sepolia-testnet --ethereum.url <infura or alchemy testnet url> --p2p.listen-on /ip4/127.0.0.1/tcp/4003 --p2p.bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/<pubkey from identity.json>
 ```
 
 (Note that the last part is the peer ID of the bootstrap node that's derived from the private key in the configuration. The bootstrap node prints its peer id when starting up, change the peer id to the appropriate one in the commands above.)
