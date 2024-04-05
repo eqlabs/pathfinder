@@ -6,10 +6,6 @@ pub mod core_addr {
     use const_decoder::Decoder;
 
     pub const MAINNET: [u8; 20] = Decoder::Hex.decode(b"c662c410C0ECf747543f5bA90660f6ABeBD9C8c4");
-    pub const GOERLI_TESTNET: [u8; 20] =
-        Decoder::Hex.decode(b"de29d060D45901Fb19ED6C6e959EB22d8626708e");
-    pub const GOERLI_INTEGRATION: [u8; 20] =
-        Decoder::Hex.decode(b"d5c325D183C592C94998000C5e0EED9e6655c020");
     pub const SEPOLIA_TESTNET: [u8; 20] =
         Decoder::Hex.decode(b"E2Bb56ee936fd6433DC0F6e7e3b8365C906AA057");
     pub const SEPOLIA_INTEGRATION: [u8; 20] =
@@ -142,7 +138,6 @@ impl EthereumApi for EthereumClient {
             .and_then(|value| get_u256(&value))?;
         Ok(match id {
             x if x == U256::from(1u32) => EthereumChain::Mainnet,
-            x if x == U256::from(5u32) => EthereumChain::Goerli,
             x if x == U256::from(11155111u32) => EthereumChain::Sepolia,
             x => EthereumChain::Other(x),
         })

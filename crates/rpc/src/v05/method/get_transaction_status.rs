@@ -230,7 +230,7 @@ mod tests {
         let input = GetTransactionStatusInput {
             // Transaction hash known to be rejected by the testnet gateway.
             transaction_hash: transaction_hash!(
-                "0x07c64b747bdb0831e7045925625bfa6309c422fded9527bacca91199a1c8d212"
+                "0x4fef839b57a7ac72c8738dc821897cc605b5cc5aafa487e445e9282ac37ac23"
             ),
         };
         let context = RpcContext::for_tests();

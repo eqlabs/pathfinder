@@ -219,20 +219,6 @@ impl Client {
         .unwrap()
     }
 
-    /// Creates a [Client] for [pathfinder_common::Chain::GoerliTestnet].
-    pub fn goerli_testnet(timeout: Duration) -> Self {
-        Self::with_base_url(Url::parse("https://alpha4.starknet.io/").unwrap(), timeout).unwrap()
-    }
-
-    /// Creates a [Client] for [pathfinder_common::Chain::GoerliIntegration].
-    pub fn goerli_integration(timeout: Duration) -> Self {
-        Self::with_base_url(
-            Url::parse("https://external.integration.starknet.io").unwrap(),
-            timeout,
-        )
-        .unwrap()
-    }
-
     /// Creates a [Client] for [pathfinder_common::Chain::SepoliaTestnet].
     pub fn sepolia_testnet(timeout: Duration) -> Self {
         Self::with_base_url(
@@ -550,17 +536,7 @@ pub mod test_utils {
 
     /// # Usage
     ///
-    /// Use to initialize a [Client] test case. The function does one of the following things:
-    ///
-    /// 1. if `SEQUENCER_TESTS_LIVE_API` environment variable is set:
-    ///    - creates a [Client] instance which connects to the Goerli
-    ///      sequencer API
-    ///
-    /// 2. otherwise:
-    ///    - initializes a local mock server instance with the given expected
-    ///      url paths & queries and respective fixtures for replies
-    ///    - creates a [Client] instance which connects to the mock server
-    ///
+    /// Use to initialize a [Client] test case.
     pub fn setup<S1, S2, const N: usize>(
         url_paths_queries_and_response_fixtures: [(S1, (S2, u16)); N],
     ) -> (Option<tokio::task::JoinHandle<()>>, Client)
@@ -575,52 +551,46 @@ pub mod test_utils {
             + 'static,
         S2: std::string::ToString + Send + Sync + Clone + 'static,
     {
-        if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
-            (None, Client::goerli_testnet(GATEWAY_TIMEOUT))
-        } else if std::env::var_os("SEQUENCER_TESTS_LIVE_API_INTEGRATION").is_some() {
-            (None, Client::goerli_integration(GATEWAY_TIMEOUT))
-        } else {
-            use warp::Filter;
-            let opt_query_raw = warp::query::raw()
-                .map(Some)
-                .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
-            let path = warp::any().and(warp::path::full()).and(opt_query_raw).map(
-                move |full_path: warp::path::FullPath, raw_query: Option<String>| {
-                    let actual_full_path_and_query = match raw_query {
-                        Some(some_raw_query) => {
-                            format!("{}?{}", full_path.as_str(), some_raw_query.as_str())
-                        }
-                        None => full_path.as_str().to_owned(),
-                    };
-
-                    match url_paths_queries_and_response_fixtures
-                        .iter()
-                        .find(|x| x.0.as_ref() == actual_full_path_and_query)
-                    {
-                        Some((_, (body, status))) => http::response::Builder::new()
-                            .status(*status)
-                            .body(body.to_string()),
-                        None => panic!(
-                            "Actual url path and query {} not found in the expected {:?}",
-                            actual_full_path_and_query,
-                            url_paths_queries_and_response_fixtures
-                                .iter()
-                                .map(|(expected_path, _)| expected_path)
-                                .collect::<Vec<_>>()
-                        ),
+        use warp::Filter;
+        let opt_query_raw = warp::query::raw()
+            .map(Some)
+            .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
+        let path = warp::any().and(warp::path::full()).and(opt_query_raw).map(
+            move |full_path: warp::path::FullPath, raw_query: Option<String>| {
+                let actual_full_path_and_query = match raw_query {
+                    Some(some_raw_query) => {
+                        format!("{}?{}", full_path.as_str(), some_raw_query.as_str())
                     }
-                },
-            );
+                    None => full_path.as_str().to_owned(),
+                };
 
-            let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
-            let server_handle = tokio::spawn(serve_fut);
-            let client = Client::with_base_url(
-                reqwest::Url::parse(&format!("http://{addr}")).unwrap(),
-                GATEWAY_TIMEOUT,
-            )
-            .unwrap();
-            (Some(server_handle), client)
-        }
+                match url_paths_queries_and_response_fixtures
+                    .iter()
+                    .find(|x| x.0.as_ref() == actual_full_path_and_query)
+                {
+                    Some((_, (body, status))) => http::response::Builder::new()
+                        .status(*status)
+                        .body(body.to_string()),
+                    None => panic!(
+                        "Actual url path and query {} not found in the expected {:?}",
+                        actual_full_path_and_query,
+                        url_paths_queries_and_response_fixtures
+                            .iter()
+                            .map(|(expected_path, _)| expected_path)
+                            .collect::<Vec<_>>()
+                    ),
+                }
+            },
+        );
+
+        let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
+        let server_handle = tokio::spawn(serve_fut);
+        let client = Client::with_base_url(
+            reqwest::Url::parse(&format!("http://{addr}")).unwrap(),
+            GATEWAY_TIMEOUT,
+        )
+        .unwrap();
+        (Some(server_handle), client)
     }
 
     /// # Usage

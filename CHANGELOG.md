@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pathfinder stores this setting in its database and defaults to using that.
   - Once set pruning cannot be enabled/disabled for non-empty databases.
 
+### Removed
+
+- Support for Goerli testnet
+
 ## [0.11.5] - 2024-04-02
 
 ### Changed

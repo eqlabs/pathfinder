@@ -57,7 +57,7 @@ sudo docker run \
   -p 9545:9545 \
   --user "$(id -u):$(id -g)" \
   -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
+  -e PATHFINDER_ETHEREUM_API_URL="https://sepolia.infura.io/v3/<project-id>" \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder
 ```
@@ -105,7 +105,7 @@ sudo docker run \
   -p 9545:9545 \
   --user "$(id -u):$(id -g)" \
   -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
+  -e PATHFINDER_ETHEREUM_API_URL="https://sepolia.infura.io/v3/<project-id>" \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder
 ```
@@ -158,7 +158,7 @@ acl = private
 You can then download a compressed database using the command:
 
 ```shell
-rclone copy -P pathfinder-snapshots:pathfinder-snapshots/testnet_0.9.0_880310.sqlite.zst .
+rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.11.0_47191.sqlite.zst .
 ```
 
 ### Uncompressing database snapshots
@@ -168,10 +168,10 @@ rclone copy -P pathfinder-snapshots:pathfinder-snapshots/testnet_0.9.0_880310.sq
 We're storing database snapshots as SQLite database files compressed with [zstd](https://github.com/facebook/zstd). You can uncompress the files you've downloaded using the following command:
 
 ```shell
-zstd -T0 -d testnet_0.9.0_880310.sqlite.zst -o goerli.sqlite
+zstd -T0 -d sepolia-testnet_0.11.0_47191.sqlite.zst -o testnet-sepolia.sqlite
 ```
 
-This produces uncompressed database file `goerli.sqlite` that can then be used by pathfinder.
+This produces uncompressed database file `testnet-sepolia.sqlite` that can then be used by pathfinder.
 
 ### Available database snapshots
 
@@ -226,12 +226,12 @@ The Starknet network can be selected with the `--network` configuration option.
 If `--network` is not specified, network selection will default to match your Ethereum endpoint:
 
 - Starknet mainnet for Ethereum mainnet,
-- Starknet testnet for Ethereum Goerli
+- Starknet testnet for Ethereum Sepolia
 
 #### Custom networks & gateway proxies
 
 You can specify a custom network with `--network custom` and specifying the `--gateway-url`, `feeder-gateway-url` and `chain-id` options. 
-Note that `chain-id` should be specified as text e.g. `SN_GOERLI`.
+Note that `chain-id` should be specified as text e.g. `SN_SEPOLIA`.
 
 This can be used to interact with a custom Starknet gateway, or to use a gateway proxy.
 

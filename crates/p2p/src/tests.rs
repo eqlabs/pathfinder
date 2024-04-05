@@ -37,7 +37,7 @@ impl TestPeer {
     pub fn new(cfg: Config, keypair: Keypair) -> Self {
         let peer_id = keypair.public().to_peer_id();
         let (client, mut event_receiver, main_loop) =
-            crate::new(keypair.clone(), cfg, ChainId::GOERLI_TESTNET);
+            crate::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET);
 
         // Ensure that the channel keeps being polled to move the main loop forward.
         // Store the polled events into a buffered channel instead.

@@ -10,9 +10,27 @@ macro_rules! bytes_fixture {
     };
 }
 
+pub mod pre_0_7_0 {
+    pub mod block {
+        pub const MAINNET_GENESIS: &str = str_fixture!("pre_0.7.0/block/mainnet_genesis.json");
+    }
+}
+
 pub mod old {
     pub mod block {
         pub const NUMBER_192: &str = str_fixture!("old/block/192.json");
+    }
+}
+
+pub mod v0_7_0 {
+    pub mod block {
+        pub const MAINNET_2240: &str = str_fixture!("0.7.0/block/mainnet_2240.json");
+    }
+}
+
+pub mod v0_8_0 {
+    pub mod block {
+        pub const MAINNET_2500: &str = str_fixture!("0.8.0/block/mainnet_2500.json");
     }
 }
 
@@ -30,12 +48,7 @@ pub mod v0_8_2 {
 
 pub mod v0_9_0 {
     pub mod block {
-        pub const GENESIS: &str = str_fixture!("0.9.0/block/genesis.json");
-        pub const NUMBER_1716: &str = str_fixture!("0.9.0/block/1716.json");
-        pub const NUMBER_90000: &str = str_fixture!("0.9.0/block/90000.json");
-        pub const NUMBER_156000: &str = str_fixture!("0.9.0/block/156000.json");
-        pub const NUMBER_231579: &str = str_fixture!("0.9.0/block/231579.json");
-        pub const PENDING: &str = str_fixture!("0.9.0/block/pending.json");
+        pub const MAINNET_2800: &str = str_fixture!("0.9.0/block/mainnet_2800.json");
     }
 
     pub mod transaction {
@@ -133,6 +146,12 @@ pub mod v0_11_0 {
     }
 }
 
+pub mod v0_11_1 {
+    pub mod block {
+        pub const MAINNET_65000: &str = str_fixture!("0.11.1/block/mainnet_65000.json");
+    }
+}
+
 pub mod v0_12_2 {
     pub mod state_update {
         pub const PENDING_WITH_BLOCK: &str =
@@ -199,7 +218,6 @@ pub mod integration {
         pub const NUMBER_216171: &str = str_fixture!("integration/block/216171.json");
         pub const NUMBER_216591: &str = str_fixture!("integration/block/216591.json");
         pub const NUMBER_228457: &str = str_fixture!("integration/block/228457.json");
-        pub const NUMBER_285915: &str = str_fixture!("integration/block/285915.json");
         pub const NUMBER_319693: &str = str_fixture!("integration/block/319693.json");
         pub const NUMBER_319709: &str = str_fixture!("integration/block/319709.json");
         pub const NUMBER_329543: &str = str_fixture!("integration/block/329543.json");

@@ -45,7 +45,7 @@ struct Cli {
         long_help = r"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
 
 Examples:
-    infura: https://goerli.infura.io/v3/<PROJECT_ID>
+    infura: https://mainnet.infura.io/v3/<PROJECT_ID>
     geth:   https://localhost:8545",
         value_name = "HTTP(s) URL",
         value_hint = clap::ValueHint::Url,
@@ -298,7 +298,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
 
     #[arg(
         long,
-        long_help = "Set a custom Starknet chain ID (e.g. SN_GOERLI)",
+        long_help = "Set a custom Starknet chain ID (e.g. SN_SEPOLIA)",
         value_name = "CHAIN ID",
         env = "PATHFINDER_CHAIN_ID",
         required_if_eq("network", Network::Custom)
@@ -446,8 +446,6 @@ struct DebugCli {
 #[serde(rename_all = "kebab-case")]
 enum Network {
     Mainnet,
-    GoerliTestnet,
-    GoerliIntegration,
     SepoliaTestnet,
     SepoliaIntegration,
     Custom,
@@ -457,8 +455,6 @@ impl From<Network> for clap::builder::OsStr {
     fn from(value: Network) -> Self {
         match value {
             Network::Mainnet => "mainnet",
-            Network::GoerliTestnet => "goerli-testnet",
-            Network::GoerliIntegration => "goerli-integration",
             Network::SepoliaTestnet => "sepolia-testnet",
             Network::SepoliaIntegration => "sepolia-integration",
             Network::Custom => "custom",
@@ -571,8 +567,6 @@ pub struct Ethereum {
 
 pub enum NetworkConfig {
     Mainnet,
-    GoerliTestnet,
-    GoerliIntegration,
     SepoliaTestnet,
     SepoliaIntegration,
     Custom {
@@ -629,8 +623,6 @@ impl NetworkConfig {
             // catch-all arm that would swallow new variants silently.
             (Some(non_custom), None, None, None) => match non_custom {
                 Mainnet => NetworkConfig::Mainnet,
-                GoerliTestnet => NetworkConfig::GoerliTestnet,
-                GoerliIntegration => NetworkConfig::GoerliIntegration,
                 SepoliaTestnet => NetworkConfig::SepoliaTestnet,
                 SepoliaIntegration => NetworkConfig::SepoliaIntegration,
                 Custom => unreachable!("Network::Custom handled in outer arm already"),

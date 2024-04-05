@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
     command: [
       "--network",
-      "goerli-testnet",
+      "sepolia-testnet",
       "--p2p.identity-config-file",
       "identity1.json",
       "--p2p.listen-on",
@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
     command: [
       "--network",
-      "goerli-testnet",
+      "sepolia-testnet",
       "--p2p.identity-config-file",
       "identity2.json",
       "--p2p.listen-on",

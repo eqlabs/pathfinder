@@ -53,8 +53,6 @@ impl zeroize::Zeroize for IdentityConfig {
 #[serde(rename_all = "kebab-case")]
 enum Network {
     Mainnet,
-    GoerliTestnet,
-    GoerliIntegration,
     SepoliaTestnet,
     SepoliaIntegration,
 }
@@ -96,8 +94,6 @@ async fn main() -> anyhow::Result<()> {
 
     let chain_id = match args.network {
         Network::Mainnet => ChainId::MAINNET,
-        Network::GoerliTestnet => ChainId::GOERLI_TESTNET,
-        Network::GoerliIntegration => ChainId::GOERLI_INTEGRATION,
         Network::SepoliaTestnet => ChainId::SEPOLIA_TESTNET,
         Network::SepoliaIntegration => ChainId::SEPOLIA_INTEGRATION,
     };
