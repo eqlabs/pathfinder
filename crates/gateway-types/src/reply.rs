@@ -11,8 +11,6 @@ use serde_with::DisplayFromStr;
 
 pub use transaction::DataAvailabilityMode;
 
-// TODO Make all the gas price fields private and expose getters
-
 /// Used to deserialize replies to Starknet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
@@ -502,17 +500,14 @@ pub(crate) mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
-        #[serde(default)]
-        pub actual_fee: Option<Fee>,
+        pub actual_fee: Fee,
         pub events: Vec<pathfinder_common::event::Event>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub execution_resources: Option<ExecutionResources>,
+        pub execution_resources: ExecutionResources,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: TransactionHash,
         pub transaction_index: TransactionIndex,
         // Introduced in v0.12.1
-        #[serde(default)]
         pub execution_status: ExecutionStatus,
         // Introduced in v0.12.1
         /// Only present if status is [ExecutionStatus::Reverted].
@@ -551,9 +546,9 @@ pub(crate) mod transaction {
             };
 
             Self {
-                actual_fee: Some(actual_fee),
+                actual_fee,
                 events,
-                execution_resources: Some(execution_resources.into()),
+                execution_resources: execution_resources.into(),
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash,
@@ -633,8 +628,8 @@ pub(crate) mod transaction {
 
             (
                 common::Receipt {
-                    actual_fee: actual_fee.unwrap_or_default(),
-                    execution_resources: execution_resources.unwrap_or_default().into(),
+                    actual_fee,
+                    execution_resources: execution_resources.into(),
                     l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                     transaction_hash,
                     transaction_index,
@@ -658,8 +653,8 @@ pub(crate) mod transaction {
 
             // Those fields that were missing in very old receipts are always present
             Self {
-                actual_fee: Some(Faker.fake_with_rng(rng)),
-                execution_resources: Some(Faker.fake_with_rng(rng)),
+                actual_fee: Faker.fake_with_rng(rng),
+                execution_resources: Faker.fake_with_rng(rng),
                 events: Faker.fake_with_rng(rng),
                 l1_to_l2_consumed_message: Faker.fake_with_rng(rng),
                 l2_to_l1_messages: Faker.fake_with_rng(rng),
@@ -775,7 +770,7 @@ pub(crate) mod transaction {
     }
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
@@ -792,65 +787,6 @@ pub(crate) mod transaction {
         Invoke(InvokeTransaction),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTransaction),
-    }
-
-    // This manual deserializtion is a work-around for L1 handler transactions
-    // historically being served as Invoke V0. However, the gateway has retroactively
-    // changed these to L1 handlers. This means older databases will have these as Invoke
-    // but modern one's as L1 handler. This causes confusion, so we convert these old Invoke
-    // to L1 handler manually.
-    //
-    // The alternative is to do a costly database migration which involves opening every tx.
-    //
-    // This work-around may be removed once we are certain all databases no longer contain these
-    // transactions, which will likely only occur after either a migration, or regenesis.
-    impl<'de> Deserialize<'de> for Transaction {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            /// Copy of [Transaction] to deserialize into, before converting to [Transaction]
-            /// with the potential Invoke V0 -> L1 handler cast.
-            #[derive(Deserialize)]
-            #[serde(tag = "type", deny_unknown_fields)]
-            pub enum InnerTransaction {
-                #[serde(rename = "DECLARE")]
-                Declare(DeclareTransaction),
-                #[serde(rename = "DEPLOY")]
-                Deploy(DeployTransaction),
-                #[serde(rename = "DEPLOY_ACCOUNT")]
-                DeployAccount(DeployAccountTransaction),
-                #[serde(rename = "INVOKE_FUNCTION")]
-                Invoke(InvokeTransaction),
-                #[serde(rename = "L1_HANDLER")]
-                L1Handler(L1HandlerTransaction),
-            }
-
-            let tx = InnerTransaction::deserialize(deserializer)?;
-            let tx = match tx {
-                InnerTransaction::Declare(x) => Transaction::Declare(x),
-                InnerTransaction::Deploy(x) => Transaction::Deploy(x),
-                InnerTransaction::DeployAccount(x) => Transaction::DeployAccount(x),
-                InnerTransaction::Invoke(InvokeTransaction::V0(i))
-                    if i.entry_point_type == Some(EntryPointType::L1Handler) =>
-                {
-                    let l1_handler = L1HandlerTransaction {
-                        contract_address: i.sender_address,
-                        entry_point_selector: i.entry_point_selector,
-                        nonce: TransactionNonce::ZERO,
-                        calldata: i.calldata,
-                        transaction_hash: i.transaction_hash,
-                        version: TransactionVersion::ZERO,
-                    };
-
-                    Transaction::L1Handler(l1_handler)
-                }
-                InnerTransaction::Invoke(x) => Transaction::Invoke(x),
-                InnerTransaction::L1Handler(x) => Transaction::L1Handler(x),
-            };
-
-            Ok(tx)
-        }
     }
 
     impl<'de> serde_with::DeserializeAs<'de, pathfinder_common::transaction::Transaction>
@@ -1023,14 +959,13 @@ pub(crate) mod transaction {
                     calldata,
                     sender_address,
                     entry_point_selector,
-                    entry_point_type,
+                    entry_point_type: _,
                     max_fee,
                     signature,
                 }) => Self::Invoke(InvokeTransaction::V0(self::InvokeTransactionV0 {
                     calldata,
                     sender_address,
                     entry_point_selector,
-                    entry_point_type: entry_point_type.map(Into::into),
                     max_fee,
                     signature,
                     transaction_hash,
@@ -1251,7 +1186,6 @@ pub(crate) mod transaction {
                     calldata,
                     sender_address,
                     entry_point_selector,
-                    entry_point_type,
                     max_fee,
                     signature,
                     transaction_hash: _,
@@ -1260,7 +1194,7 @@ pub(crate) mod transaction {
                         calldata,
                         sender_address,
                         entry_point_selector,
-                        entry_point_type: entry_point_type.map(Into::into),
+                        entry_point_type: None,
                         max_fee,
                         signature,
                     },
@@ -1792,15 +1726,11 @@ pub(crate) mod transaction {
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        // contract_address is the historic name for this field. sender_address was
-        // introduced with starknet v0.11. Although the gateway no longer uses the historic
-        // name at all, this alias must be kept until a database migration fixes all historic
-        // transaction naming, or until regenesis removes them all.
+        // `contract_address` is the historic name for this field. `sender_address` was introduced with starknet v0.11.
+        // As of April 2024 the historic name is still used in older blocks.
         #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub entry_point_type: Option<EntryPointType>,
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -1813,7 +1743,6 @@ pub(crate) mod transaction {
                 calldata: Faker.fake_with_rng(rng),
                 sender_address: Faker.fake_with_rng(rng),
                 entry_point_selector: Faker.fake_with_rng(rng),
-                entry_point_type: None,
                 max_fee: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
@@ -1828,11 +1757,6 @@ pub(crate) mod transaction {
     pub struct InvokeTransactionV1 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        // contract_address is the historic name for this field. sender_address was
-        // introduced with starknet v0.11. Although the gateway no longer uses the historic
-        // name at all, this alias must be kept until a database migration fixes all historic
-        // transaction naming, or until regenesis removes them all.
-        #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
@@ -2111,9 +2035,6 @@ pub mod state_update {
     #[serde(deny_unknown_fields)]
     pub struct DeployedContract {
         pub address: ContractAddress,
-        /// `class_hash` is the field name from cairo 0.9.0 onwards
-        /// `contract_hash` is the name from cairo before 0.9.0
-        #[serde(alias = "contract_hash")]
         pub class_hash: ClassHash,
     }
 
