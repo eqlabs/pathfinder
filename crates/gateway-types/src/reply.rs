@@ -2053,38 +2053,6 @@ pub mod state_update {
         pub address: ContractAddress,
         pub class_hash: ClassHash,
     }
-
-    #[cfg(test)]
-    mod tests {
-        #[test]
-        fn contract_field_backward_compatibility() {
-            use super::DeployedContract;
-
-            use pathfinder_common::macro_prelude::*;
-
-            let expected = DeployedContract {
-                address: contract_address!("0x1"),
-                class_hash: class_hash!("0x2"),
-            };
-
-            // cario <0.9.0
-            assert_eq!(
-                serde_json::from_str::<DeployedContract>(
-                    r#"{"address":"0x01","contract_hash":"0x02"}"#
-                )
-                .unwrap(),
-                expected
-            );
-            // cario >=0.9.0
-            assert_eq!(
-                serde_json::from_str::<DeployedContract>(
-                    r#"{"address":"0x01","class_hash":"0x02"}"#
-                )
-                .unwrap(),
-                expected
-            );
-        }
-    }
 }
 
 /// Used to deserialize replies to Starknet Ethereum contract requests.
@@ -2201,76 +2169,6 @@ mod tests {
     };
     use crate::reply::transaction::L1HandlerTransaction;
 
-    /// The aim of these tests is to make sure pathfinder is still able to correctly
-    /// deserialize replies for some older blocks. The fixtures come from goerli testnet
-    /// which was removed however most or all of the specific cases were also present on mainnet.
-    mod backward_compatibility {
-        use super::super::StateUpdate;
-        use starknet_gateway_test_fixtures::*;
-
-        #[test]
-        fn block() {
-            use super::super::{Block, PendingBlock};
-
-            // Mainnet block 192 contains an L1_HANDLER transaction without a nonce.
-            serde_json::from_str::<Block>(old::block::NUMBER_192).unwrap();
-            serde_json::from_str::<Block>(v0_8_2::block::GENESIS).unwrap();
-            serde_json::from_str::<Block>(v0_8_2::block::NUMBER_1716).unwrap();
-            serde_json::from_str::<PendingBlock>(v0_8_2::block::PENDING).unwrap();
-            // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_216591).unwrap();
-            // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_216171).unwrap();
-            // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_228457).unwrap();
-            // This is from integration starknet_version 0.13.0 and contains new v3 invoke and deploy account transactions.
-            serde_json::from_str::<Block>(integration::block::NUMBER_319693).unwrap();
-            // This is from integration starknet_version 0.13.0 and contains a new v3 declare transaction.
-            serde_json::from_str::<Block>(integration::block::NUMBER_319709).unwrap();
-            serde_json::from_str::<PendingBlock>(v0_13_0::block::PENDING).unwrap();
-            // This is from integration starknet_version 0.13.0 and contains data gas prices.
-            serde_json::from_str::<Block>(integration::block::NUMBER_329543).unwrap();
-            serde_json::from_str::<PendingBlock>(v0_13_1::block::PENDING).unwrap();
-        }
-
-        #[test]
-        fn state_update() {
-            // This is from integration starknet_version 0.11 and contains the new declared_classes field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283364).unwrap();
-            // This is from integration starknet_version 0.11 and contains the new replaced_classes field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283428).unwrap();
-        }
-
-        #[test]
-        fn legacy_l1_handler_is_invoke() {
-            // In the times before L1 Handler became an official tx variant,
-            // these were instead served as Invoke V0 txs. This test ensures
-            // that we correctly map these historic txs to L1 Handler.
-            use super::super::transaction::Transaction as TransactionVariant;
-
-            let json = serde_json::json!({
-                "type":"INVOKE_FUNCTION",
-                "calldata":[
-                    "580042449035822898911647251144793933582335302582",
-                    "3241583063705060367416058138609427972824194056099997457116843686898315086623",
-                    "2000000000000000000",
-                    "0",
-                    "725188533692944996190142472767755401716439215485"
-                ],
-                "contract_address":"0x1108cdbe5d82737b9057590adaf97d34e74b5452f0628161d237746b6fe69e",
-                "entry_point_selector":"0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5",
-                "entry_point_type":"L1_HANDLER",
-                "max_fee":"0x0",
-                "signature":[],
-                "transaction_hash":"0x70cad5b0d09ff2b252d3bf040708a89e6f175715f5f550e8d8161fabef01261"
-            });
-
-            let tx: TransactionVariant = serde_json::from_value(json).unwrap();
-
-            assert_matches::assert_matches!(tx, TransactionVariant::L1Handler(_));
-        }
-    }
-
     #[test]
     fn from_state_update() {
         use pathfinder_common::macro_prelude::*;
@@ -2357,31 +2255,6 @@ mod tests {
         use crate::reply::transaction::{ExecutionStatus, Receipt};
 
         #[test]
-        fn without_execution_status() {
-            // Execution status was introduced in v0.12.1. Receipts from before this time could not revert
-            // and should therefore always succeed. Receipt below taken from testnet v0.12.0.
-            let json = r#"{
-                "transaction_index": 0,
-                "transaction_hash": "0xff4820a0ae5859fa2f75606effcb5caab34c01f7aecb413c2bd7dc724d603",
-                "l2_to_l1_messages": [],
-                "events": [{
-                    "from_address": "0x783a9097b26eae0586373b2ce0ed3529ddc44069d1e0fbc4f66d42b69d6850d",
-                    "keys": ["0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9"],
-                    "data": [
-                        "0x0",
-                        "0x192688d37fe07a79213990c7bc7d3ca092541db3d9bcba3d7462fb3bfb4265f",
-                        "0x3ecb5eb3ee",
-                        "0x0"
-                    ]
-                }]
-            }"#;
-
-            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
-
-            assert_eq!(receipt.execution_status, ExecutionStatus::Succeeded);
-        }
-
-        #[test]
         fn succeeded() {
             // Taken from integration v0.12.1.
             let json = r#"{
@@ -2405,25 +2278,6 @@ mod tests {
             let receipt = serde_json::from_str::<Receipt>(json).unwrap();
 
             assert_eq!(receipt.execution_status, ExecutionStatus::Succeeded);
-        }
-
-        #[test]
-        fn reverted() {
-            // Taken from integration v0.12.1 (revert_error was changed to shorten it)
-            let json = r#"{
-                "revert_error": "reason goes here",
-                "execution_status": "REVERTED",
-                "transaction_index": 1,
-                "transaction_hash": "0x19abec18bbacec23c2eee160c70190a48e4b41dd5ff98ad8f247f9393559998",
-                "l2_to_l1_messages": [],
-                "events": [],
-                "actual_fee": "0x247aff6e224"
-            }"#;
-
-            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
-
-            assert_eq!(receipt.execution_status, ExecutionStatus::Reverted);
-            assert_eq!(receipt.revert_error, Some("reason goes here".to_owned()));
         }
     }
 

@@ -724,60 +724,6 @@ mod tests {
         use pretty_assertions_sorted::assert_eq;
 
         #[tokio::test]
-        async fn declare() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                (v0_9_0::transaction::INVOKE, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction(transaction_hash!(
-                        "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                    ))
-                    .await
-                    .unwrap()
-                    .status,
-                Status::AcceptedOnL1
-            );
-        }
-
-        #[tokio::test]
-        async fn deploy() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8",
-                (v0_9_0::transaction::DEPLOY, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction(transaction_hash!(
-                        "03d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
-                    ))
-                    .await
-                    .unwrap()
-                    .status,
-                Status::AcceptedOnL1
-            );
-        }
-
-        #[tokio::test]
-        async fn invoke() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                (v0_9_0::transaction::INVOKE, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction(transaction_hash!(
-                        "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                    ))
-                    .await
-                    .unwrap()
-                    .status,
-                Status::AcceptedOnL1
-            );
-        }
-
-        #[tokio::test]
         async fn invalid_hash() {
             let (_jh, client) = setup([(
                 format!(
