@@ -273,7 +273,7 @@ impl Transaction<'_> {
             // Delete nodes that have already been marked as ready for deletion.
             let mut select_stmt = self
                 .inner()
-                .prepare(&format!(
+                .prepare_cached(&format!(
                     r"SELECT indices FROM {table}_removals WHERE block_number < ?"
                 ))
                 .context("Creating removal statement")?;
@@ -282,7 +282,7 @@ impl Transaction<'_> {
                 .context("Fetching nodes to delete")?;
             let mut delete_stmt = self
                 .inner()
-                .prepare(&format!(r"DELETE FROM {table} WHERE idx = ?"))
+                .prepare_cached(&format!(r"DELETE FROM {table} WHERE idx = ?"))
                 .context("Creating delete statement")?;
             while let Some(row) = rows.next().context("Iterating over rows")? {
                 let (indices, _) = bincode::decode_from_slice::<Vec<u64>, _>(
@@ -297,26 +297,31 @@ impl Transaction<'_> {
             }
 
             // Delete the removal markers.
-            self.inner()
-                .execute(
-                    &format!(r"DELETE FROM {table}_removals WHERE block_number < ?"),
-                    params![&before_block],
-                )
-                .context("Deleting nodes")?;
+            let mut delete_stmt = self
+                .inner()
+                .prepare_cached(&format!(
+                    r"DELETE FROM {table}_removals WHERE block_number < ?"
+                ))
+                .context("Creating statement to delete removal markers")?;
+            delete_stmt
+                .execute(params![&before_block])
+                .context("Deleting removal markers")?;
         }
 
         // Mark the input nodes as ready for removal.
         if !removed.is_empty() {
-            self.inner()
-                .execute(
-                    &format!(r"INSERT INTO {table}_removals (block_number, indices) VALUES (?, ?)"),
-                    params![
-                        &block_number,
-                        &bincode::encode_to_vec(removed, bincode::config::standard())
-                            .context("Serializing indices")?
-                    ],
-                )
-                .context("Creating removal statement")?;
+            let mut stmt = self
+                .inner()
+                .prepare_cached(&format!(
+                    r"INSERT INTO {table}_removals (block_number, indices) VALUES (?, ?)"
+                ))
+                .context("Creating statement to insert removal marker")?;
+            stmt.execute(params![
+                &block_number,
+                &bincode::encode_to_vec(removed, bincode::config::standard())
+                    .context("Serializing indices")?
+            ])
+            .context("Inserting removal marker")?;
         }
 
         Ok(())
