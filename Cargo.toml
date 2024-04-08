@@ -124,7 +124,7 @@ time = "0.3.28"
 tokio = "1.37.0"
 tokio-retry = "0.3.0"
 tokio-stream = "0.1.14"
-tokio-tungstenite = "0.20"
+tokio-tungstenite = "0.21"
 tower = { version = "0.4.13", default-features = false }
 tower-http = { version = "0.4.0", default-features = false }
 tracing = "0.1.37"
