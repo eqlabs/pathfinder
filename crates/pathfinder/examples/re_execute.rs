@@ -148,6 +148,13 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
     match pathfinder_executor::simulate(execution_state, transactions, false, false) {
         Ok(simulations) => {
             for (simulation, receipt) in simulations.iter().zip(work.receipts.iter()) {
+                // Check revert status
+                if simulation.revert_reason().is_some() != receipt.revert_reason().is_some() {
+                    let simulated_revert_reason = simulation.revert_reason();
+                    let actual_revert_reason = receipt.revert_reason();
+                    tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, ?simulated_revert_reason, ?actual_revert_reason, "Revert status differs");
+                }
+
                 let actual_fee = u128::from_be_bytes(
                     receipt.actual_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 );
