@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
     let Head {
         block_number: head,
         ..
-    } = client.get(format!("https://alpha-mainnet.starknet.io/feeder_gateway/get_block?blockNumber=latest&headerOnly=true")).send().await?.json::<Head>().await?;
+    } = client.get("https://alpha-mainnet.starknet.io/feeder_gateway/get_block?blockNumber=latest&headerOnly=true").send().await?.json::<Head>().await?;
 
     let concurrency_limit = std::thread::available_parallelism()?.get() * 16;
 
@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
             async move {
                 println!("Get:  {block_number}");
 
-                let txt = client.get(format!("https://alpha-mainnet.starknet.io/feeder_gateway/get_state_update?blockNumber={block_number}&includeBlock=true"))
+                let txt = client.get("https://alpha-mainnet.starknet.io/feeder_gateway/get_state_update?blockNumber={block_number}&includeBlock=true")
                     .header("X-Throttling-Bypass", api_key).send().await?.text().await?;
 
                 serde_json::from_str::<BlockAndStateUpdate>(&txt)?;
