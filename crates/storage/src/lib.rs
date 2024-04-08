@@ -90,14 +90,14 @@ struct Inner {
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
     bloom_filter_cache: Arc<bloom::Cache>,
-    prune_merkle_tries: bool,
+    trie_prune_mode: TriePruneMode,
 }
 
 pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
     bloom_filter_cache: Arc<bloom::Cache>,
-    prune_merkle_tries: bool,
+    trie_prune_mode: TriePruneMode,
 }
 
 impl std::fmt::Debug for StorageManager {
@@ -105,7 +105,7 @@ impl std::fmt::Debug for StorageManager {
         f.debug_struct("StorageManager")
             .field("database_path", &self.database_path)
             .field("journal_mode", &self.journal_mode)
-            .field("prune_merkle_tries", &self.prune_merkle_tries)
+            .field("trie_prune_mode", &self.trie_prune_mode)
             .finish()
     }
 }
@@ -123,7 +123,7 @@ impl StorageManager {
             database_path: Arc::new(self.database_path.clone()),
             pool,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
-            prune_merkle_tries: self.prune_merkle_tries,
+            trie_prune_mode: self.trie_prune_mode,
         }))
     }
 }
@@ -132,7 +132,7 @@ pub struct StorageBuilder {
     database_path: PathBuf,
     journal_mode: JournalMode,
     bloom_filter_cache_size: usize,
-    prune_merkle_tries: Option<bool>,
+    trie_prune_mode: TriePruneMode,
 }
 
 impl StorageBuilder {
@@ -141,7 +141,7 @@ impl StorageBuilder {
             database_path,
             journal_mode: JournalMode::WAL,
             bloom_filter_cache_size: 16,
-            prune_merkle_tries: None,
+            trie_prune_mode: TriePruneMode::Archive,
         }
     }
 
@@ -155,13 +155,19 @@ impl StorageBuilder {
         self
     }
 
-    pub fn prune_merkle_tries(mut self, prune_merkle_tries: Option<bool>) -> Self {
-        self.prune_merkle_tries = prune_merkle_tries;
+    pub fn trie_prune_mode(mut self, trie_prune_mode: TriePruneMode) -> Self {
+        self.trie_prune_mode = trie_prune_mode;
         self
     }
 
     /// Convenience function for tests to create an in-memory database.
     pub fn in_memory() -> anyhow::Result<Storage> {
+        Self::in_memory_with_trie_pruning(TriePruneMode::Archive)
+    }
+
+    /// Convenience function for tests to create an in-memory database with a specific trie prune
+    /// mode.
+    pub fn in_memory_with_trie_pruning(trie_prune_mode: TriePruneMode) -> anyhow::Result<Storage> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
         lazy_static::lazy_static!(
@@ -179,12 +185,20 @@ impl StorageBuilder {
         // This connection must be held until a pool has been created, since an
         // in-memory database is dropped once all its connections are. This connection
         // therefore holds the database in-place until the pool is established.
-        let _conn = rusqlite::Connection::open(&database_path)?;
+        let conn = rusqlite::Connection::open(&database_path)?;
 
-        let storage = Self::file(database_path)
+        let mut storage = Self::file(database_path)
             .journal_mode(JournalMode::Rollback)
             .migrate()?;
 
+        if let TriePruneMode::Prune { .. } = trie_prune_mode {
+            conn.execute(
+                "INSERT INTO storage_flags (flag) VALUES ('prune_tries')",
+                [],
+            )?;
+        }
+
+        storage.trie_prune_mode = trie_prune_mode;
         storage.create_pool(NonZeroU32::new(5).unwrap())
     }
 
@@ -222,10 +236,9 @@ impl StorageBuilder {
         // Set the journal mode to the desired value.
         setup_journal_mode(&mut connection, self.journal_mode).context("Setting journal mode")?;
 
-        // Validate that configuration matches database flags & default to the DB setting.
-        let prune_merkle_tries =
-            self.determine_if_pruning_is_enabled(&mut connection, is_new_database)?;
-        if prune_merkle_tries {
+        // Validate that configuration matches database flags.
+        self.validate_trie_prune_mode(&mut connection, is_new_database)?;
+        if let TriePruneMode::Prune { .. } = self.trie_prune_mode {
             tracing::info!("Merkle trie pruning enabled");
         } else {
             tracing::info!("Merkle trie pruning disabled");
@@ -240,21 +253,19 @@ impl StorageBuilder {
             database_path: self.database_path,
             journal_mode: self.journal_mode,
             bloom_filter_cache: Arc::new(bloom::Cache::with_size(self.bloom_filter_cache_size)),
-            prune_merkle_tries,
+            trie_prune_mode: self.trie_prune_mode,
         })
     }
 
-    /// Returns if trie pruning should be enabled.
-    ///
-    /// Takes the configured value (if present) as an input.
-    /// - If there is no explicitly requested configuration (default): uses the DB setting.
+    /// - If there is no explicitly requested configuration, assumes the user wants to archive. If
+    ///   this doesn't match the database setting, errors.
     /// - If there's an explicitly requested setting: uses it if matches DB setting, enables
-    ///   pruning and sets flag in the database.
-    fn determine_if_pruning_is_enabled(
+    ///   pruning and sets flag in the database. Otherwise errors.
+    fn validate_trie_prune_mode(
         &self,
         connection: &mut rusqlite::Connection,
         is_new_database: bool,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<()> {
         let prune_flag_is_set = connection
             .query_row(
                 "SELECT 1 FROM storage_flags WHERE flag = 'prune_tries'",
@@ -264,33 +275,33 @@ impl StorageBuilder {
             .optional()
             .map(|x| x.is_some())?;
 
-        match self.prune_merkle_tries {
-            Some(prune_merkle_tries) => {
+        match self.trie_prune_mode {
+            TriePruneMode::Prune { .. } => {
                 // If the requested pruning setting matches the flag just use that.
-                if prune_merkle_tries == prune_flag_is_set {
-                    return Ok(prune_merkle_tries);
+                if prune_flag_is_set {
+                    return Ok(());
                 }
 
-                if prune_merkle_tries {
-                    // If the flag is not set check if this is a new database and enable it.
-                    if !is_new_database {
-                        anyhow::bail!("Cannot enable Merkle trie pruning on a database that was not created with it enabled.");
-                    }
-
-                    connection.execute(
-                        "INSERT OR IGNORE INTO storage_flags (flag) VALUES ('prune_tries')",
-                        [],
-                    )?;
-
-                    tracing::info!("Created new database with Merkle trie pruning enabled.")
-                } else {
-                    anyhow::bail!("Cannot disable Merkle trie pruning on a database that was created with it enabled.");
+                // If the flag is not set check if this is a new database and enable it.
+                if !is_new_database {
+                    anyhow::bail!("Cannot enable Merkle trie pruning on a database that was not created with it enabled.");
                 }
 
-                Ok(prune_merkle_tries)
+                connection.execute(
+                    "INSERT OR IGNORE INTO storage_flags (flag) VALUES ('prune_tries')",
+                    [],
+                )?;
+
+                tracing::info!("Created new database with Merkle trie pruning enabled.");
             }
-            None => Ok(prune_flag_is_set),
+            TriePruneMode::Archive => {
+                if prune_flag_is_set {
+                    anyhow::bail!("Cannot disable Merkle trie pruning on a database that was created with it enabled.")
+                }
+            }
         }
+
+        Ok(())
     }
 }
 
@@ -301,7 +312,7 @@ impl Storage {
         Ok(Connection::new(
             conn,
             self.0.bloom_filter_cache.clone(),
-            self.0.prune_merkle_tries,
+            self.0.trie_prune_mode,
         ))
     }
 
@@ -557,7 +568,9 @@ mod tests {
 
         assert_eq!(
             StorageBuilder::file(db_path)
-                .prune_merkle_tries(Some(true))
+                .trie_prune_mode(TriePruneMode::Prune {
+                    num_blocks_kept: 10
+                })
                 .migrate()
                 .unwrap_err()
                 .to_string(),

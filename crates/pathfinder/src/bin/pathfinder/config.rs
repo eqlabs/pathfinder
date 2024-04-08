@@ -248,12 +248,12 @@ This should only be enabled for debugging purposes as it adds substantial proces
 
     #[arg(
         long = "storage.prune-state-tries",
-        long_help = r"When enabled, only the last state of the Merkle tries is kept in the database. \
-            This can be used to reduce the disk space usage at the cost of only being able to provide storage proofs for the latest block.",
+        long_help = "When enabled, only the last N+1 states of the Merkle tries are kept in the database. \
+            This can be used to reduce the disk space usage at the cost of only being able to provide storage proofs for the latest N+1 blocks (the state for the latest block is always stored).",
         env = "PATHFINDER_PRUNE_MERKLE_TRIES",
-        value_name = "BOOL"
+        value_name = "N"
     )]
-    prune_merkle_tries: Option<bool>,
+    prune_merkle_tries: Option<u64>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -557,7 +557,7 @@ pub struct Config {
     pub event_bloom_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
-    pub prune_merkle_tries: Option<bool>,
+    pub prune_merkle_tries: Option<u64>,
 }
 
 pub struct Ethereum {

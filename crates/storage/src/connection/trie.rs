@@ -274,7 +274,7 @@ impl Transaction<'_> {
             let mut select_stmt = self
                 .inner()
                 .prepare(&format!(
-                    r"SELECT indices FROM {table}_removals WHERE block_number <= ?"
+                    r"SELECT indices FROM {table}_removals WHERE block_number < ?"
                 ))
                 .context("Creating removal statement")?;
             let mut rows = select_stmt
@@ -299,22 +299,24 @@ impl Transaction<'_> {
             // Delete the removal markers.
             self.inner()
                 .execute(
-                    &format!(r"DELETE FROM {table}_removals WHERE block_number <= ?"),
+                    &format!(r"DELETE FROM {table}_removals WHERE block_number < ?"),
                     params![&before_block],
                 )
                 .context("Deleting nodes")?;
         }
 
         // Mark the input nodes as ready for removal.
-        let mut stmt = self
-            .inner()
-            .prepare(&format!(
-                r"INSERT INTO {table}_removals (idx, block_number) VALUES (?, ?)"
-            ))
-            .context("Creating removal statement")?;
-        for &idx in removed {
-            stmt.execute(params![&idx, &block_number])
-                .context("Marking node for deletion")?;
+        if !removed.is_empty() {
+            self.inner()
+                .execute(
+                    &format!(r"INSERT INTO {table}_removals (block_number, indices) VALUES (?, ?)"),
+                    params![
+                        &block_number,
+                        &bincode::encode_to_vec(removed, bincode::config::standard())
+                            .context("Serializing indices")?
+                    ],
+                )
+                .context("Creating removal statement")?;
         }
 
         Ok(())
@@ -375,7 +377,7 @@ impl Transaction<'_> {
         let mut indices = HashMap::new();
 
         // Reusable (and oversized) buffer for encoding.
-        let mut buffer = vec![0u8; 256];
+        let mut buffer = [0u8; 256];
 
         // Insert nodes in reverse to ensure children always have an assigned index for the parent to use.
         for idx in to_insert.into_iter().rev() {
@@ -907,5 +909,227 @@ mod tests {
             )
             .unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn class_trie_pruning() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 2,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("0"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("1"), Node::LeafBinary),
+                    (felt!("2"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("3"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("4"), Node::LeafBinary),
+                    (felt!("5"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![1],
+            },
+            BlockNumber::GENESIS + 1,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("6"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("7"), Node::LeafBinary),
+                    (felt!("8"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 2,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("9"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("10"), Node::LeafBinary),
+                    (felt!("11"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 3,
+        )
+        .unwrap();
+
+        // At this point, index 1 should still be in the table.
+        assert!(tx.class_trie_node(1).unwrap().is_some());
+
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("12"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("13"), Node::LeafBinary),
+                    (felt!("14"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 4,
+        )
+        .unwrap();
+
+        // At this point, index 1 should no longer be in the table.
+        assert!(tx.class_trie_node(1).unwrap().is_none());
+    }
+
+    #[test]
+    fn class_trie_pruning_keep_zero_blocks() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 0,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("0"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("1"), Node::LeafBinary),
+                    (felt!("2"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("3"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("4"), Node::LeafBinary),
+                    (felt!("5"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("6"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("7"), Node::LeafBinary),
+                    (felt!("8"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS,
+        )
+        .unwrap();
+
+        // At this point, indices 1, 2, 3 should be in the table.
+        assert!(tx.class_trie_node(1).unwrap().is_some());
+        assert!(tx.class_trie_node(2).unwrap().is_some());
+        assert!(tx.class_trie_node(3).unwrap().is_some());
+
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("3"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("4"), Node::LeafBinary),
+                    (felt!("5"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![1, 2, 3],
+            },
+            BlockNumber::GENESIS + 1,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("6"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("7"), Node::LeafBinary),
+                    (felt!("8"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 2,
+        )
+        .unwrap();
+
+        // At this point, 1, 2, 3 should no longer be in the table.
+        assert!(tx.class_trie_node(1).unwrap().is_none());
+        assert!(tx.class_trie_node(2).unwrap().is_none());
+        assert!(tx.class_trie_node(3).unwrap().is_none());
     }
 }
