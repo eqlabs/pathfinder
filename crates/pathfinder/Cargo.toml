@@ -90,10 +90,3 @@ serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet_api = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
-
-[build-dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }

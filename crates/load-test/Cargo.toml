@@ -9,9 +9,9 @@ rust-version = "1.73"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-goose = "0.17.0"
+goose = "0.17.2"
 pathfinder-crypto = { path = "../crypto" }
 rand = "0.8.5"
-serde = { version = "1.0.160", features = ["derive"] }
-serde_json = { version = "1.0.113", features = ["arbitrary_precision"] }
-tokio = "1.24.2"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = { version = "1.0.115", features = ["arbitrary_precision"] }
+tokio = "1.37.0"
