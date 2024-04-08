@@ -267,6 +267,10 @@ impl BlockNumber {
     pub fn is_zero(&self) -> bool {
         self == &Self::GENESIS
     }
+
+    pub fn checked_sub(&self, rhs: u64) -> Option<Self> {
+        self.0.checked_sub(rhs).map(Self)
+    }
 }
 
 impl std::ops::Add<u64> for BlockNumber {
