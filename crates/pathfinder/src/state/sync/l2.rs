@@ -837,13 +837,8 @@ mod tests {
             static ref BLOCK0: reply::Block = reply::Block {
                 block_hash: BLOCK0_HASH,
                 block_number: BLOCK0_NUMBER,
-                eth_l1_gas_price_implementation_detail: Some(GasPrice::ZERO),
-                strk_l1_gas_price_implementation_detail: Some(GasPrice::ZERO),
-                l1_gas_price_implementation_detail: None,
-                l1_data_gas_price: Some(GasPrices {
-                    price_in_wei:GasPrice::ZERO,
-                    price_in_fri:GasPrice::ZERO,
-                }),
+                l1_gas_price: Default::default(),
+                l1_data_gas_price: Default::default(),
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::ZERO)),
                 state_commitment: GLOBAL_ROOT0,
@@ -852,20 +847,21 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::default(),
-                l1_da_mode: None,
-                transaction_commitment: None,
-                event_commitment: None,
+                l1_da_mode: Default::default(),
+                transaction_commitment: Default::default(),
+                event_commitment: Default::default(),
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: BLOCK0_HASH_V2,
                 block_number: BLOCK0_NUMBER,
-                eth_l1_gas_price_implementation_detail: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
-                strk_l1_gas_price_implementation_detail: Some(GasPrice::from_be_slice(b"strk price 0 v2").unwrap()),
-                l1_gas_price_implementation_detail: None,
-                l1_data_gas_price: Some(GasPrices {
+                l1_gas_price: GasPrices {
+                    price_in_wei: GasPrice::from_be_slice(b"gas price 0 v2").unwrap(),
+                    price_in_fri: GasPrice::from_be_slice(b"strk price 0 v2").unwrap(),
+                },
+                l1_data_gas_price: GasPrices {
                     price_in_wei: GasPrice::from_be_slice(b"datgasprice 0 v2").unwrap(),
                     price_in_fri: GasPrice::from_be_slice(b"datstrkpric 0 v2").unwrap(),
-                }),
+                },
                 parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_commitment: GLOBAL_ROOT0_V2,
@@ -874,20 +870,21 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 1, 0),
-                l1_da_mode: None,
-                transaction_commitment: None,
-                event_commitment: None,
+                l1_da_mode: Default::default(),
+                transaction_commitment: Default::default(),
+                event_commitment: Default::default(),
             };
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: BLOCK1_HASH,
                 block_number: BLOCK1_NUMBER,
-                eth_l1_gas_price_implementation_detail: Some(GasPrice::from(1)),
-                strk_l1_gas_price_implementation_detail: Some(GasPrice::from(1)),
-                l1_gas_price_implementation_detail: None,
-                l1_data_gas_price: Some(GasPrices {
+                l1_gas_price: GasPrices {
                     price_in_wei: GasPrice::from(1),
                     price_in_fri: GasPrice::from(1),
-                }),
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: GasPrice::from(1),
+                    price_in_fri: GasPrice::from(1),
+                },
                 parent_block_hash: BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
                 state_commitment: GLOBAL_ROOT1,
@@ -896,20 +893,21 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 1, 0),
-                l1_da_mode: None,
-                transaction_commitment: None,
-                event_commitment: None,
+                l1_da_mode: Default::default(),
+                transaction_commitment: Default::default(),
+                event_commitment: Default::default(),
             };
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: BLOCK2_HASH,
                 block_number: BLOCK2_NUMBER,
-                eth_l1_gas_price_implementation_detail: Some(GasPrice::from(2)),
-                strk_l1_gas_price_implementation_detail: Some(GasPrice::from(2)),
-                l1_gas_price_implementation_detail: None,
-                l1_data_gas_price: Some(GasPrices {
+                l1_gas_price: GasPrices {
                     price_in_wei: GasPrice::from(2),
                     price_in_fri: GasPrice::from(2),
-                }),
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: GasPrice::from(2),
+                    price_in_fri: GasPrice::from(2),
+                },
                 parent_block_hash: BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
                 state_commitment: GLOBAL_ROOT2,
@@ -918,9 +916,9 @@ mod tests {
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 2, 0),
-                l1_da_mode: None,
-                transaction_commitment: None,
-                event_commitment: None,
+                l1_da_mode: Default::default(),
+                transaction_commitment: Default::default(),
+                event_commitment: Default::default(),
             };
 
             static ref STATE_UPDATE0: StateUpdate = {
@@ -1399,17 +1397,14 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
-                    eth_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
-                    ),
-                    strk_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
-                    ),
-                    l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
+                    },
+                    l1_data_gas_price: GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 1 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 1 v2").unwrap(),
-                    }),
+                    },
                     parent_block_hash: BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -1420,9 +1415,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
-                    l1_da_mode: None,
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    l1_da_mode: Default::default(),
+                    transaction_commitment: Default::default(),
+                    event_commitment: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1629,17 +1624,14 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
-                    eth_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
-                    ),
-                    strk_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
-                    ),
-                    l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
+                    },
+                    l1_data_gas_price: GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 1 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 1 v2").unwrap(),
-                    }),
+                    },
                     parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -1650,24 +1642,21 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
-                    l1_da_mode: None,
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    l1_da_mode: Default::default(),
+                    transaction_commitment: Default::default(),
+                    event_commitment: Default::default(),
                 };
                 let block2_v2 = reply::Block {
                     block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
-                    eth_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"gas price 2 v2").unwrap(),
-                    ),
-                    strk_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"strk price 2 v2").unwrap(),
-                    ),
-                    l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"gas price 2 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"strk price 2 v2").unwrap(),
+                    },
+                    l1_data_gas_price: GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 2 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 2 v2").unwrap(),
-                    }),
+                    },
                     parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
@@ -1678,20 +1667,21 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
-                    l1_da_mode: None,
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    l1_da_mode: Default::default(),
+                    transaction_commitment: Default::default(),
+                    event_commitment: Default::default(),
                 };
                 let block3 = reply::Block {
                     block_hash: BLOCK3_HASH,
                     block_number: BLOCK3_NUMBER,
-                    eth_l1_gas_price_implementation_detail: Some(GasPrice::from(3)),
-                    strk_l1_gas_price_implementation_detail: Some(GasPrice::from(3)),
-                    l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
                         price_in_wei: GasPrice::from(3),
                         price_in_fri: GasPrice::from(3),
-                    }),
+                    },
+                    l1_data_gas_price: GasPrices {
+                        price_in_wei: GasPrice::from(3),
+                        price_in_fri: GasPrice::from(3),
+                    },
                     parent_block_hash: BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 3").unwrap(),
@@ -1702,9 +1692,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
-                    l1_da_mode: None,
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    l1_da_mode: Default::default(),
+                    transaction_commitment: Default::default(),
+                    event_commitment: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1921,17 +1911,14 @@ mod tests {
                 let block2_v2 = reply::Block {
                     block_hash: BLOCK2_HASH_V2,
                     block_number: BLOCK2_NUMBER,
-                    eth_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"gas price 2 v2").unwrap(),
-                    ),
-                    strk_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"strk price 2 v2").unwrap(),
-                    ),
-                    l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"gas price 2 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"strk price 2 v2").unwrap(),
+                    },
+                    l1_data_gas_price: GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 2 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 2 v2").unwrap(),
-                    }),
+                    },
                     parent_block_hash: BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
@@ -1942,9 +1929,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
-                    l1_da_mode: None,
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    l1_da_mode: Default::default(),
+                    transaction_commitment: Default::default(),
+                    event_commitment: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -2114,17 +2101,14 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: BLOCK1_HASH_V2,
                     block_number: BLOCK1_NUMBER,
-                    eth_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
-                    ),
-                    strk_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
-                    ),
-                    l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"gas price 1 v2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"strk price 1 v2").unwrap(),
+                    },
+                    l1_data_gas_price: GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 1 v2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 1 v2").unwrap(),
-                    }),
+                    },
                     parent_block_hash: BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -2135,24 +2119,21 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
-                    l1_da_mode: None,
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    l1_da_mode: Default::default(),
+                    transaction_commitment: Default::default(),
+                    event_commitment: Default::default(),
                 };
                 let block2 = reply::Block {
                     block_hash: BLOCK2_HASH,
                     block_number: BLOCK2_NUMBER,
-                    eth_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"gas price 2").unwrap(),
-                    ),
-                    strk_l1_gas_price_implementation_detail: Some(
-                        GasPrice::from_be_slice(b"strk price 2").unwrap(),
-                    ),
-                    l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
+                        price_in_wei: GasPrice::from_be_slice(b"gas price 2").unwrap(),
+                        price_in_fri: GasPrice::from_be_slice(b"strk price 2").unwrap(),
+                    },
+                    l1_data_gas_price: GasPrices {
                         price_in_wei: GasPrice::from_be_slice(b"datgasprice 2").unwrap(),
                         price_in_fri: GasPrice::from_be_slice(b"datstrkpric 2").unwrap(),
-                    }),
+                    },
                     parent_block_hash: BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 2").unwrap(),
@@ -2163,9 +2144,9 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
-                    l1_da_mode: None,
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    l1_da_mode: Default::default(),
+                    transaction_commitment: Default::default(),
+                    event_commitment: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts

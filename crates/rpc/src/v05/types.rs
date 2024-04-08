@@ -65,7 +65,7 @@ impl BlockHeader {
             new_root: None,
             timestamp: pending.timestamp,
             sequencer_address: pending.sequencer_address,
-            l1_gas_price: pending.eth_l1_gas_price().into(),
+            l1_gas_price: pending.l1_gas_price.price_in_wei.into(),
             starknet_version: pending.starknet_version,
         }
     }

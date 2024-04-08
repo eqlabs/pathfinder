@@ -724,17 +724,14 @@ pub mod test_utils {
         let transaction_receipts = transaction_receipts.into_iter().map(Into::into).collect();
 
         let block = starknet_gateway_types::reply::PendingBlock {
-            eth_l1_gas_price_implementation_detail: Some(
-                GasPrice::from_be_slice(b"gas price").unwrap(),
-            ),
-            strk_l1_gas_price_implementation_detail: Some(
-                GasPrice::from_be_slice(b"strk gas price").unwrap(),
-            ),
-            l1_gas_price_implementation_detail: None,
-            l1_data_gas_price: Some(GasPrices {
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk gas price").unwrap(),
+            },
+            l1_data_gas_price: GasPrices {
                 price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
                 price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
-            }),
+            },
             parent_hash: latest.hash,
             sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
             status: starknet_gateway_types::reply::Status::Pending,
@@ -742,7 +739,7 @@ pub mod test_utils {
             transaction_receipts,
             transactions,
             starknet_version: StarknetVersion::new(0, 11, 0, 0),
-            l1_da_mode: Some(starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata),
+            l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata,
         };
 
         let contract1 = contract_address_bytes!(b"pending contract 1 address");

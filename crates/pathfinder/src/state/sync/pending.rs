@@ -99,7 +99,9 @@ mod tests {
     };
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::MockGatewayApi;
-    use starknet_gateway_types::reply::{Block, L1DataAvailabilityMode, PendingBlock, Status};
+    use starknet_gateway_types::reply::{
+        Block, GasPrices, L1DataAvailabilityMode, PendingBlock, Status,
+    };
     use tokio::sync::watch;
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
@@ -109,10 +111,8 @@ mod tests {
         pub static ref NEXT_BLOCK: Block = Block {
             block_hash: block_hash!("0xabcd"),
             block_number: BlockNumber::new_or_panic(1),
-            eth_l1_gas_price_implementation_detail: None,
-            strk_l1_gas_price_implementation_detail: None,
-            l1_gas_price_implementation_detail: None,
-            l1_data_gas_price: None,
+            l1_gas_price: Default::default(),
+            l1_data_gas_price: Default::default(),
             parent_block_hash: PARENT_HASH,
             sequencer_address: None,
             state_commitment: PARENT_ROOT,
@@ -121,9 +121,9 @@ mod tests {
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),
-            l1_da_mode: None,
-            transaction_commitment: None,
-            event_commitment: None,
+            l1_da_mode: Default::default(),
+            transaction_commitment: Default::default(),
+            event_commitment: Default::default(),
         };
 
         pub static ref PENDING_UPDATE: StateUpdate = {
@@ -131,10 +131,11 @@ mod tests {
         };
 
         pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
-            eth_l1_gas_price_implementation_detail: Some(GasPrice(11)),
-            strk_l1_gas_price_implementation_detail: None,
-            l1_gas_price_implementation_detail: None,
-            l1_data_gas_price: None,
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice(11),
+                ..Default::default()
+            },
+            l1_data_gas_price: Default::default(),
             parent_hash: NEXT_BLOCK.parent_block_hash,
             sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
             status: Status::Pending,
@@ -153,7 +154,7 @@ mod tests {
                 )}
             ],
             starknet_version: StarknetVersion::default(),
-            l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
         };
     );
 

@@ -62,13 +62,14 @@ fn main() -> anyhow::Result<()> {
         let block = Block {
             block_hash: header.hash,
             block_number: header.number,
-            eth_l1_gas_price_implementation_detail: Some(header.eth_l1_gas_price),
-            strk_l1_gas_price_implementation_detail: Some(header.strk_l1_gas_price),
-            l1_gas_price_implementation_detail: None,
-            l1_data_gas_price: Some(GasPrices {
+            l1_gas_price: GasPrices {
+                price_in_wei: header.eth_l1_gas_price,
+                price_in_fri: header.strk_l1_gas_price,
+            },
+            l1_data_gas_price: GasPrices {
                 price_in_wei: header.eth_l1_data_gas_price,
                 price_in_fri: header.strk_l1_data_gas_price,
-            }),
+            },
             parent_block_hash,
             sequencer_address: Some(header.sequencer_address),
             state_commitment: header.state_commitment,
@@ -77,9 +78,9 @@ fn main() -> anyhow::Result<()> {
             transaction_receipts: receipts,
             transactions,
             starknet_version: StarknetVersion::default(),
-            l1_da_mode: None,
-            transaction_commitment: Some(header.transaction_commitment),
-            event_commitment: Some(header.event_commitment),
+            l1_da_mode: Default::default(),
+            transaction_commitment: header.transaction_commitment,
+            event_commitment: header.event_commitment,
         };
         parent_block_hash = block_hash;
 
