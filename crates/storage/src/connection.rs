@@ -36,19 +36,19 @@ type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionMana
 pub struct Connection {
     connection: PooledConnection,
     bloom_filter_cache: Arc<crate::bloom::Cache>,
-    prune_merkle_tries: bool,
+    trie_prune_mode: TriePruneMode,
 }
 
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
         bloom_filter_cache: Arc<crate::bloom::Cache>,
-        prune_merkle_tries: bool,
+        trie_prune_mode: TriePruneMode,
     ) -> Self {
         Self {
             connection,
             bloom_filter_cache,
-            prune_merkle_tries,
+            trie_prune_mode,
         }
     }
 
@@ -57,11 +57,7 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
-            trie_prune_mode: if self.prune_merkle_tries {
-                TriePruneMode::Prune { num_blocks_kept: 0 }
-            } else {
-                TriePruneMode::Archive
-            },
+            trie_prune_mode: self.trie_prune_mode,
         })
     }
 
@@ -73,11 +69,7 @@ impl Connection {
         Ok(Transaction {
             transaction: tx,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
-            trie_prune_mode: if self.prune_merkle_tries {
-                TriePruneMode::Prune { num_blocks_kept: 0 }
-            } else {
-                TriePruneMode::Archive
-            },
+            trie_prune_mode: self.trie_prune_mode,
         })
     }
 }

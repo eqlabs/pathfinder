@@ -110,7 +110,12 @@ async fn async_main() -> anyhow::Result<()> {
         pathfinder_storage::StorageBuilder::file(pathfinder_context.database.clone())
             .journal_mode(config.sqlite_wal)
             .bloom_filter_cache_size(config.event_bloom_filter_cache_size.get())
-            .prune_merkle_tries(config.prune_merkle_tries)
+            .trie_prune_mode(match config.prune_merkle_tries {
+                Some(num_blocks_kept) => {
+                    pathfinder_storage::TriePruneMode::Prune { num_blocks_kept }
+                }
+                None => pathfinder_storage::TriePruneMode::Archive,
+            })
             .migrate()?;
     let sync_storage = storage_manager
         // 5 is enough for normal sync operations, and then `available_parallelism` for
