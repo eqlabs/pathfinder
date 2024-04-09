@@ -179,6 +179,27 @@ impl Transaction<'_> {
             )
             .context("Deleting block from trie_storage_removals table")?;
 
+        self.inner()
+            .execute(
+                "DELETE FROM trie_class WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from trie_class table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM trie_contracts WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from trie_contracts table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM trie_storage WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from trie_storage table")?;
+
         Ok(())
     }
 
