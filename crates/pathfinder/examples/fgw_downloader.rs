@@ -24,7 +24,9 @@ struct Head {
 /// Download blocks and state updates from the mainnet feeder gateway. Store each pair in a separate file.
 ///
 /// Example usage:
-/// `while true; do cargo run --release -p pathfinder --example fgw_downloader -- API_KEY; sleep 5; done`
+/// `while true; do cargo run --release -p pathfinder --example fgw_downloader -- API_KEY NETWORK; sleep 5; done`
+///
+/// NETWORK is either `mainnet` or `sepolia`.
 #[tokio::main(flavor = "multi_thread", worker_threads = 64)]
 async fn main() -> anyhow::Result<()> {
     let api_key = args()
@@ -32,26 +34,39 @@ async fn main() -> anyhow::Result<()> {
         .ok_or(anyhow::anyhow!("Missing API key"))
         .context("API key")?;
 
-    match create_dir("./downloaded") {
-        Ok(_) => println!("Created directory: ./downloaded"),
+    let network = args()
+        .nth(2)
+        .ok_or(anyhow::anyhow!("Missing network"))
+        .context("Network")?;
+
+    anyhow::ensure!(
+        network == "mainnet" || network == "sepolia",
+        "Invalid network: {network}"
+    );
+
+    let download_dir = format!("./downloaded-{}", network);
+
+    match create_dir(&download_dir) {
+        Ok(_) => println!("Created directory: {download_dir}"),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            println!("Directory already exists: ./downloaded")
+            println!("Directory already exists: {download_dir}")
         }
-        Err(e) => return Err(e).context("Creating directory"),
+        Err(e) => return Err(e).with_context(|| format!("Creating directory {download_dir}")),
     }
 
     let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_secs(30))
         .build()?;
 
     let Head {
         block_number: head,
         ..
-    } = client.get("https://alpha-mainnet.starknet.io/feeder_gateway/get_block?blockNumber=latest&headerOnly=true").send().await?.json::<Head>().await?;
+    } = client.get(format!("https://alpha-{network}.starknet.io/feeder_gateway/get_block?blockNumber=latest&headerOnly=true")).send().await?.json::<Head>().await?;
 
     let concurrency_limit = std::thread::available_parallelism()?.get() * 16;
 
-    let files = std::fs::read_dir("./downloaded").context("Reading directory: ./downloaded")?;
+    let files = std::fs::read_dir(&download_dir)
+        .with_context(|| format!("Reading directory: {download_dir}"))?;
     let files = files
         .filter_map(Result::ok)
         .filter_map(|entry| entry.file_name().into_string().ok())
@@ -60,9 +75,7 @@ async fn main() -> anyhow::Result<()> {
                 .strip_suffix(".json.zst")
                 .and_then(|block_number| block_number.parse::<i64>().ok())
         })
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+        .collect::<BTreeSet<_>>();
 
     let mut gaps = Vec::new();
 
@@ -98,11 +111,13 @@ async fn main() -> anyhow::Result<()> {
         .try_for_each_concurrent(concurrency_limit, |block_number| {
             let client = client.clone();
             let api_key = api_key.clone();
+            let network = network.clone();
+            let download_dir = download_dir.clone();
 
             async move {
                 println!("Get:  {block_number}");
 
-                let txt = client.get("https://alpha-mainnet.starknet.io/feeder_gateway/get_state_update?blockNumber={block_number}&includeBlock=true")
+                let txt = client.get(format!("https://alpha-{network}.starknet.io/feeder_gateway/get_state_update?blockNumber={block_number}&includeBlock=true"))
                     .header("X-Throttling-Bypass", api_key).send().await?.text().await?;
 
                 serde_json::from_str::<BlockAndStateUpdate>(&txt)?;
@@ -110,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
                 tokio::task::spawn_blocking(move ||
                     {
                         let compressed = zstd::encode_all(txt.as_bytes(), 10)?;
-                        std::fs::write(format!("./downloaded/{block_number}.json.zst"), compressed)?;
+                        std::fs::write(format!("{download_dir}/{block_number}.json.zst"), compressed)?;
                         std::io::Result::Ok(())
                     }
                 ).await.context("Join blocking task")?.with_context(|| format!("Writing block: {block_number}"))?;
@@ -120,7 +135,7 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::Result::Ok(())
             }
         })
-        .await.context("Stream failed")?;
+        .await.context("Download failed")?;
 
     Ok(())
 }
