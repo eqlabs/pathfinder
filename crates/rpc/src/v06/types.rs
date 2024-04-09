@@ -67,8 +67,8 @@ impl BlockHeader {
             timestamp: pending.timestamp,
             sequencer_address: pending.sequencer_address,
             l1_gas_price: ResourcePrice {
-                price_in_fri: pending.strk_l1_gas_price().unwrap_or_default(),
-                price_in_wei: pending.eth_l1_gas_price(),
+                price_in_fri: pending.l1_gas_price.price_in_fri,
+                price_in_wei: pending.l1_gas_price.price_in_wei,
             },
             starknet_version: pending.starknet_version,
         }

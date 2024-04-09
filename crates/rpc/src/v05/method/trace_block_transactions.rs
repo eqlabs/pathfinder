@@ -442,13 +442,14 @@ pub(crate) mod tests {
             ];
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
-                eth_l1_gas_price_implementation_detail: Some(GasPrice(1)),
-                strk_l1_gas_price_implementation_detail: Some(GasPrice(1)),
-                l1_gas_price_implementation_detail: None,
-                l1_data_gas_price: Some(GasPrices {
+                l1_gas_price: GasPrices {
                     price_in_wei: GasPrice(1),
                     price_in_fri: GasPrice(1),
-                }),
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: GasPrice(1),
+                    price_in_fri: GasPrice(1),
+                },
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,
@@ -456,7 +457,7 @@ pub(crate) mod tests {
                 transaction_receipts,
                 transactions: transactions.iter().cloned().map(Into::into).collect(),
                 starknet_version: last_block_header.starknet_version,
-                l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
+                l1_da_mode: L1DataAvailabilityMode::Calldata,
             };
 
             tx.commit()?;

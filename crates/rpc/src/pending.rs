@@ -27,18 +27,10 @@ impl PendingData {
             parent_hash: self.block.parent_hash,
             number: self.number,
             timestamp: self.block.timestamp,
-            eth_l1_gas_price: self.block.eth_l1_gas_price(),
-            strk_l1_gas_price: self.block.strk_l1_gas_price().unwrap_or_default(),
-            eth_l1_data_gas_price: self
-                .block
-                .l1_data_gas_price
-                .map(|x| x.price_in_wei)
-                .unwrap_or_default(),
-            strk_l1_data_gas_price: self
-                .block
-                .l1_data_gas_price
-                .map(|x| x.price_in_fri)
-                .unwrap_or_default(),
+            eth_l1_gas_price: self.block.l1_gas_price.price_in_wei,
+            strk_l1_gas_price: self.block.l1_gas_price.price_in_fri,
+            eth_l1_data_gas_price: self.block.l1_data_gas_price.price_in_wei,
+            strk_l1_data_gas_price: self.block.l1_data_gas_price.price_in_fri,
             sequencer_address: self.block.sequencer_address,
             starknet_version: self.block.starknet_version.clone(),
             // Pending block does not know what these are yet.
@@ -50,7 +42,7 @@ impl PendingData {
             transaction_commitment: Default::default(),
             transaction_count: Default::default(),
             event_count: Default::default(),
-            l1_da_mode: self.block.l1_da_mode.map(Into::into).unwrap_or_default(),
+            l1_da_mode: self.block.l1_da_mode.into(),
         }
     }
 }
@@ -77,20 +69,21 @@ impl PendingWatcher {
         } else {
             let data = PendingData {
                 block: PendingBlock {
-                    eth_l1_gas_price_implementation_detail: Some(latest.eth_l1_gas_price),
-                    strk_l1_gas_price_implementation_detail: Some(latest.strk_l1_gas_price),
-                    l1_data_gas_price: Some(GasPrices {
+                    l1_gas_price: GasPrices {
+                        price_in_wei: latest.eth_l1_gas_price,
+                        price_in_fri: latest.strk_l1_gas_price,
+                    },
+                    l1_data_gas_price: GasPrices {
                         price_in_wei: latest.eth_l1_data_gas_price,
                         price_in_fri: latest.strk_l1_data_gas_price,
-                    }),
+                    },
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,
                     starknet_version: latest.starknet_version,
-                    l1_da_mode: Some(latest.l1_da_mode.into()),
+                    l1_da_mode: latest.l1_da_mode.into(),
                     // This shouldn't have an impact anywhere as the RPC methods should
                     // know this is a pending block. But rather safe than sorry.
                     status: Status::Pending,
-                    l1_gas_price_implementation_detail: None,
                     sequencer_address: latest.sequencer_address,
                     transaction_receipts: vec![],
                     transactions: vec![],
@@ -141,8 +134,10 @@ mod tests {
             block: PendingBlock {
                 parent_hash: latest.hash,
                 timestamp: BlockTimestamp::new_or_panic(112233),
-                eth_l1_gas_price_implementation_detail: Some(GasPrice(51123)),
-                strk_l1_gas_price_implementation_detail: Some(GasPrice(44411)),
+                l1_gas_price: GasPrices {
+                    price_in_wei: GasPrice(51123),
+                    price_in_fri: GasPrice(44411),
+                },
                 ..Default::default()
             }
             .into(),
@@ -198,13 +193,15 @@ mod tests {
 
         let expected = PendingData {
             block: PendingBlock {
-                eth_l1_gas_price_implementation_detail: Some(latest.eth_l1_gas_price),
-                strk_l1_gas_price_implementation_detail: Some(latest.strk_l1_gas_price),
-                l1_data_gas_price: Some(GasPrices {
+                l1_gas_price: GasPrices {
+                    price_in_wei: latest.eth_l1_gas_price,
+                    price_in_fri: latest.strk_l1_gas_price,
+                },
+                l1_data_gas_price: GasPrices {
                     price_in_wei: latest.eth_l1_data_gas_price,
                     price_in_fri: latest.strk_l1_data_gas_price,
-                }),
-                l1_da_mode: Some(latest.l1_da_mode.into()),
+                },
+                l1_da_mode: latest.l1_da_mode.into(),
                 timestamp: latest.timestamp,
                 sequencer_address: latest.sequencer_address,
                 parent_hash: latest.hash,

@@ -679,7 +679,7 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
-    use starknet_gateway_test_fixtures::{testnet::*, *};
+    use starknet_gateway_test_fixtures::testnet::*;
     use starknet_gateway_types::error::KnownStarknetErrorCode;
     use starknet_gateway_types::request::add_transaction::ContractDefinition;
 
@@ -722,60 +722,6 @@ mod tests {
     mod transaction {
         use super::{reply::Status, *};
         use pretty_assertions_sorted::assert_eq;
-
-        #[tokio::test]
-        async fn declare() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                (v0_9_0::transaction::INVOKE, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction(transaction_hash!(
-                        "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                    ))
-                    .await
-                    .unwrap()
-                    .status,
-                Status::AcceptedOnL1
-            );
-        }
-
-        #[tokio::test]
-        async fn deploy() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8",
-                (v0_9_0::transaction::DEPLOY, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction(transaction_hash!(
-                        "03d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
-                    ))
-                    .await
-                    .unwrap()
-                    .status,
-                Status::AcceptedOnL1
-            );
-        }
-
-        #[tokio::test]
-        async fn invoke() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                (v0_9_0::transaction::INVOKE, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction(transaction_hash!(
-                        "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                    ))
-                    .await
-                    .unwrap()
-                    .status,
-                Status::AcceptedOnL1
-            );
-        }
 
         #[tokio::test]
         async fn invalid_hash() {
@@ -1049,52 +995,6 @@ mod tests {
 
                 client.add_declare_transaction(declare, None).await.unwrap();
             }
-        }
-
-        #[tokio::test]
-        async fn test_deploy_account() {
-            use request::add_transaction::{DeployAccount, DeployAccountV0V1};
-
-            let (_jh, client) = setup([(
-                "/gateway/add_transaction",
-                (v0_10_1::add_transaction::DEPLOY_ACCOUNT_RESPONSE, 200),
-            )]);
-
-            let request = DeployAccount::V1(DeployAccountV0V1 {
-                max_fee: fee!("0xbf391377813"),
-                signature: vec![
-                    transaction_signature_elem!(
-                        "0x70872c11ad15910fe3d0e9375c10d1794d77cd866aa6733e31a9736559ac92b"
-                    ),
-                    transaction_signature_elem!(
-                        "0x4c9140cb8afeebc0cde2a70d11b71ec764a4d0c6b2c33356bb7d5f7c734f5e1"
-                    ),
-                ],
-                nonce: transaction_nonce!("0x0"),
-                class_hash: class_hash!(
-                    "0x1fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
-                ),
-                contract_address_salt: contract_address_salt!(
-                    "0x6d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
-                ),
-                constructor_calldata: vec![call_param!(
-                    "0x7eda1c9b366a008b8697fe9d6bad040818ffb27f8615966c29de33e523e9e35"
-                )],
-            });
-
-            let res = client
-                .add_deploy_account(request)
-                .await
-                .expect("DEPLOY_ACCOUNT response");
-
-            let expected = reply::add_transaction::DeployAccountResponse {
-                code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: transaction_hash!(
-                    "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
-                ),
-            };
-
-            assert_eq!(res, expected);
         }
 
         /// Return a contract definition that was dumped from a `starknet deploy`.

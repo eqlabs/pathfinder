@@ -193,7 +193,7 @@ mod tests {
         use starknet_gateway_test_fixtures::class_definitions::{
             CONTRACT_DEFINITION, CONTRACT_DEFINITION_CLASS_HASH,
         };
-        use starknet_gateway_types::reply::{L1DataAvailabilityMode, PendingBlock};
+        use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode, PendingBlock};
 
         async fn test_context() -> (
             RpcContext,
@@ -393,12 +393,11 @@ mod tests {
         ) -> PendingData {
             PendingData {
                 block: PendingBlock {
-                    eth_l1_gas_price_implementation_detail: Some(
-                        last_block_header.eth_l1_gas_price,
-                    ),
-                    strk_l1_gas_price_implementation_detail: None,
-                    l1_data_gas_price: None,
-                    l1_gas_price_implementation_detail: None,
+                    l1_gas_price: GasPrices {
+                        price_in_wei: last_block_header.eth_l1_gas_price,
+                        price_in_fri: Default::default(),
+                    },
+                    l1_data_gas_price: Default::default(),
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,
@@ -406,7 +405,7 @@ mod tests {
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
-                    l1_da_mode: Some(L1DataAvailabilityMode::Calldata),
+                    l1_da_mode: L1DataAvailabilityMode::Calldata,
                 }
                 .into(),
                 state_update: state_update.into(),

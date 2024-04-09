@@ -16,12 +16,6 @@ pub mod pre_0_7_0 {
     }
 }
 
-pub mod old {
-    pub mod block {
-        pub const NUMBER_192: &str = str_fixture!("old/block/192.json");
-    }
-}
-
 pub mod v0_7_0 {
     pub mod block {
         pub const MAINNET_2240: &str = str_fixture!("0.7.0/block/mainnet_2240.json");
@@ -34,115 +28,9 @@ pub mod v0_8_0 {
     }
 }
 
-pub mod v0_8_2 {
-    pub mod block {
-        pub const GENESIS: &str = str_fixture!("0.8.2/block/genesis.json");
-        pub const NUMBER_1716: &str = str_fixture!("0.8.2/block/1716.json");
-        pub const PENDING: &str = str_fixture!("0.8.2/block/pending.json");
-    }
-
-    pub mod transaction {
-        pub const INVOKE: &str = str_fixture!("0.8.2/txn/invoke.json");
-    }
-}
-
 pub mod v0_9_0 {
     pub mod block {
         pub const MAINNET_2800: &str = str_fixture!("0.9.0/block/mainnet_2800.json");
-    }
-
-    pub mod transaction {
-        pub const DECLARE: &str = str_fixture!("0.9.0/txn/declare.json");
-        pub const DEPLOY: &str = str_fixture!("0.9.0/txn/deploy.json");
-        pub const INVOKE: &str = str_fixture!("0.9.0/txn/invoke.json");
-    }
-}
-
-pub mod v0_10_1 {
-    pub mod add_transaction {
-        pub const DEPLOY_ACCOUNT_REQUEST: &str =
-            str_fixture!("0.10.1/add-transaction/deploy-account-request.json");
-        pub const DEPLOY_ACCOUNT_RESPONSE: &str =
-            str_fixture!("0.10.1/add-transaction/deploy-account-response.json");
-    }
-}
-
-pub mod v0_11_0 {
-    pub mod state_update {
-        pub const GENESIS: &str = str_fixture!("0.11.0/state-update/genesis.json");
-        pub const NUMBER_315700: &str = str_fixture!("0.11.0/state-update/315700.json");
-        pub const PENDING: &str = str_fixture!("0.11.0/state-update/pending.json");
-    }
-
-    /// Some of the following transactions are "as of" 0.11.0 and not really
-    /// introduced in the chain in 0.11.0
-    pub mod transaction {
-        pub mod declare {
-            pub mod v1 {
-                pub const BLOCK_463319: &str =
-                    str_fixture!("0.11.0/transaction/declare_v1_block_463319.json");
-                pub const BLOCK_797215: &str =
-                    str_fixture!("0.11.0/transaction/declare_v1_block_797215.json");
-            }
-
-            pub mod v2 {
-                pub const BLOCK_797220: &str =
-                    str_fixture!("0.11.0/transaction/declare_v2_block_797220.json");
-            }
-        }
-
-        pub mod deploy {
-            pub mod v0 {
-                /// First deploy on testnet
-                pub const GENESIS: &str = str_fixture!("0.11.0/transaction/deploy_v0_genesis.json");
-            }
-
-            pub mod v1 {
-                /// Last deploy on testnet
-                pub const BLOCK_485004: &str =
-                    str_fixture!("0.11.0/transaction/deploy_v1_block_485004.json");
-            }
-        }
-
-        pub mod deploy_account {
-            pub mod v1 {
-                pub const BLOCK_375919: &str =
-                    str_fixture!("0.11.0/transaction/deploy_account_v1_block_375919.json");
-                pub const BLOCK_797K: &str =
-                    str_fixture!("0.11.0/transaction/deploy_account_v1_block_797k.json");
-            }
-        }
-
-        pub mod invoke {
-            pub mod v0 {
-                pub const GENESIS: &str = str_fixture!("0.11.0/transaction/invoke_v0_genesis.json");
-                // Invoke v0 with entry point type L1 handler later served
-                // as an L1 handler transaction
-                pub const BLOCK_854_IDX_96: &str =
-                    str_fixture!("0.11.0/transaction/invoke_v0_block_854_idx_96.json");
-            }
-            pub mod v1 {
-                pub const BLOCK_420K: &str =
-                    str_fixture!("0.11.0/transaction/invoke_v1_block_420k.json");
-                pub const BLOCK_790K: &str =
-                    str_fixture!("0.11.0/transaction/invoke_v1_block_790k.json");
-            }
-        }
-
-        pub mod l1_handler {
-            pub mod v0 {
-                // Former Invoke v0 with entry point type L1 handler later served
-                // as an L1 handler transaction
-                pub const BLOCK_854_IDX_96: &str =
-                    str_fixture!("0.11.0/transaction/l1_handler_v0_block_854_idx_96.json");
-                pub const BLOCK_1564: &str =
-                    str_fixture!("0.11.0/transaction/l1_handler_v0_block_1564.json");
-                pub const BLOCK_272866: &str =
-                    str_fixture!("0.11.0/transaction/l1_handler_v0_block_272866.json");
-                pub const BLOCK_790K: &str =
-                    str_fixture!("0.11.0/transaction/l1_handler_v0_block_790k.json");
-            }
-        }
     }
 }
 
@@ -154,8 +42,6 @@ pub mod v0_11_1 {
 
 pub mod v0_12_2 {
     pub mod state_update {
-        pub const PENDING_WITH_BLOCK: &str =
-            str_fixture!("0.12.2/state-update/pending_with_block.json");
         pub const BLOCK_350000: &str = str_fixture!("0.12.2/state-update/350000.json");
     }
 
@@ -164,40 +50,7 @@ pub mod v0_12_2 {
     }
 }
 
-pub mod v0_13_0 {
-    pub mod block {
-        pub const PENDING: &str = str_fixture!("0.13.0/block/pending.json");
-    }
-
-    pub mod transaction {
-        pub mod invoke {
-            pub mod v3 {
-                pub const BLOCK_319106: &str =
-                    str_fixture!("0.13.0/transaction/invoke_v3_block_319106.json");
-            }
-        }
-
-        pub mod declare {
-            pub mod v3 {
-                pub const BLOCK_319709: &str =
-                    str_fixture!("0.13.0/transaction/declare_v3_block_319709.json");
-            }
-        }
-
-        pub mod deploy_account {
-            pub mod v3 {
-                pub const BLOCK_319693: &str =
-                    str_fixture!("0.13.0/transaction/deploy_account_v3_block_319693.json");
-            }
-        }
-    }
-}
-
 pub mod v0_13_1 {
-    pub mod block {
-        pub const PENDING: &str = str_fixture!("0.13.1/block/pending.json");
-    }
-
     pub mod state_update_with_block {
         pub const SEPOLIA_INTEGRATION_NUMBER_9703: &str =
             str_fixture!("0.13.1/state_update_with_block/sepolia_integration_9703.json");
@@ -209,27 +62,6 @@ pub mod v0_13_1 {
 pub mod add_transaction {
     pub const INVOKE_CONTRACT_WITH_SIGNATURE: &str =
         str_fixture!("add-transaction/invoke-contract-with-signature.json");
-}
-
-pub mod integration {
-    pub mod block {
-        pub const NUMBER_1: &str = str_fixture!("integration/block/1.json");
-        pub const NUMBER_192844: &str = str_fixture!("integration/block/192844.json");
-        pub const NUMBER_216171: &str = str_fixture!("integration/block/216171.json");
-        pub const NUMBER_216591: &str = str_fixture!("integration/block/216591.json");
-        pub const NUMBER_228457: &str = str_fixture!("integration/block/228457.json");
-        pub const NUMBER_319693: &str = str_fixture!("integration/block/319693.json");
-        pub const NUMBER_319709: &str = str_fixture!("integration/block/319709.json");
-        pub const NUMBER_329543: &str = str_fixture!("integration/block/329543.json");
-        pub const PENDING: &str = str_fixture!("integration/block/pending.json");
-    }
-
-    pub mod state_update {
-        // Contains declared_classes from 0.11.0
-        pub const NUMBER_283364: &str = str_fixture!("integration/state-update/283364.json");
-        // Contains replaced_classes from 0.11.0
-        pub const NUMBER_283428: &str = str_fixture!("integration/state-update/283428.json");
-    }
 }
 
 pub mod class_definitions {
