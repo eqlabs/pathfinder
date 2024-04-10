@@ -252,10 +252,10 @@ pub mod test_utils {
     use std::collections::HashMap;
 
     // Creates storage for tests
-    pub fn setup_storage() -> Storage {
+    pub fn setup_storage(trie_prune_mode: pathfinder_storage::TriePruneMode) -> Storage {
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning(trie_prune_mode).unwrap();
         let mut connection = storage.connection().unwrap();
         let db_txn = connection.transaction().unwrap();
 

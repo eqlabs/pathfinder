@@ -21,6 +21,7 @@ pub enum GetProofError {
     Internal(anyhow::Error),
     BlockNotFound,
     ProofLimitExceeded { limit: u32, requested: u32 },
+    ProofMissing,
 }
 
 impl From<anyhow::Error> for GetProofError {
@@ -37,6 +38,7 @@ impl From<GetProofError> for crate::error::ApplicationError {
             }
             GetProofError::BlockNotFound => Self::BlockNotFound,
             GetProofError::Internal(internal) => Self::Internal(internal),
+            GetProofError::ProofMissing => Self::ProofMissing,
         }
     }
 }
@@ -193,7 +195,8 @@ pub async fn get_proof(
         // be a "non membership" proof.
         let contract_proof =
             StorageCommitmentTree::get_proof(&tx, header.number, &input.contract_address)
-                .context("Creating contract proof")?;
+                .context("Creating contract proof")?
+                .ok_or(GetProofError::ProofMissing)?;
         let contract_proof = ProofNodes(contract_proof);
 
         let contract_state_hash = tx
@@ -224,20 +227,18 @@ pub async fn get_proof(
             .context("Querying contract's nonce")?
             .unwrap_or_default();
 
-        let storage_proofs = input
-            .keys
-            .iter()
-            .map(|k| {
-                ContractsStorageTree::get_proof(
-                    &tx,
-                    input.contract_address,
-                    header.number,
-                    k.view_bits(),
-                )
-                .map(ProofNodes)
-            })
-            .collect::<anyhow::Result<Vec<_>>>()
-            .context("Get proof from contract state treee")?;
+        let mut storage_proofs = Vec::new();
+        for k in &input.keys {
+            let proof = ContractsStorageTree::get_proof(
+                &tx,
+                input.contract_address,
+                header.number,
+                k.view_bits(),
+            )
+            .context("Get proof from contract state tree")?
+            .ok_or(GetProofError::ProofMissing)?;
+            storage_proofs.push(ProofNodes(proof));
+        }
 
         let contract_data = ContractData {
             class_hash,
@@ -277,5 +278,44 @@ mod tests {
 
         let err = get_proof(context, input).await.unwrap_err();
         assert_matches::assert_matches!(err, GetProofError::ProofLimitExceeded { .. });
+    }
+
+    #[tokio::test]
+    async fn proof_pruned() {
+        let context =
+            RpcContext::for_tests_with_trie_pruning(pathfinder_storage::TriePruneMode::Prune {
+                num_blocks_kept: 0,
+            });
+        let mut conn = context.storage.connection().unwrap();
+        let tx = conn.transaction().unwrap();
+
+        // Ensure that all storage tries are pruned, hence the node does not store historic proofs.
+        tx.insert_storage_trie(
+            &pathfinder_storage::TrieUpdate {
+                nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
+                nodes_removed: (0..100).collect(),
+            },
+            BlockNumber::GENESIS + 3,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        let tx = conn.transaction().unwrap();
+        tx.insert_storage_trie(
+            &pathfinder_storage::TrieUpdate {
+                nodes_added: vec![(Felt::from_u64(1), pathfinder_storage::Node::LeafBinary)],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 4,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+
+        let input = GetProofInput {
+            block_id: BlockId::Latest,
+            contract_address: contract_address!("0xdeadbeef"),
+            keys: vec![storage_address_bytes!(b"storage addr 0")],
+        };
+        let err = get_proof(context, input).await.unwrap_err();
+        assert_matches::assert_matches!(err, GetProofError::ProofMissing);
     }
 }

@@ -83,6 +83,8 @@ pub enum ApplicationError {
         transaction_index: usize,
         error: String,
     },
+    #[error("Proof is missing")]
+    ProofMissing,
     /// Internal errors are errors whose details we don't want to show to the end user.
     /// These are logged, and a simple "internal error" message is shown to the end
     /// user.
@@ -131,6 +133,7 @@ impl ApplicationError {
             ApplicationError::UnexpectedError { .. } => 63,
             // doc/rpc/pathfinder_rpc_api.json
             ApplicationError::ProofLimitExceeded { .. } => 10000,
+            ApplicationError::ProofMissing => 10001,
             // https://www.jsonrpc.org/specification#error_object
             ApplicationError::GatewayError(_)
             | ApplicationError::Internal(_)
@@ -204,6 +207,7 @@ impl ApplicationError {
                 "limit": limit,
                 "requested": requested,
             })),
+            ApplicationError::ProofMissing => None,
             ApplicationError::ValidationFailureV06(error) => Some(json!(error)),
         }
     }

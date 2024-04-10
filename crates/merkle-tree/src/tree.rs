@@ -510,17 +510,16 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         root: u64,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
-    ) -> anyhow::Result<Vec<TrieNode>> {
+    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
         // Manually traverse towards the key.
         let mut nodes = Vec::new();
 
         let mut next = Some(root);
         let mut height = 0;
         while let Some(index) = next.take() {
-            let node = storage
-                .get(index)
-                .context("Resolving node")?
-                .context("Node is missing from storage")?;
+            let Some(node) = storage.get(index).context("Resolving node")? else {
+                return Ok(None);
+            };
 
             let node = match node {
                 StoredNode::Binary { left, right } => {
@@ -595,7 +594,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             nodes.push(node);
         }
 
-        Ok(nodes)
+        Ok(Some(nodes))
     }
 
     /// Traverses from the current root towards destination node.
@@ -1944,7 +1943,7 @@ mod tests {
             storage: &impl Storage,
         ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
             keys.iter()
-                .map(|k| TestTree::get_proof(root, storage, k))
+                .map(|k| TestTree::get_proof(root, storage, k).map(Option::unwrap))
                 .collect()
         }
 
