@@ -14,6 +14,7 @@ async-stream = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
+fake = { workspace = true }
 futures = { workspace = true }
 ipnet = { workspace = true }
 libp2p = { workspace = true, features = ["autonat", "dcutr", "dns", "gossipsub", "identify", "kad", "macros", "noise", "ping", "relay", "request-response", "serde", "tcp", "tokio", "yamux"] }
@@ -38,7 +39,6 @@ zeroize = { workspace = true }
 [dev-dependencies]
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 env_logger = { workspace = true }
-fake = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 rstest = { workspace = true }

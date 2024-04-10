@@ -22,12 +22,11 @@ pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<Block> {
     with_n_blocks_and_rng(storage, n, &mut rng)
 }
 
-/// Same as [`with_n_blocks`] except caller can specify the rng used
-pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -> Vec<Block> {
+/// Initialize [`Storage`] with a slice of already generated blocks
+pub fn fill(storage: &Storage, blocks: &[Block]) {
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
-    let fake_data = init::with_n_blocks_and_rng(n, rng);
-    fake_data.iter().for_each(
+    blocks.iter().for_each(
         |Block {
              header,
              transaction_data,
@@ -83,7 +82,13 @@ pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -
         },
     );
     tx.commit().unwrap();
-    fake_data
+}
+
+/// Same as [`with_n_blocks`] except caller can specify the rng used
+pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -> Vec<Block> {
+    let blocks = init::with_n_blocks_and_rng(n, rng);
+    fill(storage, &blocks);
+    blocks
 }
 
 /// Raw _fake state initializers_
