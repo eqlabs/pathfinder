@@ -6,7 +6,7 @@ use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 
-use crate::{prelude::*, TriePruneMode};
+use crate::{prelude::*, BlockId, TriePruneMode};
 
 impl Transaction<'_> {
     pub fn class_root_index(&self, block_number: BlockNumber) -> anyhow::Result<Option<u64>> {
@@ -250,6 +250,21 @@ impl Transaction<'_> {
         self.trie_node_hash(index, "trie_storage")
     }
 
+    /// Prune tries by removing nodes that are no longer needed at the given block.
+    pub fn prune_tries(&self) -> anyhow::Result<()> {
+        let Some(block_number) = self.block_number(BlockId::Latest)? else {
+            return Ok(());
+        };
+        let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode else {
+            return Ok(());
+        };
+        tracing::info!("Cleaning up state trie");
+        self.prune_trie(block_number, num_blocks_kept, "trie_contracts")?;
+        self.prune_trie(block_number, num_blocks_kept, "trie_class")?;
+        self.prune_trie(block_number, num_blocks_kept, "trie_storage")?;
+        Ok(())
+    }
+
     fn delete_contract_roots(
         &self,
         contract: ContractAddress,
@@ -262,9 +277,34 @@ impl Transaction<'_> {
         Ok(())
     }
 
+    /// Mark the input nodes as ready for removal.
     fn remove_trie(
         &self,
         removed: &[u64],
+        block_number: BlockNumber,
+        table: &'static str,
+    ) -> anyhow::Result<()> {
+        if !removed.is_empty() {
+            let mut stmt = self
+                .inner()
+                .prepare_cached(&format!(
+                    r"INSERT INTO {table}_removals (block_number, indices) VALUES (?, ?)"
+                ))
+                .context("Creating statement to insert removal marker")?;
+            stmt.execute(params![
+                &block_number,
+                &bincode::encode_to_vec(removed, bincode::config::standard())
+                    .context("Serializing indices")?
+            ])
+            .context("Inserting removal marker")?;
+        }
+
+        Ok(())
+    }
+
+    /// Prune tries by removing nodes that are no longer needed.
+    fn prune_trie(
+        &self,
         block_number: BlockNumber,
         num_blocks_kept: u64,
         table: &'static str,
@@ -293,7 +333,7 @@ impl Transaction<'_> {
                 for idx in indices.iter() {
                     delete_stmt.execute(params![idx]).context("Deleting node")?;
                 }
-                metrics::counter!(METRIC_TRIE_NODES_REMOVED, removed.len() as u64, "table" => table);
+                metrics::counter!(METRIC_TRIE_NODES_REMOVED, indices.len() as u64, "table" => table);
             }
 
             // Delete the removal markers.
@@ -308,22 +348,6 @@ impl Transaction<'_> {
                 .context("Deleting removal markers")?;
         }
 
-        // Mark the input nodes as ready for removal.
-        if !removed.is_empty() {
-            let mut stmt = self
-                .inner()
-                .prepare_cached(&format!(
-                    r"INSERT INTO {table}_removals (block_number, indices) VALUES (?, ?)"
-                ))
-                .context("Creating statement to insert removal marker")?;
-            stmt.execute(params![
-                &block_number,
-                &bincode::encode_to_vec(removed, bincode::config::standard())
-                    .context("Serializing indices")?
-            ])
-            .context("Inserting removal marker")?;
-        }
-
         Ok(())
     }
 
@@ -335,7 +359,8 @@ impl Transaction<'_> {
         table: &'static str,
     ) -> anyhow::Result<u64> {
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
-            self.remove_trie(&update.nodes_removed, block_number, num_blocks_kept, table)?;
+            self.prune_trie(block_number, num_blocks_kept, table)?;
+            self.remove_trie(&update.nodes_removed, block_number, table)?;
         }
 
         assert!(
@@ -1022,6 +1047,124 @@ mod tests {
         .unwrap();
 
         // At this point, index 1 should no longer be in the table.
+        assert!(tx.class_trie_node(1).unwrap().is_none());
+    }
+
+    #[test]
+    fn class_trie_pruning_change_config() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 100,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let mut tx = db.transaction().unwrap();
+
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("0"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("1"), Node::LeafBinary),
+                    (felt!("2"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("3"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("4"), Node::LeafBinary),
+                    (felt!("5"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![1],
+            },
+            BlockNumber::GENESIS + 1,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("6"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("7"), Node::LeafBinary),
+                    (felt!("8"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 2,
+        )
+        .unwrap();
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("9"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("10"), Node::LeafBinary),
+                    (felt!("11"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 3,
+        )
+        .unwrap();
+
+        tx.insert_class_trie(
+            &TrieUpdate {
+                nodes_added: vec![
+                    (
+                        felt!("12"),
+                        Node::Binary {
+                            left: NodeRef::Index(1),
+                            right: NodeRef::Index(2),
+                        },
+                    ),
+                    (felt!("13"), Node::LeafBinary),
+                    (felt!("14"), Node::LeafBinary),
+                ],
+                nodes_removed: vec![],
+            },
+            BlockNumber::GENESIS + 4,
+        )
+        .unwrap();
+
+        // Nothing was pruned.
+        assert!(tx.class_trie_node(1).unwrap().is_some());
+
+        // Simulate a configuration change.
+        tx.trie_prune_mode = TriePruneMode::Prune { num_blocks_kept: 2 };
+        tx.insert_block_header(&BlockHeader {
+            number: BlockNumber::GENESIS + 4,
+            ..Default::default()
+        })
+        .unwrap();
+        tx.prune_tries().unwrap();
+
+        // The class trie was pruned.
         assert!(tx.class_trie_node(1).unwrap().is_none());
     }
 
