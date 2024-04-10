@@ -250,14 +250,15 @@ impl Transaction<'_> {
         self.trie_node_hash(index, "trie_storage")
     }
 
-    /// Prune tries by removing nodes that are no longer needed.
-    pub fn prune_tries(&self) -> anyhow::Result<()> {
-        let Some(block_number) = self.block_number(BlockId::Latest)? else {
+    /// Prune tries by removing nodes that are no longer needed at the given block.
+    pub fn prune_tries(&self, block_id: BlockId) -> anyhow::Result<()> {
+        let Some(block_number) = self.block_number(block_id)? else {
             return Ok(());
         };
         let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode else {
             return Ok(());
         };
+        tracing::info!("Cleaning up state trie");
         self.prune_trie(block_number, num_blocks_kept, "trie_contracts")?;
         self.prune_trie(block_number, num_blocks_kept, "trie_class")?;
         self.prune_trie(block_number, num_blocks_kept, "trie_storage")?;
@@ -301,7 +302,7 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    // Prune tries by removing nodes that are no longer needed.
+    /// Prune tries by removing nodes that are no longer needed.
     fn prune_trie(
         &self,
         block_number: BlockNumber,
@@ -329,11 +330,10 @@ impl Transaction<'_> {
                     bincode::config::standard(),
                 )
                 .context("Decoding indices")?;
-                let mut removed = 0;
                 for idx in indices.iter() {
-                    removed += delete_stmt.execute(params![idx]).context("Deleting node")? as u64;
+                    delete_stmt.execute(params![idx]).context("Deleting node")?;
                 }
-                metrics::counter!(METRIC_TRIE_NODES_REMOVED, removed, "table" => table);
+                metrics::counter!(METRIC_TRIE_NODES_REMOVED, indices.len() as u64, "table" => table);
             }
 
             // Delete the removal markers.
@@ -1162,7 +1162,7 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        tx.prune_tries().unwrap();
+        tx.prune_tries(BlockId::Latest).unwrap();
 
         // The class trie was pruned.
         assert!(tx.class_trie_node(1).unwrap().is_none());

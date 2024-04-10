@@ -10,7 +10,7 @@ use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
 use pathfinder_rpc::context::WebsocketContext;
 use pathfinder_rpc::SyncState;
-use pathfinder_storage::Storage;
+use pathfinder_storage::{BlockId, Storage};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use std::net::SocketAddr;
@@ -176,7 +176,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .context("Creating database connection")?
         .transaction()
         .context(r"Creating database transaction")?
-        .prune_tries()
+        .prune_tries(BlockId::Latest)
         .context("Pruning tries on startup")?;
 
     let sync_state = Arc::new(SyncState::default());
