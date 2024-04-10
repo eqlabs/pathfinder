@@ -158,8 +158,6 @@ impl Transaction<'_> {
             )
             .context("Deleting block from storage_roots table")?;
 
-        self.prune_tries(block.into()).context("Pruning tries")?;
-
         Ok(())
     }
 

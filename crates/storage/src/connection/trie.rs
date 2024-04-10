@@ -251,8 +251,8 @@ impl Transaction<'_> {
     }
 
     /// Prune tries by removing nodes that are no longer needed at the given block.
-    pub fn prune_tries(&self, block_id: BlockId) -> anyhow::Result<()> {
-        let Some(block_number) = self.block_number(block_id)? else {
+    pub fn prune_tries(&self) -> anyhow::Result<()> {
+        let Some(block_number) = self.block_number(BlockId::Latest)? else {
             return Ok(());
         };
         let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode else {
@@ -1162,7 +1162,7 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        tx.prune_tries(BlockId::Latest).unwrap();
+        tx.prune_tries().unwrap();
 
         // The class trie was pruned.
         assert!(tx.class_trie_node(1).unwrap().is_none());
