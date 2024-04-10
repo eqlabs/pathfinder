@@ -430,7 +430,7 @@ impl Transaction<'_> {
         }
 
         Ok(*indices
-            .get(&update.root_index().unwrap())
+            .get(&(update.nodes_added.len() - 1))
             .expect("Root index must exist as we just inserted it"))
     }
 
@@ -486,14 +486,6 @@ pub struct TrieUpdate {
 }
 
 impl TrieUpdate {
-    pub fn root_index(&self) -> Option<usize> {
-        if self.nodes_added.is_empty() {
-            None
-        } else {
-            Some(self.nodes_added.len() - 1)
-        }
-    }
-
     pub fn root_hash(&self) -> Felt {
         self.nodes_added.last().map(|x| x.0).unwrap_or_default()
     }
