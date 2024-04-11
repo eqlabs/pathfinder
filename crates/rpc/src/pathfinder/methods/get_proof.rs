@@ -236,7 +236,14 @@ pub async fn get_proof(
                 k.view_bits(),
             )
             .context("Get proof from contract state tree")?
-            .ok_or(GetProofError::ProofMissing)?;
+            .ok_or_else(|| {
+                let e = anyhow!(
+                    "Storage proof missing for key {:?}, but should be present",
+                    k
+                );
+                tracing::warn!("{e}");
+                e
+            })?;
             storage_proofs.push(ProofNodes(proof));
         }
 
