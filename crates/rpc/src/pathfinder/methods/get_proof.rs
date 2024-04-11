@@ -301,6 +301,7 @@ mod tests {
             &pathfinder_storage::TrieUpdate {
                 nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
                 nodes_removed: (0..100).collect(),
+                root_commitment: Felt::ZERO,
             },
             BlockNumber::GENESIS + 3,
         )
@@ -311,6 +312,7 @@ mod tests {
             &pathfinder_storage::TrieUpdate {
                 nodes_added: vec![(Felt::from_u64(1), pathfinder_storage::Node::LeafBinary)],
                 nodes_removed: vec![],
+                root_commitment: Felt::ZERO,
             },
             BlockNumber::GENESIS + 4,
         )

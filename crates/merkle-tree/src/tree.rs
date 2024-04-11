@@ -101,25 +101,28 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         let mut added = Vec::new();
         let mut removed = Vec::new();
 
-        let (_root_hash, _root_ref) = if let Some(root) = self.root.as_ref() {
+        let root_hash = if let Some(root) = self.root.as_ref() {
             match &mut *root.borrow_mut() {
-                InternalNode::Unresolved(idx) => {
-                    let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
-                    self.commit_subtree(
-                        &mut root,
+                // If the root node is unresolved that means that there have been no changes made
+                // to the tree.
+                InternalNode::Unresolved(idx) => storage
+                    .hash(*idx)
+                    .context("Fetching root node's hash")?
+                    .context("Root node's hash is missing")?,
+                other => {
+                    let (root_hash, _) = self.commit_subtree(
+                        other,
                         &mut added,
                         &mut removed,
                         storage,
                         BitVec::new(),
-                    )?
-                }
-                other => {
-                    self.commit_subtree(other, &mut added, &mut removed, storage, BitVec::new())?
+                    )?;
+                    root_hash
                 }
             }
         } else {
             // An empty trie has a root of zero
-            (Felt::ZERO, None)
+            Felt::ZERO
         };
 
         removed.extend(self.nodes_removed);
@@ -127,6 +130,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(TrieUpdate {
             nodes_added: added,
             nodes_removed: removed,
+            root_commitment: root_hash,
         })
     }
 
@@ -903,10 +907,6 @@ mod tests {
 
         let update = tree.commit(storage).unwrap();
 
-        assert!(!update.nodes_added.is_empty());
-
-        let root_hash = update.root_hash();
-
         if prune_nodes {
             for idx in update.nodes_removed {
                 storage.nodes.remove(&idx);
@@ -950,7 +950,7 @@ mod tests {
         let storage_root_index = storage.next_index + number_of_nodes_added - 1;
         storage.next_index += number_of_nodes_added;
 
-        (root_hash, storage_root_index)
+        (update.root_commitment, storage_root_index)
     }
 
     #[test]
@@ -1257,6 +1257,33 @@ mod tests {
         }
     }
 
+    mod commit {
+        use super::*;
+
+        #[test]
+        fn committing_an_unmodified_tree_should_result_in_empty_update() {
+            let mut tree = TestTree::empty();
+            let mut storage = TestStorage::default();
+
+            tree.set(&storage, felt!("0x1").view_bits().to_bitvec(), felt!("0x1"))
+                .unwrap();
+            let root = commit_and_persist_without_pruning(tree, &mut storage);
+            assert_eq!(
+                root.0,
+                felt!("0x02ebbd6878f81e49560ae863bd4ef327a417037bf57b63a016130ad0a94c8fa7")
+            );
+            assert_eq!(storage.nodes.len(), 1);
+
+            let tree = TestTree::new(root.1);
+            let root = commit_and_persist_without_pruning(tree, &mut storage);
+            assert_eq!(
+                root.0,
+                felt!("0x02ebbd6878f81e49560ae863bd4ef327a417037bf57b63a016130ad0a94c8fa7")
+            );
+            assert_eq!(storage.nodes.len(), 1);
+        }
+    }
+
     mod persistence {
         use super::*;
 
@@ -1503,7 +1530,7 @@ mod tests {
                 tree.set(&storage, key, val).unwrap();
             }
 
-            let root = tree.commit(&storage).unwrap().root_hash();
+            let root = tree.commit(&storage).unwrap().root_commitment;
 
             let expected =
                 felt!("0x6ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");

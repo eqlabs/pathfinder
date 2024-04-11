@@ -481,14 +481,10 @@ pub struct TrieUpdate {
     ///
     /// The last node is the root of the trie.
     pub nodes_added: Vec<(Felt, Node)>,
-    // Nodes committed to storage that have been removed.
+    /// Nodes committed to storage that have been removed.
     pub nodes_removed: Vec<u64>,
-}
-
-impl TrieUpdate {
-    pub fn root_hash(&self) -> Felt {
-        self.nodes_added.last().map(|x| x.0).unwrap_or_default()
-    }
+    /// New root commitment of the trie.
+    pub root_hash: Felt,
 }
 
 #[derive(Clone, Debug)]
@@ -957,6 +953,7 @@ mod tests {
                     (felt!("2"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS,
         )
@@ -975,6 +972,7 @@ mod tests {
                     (felt!("5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![1],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 1,
         )
@@ -993,6 +991,7 @@ mod tests {
                     (felt!("8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 2,
         )
@@ -1011,6 +1010,7 @@ mod tests {
                     (felt!("11"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 3,
         )
@@ -1033,6 +1033,7 @@ mod tests {
                     (felt!("14"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 4,
         )
@@ -1066,6 +1067,7 @@ mod tests {
                     (felt!("2"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS,
         )
@@ -1084,6 +1086,7 @@ mod tests {
                     (felt!("5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![1],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 1,
         )
@@ -1102,6 +1105,7 @@ mod tests {
                     (felt!("8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 2,
         )
@@ -1120,6 +1124,7 @@ mod tests {
                     (felt!("11"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 3,
         )
@@ -1139,6 +1144,7 @@ mod tests {
                     (felt!("14"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 4,
         )
@@ -1184,6 +1190,7 @@ mod tests {
                     (felt!("2"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS,
         )
@@ -1202,6 +1209,7 @@ mod tests {
                     (felt!("5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS,
         )
@@ -1220,6 +1228,7 @@ mod tests {
                     (felt!("8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS,
         )
@@ -1244,6 +1253,7 @@ mod tests {
                     (felt!("5"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![1, 2, 3],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 1,
         )
@@ -1262,6 +1272,7 @@ mod tests {
                     (felt!("8"), Node::LeafBinary),
                 ],
                 nodes_removed: vec![],
+                root_hash: Felt::ZERO,
             },
             BlockNumber::GENESIS + 2,
         )

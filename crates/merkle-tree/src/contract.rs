@@ -101,7 +101,7 @@ impl<'tx> ContractsStorageTree<'tx> {
     /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(ContractRoot, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
-        let commitment = ContractRoot(update.root_hash());
+        let commitment = ContractRoot(update.root_commitment);
         Ok((commitment, update))
     }
 
@@ -174,7 +174,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
     /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(StorageCommitment, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
-        let commitment = StorageCommitment(update.root_hash());
+        let commitment = StorageCommitment(update.root_commitment);
         Ok((commitment, update))
     }
 
