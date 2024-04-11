@@ -61,7 +61,20 @@ impl RpcContext {
     }
 
     #[cfg(test)]
+    pub fn for_tests_with_trie_pruning(trie_prune_mode: pathfinder_storage::TriePruneMode) -> Self {
+        Self::for_tests_impl(pathfinder_common::Chain::SepoliaTestnet, trie_prune_mode)
+    }
+
+    #[cfg(test)]
     pub fn for_tests_on(chain: pathfinder_common::Chain) -> Self {
+        Self::for_tests_impl(chain, pathfinder_storage::TriePruneMode::Archive)
+    }
+
+    #[cfg(test)]
+    pub fn for_tests_impl(
+        chain: pathfinder_common::Chain,
+        trie_prune_mode: pathfinder_storage::TriePruneMode,
+    ) -> Self {
         use pathfinder_common::Chain;
         use starknet_gateway_client::test_utils::GATEWAY_TIMEOUT;
 
@@ -78,7 +91,7 @@ impl RpcContext {
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
         };
 
-        let storage = super::test_utils::setup_storage();
+        let storage = super::test_utils::setup_storage(trie_prune_mode);
         let sync_state = Arc::new(SyncState::default());
         let (_, rx) = tokio_watch::channel(Default::default());
 

@@ -291,6 +291,10 @@
                     },
                     "required": ["limit", "requested"]
                 }
+            },
+            "PROOF_MISSING": {
+                "code": 10000,
+                "message": "Merkle trie proof is not available"
             }
         }
     }

@@ -74,13 +74,13 @@ impl<'tx> ContractsStorageTree<'tx> {
         contract: ContractAddress,
         block: BlockNumber,
         key: &BitSlice<u8, Msb0>,
-    ) -> anyhow::Result<Vec<TrieNode>> {
+    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
         let root = tx
             .contract_root_index(block, contract)
             .context("Querying contract root index")?;
 
         let Some(root) = root else {
-            return Ok(Vec::new());
+            return Ok(None);
         };
 
         let storage = ContractStorage {
@@ -183,13 +183,13 @@ impl<'tx> StorageCommitmentTree<'tx> {
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         address: &ContractAddress,
-    ) -> anyhow::Result<Vec<TrieNode>> {
+    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
         let root = tx
             .storage_root_index(block)
             .context("Querying storage root index")?;
 
         let Some(root) = root else {
-            return Ok(Vec::new());
+            return Ok(None);
         };
 
         let storage = StorageTrieStorage {
