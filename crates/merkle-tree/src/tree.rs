@@ -101,25 +101,28 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         let mut added = Vec::new();
         let mut removed = Vec::new();
 
-        let (_root_hash, _root_ref) = if let Some(root) = self.root.as_ref() {
+        let root_hash = if let Some(root) = self.root.as_ref() {
             match &mut *root.borrow_mut() {
-                InternalNode::Unresolved(idx) => {
-                    let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
-                    self.commit_subtree(
-                        &mut root,
+                // If the root node is unresolved that means that there have been no changes made
+                // to the tree.
+                InternalNode::Unresolved(idx) => storage
+                    .hash(*idx)
+                    .context("Fetching root node's hash")?
+                    .context("Root node's hash is missing")?,
+                other => {
+                    let (root_hash, _) = self.commit_subtree(
+                        other,
                         &mut added,
                         &mut removed,
                         storage,
                         BitVec::new(),
-                    )?
-                }
-                other => {
-                    self.commit_subtree(other, &mut added, &mut removed, storage, BitVec::new())?
+                    )?;
+                    root_hash
                 }
             }
         } else {
             // An empty trie has a root of zero
-            (Felt::ZERO, None)
+            Felt::ZERO
         };
 
         removed.extend(self.nodes_removed);
@@ -127,6 +130,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(TrieUpdate {
             nodes_added: added,
             nodes_removed: removed,
+            root_commitment: root_hash,
         })
     }
 
@@ -454,6 +458,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // We reached the root without a hitting binary node. The new tree
                 // must therefore be empty.
                 self.root = None;
+                self.nodes_removed.extend(indexes_removed);
                 return Ok(());
             }
         };
@@ -903,10 +908,6 @@ mod tests {
 
         let update = tree.commit(storage).unwrap();
 
-        assert!(!update.nodes_added.is_empty());
-
-        let root_hash = update.root_hash();
-
         if prune_nodes {
             for idx in update.nodes_removed {
                 storage.nodes.remove(&idx);
@@ -950,7 +951,7 @@ mod tests {
         let storage_root_index = storage.next_index + number_of_nodes_added - 1;
         storage.next_index += number_of_nodes_added;
 
-        (root_hash, storage_root_index)
+        (update.root_commitment, storage_root_index)
     }
 
     #[test]
@@ -1257,6 +1258,55 @@ mod tests {
         }
     }
 
+    mod commit {
+        use super::*;
+
+        #[test]
+        fn committing_an_unmodified_tree_should_result_in_empty_update() {
+            let mut tree = TestTree::empty();
+            let mut storage = TestStorage::default();
+
+            tree.set(&storage, felt!("0x1").view_bits().to_bitvec(), felt!("0x1"))
+                .unwrap();
+            let root = commit_and_persist_without_pruning(tree, &mut storage);
+            assert_eq!(
+                root.0,
+                felt!("0x02ebbd6878f81e49560ae863bd4ef327a417037bf57b63a016130ad0a94c8fa7")
+            );
+            assert_eq!(storage.nodes.len(), 1);
+
+            let tree = TestTree::new(root.1);
+            let root = commit_and_persist_without_pruning(tree, &mut storage);
+            assert_eq!(
+                root.0,
+                felt!("0x02ebbd6878f81e49560ae863bd4ef327a417037bf57b63a016130ad0a94c8fa7")
+            );
+            assert_eq!(storage.nodes.len(), 1);
+        }
+
+        #[test]
+        fn deleting_the_only_value_does_remove_all_nodes() {
+            let mut tree = TestTree::empty();
+            let mut storage = TestStorage::default();
+
+            tree.set(&storage, felt!("0x1").view_bits().to_bitvec(), felt!("0x1"))
+                .unwrap();
+            let root = commit_and_persist_with_pruning(tree, &mut storage);
+            assert_eq!(
+                root.0,
+                felt!("0x02ebbd6878f81e49560ae863bd4ef327a417037bf57b63a016130ad0a94c8fa7")
+            );
+            assert_eq!(storage.nodes.len(), 1);
+
+            let mut tree = TestTree::new(root.1);
+            tree.set(&storage, felt!("0x1").view_bits().to_bitvec(), Felt::ZERO)
+                .unwrap();
+            let root = commit_and_persist_with_pruning(tree, &mut storage);
+            assert_eq!(root.0, Felt::ZERO);
+            assert!(storage.nodes.is_empty());
+        }
+    }
+
     mod persistence {
         use super::*;
 
@@ -1438,7 +1488,11 @@ mod tests {
 
     mod real_world {
         use super::*;
-        use pathfinder_common::felt;
+        use pathfinder_common::{
+            class_commitment, class_commitment_leaf_hash, felt, sierra_hash, BlockNumber,
+            ClassCommitmentLeafHash,
+        };
+        use pathfinder_storage::RootIndexUpdate;
 
         #[test]
         fn simple() {
@@ -1503,7 +1557,7 @@ mod tests {
                 tree.set(&storage, key, val).unwrap();
             }
 
-            let root = tree.commit(&storage).unwrap().root_hash();
+            let root = tree.commit(&storage).unwrap().root_commitment;
 
             let expected =
                 felt!("0x6ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
@@ -1580,6 +1634,82 @@ mod tests {
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
             uut.dfs(&storage, &mut visitor_fn).unwrap();
+        }
+
+        #[test]
+        fn root_index_updates() {
+            let mut db = pathfinder_storage::StorageBuilder::in_memory_with_trie_pruning(
+                pathfinder_storage::TriePruneMode::Prune { num_blocks_kept: 0 },
+            )
+            .unwrap()
+            .connection()
+            .unwrap();
+            let tx = db.transaction().unwrap();
+
+            // Insert a value and commit.
+            let mut uut =
+                crate::class::ClassCommitmentTree::load(&tx, BlockNumber::GENESIS).unwrap();
+            const KEY: pathfinder_common::SierraHash = sierra_hash!("0xdeadbeef");
+            const VALUE: ClassCommitmentLeafHash = class_commitment_leaf_hash!("0xfeeddefeed");
+            uut.set(KEY, VALUE).unwrap();
+            let (root_commitment, trie_update) = uut.commit().unwrap();
+            assert_eq!(
+                root_commitment,
+                class_commitment!(
+                    "0x00497f5ca0b5989a6fafa83ebc60c7427a78456d38ea716f8bbfa74972a39a7d"
+                )
+            );
+
+            let root_index_update = tx
+                .insert_class_trie(&trie_update, BlockNumber::GENESIS)
+                .unwrap();
+            let RootIndexUpdate::Updated(root_index) = root_index_update else {
+                panic!("Expected root index to be updated");
+            };
+            assert_eq!(root_index, 1);
+            tx.insert_class_root(BlockNumber::GENESIS, root_index_update)
+                .unwrap();
+            assert!(tx.class_root_exists(BlockNumber::GENESIS).unwrap());
+            assert_eq!(
+                tx.class_root_index(BlockNumber::GENESIS).unwrap(),
+                Some(root_index)
+            );
+
+            // Open the tree but do no updates.
+            let uut = crate::class::ClassCommitmentTree::load(&tx, BlockNumber::GENESIS).unwrap();
+            let block_number = BlockNumber::new_or_panic(1);
+            let (root_commitment, trie_update) = uut.commit().unwrap();
+            assert_eq!(
+                root_commitment,
+                class_commitment!(
+                    "0x00497f5ca0b5989a6fafa83ebc60c7427a78456d38ea716f8bbfa74972a39a7d"
+                )
+            );
+            assert!(trie_update.nodes_added.is_empty());
+            assert!(trie_update.nodes_removed.is_empty());
+
+            let root_index_update = tx.insert_class_trie(&trie_update, block_number).unwrap();
+            assert_eq!(root_index_update, RootIndexUpdate::Unchanged);
+            tx.insert_class_root(block_number, root_index_update)
+                .unwrap();
+            assert!(!tx.class_root_exists(block_number).unwrap());
+            assert_eq!(tx.class_root_index(block_number).unwrap(), Some(root_index));
+
+            // Delete value
+            let mut uut = crate::class::ClassCommitmentTree::load(&tx, block_number).unwrap();
+            let block_number = BlockNumber::new_or_panic(2);
+            uut.set(KEY, ClassCommitmentLeafHash::ZERO).unwrap();
+            let (root_commitment, trie_update) = uut.commit().unwrap();
+            assert_eq!(root_commitment, pathfinder_common::ClassCommitment::ZERO);
+            assert!(trie_update.nodes_added.is_empty());
+            assert_eq!(trie_update.nodes_removed.len(), 1);
+
+            let root_index_update = tx.insert_class_trie(&trie_update, block_number).unwrap();
+            assert_eq!(root_index_update, RootIndexUpdate::TrieEmpty);
+            tx.insert_class_root(block_number, root_index_update)
+                .unwrap();
+            assert!(tx.class_root_exists(block_number).unwrap());
+            assert_eq!(tx.class_root_index(block_number).unwrap(), None);
         }
     }
 

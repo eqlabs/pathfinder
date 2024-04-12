@@ -13,7 +13,6 @@ use pathfinder_storage::{Transaction, TrieUpdate};
 pub struct ContractStateUpdateResult {
     pub state_hash: ContractStateHash,
     pub contract_address: ContractAddress,
-    root: ContractRoot,
     did_storage_updates: bool,
     trie_update: TrieUpdate,
 }
@@ -26,14 +25,9 @@ impl ContractStateUpdateResult {
     pub fn insert(self, block: BlockNumber, transaction: &Transaction<'_>) -> anyhow::Result<()> {
         // Insert nodes only if we made storage updates.
         if self.did_storage_updates {
-            let root_index = if !self.root.0.is_zero() && !self.trie_update.nodes_added.is_empty() {
-                let root_index = transaction
-                    .insert_contract_trie(&self.trie_update, block)
-                    .context("Persisting contract trie")?;
-                Some(root_index)
-            } else {
-                None
-            };
+            let root_index = transaction
+                .insert_contract_trie(&self.trie_update, block)
+                .context("Persisting contract trie")?;
 
             transaction
                 .insert_contract_root(block, self.contract_address, root_index)
@@ -112,7 +106,6 @@ pub fn update_contract_state(
     Ok(ContractStateUpdateResult {
         contract_address,
         state_hash,
-        root: new_root,
         did_storage_updates: !updates.is_empty(),
         trie_update,
     })
@@ -188,14 +181,9 @@ pub fn revert_contract_state(
 
                 let (root, trie_update) = tree.commit().context("Committing contract state")?;
 
-                let root_index = if !root.0.is_zero() && !trie_update.nodes_added.is_empty() {
-                    let root_index = transaction
-                        .insert_contract_trie(&trie_update, target_block)
-                        .context("Persisting contract trie")?;
-                    Some(root_index)
-                } else {
-                    None
-                };
+                let root_index = transaction
+                    .insert_contract_trie(&trie_update, target_block)
+                    .context("Persisting contract trie")?;
 
                 transaction
                     .insert_contract_root(target_block, contract_address, root_index)

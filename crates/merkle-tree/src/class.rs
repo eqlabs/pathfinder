@@ -63,7 +63,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
     pub fn commit(self) -> anyhow::Result<(ClassCommitment, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
 
-        let commitment = ClassCommitment(update.root_hash());
+        let commitment = ClassCommitment(update.root_commitment);
         Ok((commitment, update))
     }
 }

@@ -79,15 +79,9 @@ fn revert_contract_updates(
             );
         }
 
-        let root_idx = if !storage_commitment.0.is_zero() {
-            let root_idx = transaction
-                .insert_storage_trie(&trie_update, target_block)
-                .context("Persisting storage trie")?;
-
-            Some(root_idx)
-        } else {
-            None
-        };
+        let root_idx = transaction
+            .insert_storage_trie(&trie_update, target_block)
+            .context("Persisting storage trie")?;
 
         transaction
             .insert_storage_root(target_block, root_idx)
@@ -140,15 +134,9 @@ fn revert_class_updates(
             );
         }
 
-        let root_idx = if !class_commitment.0.is_zero() {
-            let root_idx = transaction
-                .insert_class_trie(&trie_update, target_block)
-                .context("Persisting class trie")?;
-
-            Some(root_idx)
-        } else {
-            None
-        };
+        let root_idx = transaction
+            .insert_class_trie(&trie_update, target_block)
+            .context("Persisting class trie")?;
 
         transaction
             .insert_class_root(target_block, root_idx)
