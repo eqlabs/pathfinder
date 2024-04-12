@@ -245,14 +245,22 @@ pub async fn trace_block_transactions_impl(
             }
         }
 
-        let transactions = transactions
+        let executor_transactions = transactions
             .iter()
             .map(|transaction| compose_executor_transaction(transaction, &db))
             .collect::<Result<Vec<_>, _>>()?;
 
         let hash = header.hash;
         let state = ExecutionState::trace(&db, context.chain_id, header, None);
-        let traces = pathfinder_executor::trace(state, cache, hash, transactions, true, true)?;
+        let traces =
+            match pathfinder_executor::trace(state, cache, hash, executor_transactions, true, true)
+            {
+                Ok(traces) => traces,
+                Err(TransactionExecutionError::ExecutionError { .. }) => {
+                    return Ok(LocalExecution::Unsupported(transactions))
+                }
+                Err(e) => return Err(e.into()),
+            };
 
         let result = traces
             .into_iter()
@@ -303,8 +311,10 @@ pub async fn trace_block_transactions_impl(
 #[cfg(test)]
 pub(crate) mod tests {
     use pathfinder_common::{
-        block_hash, felt, receipt::Receipt, BlockHeader, GasPrice, SierraHash, TransactionIndex,
+        block_hash, felt, receipt::Receipt, BlockHeader, Chain, GasPrice, SequencerAddress,
+        SierraHash, TransactionIndex,
     };
+    use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
     use tokio::task::JoinSet;
 
@@ -587,5 +597,84 @@ pub(crate) mod tests {
 
         pretty_assertions_sorted::assert_eq!(output, expected);
         Ok(())
+    }
+
+    /// Test that tracing succeeds for a block that is not backwards-compatible with blockifier.
+    #[tokio::test]
+    async fn mainnet_blockifier_backwards_incompatible_transaction_tracing() {
+        let context = RpcContext::for_tests_on(Chain::Mainnet);
+        let mut connection = context.storage.connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+        let block: starknet_gateway_types::reply::Block =
+            serde_json::from_str(include_str!("../../../fixtures/mainnet-619596.json")).unwrap();
+        let transaction_count = block.transactions.len();
+        let event_count = block
+            .transaction_receipts
+            .iter()
+            .map(|(_, events)| events.len())
+            .sum();
+        let header = BlockHeader {
+            hash: block.block_hash,
+            parent_hash: block.parent_block_hash,
+            number: block.block_number,
+            timestamp: block.timestamp,
+            eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+            strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+            eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+            strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            sequencer_address: block
+                .sequencer_address
+                .unwrap_or(SequencerAddress(Felt::ZERO)),
+            starknet_version: block.starknet_version,
+            class_commitment: Default::default(),
+            event_commitment: Default::default(),
+            state_commitment: Default::default(),
+            storage_commitment: Default::default(),
+            transaction_commitment: Default::default(),
+            transaction_count,
+            event_count,
+            l1_da_mode: block.l1_da_mode.into(),
+        };
+        transaction
+            .insert_block_header(&BlockHeader {
+                number: block.block_number - 1,
+                hash: block.parent_block_hash,
+                ..header.clone()
+            })
+            .unwrap();
+        transaction
+            .insert_block_header(&BlockHeader {
+                number: block.block_number - 10,
+                hash: block_hash!("0x1"),
+                ..header.clone()
+            })
+            .unwrap();
+        transaction.insert_block_header(&header).unwrap();
+        let transaction_data = block
+            .transactions
+            .into_iter()
+            .zip(block.transaction_receipts.into_iter())
+            .map(
+                |(tx, (receipt, events))| pathfinder_storage::TransactionData {
+                    transaction: tx,
+                    receipt: Some(receipt),
+                    events: Some(events),
+                },
+            )
+            .collect::<Vec<_>>();
+        transaction
+            .insert_transaction_data(header.number, &transaction_data)
+            .unwrap();
+        transaction.commit().unwrap();
+
+        // The tracing succeeds.
+        trace_block_transactions(
+            context.clone(),
+            TraceBlockTransactionsInput {
+                block_id: BlockId::Number(block.block_number),
+            },
+        )
+        .await
+        .unwrap();
     }
 }
