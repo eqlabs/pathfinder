@@ -458,6 +458,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // We reached the root without a hitting binary node. The new tree
                 // must therefore be empty.
                 self.root = None;
+                self.nodes_removed.extend(indexes_removed);
                 return Ok(());
             }
         };
@@ -1281,6 +1282,28 @@ mod tests {
                 felt!("0x02ebbd6878f81e49560ae863bd4ef327a417037bf57b63a016130ad0a94c8fa7")
             );
             assert_eq!(storage.nodes.len(), 1);
+        }
+
+        #[test]
+        fn deleting_the_only_value_does_remove_all_nodes() {
+            let mut tree = TestTree::empty();
+            let mut storage = TestStorage::default();
+
+            tree.set(&storage, felt!("0x1").view_bits().to_bitvec(), felt!("0x1"))
+                .unwrap();
+            let root = commit_and_persist_with_pruning(tree, &mut storage);
+            assert_eq!(
+                root.0,
+                felt!("0x02ebbd6878f81e49560ae863bd4ef327a417037bf57b63a016130ad0a94c8fa7")
+            );
+            assert_eq!(storage.nodes.len(), 1);
+
+            let mut tree = TestTree::new(root.1);
+            tree.set(&storage, felt!("0x1").view_bits().to_bitvec(), Felt::ZERO)
+                .unwrap();
+            let root = commit_and_persist_with_pruning(tree, &mut storage);
+            assert_eq!(root.0, Felt::ZERO);
+            assert!(storage.nodes.is_empty());
         }
     }
 
