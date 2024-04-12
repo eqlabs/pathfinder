@@ -25,7 +25,7 @@ pub(crate) use reorg_counter::ReorgCounter;
 pub use transaction::TransactionData;
 pub use transaction::TransactionStatus;
 
-pub use trie::{Node, NodeRef, StoredNode, TrieUpdate};
+pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieUpdate};
 
 use pathfinder_common::{BlockNumber, TransactionHash};
 

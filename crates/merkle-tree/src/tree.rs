@@ -1488,7 +1488,11 @@ mod tests {
 
     mod real_world {
         use super::*;
-        use pathfinder_common::felt;
+        use pathfinder_common::{
+            class_commitment, class_commitment_leaf_hash, felt, sierra_hash, BlockNumber,
+            ClassCommitmentLeafHash,
+        };
+        use pathfinder_storage::RootIndexUpdate;
 
         #[test]
         fn simple() {
@@ -1630,6 +1634,82 @@ mod tests {
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
             uut.dfs(&storage, &mut visitor_fn).unwrap();
+        }
+
+        #[test]
+        fn root_index_updates() {
+            let mut db = pathfinder_storage::StorageBuilder::in_memory_with_trie_pruning(
+                pathfinder_storage::TriePruneMode::Prune { num_blocks_kept: 0 },
+            )
+            .unwrap()
+            .connection()
+            .unwrap();
+            let tx = db.transaction().unwrap();
+
+            // Insert a value and commit.
+            let mut uut =
+                crate::class::ClassCommitmentTree::load(&tx, BlockNumber::GENESIS).unwrap();
+            const KEY: pathfinder_common::SierraHash = sierra_hash!("0xdeadbeef");
+            const VALUE: ClassCommitmentLeafHash = class_commitment_leaf_hash!("0xfeeddefeed");
+            uut.set(KEY, VALUE).unwrap();
+            let (root_commitment, trie_update) = uut.commit().unwrap();
+            assert_eq!(
+                root_commitment,
+                class_commitment!(
+                    "0x00497f5ca0b5989a6fafa83ebc60c7427a78456d38ea716f8bbfa74972a39a7d"
+                )
+            );
+
+            let root_index_update = tx
+                .insert_class_trie(&trie_update, BlockNumber::GENESIS)
+                .unwrap();
+            let RootIndexUpdate::Updated(root_index) = root_index_update else {
+                panic!("Expected root index to be updated");
+            };
+            assert_eq!(root_index, 1);
+            tx.insert_class_root(BlockNumber::GENESIS, root_index_update)
+                .unwrap();
+            assert!(tx.class_root_exists(BlockNumber::GENESIS).unwrap());
+            assert_eq!(
+                tx.class_root_index(BlockNumber::GENESIS).unwrap(),
+                Some(root_index)
+            );
+
+            // Open the tree but do no updates.
+            let uut = crate::class::ClassCommitmentTree::load(&tx, BlockNumber::GENESIS).unwrap();
+            let block_number = BlockNumber::new_or_panic(1);
+            let (root_commitment, trie_update) = uut.commit().unwrap();
+            assert_eq!(
+                root_commitment,
+                class_commitment!(
+                    "0x00497f5ca0b5989a6fafa83ebc60c7427a78456d38ea716f8bbfa74972a39a7d"
+                )
+            );
+            assert!(trie_update.nodes_added.is_empty());
+            assert!(trie_update.nodes_removed.is_empty());
+
+            let root_index_update = tx.insert_class_trie(&trie_update, block_number).unwrap();
+            assert_eq!(root_index_update, RootIndexUpdate::Unchanged);
+            tx.insert_class_root(block_number, root_index_update)
+                .unwrap();
+            assert!(!tx.class_root_exists(block_number).unwrap());
+            assert_eq!(tx.class_root_index(block_number).unwrap(), Some(root_index));
+
+            // Delete value
+            let mut uut = crate::class::ClassCommitmentTree::load(&tx, block_number).unwrap();
+            let block_number = BlockNumber::new_or_panic(2);
+            uut.set(KEY, ClassCommitmentLeafHash::ZERO).unwrap();
+            let (root_commitment, trie_update) = uut.commit().unwrap();
+            assert_eq!(root_commitment, pathfinder_common::ClassCommitment::ZERO);
+            assert!(trie_update.nodes_added.is_empty());
+            assert_eq!(trie_update.nodes_removed.len(), 1);
+
+            let root_index_update = tx.insert_class_trie(&trie_update, block_number).unwrap();
+            assert_eq!(root_index_update, RootIndexUpdate::TrieEmpty);
+            tx.insert_class_root(block_number, root_index_update)
+                .unwrap();
+            assert!(tx.class_root_exists(block_number).unwrap());
+            assert_eq!(tx.class_root_index(block_number).unwrap(), None);
         }
     }
 

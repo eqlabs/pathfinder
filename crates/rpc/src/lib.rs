@@ -353,7 +353,7 @@ pub mod test_utils {
             .insert_storage_trie(&trie_update, BlockNumber::GENESIS)
             .unwrap();
         db_txn
-            .insert_storage_root(BlockNumber::GENESIS, Some(storage_root_idx))
+            .insert_storage_root(BlockNumber::GENESIS, storage_root_idx)
             .unwrap();
         let header0 = BlockHeader::builder()
             .with_number(BlockNumber::GENESIS)
@@ -394,7 +394,7 @@ pub mod test_utils {
             .insert_storage_trie(&trie_update, BlockNumber::GENESIS + 1)
             .unwrap();
         db_txn
-            .insert_storage_root(BlockNumber::GENESIS + 1, Some(storage_root_idx))
+            .insert_storage_root(BlockNumber::GENESIS + 1, storage_root_idx)
             .unwrap();
         let header1 = header0
             .child_builder()
@@ -453,7 +453,7 @@ pub mod test_utils {
             .insert_storage_trie(&trie_update, BlockNumber::GENESIS + 2)
             .unwrap();
         db_txn
-            .insert_storage_root(BlockNumber::GENESIS + 2, Some(storage_root_idx))
+            .insert_storage_root(BlockNumber::GENESIS + 2, storage_root_idx)
             .unwrap();
         let header2 = header1
             .child_builder()
