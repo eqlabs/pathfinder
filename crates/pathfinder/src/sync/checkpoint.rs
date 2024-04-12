@@ -731,57 +731,60 @@ mod tests {
             pub storage: Storage,
         }
 
-        fn setup(num_blocks: usize, compute_event_commitments: bool) -> Setup {
-            let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
-            let streamed_events = blocks
-                .iter()
-                .map(|block| {
-                    anyhow::Result::Ok(PeerData::for_tests((
-                        block.header.header.number,
+        async fn setup(num_blocks: usize, compute_event_commitments: bool) -> Setup {
+            tokio::task::spawn_blocking(move || {
+                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let streamed_events = blocks
+                    .iter()
+                    .map(|block| {
+                        anyhow::Result::Ok(PeerData::for_tests((
+                            block.header.header.number,
+                            block
+                                .transaction_data
+                                .iter()
+                                .map(|x| x.2.clone())
+                                .collect::<Vec<_>>(),
+                        )))
+                    })
+                    .collect::<Vec<_>>();
+                let expected_events = blocks
+                    .iter()
+                    .map(|block| {
                         block
                             .transaction_data
                             .iter()
-                            .map(|x| x.2.clone())
-                            .collect::<Vec<_>>(),
-                    )))
-                })
-                .collect::<Vec<_>>();
-            let expected_events = blocks
-                .iter()
-                .map(|block| {
+                            .map(|x| (x.0.hash, x.2.clone()))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+
+                let storage = StorageBuilder::in_memory().unwrap();
+                blocks.iter_mut().for_each(|block| {
+                    if compute_event_commitments {
+                        block.header.header.event_commitment = calculate_event_commitment(
+                            &block
+                                .transaction_data
+                                .iter()
+                                .flat_map(|(_, _, events)| events)
+                                .collect::<Vec<_>>(),
+                        )
+                        .unwrap();
+                    }
+                    // Purge events
                     block
                         .transaction_data
-                        .iter()
-                        .map(|x| (x.0.hash, x.2.clone()))
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-
-            let storage = StorageBuilder::in_memory().unwrap();
-            blocks.iter_mut().for_each(|block| {
-                if compute_event_commitments {
-                    block.header.header.event_commitment = calculate_event_commitment(
-                        &block
-                            .transaction_data
-                            .iter()
-                            .flat_map(|(_, _, events)| events)
-                            .collect::<Vec<_>>(),
-                    )
-                    .unwrap();
+                        .iter_mut()
+                        .for_each(|(_, _, events)| events.clear())
+                });
+                fake_storage::fill(&storage, &blocks);
+                Setup {
+                    streamed_events,
+                    expected_events,
+                    storage,
                 }
-                // Purge events
-                block
-                    .transaction_data
-                    .iter_mut()
-                    .for_each(|(_, _, events)| events.clear())
-            });
-            fake_storage::fill(&storage, &blocks);
-
-            Setup {
-                streamed_events,
-                expected_events,
-                storage,
-            }
+            })
+            .await
+            .unwrap()
         }
 
         #[tokio::test]
@@ -791,22 +794,26 @@ mod tests {
                 streamed_events,
                 expected_events,
                 storage,
-            } = setup(NUM_BLOCKS, true);
+            } = setup(NUM_BLOCKS, true).await;
 
             handle_events_stream(stream::iter(streamed_events), storage.clone())
                 .await
                 .unwrap();
 
-            let mut conn = storage.connection().unwrap();
-            let db_tx = conn.transaction().unwrap();
-            let actual_events = (0..NUM_BLOCKS)
-                .map(|n| {
-                    db_tx
-                        .events_for_block(BlockNumber::new_or_panic(n as u64).into())
-                        .unwrap()
-                        .unwrap()
-                })
-                .collect::<Vec<_>>();
+            let actual_events = tokio::task::spawn_blocking(move || {
+                let mut conn = storage.connection().unwrap();
+                let db_tx = conn.transaction().unwrap();
+                (0..NUM_BLOCKS)
+                    .map(|n| {
+                        db_tx
+                            .events_for_block(BlockNumber::new_or_panic(n as u64).into())
+                            .unwrap()
+                            .unwrap()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap();
 
             pretty_assertions_sorted::assert_eq!(expected_events, actual_events);
         }
@@ -818,7 +825,7 @@ mod tests {
                 streamed_events,
                 expected_events,
                 storage,
-            } = setup(NUM_BLOCKS, false);
+            } = setup(NUM_BLOCKS, false).await;
             let expected_peer_id = streamed_events[0].as_ref().unwrap().peer;
 
             assert_matches::assert_matches!(
