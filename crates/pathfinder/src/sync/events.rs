@@ -138,6 +138,7 @@ pub(super) async fn persist(
                     .context("Updating events")?;
             }
         }
+        transaction.commit()?;
 
         Ok(tail)
     })

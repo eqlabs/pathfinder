@@ -162,7 +162,7 @@ impl Transaction<'_> {
                 WHERE block_number = :block_number AND idx = :idx;
                 ",
                 named_params![
-                    ":receipt": &serialized_events,
+                    ":events": &serialized_events,
                     ":block_number": &block_number,
                     ":idx": &transaction_idx.try_into_sql_int()?,
                 ],

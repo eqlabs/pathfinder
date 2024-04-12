@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use fake::Dummy;
 use futures::{pin_mut, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
@@ -36,7 +37,7 @@ use crate::client::peer_aware;
 use crate::sync::protocol;
 
 /// Data received from a specific peer.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PeerData<T> {
     pub peer: PeerId,
     pub data: T,
@@ -45,6 +46,26 @@ pub struct PeerData<T> {
 impl<T> PeerData<T> {
     pub fn new(peer: PeerId, data: T) -> Self {
         Self { peer, data }
+    }
+
+    pub fn for_tests(data: T) -> Self {
+        Self {
+            peer: PeerId::random(),
+            data,
+        }
+    }
+}
+
+impl<T, U: Dummy<T>> Dummy<T> for PeerData<U> {
+    fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
+        let digest = rng.gen::<[u8; 32]>();
+        let multihash = libp2p::multihash::Multihash::wrap(0x0, &digest)
+            .expect("The digest size is never too large");
+
+        PeerData {
+            peer: PeerId::from_multihash(multihash).expect("Valid multihash"),
+            data: U::dummy_with_rng(config, rng),
+        }
     }
 }
 
