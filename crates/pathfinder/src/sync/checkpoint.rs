@@ -2,6 +2,7 @@
 use anyhow::Context;
 use futures::StreamExt;
 use futures::TryStreamExt;
+use p2p::client::peer_agnostic::Class;
 use p2p::client::peer_agnostic::EventsForBlockByTransaction;
 use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
 use p2p::PeerData;
@@ -403,33 +404,20 @@ impl Sync {
     }
 
     async fn sync_class_definitions(&self, stop: BlockNumber) -> Result<(), SyncError> {
-        if let Some(start) = class_definitions::next_missing(self.storage.clone(), stop)
+        let Some(start) = class_definitions::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next block with missing class definition(s)")?
-        {
-            self.p2p
-                .clone()
-                .class_definitions_stream(
-                    start,
-                    stop,
-                    class_definitions::declared_class_counts_stream(
-                        self.storage.clone(),
-                        start,
-                        stop,
-                    ),
-                )
-                .map_err(Into::into)
-                .map_ok(class_definitions::verify_layout)
-                .and_then(std::future::ready)
-                .and_then(class_definitions::verify_hash)
-                .try_chunks(1000)
-                .map_err(|e| e.1)
-                .and_then(|x| class_definitions::persist(self.storage.clone(), x))
-                .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
-                // Drive stream to completion.
-                .try_fold((), |_, _| std::future::ready(Ok(())))
-                .await?;
-        }
+        else {
+            return Ok(());
+        };
+
+        let class_stream = self.p2p.clone().class_definitions_stream(
+            start,
+            stop,
+            class_definitions::declared_class_counts_stream(self.storage.clone(), start, stop),
+        );
+
+        handle_class_stream(class_stream, self.storage.clone()).await?;
 
         Ok(())
     }
@@ -448,13 +436,32 @@ impl Sync {
             events::counts_stream(self.storage.clone(), start, stop),
         );
 
-        handle_events_stream(event_stream, self.storage.clone()).await?;
+        handle_event_stream(event_stream, self.storage.clone()).await?;
 
         Ok(())
     }
 }
 
-async fn handle_events_stream(
+async fn handle_class_stream(
+    class_stream: impl futures::Stream<Item = Result<PeerData<Class>, anyhow::Error>>,
+    storage: Storage,
+) -> Result<(), SyncError> {
+    class_stream
+        .map_err(Into::into)
+        .map_ok(class_definitions::verify_layout)
+        .and_then(std::future::ready)
+        .and_then(class_definitions::verify_hash)
+        .try_chunks(1000)
+        .map_err(|e| e.1)
+        .and_then(|x| class_definitions::persist(storage.clone(), x))
+        .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
+        // Drive stream to completion.
+        .try_fold((), |_, _| std::future::ready(Ok(())))
+        .await?;
+    Ok(())
+}
+
+async fn handle_event_stream(
     event_stream: impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
@@ -712,10 +719,10 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 mod tests {
     use super::*;
 
-    mod handle_events_stream {
+    mod handle_event_stream {
         use crate::state::block_hash::calculate_event_commitment;
 
-        use super::super::handle_events_stream;
+        use super::super::handle_event_stream;
         use super::*;
         use fake::{Fake, Faker};
         use futures::stream;
@@ -796,7 +803,7 @@ mod tests {
                 storage,
             } = setup(NUM_BLOCKS, true).await;
 
-            handle_events_stream(stream::iter(streamed_events), storage.clone())
+            handle_event_stream(stream::iter(streamed_events), storage.clone())
                 .await
                 .unwrap();
 
@@ -829,7 +836,7 @@ mod tests {
             let expected_peer_id = streamed_events[0].as_ref().unwrap().peer;
 
             assert_matches::assert_matches!(
-                handle_events_stream(stream::iter(streamed_events), storage.clone())
+                handle_event_stream(stream::iter(streamed_events), storage.clone())
                     .await
                     .unwrap_err(),
                 SyncError::EventCommitmentMismatch(expected_peer_id)
@@ -839,7 +846,7 @@ mod tests {
         #[tokio::test]
         async fn stream_failure() {
             assert_matches::assert_matches!(
-                handle_events_stream(
+                handle_event_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap()
                 )
@@ -852,7 +859,7 @@ mod tests {
         #[tokio::test]
         async fn header_missing() {
             assert_matches::assert_matches!(
-                handle_events_stream(
+                handle_event_stream(
                     stream::once(std::future::ready(Ok(Faker.fake()))),
                     StorageBuilder::in_memory().unwrap()
                 )
