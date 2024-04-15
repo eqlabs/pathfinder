@@ -369,5 +369,17 @@ pub mod tests {
         )
         .await
         .unwrap();
+
+        // Tracing a second time succeeds as well.
+        trace_transaction(
+            context.clone(),
+            TraceTransactionInput {
+                transaction_hash: transaction_hash!(
+                    "0x62c7c8b228f756b3a4ca2c6a7c5488ee2ccb7dd1ac2ec9e657f0292d150a365"
+                ),
+            },
+        )
+        .await
+        .unwrap();
     }
 }
