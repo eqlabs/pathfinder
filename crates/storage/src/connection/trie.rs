@@ -111,10 +111,25 @@ impl Transaction<'_> {
     }
 
     fn delete_class_roots(&self, before_block: BlockNumber) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached("DELETE FROM class_roots WHERE block_number < ?")?;
-        stmt.execute(params![&before_block])?;
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT block_number
+            FROM class_roots
+            WHERE block_number <= ?
+            ORDER BY block_number DESC
+            LIMIT 1",
+        )?;
+        let last_block_with_root_index = stmt
+            .query_row(params![&before_block], |row| row.get_block_number(0))
+            .optional()?;
+
+        if let Some(last_block_with_root_index) = last_block_with_root_index {
+            tracing::info!(%last_block_with_root_index, "Removing class roots");
+            let mut stmt = self
+                .inner()
+                .prepare_cached("DELETE FROM class_roots WHERE block_number < ?")?;
+            stmt.execute(params![&last_block_with_root_index])?;
+        }
+
         Ok(())
     }
 
@@ -142,9 +157,24 @@ impl Transaction<'_> {
         before_block: BlockNumber,
     ) -> anyhow::Result<()> {
         let mut stmt = self.inner().prepare_cached(
-            "DELETE FROM contract_state_hashes WHERE contract_address = ? AND block_number < ?",
+            "SELECT block_number 
+            FROM contract_state_hashes 
+            WHERE contract_address = ? AND block_number <= ?
+            ORDER BY block_number DESC
+            LIMIT 1",
         )?;
-        stmt.execute(params![&contract, &before_block])?;
+        let last_block_with_contract_state_hash = stmt
+            .query_row(params![&contract, &before_block], |row| {
+                row.get_block_number(0)
+            })
+            .optional()?;
+
+        if let Some(last_block_with_contract_state_hash) = last_block_with_contract_state_hash {
+            let mut stmt = self.inner().prepare_cached(
+                "DELETE FROM contract_state_hashes WHERE contract_address = ? AND block_number < ?",
+            )?;
+            stmt.execute(params![&contract, &last_block_with_contract_state_hash])?;
+        }
         Ok(())
     }
 
@@ -188,10 +218,24 @@ impl Transaction<'_> {
     }
 
     fn delete_storage_roots(&self, before_block: BlockNumber) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached("DELETE FROM storage_roots WHERE block_number < ?")?;
-        stmt.execute(params![&before_block])?;
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT block_number
+            FROM storage_roots
+            WHERE block_number <= ?
+            ORDER BY block_number DESC
+            LIMIT 1",
+        )?;
+        let last_block_with_root_index = stmt
+            .query_row(params![&before_block], |row| row.get_block_number(0))
+            .optional()?;
+
+        if let Some(last_block_with_root_index) = last_block_with_root_index {
+            let mut stmt = self
+                .inner()
+                .prepare_cached("DELETE FROM storage_roots WHERE block_number < ?")?;
+            stmt.execute(params![&last_block_with_root_index])?;
+        }
+
         Ok(())
     }
 
@@ -290,9 +334,25 @@ impl Transaction<'_> {
         before_block: BlockNumber,
     ) -> anyhow::Result<()> {
         let mut stmt = self.inner().prepare_cached(
-            "DELETE FROM contract_roots WHERE contract_address = ? AND block_number < ?",
+            "SELECT block_number
+            FROM contract_roots
+            WHERE contract_address = ? AND block_number <= ?
+            ORDER BY block_number DESC
+            LIMIT 1",
         )?;
-        stmt.execute(params![&contract, &before_block])?;
+        let last_block_with_root_index = stmt
+            .query_row(params![&contract, &before_block], |row| {
+                row.get_block_number(0)
+            })
+            .optional()?;
+
+        if let Some(last_block_with_root_index) = last_block_with_root_index {
+            let mut stmt = self.inner().prepare_cached(
+                "DELETE FROM contract_roots WHERE contract_address = ? AND block_number < ?",
+            )?;
+            stmt.execute(params![&contract, &last_block_with_root_index])?;
+        }
+
         Ok(())
     }
 
