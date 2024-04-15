@@ -328,6 +328,12 @@ impl Transaction<'_> {
         Ok(())
     }
 
+    pub fn coalesce_trie_nodes(&self, target_block: BlockNumber) -> anyhow::Result<()> {
+        self.coalesce_removed_trie_nodes(target_block, "trie_contracts")?;
+        self.coalesce_removed_trie_nodes(target_block, "trie_storage")?;
+        self.coalesce_removed_trie_nodes(target_block, "trie_class")
+    }
+
     fn delete_contract_roots(
         &self,
         contract: ContractAddress,
@@ -377,6 +383,32 @@ impl Transaction<'_> {
             ])
             .context("Inserting removal marker")?;
         }
+
+        Ok(())
+    }
+
+    /// Coalesce removed trie nodes to the target block.
+    ///
+    /// "Moves" all removed nodes from blocks _after_ the target block into
+    /// the target block.
+    ///
+    /// Used during a reorg to move deleted node data of all reorged-away blocks
+    /// to our reorg target.
+    fn coalesce_removed_trie_nodes(
+        &self,
+        target_block: BlockNumber,
+        table: &'static str,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self
+            .inner()
+            .prepare(&format!(
+                "UPDATE {table}_removals
+                SET block_number = ?1
+                WHERE block_number > ?1"
+            ))
+            .context("Creating update statement")?;
+        stmt.execute(params![&target_block])
+            .context("Moving removed trie node data to target block")?;
 
         Ok(())
     }

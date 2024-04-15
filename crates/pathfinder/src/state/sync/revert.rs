@@ -10,6 +10,21 @@ use pathfinder_storage::Transaction;
 /// Computes the contract and Sierra class reverse-updates then applies those to the Merkle tries.
 /// Returns an error if the commitments calculated after making the changes do not match the
 /// commitments in the target block header.
+///
+/// Handling of delayed removal of trie data is more complicated: we have to account for
+/// removed trie nodes separately.
+///
+/// In general, removing the trie nodes deleted at block N is only safe if we don't
+/// ever need to access trie state at block < N. This is not necessarily the case during a reorg:
+/// if our reorg/revert target is still in the range of blocks we're keeping trie history for then
+/// removing deleted nodes for the reorged-away blocks would break the trie for the blocks _before_
+/// the reorg target. Instead, we move all the removed nodes in the reorged-away range to be "owned"
+/// by the revert target block.
+///
+/// For trie roots: if there was a root change in the interval we're reverting that will be taken care by
+/// the revert anyway (we're changing the trie during the reverse state update, so there will be a new
+/// root inserted). If there were no changes then there was no root index inserted in the revert range
+/// so we remove nothing when purging the blocks after the revert.
 pub fn revert_starknet_state(
     transaction: &Transaction<'_>,
     head: BlockNumber,
@@ -28,7 +43,8 @@ pub fn revert_starknet_state(
         target_block,
         target_header.class_commitment,
     )?;
-    Ok(())
+
+    transaction.coalesce_trie_nodes(target_block)
 }
 
 /// Revert all contract/global storage trie updates.
