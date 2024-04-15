@@ -123,7 +123,7 @@ impl Transaction<'_> {
             .optional()?;
 
         if let Some(last_block_with_root_index) = last_block_with_root_index {
-            tracing::info!(%last_block_with_root_index, "Removing class roots");
+            tracing::trace!(%last_block_with_root_index, "Removing class roots");
             let mut stmt = self
                 .inner()
                 .prepare_cached("DELETE FROM class_roots WHERE block_number < ?")?;
