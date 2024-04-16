@@ -460,6 +460,21 @@ impl Transaction<'_> {
         Ok(Some(result))
     }
 
+    pub fn class_declared_at(
+        &self,
+        class_hash: ClassHash,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<bool> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached(r"SELECT EXISTS (SELECT 1 FROM class_definitions WHERE hash = ? AND block_number = ?)")
+            .context("Preparing query statement")?;
+
+        let res = stmt.query_row(params![&class_hash, &block_number], |row| row.get(0))?;
+
+        Ok(res)
+    }
+
     pub fn storage_value(
         &self,
         block: BlockId,

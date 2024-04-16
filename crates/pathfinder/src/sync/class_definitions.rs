@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 use anyhow::Context;
 use p2p::client::peer_agnostic::Class;
 use p2p::PeerData;
+use p2p_proto::transaction;
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use starknet_gateway_types::class_definition::{Cairo, ClassDefinition, Sierra};
@@ -145,6 +146,31 @@ pub(super) fn verify_layout(
             ))
         }
     }
+}
+
+pub(super) async fn verify_declared_at(
+    storage: Storage,
+    peer_data: PeerData<ClassWithLayout>,
+) -> Result<PeerData<ClassWithLayout>, SyncError> {
+    tokio::task::spawn_blocking(move || {
+        let mut connection = storage
+            .connection()
+            .context("Creating database connection")?;
+        let transaction = connection
+            .transaction()
+            .context("Creating database transaction")?;
+
+        if transaction.class_declared_at(
+            peer_data.data.class.hash(),
+            peer_data.data.class.block_number(),
+        )? {
+            Ok(peer_data)
+        } else {
+            Err(SyncError::UnexpectedClass(peer_data.peer))
+        }
+    })
+    .await
+    .context("Joining blocking task")?
 }
 
 pub(super) async fn verify_hash(

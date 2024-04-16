@@ -17,6 +17,8 @@ pub(super) enum SyncError {
     StateDiffCommitmentMismatch(PeerId),
     #[error("Invalid class definition layout")]
     BadClassLayout(PeerId),
+    #[error("Unexpected class definition")]
+    UnexpectedClass(PeerId),
     #[error("Class hash verification failed")]
     BadClassHash(PeerId),
     #[error("Event commitment mismatch")]

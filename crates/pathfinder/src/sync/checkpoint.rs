@@ -1,4 +1,6 @@
 #![allow(dead_code, unused_variables)]
+use std::collections::HashSet;
+
 use anyhow::Context;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -450,6 +452,9 @@ async fn handle_class_stream(
         .map_err(Into::into)
         .map_ok(class_definitions::verify_layout)
         .and_then(std::future::ready)
+        // Block numbers in the stream are guaranteed to be correct but we need to check that
+        // the streamed classes belong to the right block.
+        .and_then(|x| class_definitions::verify_declared_at(storage.clone(), x))
         .and_then(class_definitions::verify_hash)
         .try_chunks(1000)
         .map_err(|e| e.1)
@@ -1030,6 +1035,29 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn unexpected_class() {
+            let Setup {
+                mut streamed_classes,
+                storage,
+                ..
+            } = setup(true).await;
+
+            let peer_data = streamed_classes.last_mut().unwrap().as_mut().unwrap();
+            match peer_data.data {
+                Class::Cairo { ref mut hash, .. } => *hash = ClassHash::ZERO,
+                _ => unreachable!(),
+            }
+            let expected_peer_id = peer_data.peer;
+
+            assert_matches::assert_matches!(
+                handle_class_stream(stream::iter(streamed_classes), storage)
+                    .await
+                    .unwrap_err(),
+                SyncError::UnexpectedClass(x) => assert_eq!(x, expected_peer_id)
+            );
+        }
+
+        #[tokio::test]
         async fn class_hash_mismatch() {
             let Setup {
                 streamed_classes,
@@ -1043,23 +1071,6 @@ mod tests {
                     .await
                     .unwrap_err(),
                 SyncError::BadClassHash(x) => assert_eq!(x, expected_peer_id)
-            );
-        }
-
-        #[tokio::test]
-        async fn casm_hash_missing() {
-            let Setup {
-                streamed_classes, ..
-            } = setup(true).await;
-
-            assert_matches::assert_matches!(
-                handle_class_stream(
-                    stream::iter(streamed_classes),
-                    StorageBuilder::in_memory().unwrap(),
-                )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
             );
         }
 
