@@ -34,8 +34,24 @@ use super::{
 
 #[derive(Debug)]
 enum CacheItem {
-    Inflight(tokio::sync::broadcast::Receiver<Traces>),
-    Cached(Traces),
+    Inflight(tokio::sync::broadcast::Receiver<Result<Traces, ExecutionError>>),
+    CachedOk(Traces),
+    CachedErr(ExecutionError),
+}
+
+#[derive(Debug, Clone)]
+struct ExecutionError {
+    transaction_index: usize,
+    error: String,
+}
+
+impl From<ExecutionError> for TransactionExecutionError {
+    fn from(value: ExecutionError) -> Self {
+        Self::ExecutionError {
+            transaction_index: value.transaction_index,
+            error: value.error,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -158,9 +174,13 @@ pub fn trace(
     let sender = {
         let mut cache = cache.0.lock().unwrap();
         match cache.cache_get(&block_hash) {
-            Some(CacheItem::Cached(cached)) => {
-                tracing::trace!(block=%block_hash, "trace cache hit");
+            Some(CacheItem::CachedOk(cached)) => {
+                tracing::trace!(block=%block_hash, "trace cache hit: ok");
                 return Ok(cached.clone());
+            }
+            Some(CacheItem::CachedErr(e)) => {
+                tracing::trace!(block=%block_hash, "trace cache hit: err");
+                return Err(e.to_owned().into());
             }
             Some(CacheItem::Inflight(receiver)) => {
                 tracing::trace!(block=%block_hash, "trace already inflight");
@@ -168,7 +188,7 @@ pub fn trace(
                 drop(cache);
 
                 let trace = receiver.blocking_recv().context("Trace error")?;
-                return Ok(trace);
+                return trace.map_err(Into::into);
             }
             None => {
                 tracing::trace!(block=%block_hash, "trace cache miss");
@@ -179,7 +199,6 @@ pub fn trace(
         }
     };
 
-    tracing::trace!(block=%block_hash, "trace cache miss");
     let mut traces = Vec::with_capacity(transactions.len());
     for (transaction_idx, tx) in transactions.into_iter().enumerate() {
         let hash = transaction_hash(&tx);
@@ -191,11 +210,25 @@ pub fn trace(
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx
             .execute(&mut tx_state, &block_context, charge_fee, validate)
-            .map_err(|e| TransactionExecutionError::ExecutionError {
-                transaction_index: transaction_idx,
-                error: e.to_string(),
+            .map_err(|e| {
+                // Update the cache with the error. Lock the cache before sending to avoid
+                // race conditions between senders and receivers.
+                let err = ExecutionError {
+                    transaction_index: transaction_idx,
+                    error: e.to_string(),
+                };
+                let mut cache = cache.0.lock().unwrap();
+                let _ = sender.send(Err(err.clone()));
+                cache.cache_set(block_hash, CacheItem::CachedErr(err.clone()));
+                err
             })?;
-        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)?;
+        let state_diff =
+            to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash).map_err(|e| {
+                // Remove the cache entry so it's no longer inflight.
+                let mut cache = cache.0.lock().unwrap();
+                cache.cache_remove(&block_hash);
+                e
+            })?;
         tx_state.commit();
 
         let trace = to_trace(tx_type, tx_info, state_diff);
@@ -204,8 +237,8 @@ pub fn trace(
 
     // Lock the cache before sending to avoid race conditions between senders and receivers.
     let mut cache = cache.0.lock().unwrap();
-    let _ = sender.send(traces.clone());
-    cache.cache_set(block_hash, CacheItem::Cached(traces.clone()));
+    let _ = sender.send(Ok(traces.clone()));
+    cache.cache_set(block_hash, CacheItem::CachedOk(traces.clone()));
     Ok(traces)
 }
 
