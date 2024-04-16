@@ -948,16 +948,13 @@ mod tests {
                         }))
                     }))
                     .collect::<Vec<_>>();
-                let (expected_hashes, expected_defs): (
-                    Vec<ClassHash>,
-                    Vec<(Vec<u8>, Option<Vec<u8>>)>,
-                ) = streamed_classes
+                let (expected_hashes, expected_defs) = streamed_classes
                     .iter()
                     .map(|class| {
                         let class = &class.as_ref().unwrap().data;
                         (class.hash(), class.definitions())
                     })
-                    .unzip();
+                    .unzip::<_, _, Vec<ClassHash>, Vec<(Vec<u8>, Option<Vec<u8>>)>>();
                 let storage = StorageBuilder::in_memory().unwrap();
                 fake_storage::fill(&storage, &[block]);
                 Setup {
