@@ -5,7 +5,7 @@ use p2p::client::peer_agnostic::Class;
 use p2p::PeerData;
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
-use starknet_gateway_types::class_definition::ClassDefinition;
+use starknet_gateway_types::class_definition::{Cairo, ClassDefinition, Sierra};
 use starknet_gateway_types::class_hash::from_parts::{
     compute_cairo_class_hash, compute_sierra_class_hash,
 };
@@ -101,8 +101,12 @@ pub(super) fn verify_layout(
             hash,
             definition,
         } => {
-            let layout =
-                serde_json::from_slice(&definition).map_err(|_| SyncError::BadClassLayout(peer))?;
+            let layout = ClassDefinition::Cairo(
+                serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|e| {
+                    eprintln!("cairo: {e}");
+                    SyncError::BadClassLayout(peer)
+                })?,
+            );
             Ok(PeerData::new(
                 peer,
                 ClassWithLayout {
@@ -121,8 +125,12 @@ pub(super) fn verify_layout(
             sierra_definition,
             casm_definition,
         } => {
-            let layout = serde_json::from_slice(&sierra_definition)
-                .map_err(|_| SyncError::BadClassLayout(peer))?;
+            let layout = ClassDefinition::Sierra(
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
+                    eprintln!("sierra: {e}");
+                    SyncError::BadClassLayout(peer)
+                })?,
+            );
             Ok(PeerData::new(
                 peer,
                 ClassWithLayout {
@@ -191,8 +199,8 @@ pub(super) async fn persist(
                     hash, definition, ..
                 } => {
                     transaction
-                        .insert_cairo_class(hash, &definition)
-                        .context("Inserting cairo class definition")?;
+                        .update_cairo_class(hash, &definition)
+                        .context("Updating cairo class definition")?;
                 }
                 Class::Sierra {
                     sierra_hash,
@@ -206,13 +214,13 @@ pub(super) async fn persist(
                         .ok_or(anyhow::anyhow!("Casm hash not found"))?;
 
                     transaction
-                        .insert_sierra_class(
+                        .update_sierra_class(
                             &sierra_hash,
                             &sierra_definition,
                             &casm_hash,
                             &casm_definition,
                         )
-                        .context("Inserting sierra class definition")?;
+                        .context("Updating sierra class definition")?;
                 }
             }
         }

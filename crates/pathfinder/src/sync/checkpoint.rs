@@ -781,7 +781,8 @@ mod tests {
                     block
                         .transaction_data
                         .iter_mut()
-                        .for_each(|(_, _, events)| events.clear())
+                        .for_each(|(_, _, events)| events.clear());
+                    block.cairo_defs.iter_mut().for_each(|(_, def)| def.clear());
                 });
                 fake_storage::fill(&storage, &blocks);
                 Setup {
@@ -839,7 +840,7 @@ mod tests {
                 handle_event_stream(stream::iter(streamed_events), storage.clone())
                     .await
                     .unwrap_err(),
-                SyncError::EventCommitmentMismatch(expected_peer_id)
+                SyncError::EventCommitmentMismatch(x) => assert_eq!(x, expected_peer_id)
             );
         }
 
@@ -861,6 +862,212 @@ mod tests {
             assert_matches::assert_matches!(
                 handle_event_stream(
                     stream::once(std::future::ready(Ok(Faker.fake()))),
+                    StorageBuilder::in_memory().unwrap()
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+    }
+
+    mod handle_class_stream {
+        use crate::state::block_hash::calculate_event_commitment;
+
+        use super::super::handle_class_stream;
+        use super::*;
+        use fake::{Fake, Faker};
+        use futures::{stream, SinkExt};
+        use p2p::libp2p::PeerId;
+        use pathfinder_common::{event::Event, transaction::TransactionVariant, TransactionHash};
+        use pathfinder_common::{felt, CasmHash, ClassHash, SierraHash};
+        use pathfinder_crypto::Felt;
+        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::{StorageBuilder, TransactionData};
+        use starknet_gateway_test_fixtures::class_definitions::{
+            CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET, CAIRO_2_0_0_STACK_OVERFLOW,
+        };
+
+        struct Setup {
+            pub streamed_classes: Vec<anyhow::Result<PeerData<Class>>>,
+            pub expected_hashes: Vec<ClassHash>,
+            pub expected_defs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+            pub storage: Storage,
+        }
+
+        async fn setup(expect_correct_class_hashes: bool) -> Setup {
+            tokio::task::spawn_blocking(move || {
+                let mut block = fake_storage::init::with_n_blocks(1).pop().unwrap();
+
+                let (cairo_hash, sierra_hash) = if expect_correct_class_hashes {
+                    (
+                        ClassHash(felt!(
+                            "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
+                        )),
+                        SierraHash(felt!(
+                            "0x03dd9347d22f1ea2d5fbc7bd1f0860c6c334973499f9f1989fcb81bfff5191da"
+                        )),
+                    )
+                } else {
+                    Default::default()
+                };
+                block.state_update.declared_cairo_classes = [cairo_hash].into();
+                block.state_update.declared_sierra_classes = [(sierra_hash, CasmHash::ZERO)].into();
+                block.cairo_defs = vec![(
+                    cairo_hash,
+                    CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET.to_vec(),
+                )];
+                block.sierra_defs = vec![(
+                    sierra_hash,
+                    CAIRO_2_0_0_STACK_OVERFLOW.to_vec(),
+                    b"casm".to_vec(),
+                )];
+
+                let streamed_classes = block
+                    .sierra_defs
+                    .iter()
+                    .cloned()
+                    .map(|(sierra_hash, sierra_definition, casm_definition)| {
+                        anyhow::Result::Ok(PeerData::for_tests(Class::Sierra {
+                            block_number: block.header.header.number,
+                            sierra_hash,
+                            sierra_definition,
+                            casm_definition,
+                        }))
+                    })
+                    .chain(block.cairo_defs.iter().cloned().map(|(hash, definition)| {
+                        anyhow::Result::Ok(PeerData::for_tests(Class::Cairo {
+                            block_number: block.header.header.number,
+                            hash,
+                            definition,
+                        }))
+                    }))
+                    .collect::<Vec<_>>();
+                let (expected_hashes, expected_defs): (
+                    Vec<ClassHash>,
+                    Vec<(Vec<u8>, Option<Vec<u8>>)>,
+                ) = streamed_classes
+                    .iter()
+                    .map(|class| {
+                        let class = &class.as_ref().unwrap().data;
+                        (class.hash(), class.definitions())
+                    })
+                    .unzip();
+                let storage = StorageBuilder::in_memory().unwrap();
+                fake_storage::fill(&storage, &[block]);
+                Setup {
+                    streamed_classes,
+                    expected_hashes,
+                    expected_defs,
+                    storage,
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        #[tokio::test]
+        async fn happy_path() {
+            let Setup {
+                streamed_classes,
+                expected_hashes,
+                expected_defs,
+                storage,
+            } = setup(true).await;
+
+            handle_class_stream(stream::iter(streamed_classes), storage.clone())
+                .await
+                .unwrap();
+
+            let actual_defs = tokio::task::spawn_blocking(move || {
+                let mut conn = storage.connection().unwrap();
+                let db_tx = conn.transaction().unwrap();
+                expected_hashes
+                    .iter()
+                    .map(|&class_hash| {
+                        (
+                            db_tx
+                                .class_definition_at(BlockNumber::GENESIS.into(), class_hash)
+                                .unwrap()
+                                .unwrap(),
+                            db_tx
+                                .casm_definition_at(BlockNumber::GENESIS.into(), class_hash)
+                                .unwrap(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap();
+
+            pretty_assertions_sorted::assert_eq!(expected_defs, actual_defs);
+        }
+
+        #[rstest::rstest]
+        #[case::cairo(Class::Cairo {
+            block_number: BlockNumber::GENESIS,
+            hash: ClassHash::ZERO,
+            definition: Default::default()
+        })]
+        #[case::sierra(Class::Sierra {
+            block_number: BlockNumber::GENESIS,
+            sierra_hash: SierraHash::ZERO,
+            sierra_definition: Default::default(),
+            casm_definition: Default::default()
+        })]
+        #[tokio::test]
+        async fn bad_layout(#[case] class: Class) {
+            let storage = StorageBuilder::in_memory().unwrap();
+            let data = PeerData::for_tests(class);
+            let expected_peer_id = data.peer;
+
+            assert_matches::assert_matches!(
+                handle_class_stream(stream::once(std::future::ready(Ok(data))), storage)
+                    .await
+                    .unwrap_err(),
+                SyncError::BadClassLayout(x) => assert_eq!(x, expected_peer_id)
+            );
+        }
+
+        #[tokio::test]
+        async fn class_hash_mismatch() {
+            let Setup {
+                streamed_classes,
+                storage,
+                ..
+            } = setup(false).await;
+            let expected_peer_id = streamed_classes[0].as_ref().unwrap().peer;
+
+            assert_matches::assert_matches!(
+                handle_class_stream(stream::iter(streamed_classes), storage.clone())
+                    .await
+                    .unwrap_err(),
+                SyncError::BadClassHash(x) => assert_eq!(x, expected_peer_id)
+            );
+        }
+
+        #[tokio::test]
+        async fn casm_hash_missing() {
+            let Setup {
+                streamed_classes, ..
+            } = setup(true).await;
+
+            assert_matches::assert_matches!(
+                handle_class_stream(
+                    stream::iter(streamed_classes),
+                    StorageBuilder::in_memory().unwrap(),
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn stream_failure() {
+            assert_matches::assert_matches!(
+                handle_class_stream(
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap()
                 )
                 .await

@@ -98,6 +98,17 @@ impl Class {
             Self::Sierra { sierra_hash, .. } => ClassHash(sierra_hash.0),
         }
     }
+
+    pub fn definitions(&self) -> (Vec<u8>, Option<Vec<u8>>) {
+        match self {
+            Self::Cairo { definition, .. } => (definition.clone(), None),
+            Self::Sierra {
+                sierra_definition,
+                casm_definition,
+                ..
+            } => (sierra_definition.clone(), Some(casm_definition.clone())),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
