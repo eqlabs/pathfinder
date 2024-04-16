@@ -20,7 +20,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::info;
 
-use crate::config::NetworkConfig;
+use crate::config::{NetworkConfig, StateTries};
 
 mod config;
 mod update;
@@ -110,11 +110,12 @@ async fn async_main() -> anyhow::Result<()> {
         pathfinder_storage::StorageBuilder::file(pathfinder_context.database.clone())
             .journal_mode(config.sqlite_wal)
             .bloom_filter_cache_size(config.event_bloom_filter_cache_size.get())
-            .trie_prune_mode(match config.prune_merkle_tries {
-                Some(num_blocks_kept) => {
-                    pathfinder_storage::TriePruneMode::Prune { num_blocks_kept }
+            .trie_prune_mode(match config.state_tries {
+                Some(StateTries::Pruned(num_blocks_kept)) => {
+                    Some(pathfinder_storage::TriePruneMode::Prune { num_blocks_kept })
                 }
-                None => pathfinder_storage::TriePruneMode::Archive,
+                Some(StateTries::Archive) => Some(pathfinder_storage::TriePruneMode::Archive),
+                None => None,
             })
             .migrate()?;
     let sync_storage = storage_manager

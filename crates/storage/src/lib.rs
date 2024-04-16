@@ -132,7 +132,7 @@ pub struct StorageBuilder {
     database_path: PathBuf,
     journal_mode: JournalMode,
     bloom_filter_cache_size: usize,
-    trie_prune_mode: TriePruneMode,
+    trie_prune_mode: Option<TriePruneMode>,
 }
 
 impl StorageBuilder {
@@ -141,7 +141,7 @@ impl StorageBuilder {
             database_path,
             journal_mode: JournalMode::WAL,
             bloom_filter_cache_size: 16,
-            trie_prune_mode: TriePruneMode::Archive,
+            trie_prune_mode: None,
         }
     }
 
@@ -155,7 +155,7 @@ impl StorageBuilder {
         self
     }
 
-    pub fn trie_prune_mode(mut self, trie_prune_mode: TriePruneMode) -> Self {
+    pub fn trie_prune_mode(mut self, trie_prune_mode: Option<TriePruneMode>) -> Self {
         self.trie_prune_mode = trie_prune_mode;
         self
     }
@@ -237,9 +237,9 @@ impl StorageBuilder {
         setup_journal_mode(&mut connection, self.journal_mode).context("Setting journal mode")?;
 
         // Validate that configuration matches database flags.
-        self.validate_trie_prune_mode(&mut connection, is_new_database)?;
-        if let TriePruneMode::Prune { .. } = self.trie_prune_mode {
-            tracing::info!("Merkle trie pruning enabled");
+        let trie_prune_mode = self.determine_trie_prune_mode(&mut connection, is_new_database)?;
+        if let TriePruneMode::Prune { num_blocks_kept } = trie_prune_mode {
+            tracing::info!(history_kept=%num_blocks_kept, "Merkle trie pruning enabled");
         } else {
             tracing::info!("Merkle trie pruning disabled");
         }
@@ -253,7 +253,7 @@ impl StorageBuilder {
             database_path: self.database_path,
             journal_mode: self.journal_mode,
             bloom_filter_cache: Arc::new(bloom::Cache::with_size(self.bloom_filter_cache_size)),
-            trie_prune_mode: self.trie_prune_mode,
+            trie_prune_mode,
         })
     }
 
@@ -261,11 +261,11 @@ impl StorageBuilder {
     ///   this doesn't match the database setting, errors.
     /// - If there's an explicitly requested setting: uses it if matches DB setting, enables
     ///   pruning and sets flag in the database. Otherwise errors.
-    fn validate_trie_prune_mode(
+    fn determine_trie_prune_mode(
         &self,
         connection: &mut rusqlite::Connection,
         is_new_database: bool,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<TriePruneMode> {
         let prune_flag_is_set = connection
             .query_row(
                 "SELECT 1 FROM storage_flags WHERE flag = 'prune_tries'",
@@ -275,33 +275,38 @@ impl StorageBuilder {
             .optional()
             .map(|x| x.is_some())?;
 
-        match self.trie_prune_mode {
-            TriePruneMode::Prune { .. } => {
-                // If the requested pruning setting matches the flag just use that.
-                if prune_flag_is_set {
-                    return Ok(());
+        let trie_prune_mode = self.trie_prune_mode.unwrap_or({
+            if is_new_database || prune_flag_is_set {
+                TriePruneMode::Prune {
+                    num_blocks_kept: 20,
                 }
-
-                // If the flag is not set check if this is a new database and enable it.
-                if !is_new_database {
-                    anyhow::bail!("Cannot enable Merkle trie pruning on a database that was not created with it enabled.");
-                }
-
-                connection.execute(
-                    "INSERT OR IGNORE INTO storage_flags (flag) VALUES ('prune_tries')",
-                    [],
-                )?;
-
-                tracing::info!("Created new database with Merkle trie pruning enabled.");
+            } else {
+                TriePruneMode::Archive
             }
+        });
+
+        match trie_prune_mode {
             TriePruneMode::Archive => {
                 if prune_flag_is_set {
                     anyhow::bail!("Cannot disable Merkle trie pruning on a database that was created with it enabled.")
                 }
             }
+            TriePruneMode::Prune { num_blocks_kept: _ } => {
+                if !is_new_database && !prune_flag_is_set {
+                    anyhow::bail!("Cannot enable Merkle trie pruning on a database that was not created with it enabled.");
+                }
+
+                if is_new_database {
+                    connection.execute(
+                        "INSERT OR IGNORE INTO storage_flags (flag) VALUES ('prune_tries')",
+                        [],
+                    )?;
+                    tracing::info!("Created new database with Merkle trie pruning enabled.");
+                }
+            }
         }
 
-        Ok(())
+        Ok(trie_prune_mode)
     }
 }
 
@@ -568,9 +573,9 @@ mod tests {
 
         assert_eq!(
             StorageBuilder::file(db_path)
-                .trie_prune_mode(TriePruneMode::Prune {
+                .trie_prune_mode(Some(TriePruneMode::Prune {
                     num_blocks_kept: 10
-                })
+                }))
                 .migrate()
                 .unwrap_err()
                 .to_string(),
