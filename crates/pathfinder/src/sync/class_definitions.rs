@@ -267,7 +267,7 @@ pub(super) async fn persist(
         let tail = classes
             .last()
             .map(|x| x.data.block_number())
-            .ok_or(anyhow::anyhow!("No class definitions to persist"))?;
+            .context("No class definitions to persist")?;
 
         for class in classes.into_iter().map(|x| x.data) {
             match class {
@@ -286,7 +286,7 @@ pub(super) async fn persist(
                     let casm_hash = transaction
                         .casm_hash(ClassHash(sierra_hash.0))
                         .context("Getting casm hash for sierra class")?
-                        .ok_or(anyhow::anyhow!("Casm hash not found"))?;
+                        .context("Casm hash not found")?;
 
                     transaction
                         .update_sierra_class(

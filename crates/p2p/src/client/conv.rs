@@ -100,10 +100,8 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             header: BlockHeader {
                 hash: BlockHash(dto.block_hash.0),
                 parent_hash: BlockHash(dto.parent_hash.0),
-                number: BlockNumber::new(dto.number)
-                    .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
-                timestamp: BlockTimestamp::new(dto.time)
-                    .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
+                number: BlockNumber::new(dto.number).context("block number > i64::MAX")?,
+                timestamp: BlockTimestamp::new(dto.time).context("block timestamp > i64::MAX")?,
                 eth_l1_gas_price: GasPrice(dto.gas_price_wei),
                 strk_l1_gas_price: GasPrice(dto.gas_price_fri),
                 eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
