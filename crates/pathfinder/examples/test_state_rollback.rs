@@ -12,6 +12,9 @@ fn main() -> anyhow::Result<()> {
 
     let database_path = std::env::args().nth(1).unwrap();
     let storage = StorageBuilder::file(database_path.into())
+        .trie_prune_mode(pathfinder_storage::TriePruneMode::Prune {
+            num_blocks_kept: 10,
+        })
         .migrate()?
         .create_pool(NonZeroU32::new(10).unwrap())?;
     let mut db = storage

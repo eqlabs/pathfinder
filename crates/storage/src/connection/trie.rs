@@ -104,7 +104,7 @@ impl Transaction<'_> {
         }
 
         self.inner().execute(
-            "INSERT INTO class_roots (block_number, root_index) VALUES(?, ?)",
+            "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
             params![&block_number, &new_root_index],
         )?;
         Ok(())
@@ -123,7 +123,7 @@ impl Transaction<'_> {
             .optional()?;
 
         if let Some(last_block_with_root_index) = last_block_with_root_index {
-            tracing::info!(%last_block_with_root_index, "Removing class roots");
+            tracing::trace!(%last_block_with_root_index, "Removing class roots");
             let mut stmt = self
                 .inner()
                 .prepare_cached("DELETE FROM class_roots WHERE block_number < ?")?;
@@ -145,7 +145,7 @@ impl Transaction<'_> {
             }
         }
 
-        self.inner().execute("INSERT INTO contract_state_hashes(block_number, contract_address, state_hash) VALUES(?,?,?)", 
+        self.inner().execute("INSERT OR REPLACE INTO contract_state_hashes(block_number, contract_address, state_hash) VALUES(?,?,?)", 
         params![&block_number, &contract, &state_hash])?;
 
         Ok(())
@@ -210,7 +210,7 @@ impl Transaction<'_> {
             }
         }
         self.inner().execute(
-            "INSERT INTO storage_roots (block_number, root_index) VALUES(?, ?)",
+            "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
             params![&block_number, &new_root_index],
         )?;
 
@@ -258,7 +258,7 @@ impl Transaction<'_> {
         }
 
         self.inner().execute(
-            "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
+            "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
             params![&block_number, &contract, &new_root_index],
         )?;
 
@@ -328,6 +328,12 @@ impl Transaction<'_> {
         Ok(())
     }
 
+    pub fn coalesce_trie_nodes(&self, target_block: BlockNumber) -> anyhow::Result<()> {
+        self.coalesce_removed_trie_nodes(target_block, "trie_contracts")?;
+        self.coalesce_removed_trie_nodes(target_block, "trie_storage")?;
+        self.coalesce_removed_trie_nodes(target_block, "trie_class")
+    }
+
     fn delete_contract_roots(
         &self,
         contract: ContractAddress,
@@ -377,6 +383,32 @@ impl Transaction<'_> {
             ])
             .context("Inserting removal marker")?;
         }
+
+        Ok(())
+    }
+
+    /// Coalesce removed trie nodes to the target block.
+    ///
+    /// "Moves" all removed nodes from blocks _after_ the target block into
+    /// the target block.
+    ///
+    /// Used during a reorg to move deleted node data of all reorged-away blocks
+    /// to our reorg target.
+    fn coalesce_removed_trie_nodes(
+        &self,
+        target_block: BlockNumber,
+        table: &'static str,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self
+            .inner()
+            .prepare(&format!(
+                "UPDATE {table}_removals
+                SET block_number = ?1
+                WHERE block_number > ?1"
+            ))
+            .context("Creating update statement")?;
+        stmt.execute(params![&target_block])
+            .context("Moving removed trie node data to target block")?;
 
         Ok(())
     }
