@@ -78,21 +78,21 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             last_progress = Instant::now();
         }
         let contract_address_id = contract_addresses_query
-            .query_map(params![&contract_address], |row| Ok(row.get::<_, i64>(0)?))
+            .query_map(params![&contract_address], |row| row.get::<_, i64>(0))
             .context("Querying contract_addresses")?
             .next()
             .unwrap_or_else(|| {
                 contract_addresses_insert
-                    .query_row(params![&contract_address], |row| Ok(row.get::<_, i64>(0)?))
+                    .query_row(params![&contract_address], |row| row.get::<_, i64>(0))
             })
             .context("Inserting into contract_addresses")?;
         let storage_address_id = storage_addresses_query
-            .query_map(params![&storage_address], |row| Ok(row.get::<_, i64>(0)?))
+            .query_map(params![&storage_address], |row| row.get::<_, i64>(0))
             .context("Querying storage_addresses")?
             .next()
             .unwrap_or_else(|| {
                 storage_addresses_insert
-                    .query_row(params![&storage_address], |row| Ok(row.get::<_, i64>(0)?))
+                    .query_row(params![&storage_address], |row| row.get::<_, i64>(0))
             })
             .context("Inserting into storage_addresses")?;
         storage_updates_insert

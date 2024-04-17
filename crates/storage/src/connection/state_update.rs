@@ -81,21 +81,20 @@ impl Transaction<'_> {
 
             for (key, value) in &update.storage {
                 let contract_address_id = query_contract_address
-                    .query_map(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                    .query_map(params![address], |row| row.get::<_, i64>(0))
                     .context("Querying contract address")?
                     .next()
                     .unwrap_or_else(|| {
                         insert_contract_address
-                            .query_row(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                            .query_row(params![address], |row| row.get::<_, i64>(0))
                     })
                     .context("Inserting contract address")?;
                 let storage_address_id = query_storage_address
-                    .query_map(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                    .query_map(params![key], |row| row.get::<_, i64>(0))
                     .context("Querying storage address")?
                     .next()
                     .unwrap_or_else(|| {
-                        insert_storage_address
-                            .query_row(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                        insert_storage_address.query_row(params![key], |row| row.get::<_, i64>(0))
                     })
                     .context("Inserting storage address")?;
                 insert_storage
@@ -112,21 +111,20 @@ impl Transaction<'_> {
         for (address, update) in &state_update.system_contract_updates {
             for (key, value) in &update.storage {
                 let contract_address_id = query_contract_address
-                    .query_map(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                    .query_map(params![address], |row| row.get::<_, i64>(0))
                     .context("Querying contract address")?
                     .next()
                     .unwrap_or_else(|| {
                         insert_contract_address
-                            .query_row(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                            .query_row(params![address], |row| row.get::<_, i64>(0))
                     })
                     .context("Inserting contract address")?;
                 let storage_address_id = query_storage_address
-                    .query_map(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                    .query_map(params![key], |row| row.get::<_, i64>(0))
                     .context("Querying storage address")?
                     .next()
                     .unwrap_or_else(|| {
-                        insert_storage_address
-                            .query_row(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                        insert_storage_address.query_row(params![key], |row| row.get::<_, i64>(0))
                     })
                     .context("Inserting storage address")?;
                 insert_storage
