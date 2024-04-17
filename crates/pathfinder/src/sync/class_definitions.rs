@@ -89,7 +89,7 @@ pub(super) fn declared_class_counts_stream(
 
             if batch.is_empty() {
                 Err(anyhow::anyhow!(
-                    "No declared classes counts found for range: start {start}, batch_size (batch_size)"
+                    "No declared classes counts found for range: start {start}, batch_size {batch_size}"
                 ))?;
                 break;
             }

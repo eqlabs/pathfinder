@@ -74,7 +74,7 @@ pub(super) fn state_diff_lengths_stream(
 
             if batch.is_empty() {
                 Err(anyhow::anyhow!(
-                    "No state update counts found for range: start {start}, batch_size (batch_size)"
+                    "No state update counts found for range: start {start}, batch_size {batch_size}"
                 ))?;
                 break;
             }
