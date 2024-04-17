@@ -450,8 +450,7 @@ async fn handle_class_stream(
 ) -> Result<(), SyncError> {
     class_stream
         .map_err(Into::into)
-        .map_ok(class_definitions::verify_layout)
-        .and_then(std::future::ready)
+        .and_then(class_definitions::verify_layout)
         // Block numbers in the stream are guaranteed to be correct but we need to check that
         // the streamed classes belong to the right block.
         .and_then(|x| class_definitions::verify_declared_at(storage.clone(), x))
