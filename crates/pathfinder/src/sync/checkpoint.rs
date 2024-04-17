@@ -83,9 +83,7 @@ impl Sync {
         self.sync_headers(anchor).await?;
 
         // Sync the rest of the data in chronological order.
-        self.sync_transactions()
-            .await
-            .context("Syncing transactions")?;
+        self.sync_transactions(head).await?;
         self.sync_state_updates(head).await?;
         self.sync_class_definitions(head).await?;
         self.sync_events(head).await?;
@@ -135,149 +133,30 @@ impl Sync {
         Ok(())
     }
 
-    async fn sync_transactions(&self) -> anyhow::Result<()> {
-        let (first_block, last_block) = spawn_blocking({
-            let storage = self.storage.clone();
-            move || -> anyhow::Result<(Option<BlockNumber>, Option<BlockNumber>)> {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                let first_block = db
-                    .first_block_without_transactions()
-                    .context("Querying first block without transactions")?;
-                let last_block = db
-                    .block_id(pathfinder_storage::BlockId::Latest)
-                    .context("Querying latest block without transactions")?
-                    .map(|(block_number, _)| block_number);
-                Ok((first_block, last_block))
-            }
-        })
-        .await
-        .context("Joining blocking task")??;
-
-        let Some(first_block) = first_block else {
-            return Ok(());
-        };
-        let last_block = last_block.context("Last block not found but first block found")?;
-
-        let mut curr_block = headers::query(self.storage.clone(), first_block)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("First block not found"))?;
-
-        // Loop which refreshes peer set once we exhaust it.
-        loop {
-            let peers = self
-                .p2p
-                .get_update_peers_with_transaction_sync_capability()
-                .await;
-
-            // Attempt each peer.
-            'next_peer: for peer in peers {
-                let request = TransactionsRequest {
-                    iteration: Iteration {
-                        start: BlockNumberOrHash::Number(curr_block.number.get()),
-                        direction: Direction::Forward,
-                        limit: last_block.get() - curr_block.number.get() + 1,
-                        step: 1.into(),
-                    },
-                };
-
-                let mut responses =
-                    match self.p2p.send_transactions_sync_request(peer, request).await {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
-                            continue 'next_peer;
-                        }
-                    };
-
-                let mut transactions = Vec::new();
-                while let Some(transaction) = responses.next().await {
-                    match transaction {
-                        TransactionsResponse::TransactionWithReceipt(tx) => {
-                            let TransactionWithReceipt {
-                                transaction,
-                                receipt,
-                            } = tx;
-                            match (
-                                TransactionVariant::try_from_dto(transaction),
-                                Receipt::try_from_dto((
-                                    receipt,
-                                    TransactionIndex::new_or_panic(
-                                        transactions.len().try_into().expect("ptr size is 64bits"),
-                                    ),
-                                )),
-                            ) {
-                                (Ok(tx), Ok(rec))
-                                    if transactions.len() < curr_block.transaction_count =>
-                                {
-                                    transactions.push((tx, rec))
-                                }
-                                (Ok(tx), Ok(rec)) => {
-                                    let Some(checked) = check_transactions(
-                                        &curr_block,
-                                        std::mem::take(&mut transactions),
-                                    )
-                                    .await?
-                                    else {
-                                        tracing::debug!(
-                                            "Invalid transactions for block {}, trying next peer",
-                                            curr_block.number
-                                        );
-                                        continue 'next_peer;
-                                    };
-
-                                    transactions::persist(
-                                        self.storage.clone(),
-                                        curr_block.clone(),
-                                        checked,
-                                    )
-                                    .await
-                                    .context("Inserting transactions")?;
-                                    if curr_block.number == last_block {
-                                        return Ok(());
-                                    }
-                                    curr_block =
-                                        headers::query(self.storage.clone(), curr_block.number + 1)
-                                            .await?
-                                            .ok_or_else(|| {
-                                                anyhow::anyhow!("Next block not found")
-                                            })?;
-                                    transactions.push((tx, rec));
-                                }
-                                (Err(error), _) | (_, Err(error)) => {
-                                    tracing::debug!(%peer, %error, "Transaction stream returned unexpected DTO");
-                                    continue 'next_peer;
-                                }
-                            }
-                        }
-                        TransactionsResponse::Fin if curr_block.number == last_block => {
-                            let Some(checked) =
-                                check_transactions(&curr_block, std::mem::take(&mut transactions))
-                                    .await?
-                            else {
-                                tracing::debug!(
-                                    "Invalid transactions for block {}, trying next peer",
-                                    curr_block.number
-                                );
-                                continue 'next_peer;
-                            };
-
-                            transactions::persist(self.storage.clone(), curr_block, checked)
-                                .await
-                                .context("Inserting transactions")?;
-                            return Ok(());
-                        }
-                        TransactionsResponse::Fin => {
-                            tracing::debug!(%peer, "Unexpected transaction stream Fin");
-                            continue 'next_peer;
-                        }
-                    };
-                }
-            }
+    async fn sync_transactions(&self, stop: BlockNumber) -> Result<(), SyncError> {
+        if let Some(start) = transactions::next_missing(self.storage.clone(), stop)
+            .await
+            .context("Finding next block with missing transaction(s)")?
+        {
+            self.p2p
+                .clone()
+                .transactions_stream(
+                    start,
+                    stop,
+                    transactions::counts_stream(self.storage.clone(), start, stop),
+                )
+                .map_err(Into::into)
+                .and_then(|x| transactions::verify_commitment(x, self.storage.clone()))
+                .try_chunks(100)
+                .map_err(|e| e.1)
+                .and_then(|x| transactions::persist(self.storage.clone(), x))
+                .inspect_ok(|x| tracing::info!(tail=%x, "Transactions chunk synced"))
+                // Drive stream to completion.
+                .try_fold((), |_, _| std::future::ready(Ok(())))
+                .await?;
         }
+
+        Ok(())
     }
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {

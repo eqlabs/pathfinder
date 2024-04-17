@@ -468,11 +468,12 @@ impl Transaction<'_> {
         };
 
         let mut stmt = self
-        .inner()
-        .prepare_cached(
-            "SELECT transaction_count FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
-        )
-        .context("Preparing get transaction counts statement")?;
+            .inner()
+            .prepare_cached(
+                "SELECT transaction_count FROM block_headers WHERE number >= ? ORDER BY number \
+                 ASC LIMIT ?",
+            )
+            .context("Preparing get transaction counts statement")?;
 
         let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
         let mut counts = stmt
