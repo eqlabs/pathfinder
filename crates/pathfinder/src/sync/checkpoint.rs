@@ -951,7 +951,10 @@ mod tests {
                     .iter()
                     .map(|class| {
                         let class = &class.as_ref().unwrap().data;
-                        (class.hash(), class.definitions())
+                        (
+                            class.hash(),
+                            (class.class_definition(), class.casm_definition()),
+                        )
                     })
                     .unzip::<_, _, Vec<ClassHash>, Vec<(Vec<u8>, Option<Vec<u8>>)>>();
                 let storage = StorageBuilder::in_memory().unwrap();

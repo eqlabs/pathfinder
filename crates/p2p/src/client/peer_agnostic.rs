@@ -99,14 +99,23 @@ impl Class {
         }
     }
 
-    pub fn definitions(&self) -> (Vec<u8>, Option<Vec<u8>>) {
+    /// Return Cairo or Sierra class definition depending on the variant.
+    pub fn class_definition(&self) -> Vec<u8> {
         match self {
-            Self::Cairo { definition, .. } => (definition.clone(), None),
+            Self::Cairo { definition, .. } => definition.clone(),
             Self::Sierra {
-                sierra_definition,
-                casm_definition,
-                ..
-            } => (sierra_definition.clone(), Some(casm_definition.clone())),
+                sierra_definition, ..
+            } => sierra_definition.clone(),
+        }
+    }
+
+    /// Return Casm definition for Sierra variant, otherwise None.
+    pub fn casm_definition(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::Cairo { .. } => None,
+            Self::Sierra {
+                casm_definition, ..
+            } => Some(casm_definition.clone()),
         }
     }
 }
