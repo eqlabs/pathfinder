@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use anyhow::Context;
 use p2p::client::peer_agnostic::Class;
@@ -10,6 +12,7 @@ use starknet_gateway_types::class_definition::{Cairo, ClassDefinition, Sierra};
 use starknet_gateway_types::class_hash::from_parts::{
     compute_cairo_class_hash, compute_sierra_class_hash,
 };
+use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
 use crate::sync::error::SyncError;
@@ -148,29 +151,45 @@ pub(super) async fn verify_layout(
     }
 }
 
+/// Checks if the streamed class is expected to be declared at the given block.
+/// If yes, it removes its hash from the "expected" set and returns the class, otherwise it returns an error.
+/// When the set of expected classes for the block is exhausted it fetches the set for the next block.
+///
+/// This function relies on the guarantee that the block numbers in the stream are correct.
 pub(super) async fn verify_declared_at(
     storage: Storage,
-    peer_data: PeerData<ClassWithLayout>,
+    expected_classes_for_block: Arc<Mutex<HashSet<ClassHash>>>,
+    current_class: PeerData<ClassWithLayout>,
 ) -> Result<PeerData<ClassWithLayout>, SyncError> {
-    tokio::task::spawn_blocking(move || {
-        let mut connection = storage
-            .connection()
-            .context("Creating database connection")?;
-        let transaction = connection
-            .transaction()
-            .context("Creating database transaction")?;
+    let mut locked_expected_classes_for_block = expected_classes_for_block.lock().await;
+    let block_number = current_class.data.class.block_number();
+    let peer_id = current_class.peer;
 
-        if transaction.class_declared_at(
-            peer_data.data.class.hash(),
-            peer_data.data.class.block_number(),
-        )? {
-            Ok(peer_data)
-        } else {
-            Err(SyncError::UnexpectedClass(peer_data.peer))
-        }
-    })
-    .await
-    .context("Joining blocking task")?
+    if locked_expected_classes_for_block.is_empty() {
+        let declared = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Creating database connection")?;
+            let db = db.transaction().expect("todo");
+            let declared: Vec<ClassHash> = db
+                .declared_classes_at(block_number.into())
+                .context("Querying declared classes at block")?
+                .ok_or(anyhow::anyhow!("Block header not found"))?;
+            Result::<_, SyncError>::Ok(declared)
+        })
+        .await
+        .context("Joining blocking task")??;
+
+        locked_expected_classes_for_block.extend(declared.into_iter());
+    }
+
+    let class_hash = current_class.data.class.hash();
+
+    if locked_expected_classes_for_block.remove(&class_hash) {
+        Ok(current_class)
+    } else {
+        Err(SyncError::UnexpectedClass(peer_id))
+    }
 }
 
 pub(super) async fn verify_hash(

@@ -1,5 +1,7 @@
 #![allow(dead_code, unused_variables)]
 use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 use anyhow::Context;
 use futures::StreamExt;
@@ -13,6 +15,7 @@ use p2p_proto::{
     receipt::{ReceiptsRequest, ReceiptsResponse},
     transaction::{TransactionsRequest, TransactionsResponse},
 };
+use pathfinder_common::ClassHash;
 use pathfinder_common::{
     receipt::Receipt, transaction::Transaction, BlockHash, BlockHeader, BlockNumber,
     TransactionIndex,
@@ -20,6 +23,7 @@ use pathfinder_common::{
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
+use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
 use crate::state::block_hash::{
@@ -33,6 +37,8 @@ use crate::sync::headers;
 use crate::sync::receipts;
 use crate::sync::state_updates;
 use crate::sync::transactions;
+
+use super::class_definitions::ClassWithLayout;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -448,12 +454,20 @@ async fn handle_class_stream(
     class_stream: impl futures::Stream<Item = Result<PeerData<Class>, anyhow::Error>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
+    let mut expected_classes_for_block = Arc::new(Mutex::new(HashSet::new()));
+
     class_stream
         .map_err(Into::into)
         .and_then(class_definitions::verify_layout)
-        // Block numbers in the stream are guaranteed to be correct but we need to check that
-        // the streamed classes belong to the right block.
-        .and_then(|x| class_definitions::verify_declared_at(storage.clone(), x))
+        // Block numbers in the stream are guaranteed to be correct but we need to check that the
+        // streamed classes belong to the right block and that all classes for the block are present.
+        .and_then(|x| {
+            class_definitions::verify_declared_at(
+                storage.clone(),
+                expected_classes_for_block.clone(),
+                x,
+            )
+        })
         .and_then(class_definitions::verify_hash)
         .try_chunks(10)
         .map_err(|e| e.1)
