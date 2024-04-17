@@ -29,8 +29,30 @@ impl Transaction<'_> {
         )
         .context("Preparing nonce insert statement")?;
 
+        let mut query_contract_address = self
+            .inner()
+            .prepare_cached("SELECT id FROM contract_addresses WHERE contract_address = ?")
+            .context("Preparing contract address query statement")?;
+        let mut insert_contract_address = self
+            .inner()
+            .prepare_cached(
+                "INSERT INTO contract_addresses (contract_address) VALUES (?) RETURNING id",
+            )
+            .context("Preparing contract address insert statement")?;
+
+        let mut query_storage_address = self
+            .inner()
+            .prepare_cached("SELECT id FROM storage_addresses WHERE storage_address = ?")
+            .context("Preparing storage address query statement")?;
+        let mut insert_storage_address = self
+            .inner()
+            .prepare_cached(
+                "INSERT INTO storage_addresses (storage_address) VALUES (?) RETURNING id",
+            )
+            .context("Preparing storage address insert statement")?;
+
         let mut insert_storage = self
-        .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_address, storage_address, storage_value) VALUES (?, ?, ?, ?)")
+        .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_address_id, storage_address_id, storage_value) VALUES (?, ?, ?, ?)")
         .context("Preparing nonce insert statement")?;
 
         let mut insert_contract = self
@@ -58,16 +80,62 @@ impl Transaction<'_> {
             }
 
             for (key, value) in &update.storage {
+                let contract_address_id = query_contract_address
+                    .query_map(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                    .context("Querying contract address")?
+                    .next()
+                    .unwrap_or_else(|| {
+                        insert_contract_address
+                            .query_row(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                    })
+                    .context("Inserting contract address")?;
+                let storage_address_id = query_storage_address
+                    .query_map(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                    .context("Querying storage address")?
+                    .next()
+                    .unwrap_or_else(|| {
+                        insert_storage_address
+                            .query_row(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                    })
+                    .context("Inserting storage address")?;
                 insert_storage
-                    .execute(params![&block_number, address, key, value])
+                    .execute(params![
+                        &block_number,
+                        &contract_address_id,
+                        &storage_address_id,
+                        value
+                    ])
                     .context("Inserting storage update")?;
             }
         }
 
         for (address, update) in &state_update.system_contract_updates {
             for (key, value) in &update.storage {
+                let contract_address_id = query_contract_address
+                    .query_map(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                    .context("Querying contract address")?
+                    .next()
+                    .unwrap_or_else(|| {
+                        insert_contract_address
+                            .query_row(params![address], |row| Ok(row.get::<_, i64>(0)?))
+                    })
+                    .context("Inserting contract address")?;
+                let storage_address_id = query_storage_address
+                    .query_map(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                    .context("Querying storage address")?
+                    .next()
+                    .unwrap_or_else(|| {
+                        insert_storage_address
+                            .query_row(params![key], |row| Ok(row.get::<_, i64>(0)?))
+                    })
+                    .context("Inserting storage address")?;
                 insert_storage
-                    .execute(params![&block_number, address, key, value])
+                    .execute(params![
+                        &block_number,
+                        &contract_address_id,
+                        &storage_address_id,
+                        value
+                    ])
                     .context("Inserting system storage update")?;
             }
         }
@@ -211,10 +279,17 @@ impl Transaction<'_> {
         }
 
         let mut stmt = self
-        .inner().prepare_cached(
-            "SELECT contract_address, storage_address, storage_value FROM storage_updates WHERE block_number = ?"
-        )
-        .context("Preparing storage update query statement")?;
+            .inner()
+            .prepare_cached(
+                r"
+                SELECT contract_address, storage_address, storage_value
+                FROM storage_updates
+                JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
+                JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
+                WHERE block_number = ?
+                ",
+            )
+            .context("Preparing storage update query statement")?;
         let mut storage_diffs = stmt
             .query_map(params![&block_number], |row| {
                 let address: ContractAddress = row.get_contract_address(0)?;
@@ -469,9 +544,14 @@ impl Transaction<'_> {
         match block {
             BlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
-                    r"SELECT storage_value FROM storage_updates 
-                WHERE contract_address = ? AND storage_address = ?
-                ORDER BY block_number DESC LIMIT 1",
+                    r"
+                    SELECT storage_value
+                    FROM storage_updates
+                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
+                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
+                    WHERE contract_address = ? AND storage_address = ?
+                    ORDER BY block_number DESC LIMIT 1
+                    ",
                 )?;
                 stmt.query_row(params![&contract_address, &key], |row| {
                     row.get_storage_value(0)
@@ -479,9 +559,14 @@ impl Transaction<'_> {
             }
             BlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
-                    r"SELECT storage_value FROM storage_updates
-                WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
-                ORDER BY block_number DESC LIMIT 1",
+                    r"
+                    SELECT storage_value
+                    FROM storage_updates
+                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
+                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
+                    WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
+                    ORDER BY block_number DESC LIMIT 1
+                    ",
                 )?;
                 stmt.query_row(params![&contract_address, &key, &number], |row| {
                     row.get_storage_value(0)
@@ -489,11 +574,16 @@ impl Transaction<'_> {
             }
             BlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
-                    r"SELECT storage_value FROM storage_updates
-                WHERE contract_address = ? AND storage_address = ? AND block_number <= (
-                    SELECT number FROM canonical_blocks WHERE hash = ?
-                )
-                ORDER BY block_number DESC LIMIT 1",
+                    r"
+                    SELECT storage_value
+                    FROM storage_updates
+                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
+                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
+                    WHERE contract_address = ? AND storage_address = ? AND block_number <= (
+                        SELECT number FROM canonical_blocks WHERE hash = ?
+                    )
+                    ORDER BY block_number DESC LIMIT 1
+                    ",
                 )?;
                 stmt.query_row(params![&contract_address, &key, &hash], |row| {
                     row.get_storage_value(0)
@@ -713,26 +803,32 @@ impl Transaction<'_> {
         to_block: BlockNumber,
     ) -> anyhow::Result<HashMap<ContractAddress, StorageUpdates>> {
         let mut stmt = self.inner().prepare(
-            r"WITH
-            updated_addresses(contract_address, storage_address) AS (
-                SELECT DISTINCT
-                    contract_address, storage_address
-                FROM storage_updates
-                WHERE
-                    block_number > ?2 AND block_number <= ?1
-            )
-        SELECT
-            contract_address,
-            storage_address,
-            (
-                SELECT storage_value
-                FROM storage_updates
-                WHERE
-                    contract_address=updated_addresses.contract_address AND storage_address=updated_addresses.storage_address AND block_number <= ?2
-                ORDER BY block_number DESC
-                LIMIT 1
-            ) AS old_storage_value
-        FROM updated_addresses"
+            r"
+            WITH
+                updated_addresses(contract_address, storage_address) AS (
+                    SELECT DISTINCT
+                        contract_address, storage_address
+                    FROM storage_updates
+                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
+                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
+                    WHERE
+                        block_number > ?2 AND block_number <= ?1
+                )
+            SELECT
+                contract_address,
+                storage_address,
+                (
+                    SELECT storage_value
+                    FROM storage_updates
+                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
+                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
+                    WHERE
+                        contract_address=updated_addresses.contract_address AND storage_address=updated_addresses.storage_address AND block_number <= ?2
+                    ORDER BY block_number DESC
+                    LIMIT 1
+                ) AS old_storage_value
+            FROM updated_addresses
+            "
         )?;
 
         let mut rows = stmt
