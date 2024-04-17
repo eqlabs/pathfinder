@@ -455,7 +455,7 @@ async fn handle_class_stream(
         // the streamed classes belong to the right block.
         .and_then(|x| class_definitions::verify_declared_at(storage.clone(), x))
         .and_then(class_definitions::verify_hash)
-        .try_chunks(1000)
+        .try_chunks(10)
         .map_err(|e| e.1)
         .and_then(|x| class_definitions::persist(storage.clone(), x))
         .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
