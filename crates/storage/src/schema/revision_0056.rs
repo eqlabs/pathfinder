@@ -6,23 +6,23 @@ use rusqlite::params;
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(
         r"
-    CREATE TABLE contract_addresses (
-        id INTEGER PRIMARY KEY,
-        contract_address BLOB
-    );
-    CREATE INDEX contract_addresses_contract_address ON contract_addresses (contract_address);
-    CREATE TABLE storage_addresses (
-        id INTEGER PRIMARY KEY,
-        storage_address BLOB
-    );
-    CREATE INDEX storage_addresses_storage_address ON storage_addresses (storage_address);
-    CREATE TABLE storage_updates_normalized (
-        block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
-        contract_address_id INTEGER REFERENCES contract_addresses(id),
-        storage_address_id INTEGER REFERENCES storage_addresses(id),
-        storage_value BLOB NOT NULL
-    );
-    ",
+        CREATE TABLE contract_addresses (
+            id INTEGER PRIMARY KEY,
+            contract_address BLOB
+        );
+        CREATE INDEX contract_addresses_contract_address ON contract_addresses (contract_address);
+        CREATE TABLE storage_addresses (
+            id INTEGER PRIMARY KEY,
+            storage_address BLOB
+        );
+        CREATE INDEX storage_addresses_storage_address ON storage_addresses (storage_address);
+        CREATE TABLE storage_updates_normalized (
+            block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+            contract_address_id INTEGER REFERENCES contract_addresses(id),
+            storage_address_id INTEGER REFERENCES storage_addresses(id),
+            storage_value BLOB NOT NULL
+        );
+        ",
     )
     .context("Creating contract_addresses table")?;
 
