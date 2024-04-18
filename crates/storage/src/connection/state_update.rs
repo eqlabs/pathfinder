@@ -803,7 +803,7 @@ impl Transaction<'_> {
         let mut stmt = self.inner().prepare(
             r"
             WITH
-                updated_addresses(contract_address, storage_address) AS (
+                updated_addresses(contract_address, storage_address, contract_address_id, storage_address_id) AS (
                     SELECT DISTINCT
                     contract_address,
                     storage_address,
