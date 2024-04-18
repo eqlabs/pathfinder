@@ -15,7 +15,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             id INTEGER PRIMARY KEY,
             storage_address BLOB
         );
-        CREATE INDEX storage_addresses_storage_address ON storage_addresses (storage_address);
+        CREATE UNIQUE INDEX storage_addresses_storage_address ON storage_addresses (storage_address);
         CREATE TABLE storage_updates_normalized (
             block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
             contract_address_id INTEGER REFERENCES contract_addresses(id),
