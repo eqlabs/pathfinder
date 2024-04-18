@@ -805,7 +805,10 @@ impl Transaction<'_> {
             WITH
                 updated_addresses(contract_address, storage_address) AS (
                     SELECT DISTINCT
-                        contract_address, storage_address
+                    contract_address,
+                    storage_address,
+                    contract_address_id,
+                    storage_address_id
                     FROM storage_updates
                     JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
                     JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
@@ -818,10 +821,8 @@ impl Transaction<'_> {
                 (
                     SELECT storage_value
                     FROM storage_updates
-                    JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
-                    JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
                     WHERE
-                        contract_address=updated_addresses.contract_address AND storage_address=updated_addresses.storage_address AND block_number <= ?2
+                    contract_address_id=updated_addresses.contract_address_id AND storage_address_id=updated_addresses.storage_address_id AND block_number <= ?2
                     ORDER BY block_number DESC
                     LIMIT 1
                 ) AS old_storage_value

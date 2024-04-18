@@ -113,15 +113,17 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         storage_updates_count
     );
 
-    tracing::info!("Dropping storage_updates and renaming temporary table");
+    tracing::info!("Dropping storage_updates and renaming temporary table, creating indices");
 
     tx.execute_batch(
         r"
         DROP TABLE storage_updates;
         ALTER TABLE storage_updates_normalized RENAME TO storage_updates;
+        CREATE INDEX storage_updates_contract_address_id_storage_address_id_block_number ON storage_updates(contract_address_id, storage_address_id, block_number);
+        CREATE INDEX storage_updates_block_number ON storage_updates(block_number);
         ",
     )
-    .context("Dropping storage_updates")?;
+    .context("Dropping storage_updates and creating indices")?;
 
     Ok(())
 }
