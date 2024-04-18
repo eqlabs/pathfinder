@@ -10,7 +10,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             id INTEGER PRIMARY KEY,
             contract_address BLOB
         );
-        CREATE INDEX contract_addresses_contract_address ON contract_addresses (contract_address);
+        CREATE UNIQUE INDEX contract_addresses_contract_address ON contract_addresses (contract_address);
         CREATE TABLE storage_addresses (
             id INTEGER PRIMARY KEY,
             storage_address BLOB
