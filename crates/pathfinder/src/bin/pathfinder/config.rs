@@ -247,13 +247,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
     get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
 
     #[arg(
-        long = "storage.prune-state-tries",
-        long_help = "When enabled, only the last N+1 states of the Merkle tries are kept in the database. \
-            This can be used to reduce the disk space usage at the cost of only being able to provide storage proofs for the latest N+1 blocks (the state for the latest block is always stored).",
-        env = "PATHFINDER_PRUNE_MERKLE_TRIES",
-        value_name = "N"
+        long = "storage.state-tries",
+        long_help = "When set to `archive` all historical Merkle trie state is preserved. When set to an integer N, only the last N+1 states of the Merkle tries are kept in the database. \
+            This can be used to reduce the disk space usage at the cost of only being able to provide storage proofs for the latest N+1 blocks (the state for the latest block is always stored). \
+            Defaults to 20 if the database was created with pruning enabled or `archive` if the database is archive-mode.",
+        env = "PATHFINDER_STORAGE_STATE_TRIES",
+        value_name = "archive | N",
+        value_parser = parse_state_tries
     )]
-    prune_merkle_tries: Option<u64>,
+    state_tries: Option<StateTries>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -282,6 +284,24 @@ pub enum RpcVersion {
     V05,
     V06,
     V07,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StateTries {
+    Pruned(u64),
+    Archive,
+}
+
+fn parse_state_tries(s: &str) -> Result<StateTries, String> {
+    match s {
+        "archive" => Ok(StateTries::Archive),
+        _ => {
+            let value: u64 = s
+                .parse()
+                .map_err(|_| "Expected either `archive` or a number".to_string())?;
+            Ok(StateTries::Pruned(value))
+        }
+    }
 }
 
 #[derive(clap::Args)]
@@ -557,7 +577,7 @@ pub struct Config {
     pub event_bloom_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
-    pub prune_merkle_tries: Option<u64>,
+    pub state_tries: Option<StateTries>,
 }
 
 pub struct Ethereum {
@@ -770,7 +790,7 @@ impl Config {
             get_events_max_uncached_bloom_filters_to_load: cli
                 .get_events_max_uncached_bloom_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
-            prune_merkle_tries: cli.prune_merkle_tries,
+            state_tries: cli.state_tries,
         }
     }
 }
