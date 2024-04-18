@@ -6,6 +6,8 @@ use rusqlite::params;
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(
         r"
+        CREATE UNIQUE INDEX block_headers_number ON block_headers(number);
+        DROP INDEX starknet_blocks_block_number;
         CREATE TABLE contract_addresses (
             id INTEGER PRIMARY KEY,
             contract_address BLOB
@@ -17,7 +19,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         );
         CREATE UNIQUE INDEX storage_addresses_storage_address ON storage_addresses (storage_address);
         CREATE TABLE storage_updates_normalized (
-            block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+            block_number INTEGER REFERENCES block_headers(number) ON DELETE CASCADE,
             contract_address_id INTEGER REFERENCES contract_addresses(id),
             storage_address_id INTEGER REFERENCES storage_addresses(id),
             storage_value BLOB NOT NULL
