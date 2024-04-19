@@ -10,10 +10,6 @@ const MAINNET_SCRIPT: &str = include_str!("mainnet_script.txt");
 /// A slight variation of `MAINNET_SCRIPT` that doesn't contain the heavy-weight calls.
 const MAINNET_SCRIPT_WITHOUT_HUGE_CALLS: &str =
     include_str!("mainnet_script_without_huge_calls.txt");
-/// Script using requests received from Braavos that are typical for some of their use-cases.
-const GOERLI_SCRIPT_CAIRO0: &str = include_str!("goerli_script_cairo0.txt");
-/// Another script using requests received from Braavos that are typical for some of their use-cases.
-const GOERLI_SCRIPT_CAIRO2: &str = include_str!("goerli_script_cairo2.txt");
 
 pub async fn mainnet_scripted(user: &mut GooseUser) -> TransactionResult {
     scripted(user, MAINNET_SCRIPT).await
@@ -21,14 +17,6 @@ pub async fn mainnet_scripted(user: &mut GooseUser) -> TransactionResult {
 
 pub async fn mainnet_scripted_without_huge_calls(user: &mut GooseUser) -> TransactionResult {
     scripted(user, MAINNET_SCRIPT_WITHOUT_HUGE_CALLS).await
-}
-
-pub async fn goerli_cairo0_scripted(user: &mut GooseUser) -> TransactionResult {
-    scripted(user, GOERLI_SCRIPT_CAIRO0).await
-}
-
-pub async fn goerli_cairo2_scripted(user: &mut GooseUser) -> TransactionResult {
-    scripted(user, GOERLI_SCRIPT_CAIRO2).await
 }
 
 async fn scripted(user: &mut GooseUser, script: &'static str) -> TransactionResult {
