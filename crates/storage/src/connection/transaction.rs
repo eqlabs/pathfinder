@@ -1,5 +1,4 @@
 //! Contains starknet transaction related code and __not__ database transaction.
-
 use anyhow::Context;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -15,6 +14,28 @@ pub enum TransactionStatus {
     L2Accepted,
 }
 
+const ZSTD_COMPRESSION_LEVEL: i32 = 9;
+
+const MAX_TX_SIZE: usize = 1024usize * 1024;
+const MAX_RECEIPT_SIZE: usize = 1024usize * 1024;
+const MAX_EVENTS_SIZE: usize = 1024usize * 1024;
+
+lazy_static::lazy_static! {
+    pub static ref ZSTD_TX_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
+        zstd::dict::EncoderDictionary::new(include_bytes!("../assets/tx.zdict"), ZSTD_COMPRESSION_LEVEL);
+    pub static ref ZSTD_RECEIPT_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
+        zstd::dict::EncoderDictionary::new(include_bytes!("../assets/receipt.zdict"), ZSTD_COMPRESSION_LEVEL);
+    pub static ref ZSTD_EVENTS_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
+        zstd::dict::EncoderDictionary::new(include_bytes!("../assets/events.zdict"), ZSTD_COMPRESSION_LEVEL);
+
+    pub static ref ZSTD_TX_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
+        zstd::dict::DecoderDictionary::new(include_bytes!("../assets/tx.zdict"));
+    pub static ref ZSTD_RECEIPT_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
+        zstd::dict::DecoderDictionary::new(include_bytes!("../assets/receipt.zdict"));
+    pub static ref ZSTD_EVENTS_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
+        zstd::dict::DecoderDictionary::new(include_bytes!("../assets/events.zdict"));
+}
+
 impl Transaction<'_> {
     /// Inserts the transaction, receipt and event data.
     pub fn insert_transaction_data(
@@ -26,7 +47,13 @@ impl Transaction<'_> {
             return Ok(());
         }
 
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let mut tx_compressor =
+            zstd::bulk::Compressor::with_prepared_dictionary(&ZSTD_TX_ENCODER_DICTIONARY)?;
+        let mut receipt_compressor =
+            zstd::bulk::Compressor::with_prepared_dictionary(&ZSTD_RECEIPT_ENCODER_DICTIONARY)?;
+        let mut events_compressor =
+            zstd::bulk::Compressor::with_prepared_dictionary(&ZSTD_EVENTS_ENCODER_DICTIONARY)?;
+
         for (
             i,
             TransactionData {
@@ -40,7 +67,7 @@ impl Transaction<'_> {
             let transaction = dto::Transaction::from(transaction);
             let tx_data = bincode::serde::encode_to_vec(&transaction, bincode::config::standard())
                 .context("Serializing transaction")?;
-            let tx_data = compressor
+            let tx_data = tx_compressor
                 .compress(&tx_data)
                 .context("Compressing transaction")?;
 
@@ -51,7 +78,7 @@ impl Transaction<'_> {
                         bincode::serde::encode_to_vec(&receipt, bincode::config::standard())
                             .context("Serializing receipt")?;
                     Some(
-                        compressor
+                        receipt_compressor
                             .compress(&serialized_receipt)
                             .context("Compressing receipt")?,
                     )
@@ -68,7 +95,11 @@ impl Transaction<'_> {
                         bincode::config::standard(),
                     )
                     .context("Serializing events")?;
-                    Some(compressor.compress(&events).context("Compressing events")?)
+                    Some(
+                        events_compressor
+                            .compress(&events)
+                            .context("Compressing events")?,
+                    )
                 }
                 None => None,
             };
@@ -191,7 +222,11 @@ impl Transaction<'_> {
         };
 
         let transaction = row.get_ref_unwrap(0).as_blob()?;
-        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+        let mut decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_TX_DECODER_DICTIONARY)?;
+        let transaction = decompressor
+            .decompress(transaction, MAX_TX_SIZE)
+            .context("Decompressing transaction")?;
         let transaction: dto::Transaction =
             bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
                 .context("Deserializing transaction")?
@@ -223,7 +258,11 @@ impl Transaction<'_> {
         };
 
         let transaction = row.get_ref_unwrap("tx").as_blob()?;
-        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+        let mut decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_TX_DECODER_DICTIONARY)?;
+        let transaction = decompressor
+            .decompress(transaction, MAX_TX_SIZE)
+            .context("Decompressing transaction")?;
         let transaction: dto::Transaction =
             bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
                 .context("Deserializing transaction")?
@@ -233,7 +272,11 @@ impl Transaction<'_> {
             Some(data) => data,
             None => return Ok(None),
         };
-        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
+        let mut decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_RECEIPT_DECODER_DICTIONARY)?;
+        let receipt = decompressor
+            .decompress(receipt, MAX_RECEIPT_SIZE)
+            .context("Decompressing receipt")?;
         let receipt: dto::Receipt =
             bincode::serde::decode_from_slice(&receipt, bincode::config::standard())
                 .context("Deserializing receipt")?
@@ -243,7 +286,11 @@ impl Transaction<'_> {
             Some(data) => data,
             None => return Ok(None),
         };
-        let events = zstd::decode_all(events).context("Decompressing events")?;
+        let mut decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_EVENTS_DECODER_DICTIONARY)?;
+        let events = decompressor
+            .decompress(events, MAX_EVENTS_SIZE)
+            .context("Decompressing events")?;
         let events: dto::Events =
             bincode::serde::decode_from_slice(&events, bincode::config::standard())
                 .context("Deserializing events")?
@@ -290,7 +337,11 @@ impl Transaction<'_> {
             None => return Ok(None),
         };
 
-        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+        let mut decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_TX_DECODER_DICTIONARY)?;
+        let transaction = decompressor
+            .decompress(transaction, MAX_TX_SIZE)
+            .context("Decompressing transaction")?;
         let transaction: dto::Transaction =
             bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
                 .context("Deserializing transaction")?
@@ -355,13 +406,22 @@ impl Transaction<'_> {
             .query(params![&block_number])
             .context("Executing query")?;
 
+        let mut tx_decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_TX_DECODER_DICTIONARY)?;
+        let mut receipt_decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_RECEIPT_DECODER_DICTIONARY)?;
+        let mut events_decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_EVENTS_DECODER_DICTIONARY)?;
+
         let mut data = Vec::new();
         while let Some(row) = rows.next()? {
             let receipt = row
                 .get_ref_unwrap("receipt")
                 .as_blob_or_null()?
                 .context("Receipt data missing")?;
-            let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
+            let receipt = receipt_decompressor
+                .decompress(receipt, MAX_RECEIPT_SIZE)
+                .context("Decompressing transaction receipt")?;
             let receipt: dto::Receipt =
                 bincode::serde::decode_from_slice(&receipt, bincode::config::standard())
                     .context("Deserializing transaction receipt")?
@@ -371,7 +431,9 @@ impl Transaction<'_> {
                 .get_ref_unwrap("tx")
                 .as_blob_or_null()?
                 .context("Transaction data missing")?;
-            let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+            let transaction = tx_decompressor
+                .decompress(transaction, MAX_TX_SIZE)
+                .context("Decompressing transaction")?;
             let transaction: dto::Transaction =
                 bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
                     .context("Deserializing transaction")?
@@ -381,7 +443,9 @@ impl Transaction<'_> {
                 .get_ref_unwrap("events")
                 .as_blob_or_null()?
                 .context("Events missing")?;
-            let events = zstd::decode_all(events).context("Decompressing events")?;
+            let events = events_decompressor
+                .decompress(events, MAX_EVENTS_SIZE)
+                .context("Decompressing events")?;
             let events: dto::Events =
                 bincode::serde::decode_from_slice(&events, bincode::config::standard())
                     .context("Deserializing events")?
@@ -416,13 +480,18 @@ impl Transaction<'_> {
             .query(params![&block_number])
             .context("Executing query")?;
 
+        let mut tx_decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_TX_DECODER_DICTIONARY)?;
+
         let mut data = Vec::new();
         while let Some(row) = rows.next()? {
             let transaction = row
                 .get_ref_unwrap("tx")
                 .as_blob_or_null()?
                 .context("Transaction data missing")?;
-            let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+            let transaction = tx_decompressor
+                .decompress(transaction, MAX_TX_SIZE)
+                .context("Decompressing transaction")?;
             let transaction: dto::Transaction =
                 bincode::serde::decode_from_slice(&transaction, bincode::config::standard())
                     .context("Deserializing transaction")?
@@ -455,6 +524,9 @@ impl Transaction<'_> {
             .query(params![&block_number])
             .context("Executing query")?;
 
+        let mut events_decompressor =
+            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_EVENTS_DECODER_DICTIONARY)?;
+
         let mut data = Vec::new();
         while let Some(row) = rows.next()? {
             let hash = row
@@ -464,7 +536,9 @@ impl Transaction<'_> {
                 .get_ref_unwrap("events")
                 .as_blob_or_null()?
                 .context("Transaction events missing")?;
-            let events = zstd::decode_all(events).context("Decompressing events")?;
+            let events = events_decompressor
+                .decompress(events, MAX_EVENTS_SIZE)
+                .context("Decompressing events")?;
             let events: dto::Events =
                 bincode::serde::decode_from_slice(&events, bincode::config::standard())
                     .context("Deserializing events")?
