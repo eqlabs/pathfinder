@@ -14,7 +14,7 @@ pub enum TransactionStatus {
     L2Accepted,
 }
 
-const ZSTD_COMPRESSION_LEVEL: i32 = 9;
+pub const ZSTD_COMPRESSION_LEVEL: i32 = 9;
 
 const MAX_TX_SIZE: usize = 1024usize * 1024;
 const MAX_RECEIPT_SIZE: usize = 1024usize * 1024;
@@ -23,15 +23,11 @@ const MAX_EVENTS_SIZE: usize = 1024usize * 1024;
 lazy_static::lazy_static! {
     pub static ref ZSTD_TX_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
         zstd::dict::EncoderDictionary::new(include_bytes!("../assets/tx.zdict"), ZSTD_COMPRESSION_LEVEL);
-    pub static ref ZSTD_RECEIPT_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
-        zstd::dict::EncoderDictionary::new(include_bytes!("../assets/receipt.zdict"), ZSTD_COMPRESSION_LEVEL);
     pub static ref ZSTD_EVENTS_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
         zstd::dict::EncoderDictionary::new(include_bytes!("../assets/events.zdict"), ZSTD_COMPRESSION_LEVEL);
 
     pub static ref ZSTD_TX_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
         zstd::dict::DecoderDictionary::new(include_bytes!("../assets/tx.zdict"));
-    pub static ref ZSTD_RECEIPT_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
-        zstd::dict::DecoderDictionary::new(include_bytes!("../assets/receipt.zdict"));
     pub static ref ZSTD_EVENTS_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
         zstd::dict::DecoderDictionary::new(include_bytes!("../assets/events.zdict"));
 }
@@ -49,8 +45,7 @@ impl Transaction<'_> {
 
         let mut tx_compressor =
             zstd::bulk::Compressor::with_prepared_dictionary(&ZSTD_TX_ENCODER_DICTIONARY)?;
-        let mut receipt_compressor =
-            zstd::bulk::Compressor::with_prepared_dictionary(&ZSTD_RECEIPT_ENCODER_DICTIONARY)?;
+        let mut receipt_compressor = zstd::bulk::Compressor::new(ZSTD_COMPRESSION_LEVEL)?;
         let mut events_compressor =
             zstd::bulk::Compressor::with_prepared_dictionary(&ZSTD_EVENTS_ENCODER_DICTIONARY)?;
 
@@ -272,8 +267,7 @@ impl Transaction<'_> {
             Some(data) => data,
             None => return Ok(None),
         };
-        let mut decompressor =
-            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_RECEIPT_DECODER_DICTIONARY)?;
+        let mut decompressor = zstd::bulk::Decompressor::new()?;
         let receipt = decompressor
             .decompress(receipt, MAX_RECEIPT_SIZE)
             .context("Decompressing receipt")?;
@@ -408,8 +402,7 @@ impl Transaction<'_> {
 
         let mut tx_decompressor =
             zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_TX_DECODER_DICTIONARY)?;
-        let mut receipt_decompressor =
-            zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_RECEIPT_DECODER_DICTIONARY)?;
+        let mut receipt_decompressor = zstd::bulk::Decompressor::new()?;
         let mut events_decompressor =
             zstd::bulk::Decompressor::with_prepared_dictionary(&ZSTD_EVENTS_DECODER_DICTIONARY)?;
 

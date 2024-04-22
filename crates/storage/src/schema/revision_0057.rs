@@ -23,9 +23,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         let mut tx_compressor = zstd::bulk::Compressor::with_prepared_dictionary(
             &crate::connection::transaction::ZSTD_TX_ENCODER_DICTIONARY,
         )?;
-        let mut receipt_compressor = zstd::bulk::Compressor::with_prepared_dictionary(
-            &crate::connection::transaction::ZSTD_RECEIPT_ENCODER_DICTIONARY,
-        )?;
+        let mut receipt_compressor =
+            zstd::bulk::Compressor::new(crate::connection::transaction::ZSTD_COMPRESSION_LEVEL)?;
         let mut events_compressor = zstd::bulk::Compressor::with_prepared_dictionary(
             &crate::connection::transaction::ZSTD_EVENTS_ENCODER_DICTIONARY,
         )?;
