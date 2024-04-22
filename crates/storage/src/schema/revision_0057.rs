@@ -23,8 +23,6 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         let mut tx_compressor = zstd::bulk::Compressor::with_prepared_dictionary(
             &crate::connection::transaction::ZSTD_TX_ENCODER_DICTIONARY,
         )?;
-        let mut receipt_compressor =
-            zstd::bulk::Compressor::new(crate::connection::transaction::ZSTD_COMPRESSION_LEVEL)?;
         let mut events_compressor = zstd::bulk::Compressor::with_prepared_dictionary(
             &crate::connection::transaction::ZSTD_EVENTS_ENCODER_DICTIONARY,
         )?;
@@ -33,9 +31,6 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 let transaction = zstd::decode_all(transaction.as_slice())
                     .context("Decompressing transaction")
                     .unwrap();
-                let receipt = zstd::decode_all(receipt.as_slice())
-                    .context("Decompressing receipt")
-                    .unwrap();
                 let events = zstd::decode_all(events.as_slice())
                     .context("Decompressing events")
                     .unwrap();
@@ -43,10 +38,6 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 let transaction = tx_compressor
                     .compress(&transaction)
                     .context("Compressing transaction")
-                    .unwrap();
-                let receipt = receipt_compressor
-                    .compress(&receipt)
-                    .context("Compressing receipt")
                     .unwrap();
                 let events = events_compressor
                     .compress(&events)
