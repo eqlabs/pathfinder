@@ -892,13 +892,15 @@ mod tests {
         }
     }
 
-    #[cfg(fixme)]
     mod handle_class_stream {
+        use std::collections::HashMap;
+        use std::future;
+
         use crate::state::block_hash::calculate_event_commitment;
 
         use super::super::handle_class_stream;
         use super::*;
-        use fake::{Fake, Faker};
+        use fake::{Dummy, Fake, Faker};
         use futures::{stream, SinkExt};
         use p2p::libp2p::PeerId;
         use pathfinder_common::{event::Event, transaction::TransactionVariant, TransactionHash};
@@ -907,79 +909,122 @@ mod tests {
         use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::{StorageBuilder, TransactionData};
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET, CAIRO_2_0_0_STACK_OVERFLOW,
+            CAIRO_0_10_TUPLES_INTEGRATION, CAIRO_0_11_SIERRA,
         };
+
+        #[derive(Clone, Copy, Debug, Dummy)]
+        struct DeclaredClass {
+            pub block: BlockNumber,
+            pub class: ClassHash,
+        }
+
+        #[derive(Clone, Debug)]
+        struct DeclaredClasses(Vec<DeclaredClass>);
+
+        impl DeclaredClasses {
+            pub fn to_stream(
+                &self,
+            ) -> impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
+            {
+                let mut all = HashMap::<_, HashSet<ClassHash>>::new();
+                self.0
+                    .iter()
+                    .copied()
+                    .for_each(|DeclaredClass { block, class }| {
+                        all.entry(block).or_default().insert(class);
+                    });
+                stream::iter(all.into_iter().map(Ok))
+            }
+        }
+
+        impl<T> Dummy<T> for DeclaredClasses {
+            fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
+                DeclaredClasses(fake::vec![DeclaredClass; 1..10])
+            }
+        }
 
         struct Setup {
             pub streamed_classes: Vec<anyhow::Result<PeerData<Class>>>,
-            pub expected_hashes: Vec<ClassHash>,
+            pub declared_classes: DeclaredClasses,
             pub expected_defs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
             pub storage: Storage,
         }
 
+        const ONE: BlockNumber = BlockNumber::new_or_panic(1);
+
+        /// The genesis block contains no declared classes
         async fn setup(expect_correct_class_hashes: bool) -> Setup {
             tokio::task::spawn_blocking(move || {
-                let mut block = fake_storage::init::with_n_blocks(1).pop().unwrap();
+                let mut blocks = fake_storage::init::with_n_blocks(2);
+
+                blocks[0].state_update.declared_cairo_classes = Default::default();
+                blocks[0].state_update.declared_sierra_classes = Default::default();
+                blocks[0].cairo_defs = Default::default();
+                blocks[0].sierra_defs = Default::default();
 
                 let (cairo_hash, sierra_hash) = if expect_correct_class_hashes {
                     (
                         ClassHash(felt!(
-                            "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
+                            "0x542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
                         )),
                         SierraHash(felt!(
-                            "0x03dd9347d22f1ea2d5fbc7bd1f0860c6c334973499f9f1989fcb81bfff5191da"
+                            "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
                         )),
                     )
                 } else {
                     Default::default()
                 };
-                block.state_update.declared_cairo_classes = [cairo_hash].into();
-                block.state_update.declared_sierra_classes = [(sierra_hash, CasmHash::ZERO)].into();
-                block.cairo_defs = vec![(
-                    cairo_hash,
-                    CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET.to_vec(),
-                )];
-                block.sierra_defs = vec![(
-                    sierra_hash,
-                    CAIRO_2_0_0_STACK_OVERFLOW.to_vec(),
-                    b"casm".to_vec(),
-                )];
+                blocks[1].state_update.declared_cairo_classes = [cairo_hash].into();
+                blocks[1].state_update.declared_sierra_classes =
+                    [(sierra_hash, CasmHash::ZERO)].into();
+                blocks[1].cairo_defs = vec![(cairo_hash, CAIRO_0_10_TUPLES_INTEGRATION.to_vec())];
+                blocks[1].sierra_defs =
+                    vec![(sierra_hash, CAIRO_0_11_SIERRA.to_vec(), b"casm".to_vec())];
 
-                let streamed_classes = block
+                let streamed_classes = blocks[1]
                     .sierra_defs
                     .iter()
                     .cloned()
                     .map(|(sierra_hash, sierra_definition, casm_definition)| {
                         anyhow::Result::Ok(PeerData::for_tests(Class::Sierra {
-                            block_number: block.header.header.number,
+                            block_number: blocks[1].header.header.number,
                             sierra_hash,
                             sierra_definition,
                             casm_definition,
                         }))
                     })
-                    .chain(block.cairo_defs.iter().cloned().map(|(hash, definition)| {
-                        anyhow::Result::Ok(PeerData::for_tests(Class::Cairo {
-                            block_number: block.header.header.number,
-                            hash,
-                            definition,
-                        }))
-                    }))
+                    .chain(
+                        blocks[1]
+                            .cairo_defs
+                            .iter()
+                            .cloned()
+                            .map(|(hash, definition)| {
+                                anyhow::Result::Ok(PeerData::for_tests(Class::Cairo {
+                                    block_number: blocks[1].header.header.number,
+                                    hash,
+                                    definition,
+                                }))
+                            }),
+                    )
                     .collect::<Vec<_>>();
-                let (expected_hashes, expected_defs) = streamed_classes
+                let (declared_classes, expected_defs) = streamed_classes
                     .iter()
                     .map(|class| {
                         let class = &class.as_ref().unwrap().data;
                         (
-                            class.hash(),
+                            DeclaredClass {
+                                block: class.block_number(),
+                                class: class.hash(),
+                            },
                             (class.class_definition(), class.casm_definition()),
                         )
                     })
-                    .unzip::<_, _, Vec<ClassHash>, Vec<(Vec<u8>, Option<Vec<u8>>)>>();
+                    .unzip::<_, _, Vec<DeclaredClass>, Vec<(Vec<u8>, Option<Vec<u8>>)>>();
                 let storage = StorageBuilder::in_memory().unwrap();
-                fake_storage::fill(&storage, &[block]);
+                fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_classes,
-                    expected_hashes,
+                    declared_classes: DeclaredClasses(declared_classes),
                     expected_defs,
                     storage,
                 }
@@ -992,29 +1037,32 @@ mod tests {
         async fn happy_path() {
             let Setup {
                 streamed_classes,
-                expected_hashes,
+                declared_classes,
                 expected_defs,
                 storage,
             } = setup(true).await;
 
-            handle_class_stream(stream::iter(streamed_classes), storage.clone())
-                .await
-                .unwrap();
+            handle_class_stream(
+                stream::iter(streamed_classes),
+                storage.clone(),
+                declared_classes.to_stream(),
+            )
+            .await
+            .unwrap();
 
             let actual_defs = tokio::task::spawn_blocking(move || {
                 let mut conn = storage.connection().unwrap();
                 let db_tx = conn.transaction().unwrap();
-                expected_hashes
-                    .iter()
-                    .map(|&class_hash| {
+                declared_classes
+                    .0
+                    .into_iter()
+                    .map(|x| {
                         (
                             db_tx
-                                .class_definition_at(BlockNumber::GENESIS.into(), class_hash)
+                                .class_definition_at(x.block.into(), x.class)
                                 .unwrap()
                                 .unwrap(),
-                            db_tx
-                                .casm_definition_at(BlockNumber::GENESIS.into(), class_hash)
-                                .unwrap(),
+                            db_tx.casm_definition_at(x.block.into(), x.class).unwrap(),
                         )
                     })
                     .collect::<Vec<_>>()
@@ -1027,12 +1075,12 @@ mod tests {
 
         #[rstest::rstest]
         #[case::cairo(Class::Cairo {
-            block_number: BlockNumber::GENESIS,
+            block_number: ONE,
             hash: ClassHash::ZERO,
             definition: Default::default()
         })]
         #[case::sierra(Class::Sierra {
-            block_number: BlockNumber::GENESIS,
+            block_number: ONE,
             sierra_hash: SierraHash::ZERO,
             sierra_definition: Default::default(),
             casm_definition: Default::default()
@@ -1044,7 +1092,7 @@ mod tests {
             let expected_peer_id = data.peer;
 
             assert_matches::assert_matches!(
-                handle_class_stream(stream::once(std::future::ready(Ok(data))), storage)
+                handle_class_stream(stream::once(std::future::ready(Ok(data))), storage, Faker.fake::<DeclaredClasses>().to_stream())
                     .await
                     .unwrap_err(),
                 SyncError::BadClassLayout(x) => assert_eq!(x, expected_peer_id)
@@ -1055,6 +1103,7 @@ mod tests {
         async fn unexpected_class() {
             let Setup {
                 mut streamed_classes,
+                declared_classes,
                 storage,
                 ..
             } = setup(true).await;
@@ -1067,7 +1116,7 @@ mod tests {
             let expected_peer_id = peer_data.peer;
 
             assert_matches::assert_matches!(
-                handle_class_stream(stream::iter(streamed_classes), storage)
+                handle_class_stream(stream::iter(streamed_classes), storage, declared_classes.to_stream())
                     .await
                     .unwrap_err(),
                 SyncError::UnexpectedClass(x) => assert_eq!(x, expected_peer_id)
@@ -1078,13 +1127,14 @@ mod tests {
         async fn class_hash_mismatch() {
             let Setup {
                 streamed_classes,
+                declared_classes,
                 storage,
                 ..
             } = setup(false).await;
             let expected_peer_id = streamed_classes[0].as_ref().unwrap().peer;
 
             assert_matches::assert_matches!(
-                handle_class_stream(stream::iter(streamed_classes), storage.clone())
+                handle_class_stream(stream::iter(streamed_classes), storage.clone(), declared_classes.to_stream())
                     .await
                     .unwrap_err(),
                 SyncError::BadClassHash(x) => assert_eq!(x, expected_peer_id)
@@ -1096,7 +1146,8 @@ mod tests {
             assert_matches::assert_matches!(
                 handle_class_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
-                    StorageBuilder::in_memory().unwrap()
+                    StorageBuilder::in_memory().unwrap(),
+                    Faker.fake::<DeclaredClasses>().to_stream()
                 )
                 .await
                 .unwrap_err(),
