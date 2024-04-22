@@ -188,7 +188,6 @@ pub(super) fn declared_classes_at_block_stream(
 
 /// This function relies on the guarantee that the block numbers in the stream are correct.
 pub(super) fn verify_declared_at(
-    storage: Storage,
     mut declared_classes_at_block: impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
         + Unpin,
     mut classes: impl futures::Stream<Item = Result<PeerData<ClassWithLayout>, SyncError>> + Unpin,

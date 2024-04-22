@@ -468,8 +468,7 @@ async fn handle_class_stream(
 
     pin_mut!(a, declared_classes_at_block_stream);
 
-    let b =
-        class_definitions::verify_declared_at(storage.clone(), declared_classes_at_block_stream, a);
+    let b = class_definitions::verify_declared_at(declared_classes_at_block_stream, a);
 
     b.and_then(class_definitions::verify_hash)
         .try_chunks(10)
