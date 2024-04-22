@@ -3,6 +3,8 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use anyhow::Context;
+use futures::pin_mut;
+use futures::stream::StreamExt;
 use p2p::client::peer_agnostic::Class;
 use p2p::PeerData;
 use p2p_proto::transaction;
@@ -151,44 +153,72 @@ pub(super) async fn verify_layout(
     }
 }
 
-/// Checks if the streamed class is expected to be declared at the given block.
-/// If yes, it removes its hash from the "expected" set and returns the class, otherwise it returns an error.
-/// When the set of expected classes for the block is exhausted it fetches the set for the next block.
-///
-/// This function relies on the guarantee that the block numbers in the stream are correct.
-pub(super) async fn verify_declared_at(
+/// Returns a stream of sets of class hashes declared at each block in the range [start, stop_inclusive].
+pub(super) fn declared_classes_at_block_stream(
     storage: Storage,
-    expected_classes_for_block: Arc<Mutex<HashSet<ClassHash>>>,
-    current_class: PeerData<ClassWithLayout>,
-) -> Result<PeerData<ClassWithLayout>, SyncError> {
-    let mut locked_expected_classes_for_block = expected_classes_for_block.lock().await;
-    let block_number = current_class.data.class.block_number();
-    let peer_id = current_class.peer;
+    mut start: BlockNumber,
+    stop_inclusive: BlockNumber,
+) -> impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>> {
+    async_stream::try_stream! {
+        while start <= stop_inclusive {
+            let storage = storage.clone();
 
-    if locked_expected_classes_for_block.is_empty() {
-        let declared = tokio::task::spawn_blocking(move || {
-            let mut db = storage
-                .connection()
-                .context("Creating database connection")?;
-            let db = db.transaction().expect("todo");
-            let declared: Vec<ClassHash> = db
-                .declared_classes_at(block_number.into())
-                .context("Querying declared classes at block")?
-                .ok_or(anyhow::anyhow!("Block header not found"))?;
-            Result::<_, SyncError>::Ok(declared)
-        })
-        .await
-        .context("Joining blocking task")??;
+            let declared_at_this_block = tokio::task::spawn_blocking(move || -> anyhow::Result<(BlockNumber, HashSet<ClassHash>)> {
+                let mut db = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let db = db.transaction().expect("todo");
+                let declared = db
+                    .declared_classes_at(start.into())
+                    .context("Querying declared classes at block")?
+                    .context("Block header not found")?
+                    .into_iter()
+                    .collect();
+                Ok((start, declared))
+            })
+            .await
+            .context("Joining blocking task")??;
 
-        locked_expected_classes_for_block.extend(declared.into_iter());
+            yield declared_at_this_block;
+
+            start += 1;
+        }
     }
+}
 
-    let class_hash = current_class.data.class.hash();
+/// This function relies on the guarantee that the block numbers in the stream are correct.
+pub(super) fn verify_declared_at(
+    storage: Storage,
+    mut declared_classes_at_block: impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
+        + Unpin,
+    mut classes: impl futures::Stream<Item = Result<PeerData<ClassWithLayout>, SyncError>> + Unpin,
+) -> impl futures::Stream<Item = Result<PeerData<ClassWithLayout>, SyncError>> {
+    async_stream::try_stream! {
+        while let Some(declared) = declared_classes_at_block.next().await {
+            let (declared_at, mut declared) = declared?;
 
-    if locked_expected_classes_for_block.remove(&class_hash) {
-        Ok(current_class)
-    } else {
-        Err(SyncError::UnexpectedClass(peer_id))
+            // Some blocks may have no declared classes.
+            if declared.is_empty() {
+                continue;
+            }
+
+            while let Some(class) = classes.next().await {
+                let class = class?;
+
+                if declared_at != class.data.class.block_number() {
+                    Err(SyncError::UnexpectedClass(class.peer))?;
+                }
+
+                let class_hash = class.data.class.hash();
+
+                if declared.remove(&class_hash) {
+                    yield class;
+                } else {
+                    Err(SyncError::UnexpectedClass(class.peer))?;
+                }
+            }
+
+        }
     }
 }
 
