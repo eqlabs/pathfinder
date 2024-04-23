@@ -1,6 +1,7 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
+
+use crate::context::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -14,8 +15,8 @@ pub async fn get_transaction_receipt(
     context: RpcContext,
     input: GetTransactionReceiptInput,
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
-    // v0.5 has a different fee structure, but that gets handled in the v0.5 method. We can
-    // safely use the impl as is.
+    // v0.5 has a different fee structure, but that gets handled in the v0.5 method.
+    // We can safely use the impl as is.
     get_transaction_receipt_impl(context, input).await
 }
 
@@ -87,17 +88,26 @@ pub async fn get_transaction_receipt_impl(
 }
 
 pub mod types {
-    use crate::felt::{RpcFelt, RpcFelt251};
-    use crate::v02::types::reply::BlockStatus;
-    use crate::v06::types::PriceUnit;
     use pathfinder_common::{
-        BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
-        L2ToL1MessagePayloadElem, TransactionHash, TransactionVersion,
+        BlockHash,
+        BlockNumber,
+        ContractAddress,
+        EthereumAddress,
+        EventData,
+        EventKey,
+        Fee,
+        L2ToL1MessagePayloadElem,
+        TransactionHash,
+        TransactionVersion,
     };
     use pathfinder_serde::{u64_as_hex_str, EthereumAddressAsHexStr, H256AsNoLeadingZerosHexStr};
     use primitive_types::H256;
     use serde::Serialize;
     use serde_with::serde_as;
+
+    use crate::felt::{RpcFelt, RpcFelt251};
+    use crate::v02::types::reply::BlockStatus;
+    use crate::v06::types::PriceUnit;
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -539,7 +549,8 @@ pub mod types {
 
     /// Non-pending L2 transaction receipt as returned by the RPC API.
     ///
-    /// Pending receipts don't have status, status_data, block_hash, block_number fields
+    /// Pending receipts don't have status, status_data, block_hash,
+    /// block_number fields
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
@@ -756,18 +767,19 @@ mod tests {
     // TODO: add serialization tests for each receipt variant
     // TODO: add test for v3 receipt to check gas unit is correct
 
-    use crate::v06::types::PriceUnit;
-
-    use super::types::ExecutionResourcesProperties;
-    use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::receipt::{BuiltinCounters, ExecutionResources};
     use pathfinder_common::{BlockNumber, EthereumAddress};
     use primitive_types::H160;
 
+    use super::types::ExecutionResourcesProperties;
+    use super::*;
+    use crate::v06::types::PriceUnit;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {

@@ -4,35 +4,28 @@ pub mod l2;
 mod pending;
 pub mod revert;
 
+use std::future::Future;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::BlockCommitmentSignature;
-use pathfinder_common::Chain;
+use pathfinder_common::{BlockCommitmentSignature, Chain};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
-use pathfinder_rpc::PendingData;
-use pathfinder_rpc::{
-    v02::types::syncing::{self, NumberedBlock, Syncing},
-    SyncState, TopicBroadcasters,
-};
+use pathfinder_rpc::v02::types::syncing::{self, NumberedBlock, Syncing};
+use pathfinder_rpc::{PendingData, SyncState, TopicBroadcasters};
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::Block;
-use starknet_gateway_types::reply::PendingBlock;
-
-use std::future::Future;
-use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
+use starknet_gateway_types::reply::{Block, PendingBlock};
 use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::watch::Sender as WatchSender;
 
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
-
-use tokio::sync::watch::Sender as WatchSender;
 
 #[derive(Debug)]
 pub enum SyncEvent {
@@ -229,8 +222,8 @@ where
         gossiper,
     ));
 
-    // Start L1 producer task. Clone the event sender so that the channel remains open
-    // even if the producer task fails.
+    // Start L1 producer task. Clone the event sender so that the channel remains
+    // open even if the producer task fails.
     let mut l1_handle = tokio::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
@@ -238,8 +231,8 @@ where
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
 
-    // Start L2 producer task. Clone the event sender so that the channel remains open
-    // even if the producer task fails.
+    // Start L2 producer task. Clone the event sender so that the channel remains
+    // open even if the producer task fails.
     let mut l2_handle = tokio::spawn(l2_sync(
         event_sender.clone(),
         l2_context.clone(),
@@ -268,8 +261,8 @@ where
         rx_current.clone(),
     ));
 
-    /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
-    /// tasks are crashing.
+    /// Delay before restarting L1 or L2 tasks if they fail. This delay helps
+    /// prevent DoS if these tasks are crashing.
     #[cfg(not(test))]
     const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
     #[cfg(test)]
@@ -554,16 +547,19 @@ async fn consumer(
                         tracing::info!("Updated Starknet state with block {}", block_number)
                     }
                     Some(_) => {
-                        tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, signature in {:2}s",
-                                    block_number,
-                                    block_time.as_secs_f32(),
-                                    block_time_avg.as_secs_f32(),
-                                    timings.class_declaration.as_secs_f32(),
-                                    storage_updates,
-                                    update_t.as_secs_f32(),
-                                    timings.block_download.as_secs_f32(),
-                                    timings.signature_download.as_secs_f32(),
-                                );
+                        tracing::debug!(
+                            "Updated Starknet state with block {} after {:2}s ({:2}s avg). \
+                             contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in \
+                             {:2}s, signature in {:2}s",
+                            block_number,
+                            block_time.as_secs_f32(),
+                            block_time_avg.as_secs_f32(),
+                            timings.class_declaration.as_secs_f32(),
+                            storage_updates,
+                            update_t.as_secs_f32(),
+                            timings.block_download.as_secs_f32(),
+                            timings.signature_download.as_secs_f32(),
+                        );
                     }
                 }
             }
@@ -679,8 +675,9 @@ async fn latest_n_blocks(
             current = (header.number - 1).into();
         }
 
-        // We need to reverse the order here because we want the last `N` blocks in chronological order.
-        // Our sql query gives us the last `N` blocks but in reverse order (ORDER BY DESC), so we undo that here.
+        // We need to reverse the order here because we want the last `N` blocks in
+        // chronological order. Our sql query gives us the last `N` blocks but
+        // in reverse order (ORDER BY DESC), so we undo that here.
         blocks.reverse();
 
         Ok(blocks)
@@ -827,7 +824,8 @@ async fn l2_update(
         .context("Updating Starknet state")?;
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
-        // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
+        // Ensure that roots match.. what should we do if it doesn't? For now the whole
+        // sync process ends..
         #[cfg(not(feature = "p2p"))]
         anyhow::ensure!(
             state_commitment == block.state_commitment,
@@ -835,7 +833,8 @@ async fn l2_update(
         );
 
         // In p2p the state commitment can be missing, which is marked as 0.
-        // Once signature support is added this way of verifying state commitment will be deprecated.
+        // Once signature support is added this way of verifying state commitment will
+        // be deprecated.
         #[cfg(feature = "p2p")]
         anyhow::ensure!(
             block.state_commitment == StateCommitment::ZERO
@@ -948,8 +947,9 @@ async fn l2_update(
         if let Some(sender) = websocket_txs {
             if let Err(e) = sender.new_head.send_if_receiving(header.into()) {
                 tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
-                // Disable websocket entirely so that the closed channel doesn't spam this error. It
-                // is unlikely that any error here wouldn't simply repeat indefinitely.
+                // Disable websocket entirely so that the closed channel doesn't spam this
+                // error. It is unlikely that any error here wouldn't simply
+                // repeat indefinitely.
                 *websocket_txs = None;
             }
         }
@@ -978,7 +978,8 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
 
         // Roll back Merkle trie updates.
         //
-        // If we're rolling back genesis then there will be no blocks left so state will be empty.
+        // If we're rolling back genesis then there will be no blocks left so state will
+        // be empty.
         if let Some(target_block) = reorg_tail.parent() {
             let target_header = transaction
                 .block_header(target_block.into())
@@ -1166,19 +1167,29 @@ fn update_starknet_state(
 
 #[cfg(test)]
 mod tests {
-    use super::l2;
-    use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
+    use std::sync::Arc;
+
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt_bytes, BlockHash, BlockHeader, BlockNumber, ClassHash, EventCommitment, SierraHash,
-        StateCommitment, StateUpdate, TransactionCommitment,
+        felt_bytes,
+        BlockCommitmentSignature,
+        BlockHash,
+        BlockHeader,
+        BlockNumber,
+        ClassHash,
+        EventCommitment,
+        SierraHash,
+        StateCommitment,
+        StateUpdate,
+        TransactionCommitment,
     };
-    use pathfinder_common::{macro_prelude::*, BlockCommitmentSignature};
     use pathfinder_crypto::Felt;
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::StorageBuilder;
-    use starknet_gateway_types::reply::Block;
-    use starknet_gateway_types::reply::{self, GasPrices};
-    use std::sync::Arc;
+    use starknet_gateway_types::reply::{self, Block, GasPrices};
+
+    use super::l2;
+    use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
 
     /// Generate some arbitrary block chain data from genesis onwards.
     ///
@@ -1291,8 +1302,8 @@ mod tests {
 
         let tx = connection.transaction().unwrap();
         for i in 0..num_blocks {
-            // TODO: Ideally we would test data consistency as well, but that will be easier once we use
-            // the same types between storage, sync and gateway.
+            // TODO: Ideally we would test data consistency as well, but that will be easier
+            // once we use the same types between storage, sync and gateway.
             let should_exist = tx
                 .block_exists(BlockNumber::new_or_panic(i as u64).into())
                 .unwrap();

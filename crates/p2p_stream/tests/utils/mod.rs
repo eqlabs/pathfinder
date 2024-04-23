@@ -1,4 +1,8 @@
 //! Common utilities for p2p_stream integration tests.
+use std::fmt::Debug;
+use std::time::Duration;
+use std::{io, iter};
+
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use futures::channel::mpsc;
@@ -9,9 +13,6 @@ use libp2p::identity::{Keypair, PeerId};
 use libp2p::swarm::{self, NetworkBehaviour, StreamProtocol, Swarm};
 use libp2p::{yamux, Transport};
 use p2p_stream::{Codec, InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId};
-use std::fmt::Debug;
-use std::time::Duration;
-use std::{io, iter};
 
 #[derive(Clone, Default)]
 pub struct TestCodec;
@@ -172,7 +173,8 @@ impl Codec for TestCodec {
     }
 }
 
-/// [`SwarmExt::new_ephemeral`] uses `async_std` executor, but we're using `tokio`
+/// [`SwarmExt::new_ephemeral`] uses `async_std` executor, but we're using
+/// `tokio`
 pub(crate) fn new_ephemeral_with_tokio_executor<B>(
     behaviour_fn: impl FnOnce(Keypair) -> B,
 ) -> Swarm<B>
@@ -195,7 +197,7 @@ where
         transport,
         behaviour_fn(identity),
         peer_id,
-        swarm::Config::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(5)), // Some tests need connections to be kept alive beyond what the individual behaviour configures.,
+        swarm::Config::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(5)), /* Some tests need connections to be kept alive beyond what the individual behaviour configures., */
     )
 }
 

@@ -1,7 +1,8 @@
-use crate::common::{Address, Hash, Iteration};
-use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use pathfinder_crypto::Felt;
+
+use crate::common::{Address, Hash, Iteration};
+use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::ResourceLimits")]
@@ -198,8 +199,17 @@ pub enum TransactionsResponse {
 impl ToProtobuf<proto::transaction::transaction::Txn> for TransactionVariant {
     fn to_protobuf(self) -> proto::transaction::transaction::Txn {
         use proto::transaction::transaction::Txn::{
-            DeclareV0, DeclareV1, DeclareV2, DeclareV3, Deploy, DeployAccountV1, DeployAccountV3,
-            InvokeV0, InvokeV1, InvokeV3, L1Handler,
+            DeclareV0,
+            DeclareV1,
+            DeclareV2,
+            DeclareV3,
+            Deploy,
+            DeployAccountV1,
+            DeployAccountV3,
+            InvokeV0,
+            InvokeV1,
+            InvokeV3,
+            L1Handler,
         };
         match self {
             Self::DeclareV0(txn) => DeclareV0(txn.to_protobuf()),
@@ -223,8 +233,17 @@ impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionVarian
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::transaction::transaction::Txn::{
-            DeclareV0, DeclareV1, DeclareV2, DeclareV3, Deploy, DeployAccountV1, DeployAccountV3,
-            InvokeV0, InvokeV1, InvokeV3, L1Handler,
+            DeclareV0,
+            DeclareV1,
+            DeclareV2,
+            DeclareV3,
+            Deploy,
+            DeployAccountV1,
+            DeployAccountV3,
+            InvokeV0,
+            InvokeV1,
+            InvokeV3,
+            L1Handler,
         };
         match input {
             DeclareV0(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV0),

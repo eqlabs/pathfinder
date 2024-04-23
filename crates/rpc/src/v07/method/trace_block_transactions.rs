@@ -1,5 +1,4 @@
 use crate::context::RpcContext;
-
 use crate::v06::method::trace_block_transactions as v06;
 
 pub async fn trace_block_transactions(
@@ -11,11 +10,18 @@ pub async fn trace_block_transactions(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use pathfinder_common::receipt::Receipt;
     use pathfinder_common::{
-        block_hash, receipt::Receipt, transaction_hash, BlockHeader, GasPrice, SierraHash,
-        StarknetVersion, TransactionIndex,
+        block_hash,
+        transaction_hash,
+        BlockHeader,
+        BlockId,
+        GasPrice,
+        L1DataAvailabilityMode,
+        SierraHash,
+        StarknetVersion,
+        TransactionIndex,
     };
-    use pathfinder_common::{BlockId, L1DataAvailabilityMode};
     use starknet_gateway_types::reply::GasPrices;
     use tokio::task::JoinSet;
 
@@ -149,8 +155,9 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    /// Test that multiple requests for the same block return correctly. This checks that the
-    /// trace request coalescing doesn't do anything unexpected.
+    /// Test that multiple requests for the same block return correctly. This
+    /// checks that the trace request coalescing doesn't do anything
+    /// unexpected.
     #[tokio::test]
     async fn test_request_coalescing() -> anyhow::Result<()> {
         const NUM_REQUESTS: usize = 1000;

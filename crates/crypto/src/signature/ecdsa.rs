@@ -1,10 +1,13 @@
-use crate::algebra::curve::{AffinePoint, ProjectivePoint, CURVE_G};
-use crate::algebra::field::{CurveOrderMontFelt, Felt, MontFelt};
 use std::fmt::{Display, Formatter};
 
-/// Upper bound is 0x0800000000000000000000000000000000000000000000000000000000000000
-/// in Montgomery representation. We could also use Felt::has_more_than_251_bits, but
-/// makes comparison easy for MontFelts and is consistent with StarkWare's implementation.
+use crate::algebra::curve::{AffinePoint, ProjectivePoint, CURVE_G};
+use crate::algebra::field::{CurveOrderMontFelt, Felt, MontFelt};
+
+/// Upper bound is
+/// 0x0800000000000000000000000000000000000000000000000000000000000000
+/// in Montgomery representation. We could also use
+/// Felt::has_more_than_251_bits, but makes comparison easy for MontFelts and is
+/// consistent with StarkWare's implementation.
 pub const UPPER_BOUND: MontFelt = MontFelt::from_raw([
     18446743986131435553,
     160989183,
@@ -56,10 +59,12 @@ pub fn get_pk(sk: Felt) -> Option<Felt> {
         .ok()
 }
 
-/// Generate a signature `(r,s)` on message z with secret key sk with `k` from thread_rng, not constant time!
+/// Generate a signature `(r,s)` on message z with secret key sk with `k` from
+/// thread_rng, not constant time!
 ///
-/// This algorithm tries different random `k` from thread_rng until it finds a valid signature. The
-/// algorithm is **NOT** constant time and care should be taken when used in timing-sensitive contexts.
+/// This algorithm tries different random `k` from thread_rng until it finds a
+/// valid signature. The algorithm is **NOT** constant time and care should be
+/// taken when used in timing-sensitive contexts.
 pub fn ecdsa_sign(sk: Felt, z: Felt) -> Result<(Felt, Felt), SignatureError> {
     let rng = &mut rand::thread_rng();
     loop {
@@ -72,10 +77,12 @@ pub fn ecdsa_sign(sk: Felt, z: Felt) -> Result<(Felt, Felt), SignatureError> {
     }
 }
 
-/// Generate a signature `(r,s)` on message z with secret key sk and explicit randomness k, not constant time!
+/// Generate a signature `(r,s)` on message z with secret key sk and explicit
+/// randomness k, not constant time!
 ///
-/// Never sign the same message with the same randomness twice, or your key my be extracted. The
-/// algorithm is **NOT** constant time and care should be taken when used in timing-sensitive contexts.
+/// Never sign the same message with the same randomness twice, or your key my
+/// be extracted. The algorithm is **NOT** constant time and care should be
+/// taken when used in timing-sensitive contexts.
 pub fn ecdsa_sign_k(sk: Felt, z: Felt, k: Felt) -> Result<(Felt, Felt), SignatureError> {
     let sk = CurveOrderMontFelt::try_from(sk).map_err(|_| SignatureError::SecretKey)?;
     let z = CurveOrderMontFelt::try_from(z).map_err(|_| SignatureError::Message)?;
@@ -100,7 +107,8 @@ pub fn ecdsa_sign_k(sk: Felt, z: Felt, k: Felt) -> Result<(Felt, Felt), Signatur
     Ok((r, s))
 }
 
-/// Retrieve the point for a public key while validating it's non-zero and on the curve.
+/// Retrieve the point for a public key while validating it's non-zero and on
+/// the curve.
 fn get_pk_point(pk: MontFelt) -> Option<AffinePoint> {
     match AffinePoint::from_x(pk) {
         Some(p) if !p.infinity => Some(p),
@@ -116,7 +124,8 @@ pub fn ecdsa_verify_partial(pk: Felt, z: Felt, r: Felt, s: Felt) -> Result<(), S
     ecdsa_verify_inner(pk_proj, z, r, s)
 }
 
-/// Verify an ECDSA signature `(r,s)` on message `z` given a full public key `pk=(x,y)`.
+/// Verify an ECDSA signature `(r,s)` on message `z` given a full public key
+/// `pk=(x,y)`.
 pub fn ecdsa_verify(pk: AffinePoint, z: Felt, r: Felt, s: Felt) -> Result<(), SignatureError> {
     let pk_point = get_pk_point(pk.x).ok_or(SignatureError::PublicKey)?;
     if pk_point.y != pk.y {
@@ -126,9 +135,11 @@ pub fn ecdsa_verify(pk: AffinePoint, z: Felt, r: Felt, s: Felt) -> Result<(), Si
     ecdsa_verify_inner(pk_proj, z, r, s)
 }
 
-/// Verify an ECDSA signature `(r,s)` on message `z` given a validated public key `pk`.
+/// Verify an ECDSA signature `(r,s)` on message `z` given a validated public
+/// key `pk`.
 ///
-/// The caller should check that the public key is on the curve and not infinity.
+/// The caller should check that the public key is on the curve and not
+/// infinity.
 pub fn ecdsa_verify_inner(
     pk: ProjectivePoint,
     z: Felt,

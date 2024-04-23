@@ -19,8 +19,10 @@ pub fn with_allowed_origins(allowed_origins: AllowedOrigins) -> CorsLayer {
 
 #[cfg(test)]
 mod tests {
-    use crate::{context::RpcContext, RpcServer, RpcVersion};
     use http::HeaderValue;
+
+    use crate::context::RpcContext;
+    use crate::{RpcServer, RpcVersion};
 
     #[tokio::test]
     async fn preflight() {

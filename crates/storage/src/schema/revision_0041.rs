@@ -1,10 +1,10 @@
 use anyhow::Context;
 
-/// This migration replaces the hash-index'd tree tables with integer ones and other
-/// changes related to this.
+/// This migration replaces the hash-index'd tree tables with integer ones and
+/// other changes related to this.
 ///
-/// Because this is the first migration post-base, we are guaranteed that there is no
-/// data to migrate.
+/// Because this is the first migration post-base, we are guaranteed that there
+/// is no data to migrate.
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     drop_table(tx, "tree_class").context("Dropping tree_class table")?;
     drop_table(tx, "tree_global").context("Dropping tree_global table")?;
@@ -28,12 +28,14 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     .context("Creating contract_roots table")?;
 
     tx.execute(
-        "CREATE INDEX contract_roots_address_block_number ON contract_roots(contract_address, block_number)", []
+        "CREATE INDEX contract_roots_address_block_number ON contract_roots(contract_address, \
+         block_number)",
+        [],
     )
     .context("Creating contract_roots_address_block_number index")?;
 
-    // Redo the class commitment leaf table. This is safe to do without migrating the data since this is the first
-    // migration.
+    // Redo the class commitment leaf table. This is safe to do without migrating
+    // the data since this is the first migration.
     tx.execute("DROP TABLE class_commitment_leaves", [])
         .context("Dropping class_commitment_leaves table")?;
     tx.execute(
@@ -52,8 +54,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Creating class_commitment_leaves_casm index")?;
 
-    // Redo the contract state hash table. We already store nonce, root and class hashes in separate tables, so
-    // we only need the state hash now.
+    // Redo the contract state hash table. We already store nonce, root and class
+    // hashes in separate tables, so we only need the state hash now.
     tx.execute("DROP TABLE contract_states", [])
         .context("Dropping contract_states table")?;
     tx.execute(

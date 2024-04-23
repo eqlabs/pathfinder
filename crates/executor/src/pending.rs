@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use blockifier::state::{errors::StateError, state_api::StateReader};
-
+use blockifier::state::errors::StateError;
+use blockifier::state::state_api::StateReader;
 use pathfinder_common::{StateUpdate, StorageAddress};
 use starknet_api::core::ContractAddress;
 use starknet_api::state::StorageKey;
@@ -103,12 +103,17 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
 
 #[cfg(test)]
 mod tests {
-    use super::PendingStateReader;
-
     use blockifier::state::state_api::StateReader;
     use pathfinder_common::{
-        class_hash, contract_address, contract_nonce, storage_address, storage_value, StateUpdate,
+        class_hash,
+        contract_address,
+        contract_nonce,
+        storage_address,
+        storage_value,
+        StateUpdate,
     };
+
+    use super::PendingStateReader;
 
     struct DummyStateReader {}
 

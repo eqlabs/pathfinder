@@ -1,5 +1,7 @@
+use serde::de::Visitor;
+use serde::{Deserialize, Serialize};
+
 use super::Felt;
-use serde::{de::Visitor, Deserialize, Serialize};
 
 impl Serialize for Felt {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -41,8 +43,9 @@ impl<'de> Deserialize<'de> for Felt {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pretty_assertions_sorted::assert_eq;
+
+    use super::*;
     const ZERO: &str = r#""0x0""#;
     const ODD: &str = "0x1234567890abcde";
     const EVEN: &str = "0x1234567890abcdef";

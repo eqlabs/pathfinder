@@ -1,16 +1,27 @@
-//! Utilities used for serializing/deserializing sequencer REST API related data.
+//! Utilities used for serializing/deserializing sequencer REST API related
+//! data.
+
+use std::borrow::Cow;
+use std::str::FromStr;
 
 use num_bigint::BigUint;
 use pathfinder_common::{
-    BlockNumber, CallParam, ConstructorParam, EthereumAddress, GasPrice, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, ResourceAmount, ResourcePricePerUnit, Tip, TransactionSignatureElem,
+    BlockNumber,
+    CallParam,
+    ConstructorParam,
+    EthereumAddress,
+    GasPrice,
+    L1ToL2MessagePayloadElem,
+    L2ToL1MessagePayloadElem,
+    ResourceAmount,
+    ResourcePricePerUnit,
+    Tip,
+    TransactionSignatureElem,
 };
 use pathfinder_crypto::{Felt, HexParseError, OverflowError};
 use primitive_types::{H160, H256, U256};
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
-use std::borrow::Cow;
-use std::str::FromStr;
 
 serde_conv!(
     pub CallParamAsDecimalStr,
@@ -289,8 +300,9 @@ impl<'de> serde::Deserialize<'de> for U64AsHexStr {
 /// A Serde helper module to be used as `#[serde(with = "u64_as_hex_str")]`
 /// Helps us keep primitive types in struct fields.
 pub mod u64_as_hex_str {
-    use crate::U64AsHexStr;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use crate::U64AsHexStr;
 
     pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -358,7 +370,8 @@ fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParse
 
     let mut buf = [0u8; N];
 
-    // We want the result in big-endian so reverse iterate over each pair of nibbles.
+    // We want the result in big-endian so reverse iterate over each pair of
+    // nibbles.
     let chunks = hex_str.as_bytes().rchunks_exact(2);
 
     // Handle a possible odd nibble remaining nibble.
@@ -409,8 +422,8 @@ fn it_to_hex_str<'a>(
     &buf[..len]
 }
 
-/// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
-/// from an array of bytes.
+/// A convenience function which produces a "0x" prefixed hex str slice in a
+/// given buffer `buf` from an array of bytes.
 /// Panics if `bytes.len() * 2 + 2 > buf.len()`
 pub fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
     let expected_buf_len = bytes.len() * 2 + 2;
@@ -431,7 +444,8 @@ pub fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
     std::str::from_utf8(res).unwrap()
 }
 
-/// A convenience function which produces a "0x" prefixed hex string from a [Felt].
+/// A convenience function which produces a "0x" prefixed hex string from a
+/// [Felt].
 pub fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     if !bytes.iter().any(|b| *b != 0) {
         return Cow::from("0x0");
@@ -443,7 +457,8 @@ pub fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     String::from_utf8(buf).unwrap().into()
 }
 
-/// Extract JSON representation of program and entry points from the contract definition.
+/// Extract JSON representation of program and entry points from the contract
+/// definition.
 pub fn extract_program_and_entry_points_by_type(
     contract_definition_dump: &[u8],
 ) -> anyhow::Result<(serde_json::Value, serde_json::Value)> {
@@ -467,8 +482,9 @@ pub fn extract_program_and_entry_points_by_type(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pretty_assertions_sorted::assert_eq;
+
+    use super::*;
 
     #[test]
     fn zero() {
@@ -653,7 +669,8 @@ mod tests {
 
         #[test]
         fn deserialize() {
-            // u64::from_str_radix does not accept the `0x` prefix, so also make sure it is stripped
+            // u64::from_str_radix does not accept the `0x` prefix, so also make sure it is
+            // stripped
             ["", "0x"].into_iter().for_each(|prefix| {
                 assert_eq!(
                     serde_json::from_str::<BlockNum>(&format!("\"{prefix}0\"")).unwrap(),

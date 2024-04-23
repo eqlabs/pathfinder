@@ -2,7 +2,8 @@
 use fake::{Dummy, Fake, Faker};
 use rand::Rng;
 
-/// In order to provide some basic consistency guarantees some containers just cannot be empty
+/// In order to provide some basic consistency guarantees some containers just
+/// cannot be empty
 pub fn fake_non_empty_with_rng<C, T>(rng: &mut impl Rng) -> C
 where
     C: std::iter::FromIterator<T>,
@@ -17,18 +18,29 @@ where
 
 /// Metrics related test aids
 pub mod metrics {
-    use metrics::{
-        Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
-    };
     use std::borrow::Cow;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, RwLock};
 
+    use metrics::{
+        Counter,
+        CounterFn,
+        Gauge,
+        Histogram,
+        Key,
+        KeyName,
+        Label,
+        Recorder,
+        SharedString,
+        Unit,
+    };
+
     /// # Purpose
     ///
-    /// Unset the global recorder when this guard is dropped, so you don't have to remember to call
-    /// `metrics::clear_recorder()` manually at the end of a test.
+    /// Unset the global recorder when this guard is dropped, so you don't have
+    /// to remember to call `metrics::clear_recorder()` manually at the end
+    /// of a test.
     ///
     /// # Warning
     ///
@@ -55,12 +67,14 @@ pub mod metrics {
         }
     }
 
-    /// Mocks a [recorder](`metrics::Recorder`) only for specified [labels](`metrics::Label`)
-    /// treating the rest of registered metrics as _no-op_
+    /// Mocks a [recorder](`metrics::Recorder`) only for specified
+    /// [labels](`metrics::Label`) treating the rest of registered metrics
+    /// as _no-op_
     #[derive(Debug, Default)]
     pub struct FakeRecorder(FakeRecorderHandle);
 
-    /// Handle to the [`FakeRecorder`], which allows to get the current value of counters.
+    /// Handle to the [`FakeRecorder`], which allows to get the current value of
+    /// counters.
     #[derive(Clone, Debug, Default)]
     pub struct FakeRecorderHandle {
         counters: Arc<RwLock<HashMap<Key, Arc<FakeCounterFn>>>>,
@@ -75,12 +89,12 @@ pub mod metrics {
         fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
         fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
 
-        /// Registers a counter if the method is on the `self::methods` list and returns it.
+        /// Registers a counter if the method is on the `self::methods` list and
+        /// returns it.
         ///
         /// # Warning
         ///
         /// Returns `Counter::noop()` in other cases.
-        ///
         fn register_counter(&self, key: &Key) -> Counter {
             if self.is_key_used(key) {
                 // Check if the counter is already registered
@@ -90,8 +104,8 @@ pub mod metrics {
                     return Counter::from_arc(counter.clone());
                 }
                 drop(read_guard);
-                // We could still be having some contention on write >here<, but let's assume most of the time
-                // the `read()` above does its job
+                // We could still be having some contention on write >here<, but let's assume
+                // most of the time the `read()` above does its job
                 let mut write_guard = self.0.counters.write().unwrap();
                 // Put it there
                 // let counter = write_guard.entry(key.clone()).or_default();
@@ -113,7 +127,8 @@ pub mod metrics {
     }
 
     impl FakeRecorder {
-        /// Creates a [`FakeRecorder`] which only holds counter values for `methods`.
+        /// Creates a [`FakeRecorder`] which only holds counter values for
+        /// `methods`.
         ///
         /// All other methods use the [no-op counters](`https://docs.rs/metrics/latest/metrics/struct.Counter.html#method.noop`)
         pub fn new_for(methods: &'static [&'static str]) -> Self {
@@ -140,7 +155,8 @@ pub mod metrics {
 
     impl FakeRecorderHandle {
         /// Panics in any of the following cases
-        /// - `counter_name` was not registered via [`metrics::register_counter`]
+        /// - `counter_name` was not registered via
+        ///   [`metrics::register_counter`]
         /// - `method_name` does not match any [value](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.value)
         /// for the `method` [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)
         /// [key](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.key)
@@ -162,7 +178,8 @@ pub mod metrics {
         }
 
         /// Panics in any of the following cases
-        /// - `counter_name` was not registered via [`metrics::register_counter`]
+        /// - `counter_name` was not registered via
+        ///   [`metrics::register_counter`]
         /// - `labels` don't match the [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)-s
         /// registered via [`metrics::register_counter`]
         pub fn get_counter_value_by_label<const N: usize>(

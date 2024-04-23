@@ -1,14 +1,12 @@
-use crate::peers::Peer;
+use std::collections::{HashMap, HashSet};
+
+use libp2p::kad::{QueryId, QueryResult};
+use libp2p::swarm::SwarmEvent;
+use libp2p::{gossipsub, PeerId};
+use tokio::sync::{mpsc, oneshot};
 
 use super::{behaviour, Command, Event, TestCommand, TestEvent};
-use libp2p::{
-    gossipsub,
-    kad::{QueryId, QueryResult},
-    swarm::SwarmEvent,
-    PeerId,
-};
-use std::collections::{HashMap, HashSet};
-use tokio::sync::{mpsc, oneshot};
+use crate::peers::Peer;
 
 #[derive(Clone)]
 pub(super) struct Client {
@@ -132,8 +130,8 @@ pub(super) async fn query_progressed(
     _id: QueryId,
     _result: QueryResult,
 ) {
-    // QueryResult::GetProviders used to be handled here, but now just keeping this fn
-    // as a placeholder for future query types in tests.
+    // QueryResult::GetProviders used to be handled here, but now just keeping
+    // this fn as a placeholder for future query types in tests.
 }
 
 #[derive(Debug, Default)]

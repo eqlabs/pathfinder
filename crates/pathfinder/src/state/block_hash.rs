@@ -2,13 +2,20 @@ use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
-    StarknetVersion, StateCommitment, TransactionCommitment, TransactionSignatureElem,
+    BlockHash,
+    BlockNumber,
+    BlockTimestamp,
+    Chain,
+    ChainId,
+    EventCommitment,
+    SequencerAddress,
+    StarknetVersion,
+    StateCommitment,
+    TransactionCommitment,
+    TransactionSignatureElem,
 };
-use pathfinder_crypto::{
-    hash::{pedersen_hash, HashChain},
-    Felt,
-};
+use pathfinder_crypto::hash::{pedersen_hash, HashChain};
+use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use starknet_gateway_types::reply::Block;
 
@@ -108,8 +115,9 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use pathfinder_common::{sequencer_address, BlockNumber, Chain, SequencerAddress};
     use std::ops::Range;
+
+    use pathfinder_common::{sequencer_address, BlockNumber, Chain, SequencerAddress};
 
     /// Metadata about Starknet chains we use for block hash calculation
     ///
@@ -117,27 +125,30 @@ mod meta {
     /// operation of the Starknet alpha network, we need this information
     /// to be able to decide which method to use for block hash calculation.
     ///
-    /// * Before the Starknet 0.7 release block hashes were calculated with
-    ///   a slightly different algorithm (the Starknet chain ID was hashed
-    ///   into the final value). Zero was used both instead of the block
-    ///   timestamp and the sequencer value.
-    /// * After Starknet 0.7 and before Starknet 0.8 the block hash does
-    ///   not include the chain id anymore. The proper block timestamp is used
-    ///   but zero is used as the sequencer address.
-    /// * After Starknet 0.8 and before Starknet 0.8.2 the sequencer address
-    ///   is non-zero and is used for the block hash calculation. However, the
+    /// * Before the Starknet 0.7 release block hashes were calculated with a
+    ///   slightly different algorithm (the Starknet chain ID was hashed into
+    ///   the final value). Zero was used both instead of the block timestamp
+    ///   and the sequencer value.
+    /// * After Starknet 0.7 and before Starknet 0.8 the block hash does not
+    ///   include the chain id anymore. The proper block timestamp is used but
+    ///   zero is used as the sequencer address.
+    /// * After Starknet 0.8 and before Starknet 0.8.2 the sequencer address is
+    ///   non-zero and is used for the block hash calculation. However, the
     ///   blocks don't include the sequencer address that was used for the
-    ///   calculation and for the majority of the blocks the block hash
-    ///   value is irrecoverable.
+    ///   calculation and for the majority of the blocks the block hash value is
+    ///   irrecoverable.
     /// * After Starknet 0.8.2 all blocks include the correct sequencer address
     ///   value.
     #[derive(Clone)]
     pub struct BlockHashMetaInfo {
-        /// The number of the first block that was hashed with the Starknet 0.7 hash algorithm.
+        /// The number of the first block that was hashed with the Starknet 0.7
+        /// hash algorithm.
         pub first_0_7_block: BlockNumber,
-        /// The range of block numbers that can't be verified because of an unknown sequencer address.
+        /// The range of block numbers that can't be verified because of an
+        /// unknown sequencer address.
         pub not_verifiable_range: Option<Range<BlockNumber>>,
-        /// Fallback sequencer address to use for blocks that don't include the address.
+        /// Fallback sequencer address to use for blocks that don't include the
+        /// address.
         pub fallback_sequencer_address: Option<SequencerAddress>,
     }
 
@@ -215,7 +226,8 @@ fn compute_final_hash_pre_0_7(
     chain.update(state_root.0);
     // sequencer address: these versions used 0 as the sequencer address
     chain.update(Felt::ZERO);
-    // block timestamp: these versions used 0 as a timestamp for block hash computation
+    // block timestamp: these versions used 0 as a timestamp for block hash
+    // computation
     chain.update(Felt::ZERO);
     // number of transactions
     chain.update(Felt::from(num_transactions));
@@ -296,9 +308,10 @@ impl TransactionCommitmentFinalHashType {
 
 /// Calculate transaction commitment hash value.
 ///
-/// The transaction commitment is the root of the Patricia Merkle tree with height 64
-/// constructed by adding the (transaction_index, transaction_hash_with_signature)
-/// key-value pairs to the tree and computing the root hash.
+/// The transaction commitment is the root of the Patricia Merkle tree with
+/// height 64 constructed by adding the (transaction_index,
+/// transaction_hash_with_signature) key-value pairs to the tree and computing
+/// the root hash.
 pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
     final_hash_type: TransactionCommitmentFinalHashType,
@@ -477,12 +490,13 @@ fn number_of_events_in_block(block: &Block) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use assert_matches::assert_matches;
     use pathfinder_common::felt;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::transaction::{EntryPointType, InvokeTransactionV0};
     use pathfinder_crypto::Felt;
+
+    use super::*;
 
     #[test]
     fn test_event_hash() {
@@ -528,7 +542,8 @@ mod tests {
         };
 
         // produced by the cairo-lang Python implementation:
-        // `hex(calculate_single_tx_hash_with_signature(1, [2, 3], hash_function=pedersen_hash))`
+        // `hex(calculate_single_tx_hash_with_signature(1, [2, 3],
+        // hash_function=pedersen_hash))`
         let expected_final_hash =
             Felt::from_hex_str("0x259c3bd5a1951eafb2f41e0b783eab92cfe4e108b2b1f071e3736f06b909431")
                 .unwrap();
@@ -541,14 +556,16 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_8_0::block::MAINNET_2500;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        // this expected value comes from processing the raw JSON and counting the number of events
+        // this expected value comes from processing the raw JSON and counting the
+        // number of events
         const EXPECTED_NUMBER_OF_EVENTS: usize = 26;
         assert_eq!(number_of_events_in_block(&block), EXPECTED_NUMBER_OF_EVENTS);
     }
 
     #[test]
     fn test_block_hash_without_sequencer_address() {
-        // This tests with a post-0.7, pre-0.8.0 block where zero is used as the sequencer address.
+        // This tests with a post-0.7, pre-0.8.0 block where zero is used as the
+        // sequencer address.
         let json = starknet_gateway_test_fixtures::v0_7_0::block::MAINNET_2240;
         let block: Block = serde_json::from_str(json).unwrap();
 
@@ -573,9 +590,9 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address_unavailable_but_not_zero() {
-        // This tests with a post-0.8.0 pre-0.8.2 block where we don't have the sequencer
-        // address in the JSON but the block hash was calculated with the magic value below
-        // instead of zero.
+        // This tests with a post-0.8.0 pre-0.8.2 block where we don't have the
+        // sequencer address in the JSON but the block hash was calculated with
+        // the magic value below instead of zero.
         let json = starknet_gateway_test_fixtures::v0_8_0::block::MAINNET_2500;
         let block: Block = serde_json::from_str(json).unwrap();
 

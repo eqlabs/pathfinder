@@ -1,5 +1,4 @@
 use crate::context::RpcContext;
-
 use crate::v06::method::estimate_fee as v06;
 
 pub async fn estimate_fee(
@@ -16,25 +15,28 @@ pub async fn estimate_fee(
 
 #[cfg(test)]
 mod tests {
-    use crate::v06::method::estimate_fee::*;
-    use crate::v06::types::PriceUnit;
-    use pretty_assertions_sorted::assert_eq;
-
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::BlockId;
-    use pathfinder_common::Tip;
-
-    use pathfinder_common::felt;
+    use pathfinder_common::{felt, BlockId, Tip};
+    use pretty_assertions_sorted::assert_eq;
 
     use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
-        BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0,
-        BroadcastedInvokeTransactionV1, BroadcastedInvokeTransactionV3, BroadcastedTransaction,
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV2,
+        BroadcastedInvokeTransaction,
+        BroadcastedInvokeTransactionV0,
+        BroadcastedInvokeTransactionV1,
+        BroadcastedInvokeTransactionV3,
+        BroadcastedTransaction,
     };
     use crate::v02::types::{
-        ContractClass, DataAvailabilityMode, ResourceBounds, SierraContractClass,
+        ContractClass,
+        DataAvailabilityMode,
+        ResourceBounds,
+        SierraContractClass,
     };
+    use crate::v06::method::estimate_fee::*;
+    use crate::v06::types::PriceUnit;
 
     fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
         let sierra_definition = include_bytes!("../../../fixtures/contracts/storage_access.json");
@@ -83,9 +85,11 @@ mod tests {
                 sender_address: account_contract_address,
                 calldata: vec![
                     CallParam(*universal_deployer_address.get()),
-                    // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                    // Entry point selector for the called contract, i.e.
+                    // AccountCallArray::selector
                     CallParam(EntryPoint::hashed(b"deployContract").0),
-                    // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                    // Length of the call data for the called contract, i.e.
+                    // AccountCallArray::data_len
                     call_param!("4"),
                     // classHash
                     CallParam(sierra_hash.0),
@@ -115,9 +119,11 @@ mod tests {
                     CallParam(felt!(
                         "0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7"
                     )),
-                    // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                    // Entry point selector for the called contract, i.e.
+                    // AccountCallArray::selector
                     CallParam(EntryPoint::hashed(b"get_data").0),
-                    // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                    // Length of the call data for the called contract, i.e.
+                    // AccountCallArray::data_len
                     call_param!("0"),
                 ],
             },
@@ -152,9 +158,11 @@ mod tests {
                     CallParam(felt!(
                         "0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7"
                     )),
-                    // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                    // Entry point selector for the called contract, i.e.
+                    // AccountCallArray::selector
                     CallParam(EntryPoint::hashed(b"get_data").0),
-                    // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                    // Length of the call data for the called contract, i.e.
+                    // AccountCallArray::data_len
                     call_param!("0"),
                 ],
                 nonce: transaction_nonce!("0x3"),

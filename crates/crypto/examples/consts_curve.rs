@@ -1,11 +1,11 @@
 //! This example generates the constants for the curve.
 //!
-//! We preprocess scalar-multiplication of the curve generator using the standard memory-time
-//! trade-off for the square-and-double algorithm, but with chunks larger than one bit.
-use std::env;
+//! We preprocess scalar-multiplication of the curve generator using the
+//! standard memory-time trade-off for the square-and-double algorithm, but with
+//! chunks larger than one bit.
 use std::fmt::Write;
-use std::fs;
 use std::path::Path;
+use std::{env, fs};
 
 use pathfinder_crypto::algebra::curve::*;
 

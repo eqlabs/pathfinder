@@ -1,11 +1,11 @@
-use blockifier::{
-    execution::contract_class::ContractClass,
-    state::{errors::StateError, state_api::StateResult},
-};
+use std::sync::{Mutex, MutexGuard};
+
+use blockifier::execution::contract_class::ContractClass;
+use blockifier::state::errors::StateError;
+use blockifier::state::state_api::StateResult;
 use cached::{Cached, SizedCache};
 use pathfinder_common::BlockNumber;
 use starknet_api::core::ClassHash as StarknetClassHash;
-use std::sync::{Mutex, MutexGuard};
 use tracing::warn;
 
 lazy_static::lazy_static! {

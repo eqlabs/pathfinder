@@ -88,13 +88,13 @@ pub mod class_definitions {
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC
     pub const CAIRO_0_8_NEW_ATTRIBUTES: &[u8] =
         bytes_fixture!("contracts/cairo-0.8-new-attributes.json");
-    // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
-    // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2
+    // Contract whose class triggered a deserialization issue because of the new
+    // `compiler_version` property. https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2
     pub const CAIRO_0_10_COMPILER_VERSION: &[u8] =
         bytes_fixture!("contracts/cairo-0.10-compiler-version.json");
-    // Contracts whose class contains `compiler_version` property as well as `cairo_type` with tuple values.
-    // These tuple values require a space to be injected in order to achieve the correct hash.
-    // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x06f17fb7a052f3d18c1911c9d9c2fb0032bbe1ea57c58b0baca85bda9f3698be
+    // Contracts whose class contains `compiler_version` property as well as
+    // `cairo_type` with tuple values. These tuple values require a space to be
+    // injected in order to achieve the correct hash. https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x06f17fb7a052f3d18c1911c9d9c2fb0032bbe1ea57c58b0baca85bda9f3698be
     pub const CAIRO_0_10_TUPLES_INTEGRATION: &[u8] =
         bytes_fixture!("contracts/cairo-0.10-tuples-integration.json");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x0424e799d610433168a31aab44c0d3e38b45d97387b45de80089f56c184fa315
@@ -133,8 +133,11 @@ pub mod class_definitions {
         bytes_fixture!("contracts/sierra-2.0.0-stack-overflow.json");
 
     // A Cairo class from Testnet
-    pub const CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747: &[u8] =
-        bytes_fixture!("contracts/cairo-testnet-0331118f4e4eb8a8ddb0f4493e09612e380ef527991c49a15c42574ab48dd747.json");
+    pub const CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747:
+        &[u8] = bytes_fixture!(
+        "contracts/cairo-testnet-0331118f4e4eb8a8ddb0f4493e09612e380ef527991c49a15c42574ab48dd747.\
+         json"
+    );
     pub const CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747_CLASS_HASH: ClassHash =
         class_hash!("0x0331118f4e4eb8a8ddb0f4493e09612e380ef527991c49a15c42574ab48dd747");
 
@@ -148,7 +151,12 @@ pub mod class_definitions {
 pub mod testnet {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        CallParam, ClassHash, ContractAddress, EntryPoint, StorageAddress, TransactionHash,
+        CallParam,
+        ClassHash,
+        ContractAddress,
+        EntryPoint,
+        StorageAddress,
+        TransactionHash,
     };
     use pathfinder_crypto::Felt;
 

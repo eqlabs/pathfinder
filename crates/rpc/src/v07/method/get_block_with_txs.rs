@@ -1,11 +1,11 @@
+use anyhow::Context;
+use pathfinder_common::BlockId;
+use serde::Serialize;
+
 use crate::context::RpcContext;
 use crate::v02::types::reply::BlockStatus;
 use crate::v06::types::TransactionWithHash;
 use crate::v07::dto;
-
-use anyhow::Context;
-use pathfinder_common::BlockId;
-use serde::Serialize;
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]

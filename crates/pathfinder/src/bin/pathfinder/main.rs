@@ -1,9 +1,15 @@
 #![deny(rust_2018_idioms)]
 
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-
-use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
+use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
+use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::monitoring::{self};
 use pathfinder_lib::state;
@@ -13,10 +19,6 @@ use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use std::net::SocketAddr;
-use std::num::NonZeroU32;
-use std::path::PathBuf;
-use std::sync::{atomic::AtomicBool, Arc};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::info;
 
@@ -65,7 +67,8 @@ async fn async_main() -> anyhow::Result<()> {
         .num_threads(available_parallelism.get())
         .build_global()?;
 
-    // A readiness flag which is used to indicate that pathfinder is ready via monitoring.
+    // A readiness flag which is used to indicate that pathfinder is ready via
+    // monitoring.
     let readiness = Arc::new(AtomicBool::new(false));
 
     let ethereum = EthereumContext::setup(config.ethereum.url, config.ethereum.password)
@@ -236,7 +239,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
         pending_data: tx_pending,
-        // Currently p2p does not perform block hash and state commitment verification if p2p header lacks state commitment
+        // Currently p2p does not perform block hash and state commitment verification if p2p header
+        // lacks state commitment
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_topic_broadcasters().cloned(),
         block_cache_size: 1_000,
@@ -308,8 +312,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 fn setup_tracing(color: config::Color, pretty_log: bool) {
     use tracing_subscriber::prelude::*;
 
-    // EnvFilter isn't really a Filter, so this we need this ugly workaround for filtering with it.
-    // See https://github.com/tokio-rs/tracing/issues/1868 for more details.
+    // EnvFilter isn't really a Filter, so this we need this ugly workaround for
+    // filtering with it. See https://github.com/tokio-rs/tracing/issues/1868 for more details.
     let env_filter = Arc::new(tracing_subscriber::EnvFilter::from_default_env());
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(color.is_color_enabled())
@@ -351,8 +355,13 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
 }
 
 fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
-    tempfile::tempfile_in(base)
-        .with_context(|| format!("Failed to create a file in {}. Make sure the directory is writable by the user running pathfinder.", base.display()))?;
+    tempfile::tempfile_in(base).with_context(|| {
+        format!(
+            "Failed to create a file in {}. Make sure the directory is writable by the user \
+             running pathfinder.",
+            base.display()
+        )
+    })?;
 
     // well, don't really know what else to check
 
@@ -365,10 +374,12 @@ async fn start_p2p(
     storage: Storage,
     config: config::P2PConfig,
 ) -> anyhow::Result<(tokio::task::JoinHandle<()>, state::Gossiper)> {
+    use std::path::Path;
+    use std::time::Duration;
+
     use p2p::libp2p::identity::Keypair;
     use pathfinder_lib::p2p_network::P2PContext;
     use serde::Deserialize;
-    use std::{path::Path, time::Duration};
     use zeroize::Zeroizing;
 
     #[derive(Clone, Deserialize)]
@@ -466,7 +477,8 @@ struct EthereumContext {
 }
 
 impl EthereumContext {
-    /// Configure an [EthereumContext]'s transport and read the chain ID using it.
+    /// Configure an [EthereumContext]'s transport and read the chain ID using
+    /// it.
     async fn setup(url: reqwest::Url, password: Option<String>) -> anyhow::Result<Self> {
         let client = if let Some(password) = password.as_ref() {
             EthereumClient::with_password(url, password).context("Creating Ethereum client")?
@@ -511,10 +523,8 @@ struct PathfinderContext {
 
 /// Used to hide private fn's for [PathfinderContext].
 mod pathfinder_context {
-    use super::PathfinderContext;
-    use crate::config::NetworkConfig;
-
-    use std::{path::PathBuf, time::Duration};
+    use std::path::PathBuf;
+    use std::time::Duration;
 
     use anyhow::Context;
     use pathfinder_common::{Chain, ChainId};
@@ -522,6 +532,9 @@ mod pathfinder_context {
     use primitive_types::H160;
     use reqwest::Url;
     use starknet_gateway_client::Client as GatewayClient;
+
+    use super::PathfinderContext;
+    use crate::config::NetworkConfig;
 
     impl PathfinderContext {
         pub async fn configure_and_proxy_check(
@@ -572,8 +585,9 @@ mod pathfinder_context {
             Ok(context)
         }
 
-        /// Creates a [PathfinderContext] for a custom network. Provides additional verification
-        /// by checking for a proxy gateway by comparing against L1 starknet address against of
+        /// Creates a [PathfinderContext] for a custom network. Provides
+        /// additional verification by checking for a proxy gateway by
+        /// comparing against L1 starknet address against of
         /// the known networks.
         async fn configure_custom(
             gateway: Url,
@@ -600,7 +614,8 @@ mod pathfinder_context {
                 .starknet
                 .0;
 
-            // Check for proxies by comparing the core address against those of the known networks.
+            // Check for proxies by comparing the core address against those of the known
+            // networks.
             let network = match l1_core_address.as_bytes() {
                 x if x == core_addr::MAINNET => Chain::Mainnet,
                 x if x == core_addr::SEPOLIA_TESTNET => Chain::SepoliaTestnet,
@@ -634,7 +649,12 @@ fn verify_networks(starknet: Chain, ethereum: EthereumChain) -> anyhow::Result<(
             Chain::Custom => unreachable!("Already checked against"),
         };
 
-        anyhow::ensure!(ethereum == expected, "Incorrect Ethereum network detected. Found {ethereum:?} but expected {expected:?} for {} Starknet", starknet);
+        anyhow::ensure!(
+            ethereum == expected,
+            "Incorrect Ethereum network detected. Found {ethereum:?} but expected {expected:?} \
+             for {} Starknet",
+            starknet
+        );
     }
 
     Ok(())
@@ -659,7 +679,9 @@ async fn verify_database(
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{
-            MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
+            MAINNET_GENESIS_HASH,
+            SEPOLIA_INTEGRATION_GENESIS_HASH,
+            SEPOLIA_TESTNET_GENESIS_HASH,
         };
 
         let db_network = match database_genesis {

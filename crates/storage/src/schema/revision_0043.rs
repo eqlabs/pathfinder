@@ -2,7 +2,8 @@ use anyhow::Context;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
-        "CREATE INDEX class_commitment_leaves_block_number ON class_commitment_leaves(block_number)",
+        "CREATE INDEX class_commitment_leaves_block_number ON \
+         class_commitment_leaves(block_number)",
         [],
     )
     .context("Creating index on class_commitment_leaves(block_number)")?;

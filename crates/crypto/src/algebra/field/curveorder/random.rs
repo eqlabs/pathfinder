@@ -1,5 +1,6 @@
-use crate::CurveOrderMontFelt;
 use rand::Rng;
+
+use crate::CurveOrderMontFelt;
 
 impl CurveOrderMontFelt {
     /// Try to sample a random field element

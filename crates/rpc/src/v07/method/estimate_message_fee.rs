@@ -27,17 +27,15 @@ pub async fn estimate_message_fee(
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::BlockId;
-    use pathfinder_common::L1DataAvailabilityMode;
+    use pathfinder_common::{BlockId, L1DataAvailabilityMode};
     use pathfinder_storage::StorageBuilder;
+    use pretty_assertions_sorted::assert_eq;
     use primitive_types::H160;
 
     use crate::context::RpcContext;
     use crate::v06::method::estimate_fee::FeeEstimate;
     use crate::v06::method::estimate_message_fee::*;
     use crate::v06::types::PriceUnit;
-
-    use pretty_assertions_sorted::assert_eq;
 
     enum Setup {
         Full,

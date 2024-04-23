@@ -1,7 +1,6 @@
 use crate::context::RpcContext;
-use crate::v04::types::TransactionWithHash;
-
 use crate::v02::method::get_transaction_by_hash as v02_get_transaction_by_hash;
+use crate::v04::types::TransactionWithHash;
 
 crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
 

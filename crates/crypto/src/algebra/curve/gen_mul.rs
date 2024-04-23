@@ -1,7 +1,8 @@
+use bitvec::prelude::*;
+
 use crate::algebra::curve::consts::{G_CONSTS, G_CONSTS_BITS};
 use crate::algebra::curve::{AffinePoint, ProjectivePoint};
 use crate::algebra::field::CurveOrderMontFelt;
-use bitvec::prelude::*;
 
 impl ProjectivePoint {
     /// Multiply the curve generator `G` by a curve order field element.
@@ -40,10 +41,11 @@ impl AffinePoint {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions_sorted::assert_eq;
+
     use super::*;
     use crate::algebra::curve::CURVE_G;
     use crate::algebra::field::CurveOrderMontFelt;
-    use pretty_assertions_sorted::assert_eq;
 
     #[test]
     fn test_generator_mul() {

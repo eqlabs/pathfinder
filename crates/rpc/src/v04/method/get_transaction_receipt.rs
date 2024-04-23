@@ -1,6 +1,7 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
+
+use crate::context::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -78,15 +79,23 @@ pub async fn get_transaction_receipt(
 }
 
 pub mod types {
-    use crate::felt::{RpcFelt, RpcFelt251};
-    use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
-        BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
-        L2ToL1MessagePayloadElem, TransactionHash,
+        BlockHash,
+        BlockNumber,
+        ContractAddress,
+        EthereumAddress,
+        EventData,
+        EventKey,
+        Fee,
+        L2ToL1MessagePayloadElem,
+        TransactionHash,
     };
     use pathfinder_serde::EthereumAddressAsHexStr;
     use serde::Serialize;
     use serde_with::serde_as;
+
+    use crate::felt::{RpcFelt, RpcFelt251};
+    use crate::v02::types::reply::BlockStatus;
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -265,7 +274,8 @@ pub mod types {
 
     /// Non-pending L2 transaction receipt as returned by the RPC API.
     ///
-    /// Pending receipts don't have status, status_data, block_hash, block_number fields
+    /// Pending receipts don't have status, status_data, block_hash,
+    /// block_number fields
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
@@ -468,14 +478,16 @@ pub mod types {
 mod tests {
     // TODO: add serialization tests for each receipt variant..
 
-    use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockNumber, EthereumAddress, Fee};
     use primitive_types::H160;
 
+    use super::*;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {

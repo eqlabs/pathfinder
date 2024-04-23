@@ -1,4 +1,5 @@
-use crate::{context::RpcContext, v02::types::syncing::Syncing};
+use crate::context::RpcContext;
+use crate::v02::types::syncing::Syncing;
 
 crate::error::generate_rpc_error_subset!(Error);
 

@@ -40,16 +40,17 @@ pub async fn pending_transactions(
 
 #[cfg(test)]
 mod tests {
-    use crate::v04::types::transaction::Transaction;
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::transaction::EntryPointType::External;
+    use pathfinder_common::transaction::{
+        DeployTransaction,
+        InvokeTransactionV0,
+        TransactionVariant,
+    };
+    use pretty_assertions_sorted::assert_eq;
 
     use super::*;
-    use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::transaction::DeployTransaction;
-    use pathfinder_common::transaction::EntryPointType::External;
-    use pathfinder_common::transaction::InvokeTransactionV0;
-    use pathfinder_common::transaction::TransactionVariant;
-
-    use pretty_assertions_sorted::assert_eq;
+    use crate::v04::types::transaction::Transaction;
 
     #[tokio::test]
     async fn pending() {

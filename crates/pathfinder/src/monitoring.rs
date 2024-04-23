@@ -58,9 +58,10 @@ fn metrics_route(
 
 #[cfg(test)]
 mod tests {
-    use metrics_exporter_prometheus::PrometheusBuilder;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
+
+    use metrics_exporter_prometheus::PrometheusBuilder;
 
     #[tokio::test]
     async fn health() {
@@ -96,8 +97,9 @@ mod tests {
         // Automatically deregister the recorder
         let _guard = ScopedRecorderGuard::new(recorder);
 
-        // We don't care about the recorder being a singleton as the counter name here does not
-        // interfere with any other "real" counter registered in pathfinder or other tests
+        // We don't care about the recorder being a singleton as the counter name here
+        // does not interfere with any other "real" counter registered in
+        // pathfinder or other tests
         let counter = metrics::register_counter!("x");
         counter.increment(123);
 

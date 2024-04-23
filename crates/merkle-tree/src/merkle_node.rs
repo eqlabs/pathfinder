@@ -1,15 +1,17 @@
-//! Contains constructs for describing the nodes in a Binary Merkle Patricia Tree
-//! used by Starknet.
+//! Contains constructs for describing the nodes in a Binary Merkle Patricia
+//! Tree used by Starknet.
 //!
 //! For more information about how these Starknet trees are structured, see
 //! [`MerkleTree`](crate::tree::MerkleTree).
 
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
-use pathfinder_crypto::Felt;
-
+use bitvec::order::Msb0;
+use bitvec::prelude::BitVec;
+use bitvec::slice::BitSlice;
 use pathfinder_common::hash::FeltHash;
+use pathfinder_crypto::Felt;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -96,9 +98,9 @@ impl From<Direction> for bool {
 impl BinaryNode {
     /// Maps the key's bit at the binary node's height to a [Direction].
     ///
-    /// This can be used to check which direction the key describes in the context
-    /// of this binary node i.e. which direction the child along the key's path would
-    /// take.
+    /// This can be used to check which direction the key describes in the
+    /// context of this binary node i.e. which direction the child along the
+    /// key's path would take.
     pub fn direction(&self, key: &BitSlice<u8, Msb0>) -> Direction {
         key[self.height].into()
     }
@@ -153,12 +155,14 @@ impl InternalNode {
 }
 
 impl EdgeNode {
-    /// Returns true if the edge node's path matches the same path given by the key.
+    /// Returns true if the edge node's path matches the same path given by the
+    /// key.
     pub fn path_matches(&self, key: &BitSlice<u8, Msb0>) -> bool {
         self.path == key[self.height..self.height + self.path.len()]
     }
 
-    /// Returns the common bit prefix between the edge node's path and the given key.
+    /// Returns the common bit prefix between the edge node's path and the given
+    /// key.
     ///
     /// This is calculated with the edge's height taken into account.
     pub fn common_path(&self, key: &BitSlice<u8, Msb0>) -> &BitSlice<u8, Msb0> {
@@ -184,12 +188,14 @@ impl EdgeNode {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::hash::PedersenHash;
 
+    use super::*;
+
     mod direction {
-        use super::*;
         use Direction::*;
+
+        use super::*;
 
         #[test]
         fn invert() {
@@ -215,9 +221,10 @@ mod tests {
     }
 
     mod binary {
-        use super::*;
         use bitvec::bitvec;
         use pathfinder_common::felt;
+
+        use super::*;
 
         #[test]
         fn direction() {
@@ -263,7 +270,8 @@ mod tests {
             // Test data taken from starkware cairo-lang repo:
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L14
             //
-            // Note that the hash function must be exchanged for `async_stark_hash_func`, otherwise it just uses some other test hash function.
+            // Note that the hash function must be exchanged for `async_stark_hash_func`,
+            // otherwise it just uses some other test hash function.
             let expected = Felt::from_hex_str(
                 "0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
             )
@@ -278,16 +286,18 @@ mod tests {
     }
 
     mod edge {
-        use super::*;
         use bitvec::bitvec;
         use pathfinder_common::felt;
+
+        use super::*;
 
         #[test]
         fn hash() {
             // Test data taken from starkware cairo-lang repo:
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L38
             //
-            // Note that the hash function must be exchanged for `async_stark_hash_func`, otherwise it just uses some other test hash function.
+            // Note that the hash function must be exchanged for `async_stark_hash_func`,
+            // otherwise it just uses some other test hash function.
             let expected = Felt::from_hex_str(
                 "1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
             )
@@ -302,8 +312,9 @@ mod tests {
         }
 
         mod path_matches {
-            use super::*;
             use pathfinder_common::felt;
+
+            use super::*;
 
             #[test]
             fn full() {

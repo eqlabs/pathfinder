@@ -1,8 +1,5 @@
-use blockifier::transaction::{
-    objects::{FeeType, HasRelatedFeeType},
-    transaction_execution::Transaction,
-};
-
+use blockifier::transaction::objects::{FeeType, HasRelatedFeeType};
+use blockifier::transaction::transaction_execution::Transaction;
 use pathfinder_common::TransactionHash;
 
 use super::felt::IntoFelt;

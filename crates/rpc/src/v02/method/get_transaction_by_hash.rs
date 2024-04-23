@@ -1,7 +1,8 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::TransactionHash;
+
+use crate::context::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -50,12 +51,14 @@ pub async fn get_transaction_by_hash_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {

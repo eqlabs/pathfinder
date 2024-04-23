@@ -1,7 +1,5 @@
-use crate::{
-    context::RpcContext,
-    v05::method::estimate_fee::{EstimateFeeInput, FeeEstimate},
-};
+use crate::context::RpcContext;
+use crate::v05::method::estimate_fee::{EstimateFeeInput, FeeEstimate};
 
 crate::error::generate_rpc_error_subset!(
     EstimateFeeError: BlockNotFound,
@@ -24,8 +22,8 @@ impl From<crate::v05::method::estimate_fee::EstimateFeeError> for EstimateFeeErr
     }
 }
 
-// The implementation is the same as for v05 -- the only difference is that we have to map
-// ContractErrorV05 to an internal error.
+// The implementation is the same as for v05 -- the only difference is that we
+// have to map ContractErrorV05 to an internal error.
 pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,

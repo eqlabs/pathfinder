@@ -1,20 +1,27 @@
 use anyhow::Context;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockId, TransactionHash};
 use pathfinder_executor::{ExecutionState, TraceCache, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
 
-use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
-use crate::v06::method::simulate_transactions::dto::{
-    DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, ExecutionResources,
-    FunctionInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
-};
-use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
-
-use pathfinder_common::transaction::Transaction;
-
 use super::simulate_transactions::dto::TransactionTrace;
+use crate::compose_executor_transaction;
+use crate::context::RpcContext;
+use crate::executor::{
+    ExecutionStateError,
+    VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+};
+use crate::v06::method::simulate_transactions::dto::{
+    DeclareTxnTrace,
+    DeployAccountTxnTrace,
+    ExecuteInvocation,
+    ExecutionResources,
+    FunctionInvocation,
+    InvokeTxnTrace,
+    L1HandlerTxnTrace,
+};
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -310,9 +317,16 @@ pub async fn trace_block_transactions_impl(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use pathfinder_common::receipt::Receipt;
     use pathfinder_common::{
-        block_hash, felt, receipt::Receipt, BlockHeader, Chain, GasPrice, SequencerAddress,
-        SierraHash, TransactionIndex,
+        block_hash,
+        felt,
+        BlockHeader,
+        Chain,
+        GasPrice,
+        SequencerAddress,
+        SierraHash,
+        TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
@@ -322,8 +336,7 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::fixtures;
-        use super::super::simulate_transactions::tests::setup_storage;
+        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
 
         let (
             storage,
@@ -445,8 +458,9 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    /// Test that multiple requests for the same block return correctly. This checks that the
-    /// trace request coalescing doesn't do anything unexpected.
+    /// Test that multiple requests for the same block return correctly. This
+    /// checks that the trace request coalescing doesn't do anything
+    /// unexpected.
     #[tokio::test]
     async fn test_request_coalescing() -> anyhow::Result<()> {
         const NUM_REQUESTS: usize = 1000;
@@ -474,8 +488,7 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::fixtures;
-        use super::super::simulate_transactions::tests::setup_storage;
+        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
 
         let (
             storage,
@@ -599,7 +612,8 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    /// Test that tracing succeeds for a block that is not backwards-compatible with blockifier.
+    /// Test that tracing succeeds for a block that is not backwards-compatible
+    /// with blockifier.
     #[tokio::test]
     async fn mainnet_blockifier_backwards_incompatible_transaction_tracing() {
         let context = RpcContext::for_tests_on(Chain::Mainnet);

@@ -1,13 +1,16 @@
 //! This file generates the constants for the Poseidon hash function.
 //!
-//! It reads the constants from spec/poseidon3.txt, compresses them and writes them to params.
-use num_bigint::BigUint;
-use pathfinder_crypto::algebra::field::*;
+//! It reads the constants from spec/poseidon3.txt, compresses them and writes
+//! them to params.
 use std::fmt::Write;
 use std::fs::File;
 use std::io::{self, BufRead};
+use std::path::Path;
 use std::str::FromStr;
-use std::{env, fs, path::Path};
+use std::{env, fs};
+
+use num_bigint::BigUint;
+use pathfinder_crypto::algebra::field::*;
 
 const FULL_ROUNDS: usize = 8;
 const PARTIAL_ROUNDS: usize = 83;

@@ -16,11 +16,12 @@ static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 /// Re-execute transactions in a range of blocks.
 ///
-/// Iterates over specified blocks in the database and re-executes all transactions within
-/// those blocks
+/// Iterates over specified blocks in the database and re-executes all
+/// transactions within those blocks
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example re_execute ./mainnet.sqlite 50000 51000`
+/// `cargo run --release -p pathfinder --example re_execute ./mainnet.sqlite
+/// 50000 51000`
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -96,7 +97,9 @@ fn main() -> anyhow::Result<()> {
 
 fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<ChainId> {
     use pathfinder_common::consts::{
-        MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
+        MAINNET_GENESIS_HASH,
+        SEPOLIA_INTEGRATION_GENESIS_HASH,
+        SEPOLIA_TESTNET_GENESIS_HASH,
     };
 
     let (_, genesis_hash) = tx

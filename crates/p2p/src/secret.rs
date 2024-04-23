@@ -4,7 +4,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret value used to make certain decisions unpredictable.
 ///
-/// This value is used to pick the peer to be evicted during the peer eviction process.
+/// This value is used to pick the peer to be evicted during the peer eviction
+/// process.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Secret([u8; 32]);
 

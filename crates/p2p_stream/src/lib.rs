@@ -1,5 +1,5 @@
-// Equilibrium Labs: This work is an extension of libp2p's request-response protocol,
-// hence the original copyright notice is included below.
+// Equilibrium Labs: This work is an extension of libp2p's request-response
+// protocol, hence the original copyright notice is included below.
 //
 //
 // Copyright 2020 Parity Technologies (UK) Ltd.
@@ -28,8 +28,8 @@
 //! ## General Usage
 //!
 //! The [`Behaviour`] struct is a [`NetworkBehaviour`] that implements a generic
-//! request/streaming-response protocol or protocol family, whereby each request is
-//! sent over a new substream on a connection. `Behaviour` is generic
+//! request/streaming-response protocol or protocol family, whereby each request
+//! is sent over a new substream on a connection. `Behaviour` is generic
 //! over the actual messages being sent, which are defined in terms of a
 //! [`Codec`]. Creating a request/streaming-response protocol thus amounts
 //! to providing an implementation of this trait which can then be
@@ -37,10 +37,11 @@
 //! available via the [`Config`].
 //!
 //! Outbound requests are sent using [`Behaviour::send_request`] and the
-//! responses received via [`Event::OutboundRequestSentAwaitingResponses::channel`].
+//! responses received via
+//! [`Event::OutboundRequestSentAwaitingResponses::channel`].
 //!
-//! Inbound requests are received via [`Event::InboundRequest`] and responses are sent
-//! via [`Event::InboundRequest::channel`].
+//! Inbound requests are received via [`Event::InboundRequest`] and responses
+//! are sent via [`Event::InboundRequest::channel`].
 //!
 //! ## Protocol Families
 //!
@@ -52,26 +53,33 @@
 mod codec;
 mod handler;
 
-pub use codec::Codec;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::Duration;
+use std::{fmt, io};
 
-use crate::handler::OutboundMessage;
+pub use codec::Codec;
 use futures::channel::mpsc;
 use handler::Handler;
 use libp2p::core::{ConnectedPoint, Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
+use libp2p::swarm::behaviour::{AddressChange, ConnectionClosed, DialFailure, FromSwarm};
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{
-    behaviour::{AddressChange, ConnectionClosed, DialFailure, FromSwarm},
-    dial_opts::DialOpts,
-    ConnectionDenied, ConnectionHandler, ConnectionId, NetworkBehaviour, NotifyHandler, THandler,
-    THandlerInEvent, THandlerOutEvent, ToSwarm,
+    ConnectionDenied,
+    ConnectionHandler,
+    ConnectionId,
+    NetworkBehaviour,
+    NotifyHandler,
+    THandler,
+    THandlerInEvent,
+    THandlerOutEvent,
+    ToSwarm,
 };
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    fmt, io,
-    sync::{atomic::AtomicU64, Arc},
-    task::{Context, Poll},
-    time::Duration,
-};
+
+use crate::handler::OutboundMessage;
 
 /// The events emitted by a request/streaming-response [`Behaviour`].
 #[derive(Debug)]
@@ -87,7 +95,8 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The channel through which we are expected to send responses.
         channel: mpsc::Sender<TChannelResponse>,
     },
-    /// Outbound request to another peer was accepted and we can now await responses.
+    /// Outbound request to another peer was accepted and we can now await
+    /// responses.
     OutboundRequestSentAwaitingResponses {
         /// The peer who received our request.
         peer: PeerId,
@@ -248,7 +257,8 @@ impl Config {
         self
     }
 
-    /// Sets the upper bound for the number of concurrent inbound + outbound streams.
+    /// Sets the upper bound for the number of concurrent inbound + outbound
+    /// streams.
     pub fn with_max_concurrent_streams(mut self, num_streams: usize) -> Self {
         self.max_concurrent_streams = num_streams;
         self
@@ -274,8 +284,8 @@ where
     /// Pending events to return from `poll`.
     pending_events:
         VecDeque<ToSwarm<Event<TCodec::Request, TCodec::Response>, OutboundMessage<TCodec>>>,
-    /// The currently connected peers, their pending outbound and inbound responses and their known,
-    /// reachable addresses, if any.
+    /// The currently connected peers, their pending outbound and inbound
+    /// responses and their known, reachable addresses, if any.
     connected: HashMap<PeerId, Vec<Connection>>,
     /// Requests that have not yet been sent and are waiting for a connection
     /// to be established.
@@ -286,7 +296,8 @@ impl<TCodec> Behaviour<TCodec>
 where
     TCodec: Codec + Default + Clone + Send + 'static,
 {
-    /// Creates a new `Behaviour` for the given protocols and configuration, using [`Default`] to construct the codec.
+    /// Creates a new `Behaviour` for the given protocols and configuration,
+    /// using [`Default`] to construct the codec.
     pub fn new<I>(protocols: I, cfg: Config) -> Self
     where
         I: IntoIterator<Item = TCodec::Protocol>,
@@ -393,11 +404,12 @@ where
         }
     }
 
-    /// Remove pending outbound response stream for the given peer and connection.
+    /// Remove pending outbound response stream for the given peer and
+    /// connection.
     ///
     /// Returns `true` if the provided connection to the given peer is still
-    /// alive and the [`OutboundRequestId`] was previously present and is now removed.
-    /// Returns `false` otherwise.
+    /// alive and the [`OutboundRequestId`] was previously present and is now
+    /// removed. Returns `false` otherwise.
     fn remove_pending_outbound_response_stream(
         &mut self,
         peer: &PeerId,
@@ -409,11 +421,12 @@ where
             .unwrap_or(false)
     }
 
-    /// Remove pending inbound response stream for the given peer and connection.
+    /// Remove pending inbound response stream for the given peer and
+    /// connection.
     ///
     /// Returns `true` if the provided connection to the given peer is still
-    /// alive and the [`InboundRequestId`] was previously present and is now removed.
-    /// Returns `false` otherwise.
+    /// alive and the [`InboundRequestId`] was previously present and is now
+    /// removed. Returns `false` otherwise.
     fn remove_pending_inbound_response_stream(
         &mut self,
         peer: &PeerId,
@@ -527,7 +540,8 @@ where
         }
     }
 
-    /// Preloads a new [`Handler`] with requests that are waiting to be sent to the newly connected peer.
+    /// Preloads a new [`Handler`] with requests that are waiting to be sent to
+    /// the newly connected peer.
     fn preload_new_handler(
         &mut self,
         handler: &mut Handler<TCodec>,
@@ -680,7 +694,10 @@ where
                         }))
                 }
                 None => {
-                    tracing::debug!("Connection ({connection}) closed after `Event::Request` ({request_id}) has been emitted.");
+                    tracing::debug!(
+                        "Connection ({connection}) closed after `Event::Request` ({request_id}) \
+                         has been emitted."
+                    );
                 }
             },
             handler::Event::OutboundResponseStreamClosed(request_id) => {
@@ -702,7 +719,8 @@ where
 
                 debug_assert!(
                     !removed,
-                    "Expect request_id to have been removed from pending because the response channel has already been available."
+                    "Expect request_id to have been removed from pending because the response \
+                     channel has already been available."
                 );
 
                 self.pending_events.push_back(ToSwarm::GenerateEvent(
@@ -775,7 +793,10 @@ where
                         }));
                 } else {
                     // This happens when `read_request` fails.
-                    tracing::debug!("Inbound failure is reported for an unknown request_id ({request_id}): {error}");
+                    tracing::debug!(
+                        "Inbound failure is reported for an unknown request_id ({request_id}): \
+                         {error}"
+                    );
                 }
             }
         }

@@ -2,8 +2,9 @@
 //! implement RPC compliant serialization.
 //!
 //! The wrappers implement [serde_with::SerializeAs] which allows annotating
-//! struct fields `serde_as(as = "RpcFelt")`to use the RPC compliant serialization.
-//! It also allows specifying container types such as [Option], [Vec] etc: `serde_as(as = "Vec<RpcFelt>")`.
+//! struct fields `serde_as(as = "RpcFelt")`to use the RPC compliant
+//! serialization. It also allows specifying container types such as [Option],
+//! [Vec] etc: `serde_as(as = "Vec<RpcFelt>")`.
 //!
 //! ```ignore
 //! #[serde_with::serde_as]
@@ -21,11 +22,31 @@
 //! ```
 
 use pathfinder_common::{
-    AccountDeploymentDataElem, BlockHash, CallParam, CallResultValue, CasmHash, ChainId, ClassHash,
-    ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData,
-    EventKey, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, PaymasterDataElem,
-    SequencerAddress, SierraHash, StateCommitment, StorageAddress, StorageValue, TransactionHash,
-    TransactionNonce, TransactionSignatureElem,
+    AccountDeploymentDataElem,
+    BlockHash,
+    CallParam,
+    CallResultValue,
+    CasmHash,
+    ChainId,
+    ClassHash,
+    ConstructorParam,
+    ContractAddress,
+    ContractAddressSalt,
+    ContractNonce,
+    EntryPoint,
+    EventData,
+    EventKey,
+    L1ToL2MessagePayloadElem,
+    L2ToL1MessagePayloadElem,
+    PaymasterDataElem,
+    SequencerAddress,
+    SierraHash,
+    StateCommitment,
+    StorageAddress,
+    StorageValue,
+    TransactionHash,
+    TransactionNonce,
+    TransactionSignatureElem,
 };
 use pathfinder_crypto::Felt;
 
@@ -34,7 +55,8 @@ use pathfinder_crypto::Felt;
 ///
 /// RPC output types should use this type for serialization instead of [Felt].
 ///
-/// This can be easily accomplished by marking a field with `#[serde_as(as = "RpcFelt")]`.
+/// This can be easily accomplished by marking a field with `#[serde_as(as =
+/// "RpcFelt")]`.
 pub struct RpcFelt(pub Felt);
 
 impl From<Felt> for RpcFelt {
@@ -49,18 +71,20 @@ impl From<RpcFelt> for Felt {
     }
 }
 
-/// An RPC specific wrapper around [Felt] for types which are restricted to 251 bits. It implements
-/// [serde::Serialize] in accordance with RPC specifications.
+/// An RPC specific wrapper around [Felt] for types which are restricted to 251
+/// bits. It implements [serde::Serialize] in accordance with RPC
+/// specifications.
 ///
 /// RPC output types should use this type for serialization instead of [Felt].
 ///
-/// This can be easily accomplished by marking a field with `#[serde_as(as = "RpcFelt251")]`.
+/// This can be easily accomplished by marking a field with `#[serde_as(as =
+/// "RpcFelt251")]`.
 #[derive(serde::Serialize)]
 pub struct RpcFelt251(RpcFelt);
 
 mod serialization {
-    //! Blanket [serde::Serialize] and [serde_with::SerializeAs] implementations for [RpcFelt] and [RpcFelt251]
-    //! supported types.
+    //! Blanket [serde::Serialize] and [serde_with::SerializeAs] implementations
+    //! for [RpcFelt] and [RpcFelt251] supported types.
 
     use super::*;
 
@@ -142,8 +166,8 @@ macro_rules! rpc_felt_serde {
 /// - `From<$target> for RpcFelt251`
 /// - `From<RpcFelt251> for $target`
 ///
-/// The target types must be a private [Felt] newtype i.e. `$target::get() -> &Felt`
-/// must exist.
+/// The target types must be a private [Felt] newtype i.e. `$target::get() ->
+/// &Felt` must exist.
 macro_rules! rpc_felt_251_serde {
     ($target:ident) => {
         impl From<$target> for RpcFelt251 {
@@ -194,8 +218,8 @@ rpc_felt_serde!(
 rpc_felt_251_serde!(ContractAddress, StorageAddress);
 
 mod deserialization {
-    //! Blanket [serde::Deserialize] and [serde_with::DeserializeAs] implementations for [RpcFelt] and [RpcFelt251]
-    //! supported types.
+    //! Blanket [serde::Deserialize] and [serde_with::DeserializeAs]
+    //! implementations for [RpcFelt] and [RpcFelt251] supported types.
     use super::*;
 
     impl<'de, T> serde_with::DeserializeAs<'de, T> for RpcFelt
@@ -233,8 +257,8 @@ mod deserialization {
                 where
                     E: serde::de::Error,
                 {
-                    // Felt::from_hex_str currently does not enforce `0x` prefix, add it here to prevent
-                    // breaking other serde related code.
+                    // Felt::from_hex_str currently does not enforce `0x` prefix, add it here to
+                    // prevent breaking other serde related code.
                     match v.as_bytes() {
                         &[b'0', b'x', ..] => pathfinder_crypto::Felt::from_hex_str(v)
                             .map_err(|e| serde::de::Error::custom(e))

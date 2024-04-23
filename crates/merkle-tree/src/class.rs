@@ -1,14 +1,19 @@
 use anyhow::Context;
+use pathfinder_common::hash::PoseidonHash;
 use pathfinder_common::{
-    BlockNumber, ClassCommitment, ClassCommitmentLeafHash, ClassHash, SierraHash,
+    BlockNumber,
+    ClassCommitment,
+    ClassCommitmentLeafHash,
+    ClassHash,
+    SierraHash,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
 use crate::tree::MerkleTree;
-use pathfinder_common::hash::PoseidonHash;
 
-/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to Starknet's Sierra classes.
+/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
+/// Starknet's Sierra classes.
 ///
 /// It maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
 ///
@@ -50,16 +55,16 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
     /// Adds a leaf node for a Sierra -> CASM commitment.
     ///
-    /// Note that the leaf value is _not_ the Cairo hash, but a hashed value based on that.
-    /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
+    /// Note that the leaf value is _not_ the Cairo hash, but a hashed value
+    /// based on that. See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
     /// for details.
     pub fn set(&mut self, class: SierraHash, value: ClassCommitmentLeafHash) -> anyhow::Result<()> {
         let key = class.view_bits().to_owned();
         self.tree.set(&self.storage, key, value.0)
     }
 
-    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
-    /// any potentially newly created nodes.
+    /// Commits the changes and calculates the new node hashes. Returns the new
+    /// commitment and any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(ClassCommitment, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
 

@@ -3,15 +3,29 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::state_update::{
-    ContractClassUpdate, ContractUpdate, ContractUpdateCounts, ReverseContractUpdate,
+    ContractClassUpdate,
+    ContractUpdate,
+    ContractUpdateCounts,
+    ReverseContractUpdate,
     StateUpdateCounts,
 };
 use pathfinder_common::{
-    BlockHash, BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
-    StateCommitment, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
+    BlockHash,
+    BlockNumber,
+    CasmHash,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    SierraHash,
+    StateCommitment,
+    StateUpdate,
+    StorageAddress,
+    StorageCommitment,
+    StorageValue,
 };
 
-use crate::{prelude::*, BlockId};
+use crate::prelude::*;
+use crate::BlockId;
 
 type StorageUpdates = Vec<(StorageAddress, StorageValue)>;
 
@@ -23,11 +37,12 @@ impl Transaction<'_> {
         state_update: &StateUpdate,
     ) -> anyhow::Result<()> {
         let mut insert_nonce = self
-        .inner()
-        .prepare_cached(
-            "INSERT INTO nonce_updates (block_number, contract_address, nonce) VALUES (?, ?, ?)",
-        )
-        .context("Preparing nonce insert statement")?;
+            .inner()
+            .prepare_cached(
+                "INSERT INTO nonce_updates (block_number, contract_address, nonce) VALUES (?, ?, \
+                 ?)",
+            )
+            .context("Preparing nonce insert statement")?;
 
         let mut query_contract_address = self
             .inner()
@@ -52,12 +67,20 @@ impl Transaction<'_> {
             .context("Preparing storage address insert statement")?;
 
         let mut insert_storage = self
-        .inner().prepare_cached("INSERT INTO storage_updates (block_number, contract_address_id, storage_address_id, storage_value) VALUES (?, ?, ?, ?)")
-        .context("Preparing nonce insert statement")?;
+            .inner()
+            .prepare_cached(
+                "INSERT INTO storage_updates (block_number, contract_address_id, \
+                 storage_address_id, storage_value) VALUES (?, ?, ?, ?)",
+            )
+            .context("Preparing nonce insert statement")?;
 
         let mut insert_contract = self
-        .inner().prepare_cached("INSERT INTO contract_updates (block_number, contract_address, class_hash) VALUES (?, ?, ?)")
-        .context("Preparing contract insert statement")?;
+            .inner()
+            .prepare_cached(
+                "INSERT INTO contract_updates (block_number, contract_address, class_hash) VALUES \
+                 (?, ?, ?)",
+            )
+            .context("Preparing contract insert statement")?;
 
         let mut update_class_defs = self
             .inner()
@@ -138,17 +161,19 @@ impl Transaction<'_> {
             }
         }
 
-        // Set all declared classes block numbers. Class definitions are inserted by a separate mechanism, prior
-        // to state update inserts. However, since the class insertion does not know with which block number to
+        // Set all declared classes block numbers. Class definitions are inserted by a
+        // separate mechanism, prior to state update inserts. However, since the
+        // class insertion does not know with which block number to
         // associate with the class definition, we need to fill it in here.
         let sierra = state_update
             .declared_sierra_classes
             .keys()
             .map(|sierra| ClassHash(sierra.0));
         let cairo = state_update.declared_cairo_classes.iter().copied();
-        // Older cairo 0 classes were never declared, but instead got implicitly declared on first deployment.
-        // Until such classes disappear we need to cater for them here. This works because the sql only
-        // updates the row if it is null.
+        // Older cairo 0 classes were never declared, but instead got implicitly
+        // declared on first deployment. Until such classes disappear we need to
+        // cater for them here. This works because the sql only updates the row
+        // if it is null.
         let deployed = state_update
             .contract_updates
             .iter()
@@ -900,10 +925,12 @@ impl Transaction<'_> {
             .context("Iterating over reverse nonce updates")
     }
 
-    /// Returns the list of changes to be made to revert Sierra class declarations.
+    /// Returns the list of changes to be made to revert Sierra class
+    /// declarations.
     ///
-    /// None means the class was declared _after_ `to_block` and has to be deleted.
-    /// Some(casm_hash) means the CASM hash for the class has been updated (!).
+    /// None means the class was declared _after_ `to_block` and has to be
+    /// deleted. Some(casm_hash) means the CASM hash for the class has been
+    /// updated (!).
     pub fn reverse_sierra_class_updates(
         &self,
         from_block: BlockNumber,
@@ -1044,8 +1071,9 @@ mod tests {
             .unwrap();
         assert_eq!(non_existent, None);
 
-        // Query a few blocks after deployment as well. This is a regression case where querying by
-        // block hash failed to find the class hash if it wasn't literally the deployed block.
+        // Query a few blocks after deployment as well. This is a regression case where
+        // querying by block hash failed to find the class hash if it wasn't
+        // literally the deployed block.
         let is_replaced = tx
             .contract_class_hash(header_4.number.into(), contract)
             .unwrap();
@@ -1072,7 +1100,8 @@ mod tests {
                 .unwrap();
             let tx = db.transaction().unwrap();
 
-            // Submit the class definitions since this occurs out of band of the header and state diff.
+            // Submit the class definitions since this occurs out of band of the header and
+            // state diff.
             tx.insert_cairo_class(CAIRO_HASH, b"cairo definition")
                 .unwrap();
             tx.insert_cairo_class(CAIRO_HASH2, b"cairo definition 2")

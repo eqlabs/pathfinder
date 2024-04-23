@@ -8,8 +8,7 @@ use ipnet::IpNet;
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
-use libp2p::swarm;
-use libp2p::{Multiaddr, PeerId, Swarm};
+use libp2p::{swarm, Multiaddr, PeerId, Swarm};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
@@ -32,14 +31,12 @@ mod test_utils;
 mod tests;
 mod transport;
 
-pub use client::peer_agnostic::PeerData;
-pub use libp2p;
-pub use sync::protocol::PROTOCOLS;
-
-use client::peer_aware::Client;
-use main_loop::MainLoop;
-
 pub use behaviour::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
+pub use client::peer_agnostic::PeerData;
+use client::peer_aware::Client;
+pub use libp2p;
+use main_loop::MainLoop;
+pub use sync::protocol::PROTOCOLS;
 
 pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {
     let local_peer_id = keypair.public().to_peer_id();
@@ -79,8 +76,9 @@ pub struct Config {
     pub max_inbound_relayed_peers: usize,
     /// Maximum number of outbound peers.
     pub max_outbound_peers: usize,
-    /// The minimum number of peers to maintain. If the number of outbound peers drops below this
-    /// number, the node will attempt to connect to more peers.
+    /// The minimum number of peers to maintain. If the number of outbound peers
+    /// drops below this number, the node will attempt to connect to more
+    /// peers.
     pub low_watermark: usize,
     /// How long to prevent evicted peers from reconnecting.
     pub eviction_timeout: Duration,

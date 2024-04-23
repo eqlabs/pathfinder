@@ -43,7 +43,8 @@ pub fn migrations() -> &'static [MigrationFn] {
     ]
 }
 
-/// The number of schema revisions replaced by the [base schema](base::base_schema).
+/// The number of schema revisions replaced by the [base
+/// schema](base::base_schema).
 ///
 /// Note that 40 was a no-op as we wanted to disallow versions <= 39.
 pub(crate) const BASE_SCHEMA_REVISION: usize = 40;

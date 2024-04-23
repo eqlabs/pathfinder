@@ -1,8 +1,9 @@
+use anyhow::Context;
+use pathfinder_common::TransactionHash;
+
 use crate::context::RpcContext;
 use crate::v06::method::get_transaction_receipt::types::FinalityStatus;
 use crate::v07::dto;
-use anyhow::Context;
-use pathfinder_common::TransactionHash;
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]

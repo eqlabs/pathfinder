@@ -18,7 +18,7 @@ check:
     cargo check --workspace --all-targets
 
 fmt:
-    cargo fmt --all
+    cargo +nightly fmt --all
 
 clippy:
     cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms

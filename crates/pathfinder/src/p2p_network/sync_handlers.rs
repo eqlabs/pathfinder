@@ -2,7 +2,14 @@ use anyhow::Context;
 use futures::SinkExt;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
-    Address, BlockNumberOrHash, ConsensusSignature, Direction, Hash, Iteration, Merkle, Patricia,
+    Address,
+    BlockNumberOrHash,
+    ConsensusSignature,
+    Direction,
+    Hash,
+    Iteration,
+    Merkle,
+    Patricia,
     Step,
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -12,8 +19,7 @@ use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, Sta
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_crypto::Felt;
-use pathfinder_storage::Storage;
-use pathfinder_storage::Transaction;
+use pathfinder_storage::{Storage, Transaction};
 use starknet_gateway_types::class_definition;
 use tokio::sync::mpsc;
 
@@ -436,8 +442,8 @@ fn get_start_block_number(
 
 /// Spawns a blocking task and forwards the result to the given channel.
 /// Bails out early if the database operation fails or sending fails.
-/// The `getter` function is expected to send partial results through the tokio channel as soon as possible,
-/// ideally after each database read operation.
+/// The `getter` function is expected to send partial results through the tokio
+/// channel as soon as possible, ideally after each database read operation.
 async fn spawn_blocking_get<Request, Response, Getter>(
     request: Request,
     storage: Storage,

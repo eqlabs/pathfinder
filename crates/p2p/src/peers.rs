@@ -1,10 +1,9 @@
-use std::{
-    collections::HashMap,
-    net::IpAddr,
-    time::{Duration, Instant},
-};
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::time::{Duration, Instant};
 
-use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
+use libp2p::multiaddr::Protocol;
+use libp2p::{Multiaddr, PeerId};
 use sha3::{Digest, Sha3_256};
 
 use crate::secret::Secret;
@@ -15,8 +14,8 @@ pub struct Peer {
     pub direction: Direction,
     pub addr: Option<Multiaddr>,
     pub keyed_network_group: Option<KeyedNetworkGroup>,
-    /// All peers send and receive periodic pings. This field holds the smallest ping time from all the
-    /// pings sent and received from this peer.
+    /// All peers send and receive periodic pings. This field holds the smallest
+    /// ping time from all the pings sent and received from this peer.
     pub min_ping: Option<Duration>,
     pub evicted: bool,
     pub useful: bool,
@@ -148,12 +147,12 @@ impl PeerSet {
     }
 }
 
-/// A network group that is keyed by a secret, calculated as SHA3(secret || 16 bit prefix for IPv4
-/// or 32 bit prefix for IPv6 addresses).
+/// A network group that is keyed by a secret, calculated as SHA3(secret || 16
+/// bit prefix for IPv4 or 32 bit prefix for IPv6 addresses).
 ///
-/// For a given secret and IP address, the network group is deterministic, but unpredictable
-/// by the attacker. The keyed network group is used to ensure that our node is connected to a
-/// diverse set of IP addresses.
+/// For a given secret and IP address, the network group is deterministic, but
+/// unpredictable by the attacker. The keyed network group is used to ensure
+/// that our node is connected to a diverse set of IP addresses.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct KeyedNetworkGroup(pub [u8; 32]);
 

@@ -1,4 +1,5 @@
-//! Pathfinder_crypto is a library for cryptographic primitives used by Starknet.
+//! Pathfinder_crypto is a library for cryptographic primitives used by
+//! Starknet.
 
 /// Contains algebra such as finite fields and elliptic curves.
 pub mod algebra;
@@ -10,5 +11,11 @@ pub mod hash;
 pub mod signature;
 
 pub use algebra::{
-    AffinePoint, CurveOrderMontFelt, Felt, HexParseError, MontFelt, OverflowError, ProjectivePoint,
+    AffinePoint,
+    CurveOrderMontFelt,
+    Felt,
+    HexParseError,
+    MontFelt,
+    OverflowError,
+    ProjectivePoint,
 };

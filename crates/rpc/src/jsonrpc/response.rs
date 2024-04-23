@@ -1,8 +1,8 @@
-use crate::error::ApplicationError;
 use axum::response::IntoResponse;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::error::ApplicationError;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::RequestId;
 

@@ -1,7 +1,8 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockId, TransactionIndex};
+
+use crate::context::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -59,8 +60,10 @@ pub async fn get_transaction_by_block_id_and_index_impl(
         {
             Some(transaction) => Ok(transaction),
             None => {
-                // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
-                // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
+                // We now need to check whether it was the block hash or transaction index which
+                // were invalid. We do this by checking if the block exists
+                // at all. If no, then the block hash is invalid. If yes, then the index is
+                // invalid.
                 let block_exists = db_tx
                     .block_exists(block_id)
                     .context("Querying block existence")?;
@@ -78,12 +81,14 @@ pub async fn get_transaction_by_block_id_and_index_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {

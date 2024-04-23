@@ -22,7 +22,8 @@ impl BloomFilter {
     // The maximal number of items anticipated to be inserted into the Bloom filter.
     const ITEMS_COUNT: u32 = 1024;
     // The number of hash functions used by the Bloom filter.
-    // We need this value to be able to re-create the filter with the deserialized bitmap.
+    // We need this value to be able to re-create the filter with the deserialized
+    // bitmap.
     const K_NUM: u32 = 12;
     // The seed used by the hash functions of the filter.
     // This is a randomly generated vector of 32 bytes.

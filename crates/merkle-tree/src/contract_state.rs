@@ -1,13 +1,22 @@
 use std::collections::HashMap;
 
-use crate::ContractsStorageTree;
 use anyhow::Context;
+use pathfinder_common::state_update::ReverseContractUpdate;
 use pathfinder_common::{
-    state_update::ReverseContractUpdate, BlockNumber, ClassHash, ContractAddress, ContractNonce,
-    ContractRoot, ContractStateHash, StorageAddress, StorageValue,
+    BlockNumber,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    ContractRoot,
+    ContractStateHash,
+    StorageAddress,
+    StorageValue,
 };
-use pathfinder_crypto::{hash::pedersen_hash, Felt};
+use pathfinder_crypto::hash::pedersen_hash;
+use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
+
+use crate::ContractsStorageTree;
 
 #[derive(Debug)]
 pub struct ContractStateUpdateResult {
@@ -20,8 +29,8 @@ pub struct ContractStateUpdateResult {
 impl ContractStateUpdateResult {
     /// Inserts the results of a contract state update into the database.
     ///
-    /// The new trie nodes are committed first, then the root node index and the contract state hash
-    /// is persisted.
+    /// The new trie nodes are committed first, then the root node index and the
+    /// contract state hash is persisted.
     pub fn insert(self, block: BlockNumber, transaction: &Transaction<'_>) -> anyhow::Result<()> {
         // Insert nodes only if we made storage updates.
         if self.did_storage_updates {
@@ -40,7 +49,8 @@ impl ContractStateUpdateResult {
     }
 }
 
-/// Updates a contract's state with and returns the resulting [ContractStateHash].
+/// Updates a contract's state with and returns the resulting
+/// [ContractStateHash].
 pub fn update_contract_state(
     contract_address: ContractAddress,
     updates: &HashMap<StorageAddress, StorageValue>,
@@ -80,7 +90,8 @@ pub fn update_contract_state(
     };
 
     let class_hash = if contract_address.is_system_contract() {
-        // This is a special system contract at address 0x1, which doesn't have a class hash.
+        // This is a special system contract at address 0x1, which doesn't have a class
+        // hash.
         ClassHash::ZERO
     } else if let Some(class_hash) = new_class_hash {
         class_hash
@@ -97,7 +108,8 @@ pub fn update_contract_state(
         transaction
             .contract_nonce(contract_address, block.into())
             .context("Querying contract's nonce")?
-            //Nonce defaults to ZERO because that is its historical value before being added in 0.10.
+            //Nonce defaults to ZERO because that is its historical value before being added in
+            // 0.10.
             .unwrap_or_default()
     };
 
@@ -119,13 +131,15 @@ pub fn calculate_contract_state_hash(
 ) -> ContractStateHash {
     const CONTRACT_STATE_HASH_VERSION: Felt = Felt::ZERO;
 
-    // The contract state hash is defined as H(H(H(hash, root), nonce), CONTRACT_STATE_HASH_VERSION)
+    // The contract state hash is defined as H(H(H(hash, root), nonce),
+    // CONTRACT_STATE_HASH_VERSION)
     let hash = pedersen_hash(hash.0, root.0);
     let hash = pedersen_hash(hash, nonce.0);
     let hash = pedersen_hash(hash, CONTRACT_STATE_HASH_VERSION);
 
-    // Compare this with the HashChain construction used in the contract_hash: the number of
-    // elements is not hashed to this hash, and this is supposed to be different.
+    // Compare this with the HashChain construction used in the contract_hash: the
+    // number of elements is not hashed to this hash, and this is supposed to be
+    // different.
     ContractStateHash(hash)
 }
 
@@ -198,7 +212,8 @@ pub fn revert_contract_state(
 
             let state_hash = if contract_address.is_system_contract() && root == ContractRoot::ZERO
             {
-                // special case: if the contract trie is empty the system contract should be deleted
+                // special case: if the contract trie is empty the system contract should be
+                // deleted
                 ContractStateHash::ZERO
             } else {
                 calculate_contract_state_hash(class_hash, root, nonce)
@@ -213,9 +228,9 @@ pub fn revert_contract_state(
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::{felt, ClassHash, ContractNonce, ContractRoot, ContractStateHash};
+
     use super::calculate_contract_state_hash;
-    use pathfinder_common::felt;
-    use pathfinder_common::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
 
     #[test]
     fn hash() {

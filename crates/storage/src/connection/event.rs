@@ -1,12 +1,18 @@
 use std::num::NonZeroUsize;
 
-use crate::bloom::BloomFilter;
-use crate::{prelude::*, ReorgCounter};
-
 use pathfinder_common::event::Event;
 use pathfinder_common::{
-    BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
+    BlockHash,
+    BlockNumber,
+    ContractAddress,
+    EventData,
+    EventKey,
+    TransactionHash,
 };
+
+use crate::bloom::BloomFilter;
+use crate::prelude::*;
+use crate::ReorgCounter;
 
 pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub const KEY_FILTER_LIMIT: usize = 16;
@@ -164,7 +170,8 @@ impl Transaction<'_> {
                 }
             }
 
-            // Stop if we have a page of events plus an extra one to decide if we're on the last page.
+            // Stop if we have a page of events plus an extra one to decide if we're on the
+            // last page.
             if emitted_events.len() > filter.page_size {
                 break ScanResult::PageFull;
             }
@@ -371,18 +378,16 @@ enum Filter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use pretty_assertions_sorted::assert_eq;
-
-    use crate::connection::TransactionData;
-    use crate::test_utils;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::receipt::Receipt;
-    use pathfinder_common::{BlockHeader, BlockTimestamp, EntryPoint, Fee};
-
-    use pathfinder_common::transaction as common;
+    use pathfinder_common::{transaction as common, BlockHeader, BlockTimestamp, EntryPoint, Fee};
     use pathfinder_crypto::Felt;
+    use pretty_assertions_sorted::assert_eq;
+
+    use super::*;
+    use crate::connection::TransactionData;
+    use crate::test_utils;
 
     lazy_static::lazy_static!(
         static ref MAX_BLOCKS_TO_SCAN: NonZeroUsize = NonZeroUsize::new(100).unwrap();
@@ -421,8 +426,8 @@ mod tests {
 
     #[test]
     fn events_are_ordered() {
-        // This is a regression test where events were incorrectly ordered by transaction hash
-        // instead of transaction index.
+        // This is a regression test where events were incorrectly ordered by
+        // transaction hash instead of transaction index.
         //
         // Events should be ordered by block number, transaction index, event index.
 

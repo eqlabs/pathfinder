@@ -1,13 +1,15 @@
-use crate::v02::types::request::BroadcastedDeployAccountTransaction;
-use crate::v02::types::request::BroadcastedInvokeTransaction;
-use crate::v02::types::request::BroadcastedTransaction;
-use crate::v02::types::SierraContractClass;
 use anyhow::Context;
 use pathfinder_common::transaction::TransactionVariant;
-use pathfinder_common::ChainId;
-use pathfinder_common::StarknetVersion;
+use pathfinder_common::{ChainId, StarknetVersion};
 use pathfinder_executor::{ClassInfo, IntoStarkFelt};
 use starknet_api::core::PatriciaKey;
+
+use crate::v02::types::request::{
+    BroadcastedDeployAccountTransaction,
+    BroadcastedInvokeTransaction,
+    BroadcastedTransaction,
+};
+use crate::v02::types::SierraContractClass;
 
 pub enum ExecutionStateError {
     BlockNotFound,

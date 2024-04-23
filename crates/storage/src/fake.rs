@@ -1,10 +1,16 @@
 //! Create fake blockchain data for test purposes
-use crate::Storage;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::{transaction as common, SignedBlockHeader};
-use pathfinder_common::{ClassHash, SierraHash, StateUpdate};
+use pathfinder_common::{
+    transaction as common,
+    ClassHash,
+    SierraHash,
+    SignedBlockHeader,
+    StateUpdate,
+};
 use rand::Rng;
+
+use crate::Storage;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Block {
@@ -16,7 +22,8 @@ pub struct Block {
 }
 
 /// Initialize [`Storage`] with fake blocks and state updates
-/// maintaining [**limited consistency guarantees**](crate::fake::init::with_n_blocks)
+/// maintaining [**limited consistency
+/// guarantees**](crate::fake::init::with_n_blocks)
 pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<Block> {
     let mut rng = rand::thread_rng();
     with_n_blocks_and_rng(storage, n, &mut rng)
@@ -98,20 +105,30 @@ pub mod init {
     use fake::{Fake, Faker};
     use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
-    use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
-    use pathfinder_common::test_utils::fake_non_empty_with_rng;
-    use pathfinder_common::ContractAddress;
-    use pathfinder_common::{
-        state_update::ContractClassUpdate, BlockHash, BlockHeader, BlockNumber, StateCommitment,
-        StateUpdate, TransactionIndex,
+    use pathfinder_common::state_update::{
+        ContractClassUpdate,
+        ContractUpdate,
+        SystemContractUpdate,
     };
-    use pathfinder_common::{transaction as common, SignedBlockHeader};
+    use pathfinder_common::test_utils::fake_non_empty_with_rng;
+    use pathfinder_common::{
+        transaction as common,
+        BlockHash,
+        BlockHeader,
+        BlockNumber,
+        ContractAddress,
+        SignedBlockHeader,
+        StateCommitment,
+        StateUpdate,
+        TransactionIndex,
+    };
     use rand::Rng;
     use starknet_gateway_types::class_definition;
 
     use super::Block;
 
-    /// Create fake blocks and state updates with __limited consistency guarantees__:
+    /// Create fake blocks and state updates with __limited consistency
+    /// guarantees__:
     /// - block headers:
     ///     - consecutive numbering starting from genesis (`0`) up to `n-1`
     ///     - parent hash wrt previous block, genesis' parent hash is `0`
@@ -123,13 +140,15 @@ pub mod init {
     /// - state updates:
     ///     - block hashes
     ///     - old roots wrt previous state update, genesis' old root is `0`
-    ///     - replaced classes for block N point to some deployed contracts from block N-1
+    ///     - replaced classes for block N point to some deployed contracts from
+    ///       block N-1
     ///     - each storage diff has its respective nonce update
     ///     - storage entries constrain at least 1 element
     /// - declared cairo|sierra definitions
     ///     - each declared class has random bytes inserted as its definition
-    ///     - all those definitions are **very short and fall far below the soft limit in protobuf
-    ///       encoding of 1MiB**, btw see usage of `p2p_proto::MESSAGE_SIZE_LIMIT` et al.
+    ///     - all those definitions are **very short and fall far below the soft
+    ///       limit in protobuf encoding of 1MiB**, btw see usage of
+    ///       `p2p_proto::MESSAGE_SIZE_LIMIT` et al.
     ///     - casm definitions for sierra classes are empty
     ///
     ///     
@@ -327,7 +346,8 @@ pub mod init {
                             state_update
                                 .contract_updates
                                 .entry(*address)
-                                // It's ulikely rng has generated an update to the previously deployed class but it is still possible
+                                // It's ulikely rng has generated an update to the previously
+                                // deployed class but it is still possible
                                 .or_default()
                                 .class =
                                 Some(ContractClassUpdate::Replace(Faker.fake_with_rng(rng)))

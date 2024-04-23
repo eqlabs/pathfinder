@@ -1,11 +1,11 @@
 use anyhow::Context;
+use pathfinder_common::BlockId;
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 use serde_with::serde_as;
 
-use crate::{
-    context::RpcContext, error::ApplicationError, v02::types::request::BroadcastedTransaction,
-};
-use pathfinder_common::BlockId;
+use crate::context::RpcContext;
+use crate::error::ApplicationError;
+use crate::v02::types::request::BroadcastedTransaction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -153,16 +153,24 @@ pub async fn estimate_fee(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
-    use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
-        felt, BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        felt,
+        BlockHash,
+        CallParam,
+        ContractAddress,
+        Fee,
+        TransactionNonce,
+        TransactionSignatureElem,
+        TransactionVersion,
     };
 
+    use super::*;
+    use crate::v02::types::request::BroadcastedInvokeTransaction;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
@@ -237,15 +245,15 @@ pub(crate) mod tests {
 
     mod in_memory {
 
+        use pathfinder_common::macro_prelude::*;
+        use pathfinder_common::{felt, EntryPoint};
+
         use super::*;
-
-        use pathfinder_common::{macro_prelude::*, EntryPoint};
-
-        use pathfinder_common::felt;
-
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
-            BroadcastedInvokeTransactionV0, BroadcastedInvokeTransactionV1,
+            BroadcastedDeclareTransaction,
+            BroadcastedDeclareTransactionV2,
+            BroadcastedInvokeTransactionV0,
+            BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
 
@@ -293,9 +301,11 @@ pub(crate) mod tests {
                     sender_address: account_contract_address,
                     calldata: vec![
                         CallParam(*universal_deployer_address.get()),
-                        // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                        // Entry point selector for the called contract, i.e.
+                        // AccountCallArray::selector
                         CallParam(EntryPoint::hashed(b"deployContract").0),
-                        // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                        // Length of the call data for the called contract, i.e.
+                        // AccountCallArray::data_len
                         call_param!("4"),
                         // classHash
                         CallParam(sierra_hash.0),
@@ -321,9 +331,11 @@ pub(crate) mod tests {
                         CallParam(felt!(
                             "0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7"
                         )),
-                        // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                        // Entry point selector for the called contract, i.e.
+                        // AccountCallArray::selector
                         CallParam(EntryPoint::hashed(b"get_data").0),
-                        // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                        // Length of the call data for the called contract, i.e.
+                        // AccountCallArray::data_len
                         call_param!("0"),
                     ],
                 }),

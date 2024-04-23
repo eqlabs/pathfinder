@@ -1,22 +1,29 @@
-use crate::state::block_hash::{verify_block_hash, VerifyResult};
-use crate::state::sync::class::{download_class, DownloadedClass};
-use crate::state::sync::SyncEvent;
+use std::collections::{HashMap, HashSet};
+use std::time::Duration;
+
 use anyhow::{anyhow, Context};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
-    BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
-    StateCommitment, StateUpdate, TransactionCommitment,
+    BlockHash,
+    BlockNumber,
+    Chain,
+    ChainId,
+    ClassHash,
+    EventCommitment,
+    StarknetVersion,
+    StateCommitment,
+    StateUpdate,
+    TransactionCommitment,
 };
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::{
-    error::SequencerError,
-    reply::{Block, Status},
-};
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::time::Duration;
+use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::reply::{Block, Status};
 use tokio::sync::mpsc;
+
+use crate::state::block_hash::{verify_block_hash, VerifyResult};
+use crate::state::sync::class::{download_class, DownloadedClass};
+use crate::state::sync::SyncEvent;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Timings {
@@ -25,8 +32,8 @@ pub struct Timings {
     pub signature_download: Duration,
 }
 
-/// A cache containing the last `N` blocks in the chain. Used to determine reorg extents
-/// and ensure the integrity of new blocks.
+/// A cache containing the last `N` blocks in the chain. Used to determine reorg
+/// extents and ensure the integrity of new blocks.
 pub struct BlockChain {
     /// The latest block in the chain.
     head: BlockNumber,
@@ -226,8 +233,9 @@ where
                     == starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound
                         .into() =>
             {
-                // There is a race condition here: if the query for the signature was made _before_ the block was
-                // published -- but by the time we actually queried for the block it was there. In this case
+                // There is a race condition here: if the query for the signature was made
+                // _before_ the block was published -- but by the time we
+                // actually queried for the block it was there. In this case
                 // we just retry the signature download.
                 let t_signature = std::time::Instant::now();
                 let signature = sequencer.signature(next.into()).await.with_context(|| {
@@ -271,7 +279,8 @@ where
     }
 }
 
-/// Emits the latest block hash and number from the gateway at regular intervals.
+/// Emits the latest block hash and number from the gateway at regular
+/// intervals.
 ///
 /// Exits once all receivers are closed.
 /// Errors are logged and ignored.
@@ -312,8 +321,8 @@ pub async fn poll_latest(
 ///
 /// Note that due to an issue with the sequencer previously undeclared classes
 /// can show up in `replaced_classes`. This is caused by DECLARE v0 transactions
-/// that were _failing_ but the sequencer has still added the class to its list of
-/// known classes...
+/// that were _failing_ but the sequencer has still added the class to its list
+/// of known classes...
 pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
@@ -337,7 +346,8 @@ pub async fn download_new_classes(
     let new_classes = deployed_classes
         .chain(declared_cairo_classes)
         .chain(declared_sierra_classes)
-        // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
+        // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe
+        // than sorry.
         .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -390,15 +400,17 @@ pub async fn download_new_classes(
                 sierra_hash,
                 casm_definition,
             } => {
-                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
-                // since that's what has been added to the class commitment tree.
+                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the
+                // feeder gateway, since that's what has been added to the class
+                // commitment tree.
                 let Some(casm_hash) = state_update
                     .declared_sierra_classes
                     .iter()
                     .find_map(|(sierra, casm)| (sierra.0 == class_hash.0).then_some(*casm))
                 else {
-                    // This can occur if the sierra was in here as a deploy contract, if the class was
-                    // declared in a previous block but not yet persisted by the database.
+                    // This can occur if the sierra was in here as a deploy contract, if the class
+                    // was declared in a previous block but not yet persisted by
+                    // the database.
                     continue;
                 };
                 tx_event
@@ -461,7 +473,8 @@ async fn download_block(
             // Check if block hash is correct.
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
-                // In p2p the state commitment which is required to calculate the block hash can be missing, and in such case it is marked as 0s.
+                // In p2p the state commitment which is required to calculate the block hash can
+                // be missing, and in such case it is marked as 0s.
                 #[cfg(feature = "p2p")]
                 if block.state_commitment == StateCommitment::ZERO {
                     return Ok((block, VerifyResult::NotVerifiable));
@@ -504,9 +517,10 @@ async fn download_block(
             }
         }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
-            // This would occur if we queried past the head of the chain. We now need to check that
-            // a reorg hasn't put us too far in the future. This does run into race conditions with
-            // the sequencer but this is the best we can do I think.
+            // This would occur if we queried past the head of the chain. We now need to
+            // check that a reorg hasn't put us too far in the future. This does
+            // run into race conditions with the sequencer but this is the best
+            // we can do I think.
             let (latest_block_number, latest_block_hash) = sequencer
                 .head()
                 .await
@@ -519,14 +533,16 @@ async fn download_block(
                     Some(parent_block_hash) if parent_block_hash == latest_block_hash => {
                         Ok(DownloadBlock::AtHead)
                     }
-                    // Our head is not valid anymore so there must have been a reorg only at this height
+                    // Our head is not valid anymore so there must have been a reorg only at this
+                    // height
                     Some(_) => Ok(DownloadBlock::Reorg),
-                    // There is something wrong with the sequencer, as we are attempting to get the genesis block
-                    // Let's retry in a while
+                    // There is something wrong with the sequencer, as we are attempting to get the
+                    // genesis block Let's retry in a while
                     None => Ok(DownloadBlock::AtHead),
                 }
             } else {
-                // The new head is at lower height than our head which means there must have been a reorg
+                // The new head is at lower height than our head which means there must have
+                // been a reorg
                 Ok(DownloadBlock::Reorg)
             }
         }
@@ -623,27 +639,41 @@ async fn reorg(
 mod tests {
 
     mod sync {
-        use crate::state::l2::{BlockChain, L2SyncContext};
-        use pathfinder_common::macro_prelude::*;
-        use pathfinder_common::BlockCommitmentSignature;
-        use pathfinder_common::StateUpdate;
-        use starknet_gateway_types::reply::GasPrices;
-
-        use super::super::{sync, BlockValidationMode, SyncEvent};
         use assert_matches::assert_matches;
+        use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{
-            BlockHash, BlockId, BlockNumber, BlockTimestamp, Chain, ChainId, ClassHash,
-            ContractAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-            StorageAddress, StorageValue,
+            BlockCommitmentSignature,
+            BlockHash,
+            BlockId,
+            BlockNumber,
+            BlockTimestamp,
+            Chain,
+            ChainId,
+            ClassHash,
+            ContractAddress,
+            GasPrice,
+            SequencerAddress,
+            StarknetVersion,
+            StateCommitment,
+            StateUpdate,
+            StorageAddress,
+            StorageValue,
         };
         use pathfinder_crypto::Felt;
         use pathfinder_storage::StorageBuilder;
         use starknet_gateway_client::MockGatewayApi;
-        use starknet_gateway_types::{
-            error::{KnownStarknetErrorCode, SequencerError, StarknetError},
-            reply,
+        use starknet_gateway_types::error::{
+            KnownStarknetErrorCode,
+            SequencerError,
+            StarknetError,
         };
-        use tokio::{sync::mpsc, task::JoinHandle};
+        use starknet_gateway_types::reply;
+        use starknet_gateway_types::reply::GasPrices;
+        use tokio::sync::mpsc;
+        use tokio::task::JoinHandle;
+
+        use super::super::{sync, BlockValidationMode, SyncEvent};
+        use crate::state::l2::{BlockChain, L2SyncContext};
 
         const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;
 
@@ -1042,8 +1072,9 @@ mod tests {
         }
 
         mod happy_path {
-            use super::*;
             use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
+
+            use super::*;
 
             #[tokio::test]
             async fn from_genesis() {
@@ -1214,8 +1245,9 @@ mod tests {
         }
 
         mod errors {
-            use super::*;
             use starknet_gateway_types::reply::Status;
+
+            use super::*;
 
             #[tokio::test]
             async fn invalid_block_status() {
@@ -1244,14 +1276,16 @@ mod tests {
                 let error = jh.await.unwrap().unwrap_err();
                 assert_eq!(
                     &error.to_string(),
-                    "Rejecting block as its status is REVERTED, and only accepted blocks are allowed"
+                    "Rejecting block as its status is REVERTED, and only accepted blocks are \
+                     allowed"
                 );
             }
         }
 
         mod reorg {
-            use super::*;
             use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
+
+            use super::*;
 
             #[tokio::test]
             // This reorg occurs at the genesis block, which is swapped for a new one.
@@ -1346,7 +1380,8 @@ mod tests {
                     Err(block_not_found()),
                 );
 
-                // Indicate that we are still staying at the head - the latest block matches our head
+                // Indicate that we are still staying at the head - the latest block matches our
+                // head
                 expect_block_header(
                     &mut mock,
                     &mut seq,
@@ -1380,7 +1415,8 @@ mod tests {
             }
 
             #[tokio::test]
-            // This reorg occurs at the genesis block, which means that the fork replaces the entire chain.
+            // This reorg occurs at the genesis block, which means that the fork replaces
+            // the entire chain.
             //
             // [block 0]-------[block 1]-------[block 2]
             //
@@ -1486,7 +1522,8 @@ mod tests {
                 );
 
                 // L2 sync task is then looking if reorg occurred
-                // We indicate that reorg started at genesis by setting the latest on the new genesis block
+                // We indicate that reorg started at genesis by setting the latest on the new
+                // genesis block
                 expect_block_header(
                     &mut mock,
                     &mut seq,
@@ -1494,7 +1531,8 @@ mod tests {
                     Ok((BLOCK0_V2.block_number, BLOCK0_V2.block_hash)),
                 );
 
-                // Then the L2 sync task goes back block by block to find the last block where the block hash matches the DB
+                // Then the L2 sync task goes back block by block to find the last block where
+                // the block hash matches the DB
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -1510,7 +1548,8 @@ mod tests {
 
                 // Once the L2 sync task has found where reorg occurred,
                 // it can get back to downloading the new blocks
-                // Fetch the new genesis block from the fork with respective state update and contracts
+                // Fetch the new genesis block from the fork with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -1529,7 +1568,8 @@ mod tests {
                     BLOCK0_NUMBER.into(),
                     Ok(BLOCK0_SIGNATURE_V2.clone()),
                 );
-                // Fetch the new block #1 from the fork with respective state update and contracts
+                // Fetch the new block #1 from the fork with respective state update and
+                // contracts
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -1784,7 +1824,8 @@ mod tests {
                     Ok((block1_v2.block_number, block1_v2.block_hash)),
                 );
 
-                // L2 sync task goes back block by block to find where the block hash matches the DB
+                // L2 sync task goes back block by block to find where the block hash matches
+                // the DB
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -1804,8 +1845,9 @@ mod tests {
                     Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
 
-                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
-                // Fetch the new block #1 from the fork with respective state update
+                // Finally the L2 sync task is downloading the new blocks once it knows where to
+                // start again Fetch the new block #1 from the fork with
+                // respective state update
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -1831,7 +1873,8 @@ mod tests {
                     BLOCK2_NUMBER.into(),
                     Ok(BLOCK2_SIGNATURE_V2.clone()),
                 );
-                // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
+                // Indicate that we are still staying at the head - no new blocks and the latest
+                // block matches our head
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2008,7 +2051,8 @@ mod tests {
                     Ok((block2_v2.block_number, block2_v2.block_hash)),
                 );
 
-                // L2 sync task goes back block by block to find where the block hash matches the DB
+                // L2 sync task goes back block by block to find where the block hash matches
+                // the DB
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2016,8 +2060,9 @@ mod tests {
                     Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
                 );
 
-                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
-                // Fetch the new block #2 from the fork with respective state update
+                // Finally the L2 sync task is downloading the new blocks once it knows where to
+                // start again Fetch the new block #2 from the fork with
+                // respective state update
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2031,7 +2076,8 @@ mod tests {
                     Ok(BLOCK2_SIGNATURE_V2.clone()),
                 );
 
-                // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
+                // Indicate that we are still staying at the head - no new blocks and the latest
+                // block matches our head
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2202,8 +2248,9 @@ mod tests {
                     Ok(BLOCK2_SIGNATURE.clone()),
                 );
 
-                // L2 sync task goes back block by block to find where the block hash matches the DB
-                // It starts at the previous block to which the mismatch happened
+                // L2 sync task goes back block by block to find where the block hash matches
+                // the DB It starts at the previous block to which the mismatch
+                // happened
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2211,8 +2258,9 @@ mod tests {
                     Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
 
-                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
-                // Fetch the new block #1 from the fork with respective state update
+                // Finally the L2 sync task is downloading the new blocks once it knows where to
+                // start again Fetch the new block #1 from the fork with
+                // respective state update
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2239,7 +2287,8 @@ mod tests {
                     Ok(BLOCK2_SIGNATURE.clone()),
                 );
 
-                // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
+                // Indicate that we are still staying at the head - no new blocks and the latest
+                // block matches our head
                 expect_state_update_with_block(
                     &mut mock,
                     &mut seq,
@@ -2295,7 +2344,8 @@ mod tests {
             #[tokio::test]
             async fn shutdown() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                // Closing the event's channel should trigger the sync to exit with error after the first send.
+                // Closing the event's channel should trigger the sync to exit with error after
+                // the first send.
                 rx_event.close();
 
                 let mut mock = MockGatewayApi::new();

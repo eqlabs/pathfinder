@@ -16,11 +16,9 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use connection::*;
-
-use pathfinder_common::{BlockHash, BlockNumber};
-
 use anyhow::Context;
+pub use connection::*;
+use pathfinder_common::{BlockHash, BlockNumber};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{OpenFlags, OptionalExtension};
@@ -38,8 +36,8 @@ pub enum JournalMode {
 
 /// Identifies a specific starknet block stored in the database.
 ///
-/// Note that this excludes the `Pending` variant since we never store pending data
-/// in the database.
+/// Note that this excludes the `Pending` variant since we never store pending
+/// data in the database.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockId {
     Latest,
@@ -78,9 +76,10 @@ impl TryFrom<pathfinder_common::BlockId> for BlockId {
 ///
 /// Intended usage:
 /// - Use [StorageBuilder] to create the app's database.
-/// - Pass the [Storage] (or clones thereof) to components which require database access.
-/// - Use [Storage::connection] to create connection's to the database, which can in turn
-///   be used to interact with the various [tables](self).
+/// - Pass the [Storage] (or clones thereof) to components which require
+///   database access.
+/// - Use [Storage::connection] to create connection's to the database, which
+///   can in turn be used to interact with the various [tables](self).
 #[derive(Clone)]
 pub struct Storage(Inner);
 
@@ -165,8 +164,8 @@ impl StorageBuilder {
         Self::in_memory_with_trie_pruning(TriePruneMode::Archive)
     }
 
-    /// Convenience function for tests to create an in-memory database with a specific trie prune
-    /// mode.
+    /// Convenience function for tests to create an in-memory database with a
+    /// specific trie prune mode.
     pub fn in_memory_with_trie_pruning(trie_prune_mode: TriePruneMode) -> anyhow::Result<Storage> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
@@ -202,10 +201,12 @@ impl StorageBuilder {
         storage.create_pool(NonZeroU32::new(5).unwrap())
     }
 
-    /// Performs the database schema migration and returns a [storage manager](StorageManager).
+    /// Performs the database schema migration and returns a [storage
+    /// manager](StorageManager).
     ///
     /// This should be called __once__ at the start of the application,
-    /// and passed to the various components which require access to the database.
+    /// and passed to the various components which require access to the
+    /// database.
     pub fn migrate(self) -> anyhow::Result<StorageManager> {
         let mut open_flags = OpenFlags::default();
         open_flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
@@ -257,10 +258,11 @@ impl StorageBuilder {
         })
     }
 
-    /// - If there is no explicitly requested configuration, assumes the user wants to archive. If
-    ///   this doesn't match the database setting, errors.
-    /// - If there's an explicitly requested setting: uses it if matches DB setting, enables
-    ///   pruning and sets flag in the database. Otherwise errors.
+    /// - If there is no explicitly requested configuration, assumes the user
+    ///   wants to archive. If this doesn't match the database setting, errors.
+    /// - If there's an explicitly requested setting: uses it if matches DB
+    ///   setting, enables pruning and sets flag in the database. Otherwise
+    ///   errors.
     fn determine_trie_prune_mode(
         &self,
         connection: &mut rusqlite::Connection,
@@ -288,12 +290,18 @@ impl StorageBuilder {
         match trie_prune_mode {
             TriePruneMode::Archive => {
                 if prune_flag_is_set {
-                    anyhow::bail!("Cannot disable Merkle trie pruning on a database that was created with it enabled.")
+                    anyhow::bail!(
+                        "Cannot disable Merkle trie pruning on a database that was created with \
+                         it enabled."
+                    )
                 }
             }
             TriePruneMode::Prune { num_blocks_kept: _ } => {
                 if !is_new_database && !prune_flag_is_set {
-                    anyhow::bail!("Cannot enable Merkle trie pruning on a database that was not created with it enabled.");
+                    anyhow::bail!(
+                        "Cannot enable Merkle trie pruning on a database that was not created \
+                         with it enabled."
+                    );
                 }
 
                 if is_new_database {
@@ -357,7 +365,8 @@ fn setup_connection(
 
     match journal_mode {
         JournalMode::Rollback => {
-            // According to the documentation FULL is the recommended setting for rollback mode.
+            // According to the documentation FULL is the recommended setting for rollback
+            // mode.
             connection.pragma_update(None, "synchronous", "full")?;
         }
         JournalMode::WAL => {
@@ -415,7 +424,8 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
             "Database version is from a newer than this application expected"
         );
         anyhow::bail!(
-            "Database version {current_revision} is newer than this application expected {latest_revision}",
+            "Database version {current_revision} is newer than this application expected \
+             {latest_revision}",
         );
     }
 
@@ -508,9 +518,10 @@ mod tests {
     fn foreign_keys_are_enforced() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
 
-        // We first disable foreign key support. Sqlite currently enables this by default,
-        // but this may change in the future. So we disable to check that our enable function
-        // works regardless of what Sqlite's default is.
+        // We first disable foreign key support. Sqlite currently enables this by
+        // default, but this may change in the future. So we disable to check
+        // that our enable function works regardless of what Sqlite's default
+        // is.
         use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
         conn.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false)
             .unwrap();

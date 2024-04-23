@@ -1,4 +1,5 @@
-use p2p::{libp2p::PeerId, PeerData};
+use p2p::libp2p::PeerId;
+use p2p::PeerData;
 use pathfinder_common::{BlockNumber, ClassHash, SignedBlockHeader};
 
 #[derive(Debug, thiserror::Error)]

@@ -1,30 +1,36 @@
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHeader, BlockNumber, ClassCommitment, ClassCommitmentLeafHash, StorageCommitment,
+    BlockHeader,
+    BlockNumber,
+    ClassCommitment,
+    ClassCommitmentLeafHash,
+    StorageCommitment,
 };
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_storage::Transaction;
 
 /// Revert Starknet state by applying reverse-updates.
 ///
-/// Computes the contract and Sierra class reverse-updates then applies those to the Merkle tries.
-/// Returns an error if the commitments calculated after making the changes do not match the
-/// commitments in the target block header.
+/// Computes the contract and Sierra class reverse-updates then applies those to
+/// the Merkle tries. Returns an error if the commitments calculated after
+/// making the changes do not match the commitments in the target block header.
 ///
-/// Handling of delayed removal of trie data is more complicated: we have to account for
-/// removed trie nodes separately.
+/// Handling of delayed removal of trie data is more complicated: we have to
+/// account for removed trie nodes separately.
 ///
-/// In general, removing the trie nodes deleted at block N is only safe if we don't
-/// ever need to access trie state at block < N. This is not necessarily the case during a reorg:
-/// if our reorg/revert target is still in the range of blocks we're keeping trie history for then
-/// removing deleted nodes for the reorged-away blocks would break the trie for the blocks _before_
-/// the reorg target. Instead, we move all the removed nodes in the reorged-away range to be "owned"
-/// by the revert target block.
+/// In general, removing the trie nodes deleted at block N is only safe if we
+/// don't ever need to access trie state at block < N. This is not necessarily
+/// the case during a reorg: if our reorg/revert target is still in the range of
+/// blocks we're keeping trie history for then removing deleted nodes for the
+/// reorged-away blocks would break the trie for the blocks _before_
+/// the reorg target. Instead, we move all the removed nodes in the reorged-away
+/// range to be "owned" by the revert target block.
 ///
-/// For trie roots: if there was a root change in the interval we're reverting that will be taken care by
-/// the revert anyway (we're changing the trie during the reverse state update, so there will be a new
-/// root inserted). If there were no changes then there was no root index inserted in the revert range
-/// so we remove nothing when purging the blocks after the revert.
+/// For trie roots: if there was a root change in the interval we're reverting
+/// that will be taken care by the revert anyway (we're changing the trie during
+/// the reverse state update, so there will be a new root inserted). If there
+/// were no changes then there was no root index inserted in the revert range so
+/// we remove nothing when purging the blocks after the revert.
 pub fn revert_starknet_state(
     transaction: &Transaction<'_>,
     head: BlockNumber,
@@ -49,8 +55,8 @@ pub fn revert_starknet_state(
 
 /// Revert all contract/global storage trie updates.
 ///
-/// Fetches reverse updates from the database and updates all tries, returning the storage commitment
-/// and the storage root node index.
+/// Fetches reverse updates from the database and updates all tries, returning
+/// the storage commitment and the storage root node index.
 fn revert_contract_updates(
     transaction: &Transaction<'_>,
     head: BlockNumber,
@@ -129,7 +135,8 @@ fn revert_class_updates(
                     ClassCommitmentLeafHash::ZERO
                 }
                 Some(casm_hash) => {
-                    // Class hash has changed. Note that the class commitment leaf must have already been added to storage.
+                    // Class hash has changed. Note that the class commitment leaf must have already
+                    // been added to storage.
                     pathfinder_common::calculate_class_commitment_leaf_hash(casm_hash)
                 }
             };

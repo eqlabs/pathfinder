@@ -1,19 +1,23 @@
 use std::sync::Arc;
 
+use anyhow::Context;
+use blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
+use blockifier::context::{BlockContext, ChainInfo};
+use blockifier::state::cached_state::{CachedState, GlobalContractCache};
+use blockifier::versioned_constants::VersionedConstants;
+use pathfinder_common::{
+    contract_address,
+    BlockHeader,
+    ChainId,
+    ContractAddress,
+    L1DataAvailabilityMode,
+    StateUpdate,
+};
+use starknet_api::core::PatriciaKey;
+
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
 use crate::IntoStarkFelt;
-use anyhow::Context;
-use blockifier::{
-    block::{pre_process_block, BlockInfo, BlockNumberHashPair},
-    context::{BlockContext, ChainInfo},
-    state::cached_state::{CachedState, GlobalContractCache},
-    versioned_constants::VersionedConstants,
-};
-use pathfinder_common::{
-    contract_address, BlockHeader, ChainId, ContractAddress, L1DataAvailabilityMode, StateUpdate,
-};
-use starknet_api::core::PatriciaKey;
 
 // NOTE: these are the same for _all_ networks
 pub const ETH_FEE_TOKEN_ADDRESS: ContractAddress =

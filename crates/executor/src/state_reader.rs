@@ -1,11 +1,12 @@
-use blockifier::state::{errors::StateError, state_api::StateReader};
+use blockifier::state::errors::StateError;
+use blockifier::state::state_api::StateReader;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
-use starknet_api::{hash::StarkFelt, StarknetApiError};
-
-use crate::lru_cache::GLOBAL_CACHE;
+use starknet_api::hash::StarkFelt;
+use starknet_api::StarknetApiError;
 
 use super::felt::{IntoFelt, IntoStarkFelt};
+use crate::lru_cache::GLOBAL_CACHE;
 
 pub(super) struct PathfinderStateReader<'tx> {
     transaction: &'tx pathfinder_storage::Transaction<'tx>,

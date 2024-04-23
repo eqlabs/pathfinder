@@ -1,9 +1,12 @@
-use crate::{proto, ToProtobuf, TryFromProtobuf};
+use std::fmt::Display;
+use std::num::NonZeroU64;
+
 use fake::Dummy;
 use libp2p_identity::PeerId;
 use pathfinder_crypto::Felt;
 use rand::Rng;
-use std::{fmt::Display, num::NonZeroU64};
+
+use crate::{proto, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash, Default)]
 pub struct Hash(pub Felt);
@@ -69,7 +72,8 @@ pub enum BlockNumberOrHash {
     Hash(Hash),
 }
 
-/// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None` or `Some(0)`
+/// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None`
+/// or `Some(0)`
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Step(NonZeroU64);
 

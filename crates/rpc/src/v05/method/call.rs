@@ -1,9 +1,10 @@
-use crate::context::RpcContext;
-use crate::error::ApplicationError;
-use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
+
+use crate::context::RpcContext;
+use crate::error::ApplicationError;
+use crate::felt::RpcFelt;
 
 #[derive(Debug)]
 pub enum CallError {
@@ -134,13 +135,14 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {
@@ -183,17 +185,27 @@ mod tests {
 
     mod in_memory {
 
-        use super::*;
-
-        use crate::pending::PendingData;
         use pathfinder_common::{
-            felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ClassHash, ContractAddress,
-            GasPrice, StateUpdate, StorageAddress, StorageValue,
+            felt,
+            BlockHash,
+            BlockHeader,
+            BlockNumber,
+            BlockTimestamp,
+            ClassHash,
+            ContractAddress,
+            GasPrice,
+            StateUpdate,
+            StorageAddress,
+            StorageValue,
         };
         use starknet_gateway_test_fixtures::class_definitions::{
-            CONTRACT_DEFINITION, CONTRACT_DEFINITION_CLASS_HASH,
+            CONTRACT_DEFINITION,
+            CONTRACT_DEFINITION_CLASS_HASH,
         };
         use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode, PendingBlock};
+
+        use super::*;
+        use crate::pending::PendingData;
 
         async fn test_context() -> (
             RpcContext,
@@ -464,16 +476,18 @@ mod tests {
     }
 
     mod mainnet {
-        use super::*;
         use std::num::NonZeroU32;
         use std::path::PathBuf;
+
+        use super::*;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         ));
 
-        // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
+        // Data from transaction
+        // 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
         fn valid_mainnet_call() -> FunctionCall {
             FunctionCall {
                 contract_address: contract_address!(

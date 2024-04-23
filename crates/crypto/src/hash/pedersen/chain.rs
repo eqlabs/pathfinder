@@ -1,12 +1,13 @@
 use crate::algebra::field::Felt;
 use crate::hash::pedersen_hash;
 
-/// HashChain is the structure used over at cairo side to represent the hash construction needed
-/// for computing the class hash.
+/// HashChain is the structure used over at cairo side to represent the hash
+/// construction needed for computing the class hash.
 ///
-/// Empty hash chained value equals `H(0, 0)` where `H` is the [`pedersen_hash()`] function, and the
-/// second value is the number of values hashed together in this chain. For other values, the
-/// accumulator is on each update replaced with the `H(hash, value)` and the number of count
+/// Empty hash chained value equals `H(0, 0)` where `H` is the
+/// [`pedersen_hash()`] function, and the second value is the number of values
+/// hashed together in this chain. For other values, the accumulator is on each
+/// update replaced with the `H(hash, value)` and the number of count
 /// incremented by one.
 #[derive(Default)]
 pub struct HashChain {

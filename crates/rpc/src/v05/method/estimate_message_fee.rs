@@ -1,8 +1,6 @@
-use crate::{
-    context::RpcContext,
-    v05::method::estimate_fee::FeeEstimate,
-    v06::method::estimate_message_fee::{EstimateMessageFeeError, EstimateMessageFeeInput},
-};
+use crate::context::RpcContext;
+use crate::v05::method::estimate_fee::FeeEstimate;
+use crate::v06::method::estimate_message_fee::{EstimateMessageFeeError, EstimateMessageFeeInput};
 
 pub async fn estimate_message_fee(
     context: RpcContext,
@@ -24,20 +22,28 @@ pub async fn estimate_message_fee(
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockId, BlockNumber, BlockTimestamp, GasPrice, StateUpdate,
+        felt,
+        BlockHash,
+        BlockHeader,
+        BlockId,
+        BlockNumber,
+        BlockTimestamp,
+        EthereumAddress,
+        GasPrice,
+        StateUpdate,
     };
-    use pathfinder_common::{macro_prelude::*, EthereumAddress};
     use primitive_types::H160;
     use serde::Deserialize;
     use starknet_gateway_test_fixtures::class_definitions::{
-        CAIRO_1_1_0_BALANCE_CASM_JSON, CAIRO_1_1_0_BALANCE_SIERRA_JSON,
+        CAIRO_1_1_0_BALANCE_CASM_JSON,
+        CAIRO_1_1_0_BALANCE_SIERRA_JSON,
     };
     use tempfile::tempdir;
 
-    use crate::v06::method::estimate_message_fee::MsgFromL1;
-
     use super::*;
+    use crate::v06::method::estimate_message_fee::MsgFromL1;
 
     #[test]
     fn test_parse_input_named() {

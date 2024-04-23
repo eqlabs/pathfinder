@@ -1,7 +1,8 @@
-use crate::context::RpcContext;
-use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
+
+use crate::context::RpcContext;
+use crate::felt::RpcFelt;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -79,14 +80,16 @@ pub async fn get_nonce(
 
 #[cfg(test)]
 mod tests {
-    use super::{get_nonce, GetNonceError, GetNonceInput};
-    use crate::context::RpcContext;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockId, BlockNumber, ContractNonce};
 
+    use super::{get_nonce, GetNonceError, GetNonceInput};
+    use crate::context::RpcContext;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {
@@ -183,7 +186,8 @@ mod tests {
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        // This contract is created in `setup_storage` and has a nonce set in the pending block.
+        // This contract is created in `setup_storage` and has a nonce set in the
+        // pending block.
         let input = GetNonceInput {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 1"),
@@ -196,8 +200,9 @@ mod tests {
     async fn pending_defaults_to_latest() {
         let context = RpcContext::for_tests();
 
-        // This contract is created in `setup_storage` and has a nonce set to 0x1, and is not
-        // overwritten in pending (since this test does not specify any pending data).
+        // This contract is created in `setup_storage` and has a nonce set to 0x1, and
+        // is not overwritten in pending (since this test does not specify any
+        // pending data).
         let input = GetNonceInput {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 0"),
@@ -225,7 +230,8 @@ mod tests {
     async fn contract_deployed_in_pending_defaults_to_zero() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        // This contract is deployed in the pending block but does not have a nonce update.
+        // This contract is deployed in the pending block but does not have a nonce
+        // update.
         let input = GetNonceInput {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),

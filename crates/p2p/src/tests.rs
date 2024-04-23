@@ -335,8 +335,8 @@ async fn periodic_bootstrap() {
         [boot.peer_id, peer1.peer_id].into()
     );
 
-    // The peer keeps attempting the bootstrap because the low watermark is not reached, but there
-    // are no new peers to connect to.
+    // The peer keeps attempting the bootstrap because the low watermark is not
+    // reached, but there are no new peers to connect to.
 
     wait_for_event(
         &mut peer2.event_receiver,
@@ -357,7 +357,8 @@ async fn periodic_bootstrap() {
         [boot.peer_id, peer1.peer_id].into()
     );
 
-    // Start a new peer and connect to the other peers, immediately reaching the low watermark.
+    // Start a new peer and connect to the other peers, immediately reaching the low
+    // watermark.
     let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
     peer3
@@ -378,7 +379,8 @@ async fn periodic_bootstrap() {
 
     exhaust_events(&mut peer3.event_receiver).await;
 
-    // The low watermark is reached for peer3, so no more bootstrap attempts are made.
+    // The low watermark is reached for peer3, so no more bootstrap attempts are
+    // made.
     let timeout = tokio::time::timeout(
         BOOTSTRAP_PERIOD + Duration::from_millis(100),
         wait_for_event(&mut peer3.event_receiver, |event| match event {
@@ -391,7 +393,8 @@ async fn periodic_bootstrap() {
     assert!(timeout.is_err());
 }
 
-/// Test that if a peer attempts to reconnect too quickly, the connection is closed.
+/// Test that if a peer attempts to reconnect too quickly, the connection is
+/// closed.
 #[test_log::test(tokio::test)]
 async fn reconnect_too_quickly() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
@@ -491,8 +494,8 @@ async fn reconnect_too_quickly() {
     .await;
 }
 
-/// Test that each peer accepts at most one connection from any other peer, and duplicate
-/// connections are closed.
+/// Test that each peer accepts at most one connection from any other peer, and
+/// duplicate connections are closed.
 #[test_log::test(tokio::test)]
 async fn duplicate_connection() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
@@ -546,12 +549,12 @@ async fn duplicate_connection() {
     })
     .await;
 
-    // Ensure that the connection timeout has passed, so this is not the reason why the connection
-    // is getting closed.
+    // Ensure that the connection timeout has passed, so this is not the reason why
+    // the connection is getting closed.
     tokio::time::sleep(CONNECTION_TIMEOUT).await;
 
-    // Try to open another connection using the same peer ID and IP address (in this case,
-    // localhost).
+    // Try to open another connection using the same peer ID and IP address (in this
+    // case, localhost).
     peer1_copy
         .client
         .dial(peer2.peer_id, addr2.clone())
@@ -578,8 +581,8 @@ async fn duplicate_connection() {
     assert!(peer1.connected().await.contains_key(&peer2.peer_id));
 }
 
-/// Ensure that outbound peers marked as not useful get evicted if new outbound connections
-/// are attempted.
+/// Ensure that outbound peers marked as not useful get evicted if new outbound
+/// connections are attempted.
 #[test_log::test(tokio::test)]
 async fn outbound_peer_eviction() {
     let cfg = Config {
@@ -646,8 +649,8 @@ async fn outbound_peer_eviction() {
 
     exhaust_events(&mut peer.event_receiver).await;
 
-    // Trying to open another one fails, because no peers are marked as not useful, and hence no
-    // peer can be evicted.
+    // Trying to open another one fails, because no peers are marked as not useful,
+    // and hence no peer can be evicted.
     let result = peer
         .client
         .dial(outbound3.peer_id, outbound_addr3.clone())
@@ -663,8 +666,8 @@ async fn outbound_peer_eviction() {
     // Mark one of the connected peers as not useful.
     peer.client.not_useful(outbound1.peer_id).await;
 
-    // Now the connection to outbound3 can be opened, because outbound1 is marked as not useful and will be
-    // evicted.
+    // Now the connection to outbound3 can be opened, because outbound1 is marked as
+    // not useful and will be evicted.
     peer.client
         .dial(outbound3.peer_id, outbound_addr3.clone())
         .await
@@ -827,8 +830,8 @@ async fn evicted_peer_reconnection() {
     let addr3 = peer3.start_listening().await.unwrap();
     tracing::info!(%peer3.peer_id, %addr3);
 
-    // Connect peer1 to peer2, then to peer3. Because the outbound connection limit is 1, peer2 will
-    // be evicted when peer1 connects to peer3.
+    // Connect peer1 to peer2, then to peer3. Because the outbound connection limit
+    // is 1, peer2 will be evicted when peer1 connects to peer3.
     peer1
         .client
         .dial(peer2.peer_id, addr2.clone())
@@ -855,8 +858,8 @@ async fn evicted_peer_reconnection() {
 
     exhaust_events(&mut peer2.event_receiver).await;
 
-    // In this case there is no peer ID when connecting, so the connection gets closed after being
-    // established.
+    // In this case there is no peer ID when connecting, so the connection gets
+    // closed after being established.
     peer2
         .client
         .dial(peer1.peer_id, addr1.clone())
@@ -914,8 +917,8 @@ async fn ip_whitelist() {
 
     consume_events(peer2.event_receiver);
 
-    // Can't open the connection because peer2 is bound to 127.0.0.1 and peer1 only allows
-    // 127.0.0.2.
+    // Can't open the connection because peer2 is bound to 127.0.0.1 and peer1 only
+    // allows 127.0.0.2.
     let result = peer2.client.dial(peer1.peer_id, addr1.clone()).await;
     assert!(result.is_err());
 
@@ -1067,7 +1070,8 @@ async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
 /// - peer1 responds with a random number of responses
 /// - request is of type [`$req_type`] and is sent using [`$req_fn`]
 /// - response is of type [`$res_type`]
-/// - [`$event_variant`] is the event that tells peer1 that it received peer2's request
+/// - [`$event_variant`] is the event that tells peer1 that it received peer2's
+///   request
 macro_rules! define_test {
     ($test_name:ident, $req_type:ty, $res_type:ty, $event_variant:ident, $req_fn:ident) => {
         #[rstest]

@@ -1,12 +1,42 @@
 use anyhow::Result;
 use pathfinder_common::{
-    BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset,
-    CallParam, CallResultValue, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash,
-    ConstructorParam, ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot,
-    ContractStateHash, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
-    L1DataAvailabilityMode, L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem,
-    SequencerAddress, SierraHash, StarknetVersion, StateCommitment, StorageAddress,
-    StorageCommitment, StorageValue, TransactionCommitment, TransactionHash, TransactionNonce,
+    BlockCommitmentSignatureElem,
+    BlockHash,
+    BlockNumber,
+    BlockTimestamp,
+    ByteCodeOffset,
+    CallParam,
+    CallResultValue,
+    CasmHash,
+    ClassCommitment,
+    ClassCommitmentLeafHash,
+    ClassHash,
+    ConstructorParam,
+    ContractAddress,
+    ContractAddressSalt,
+    ContractNonce,
+    ContractRoot,
+    ContractStateHash,
+    EntryPoint,
+    EventCommitment,
+    EventData,
+    EventKey,
+    Fee,
+    GasPrice,
+    L1DataAvailabilityMode,
+    L1ToL2MessageNonce,
+    L1ToL2MessagePayloadElem,
+    L2ToL1MessagePayloadElem,
+    SequencerAddress,
+    SierraHash,
+    StarknetVersion,
+    StateCommitment,
+    StorageAddress,
+    StorageCommitment,
+    StorageValue,
+    TransactionCommitment,
+    TransactionHash,
+    TransactionNonce,
     TransactionSignatureElem,
 };
 use pathfinder_crypto::Felt;
@@ -110,9 +140,9 @@ try_into_sql!(usize, u64);
 
 try_into_sql_int!(usize, u64);
 
-/// Extends [rusqlite::Row] to provide getters for our own foreign types. This is a work-around
-/// for the orphan rule -- our types live in a separate crate and can therefore not implement the
-/// rusqlite traits.
+/// Extends [rusqlite::Row] to provide getters for our own foreign types. This
+/// is a work-around for the orphan rule -- our types live in a separate crate
+/// and can therefore not implement the rusqlite traits.
 pub trait RowExt {
     fn get_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<&[u8]>;
 
@@ -374,7 +404,8 @@ macro_rules! to_sql_felt {
 
 /// Implements [ToSql] for the target [Felt] newtype.
 ///
-/// Same as [to_sql_felt!] except it compresses the [Felt] by skipping leading zeros.
+/// Same as [to_sql_felt!] except it compresses the [Felt] by skipping leading
+/// zeros.
 ///
 /// [Felt]: pathfinder_crypto::Felt
 macro_rules! to_sql_compressed_felt {
@@ -463,12 +494,17 @@ macro_rules! row_felt_wrapper {
 }
 
 use {
-    row_felt_wrapper, to_sql_builtin, to_sql_compressed_felt, to_sql_felt, to_sql_int,
-    try_into_sql, try_into_sql_int,
+    row_felt_wrapper,
+    to_sql_builtin,
+    to_sql_compressed_felt,
+    to_sql_felt,
+    to_sql_int,
+    try_into_sql,
+    try_into_sql_int,
 };
 
-/// Used in combination with our own [ToSql] trait to provide functionality equivalent to
-/// [rusqlite::params!] for our own foreign types.
+/// Used in combination with our own [ToSql] trait to provide functionality
+/// equivalent to [rusqlite::params!] for our own foreign types.
 macro_rules! params {
     [] => {
         rusqlite::params![]
@@ -493,9 +529,9 @@ pub(crate) use {named_params, params};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use pathfinder_common::macro_prelude::*;
+
+    use super::*;
 
     #[test]
     fn to_sql() {

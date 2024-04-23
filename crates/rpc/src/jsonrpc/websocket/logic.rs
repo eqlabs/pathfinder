@@ -6,8 +6,6 @@ use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
-use crate::jsonrpc::request::RawParams;
-use crate::jsonrpc::{RequestId, RpcRequest};
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{State, WebSocketUpgrade};
 use axum::response::IntoResponse;
@@ -19,7 +17,9 @@ use serde_json::Value;
 use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
+use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::websocket::data::{Kind, ResponseEvent, SubscriptionId, SubscriptionItem};
+use crate::jsonrpc::{RequestId, RpcRequest};
 use crate::BlockHeader;
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
@@ -106,11 +106,12 @@ async fn send_response(
     };
 
     // `send` implies a systematical flush.
-    // We may want to poll the receiver less eagerly, flushing only once the `recv` is
-    // `NotReady`, but because we won't get multiple heads coming in a row I fear this would
-    // bring noticeable complexity for a negligible improvement
+    // We may want to poll the receiver less eagerly, flushing only once the `recv`
+    // is `NotReady`, but because we won't get multiple heads coming in a row I
+    // fear this would bring noticeable complexity for a negligible improvement
     if let Err(e) = sender.send(Message::Text(message)).await {
-        // What could cause this failure? Probably the client closing the connection.. And a full buffer.
+        // What could cause this failure? Probably the client closing the connection..
+        // And a full buffer.
         tracing::debug!(error=%e, "Sending websocket message failed");
         return ControlFlow::Break(());
     }
@@ -315,7 +316,8 @@ async fn header_subscription(
 }
 
 /// A Tokio broadcast sender pre-serializing the value once for all subscribers.
-/// Relies on `Arc`s to flatten the cloning costs inherent to Tokio broadcast channels.
+/// Relies on `Arc`s to flatten the cloning costs inherent to Tokio broadcast
+/// channels.
 #[derive(Debug, Clone)]
 pub struct JsonBroadcaster<T> {
     sender: broadcast::Sender<Arc<Value>>,
@@ -378,21 +380,23 @@ impl Default for TopicBroadcasters {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::jsonrpc::websocket::data::successful_response;
-    use crate::jsonrpc::{RpcError, RpcResponse};
+    use std::borrow::Cow;
+    use std::time::Duration;
+
     use axum::routing::get;
     use futures::{SinkExt, StreamExt};
     use serde::Serialize;
     use serde_json::value::RawValue;
     use serde_json::{json, Number, Value};
-    use std::borrow::Cow;
-    use std::time::Duration;
     use tokio::net::TcpStream;
     use tokio::task::JoinHandle;
     use tokio::time::timeout;
     use tokio_tungstenite::tungstenite::Message;
     use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+
+    use super::*;
+    use crate::jsonrpc::websocket::data::successful_response;
+    use crate::jsonrpc::{RpcError, RpcResponse};
 
     #[tokio::test]
     async fn params_are_required() {
@@ -468,7 +472,8 @@ mod tests {
             .expect_response(&successful_response(&true, req_id).unwrap())
             .await;
 
-        // Now make sure we don't receive it. This is why testing the timeout was important.
+        // Now make sure we don't receive it. This is why testing the timeout was
+        // important.
         client
             .head_sender
             .send_if_receiving(header_sample())

@@ -1,34 +1,31 @@
 //! _High level_ client for p2p interaction.
 //! Frees the caller from managing peers manually.
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::Duration;
 
 use fake::Dummy;
 use futures::{pin_mut, StreamExt};
 use libp2p::PeerId;
+use p2p_proto::class::{ClassesRequest, ClassesResponse};
+use p2p_proto::common::{Direction, Iteration};
+use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
-use p2p_proto::{
-    class::{ClassesRequest, ClassesResponse},
-    event::EventsRequest,
-};
-use p2p_proto::{
-    common::{Direction, Iteration},
-    event::EventsResponse,
-};
+use pathfinder_common::event::Event;
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates};
 use pathfinder_common::{
-    event::Event,
-    state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates},
-    SierraHash, TransactionHash,
-};
-use pathfinder_common::{
-    BlockNumber, ClassHash, ContractAddress, ContractNonce, SignedBlockHeader, StorageAddress,
+    BlockNumber,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    SierraHash,
+    SignedBlockHeader,
+    StorageAddress,
     StorageValue,
+    TransactionHash,
 };
 use tokio::sync::RwLock;
 
@@ -596,9 +593,11 @@ impl Client {
 
     /// ### Important
     ///
-    /// Events are grouped by block and by transaction. The order of flattened events in a block is guaranteed
-    /// to be correct because the event commitment is part of block hash. However the number of events per transaction
-    /// for __pre 0.13.2__ Starknet blocks is __TRUSTED__ because neither signature nor block hash contain this information.
+    /// Events are grouped by block and by transaction. The order of flattened
+    /// events in a block is guaranteed to be correct because the event
+    /// commitment is part of block hash. However the number of events per
+    /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
+    /// because neither signature nor block hash contain this information.
     pub fn events_stream(
         self,
         mut start: BlockNumber,
@@ -735,7 +734,8 @@ impl PeersWithCapability {
         }
     }
 
-    /// Does not clear if elapsed, instead the caller is expected to call [`Self::update`]
+    /// Does not clear if elapsed, instead the caller is expected to call
+    /// [`Self::update`]
     pub fn get(&self, capability: &str) -> Option<&HashSet<PeerId>> {
         if self.last_update.elapsed() > self.timeout {
             None

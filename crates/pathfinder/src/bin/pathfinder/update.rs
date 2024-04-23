@@ -48,12 +48,13 @@ pub async fn poll_github_for_releases() {
             }
             UpdateResult::ReqwestError(e) if e.is_decode() || e.is_body() || e.is_builder() => {
                 // More severe errors, probably indicating something is wrong with our setup.
-                // Set to warn and not error because this update checking is a non-critical feature.
+                // Set to warn and not error because this update checking is a non-critical
+                // feature.
                 tracing::warn!(error=%e, "Error checking Github for new releases")
             }
             UpdateResult::ReqwestError(e) => {
-                // Less severe errors, includes transient connection errors and timeouts; does not warrant
-                // a high log level.
+                // Less severe errors, includes transient connection errors and timeouts; does
+                // not warrant a high log level.
                 tracing::trace!(error=%e, "Error checking Github for new releases")
             }
             UpdateResult::Other(e) => {
@@ -117,14 +118,13 @@ enum UpdateResult {
 /// Fetches the latest pathfinder [Release] from Github using their REST API.
 ///
 /// The [IF_NONE_MATCH](reqwest::header::IF_NONE_MATCH) header options is set to
-/// the `etag` parameter to prevent Github from sending redundant information. The
-/// resulting 304 status code is mapped to [UpdateResult::NotModified].
+/// the `etag` parameter to prevent Github from sending redundant information.
+/// The resulting 304 status code is mapped to [UpdateResult::NotModified].
 async fn fetch_latest_github_release(
     client: &reqwest::Client,
     etag: &Option<reqwest::header::HeaderValue>,
 ) -> UpdateResult {
-    use reqwest::StatusCode;
-    use reqwest::Url;
+    use reqwest::{StatusCode, Url};
 
     let url = Url::parse("https://api.github.com/repos/eqlabs/pathfinder/releases/latest").unwrap();
 
@@ -177,7 +177,8 @@ mod tests {
             other => panic!("Expected an update, but got {other:?}"),
         };
 
-        // Second check should result in no new update (as etag is set to latest release).
+        // Second check should result in no new update (as etag is set to latest
+        // release).
         let etag = release.etag.expect("etag should be set");
         let not_modified = super::fetch_latest_github_release(&client, &Some(etag)).await;
         assert_matches::assert_matches!(not_modified, UpdateResult::NotModified);

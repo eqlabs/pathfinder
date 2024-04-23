@@ -32,10 +32,6 @@ fn get_next_block_number(
 
 #[cfg(test)]
 mod boundary_conditions {
-    use super::I64_MAX;
-    use crate::p2p_network::sync_handlers::{
-        get_classes, get_events, get_headers, get_receipts, get_state_diffs, get_transactions,
-    };
     use fake::{Fake, Faker};
     use futures::channel::mpsc;
     use futures::StreamExt;
@@ -49,6 +45,16 @@ mod boundary_conditions {
     use pathfinder_storage::StorageBuilder;
     use rand::Rng;
     use rstest::rstest;
+
+    use super::I64_MAX;
+    use crate::p2p_network::sync_handlers::{
+        get_classes,
+        get_events,
+        get_headers,
+        get_receipts,
+        get_state_diffs,
+        get_transactions,
+    };
 
     mod zero_limit_yields_fin_invalid_start_yields_fin {
 
@@ -96,7 +102,8 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::sync_handlers;
+    use std::collections::HashMap;
+
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
@@ -106,24 +113,39 @@ mod prop {
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
     use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
     use p2p_proto::state::{
-        ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse,
+        ContractDiff,
+        ContractStoredValue,
+        StateDiffsRequest,
+        StateDiffsResponse,
     };
     use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
     use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{
-        ContractClassUpdate, ContractUpdate, SystemContractUpdate,
+        ContractClassUpdate,
+        ContractUpdate,
+        SystemContractUpdate,
     };
     use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::{
-        ClassCommitment, ClassHash, ContractAddress, ContractNonce, SierraHash, SignedBlockHeader,
-        StorageAddress, StorageCommitment, StorageValue, TransactionHash, TransactionIndex,
+        ClassCommitment,
+        ClassHash,
+        ContractAddress,
+        ContractNonce,
+        SierraHash,
+        SignedBlockHeader,
+        StorageAddress,
+        StorageCommitment,
+        StorageValue,
+        TransactionHash,
+        TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
-    use std::collections::HashMap;
     use tokio::runtime::Runtime;
+
+    use crate::p2p_network::sync_handlers;
 
     #[macro_export]
     macro_rules! prop_assert_eq_sorted {
@@ -327,7 +349,10 @@ mod prop {
 
     mod workaround {
         use pathfinder_common::transaction::{
-            EntryPointType, InvokeTransactionV0, L1HandlerTransaction, Transaction,
+            EntryPointType,
+            InvokeTransactionV0,
+            L1HandlerTransaction,
+            Transaction,
             TransactionVariant,
         };
         use pathfinder_common::TransactionNonce;
@@ -499,9 +524,10 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
         use pathfinder_storage::fake::{with_n_blocks_and_rng, Block};
         use pathfinder_storage::{Storage, StorageBuilder};
+
+        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 
@@ -518,9 +544,10 @@ mod prop {
 
     /// Find overlapping range between the DB and the request
     mod overlapping {
-        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
         use p2p_proto::common::{Direction, Step};
         use pathfinder_storage::fake::Block;
+
+        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
 
         pub fn get(
             from_db: Vec<Block>,
@@ -573,13 +600,16 @@ mod prop {
         }
     }
 
-    /// Building blocks for the ultimate composite strategy used in all property tests
+    /// Building blocks for the ultimate composite strategy used in all property
+    /// tests
     mod strategy {
-        use super::fixtures::MAX_NUM_BLOCKS;
-        use crate::p2p_network::sync_handlers::tests::I64_MAX;
+        use std::ops::Range;
+
         use p2p_proto::common::{Direction, Step};
         use proptest::prelude::*;
-        use std::ops::Range;
+
+        use super::fixtures::MAX_NUM_BLOCKS;
+        use crate::p2p_network::sync_handlers::tests::I64_MAX;
 
         prop_compose! {
             fn inside(range: Range<u64>)(x in range) -> u64 { x }

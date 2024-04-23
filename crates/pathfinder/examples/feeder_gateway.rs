@@ -1,9 +1,11 @@
 /// Serve feeder gateway REST endpoints required for pathfinder to sync.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example feeder_gateway ./testnet-sepolia.sqlite`
+/// `cargo run --release -p pathfinder --example feeder_gateway
+/// ./testnet-sepolia.sqlite`
 ///
-/// Then pathfinder can be run with the following arguments to use this tool as a sync source:
+/// Then pathfinder can be run with the following arguments to use this tool as
+/// a sync source:
 ///
 /// ```text
 /// cargo run --release -p pathfinder -- \
@@ -14,9 +16,10 @@
 ///     --data-directory /tmp
 /// ```
 ///
-/// Optionally this tool can simulate reorgs. To have the tool return data so that
-/// pathfinder reorgs from block 50 to 40 use the following command line:
-/// `cargo run --release -p pathfinder --example feeder_gateway ./testnet-sepolia.sqlite --reorg-at-block 50 --reorg-to-block 40`
+/// Optionally this tool can simulate reorgs. To have the tool return data so
+/// that pathfinder reorgs from block 50 to 40 use the following command line:
+/// `cargo run --release -p pathfinder --example feeder_gateway
+/// ./testnet-sepolia.sqlite --reorg-at-block 50 --reorg-to-block 40`
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::num::NonZeroU32;
@@ -28,18 +31,26 @@ use anyhow::Context;
 use clap::{Args, Parser};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
-    state_diff_commitment_bytes, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
-    BlockNumber, Chain, ClassHash,
+    state_diff_commitment_bytes,
+    BlockCommitmentSignature,
+    BlockCommitmentSignatureElem,
+    BlockHash,
+    BlockNumber,
+    Chain,
+    ClassHash,
 };
 use pathfinder_storage::BlockId;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
-use starknet_gateway_types::reply::GasPrices;
-use starknet_gateway_types::reply::{
-    state_update::{DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff},
-    Status,
+use starknet_gateway_types::reply::state_update::{
+    DeclaredSierraClass,
+    DeployedContract,
+    ReplacedClass,
+    StorageDiff,
 };
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use starknet_gateway_types::reply::{GasPrices, Status};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
 use warp::Filter;
 
 #[derive(Parser)]
@@ -336,7 +347,9 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
 
 fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> {
     use pathfinder_common::consts::{
-        MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
+        MAINNET_GENESIS_HASH,
+        SEPOLIA_INTEGRATION_GENESIS_HASH,
+        SEPOLIA_TESTNET_GENESIS_HASH,
     };
 
     let genesis_hash = tx

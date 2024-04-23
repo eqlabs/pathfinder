@@ -1,12 +1,13 @@
 use anyhow::{anyhow, Context};
+use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
+use pathfinder_common::BlockId;
+use pathfinder_crypto::Felt;
+use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
-use pathfinder_common::{prelude::*, BlockId};
-use pathfinder_crypto::Felt;
-use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetProofInput {
@@ -15,7 +16,8 @@ pub struct GetProofInput {
     pub keys: Vec<StorageAddress>,
 }
 
-// FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants. This may not actually be possible though.
+// FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants.
+// This may not actually be possible though.
 #[derive(Debug)]
 pub enum GetProofError {
     Internal(anyhow::Error),
@@ -50,7 +52,8 @@ struct PathWrapper {
     len: usize,
 }
 
-/// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this crate.
+/// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this
+/// crate.
 #[derive(Debug)]
 pub struct ProofNodes(Vec<TrieNode>);
 
@@ -117,22 +120,28 @@ pub struct ContractData {
     /// Root of the Contract state tree
     root: ContractRoot,
 
-    /// This is currently just a constant = 0, however it might change in the future.
+    /// This is currently just a constant = 0, however it might change in the
+    /// future.
     contract_state_hash_version: Felt,
 
     /// The proofs associated with the queried storage values
     storage_proofs: Vec<ProofNodes>,
 }
 
-/// Holds the membership/non-membership of a contract and its associated contract contract if the contract exists.
+/// Holds the membership/non-membership of a contract and its associated
+/// contract contract if the contract exists.
 #[derive(Debug, Serialize)]
 #[skip_serializing_none]
 pub struct GetProofOutput {
-    /// The global state commitment for Starknet 0.11.0 blocks onwards, if absent the hash
-    /// of the first node in the [contract_proof](GetProofOutput#contract_proof) is the global state commitment.
+    /// The global state commitment for Starknet 0.11.0 blocks onwards, if
+    /// absent the hash of the first node in the
+    /// [contract_proof](GetProofOutput#contract_proof) is the global state
+    /// commitment.
     state_commitment: Option<StateCommitment>,
-    /// Required to verify that the hash of the class commitment and the root of the [contract_proof](GetProofOutput::contract_proof)
-    /// matches the [state_commitment](Self#state_commitment). Present only for Starknet blocks 0.11.0 onwards.
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
     class_commitment: Option<ClassCommitment>,
 
     /// Membership / Non-membership proof for the queried contract
@@ -142,7 +151,8 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-/// Returns all the necessary data to trustlessly verify storage slots for a particular contract.
+/// Returns all the necessary data to trustlessly verify storage slots for a
+/// particular contract.
 pub async fn get_proof(
     context: RpcContext,
     input: GetProofInput,
@@ -175,8 +185,9 @@ pub async fn get_proof(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        // Use internal error to indicate that the process of querying for a particular block failed,
-        // which is not the same as being sure that the block is not in the db.
+        // Use internal error to indicate that the process of querying for a particular
+        // block failed, which is not the same as being sure that the block is
+        // not in the db.
         let header = tx
             .block_header(block_id)
             .context("Fetching block header")?
@@ -251,7 +262,8 @@ pub async fn get_proof(
             class_hash,
             nonce,
             root: contract_root,
-            contract_state_hash_version: Felt::ZERO, // Currently, this is defined as 0. Might change in the future.
+            contract_state_hash_version: Felt::ZERO, /* Currently, this is defined as 0. Might
+                                                      * change in the future. */
             storage_proofs,
         };
 
@@ -296,7 +308,8 @@ mod tests {
         let mut conn = context.storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
 
-        // Ensure that all storage tries are pruned, hence the node does not store historic proofs.
+        // Ensure that all storage tries are pruned, hence the node does not store
+        // historic proofs.
         tx.insert_storage_trie(
             &pathfinder_storage::TrieUpdate {
                 nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],

@@ -1,7 +1,8 @@
 /// Macros for newtypes stored with an sqlite INTEGER column.
 pub(super) mod i64_backed_u64 {
 
-    /// Generates `new`, `new_or_panic` and `get` methods, `PartialEq` against `i64` and `u64`, and `fake::Dummy`.
+    /// Generates `new`, `new_or_panic` and `get` methods, `PartialEq` against
+    /// `i64` and `u64`, and `fake::Dummy`.
     macro_rules! new_get_partialeq {
         ($target:ty) => {
             impl $target {
@@ -265,10 +266,12 @@ pub(super) mod fmt {
         };
     }
 
-    /// Adds a thin Debug implementation, which skips `X(StarkHash(debug))` as `X(debug)`.
+    /// Adds a thin Debug implementation, which skips `X(StarkHash(debug))` as
+    /// `X(debug)`.
     ///
-    /// The implementation uses Display of the wrapped value to produce smallest possible string, but
-    /// still wraps it in a default Debug derive style `TypeName(hash)`.
+    /// The implementation uses Display of the wrapped value to produce smallest
+    /// possible string, but still wraps it in a default Debug derive style
+    /// `TypeName(hash)`.
     macro_rules! thin_debug {
         ($target:ty) => {
             impl std::fmt::Debug for $target {
@@ -282,24 +285,30 @@ pub(super) mod fmt {
     pub(crate) use {thin_debug, thin_display};
 }
 
-/// Creates a [Felt](pathfinder_crypto::Felt) from a hex string literal verified at compile time.
+/// Creates a [Felt](pathfinder_crypto::Felt) from a hex string literal verified
+/// at compile time.
 #[macro_export]
 macro_rules! felt {
     ($hex:expr) => {{
-        // This forces const evaluation of the macro call. Without this the invocation will only be evaluated
-        // at runtime.
-        const CONST_FELT: pathfinder_crypto::Felt = match pathfinder_crypto::Felt::from_hex_str($hex) {
-            Ok(f) => f,
-            Err(pathfinder_crypto::HexParseError::InvalidNibble(_)) => panic!("Invalid hex digit"),
-            Err(pathfinder_crypto::HexParseError::InvalidLength { .. }) => panic!("Too many hex digits"),
-            Err(pathfinder_crypto::HexParseError::Overflow) => panic!("Felt overflow"),
-        };
+        // This forces const evaluation of the macro call. Without this the invocation
+        // will only be evaluated at runtime.
+        const CONST_FELT: pathfinder_crypto::Felt =
+            match pathfinder_crypto::Felt::from_hex_str($hex) {
+                Ok(f) => f,
+                Err(pathfinder_crypto::HexParseError::InvalidNibble(_)) => {
+                    panic!("Invalid hex digit")
+                }
+                Err(pathfinder_crypto::HexParseError::InvalidLength { .. }) => {
+                    panic!("Too many hex digits")
+                }
+                Err(pathfinder_crypto::HexParseError::Overflow) => panic!("Felt overflow"),
+            };
         CONST_FELT
     }};
 }
 
-/// Creates a [`pathfinder_crypto::Felt`] from a byte slice, resulting in compile-time error when
-/// invalid.
+/// Creates a [`pathfinder_crypto::Felt`] from a byte slice, resulting in
+/// compile-time error when invalid.
 #[macro_export]
 macro_rules! felt_bytes {
     ($bytes:expr) => {{

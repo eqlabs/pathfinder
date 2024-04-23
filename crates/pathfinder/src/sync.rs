@@ -43,7 +43,8 @@ impl Sync {
             .context("Fetching latest L1 checkpoint")
     }
 
-    /// Run checkpoint sync until it completes successfully, and we are within some margin of the latest L1 block.
+    /// Run checkpoint sync until it completes successfully, and we are within
+    /// some margin of the latest L1 block.
     async fn checkpoint_sync(&self) -> anyhow::Result<()> {
         let mut checkpoint = self.get_checkpoint().await?;
         loop {
@@ -62,8 +63,8 @@ impl Sync {
                 continue;
             }
 
-            // Initial sync might take so long, that the latest checkpoint is actually far ahead again.
-            // Repeat until we are within some margin of L1.
+            // Initial sync might take so long, that the latest checkpoint is actually far
+            // ahead again. Repeat until we are within some margin of L1.
             let latest_checkpoint = self.get_checkpoint().await?;
             if checkpoint.block_number + CHECKPOINT_MARGIN < latest_checkpoint.block_number {
                 checkpoint = latest_checkpoint;

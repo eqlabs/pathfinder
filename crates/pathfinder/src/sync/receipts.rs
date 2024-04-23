@@ -1,5 +1,6 @@
 use anyhow::Context;
-use pathfinder_common::{receipt::Receipt, BlockHeader};
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::BlockHeader;
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 

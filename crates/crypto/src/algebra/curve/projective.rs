@@ -1,4 +1,5 @@
-use bitvec::{order::Lsb0, slice::BitSlice};
+use bitvec::order::Lsb0;
+use bitvec::slice::BitSlice;
 
 use crate::algebra::curve::*;
 use crate::algebra::field::*;

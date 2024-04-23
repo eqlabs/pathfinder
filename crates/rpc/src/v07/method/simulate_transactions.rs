@@ -1,5 +1,4 @@
 use crate::context::RpcContext;
-
 use crate::v06::method::simulate_transactions as v06;
 
 pub async fn simulate_transactions(
@@ -16,30 +15,41 @@ pub async fn simulate_transactions(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{
+        felt,
+        BlockId,
+        CallParam,
+        ClassHash,
+        EntryPoint,
+        StarknetVersion,
+        StorageValue,
+        TransactionVersion,
+    };
     use pathfinder_crypto::Felt;
     use serde::Deserialize;
+    use starknet_gateway_test_fixtures::class_definitions::{
+        DUMMY_ACCOUNT_CLASS_HASH,
+        ERC20_CONTRACT_DEFINITION_CLASS_HASH,
+    };
 
+    use super::simulate_transactions;
     use crate::context::RpcContext;
     use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1, BroadcastedTransaction,
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV1,
+        BroadcastedTransaction,
     };
     use crate::v02::types::ContractClass;
     use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
     use crate::v04::method::simulate_transactions::tests::setup_storage_with_starknet_version;
     use crate::v05::method::call::FunctionCall;
     use crate::v06::method::simulate_transactions::{
-        dto, SimulateTransactionInput, SimulateTransactionOutput,
+        dto,
+        SimulateTransactionInput,
+        SimulateTransactionOutput,
     };
     use crate::v06::types::PriceUnit;
-    use pathfinder_common::{
-        felt, macro_prelude::*, BlockId, CallParam, ClassHash, EntryPoint, StarknetVersion,
-        StorageValue, TransactionVersion,
-    };
-    use starknet_gateway_test_fixtures::class_definitions::{
-        DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
-    };
-
-    use super::simulate_transactions;
 
     #[tokio::test]
     async fn test_simulate_transaction_with_skip_fee_charge() {
@@ -195,8 +205,9 @@ pub(crate) mod tests {
         let result = simulate_transactions(context, input).await.unwrap();
 
         const OVERALL_FEE: u64 = 15720;
-        use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
         use dto::*;
+
+        use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
 
         pretty_assertions_sorted::assert_eq!(
             result,
@@ -315,9 +326,12 @@ pub(crate) mod tests {
 
     pub(crate) mod fixtures {
         use super::*;
-
         pub use crate::v04::method::simulate_transactions::tests::fixtures::{
-            CASM_DEFINITION, CASM_HASH, DEPLOYED_CONTRACT_ADDRESS, SIERRA_DEFINITION, SIERRA_HASH,
+            CASM_DEFINITION,
+            CASM_HASH,
+            DEPLOYED_CONTRACT_ADDRESS,
+            SIERRA_DEFINITION,
+            SIERRA_HASH,
             UNIVERSAL_DEPLOYER_CLASS_HASH,
         };
 
@@ -327,14 +341,15 @@ pub(crate) mod tests {
         }
 
         pub mod expected_output_0_13_1 {
-            use crate::v03::method::get_state_update::types::{
-                DeclaredSierraClass, StorageDiff, StorageEntry,
-            };
-
             use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
 
             use super::dto::*;
             use super::*;
+            use crate::v03::method::get_state_update::types::{
+                DeclaredSierraClass,
+                StorageDiff,
+                StorageEntry,
+            };
 
             const DECLARE_OVERALL_FEE: u64 = 24201;
             const DECLARE_GAS_CONSUMED: u64 = 23817;

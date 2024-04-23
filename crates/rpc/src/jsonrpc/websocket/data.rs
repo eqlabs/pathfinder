@@ -1,11 +1,13 @@
 //! See [the parent module documentation](super)
 
-use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
+use std::borrow::Cow;
+use std::sync::Arc;
+
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::borrow::Cow;
-use std::sync::Arc;
+
+use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
 
 #[derive(serde::Deserialize, Serialize)]
 pub(super) struct Kind<'a> {

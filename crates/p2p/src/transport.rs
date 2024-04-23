@@ -1,8 +1,7 @@
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::OrTransport;
 use libp2p::core::{upgrade, Transport};
-use libp2p::noise;
-use libp2p::{dns, PeerId};
+use libp2p::{dns, noise, PeerId};
 
 /// Creates a libp2p protocol pathfinder uses.
 ///

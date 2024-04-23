@@ -1,4 +1,5 @@
-//! Contains the [FeltHash] trait and implementations thereof for the [Pedersen](PedersenHash) and [Poseidon](PoseidonHash) hashes.
+//! Contains the [FeltHash] trait and implementations thereof for the
+//! [Pedersen](PedersenHash) and [Poseidon](PoseidonHash) hashes.
 use pathfinder_crypto::hash::{pedersen_hash, poseidon_hash};
 use pathfinder_crypto::Felt;
 

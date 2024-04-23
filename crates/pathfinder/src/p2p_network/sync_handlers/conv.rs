@@ -1,18 +1,28 @@
-//! Workaround for the orphan rule - implement conversion fns for types ourside our crate.
+//! Workaround for the orphan rule - implement conversion fns for types ourside
+//! our crate.
 use p2p_proto::class::{Cairo0Class, Cairo1Class, Cairo1EntryPoints, EntryPoint, SierraEntryPoint};
 use p2p_proto::common::{Address, Hash};
-use p2p_proto::receipt::EthereumAddress;
+use p2p_proto::receipt::execution_resources::BuiltinCounter;
 use p2p_proto::receipt::{
-    execution_resources::BuiltinCounter, DeclareTransactionReceipt,
-    DeployAccountTransactionReceipt, DeployTransactionReceipt, ExecutionResources,
-    InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1, ReceiptCommon,
+    DeclareTransactionReceipt,
+    DeployAccountTransactionReceipt,
+    DeployTransactionReceipt,
+    EthereumAddress,
+    ExecutionResources,
+    InvokeTransactionReceipt,
+    L1HandlerTransactionReceipt,
+    MessageToL1,
+    ReceiptCommon,
 };
 use p2p_proto::transaction::{AccountSignature, ResourceBounds};
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::DataAvailabilityMode;
-use pathfinder_common::{event::Event, transaction::ResourceBound, transaction::Transaction};
+use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, Transaction};
 use pathfinder_common::{
-    AccountDeploymentDataElem, L1DataAvailabilityMode, PaymasterDataElem, TransactionHash,
+    AccountDeploymentDataElem,
+    L1DataAvailabilityMode,
+    PaymasterDataElem,
+    TransactionHash,
 };
 use pathfinder_crypto::Felt;
 use starknet_gateway_types::class_definition::{Cairo, Sierra};

@@ -1,6 +1,7 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_storage::BlockId;
+
+use crate::context::RpcContext;
 
 pub struct Output {
     number: pathfinder_common::BlockNumber,

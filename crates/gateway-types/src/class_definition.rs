@@ -1,11 +1,12 @@
 use std::borrow::Cow;
 
-use crate::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
+
+use crate::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
 
 #[derive(Debug, Deserialize)]
 pub enum ClassDefinition<'a> {

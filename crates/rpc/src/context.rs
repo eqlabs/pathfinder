@@ -1,12 +1,13 @@
-pub use crate::jsonrpc::websocket::WebsocketContext;
-use crate::pending::PendingData;
-use crate::pending::PendingWatcher;
-use crate::SyncState;
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+
 use pathfinder_common::ChainId;
 use pathfinder_executor::TraceCache;
 use pathfinder_storage::Storage;
-use std::num::NonZeroUsize;
-use std::sync::Arc;
+
+pub use crate::jsonrpc::websocket::WebsocketContext;
+use crate::pending::{PendingData, PendingWatcher};
+use crate::SyncState;
 
 type SequencerClient = starknet_gateway_client::Client;
 use tokio::sync::watch as tokio_watch;
@@ -130,8 +131,8 @@ impl RpcContext {
 
     #[cfg(test)]
     pub async fn for_tests_with_pending() -> Self {
-        // This is a bit silly with the arc in and out, but since its for tests the ergonomics of
-        // having Arc also constructed is nice.
+        // This is a bit silly with the arc in and out, but since its for tests the
+        // ergonomics of having Arc also constructed is nice.
         let context = Self::for_tests();
         let pending_data = super::test_utils::create_pending_data(context.storage.clone()).await;
 

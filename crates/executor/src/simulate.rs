@@ -1,36 +1,46 @@
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use blockifier::{
-    state::{cached_state::CachedState, errors::StateError, state_api::State},
-    transaction::transaction_execution::Transaction,
-    transaction::transactions::ExecutableTransaction,
-};
+use blockifier::state::cached_state::CachedState;
+use blockifier::state::errors::StateError;
+use blockifier::state::state_api::State;
+use blockifier::transaction::transaction_execution::Transaction;
+use blockifier::transaction::transactions::ExecutableTransaction;
 use cached::{Cached, SizedCache};
 use pathfinder_common::{
-    BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
-    StorageValue, TransactionHash,
+    BlockHash,
+    CasmHash,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    SierraHash,
+    StorageAddress,
+    StorageValue,
+    TransactionHash,
 };
 
-use crate::{
-    transaction::transaction_hash,
-    types::{
-        DataAvailabilityResources, DeclareTransactionTrace, DeclaredSierraClass,
-        DeployAccountTransactionTrace, DeployedContract, ExecuteInvocation, ExecutionResources,
-        FunctionInvocation, InvokeTransactionTrace, L1HandlerTransactionTrace, PriceUnit,
-        ReplacedClass, StateDiff, StorageDiff,
-    },
-    IntoFelt,
+use super::error::TransactionExecutionError;
+use super::execution_state::ExecutionState;
+use super::types::{FeeEstimate, TransactionSimulation, TransactionTrace};
+use crate::transaction::transaction_hash;
+use crate::types::{
+    DataAvailabilityResources,
+    DeclareTransactionTrace,
+    DeclaredSierraClass,
+    DeployAccountTransactionTrace,
+    DeployedContract,
+    ExecuteInvocation,
+    ExecutionResources,
+    FunctionInvocation,
+    InvokeTransactionTrace,
+    L1HandlerTransactionTrace,
+    PriceUnit,
+    ReplacedClass,
+    StateDiff,
+    StorageDiff,
 };
-
-use super::{
-    error::TransactionExecutionError,
-    execution_state::ExecutionState,
-    types::{FeeEstimate, TransactionSimulation, TransactionTrace},
-};
+use crate::IntoFelt;
 
 #[derive(Debug)]
 enum CacheItem {
@@ -119,8 +129,9 @@ pub fn simulate(
                 !skip_validate,
             )
             .and_then(|mut tx_info| {
-                // skipping fee charge in .execute() means that the fee isn't calculated, do that explicitly
-                // some other cases, like having max_fee=0 also lead to not calculating fees
+                // skipping fee charge in .execute() means that the fee isn't calculated, do
+                // that explicitly some other cases, like having max_fee=0 also
+                // lead to not calculating fees
                 if tx_info.actual_fee.0 == 0 {
                     tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
                         &tx_info.actual_resources,
@@ -235,7 +246,8 @@ pub fn trace(
         traces.push((hash, trace));
     }
 
-    // Lock the cache before sending to avoid race conditions between senders and receivers.
+    // Lock the cache before sending to avoid race conditions between senders and
+    // receivers.
     let mut cache = cache.0.lock().unwrap();
     let _ = sender.send(Ok(traces.clone()));
     cache.cache_set(block_hash, CacheItem::CachedOk(traces.clone()));
@@ -291,8 +303,8 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
 
-    // We need to check the previous class hash for a contract to decide if it's a deployed
-    // contract or a replaced class.
+    // We need to check the previous class hash for a contract to decide if it's a
+    // deployed contract or a replaced class.
     for (address, class_hash) in state_diff.address_to_class_hash {
         let previous_class_hash = state.state.get_class_hash_at(address)?;
 

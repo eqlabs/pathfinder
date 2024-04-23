@@ -1,8 +1,15 @@
-use pathfinder_common::{macro_prelude::*, StarknetVersion, StorageAddress};
-
+use pathfinder_common::macro_prelude::*;
 use pathfinder_common::{
-    felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, GasPrice,
+    felt,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    BlockTimestamp,
+    ContractAddress,
+    GasPrice,
+    StarknetVersion,
     StateUpdate,
+    StorageAddress,
 };
 use pathfinder_storage::Storage;
 use starknet_gateway_test_fixtures::class_definitions::{DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH};
@@ -25,7 +32,8 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .finalize_with_hash(BlockHash(felt!("0xb00")));
     tx.insert_block_header(&header).unwrap();
 
-    // Declare & deploy an account class, a universal deployer class and the fee token ERC20 class
+    // Declare & deploy an account class, a universal deployer class and the fee
+    // token ERC20 class
     let block1_number = BlockNumber::GENESIS + 1;
     let block1_hash = BlockHash(felt!("0xb01"));
 

@@ -1,7 +1,15 @@
 use pathfinder_common::transaction::{
-    DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3, DeployAccountTransactionV1,
-    DeployAccountTransactionV3, DeployTransaction, InvokeTransactionV0, InvokeTransactionV1,
-    InvokeTransactionV3, L1HandlerTransaction, ResourceBounds,
+    DeclareTransactionV0V1,
+    DeclareTransactionV2,
+    DeclareTransactionV3,
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransaction,
+    InvokeTransactionV0,
+    InvokeTransactionV1,
+    InvokeTransactionV3,
+    L1HandlerTransaction,
+    ResourceBounds,
 };
 use pathfinder_common::{Fee, TransactionHash, TransactionVersion};
 use pathfinder_crypto::Felt;
@@ -286,16 +294,17 @@ fn max_fee_from_resource_bounds(r: &ResourceBounds) -> Fee {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod serialization {
-        use super::*;
-        use pathfinder_common::{
-            transaction::*, ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion,
-        };
+        use pathfinder_common::transaction::*;
+        use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
         use pretty_assertions_sorted::assert_eq;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn declare_v0() {

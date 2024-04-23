@@ -1,12 +1,18 @@
 #![allow(dead_code, unused_variables)]
-use crate::sync::error::SyncError;
 use anyhow::Context;
 use p2p::PeerData;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, ClassCommitment, SignedBlockHeader, StorageCommitment,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    ClassCommitment,
+    SignedBlockHeader,
+    StorageCommitment,
 };
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
+
+use crate::sync::error::SyncError;
 
 type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 
@@ -16,16 +22,18 @@ type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 pub(super) struct HeaderGap {
     /// Freshest block height of the gap.
     pub head: BlockNumber,
-    /// Hash of the gap's head block. Used to validate the header chain data received.
+    /// Hash of the gap's head block. Used to validate the header chain data
+    /// received.
     pub head_hash: BlockHash,
     /// Oldest block height of the gap.
     pub tail: BlockNumber,
-    /// Oldest block's parent's hash. Used to link any received data to the existing local
-    /// chain data.
+    /// Oldest block's parent's hash. Used to link any received data to the
+    /// existing local chain data.
     pub tail_parent_hash: BlockHash,
 }
 
-/// Returns the first [HeaderGap] in headers, searching from the given block backwards.
+/// Returns the first [HeaderGap] in headers, searching from the given block
+/// backwards.
 pub(super) async fn next_gap(
     storage: Storage,
     head: BlockNumber,
@@ -37,8 +45,8 @@ pub(super) async fn next_gap(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
-        // It's possible for the head block to be the head of the gap. This can occur when
-        // called with the L1 anchor which has not been synced yet.
+        // It's possible for the head block to be the head of the gap. This can occur
+        // when called with the L1 anchor which has not been synced yet.
         let head_exists = db
             .block_exists(head.into())
             .context("Checking if search head exists locally")?;
@@ -61,8 +69,8 @@ pub(super) async fn next_gap(
         let gap_tail = db
             .next_ancestor(gap_head.0)
             .context("Querying tail of gap")?
-            // By this point we are certain there is a gap, so the tail automatically becomes genesis
-            // if no actual tail block is found.
+            // By this point we are certain there is a gap, so the tail automatically becomes
+            // genesis if no actual tail block is found.
             .unwrap_or_default();
 
         Ok(Some(HeaderGap {

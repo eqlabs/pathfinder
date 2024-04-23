@@ -12,7 +12,8 @@ use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use starknet_gateway_types::class_definition::{Cairo, ClassDefinition, Sierra};
 use starknet_gateway_types::class_hash::from_parts::{
-    compute_cairo_class_hash, compute_sierra_class_hash,
+    compute_cairo_class_hash,
+    compute_sierra_class_hash,
 };
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
@@ -25,8 +26,9 @@ pub struct ClassWithLayout {
     pub layout: ClassDefinition<'static>,
 }
 
-/// Returns the first block number which is missing at least one class definition, counting from genesis
-/// or `None` if all class definitions up to `head` are present.
+/// Returns the first block number which is missing at least one class
+/// definition, counting from genesis or `None` if all class definitions up to
+/// `head` are present.
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
@@ -153,7 +155,8 @@ pub(super) async fn verify_layout(
     }
 }
 
-/// Returns a stream of sets of class hashes declared at each block in the range [start, stop_inclusive].
+/// Returns a stream of sets of class hashes declared at each block in the range
+/// [start, stop_inclusive].
 pub(super) fn declared_classes_at_block_stream(
     storage: Storage,
     mut start: BlockNumber,
@@ -186,7 +189,8 @@ pub(super) fn declared_classes_at_block_stream(
     }
 }
 
-/// This function relies on the guarantee that the block numbers in the stream are correct.
+/// This function relies on the guarantee that the block numbers in the stream
+/// are correct.
 pub(super) fn verify_declared_at(
     mut declared_classes_at_block: impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
         + Unpin,

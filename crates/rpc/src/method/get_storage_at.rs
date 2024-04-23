@@ -1,7 +1,8 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
 use serde::Deserialize;
+
+use crate::context::RpcContext;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -81,15 +82,17 @@ impl crate::dto::serialize::SerializeForVersion for Output {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use assert_matches::assert_matches;
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::BlockNumber;
     use serde_json::json;
 
-    use pathfinder_common::{macro_prelude::*, BlockNumber};
+    use super::*;
 
     /// # Important
     ///
-    /// `BlockId` parsing is tested in [`get_block`][crate::rpc::v02::method::get_block::tests::parsing]
+    /// `BlockId` parsing is tested in
+    /// [`get_block`][crate::rpc::v02::method::get_block::tests::parsing]
     /// and is not repeated here.
     #[rstest::rstest]
     #[case::positional(json!(["1", "2", "latest"]))]

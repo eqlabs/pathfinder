@@ -1,9 +1,10 @@
-use crate::context::RpcContext;
-use crate::felt::RpcFelt;
-use crate::v02::types::request::BroadcastedInvokeTransaction;
 use pathfinder_common::TransactionHash;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
+
+use crate::context::RpcContext;
+use crate::felt::RpcFelt;
+use crate::v02::types::request::BroadcastedInvokeTransaction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -59,8 +60,12 @@ impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
 impl From<SequencerError> for AddInvokeTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
-            DuplicatedTransaction, EntryPointNotFound, InsufficientAccountBalance,
-            InsufficientMaxFee, InvalidTransactionNonce, InvalidTransactionVersion,
+            DuplicatedTransaction,
+            EntryPointNotFound,
+            InsufficientAccountBalance,
+            InsufficientMaxFee,
+            InvalidTransactionNonce,
+            InvalidTransactionVersion,
             ValidateFailure,
         };
         match e {
@@ -174,16 +179,12 @@ pub(crate) async fn add_invoke_transaction_impl(
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
+
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransactionV1;
-    use crate::v02::types::DataAvailabilityMode;
-    use crate::v02::types::ResourceBound;
-    use crate::v02::types::ResourceBounds;
-    use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::ResourceAmount;
-    use pathfinder_common::ResourcePricePerUnit;
-    use pathfinder_common::Tip;
-    use pathfinder_common::TransactionVersion;
+    use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     fn test_invoke_txn() -> Transaction {
         Transaction::Invoke(BroadcastedInvokeTransaction::V1(
@@ -217,8 +218,9 @@ mod tests {
     }
 
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {
@@ -289,11 +291,15 @@ mod tests {
         #[test]
         fn unexpected_error_message() {
             use starknet_gateway_types::error::{
-                KnownStarknetErrorCode, StarknetError, StarknetErrorCode,
+                KnownStarknetErrorCode,
+                StarknetError,
+                StarknetErrorCode,
             };
             let starknet_error = SequencerError::StarknetError(StarknetError {
                 code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded),
-                message: "StarkNet Alpha throughput limit reached, please wait a few minutes and try again.".to_string() 
+                message: "StarkNet Alpha throughput limit reached, please wait a few minutes and \
+                          try again."
+                    .to_string(),
             });
 
             let error = AddInvokeTransactionError::from(starknet_error);

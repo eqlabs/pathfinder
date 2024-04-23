@@ -1,7 +1,6 @@
 use pathfinder_common::prelude::*;
 use serde::Serialize;
-use serde_with::serde_as;
-use serde_with::DisplayFromStr;
+use serde_with::{serde_as, DisplayFromStr};
 
 #[serde_as]
 #[derive(Serialize)]
@@ -108,9 +107,8 @@ impl From<pathfinder_common::L1DataAvailabilityMode> for L1DaMode {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{
-        macro_prelude::*, BlockNumber, BlockTimestamp, GasPrice, StarknetVersion,
-    };
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockNumber, BlockTimestamp, GasPrice, StarknetVersion};
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
 

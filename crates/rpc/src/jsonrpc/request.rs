@@ -1,9 +1,9 @@
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 use crate::jsonrpc::{RequestId, RpcError};
-
-use std::borrow::Cow;
 
 #[derive(Debug)]
 pub struct RpcRequest<'a> {
@@ -59,9 +59,11 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
     {
         use serde::de::Error;
 
-        /// Replaces [Option<Value>] because serde maps both `None` and `null`to [Option::None].
+        /// Replaces [Option<Value>] because serde maps both `None` and `null`to
+        /// [Option::None].
         ///
-        /// With this helper, null is correctly mapped to [IdHelper::Some(Value::Null)].
+        /// With this helper, null is correctly mapped to
+        /// [IdHelper::Some(Value::Null)].
         #[derive(Deserialize, Debug)]
         #[serde(untagged)]
         enum IdHelper<'a> {
@@ -75,8 +77,8 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
             jsonrpc: Cow<'a, str>,
             // Double-bag the ID. This is required because serde maps both None and Null to None.
             //
-            // The first Option lets us distinguish between None and null. The second Option is then
-            // used to parse the null case.
+            // The first Option lets us distinguish between None and null. The second Option is
+            // then used to parse the null case.
             #[serde(default, borrow, deserialize_with = "deserialize_some")]
             id: Option<Option<IdHelper<'a>>>,
             method: Cow<'a, str>,
@@ -116,10 +118,9 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use serde_json::json;
     use serde_json::value::to_raw_value;
-
-    use rstest::rstest;
 
     use super::*;
 

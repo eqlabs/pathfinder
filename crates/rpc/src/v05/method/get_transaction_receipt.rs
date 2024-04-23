@@ -12,9 +12,11 @@ pub async fn get_transaction_receipt(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use pathfinder_common::{macro_prelude::*, BlockNumber, Fee};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockNumber, Fee};
     use v06::types::*;
+
+    use super::*;
 
     #[tokio::test]
     async fn check_v05_representation() {

@@ -2,21 +2,17 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use p2p::PeerData;
-use pathfinder_common::{
-    state_update::{ContractUpdateCounts, ContractUpdates},
-    BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment,
-};
-use pathfinder_merkle_tree::{
-    contract_state::{update_contract_state, ContractStateUpdateResult},
-    StorageCommitmentTree,
-};
+use pathfinder_common::state_update::{ContractUpdateCounts, ContractUpdates};
+use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment};
+use pathfinder_merkle_tree::contract_state::{update_contract_state, ContractStateUpdateResult};
+use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{Storage, TrieUpdate};
 use tokio::task::spawn_blocking;
 
 use crate::sync::error::SyncError;
 
-/// Returns the first block number whose state update is missing, counting from genesis
-/// or `None` if all class definitions up to `head` are present.
+/// Returns the first block number whose state update is missing, counting from
+/// genesis or `None` if all class definitions up to `head` are present.
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,

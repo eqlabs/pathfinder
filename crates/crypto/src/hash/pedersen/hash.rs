@@ -1,6 +1,7 @@
+use bitvec::field::BitField;
 use bitvec::order::Lsb0;
+use bitvec::slice::BitSlice;
 use bitvec::view::BitView;
-use bitvec::{field::BitField, slice::BitSlice};
 
 use crate::algebra::curve::*;
 use crate::algebra::field::*;

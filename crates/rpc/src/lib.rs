@@ -18,27 +18,28 @@ pub mod v05;
 pub mod v06;
 pub mod v07;
 
+use std::net::SocketAddr;
+use std::result::Result;
+
+use anyhow::Context;
+use axum::error_handling::HandleErrorLayer;
+use axum::extract::DefaultBodyLimit;
+use axum::response::IntoResponse;
+use context::RpcContext;
 pub use executor::compose_executor_transaction;
+use http::Request;
+use hyper::Body;
+use pathfinder_common::AllowedOrigins;
 pub use pending::PendingData;
+use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
+use tower_http::cors::CorsLayer;
+use tower_http::ServiceBuilderExt;
 
 use crate::jsonrpc::rpc_handler;
 use crate::jsonrpc::websocket::websocket_handler;
 pub use crate::jsonrpc::websocket::{BlockHeader, TopicBroadcasters};
 use crate::v02::types::syncing::Syncing;
-use anyhow::Context;
-use axum::error_handling::HandleErrorLayer;
-use axum::extract::DefaultBodyLimit;
-
-use axum::response::IntoResponse;
-use context::RpcContext;
-use http::Request;
-use hyper::Body;
-use pathfinder_common::AllowedOrigins;
-use std::{net::SocketAddr, result::Result};
-use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
-use tower_http::cors::CorsLayer;
-use tower_http::ServiceBuilderExt;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
@@ -106,11 +107,17 @@ impl RpcServer {
 
         let listener = match std::net::TcpListener::bind(self.addr) {
             Ok(listener) => listener,
-            Err(e) => return Err(e).context(format!("RPC address {} is already in use.
+            Err(e) => {
+                return Err(e).context(format!(
+                    "RPC address {} is already in use.
     
             Hint: This usually means you are already running another instance of pathfinder.
             Hint: If this happens when upgrading, make sure to shut down the first one first.
-            Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr)),
+            Hint: If you are looking to run two instances of pathfinder, you must configure them \
+                     with different http rpc addresses.",
+                    self.addr
+                ))
+            }
         };
         let addr = listener
             .local_addr()
@@ -236,20 +243,25 @@ impl Default for SyncState {
 
 #[cfg(test)]
 pub mod test_utils {
-    use crate::pending::PendingData;
+    use std::collections::HashMap;
+
     use pathfinder_common::event::Event;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::{
-        BuiltinCounters, ExecutionResources, ExecutionStatus, L2ToL1Message, Receipt,
+        BuiltinCounters,
+        ExecutionResources,
+        ExecutionStatus,
+        L2ToL1Message,
+        Receipt,
     };
     use pathfinder_common::transaction::*;
     use pathfinder_merkle_tree::StorageCommitmentTree;
-    use pathfinder_storage::TransactionData;
-    use pathfinder_storage::{BlockId, Storage, StorageBuilder};
+    use pathfinder_storage::{BlockId, Storage, StorageBuilder, TransactionData};
     use primitive_types::H160;
     use starknet_gateway_types::reply::GasPrices;
-    use std::collections::HashMap;
+
+    use crate::pending::PendingData;
 
     // Creates storage for tests
     pub fn setup_storage(trie_prune_mode: pathfinder_storage::TriePruneMode) -> Storage {
@@ -621,8 +633,8 @@ pub mod test_utils {
 
     /// Creates [PendingData] which correctly links to the provided [Storage].
     ///
-    /// i.e. the pending block's parent hash will be the latest block's hash from storage,
-    /// and similarly for the pending state diffs state root.
+    /// i.e. the pending block's parent hash will be the latest block's hash
+    /// from storage, and similarly for the pending state diffs state root.
     pub async fn create_pending_data(storage: Storage) -> PendingData {
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {

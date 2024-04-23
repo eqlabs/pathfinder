@@ -1,10 +1,16 @@
-use crate::felt::RpcFelt;
-use pathfinder_common::GasPrice;
 use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, SequencerAddress, StarknetVersion, StateCommitment,
+    BlockHash,
+    BlockNumber,
+    BlockTimestamp,
+    GasPrice,
+    SequencerAddress,
+    StarknetVersion,
+    StateCommitment,
 };
 use serde::Serialize;
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
+
+use crate::felt::RpcFelt;
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -56,7 +62,8 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
 }
 
 impl BlockHeader {
-    /// Constructs [BlockHeader] from [sequencer's pending block representation](starknet_gateway_types::reply::PendingBlock)
+    /// Constructs [BlockHeader] from [sequencer's pending block
+    /// representation](starknet_gateway_types::reply::PendingBlock)
     pub fn from_sequencer_pending(pending: starknet_gateway_types::reply::PendingBlock) -> Self {
         Self {
             block_hash: None,

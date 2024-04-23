@@ -5,16 +5,15 @@ use pathfinder_executor::{ExecutionState, TraceCache, TransactionExecutionError}
 use serde::{Deserialize, Serialize};
 use starknet_gateway_client::GatewayApi;
 
-use crate::compose_executor_transaction;
-use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
-use crate::v06::method::trace_block_transactions::map_gateway_trace;
-use crate::{
-    context::RpcContext,
-    error::{ApplicationError, TraceError},
-    executor::ExecutionStateError,
-};
-
 use super::simulate_transactions::dto::TransactionTrace;
+use crate::compose_executor_transaction;
+use crate::context::RpcContext;
+use crate::error::{ApplicationError, TraceError};
+use crate::executor::{
+    ExecutionStateError,
+    VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+};
+use crate::v06::method::trace_block_transactions::map_gateway_trace;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -254,7 +253,8 @@ pub mod tests {
     use pathfinder_crypto::Felt;
 
     use super::super::trace_block_transactions::tests::{
-        setup_multi_tx_trace_pending_test, setup_multi_tx_trace_test,
+        setup_multi_tx_trace_pending_test,
+        setup_multi_tx_trace_test,
     };
     use super::*;
 
@@ -290,7 +290,8 @@ pub mod tests {
         Ok(())
     }
 
-    /// Test that tracing succeeds for a block that is not backwards-compatible with blockifier.
+    /// Test that tracing succeeds for a block that is not backwards-compatible
+    /// with blockifier.
     #[tokio::test]
     async fn mainnet_blockifier_backwards_incompatible_transaction_tracing() {
         let context = RpcContext::for_tests_on(Chain::Mainnet);

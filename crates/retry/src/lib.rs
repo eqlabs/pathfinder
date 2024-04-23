@@ -1,11 +1,12 @@
-//! A general utility for retrying futures with a configurable backoff and error filter.
-use std::{
-    future::Future,
-    num::{NonZeroU64, NonZeroUsize},
-    result::Result,
-    time::Duration,
-};
-use tokio_retry::{strategy::ExponentialBackoff, Retry as TokioRetry, RetryIf as TokioRetryIf};
+//! A general utility for retrying futures with a configurable backoff and error
+//! filter.
+use std::future::Future;
+use std::num::{NonZeroU64, NonZeroUsize};
+use std::result::Result;
+use std::time::Duration;
+
+use tokio_retry::strategy::ExponentialBackoff;
+use tokio_retry::{Retry as TokioRetry, RetryIf as TokioRetryIf};
 
 pub struct Retry<T, E, Fut, FutureFactory>
 where
@@ -21,8 +22,8 @@ where
     Fut: Future<Output = Result<T, E>>,
     FutureFactory: FnMut() -> Fut,
 {
-    /// Create an exponential [`Retry`] utility for a future which is created by `future_factory`
-    /// with initial backoff of `base_secs` seconds.
+    /// Create an exponential [`Retry`] utility for a future which is created by
+    /// `future_factory` with initial backoff of `base_secs` seconds.
     ///
     /// `Nth` backoff is equal to `base_secs ^ N` seconds.
     pub fn exponential(future_factory: FutureFactory, base_secs: NonZeroU64) -> Self {
@@ -57,12 +58,14 @@ where
         self
     }
 
-    /// Retry the future on any `Err()` until an `Ok()` value is returned by the future.
+    /// Retry the future on any `Err()` until an `Ok()` value is returned by the
+    /// future.
     pub async fn on_any_err(self) -> Result<T, E> {
         TokioRetry::spawn(MaybeLimited::from(self.strategy), self.future_factory).await
     }
 
-    /// Retry the future on every error that meets `retry_condition` until the future returns:
+    /// Retry the future on every error that meets `retry_condition` until the
+    /// future returns:
     /// - an `Ok()` value
     /// - an `Err()` value that does not meet the `retry_condition`.
     pub async fn when<RetryCondition>(self, retry_condition: RetryCondition) -> Result<T, E>
@@ -131,14 +134,13 @@ impl From<Strategy> for MaybeLimited {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::iter::{IntoIterator, Iterator};
+    use std::num::{NonZeroU64, NonZeroUsize};
+    use std::result::Result;
+    use std::time::{Duration, Instant};
+
     use super::Retry;
-    use std::{
-        cell::RefCell,
-        iter::{IntoIterator, Iterator},
-        num::{NonZeroU64, NonZeroUsize},
-        result::Result,
-        time::{Duration, Instant},
-    };
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     enum Failure {

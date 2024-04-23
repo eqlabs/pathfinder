@@ -1,9 +1,10 @@
 use std::fmt::Debug;
 
-use crate::common::{Address, Iteration};
-use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use pathfinder_crypto::Felt;
+
+use crate::common::{Address, Iteration};
+use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::state::ContractStoredValue")]
