@@ -1,14 +1,20 @@
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use anyhow::Context;
+use futures::pin_mut;
+use futures::stream::StreamExt;
 use p2p::client::peer_agnostic::Class;
 use p2p::PeerData;
+use p2p_proto::transaction;
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
-use starknet_gateway_types::class_definition::ClassDefinition;
+use starknet_gateway_types::class_definition::{Cairo, ClassDefinition, Sierra};
 use starknet_gateway_types::class_hash::from_parts::{
     compute_cairo_class_hash, compute_sierra_class_hash,
 };
+use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
 use crate::sync::error::SyncError;
@@ -91,7 +97,7 @@ pub(super) fn declared_class_counts_stream(
     }
 }
 
-pub(super) fn verify_layout(
+pub(super) async fn verify_layout(
     peer_data: PeerData<Class>,
 ) -> Result<PeerData<ClassWithLayout>, SyncError> {
     let PeerData { peer, data } = peer_data;
@@ -101,8 +107,12 @@ pub(super) fn verify_layout(
             hash,
             definition,
         } => {
-            let layout =
-                serde_json::from_slice(&definition).map_err(|_| SyncError::BadClassLayout(peer))?;
+            let layout = ClassDefinition::Cairo(
+                serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|e| {
+                    eprintln!("cairo: {e}");
+                    SyncError::BadClassLayout(peer)
+                })?,
+            );
             Ok(PeerData::new(
                 peer,
                 ClassWithLayout {
@@ -121,8 +131,12 @@ pub(super) fn verify_layout(
             sierra_definition,
             casm_definition,
         } => {
-            let layout = serde_json::from_slice(&sierra_definition)
-                .map_err(|_| SyncError::BadClassLayout(peer))?;
+            let layout = ClassDefinition::Sierra(
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
+                    eprintln!("sierra: {e}");
+                    SyncError::BadClassLayout(peer)
+                })?,
+            );
             Ok(PeerData::new(
                 peer,
                 ClassWithLayout {
@@ -135,6 +149,74 @@ pub(super) fn verify_layout(
                     layout,
                 },
             ))
+        }
+    }
+}
+
+/// Returns a stream of sets of class hashes declared at each block in the range [start, stop_inclusive].
+pub(super) fn declared_classes_at_block_stream(
+    storage: Storage,
+    mut start: BlockNumber,
+    stop_inclusive: BlockNumber,
+) -> impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>> {
+    async_stream::try_stream! {
+        while start <= stop_inclusive {
+            let storage = storage.clone();
+
+            let declared_at_this_block = tokio::task::spawn_blocking(move || -> anyhow::Result<(BlockNumber, HashSet<ClassHash>)> {
+                let mut db = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let db = db.transaction().expect("todo");
+                let declared = db
+                    .declared_classes_at(start.into())
+                    .context("Querying declared classes at block")?
+                    .context("Block header not found")?
+                    .into_iter()
+                    .collect();
+                Ok((start, declared))
+            })
+            .await
+            .context("Joining blocking task")??;
+
+            yield declared_at_this_block;
+
+            start += 1;
+        }
+    }
+}
+
+/// This function relies on the guarantee that the block numbers in the stream are correct.
+pub(super) fn verify_declared_at(
+    mut declared_classes_at_block: impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
+        + Unpin,
+    mut classes: impl futures::Stream<Item = Result<PeerData<ClassWithLayout>, SyncError>> + Unpin,
+) -> impl futures::Stream<Item = Result<PeerData<ClassWithLayout>, SyncError>> {
+    async_stream::try_stream! {
+        while let Some(declared) = declared_classes_at_block.next().await {
+            let (declared_at, mut declared) = declared?;
+
+            // Some blocks may have no declared classes.
+            if declared.is_empty() {
+                continue;
+            }
+
+            while let Some(class) = classes.next().await {
+                let class = class?;
+
+                if declared_at != class.data.class.block_number() {
+                    Err(SyncError::UnexpectedClass(class.peer))?;
+                }
+
+                let class_hash = class.data.class.hash();
+
+                if declared.remove(&class_hash) {
+                    yield class;
+                } else {
+                    Err(SyncError::UnexpectedClass(class.peer))?;
+                }
+            }
+
         }
     }
 }
@@ -191,8 +273,8 @@ pub(super) async fn persist(
                     hash, definition, ..
                 } => {
                     transaction
-                        .insert_cairo_class(hash, &definition)
-                        .context("Inserting cairo class definition")?;
+                        .update_cairo_class(hash, &definition)
+                        .context("Updating cairo class definition")?;
                 }
                 Class::Sierra {
                     sierra_hash,
@@ -206,13 +288,13 @@ pub(super) async fn persist(
                         .ok_or(anyhow::anyhow!("Casm hash not found"))?;
 
                     transaction
-                        .insert_sierra_class(
+                        .update_sierra_class(
                             &sierra_hash,
                             &sierra_definition,
                             &casm_hash,
                             &casm_definition,
                         )
-                        .context("Inserting sierra class definition")?;
+                        .context("Updating sierra class definition")?;
                 }
             }
         }

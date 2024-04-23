@@ -43,6 +43,42 @@ impl Transaction<'_> {
         Ok(())
     }
 
+    pub fn update_sierra_class(
+        &self,
+        sierra_hash: &SierraHash,
+        sierra_definition: &[u8],
+        casm_hash: &CasmHash,
+        casm_definition: &[u8],
+    ) -> anyhow::Result<()> {
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
+        let sierra_definition = compressor
+            .compress(sierra_definition)
+            .context("Compressing sierra definition")?;
+        let casm_definition = compressor
+            .compress(casm_definition)
+            .context("Compressing casm definition")?;
+
+        self.inner()
+            .execute(
+                r"UPDATE class_definitions SET definition=? WHERE hash=?",
+                params![&sierra_definition, sierra_hash],
+            )
+            .context("Updating sierra definition")?;
+
+        self.inner()
+            .execute(
+                r"UPDATE casm_definitions SET definition=:definition, compiled_class_hash=:compiled_class_hash WHERE hash=:hash",
+                named_params! {
+                    ":definition": &casm_definition,
+                    ":compiled_class_hash": casm_hash,
+                    ":hash": sierra_hash,
+                },
+            )
+            .context("Updating casm definition")?;
+
+        Ok(())
+    }
+
     pub fn insert_cairo_class(
         &self,
         cairo_hash: ClassHash,
@@ -59,6 +95,26 @@ impl Transaction<'_> {
                 params![&cairo_hash, &definition],
             )
             .context("Inserting cairo definition")?;
+
+        Ok(())
+    }
+
+    pub fn update_cairo_class(
+        &self,
+        cairo_hash: ClassHash,
+        definition: &[u8],
+    ) -> anyhow::Result<()> {
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
+        let definition = compressor
+            .compress(definition)
+            .context("Compressing cairo definition")?;
+
+        self.inner()
+            .execute(
+                r"UPDATE class_definitions SET definition=? WHERE hash=?",
+                params![&definition, &cairo_hash],
+            )
+            .context("Updating cairo definition")?;
 
         Ok(())
     }

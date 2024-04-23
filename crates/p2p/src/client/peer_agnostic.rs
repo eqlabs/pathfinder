@@ -98,6 +98,26 @@ impl Class {
             Self::Sierra { sierra_hash, .. } => ClassHash(sierra_hash.0),
         }
     }
+
+    /// Return Cairo or Sierra class definition depending on the variant.
+    pub fn class_definition(&self) -> Vec<u8> {
+        match self {
+            Self::Cairo { definition, .. } => definition.clone(),
+            Self::Sierra {
+                sierra_definition, ..
+            } => sierra_definition.clone(),
+        }
+    }
+
+    /// Return Casm definition for Sierra variant, otherwise None.
+    pub fn casm_definition(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::Cairo { .. } => None,
+            Self::Sierra {
+                casm_definition, ..
+            } => Some(casm_definition.clone()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
