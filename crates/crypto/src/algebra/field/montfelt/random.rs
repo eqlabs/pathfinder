@@ -1,5 +1,6 @@
-use crate::MontFelt;
 use rand::Rng;
+
+use crate::MontFelt;
 
 impl MontFelt {
     /// Try to sample a random field element

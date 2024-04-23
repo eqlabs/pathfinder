@@ -1,20 +1,16 @@
 use std::sync::Arc;
 
-use blockifier::{
-    context::TransactionContext,
-    execution::entry_point::{CallEntryPoint, EntryPointExecutionContext},
-    transaction::objects::{DeprecatedTransactionInfo, TransactionInfo},
-    versioned_constants::VersionedConstants,
-};
+use blockifier::context::TransactionContext;
+use blockifier::execution::entry_point::{CallEntryPoint, EntryPointExecutionContext};
+use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
+use blockifier::versioned_constants::VersionedConstants;
 use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
 use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
 use starknet_api::core::PatriciaKey;
 
-use super::{
-    error::CallError,
-    execution_state::ExecutionState,
-    felt::{IntoFelt, IntoStarkFelt},
-};
+use super::error::CallError;
+use super::execution_state::ExecutionState;
+use super::felt::{IntoFelt, IntoStarkFelt};
 
 pub fn call(
     mut execution_state: ExecutionState<'_>,

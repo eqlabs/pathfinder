@@ -1,9 +1,6 @@
-use std::{
-    mem,
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant},
-};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+use std::{mem, thread};
 
 use anyhow::Context;
 use rusqlite::params;
@@ -194,9 +191,14 @@ pub(crate) mod old_dto {
     use pathfinder_common::*;
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        L2ToL1MessagePayloadElemAsDecimalStr, ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr,
-        TipAsHexStr, TransactionSignatureElemAsDecimalStr,
+        CallParamAsDecimalStr,
+        ConstructorParamAsDecimalStr,
+        EthereumAddressAsHexStr,
+        L2ToL1MessagePayloadElemAsDecimalStr,
+        ResourceAmountAsHexStr,
+        ResourcePricePerUnitAsHexStr,
+        TipAsHexStr,
+        TransactionSignatureElemAsDecimalStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -658,22 +660,25 @@ pub(crate) mod old_dto {
     }
 
     // This manual deserializtion is a work-around for L1 handler transactions
-    // historically being served as Invoke V0. However, the gateway has retroactively
-    // changed these to L1 handlers. This means older databases will have these as Invoke
-    // but modern one's as L1 handler. This causes confusion, so we convert these old Invoke
-    // to L1 handler manually.
+    // historically being served as Invoke V0. However, the gateway has
+    // retroactively changed these to L1 handlers. This means older databases
+    // will have these as Invoke but modern one's as L1 handler. This causes
+    // confusion, so we convert these old Invoke to L1 handler manually.
     //
-    // The alternative is to do a costly database migration which involves opening every tx.
+    // The alternative is to do a costly database migration which involves opening
+    // every tx.
     //
-    // This work-around may be removed once we are certain all databases no longer contain these
-    // transactions, which will likely only occur after either a migration, or regenesis.
+    // This work-around may be removed once we are certain all databases no longer
+    // contain these transactions, which will likely only occur after either a
+    // migration, or regenesis.
     impl<'de> Deserialize<'de> for Transaction {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: serde::Deserializer<'de>,
         {
-            /// Copy of [Transaction] to deserialize into, before converting to [Transaction]
-            /// with the potential Invoke V0 -> L1 handler cast.
+            /// Copy of [Transaction] to deserialize into, before converting to
+            /// [Transaction] with the potential Invoke V0 -> L1
+            /// handler cast.
             #[derive(Deserialize)]
             #[serde(tag = "type", deny_unknown_fields)]
             pub enum InnerTransaction {
@@ -1389,7 +1394,8 @@ pub(crate) mod old_dto {
                 signature: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 compiled_class_hash: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
+                                                                          * elem only */
             }
         }
     }
@@ -1720,7 +1726,8 @@ pub(crate) mod old_dto {
                 signature: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 calldata: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
+                                                                          * elem only */
             }
         }
     }

@@ -1,12 +1,16 @@
 //! Contains core functions and types that are widely used but have no real
 //! home of their own.
 //!
-//! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
-use std::{fmt::Display, ops::Rem, str::FromStr};
+//! This includes many trivial wrappers around [Felt] which help by providing
+//! additional type safety.
+use std::fmt::Display;
+use std::ops::Rem;
+use std::str::FromStr;
 
 use anyhow::Context;
 use fake::Dummy;
-use pathfinder_crypto::{hash::HashChain, Felt};
+use pathfinder_crypto::hash::HashChain;
+use pathfinder_crypto::Felt;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 
@@ -23,10 +27,9 @@ pub mod test_utils;
 pub mod transaction;
 pub mod trie;
 
+pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
 pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
-
-pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
 
 impl ContractAddress {
     /// The contract at 0x1 is special. It was never deployed and therefore
@@ -50,7 +53,8 @@ pub struct ContractClass {
 }
 
 impl EntryPoint {
-    /// Returns a new EntryPoint which has been truncated to fit from Keccak256 digest of input.
+    /// Returns a new EntryPoint which has been truncated to fit from Keccak256
+    /// digest of input.
     ///
     /// See: <https://docs.starknet.io/documentation/architecture_and_concepts/Smart_Contracts/contract-classes/>
     pub fn hashed(input: &[u8]) -> Self {
@@ -60,13 +64,15 @@ impl EntryPoint {
         ))))
     }
 
-    /// The constructor [EntryPoint], defined as the truncated keccak of b"constructor".
+    /// The constructor [EntryPoint], defined as the truncated keccak of
+    /// b"constructor".
     pub const CONSTRUCTOR: Self =
         entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194");
 }
 
 impl StateCommitment {
-    /// Calculates  global state commitment by combining the storage and class commitment.
+    /// Calculates  global state commitment by combining the storage and class
+    /// commitment.
     ///
     /// See
     /// <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L125>
@@ -163,7 +169,8 @@ pub struct GasPrice(pub u128);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct ResourceAmount(pub u64);
 
-// Transaction tip: the prioritization metric determines the sorting order of transactions in the mempool.
+// Transaction tip: the prioritization metric determines the sorting order of
+// transactions in the mempool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct Tip(pub u64);
 
@@ -255,7 +262,8 @@ impl BlockNumber {
     /// match Sqlite's maximum integer value.
     pub const MAX: BlockNumber = BlockNumber::new_or_panic(i64::MAX as u64);
 
-    /// Returns the parent's [BlockNumber] or [None] if the current number is genesis.
+    /// Returns the parent's [BlockNumber] or [None] if the current number is
+    /// genesis.
     pub fn parent(&self) -> Option<Self> {
         if self == &Self::GENESIS {
             None
@@ -323,12 +331,14 @@ impl GasPrice {
         self.0.to_be_bytes()
     }
 
-    /// Constructs [GasPrice] from an array of bytes. Big endian byte order is assumed.
+    /// Constructs [GasPrice] from an array of bytes. Big endian byte order is
+    /// assumed.
     pub fn from_be_bytes(src: [u8; 16]) -> Self {
         Self(u128::from_be_bytes(src))
     }
 
-    /// Constructs [GasPrice] from a slice of bytes. Big endian byte order is assumed.
+    /// Constructs [GasPrice] from a slice of bytes. Big endian byte order is
+    /// assumed.
     pub fn from_be_slice(src: &[u8]) -> Result<Self, FromSliceError> {
         if src.len() > 16 {
             return Err(FromSliceError(src.len()));
@@ -592,8 +602,8 @@ where
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
 pub fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
-    // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31 0xff in be
-    // truncation is needed not to overflow the field element.
+    // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31
+    // 0xff in be truncation is needed not to overflow the field element.
     plain[0] &= 0x03;
     Felt::from_be_bytes(plain).expect("cannot overflow: smaller than modulus")
 }
@@ -621,9 +631,9 @@ mod tests {
 
     #[test]
     fn constructor_entry_point() {
-        use crate::truncated_keccak;
-        use crate::EntryPoint;
         use sha3::{Digest, Keccak256};
+
+        use crate::{truncated_keccak, EntryPoint};
 
         let mut keccak = Keccak256::default();
         keccak.update(b"constructor");
@@ -633,8 +643,9 @@ mod tests {
     }
 
     mod starknet_version {
-        use super::super::StarknetVersion;
         use std::str::FromStr;
+
+        use super::super::StarknetVersion;
 
         #[test]
         fn valid_version_parsing() {

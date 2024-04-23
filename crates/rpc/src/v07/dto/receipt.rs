@@ -1,11 +1,10 @@
+use pathfinder_common::prelude::*;
 use pathfinder_serde::H256AsNoLeadingZerosHexStr;
 use serde::Serialize;
 
-use pathfinder_common::prelude::*;
-
-use crate::{
-    v02::types::reply::BlockStatus, v06::method::get_transaction_receipt::types as v06, PendingData,
-};
+use crate::v02::types::reply::BlockStatus;
+use crate::v06::method::get_transaction_receipt::types as v06;
+use crate::PendingData;
 
 #[derive(Serialize)]
 pub struct BlockWithReceipts {
@@ -451,10 +450,10 @@ impl From<TransactionVersion> for PriceUnit {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
-
     use pretty_assertions_sorted::assert_eq;
+
+    use super::*;
 
     #[test]
     fn txn_receipt() {

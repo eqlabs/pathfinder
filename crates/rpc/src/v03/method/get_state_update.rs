@@ -1,6 +1,7 @@
-use crate::RpcContext;
 use anyhow::Context;
 use pathfinder_common::BlockId;
+
+use crate::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -61,14 +62,22 @@ fn get_state_update_from_storage(
 }
 
 pub(crate) mod types {
-    use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::{
-        BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
-        StateCommitment, StorageAddress, StorageValue,
+        BlockHash,
+        CasmHash,
+        ClassHash,
+        ContractAddress,
+        ContractNonce,
+        SierraHash,
+        StateCommitment,
+        StorageAddress,
+        StorageValue,
     };
     use serde::Serialize;
     use serde_with::skip_serializing_none;
+
+    use crate::felt::{RpcFelt, RpcFelt251};
 
     #[serde_with::serde_as]
     #[skip_serializing_none]
@@ -373,9 +382,9 @@ pub(crate) mod types {
 
     #[cfg(test)]
     mod tests {
-        use super::*;
-
         use pathfinder_common::macro_prelude::*;
+
+        use super::*;
 
         #[test]
         fn receipt() {
@@ -432,13 +441,13 @@ pub(crate) mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::types::StateUpdate;
-    use super::*;
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::BlockNumber;
     use pathfinder_storage::fake::Block;
     use serde_json::json;
 
-    use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::BlockNumber;
+    use super::types::StateUpdate;
+    use super::*;
 
     #[rstest::rstest]
     #[case::pending_by_position(json!(["pending"]), BlockId::Pending)]

@@ -1,8 +1,9 @@
-use crate::context::RpcContext;
-use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_storage::BlockId;
+
+use crate::context::RpcContext;
+use crate::felt::RpcFelt;
 
 #[serde_with::serde_as]
 #[derive(serde::Serialize)]
@@ -47,8 +48,9 @@ pub async fn block_number(context: RpcContext) -> Result<BlockNumber, BlockNumbe
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_block_hash_and_number() {

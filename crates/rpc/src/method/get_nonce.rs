@@ -1,6 +1,7 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
+
+use crate::context::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -84,11 +85,12 @@ impl crate::dto::serialize::SerializeForVersion for Output {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_nonce, Error, Input};
-    use crate::context::RpcContext;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockId, BlockNumber, ContractNonce};
+
+    use super::{get_nonce, Error, Input};
+    use crate::context::RpcContext;
 
     #[tokio::test]
     async fn contract_not_found() {
@@ -150,7 +152,8 @@ mod tests {
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        // This contract is created in `setup_storage` and has a nonce set in the pending block.
+        // This contract is created in `setup_storage` and has a nonce set in the
+        // pending block.
         let input = Input {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 1"),
@@ -163,8 +166,9 @@ mod tests {
     async fn pending_defaults_to_latest() {
         let context = RpcContext::for_tests();
 
-        // This contract is created in `setup_storage` and has a nonce set to 0x1, and is not
-        // overwritten in pending (since this test does not specify any pending data).
+        // This contract is created in `setup_storage` and has a nonce set to 0x1, and
+        // is not overwritten in pending (since this test does not specify any
+        // pending data).
         let input = Input {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 0"),
@@ -192,7 +196,8 @@ mod tests {
     async fn contract_deployed_in_pending_defaults_to_zero() {
         let context = RpcContext::for_tests_with_pending().await;
 
-        // This contract is deployed in the pending block but does not have a nonce update.
+        // This contract is deployed in the pending block but does not have a nonce
+        // update.
         let input = Input {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),

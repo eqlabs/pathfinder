@@ -10,7 +10,8 @@ const PARTIAL_ROUNDS: usize = 83;
 /// Poseidon mix function.
 ///
 /// The MixLayer operation using MDS matrix M = ((3,1,1), (1,-1,1), (1,1,-2)).
-/// Given state vector x=(a,b,c), it returns Mx, optimized by precomputing t=a+b+c.
+/// Given state vector x=(a,b,c), it returns Mx, optimized by precomputing
+/// t=a+b+c.
 #[inline(always)]
 fn mix(state: &mut PoseidonState) {
     let t = state[0] + state[1] + state[2];
@@ -48,7 +49,8 @@ fn partial_round(state: &mut PoseidonState, idx: usize) {
 
 /// Poseidon permutation function
 ///
-/// The permutation consists of 8 full rounds, 83 partial rounds followed by 8 full rounds.
+/// The permutation consists of 8 full rounds, 83 partial rounds followed by 8
+/// full rounds.
 pub fn permute(state: &mut PoseidonState) {
     let mut idx = 0;
 
@@ -73,9 +75,8 @@ pub fn permute(state: &mut PoseidonState) {
 
 #[cfg(test)]
 mod tests {
-    use crate::algebra::field::MontFelt;
-
     use super::*;
+    use crate::algebra::field::MontFelt;
 
     #[test]
     fn test_poseidon() {

@@ -1,9 +1,10 @@
+use pathfinder_common::{ContractAddress, TransactionHash};
+use starknet_gateway_types::error::SequencerError;
+
 use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
 use crate::v02::types::request::BroadcastedDeployAccountTransaction;
 use crate::v06::method::add_deploy_account_transaction::add_deploy_account_transaction_impl;
-use pathfinder_common::{ContractAddress, TransactionHash};
-use starknet_gateway_types::error::SequencerError;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -60,9 +61,14 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
 impl From<SequencerError> for AddDeployAccountTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
-            DuplicatedTransaction, EntryPointNotFound, InsufficientAccountBalance,
-            InsufficientMaxFee, InvalidTransactionNonce, InvalidTransactionVersion,
-            UndeclaredClass, ValidateFailure,
+            DuplicatedTransaction,
+            EntryPointNotFound,
+            InsufficientAccountBalance,
+            InsufficientMaxFee,
+            InvalidTransactionNonce,
+            InvalidTransactionVersion,
+            UndeclaredClass,
+            ValidateFailure,
         };
         match e {
             SequencerError::StarknetError(e) if e.code == UndeclaredClass.into() => {
@@ -112,14 +118,21 @@ pub async fn add_deploy_account_transaction(
 
 #[cfg(test)]
 mod tests {
-    use crate::v02::types::request::{
-        BroadcastedDeployAccountTransactionV1, BroadcastedDeployAccountTransactionV3,
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{
+        ResourceAmount,
+        ResourcePricePerUnit,
+        Tip,
+        TransactionNonce,
+        TransactionVersion,
     };
-    use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     use super::*;
-    use pathfinder_common::{macro_prelude::*, ResourceAmount, ResourcePricePerUnit, Tip};
-    use pathfinder_common::{TransactionNonce, TransactionVersion};
+    use crate::v02::types::request::{
+        BroadcastedDeployAccountTransactionV1,
+        BroadcastedDeployAccountTransactionV3,
+    };
+    use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     const INPUT_JSON: &str = r#"{
         "max_fee": "0xbf391377813",
@@ -158,13 +171,15 @@ mod tests {
     #[test]
     fn unexpected_error_message() {
         use starknet_gateway_types::error::{
-            KnownStarknetErrorCode, StarknetError, StarknetErrorCode,
+            KnownStarknetErrorCode,
+            StarknetError,
+            StarknetErrorCode,
         };
         let starknet_error = SequencerError::StarknetError(StarknetError {
             code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded),
-            message:
-                "StarkNet Alpha throughput limit reached, please wait a few minutes and try again."
-                    .to_string(),
+            message: "StarkNet Alpha throughput limit reached, please wait a few minutes and try \
+                      again."
+                .to_string(),
         });
 
         let error = AddDeployAccountTransactionError::from(starknet_error);

@@ -14,11 +14,14 @@ pub enum ContractClass {
 }
 
 impl ContractClass {
-    /// This function behaves in a different way for the variants of [ContractClass] because of
-    /// the way the RPC spec treats the `BROADCASTED_DECLARE_TXN` in `add_declare_transaction`:
-    /// - [CairoContractClass] has its `program` compressed and base64 encoded, as required by
+    /// This function behaves in a different way for the variants of
+    /// [ContractClass] because of the way the RPC spec treats the
+    /// `BROADCASTED_DECLARE_TXN` in `add_declare_transaction`:
+    /// - [CairoContractClass] has its `program` compressed and base64 encoded,
+    ///   as required by
     /// `BROADCASTED_DECLARE_TXN_V1`,
-    /// - [SierraContractClass] does not compress its `sierra_program` and represents it as a list of
+    /// - [SierraContractClass] does not compress its `sierra_program` and
+    ///   represents it as a list of
     /// felts, as required by `BROADCASTED_DECLARE_TXN_V2`.
     pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<ContractClass> {
         let mut json = serde_json::from_slice::<serde_json::Value>(data).context("Parsing json")?;
@@ -49,7 +52,8 @@ impl ContractClass {
                 .get_mut("program")
                 .context("program property is missing")?;
 
-            // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
+            // Program is expected to be a gzip-compressed then base64 encoded
+            // representation of the JSON.
             let mut gzip_encoder =
                 flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
             serde_json::to_writer(&mut gzip_encoder, &program).context("Compressing program")?;
@@ -95,8 +99,9 @@ impl TryFrom<CairoContractClass>
     type Error = serde_json::Error;
 
     fn try_from(c: CairoContractClass) -> Result<Self, Self::Error> {
-        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
         use std::collections::HashMap;
+
+        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
 
         let abi = match c.abi {
             Some(abi) => Some(serde_json::to_value(abi)?),
@@ -142,8 +147,9 @@ impl TryFrom<SierraContractClass>
     type Error = anyhow::Error;
 
     fn try_from(c: SierraContractClass) -> Result<Self, Self::Error> {
-        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndFunctionIndex};
         use std::collections::HashMap;
+
+        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndFunctionIndex};
 
         let mut entry_points: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>> =
             Default::default();
@@ -172,7 +178,8 @@ impl TryFrom<SierraContractClass>
                 .collect(),
         );
 
-        // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
+        // Program is expected to be a gzip-compressed then base64 encoded
+        // representation of the JSON.
         let mut gzip_encoder =
             flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         serde_json::to_writer(&mut gzip_encoder, &c.sierra_program)
@@ -219,8 +226,9 @@ impl CairoContractClass {
         let mut program: serde_json::Value =
             serde_json::from_slice(&program).context("Parsing program JSON")?;
 
-        // Workaround: starknet_api::deprecated_contract_class::Program requires `debug_info` to be present
-        // otherwise parsing will fail. We just add an empty string if it's missing from program.
+        // Workaround: starknet_api::deprecated_contract_class::Program requires
+        // `debug_info` to be present otherwise parsing will fail. We just add
+        // an empty string if it's missing from program.
         let program_object = program
             .as_object_mut()
             .context("Program attribute was not an object")?;
@@ -508,11 +516,13 @@ mod tests {
     }
 
     mod declare_class_hash {
-        use super::super::ContractClass;
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_0_11_SIERRA, CONTRACT_DEFINITION,
+            CAIRO_0_11_SIERRA,
+            CONTRACT_DEFINITION,
         };
         use starknet_gateway_types::class_hash::compute_class_hash;
+
+        use super::super::ContractClass;
 
         #[test]
         fn compute_sierra_class_hash() {

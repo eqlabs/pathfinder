@@ -1,14 +1,23 @@
-//! Structures used for deserializing replies from Starkware's sequencer REST API.
+//! Structures used for deserializing replies from Starkware's sequencer REST
+//! API.
 use pathfinder_common::{
-    BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ContractAddress,
-    EthereumAddress, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-    StateDiffCommitment, TransactionCommitment,
+    BlockCommitmentSignatureElem,
+    BlockHash,
+    BlockNumber,
+    BlockTimestamp,
+    ContractAddress,
+    EthereumAddress,
+    EventCommitment,
+    GasPrice,
+    SequencerAddress,
+    StarknetVersion,
+    StateCommitment,
+    StateDiffCommitment,
+    TransactionCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use serde_with::DisplayFromStr;
-
+use serde_with::{serde_as, DisplayFromStr};
 pub use transaction::DataAvailabilityMode;
 
 /// Used to deserialize replies to Starknet block requests.
@@ -151,9 +160,10 @@ impl std::fmt::Display for Status {
 
 /// Types used when deserializing L2 call related data.
 pub mod call {
+    use std::collections::HashMap;
+
     use serde::Deserialize;
     use serde_with::serde_as;
-    use std::collections::HashMap;
 
     /// Describes problems encountered during some of call failures .
     #[serde_as]
@@ -210,17 +220,39 @@ pub mod transaction_status {
 pub(crate) mod transaction {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
-        AccountDeploymentDataElem, CallParam, CasmHash, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress, Fee, L1ToL2MessageNonce,
-        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, PaymasterDataElem, ResourceAmount,
-        ResourcePricePerUnit, Tip, TransactionHash, TransactionIndex, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        AccountDeploymentDataElem,
+        CallParam,
+        CasmHash,
+        ClassHash,
+        ConstructorParam,
+        ContractAddress,
+        ContractAddressSalt,
+        EntryPoint,
+        EthereumAddress,
+        Fee,
+        L1ToL2MessageNonce,
+        L1ToL2MessagePayloadElem,
+        L2ToL1MessagePayloadElem,
+        PaymasterDataElem,
+        ResourceAmount,
+        ResourcePricePerUnit,
+        Tip,
+        TransactionHash,
+        TransactionIndex,
+        TransactionNonce,
+        TransactionSignatureElem,
+        TransactionVersion,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-        ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr, TipAsHexStr,
+        CallParamAsDecimalStr,
+        ConstructorParamAsDecimalStr,
+        EthereumAddressAsHexStr,
+        L1ToL2MessagePayloadElemAsDecimalStr,
+        L2ToL1MessagePayloadElemAsDecimalStr,
+        ResourceAmountAsHexStr,
+        ResourcePricePerUnitAsHexStr,
+        TipAsHexStr,
         TransactionSignatureElemAsDecimalStr,
     };
     use primitive_types::H256;
@@ -1477,7 +1509,8 @@ pub(crate) mod transaction {
                 signature: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 compiled_class_hash: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
+                                                                          * elem only */
             }
         }
     }
@@ -1726,8 +1759,9 @@ pub(crate) mod transaction {
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        // `contract_address` is the historic name for this field. `sender_address` was introduced with starknet v0.11.
-        // As of April 2024 the historic name is still used in older blocks.
+        // `contract_address` is the historic name for this field. `sender_address` was introduced
+        // with starknet v0.11. As of April 2024 the historic name is still used in older
+        // blocks.
         #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
@@ -1802,7 +1836,8 @@ pub(crate) mod transaction {
                 signature: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 calldata: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
+                                                                          * elem only */
             }
         }
     }
@@ -1940,13 +1975,13 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
             .with_state_commitment(gateway.new_root);
 
         // Extract the known system contract updates from the normal contract updates.
-        // This must occur before we map the contract updates, since we want to first remove
-        // the system contract updates.
+        // This must occur before we map the contract updates, since we want to first
+        // remove the system contract updates.
         //
         // Currently this is only the contract at address 0x1.
         //
-        // As of starknet v0.12.0 these are embedded in this way, but in the future will be
-        // a separate property in the state diff.
+        // As of starknet v0.12.0 these are embedded in this way, but in the future will
+        // be a separate property in the state diff.
         if let Some((address, storage_updates)) = gateway
             .state_diff
             .storage_diffs
@@ -1957,7 +1992,8 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
             }
         }
 
-        // Aggregate contract deployments, storage, nonce and class replacements into contract updates.
+        // Aggregate contract deployments, storage, nonce and class replacements into
+        // contract updates.
         for (address, storage_updates) in gateway.state_diff.storage_diffs {
             for state_update::StorageDiff { key, value } in storage_updates {
                 state_update = state_update.with_storage_update(address, key, value);
@@ -2000,13 +2036,19 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
 
 /// Types used when deserializing state update related data.
 pub mod state_update {
+    use std::collections::{HashMap, HashSet};
+
     use pathfinder_common::{
-        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
+        CasmHash,
+        ClassHash,
+        ContractAddress,
+        ContractNonce,
+        SierraHash,
+        StorageAddress,
         StorageValue,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
-    use std::collections::{HashMap, HashSet};
 
     /// L2 state diff.
     #[serde_as]
@@ -2102,9 +2144,9 @@ pub mod add_transaction {
 
     #[cfg(test)]
     mod serde_test {
-        use super::*;
-
         use pathfinder_common::macro_prelude::*;
+
+        use super::*;
 
         #[test]
         fn test_invoke_response() {
@@ -2165,7 +2207,10 @@ mod tests {
     use primitive_types::H256;
 
     use crate::reply::state_update::{
-        DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff,
+        DeclaredSierraClass,
+        DeployedContract,
+        ReplacedClass,
+        StorageDiff,
     };
     use crate::reply::transaction::L1HandlerTransaction;
 
@@ -2283,7 +2328,8 @@ mod tests {
 
     #[test]
     fn eth_contract_addresses_ignores_extra_fields() {
-        // Some gateway mocks include extra addresses, check that we can still parse these.
+        // Some gateway mocks include extra addresses, check that we can still parse
+        // these.
         let json = serde_json::json!({
             "Starknet": "0x12345abcd",
             "GpsStatementVerifier": "0xaabdde",
@@ -2324,7 +2370,10 @@ mod tests {
 
     mod block_signature {
         use pathfinder_common::{
-            block_commitment_signature_elem, block_hash, state_diff_commitment, BlockNumber,
+            block_commitment_signature_elem,
+            block_hash,
+            state_diff_commitment,
+            BlockNumber,
         };
 
         use super::super::{BlockSignature, BlockSignatureInput, StateUpdate};

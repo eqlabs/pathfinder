@@ -137,7 +137,8 @@ impl TryFromProtobuf<proto::receipt::EthereumAddress> for EthereumAddress {
             ));
         }
 
-        // from_slice() panics if the input length is incorrect, but we've already checked that
+        // from_slice() panics if the input length is incorrect, but we've already
+        // checked that
         let address = primitive_types::H160::from_slice(&input.elements);
         Ok(Self(address))
     }
@@ -149,7 +150,11 @@ impl TryFromProtobuf<proto::receipt::Receipt> for Receipt {
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::receipt::receipt::Type::{
-            Declare, DeployAccount, DeprecatedDeploy, Invoke, L1Handler,
+            Declare,
+            DeployAccount,
+            DeprecatedDeploy,
+            Invoke,
+            L1Handler,
         };
 
         Ok(match proto_field(input.r#type, field_name)? {
@@ -167,7 +172,11 @@ impl TryFromProtobuf<proto::receipt::Receipt> for Receipt {
 impl ToProtobuf<proto::receipt::Receipt> for Receipt {
     fn to_protobuf(self) -> proto::receipt::Receipt {
         use proto::receipt::receipt::Type::{
-            Declare, DeployAccount, DeprecatedDeploy, Invoke, L1Handler,
+            Declare,
+            DeployAccount,
+            DeprecatedDeploy,
+            Invoke,
+            L1Handler,
         };
 
         let r#type = Some(match self {

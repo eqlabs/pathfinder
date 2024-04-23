@@ -6,9 +6,9 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
-use crate::{prelude::*, BlockId};
-
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
+use crate::prelude::*;
+use crate::BlockId;
 
 pub enum TransactionStatus {
     L1Accepted,
@@ -1750,7 +1750,8 @@ pub(crate) mod dto {
                 sender_address: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
                 compiled_class_hash: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
+                                                                          * elem only */
             }
         }
     }
@@ -1932,7 +1933,8 @@ pub(crate) mod dto {
                 sender_address: Faker.fake_with_rng(rng),
                 signature: Faker.fake_with_rng(rng),
                 calldata: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
+                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
+                                                                          * elem only */
             }
         }
     }
@@ -1963,8 +1965,7 @@ pub(crate) mod dto {
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::transaction::*;
-    use pathfinder_common::TransactionVersion;
-    use pathfinder_common::{BlockHeader, TransactionIndex};
+    use pathfinder_common::{BlockHeader, TransactionIndex, TransactionVersion};
 
     use super::*;
 
@@ -2118,8 +2119,8 @@ mod tests {
             },
         ];
 
-        // Generate a random receipt for each transaction. Note that these won't make physical sense
-        // but its enough for the tests.
+        // Generate a random receipt for each transaction. Note that these won't make
+        // physical sense but its enough for the tests.
         let receipts: Vec<pathfinder_common::receipt::Receipt> = transactions
             .iter()
             .enumerate()

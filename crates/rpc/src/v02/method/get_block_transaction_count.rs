@@ -1,6 +1,7 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::BlockId;
+
+use crate::context::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -44,7 +45,8 @@ pub async fn get_block_transaction_count(
             .transaction_count(block_id)
             .context("Reading transaction count from database")?;
 
-        // Check if the value was 0 because there were no transactions, or because the block hash is invalid.
+        // Check if the value was 0 because there were no transactions, or because the
+        // block hash is invalid.
         if block_transaction_count == 0 {
             let header = tx
                 .block_header(block_id)
@@ -64,10 +66,11 @@ pub async fn get_block_transaction_count(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, BlockNumber};
     use pathfinder_crypto::Felt;
+
+    use super::*;
 
     mod json {
         use super::*;

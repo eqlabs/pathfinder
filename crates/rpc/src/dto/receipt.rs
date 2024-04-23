@@ -1,7 +1,7 @@
-use crate::dto::serialize::SerializeForVersion;
-use crate::{dto::*, RpcVersion};
-
 use super::serialize;
+use crate::dto::serialize::SerializeForVersion;
+use crate::dto::*;
+use crate::RpcVersion;
 
 #[derive(Copy, Clone)]
 pub enum TxnStatus {
@@ -76,12 +76,12 @@ impl SerializeForVersion for TxnFinalityStatus {
 
 #[cfg(test)]
 mod tests {
-    use crate::dto::serialize::Serializer;
-
-    use super::*;
     use pretty_assertions_sorted::assert_eq;
     use rstest::rstest;
     use serde_json::json;
+
+    use super::*;
+    use crate::dto::serialize::Serializer;
 
     #[rstest]
     #[case::received(TxnStatus::Received, "RECEIVED")]

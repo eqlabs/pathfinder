@@ -1,13 +1,10 @@
+use blockifier::transaction::transaction_execution::Transaction;
+use blockifier::transaction::transactions::ExecutableTransaction;
+
+use super::error::TransactionExecutionError;
+use super::execution_state::ExecutionState;
+use super::types::FeeEstimate;
 use crate::types::PriceUnit;
-
-use super::{
-    error::TransactionExecutionError, execution_state::ExecutionState, types::FeeEstimate,
-};
-
-use blockifier::{
-    transaction::transaction_execution::Transaction,
-    transaction::transactions::ExecutableTransaction,
-};
 
 pub fn estimate(
     mut execution_state: ExecutionState<'_>,
@@ -57,7 +54,8 @@ pub fn estimate(
             .execute(&mut state, &block_context, false, !skip_validate)
             .and_then(|mut tx_info| {
                 if tx_info.actual_fee.0 == 0 {
-                    // fee is not calculated by default for L1 handler transactions and if max_fee is zero, we have to do that explicitly
+                    // fee is not calculated by default for L1 handler transactions and if max_fee
+                    // is zero, we have to do that explicitly
                     tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
                         &tx_info.actual_resources,
                         &block_context,

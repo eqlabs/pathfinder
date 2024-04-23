@@ -1,15 +1,17 @@
 use std::borrow::Cow;
 use std::error::Error;
 
-use bitvec::{order::Msb0, slice::BitSlice, view::BitView};
+use bitvec::order::Msb0;
+use bitvec::slice::BitSlice;
+use bitvec::view::BitView;
 use fake::Dummy;
 
 use crate::algebra::field::montfelt::MontFelt;
 
 /// Starknet Field Element.
 ///
-/// A field element is a number 0..p-1 with p=2^{251}+17*2^{192}+1, and it forms the basic
-/// building block of most Starknet interactions.
+/// A field element is a number 0..p-1 with p=2^{251}+17*2^{192}+1, and it forms
+/// the basic building block of most Starknet interactions.
 #[derive(Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub struct Felt([u8; 32]);
 
@@ -56,7 +58,8 @@ impl<T> Dummy<T> for Felt {
     }
 }
 
-/// Error returned by [Felt::from_be_bytes] indicating the maximum field value was exceeded.
+/// Error returned by [Felt::from_be_bytes] indicating the maximum field value
+/// was exceeded.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct OverflowError;
 
@@ -100,7 +103,8 @@ impl Felt {
         &mut self.0
     }
 
-    /// Convenience function which extends [Felt::from_be_bytes] to work with slices.
+    /// Convenience function which extends [Felt::from_be_bytes] to work with
+    /// slices.
     pub const fn from_be_slice(bytes: &[u8]) -> Result<Self, OverflowError> {
         if bytes.len() > 32 {
             return Err(OverflowError);
@@ -148,7 +152,8 @@ impl Felt {
             ]),
         ];
 
-        // Loop over each word, if all previous are equal and current is less, we are good.
+        // Loop over each word, if all previous are equal and current is less, we are
+        // good.
         let mut maybe_overflow = true;
         let mut i = 0;
         while i < 4 && maybe_overflow {
@@ -215,8 +220,9 @@ macro_rules! const_expect {
     }};
 }
 
-use crate::algebra::field::CurveOrderMontFelt;
 use const_expect;
+
+use crate::algebra::field::CurveOrderMontFelt;
 
 impl From<u64> for Felt {
     fn from(value: u64) -> Self {
@@ -304,7 +310,8 @@ impl From<CurveOrderMontFelt> for Felt {
 impl Felt {
     /// A convenience function which parses a hex string into a [Felt].
     ///
-    /// Supports both upper and lower case hex strings, as well as an optional "0x" prefix.
+    /// Supports both upper and lower case hex strings, as well as an optional
+    /// "0x" prefix.
     pub const fn from_hex_str(hex_str: &str) -> Result<Self, HexParseError> {
         const fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
             match digit {
@@ -332,8 +339,8 @@ impl Felt {
 
         let mut buf = [0u8; 32];
 
-        // We want the result in big-endian so reverse iterate over each pair of nibbles.
-        // let chunks = hex_str.as_bytes().rchunks_exact(2);
+        // We want the result in big-endian so reverse iterate over each pair of
+        // nibbles. let chunks = hex_str.as_bytes().rchunks_exact(2);
 
         // Handle a possible odd nibble remaining nibble.
         if len % 2 == 1 {
@@ -400,8 +407,8 @@ impl Felt {
         &buf[..len]
     }
 
-    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
-    /// from a [Felt].
+    /// A convenience function which produces a "0x" prefixed hex str slice in a
+    /// given buffer `buf` from a [Felt].
     /// Panics if `self.0.len() * 2 + 2 > buf.len()`
     pub fn as_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
         let expected_buf_len = self.0.len() * 2 + 2;
@@ -422,7 +429,8 @@ impl Felt {
         std::str::from_utf8(res).unwrap()
     }
 
-    /// A convenience function which produces a "0x" prefixed hex string from a [Felt].
+    /// A convenience function which produces a "0x" prefixed hex string from a
+    /// [Felt].
     pub fn to_hex_str(&self) -> Cow<'static, str> {
         if !self.0.iter().any(|b| *b != 0) {
             return Cow::from("0x0");

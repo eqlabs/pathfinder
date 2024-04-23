@@ -19,7 +19,8 @@ pub trait SerializeForVersion {
     fn serialize(&self, serializer: Serializer) -> Result<Ok, Error>;
 }
 
-// This blanket implementation should be removed once all existing DTOs have been migrated.
+// This blanket implementation should be removed once all existing DTOs have
+// been migrated.
 impl<T> SerializeForVersion for T
 where
     T: serde::Serialize,
@@ -130,8 +131,9 @@ impl SerializeStruct {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     mod serialize {
         use super::*;

@@ -11,25 +11,23 @@ mod state_update;
 pub(crate) mod transaction;
 mod trie;
 
+pub use event::{
+    EmittedEvent,
+    EventFilter,
+    EventFilterError,
+    PageOfEvents,
+    KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT,
+    PAGE_SIZE_LIMIT as EVENT_PAGE_SIZE_LIMIT,
+};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::transaction::Transaction as StarknetTransaction;
+use pathfinder_common::{BlockNumber, TransactionHash};
+pub(crate) use reorg_counter::ReorgCounter;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
-
-pub use event::KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT;
-pub use event::PAGE_SIZE_LIMIT as EVENT_PAGE_SIZE_LIMIT;
-pub use event::{EmittedEvent, EventFilter, EventFilterError, PageOfEvents};
-
-pub(crate) use reorg_counter::ReorgCounter;
-
-pub use transaction::TransactionData;
-pub use transaction::TransactionStatus;
-
+pub use transaction::{TransactionData, TransactionStatus};
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieUpdate};
-
-use pathfinder_common::{BlockNumber, TransactionHash};
-
-use pathfinder_common::transaction::Transaction as StarknetTransaction;
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
@@ -84,7 +82,8 @@ pub struct Transaction<'inner> {
 pub enum TriePruneMode {
     /// Keep all merkle trie history.
     Archive,
-    /// Prune merkle trie history. Only keep the last few blocks, as well as the latest block.
+    /// Prune merkle trie history. Only keep the last few blocks, as well as the
+    /// latest block.
     Prune { num_blocks_kept: u64 },
 }
 
@@ -100,8 +99,9 @@ type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
 type EventsForBlock = (TransactionHash, Vec<Event>);
 
 impl<'inner> Transaction<'inner> {
-    // The implementations here are intentionally kept as simple wrappers. This lets the real implementations
-    // be kept in separate files with more reasonable LOC counts and easier test oversight.
+    // The implementations here are intentionally kept as simple wrappers. This lets
+    // the real implementations be kept in separate files with more reasonable
+    // LOC counts and easier test oversight.
 
     fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.transaction

@@ -1,4 +1,5 @@
-use std::{num::NonZeroU64, time::Duration};
+use std::num::NonZeroU64;
+use std::time::Duration;
 
 use pathfinder_common::Chain;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
@@ -17,8 +18,9 @@ pub struct L1SyncContext<EthereumClient> {
     pub poll_interval: Duration,
 }
 
-/// Syncs L1 state update logs. Emits [Ethereum state update](EthereumStateUpdate)
-/// which should be handled to update storage and respond to queries.
+/// Syncs L1 state update logs. Emits [Ethereum state
+/// update](EthereumStateUpdate) which should be handled to update storage and
+/// respond to queries.
 pub async fn sync<T>(
     tx_event: mpsc::Sender<SyncEvent>,
     context: L1SyncContext<T>,

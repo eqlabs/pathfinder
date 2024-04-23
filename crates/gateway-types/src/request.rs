@@ -1,6 +1,11 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
 use pathfinder_common::{
-    BlockHash, BlockNumber, CallParam, ContractAddress, Fee, TransactionSignatureElem,
+    BlockHash,
+    BlockNumber,
+    CallParam,
+    ContractAddress,
+    Fee,
+    TransactionSignatureElem,
 };
 use serde::{Deserialize, Serialize};
 
@@ -10,16 +15,18 @@ use serde::{Deserialize, Serialize};
 pub enum Tag {
     /// The most recent fully constructed block
     ///
-    /// Represented as the JSON string `"latest"` when passed as an RPC method argument,
-    /// for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["latest"]}`
+    /// Represented as the JSON string `"latest"` when passed as an RPC method
+    /// argument, for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","
+    /// params":["latest"]}`
     #[serde(rename = "latest")]
     Latest,
     /// Currently constructed block
     ///
-    /// Represented as the JSON string `"pending"` when passed as an RPC method argument,
-    /// for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["pending"]}`
+    /// Represented as the JSON string `"pending"` when passed as an RPC method
+    /// argument, for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","
+    /// params":["pending"]}`
     #[serde(rename = "pending")]
     Pending,
 }
@@ -33,15 +40,16 @@ impl std::fmt::Display for Tag {
     }
 }
 
-/// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
+/// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a
+/// [Tag](self::BlockHashOrTag::Tag).
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockHashOrTag {
     /// Hash of a block
     ///
-    /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
-    /// when passed as an RPC method argument, for example:
+    /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64
+    /// characters when passed as an RPC method argument, for example:
     /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
     Hash(BlockHash),
     /// Special [`Tag`] describing a block
@@ -73,7 +81,9 @@ impl From<BlockHashOrTag> for pathfinder_common::BlockId {
     }
 }
 
-/// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
+/// A wrapper that contains either a block
+/// [Number](self::BlockNumberOrTag::Number) or a
+/// [Tag](self::BlockNumberOrTag::Tag).
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
@@ -110,11 +120,12 @@ impl From<BlockNumberOrTag> for pathfinder_common::BlockId {
 }
 
 pub mod contract {
+    use std::fmt;
+
     use fake::Dummy;
     use pathfinder_common::{ByteCodeOffset, EntryPoint};
     use pathfinder_crypto::Felt;
     use serde_with::serde_as;
-    use std::fmt;
 
     #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Hash, Eq)]
     #[serde(deny_unknown_fields)]
@@ -191,21 +202,30 @@ pub mod contract {
 }
 
 pub mod add_transaction {
-    use crate::reply::transaction::{DataAvailabilityMode, ResourceBounds};
+    use std::collections::HashMap;
 
-    use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
-    use super::{CallParam, ContractAddress, Fee, TransactionSignatureElem};
     use pathfinder_common::{
-        AccountDeploymentDataElem, CasmHash, ClassHash, ContractAddressSalt, EntryPoint,
-        PaymasterDataElem, Tip, TransactionNonce, TransactionVersion,
+        AccountDeploymentDataElem,
+        CasmHash,
+        ClassHash,
+        ContractAddressSalt,
+        EntryPoint,
+        PaymasterDataElem,
+        Tip,
+        TransactionNonce,
+        TransactionVersion,
     };
     use pathfinder_serde::{CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr};
     use serde_with::serde_as;
-    use std::collections::HashMap;
 
-    /// Both variants are somewhat different compared to the contract definition we're using
-    /// for class hash calculation. The actual program contents are not relevant
-    /// for us, and they are sent as a gzip + base64 encoded string via the API.
+    use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
+    use super::{CallParam, ContractAddress, Fee, TransactionSignatureElem};
+    use crate::reply::transaction::{DataAvailabilityMode, ResourceBounds};
+
+    /// Both variants are somewhat different compared to the contract definition
+    /// we're using for class hash calculation. The actual program contents
+    /// are not relevant for us, and they are sent as a gzip + base64
+    /// encoded string via the API.
     #[derive(Clone, Debug, serde::Serialize)]
     #[serde(untagged)]
     pub enum ContractDefinition {
@@ -390,9 +410,9 @@ pub mod add_transaction {
 
     #[cfg(test)]
     mod test {
-        use super::*;
-
         use starknet_gateway_test_fixtures::add_transaction::INVOKE_CONTRACT_WITH_SIGNATURE;
+
+        use super::*;
 
         #[test]
         fn test_invoke_with_signature() {

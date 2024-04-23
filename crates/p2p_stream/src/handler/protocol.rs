@@ -1,5 +1,5 @@
-// Equilibrium Labs: This work is an extension of libp2p's request-response protocol,
-// hence the original copyright notice is included below.
+// Equilibrium Labs: This work is an extension of libp2p's request-response
+// protocol, hence the original copyright notice is included below.
 //
 //
 // Copyright 2020 Parity Technologies (UK) Ltd.

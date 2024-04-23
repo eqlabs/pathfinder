@@ -1,13 +1,14 @@
 use std::str::FromStr;
 
-use crate::context::RpcContext;
-use crate::pending::PendingData;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
 use pathfinder_storage::EventFilterError;
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
+
+use crate::context::RpcContext;
+use crate::pending::PendingData;
 
 #[derive(Debug)]
 pub enum GetEventsError {
@@ -74,13 +75,14 @@ pub async fn get_events(
     context: RpcContext,
     input: GetEventsInput,
 ) -> Result<types::GetEventsResult, GetEventsError> {
-    // The [Block::Pending] in ranges makes things quite complicated. This implementation splits
-    // the ranges into the following buckets:
+    // The [Block::Pending] in ranges makes things quite complicated. This
+    // implementation splits the ranges into the following buckets:
     //
     // 1. pending     :     pending -> query pending only
     // 2. pending     : non-pending -> return empty result
     // 3. non-pending : non-pending -> query db only
-    // 4. non-pending :     pending -> query db and potentially append pending events
+    // 4. non-pending :     pending -> query db and potentially append pending
+    //    events
     //
     // The database query for 3 and 4 is combined into one step.
     //
@@ -233,8 +235,8 @@ pub async fn get_events(
                     Some(continuation_token.to_string())
                 };
             } else {
-                // We have a full page from the database, but there might be more pending events.
-                // Return a continuation token for the pending block.
+                // We have a full page from the database, but there might be more pending
+                // events. Return a continuation token for the pending block.
                 events.continuation_token = Some(
                     ContinuationToken {
                         block_number: pending.number,
@@ -253,7 +255,8 @@ pub async fn get_events(
         .context("Database read panic or shutting down")?
 }
 
-// Handle the case when we're querying events exclusively from the pending block.
+// Handle the case when we're querying events exclusively from the pending
+// block.
 fn get_pending_events(
     request: &EventFilter,
     pending: &PendingData,
@@ -299,10 +302,11 @@ fn get_pending_events(
     })
 }
 
-// Maps `to_block` BlockId to a block number which can be used by the events query.
+// Maps `to_block` BlockId to a block number which can be used by the events
+// query.
 //
-// This block id specifies the upper end of the range, so pending/latest/None means
-// there's no upper limit.
+// This block id specifies the upper end of the range, so pending/latest/None
+// means there's no upper limit.
 fn map_to_block_to_number(
     tx: &pathfinder_storage::Transaction<'_>,
     block: Option<BlockId>,
@@ -324,7 +328,8 @@ fn map_to_block_to_number(
     }
 }
 
-// Maps `from_block` BlockId to a block number which can be used by the events query.
+// Maps `from_block` BlockId to a block number which can be used by the events
+// query.
 //
 // This block id specifies the lower end of the range, so pending/latest means
 // a lower limit here.
@@ -357,8 +362,8 @@ fn map_from_block_to_number(
     }
 }
 
-/// Append's pending events to `dst` based on the filter requirements and returns
-/// true if this was the last pending data i.e. `is_last_page`.
+/// Append's pending events to `dst` based on the filter requirements and
+/// returns true if this was the last pending data i.e. `is_last_page`.
 fn append_pending_events(
     pending_block: &PendingBlock,
     dst: &mut Vec<types::EmittedEvent>,
@@ -487,7 +492,12 @@ struct ParseContinuationTokenError;
 
 mod types {
     use pathfinder_common::{
-        BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
+        BlockHash,
+        BlockNumber,
+        ContractAddress,
+        EventData,
+        EventKey,
+        TransactionHash,
     };
     use serde::Serialize;
 
@@ -524,22 +534,21 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct GetEventsResult {
         pub events: Vec<EmittedEvent>,
-        /// Offset, measured in events, which points to the chunk that follows currently requested chunk (`events`)
+        /// Offset, measured in events, which points to the chunk that follows
+        /// currently requested chunk (`events`)
         pub continuation_token: Option<String>,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        types::{EmittedEvent, GetEventsResult},
-        *,
-    };
-    use serde_json::json;
-
     use pathfinder_common::macro_prelude::*;
     use pathfinder_storage::test_utils;
     use pretty_assertions_sorted::assert_eq;
+    use serde_json::json;
+
+    use super::types::{EmittedEvent, GetEventsResult};
+    use super::*;
 
     #[rstest::rstest]
     #[case::positional_with_optionals(json!([{
@@ -851,8 +860,9 @@ mod tests {
     }
 
     mod pending {
-        use super::*;
         use pretty_assertions_sorted::assert_eq;
+
+        use super::*;
 
         #[tokio::test]
         async fn backward_range() {
@@ -920,16 +930,17 @@ mod tests {
                 .unwrap()
                 .events;
 
-            // Check edge case where the page is full with events from the DB but this was the
-            // last page from the DB -- should continue from offset 0 of the pending block next time
+            // Check edge case where the page is full with events from the DB but this was
+            // the last page from the DB -- should continue from offset 0 of the
+            // pending block next time
             input.filter.chunk_size = 1;
             input.filter.continuation_token = None;
             let result = get_events(context.clone(), input.clone()).await.unwrap();
             assert_eq!(result.events, &all[0..1]);
             assert_eq!(result.continuation_token, Some("3-0".to_string()));
 
-            // Page includes a DB event and an event from the pending block, but there are more pending
-            // events for the next page
+            // Page includes a DB event and an event from the pending block, but there are
+            // more pending events for the next page
             input.filter.chunk_size = 2;
             input.filter.continuation_token = None;
             let result = get_events(context.clone(), input.clone()).await.unwrap();

@@ -1,10 +1,24 @@
 use pathfinder_common::transaction::{
-    DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
-    DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransaction, InvokeTransactionV0,
-    InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction, ResourceBound, ResourceBounds,
+    DataAvailabilityMode,
+    DeclareTransactionV0V1,
+    DeclareTransactionV2,
+    DeclareTransactionV3,
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransaction,
+    InvokeTransactionV0,
+    InvokeTransactionV1,
+    InvokeTransactionV3,
+    L1HandlerTransaction,
+    ResourceBound,
+    ResourceBounds,
 };
 use pathfinder_common::{
-    ResourceAmount, ResourcePricePerUnit, Tip, TransactionHash, TransactionVersion,
+    ResourceAmount,
+    ResourcePricePerUnit,
+    Tip,
+    TransactionHash,
+    TransactionVersion,
 };
 use serde::ser::SerializeStruct;
 use serde::Serialize;
@@ -387,16 +401,17 @@ impl Serialize for TipHelper<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod serialization {
-        use super::*;
-        use pathfinder_common::{
-            transaction::*, ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion,
-        };
+        use pathfinder_common::transaction::*;
+        use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
         use pretty_assertions_sorted::assert_eq;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn declare_v0() {

@@ -1,4 +1,5 @@
-use std::{num::NonZeroU32, time::Instant};
+use std::num::NonZeroU32;
+use std::time::Instant;
 
 use anyhow::Context;
 use pathfinder_common::BlockNumber;

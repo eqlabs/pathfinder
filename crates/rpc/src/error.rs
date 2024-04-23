@@ -1,7 +1,9 @@
-//! Defines [ApplicationError], the Starknet JSON-RPC specification's error variants.
+//! Defines [ApplicationError], the Starknet JSON-RPC specification's error
+//! variants.
 //!
-//! In addition, it supplies the [generate_rpc_error_subset!] macro which should be used
-//! by each JSON-RPC method to trivially create its subset of [ApplicationError] along with the boilerplate involved.
+//! In addition, it supplies the [generate_rpc_error_subset!] macro which should
+//! be used by each JSON-RPC method to trivially create its subset of
+//! [ApplicationError] along with the boilerplate involved.
 #![macro_use]
 use serde_json::json;
 
@@ -85,13 +87,14 @@ pub enum ApplicationError {
     },
     #[error("Proof is missing")]
     ProofMissing,
-    /// Internal errors are errors whose details we don't want to show to the end user.
-    /// These are logged, and a simple "internal error" message is shown to the end
-    /// user.
+    /// Internal errors are errors whose details we don't want to show to the
+    /// end user. These are logged, and a simple "internal error" message is
+    /// shown to the end user.
     #[error("Internal error")]
     Internal(anyhow::Error),
-    /// Custom errors are mostly treated as internal errors with the big difference that the error
-    /// details aren't logged and are eventually displayed to the end user.
+    /// Custom errors are mostly treated as internal errors with the big
+    /// difference that the error details aren't logged and are eventually
+    /// displayed to the end user.
     #[error("Internal error")]
     Custom(anyhow::Error),
 }
@@ -213,20 +216,25 @@ impl ApplicationError {
     }
 }
 
-/// Generates an enum subset of [ApplicationError] along with boilerplate for mapping the variants back to [ApplicationError].
+/// Generates an enum subset of [ApplicationError] along with boilerplate for
+/// mapping the variants back to [ApplicationError].
 ///
-/// This is useful for RPC methods which only emit a few of the [ApplicationError] variants as this macro can be
-/// used to quickly create the enum-subset with the required glue code. This greatly improves the type safety
-/// of the method.
+/// This is useful for RPC methods which only emit a few of the
+/// [ApplicationError] variants as this macro can be used to quickly create the
+/// enum-subset with the required glue code. This greatly improves the type
+/// safety of the method.
 ///
 /// ## Usage
 /// ```ignore
 /// generate_rpc_error_subset!(<enum_name>: <variant a>, <variant b>, <variant N>);
 /// ```
-/// Note that the variants __must__ match the [ApplicationError] variant names and that [ApplicationError::Internal]
-/// and [ApplicationError::Custom] are always included by default (and therefore should not be part of macro input).
+/// Note that the variants __must__ match the [ApplicationError] variant names
+/// and that [ApplicationError::Internal] and [ApplicationError::Custom] are
+/// always included by default (and therefore should not be part of macro
+/// input).
 ///
-/// An `Internal` only variant can be generated using `generate_rpc_error_subset!(<enum_name>)`.
+/// An `Internal` only variant can be generated using
+/// `generate_rpc_error_subset!(<enum_name>)`.
 ///
 /// ## Specifics
 /// This macro generates the following:
@@ -374,8 +382,9 @@ pub(super) use generate_rpc_error_subset;
 #[cfg(test)]
 mod tests {
     mod rpc_error_subset {
-        use super::super::{generate_rpc_error_subset, ApplicationError};
         use assert_matches::assert_matches;
+
+        use super::super::{generate_rpc_error_subset, ApplicationError};
 
         #[test]
         fn no_variant() {

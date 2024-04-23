@@ -4,7 +4,6 @@ use anyhow::Context;
 use pathfinder_common::{BlockHeader, BlockNumber, StateUpdate};
 use pathfinder_storage::Transaction;
 use starknet_gateway_types::reply::{GasPrices, PendingBlock, Status};
-
 use tokio::sync::watch::Receiver as WatchReceiver;
 
 /// Provides the latest [PendingData] which is consistent with a given
@@ -55,8 +54,9 @@ impl PendingWatcher {
     /// Returns [PendingData] which has been validated against the latest block
     /// available in storage.
     ///
-    /// Returns an empty block with gas price and timestamp taken from the latest
-    /// block if no valid pending data is available. The block number is also incremented.
+    /// Returns an empty block with gas price and timestamp taken from the
+    /// latest block if no valid pending data is available. The block number
+    /// is also incremented.
     pub fn get(&self, tx: &Transaction<'_>) -> anyhow::Result<PendingData> {
         let latest = tx
             .block_header(pathfinder_storage::BlockId::Latest)
@@ -106,8 +106,8 @@ impl PendingWatcher {
 #[cfg(test)]
 mod tests {
 
-    use pathfinder_common::{macro_prelude::*, L1DataAvailabilityMode};
-    use pathfinder_common::{BlockHeader, BlockTimestamp, GasPrice};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockHeader, BlockTimestamp, GasPrice, L1DataAvailabilityMode};
 
     use super::*;
 

@@ -1,6 +1,7 @@
+use bitvec::prelude::*;
+
 use crate::algebra::curve::CURVE_ORDER;
 use crate::{CurveOrderMontFelt, Felt, MontFelt};
-use bitvec::prelude::*;
 
 impl CurveOrderMontFelt {
     pub const fn from_be_bytes(bytes: [u8; 32]) -> Self {
@@ -77,7 +78,8 @@ impl TryFrom<MontFelt> for CurveOrderMontFelt {
 
 impl TryFrom<Felt> for CurveOrderMontFelt {
     type Error = ();
-    /// Converts a felt element to a curve-order field element if less than the curve order
+    /// Converts a felt element to a curve-order field element if less than the
+    /// curve order
     fn try_from(value: Felt) -> Result<Self, Self::Error> {
         let montvalue = MontFelt::from(value);
         if montvalue < CURVE_ORDER {

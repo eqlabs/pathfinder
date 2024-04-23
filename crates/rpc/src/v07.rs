@@ -1,12 +1,11 @@
 pub mod dto;
 pub mod method;
 
+use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 use crate::v02::method as v02_method;
 use crate::v03::method as v03_method;
 use crate::v05::method as v05_method;
 use crate::v06::method as v06_method;
-
-use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {

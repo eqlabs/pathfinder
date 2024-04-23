@@ -63,9 +63,10 @@ pub struct SyncingStatus {
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::macro_prelude::*;
+
     use super::SyncingOutput;
     use crate::context::RpcContext;
-    use pathfinder_common::macro_prelude::*;
     mod serde {
         use super::super::{SyncingOutput, SyncingStatus};
 
@@ -77,8 +78,9 @@ mod tests {
 
         #[test]
         fn syncing() {
-            use super::*;
             use pathfinder_common::BlockNumber;
+
+            use super::*;
 
             let status = SyncingStatus {
                 starting_block_num: BlockNumber::new_or_panic(12),
@@ -106,10 +108,9 @@ mod tests {
 
     #[tokio::test]
     async fn syncing() {
-        use crate::v02::types::syncing::NumberedBlock;
-        use crate::v02::types::syncing::Status as V2Status;
-        use crate::v02::types::syncing::Syncing as V2Syncing;
         use pathfinder_common::BlockNumber;
+
+        use crate::v02::types::syncing::{NumberedBlock, Status as V2Status, Syncing as V2Syncing};
 
         let status = V2Syncing::Status(V2Status {
             starting: NumberedBlock::from(("aabb", 1)),

@@ -133,17 +133,29 @@ pub async fn get_transaction_status(
         .context("Fetching transaction from gateway")
         .map_err(GetTransactionStatusError::Internal)
         .and_then(|tx| {
-            use starknet_gateway_types::reply::transaction_status::FinalityStatus as GatewayFinalityStatus;
-            use starknet_gateway_types::reply::transaction_status::ExecutionStatus as GatewayExecutionStatus;
+            use starknet_gateway_types::reply::transaction_status::{
+                ExecutionStatus as GatewayExecutionStatus,
+                FinalityStatus as GatewayFinalityStatus,
+            };
 
             match (tx.finality_status, tx.execution_status) {
-                (GatewayFinalityStatus::NotReceived, _) => Err(GetTransactionStatusError::TxnHashNotFound),
+                (GatewayFinalityStatus::NotReceived, _) => {
+                    Err(GetTransactionStatusError::TxnHashNotFound)
+                }
                 (_, GatewayExecutionStatus::Rejected) => Ok(GetTransactionStatusOutput::Rejected),
                 (GatewayFinalityStatus::Received, _) => Ok(GetTransactionStatusOutput::Received),
-                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => Ok(GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Reverted)),
-                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => Ok(GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Succeeded)),
-                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => Ok(GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted)),
-                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => Ok(GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded)),
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Reverted),
+                ),
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Succeeded),
+                ),
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted),
+                ),
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded),
+                ),
             }
         })
 }

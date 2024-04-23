@@ -1,26 +1,18 @@
 #![allow(dead_code, unused_variables)]
 use std::collections::HashSet;
-use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
-use futures::pin_mut;
-use futures::StreamExt;
-use futures::TryStreamExt;
-use p2p::client::peer_agnostic::Class;
-use p2p::client::peer_agnostic::EventsForBlockByTransaction;
-use p2p::client::{conv::TryFromDto, peer_agnostic::Client as P2PClient};
+use futures::{pin_mut, StreamExt, TryStreamExt};
+use p2p::client::conv::TryFromDto;
+use p2p::client::peer_agnostic::{Class, Client as P2PClient, EventsForBlockByTransaction};
 use p2p::PeerData;
-use p2p_proto::{
-    common::{BlockNumberOrHash, Direction, Iteration},
-    receipt::{ReceiptsRequest, ReceiptsResponse},
-    transaction::{TransactionsRequest, TransactionsResponse},
-};
-use pathfinder_common::ClassHash;
-use pathfinder_common::{
-    receipt::Receipt, transaction::Transaction, BlockHash, BlockHeader, BlockNumber,
-    TransactionIndex,
-};
+use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
+use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::transaction::Transaction;
+use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ClassHash, TransactionIndex};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
@@ -28,19 +20,13 @@ use serde_json::de;
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
-use crate::state::block_hash::{
-    calculate_transaction_commitment, TransactionCommitmentFinalHashType,
-};
-
-use crate::sync::class_definitions;
-use crate::sync::error::SyncError;
-use crate::sync::events;
-use crate::sync::headers;
-use crate::sync::receipts;
-use crate::sync::state_updates;
-use crate::sync::transactions;
-
 use super::class_definitions::ClassWithLayout;
+use crate::state::block_hash::{
+    calculate_transaction_commitment,
+    TransactionCommitmentFinalHashType,
+};
+use crate::sync::error::SyncError;
+use crate::sync::{class_definitions, events, headers, receipts, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -80,10 +66,12 @@ impl Sync {
             .await
             .context("Analysing local storage against L1 checkpoint")?;
 
-        // Persist checkpoint as new L1 anchor. This must be done first to protect against an interrupted sync process.
-        // Subsequent syncs will use this value to rollback against. Persisting it later would result in more data than
-        // necessary being rolled back (potentially all data if the header sync process is frequently interrupted), so this
-        // ensures sync will progress even under bad conditions.
+        // Persist checkpoint as new L1 anchor. This must be done first to protect
+        // against an interrupted sync process. Subsequent syncs will use this
+        // value to rollback against. Persisting it later would result in more data than
+        // necessary being rolled back (potentially all data if the header sync process
+        // is frequently interrupted), so this ensures sync will progress even
+        // under bad conditions.
         let anchor = checkpoint;
         persist_anchor(self.storage.clone(), anchor.clone())
             .await
@@ -91,7 +79,8 @@ impl Sync {
 
         let head = anchor.block_number;
 
-        // Sync missing headers in reverse chronological order, from the new anchor to genesis.
+        // Sync missing headers in reverse chronological order, from the new anchor to
+        // genesis.
         self.sync_headers(anchor).await?;
 
         // Sync the rest of the data in chronological order.
@@ -520,30 +509,34 @@ async fn check_transactions(
     Ok(transaction_commitment == block.transaction_commitment)
 }
 
-/// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with a given L1 checkpoint,
-/// and [handles](Self::handle) the result.
+/// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with
+/// a given L1 checkpoint, and [handles](Self::handle) the result.
 enum CheckpointAnalysis {
-    /// The checkpoint hash does not match the local L1 anchor, indicating an inconsistency with the Ethereum source
-    /// with the one used by the previous sync.
+    /// The checkpoint hash does not match the local L1 anchor, indicating an
+    /// inconsistency with the Ethereum source with the one used by the
+    /// previous sync.
     HashMismatchWithAnchor {
         block: BlockNumber,
         checkpoint: BlockHash,
         anchor: BlockHash,
     },
-    /// The checkpoint is older than the local anchor, indicating an inconsistency in the Ethereum source between
-    /// this sync and the previous sync.
+    /// The checkpoint is older than the local anchor, indicating an
+    /// inconsistency in the Ethereum source between this sync and the
+    /// previous sync.
     PredatesAnchor {
         checkpoint: BlockNumber,
         anchor: BlockNumber,
     },
-    /// The checkpoint exceeds the local chain. As such, the local chain should be rolled back to its anchor as we
-    /// cannot be confident in any of the local data not verified by L1.
+    /// The checkpoint exceeds the local chain. As such, the local chain should
+    /// be rolled back to its anchor as we cannot be confident in any of the
+    /// local data not verified by L1.
     ExceedsLocalChain {
         local: BlockNumber,
         checkpoint: BlockNumber,
         anchor: Option<BlockNumber>,
     },
-    /// The checkpoint hash does not match the local chain data. The local chain should be rolled back to its anchor.
+    /// The checkpoint hash does not match the local chain data. The local chain
+    /// should be rolled back to its anchor.
     HashMismatchWithLocalChain {
         block: BlockNumber,
         local: BlockHash,
@@ -555,9 +548,11 @@ enum CheckpointAnalysis {
 }
 
 impl CheckpointAnalysis {
-    /// Analyse [LocalState] by checking it for consistency against the given L1 checkpoint.
+    /// Analyse [LocalState] by checking it for consistency against the given L1
+    /// checkpoint.
     ///
-    /// For more information on the potential inconsistencies see the [CheckpointAnalysis] variants.
+    /// For more information on the potential inconsistencies see the
+    /// [CheckpointAnalysis] variants.
     fn analyse(local_state: &LocalState, checkpoint: &EthereumStateUpdate) -> CheckpointAnalysis {
         // Checkpoint is older than or inconsistent with our local L1 anchor.
         if let Some(anchor) = &local_state.anchor {
@@ -605,15 +600,19 @@ impl CheckpointAnalysis {
     /// Handles the [checkpoint analysis](Self::analyse) [result](Self).
     ///
     /// Returns an error for [PredatesAnchor](Self::PredatesAnchor) and
-    /// [HashMismatchWithAnchor](Self::HashMismatchWithAnchor) since these indicate an inconsistency with the Ethereum
-    /// source - making all data suspect.
+    /// [HashMismatchWithAnchor](Self::HashMismatchWithAnchor) since these
+    /// indicate an inconsistency with the Ethereum source - making all data
+    /// suspect.
     ///
-    /// Rolls back local state to the anchor for [ExceedsLocalChain](Self::ExceedsLocalChain) and
-    /// [HashMismatchWithLocalChain](Self::HashMismatchWithLocalChain) conditions.
+    /// Rolls back local state to the anchor for
+    /// [ExceedsLocalChain](Self::ExceedsLocalChain) and
+    /// [HashMismatchWithLocalChain](Self::HashMismatchWithLocalChain)
+    /// conditions.
     ///
-    /// Does nothing for [Consistent](Self::Consistent). This leaves any insecure local data intact. Always rolling
-    /// back to the L1 anchor would result in a poor user experience if restarting frequently as each restart would
-    /// purge new data.
+    /// Does nothing for [Consistent](Self::Consistent). This leaves any
+    /// insecure local data intact. Always rolling back to the L1 anchor
+    /// would result in a poor user experience if restarting frequently as each
+    /// restart would purge new data.
     async fn handle(self, storage: Storage) -> anyhow::Result<()> {
         match self {
             CheckpointAnalysis::HashMismatchWithAnchor {
@@ -628,7 +627,8 @@ impl CheckpointAnalysis {
                 anyhow::bail!("Ethereum checkpoint hash did not match local anchor.");
             }
             CheckpointAnalysis::PredatesAnchor { checkpoint, anchor } => {
-                // TODO: or consider this valid. If so, then we should continue sync but use the local anchor instead of the checkpoint.
+                // TODO: or consider this valid. If so, then we should continue sync but use the
+                // local anchor instead of the checkpoint.
                 tracing::error!(
                     %checkpoint, %anchor,
                     "Ethereum checkpoint is older than the local anchor. This indicates a serious inconsistency in the Ethereum source used by this sync and the previous sync."
@@ -707,8 +707,8 @@ impl LocalState {
     }
 }
 
-/// Rolls back local chain-state until the given anchor point, making it the tip of the local chain. If this is ['None']
-/// then all data will be rolled back.
+/// Rolls back local chain-state until the given anchor point, making it the tip
+/// of the local chain. If this is ['None'] then all data will be rolled back.
 async fn rollback_to_anchor(storage: Storage, anchor: Option<BlockNumber>) -> anyhow::Result<()> {
     spawn_blocking(move || {
         todo!("Rollback storage to anchor point");
@@ -724,8 +724,8 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
         db.upsert_l1_state(&anchor).context("Inserting anchor")?;
-        // TODO: this is a bit dodgy, but is used by the sync process. However it destroys
-        //       some RPC assumptions which we should be aware of.
+        // TODO: this is a bit dodgy, but is used by the sync process. However it
+        // destroys       some RPC assumptions which we should be aware of.
         db.update_l1_l2_pointer(Some(anchor.block_number))
             .context("Updating L1-L2 pointer")?;
         db.commit().context("Committing database transaction")?;
@@ -740,17 +740,18 @@ mod tests {
     use super::*;
 
     mod handle_event_stream {
-        use crate::state::block_hash::calculate_event_commitment;
-
-        use super::super::handle_event_stream;
-        use super::*;
         use fake::{Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;
-        use pathfinder_common::{event::Event, transaction::TransactionVariant, TransactionHash};
+        use pathfinder_common::event::Event;
+        use pathfinder_common::transaction::TransactionVariant;
+        use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake as fake_storage;
-        use pathfinder_storage::{StorageBuilder, TransactionData};
+        use pathfinder_storage::{fake as fake_storage, StorageBuilder, TransactionData};
+
+        use super::super::handle_event_stream;
+        use super::*;
+        use crate::state::block_hash::calculate_event_commitment;
 
         struct Setup {
             pub streamed_events: Vec<anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
@@ -895,21 +896,23 @@ mod tests {
         use std::collections::HashMap;
         use std::future;
 
-        use crate::state::block_hash::calculate_event_commitment;
-
-        use super::super::handle_class_stream;
-        use super::*;
         use fake::{Dummy, Fake, Faker};
         use futures::{stream, SinkExt};
         use p2p::libp2p::PeerId;
-        use pathfinder_common::{event::Event, transaction::TransactionVariant, TransactionHash};
-        use pathfinder_common::{felt, CasmHash, ClassHash, SierraHash};
+        use pathfinder_common::event::Event;
+        use pathfinder_common::transaction::TransactionVariant;
+        use pathfinder_common::{felt, CasmHash, ClassHash, SierraHash, TransactionHash};
         use pathfinder_crypto::Felt;
         use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::{StorageBuilder, TransactionData};
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_0_10_TUPLES_INTEGRATION, CAIRO_0_11_SIERRA,
+            CAIRO_0_10_TUPLES_INTEGRATION,
+            CAIRO_0_11_SIERRA,
         };
+
+        use super::super::handle_class_stream;
+        use super::*;
+        use crate::state::block_hash::calculate_event_commitment;
 
         #[derive(Clone, Copy, Debug, Dummy)]
         struct DeclaredClass {

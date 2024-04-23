@@ -1,7 +1,8 @@
 use anyhow::Context;
 use pathfinder_common::BlockId;
 
-use crate::{context::RpcContext, v07::dto};
+use crate::context::RpcContext;
+use crate::v07::dto;
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
@@ -67,9 +68,10 @@ pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pretty_assertions_sorted::assert_eq;
     use serde::Serialize;
+
+    use super::*;
 
     #[tokio::test]
     async fn pending() {

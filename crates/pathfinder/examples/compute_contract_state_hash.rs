@@ -1,5 +1,6 @@
 use anyhow::Context;
-use pathfinder_crypto::{hash::pedersen_hash, Felt};
+use pathfinder_crypto::hash::pedersen_hash;
+use pathfinder_crypto::Felt;
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args();

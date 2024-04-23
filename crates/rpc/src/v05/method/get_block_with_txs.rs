@@ -1,10 +1,10 @@
-use crate::context::RpcContext;
-use crate::v02::types::reply::BlockStatus;
-use crate::v04::types::TransactionWithHash;
-
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber};
 use serde::Deserialize;
+
+use crate::context::RpcContext;
+use crate::v02::types::reply::BlockStatus;
+use crate::v04::types::TransactionWithHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -67,7 +67,8 @@ pub async fn get_block_with_txs(
     .context("Database read panic or shutting down")?
 }
 
-/// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
+/// This function assumes that the block ID is valid i.e. it won't check if the
+/// block hash or number exist.
 fn get_block_transactions(
     db_tx: &pathfinder_storage::Transaction<'_>,
     block_number: BlockNumber,
@@ -84,11 +85,12 @@ fn get_block_transactions(
 }
 
 mod types {
-    use crate::v02::types::reply::BlockStatus;
-    use crate::v04::types::TransactionWithHash;
     use pathfinder_common::BlockHeader;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
+
+    use crate::v02::types::reply::BlockStatus;
+    use crate::v04::types::TransactionWithHash;
 
     /// L2 Block as returned by the RPC API.
     #[serde_as]
@@ -115,7 +117,8 @@ mod types {
             }
         }
 
-        /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
+        /// Constructs [Block] from [sequencer's block
+        /// representation](starknet_gateway_types::reply::Block)
         pub fn from_sequencer_pending(
             pending: starknet_gateway_types::reply::PendingBlock,
         ) -> Self {
@@ -135,10 +138,11 @@ mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
     use serde_json::json;
+
+    use super::*;
 
     #[rstest::rstest]
     #[case::pending_by_position(json!(["pending"]), BlockId::Pending)]

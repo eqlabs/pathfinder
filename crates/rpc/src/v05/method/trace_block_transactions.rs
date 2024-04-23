@@ -7,11 +7,19 @@ use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::trace::TransactionTrace as GatewayTxTrace;
 
 use super::simulate_transactions::dto::TransactionTrace;
-use crate::executor::VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY;
-use crate::v05::method::simulate_transactions::dto::{
-    DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
+use crate::compose_executor_transaction;
+use crate::context::RpcContext;
+use crate::executor::{
+    ExecutionStateError,
+    VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
-use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
+use crate::v05::method::simulate_transactions::dto::{
+    DeclareTxnTrace,
+    DeployAccountTxnTrace,
+    ExecuteInvocation,
+    InvokeTxnTrace,
+    L1HandlerTxnTrace,
+};
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -267,7 +275,13 @@ pub(crate) mod tests {
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        block_hash, felt, BlockHeader, Chain, GasPrice, SequencerAddress, SierraHash,
+        block_hash,
+        felt,
+        BlockHeader,
+        Chain,
+        GasPrice,
+        SequencerAddress,
+        SierraHash,
         TransactionIndex,
     };
     use pathfinder_crypto::Felt;
@@ -277,8 +291,7 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::fixtures;
-        use super::super::simulate_transactions::tests::setup_storage;
+        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
 
         let (
             storage,
@@ -389,8 +402,7 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::fixtures;
-        use super::super::simulate_transactions::tests::setup_storage;
+        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
 
         let (
             storage,
@@ -518,7 +530,8 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    /// Test that tracing succeeds for a block that is not backwards-compatible with blockifier.
+    /// Test that tracing succeeds for a block that is not backwards-compatible
+    /// with blockifier.
     #[tokio::test]
     async fn mainnet_blockifier_backwards_incompatible_transaction_tracing() {
         let context = RpcContext::for_tests_on(Chain::Mainnet);

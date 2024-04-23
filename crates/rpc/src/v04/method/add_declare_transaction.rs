@@ -1,12 +1,15 @@
-use crate::context::RpcContext;
-use crate::felt::RpcFelt;
-use crate::v02::types::request::BroadcastedDeclareTransaction;
 use pathfinder_common::{ClassHash, TransactionHash};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::{
-    CairoContractDefinition, ContractDefinition, SierraContractDefinition,
+    CairoContractDefinition,
+    ContractDefinition,
+    SierraContractDefinition,
 };
+
+use crate::context::RpcContext;
+use crate::felt::RpcFelt;
+use crate::v02::types::request::BroadcastedDeclareTransaction;
 
 #[derive(Debug)]
 pub enum AddDeclareTransactionError {
@@ -62,10 +65,18 @@ impl From<anyhow::Error> for AddDeclareTransactionError {
 impl From<SequencerError> for AddDeclareTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
-            ClassAlreadyDeclared, CompilationFailed, ContractBytecodeSizeTooLarge,
-            ContractClassObjectSizeTooLarge, DuplicatedTransaction, EntryPointNotFound,
-            InsufficientAccountBalance, InsufficientMaxFee, InvalidCompiledClassHash,
-            InvalidContractClassVersion, InvalidTransactionNonce, InvalidTransactionVersion,
+            ClassAlreadyDeclared,
+            CompilationFailed,
+            ContractBytecodeSizeTooLarge,
+            ContractClassObjectSizeTooLarge,
+            DuplicatedTransaction,
+            EntryPointNotFound,
+            InsufficientAccountBalance,
+            InsufficientMaxFee,
+            InvalidCompiledClassHash,
+            InvalidContractClassVersion,
+            InvalidTransactionNonce,
+            InvalidTransactionVersion,
             ValidateFailure,
         };
         match e {
@@ -250,20 +261,37 @@ pub async fn add_declare_transaction(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
-        BroadcastedDeclareTransactionV2, BroadcastedDeclareTransactionV3,
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{
+        CasmHash,
+        ContractAddress,
+        Fee,
+        ResourceAmount,
+        ResourcePricePerUnit,
+        Tip,
+        TransactionNonce,
+        TransactionVersion,
     };
-    use crate::v02::types::{
-        CairoContractClass, ContractClass, DataAvailabilityMode, ResourceBound, ResourceBounds,
-        SierraContractClass,
-    };
-    use pathfinder_common::{macro_prelude::*, ResourceAmount, ResourcePricePerUnit, Tip};
-    use pathfinder_common::{CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion};
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::class_definitions::{
-        CAIRO_2_0_0_STACK_OVERFLOW, CONTRACT_DEFINITION,
+        CAIRO_2_0_0_STACK_OVERFLOW,
+        CONTRACT_DEFINITION,
+    };
+
+    use super::*;
+    use crate::v02::types::request::{
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV1,
+        BroadcastedDeclareTransactionV2,
+        BroadcastedDeclareTransactionV3,
+    };
+    use crate::v02::types::{
+        CairoContractClass,
+        ContractClass,
+        DataAvailabilityMode,
+        ResourceBound,
+        ResourceBounds,
+        SierraContractClass,
     };
 
     lazy_static::lazy_static! {
@@ -300,9 +328,10 @@ mod tests {
 
     mod parsing {
         mod v1 {
+            use serde_json::json;
+
             use super::super::*;
             use crate::v02::types::request::BroadcastedDeclareTransactionV1;
-            use serde_json::json;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -362,11 +391,17 @@ mod tests {
             #[test]
             fn unexpected_error_message() {
                 use starknet_gateway_types::error::{
-                    KnownStarknetErrorCode, StarknetError, StarknetErrorCode,
+                    KnownStarknetErrorCode,
+                    StarknetError,
+                    StarknetErrorCode,
                 };
                 let starknet_error = SequencerError::StarknetError(StarknetError {
-                    code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded),
-                    message: "StarkNet Alpha throughput limit reached, please wait a few minutes and try again.".to_string() 
+                    code: StarknetErrorCode::Known(
+                        KnownStarknetErrorCode::TransactionLimitExceeded,
+                    ),
+                    message: "StarkNet Alpha throughput limit reached, please wait a few minutes \
+                              and try again."
+                        .to_string(),
                 });
 
                 let error = AddDeclareTransactionError::from(starknet_error);
@@ -385,9 +420,10 @@ mod tests {
         }
 
         mod v2 {
+            use serde_json::json;
+
             use super::super::*;
             use crate::v02::types::request::BroadcastedDeclareTransactionV2;
-            use serde_json::json;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(

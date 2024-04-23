@@ -35,7 +35,8 @@ pub fn poseidon_hash_many(msgs: &[MontFelt]) -> MontFelt {
 
 /// The PoseidonHasher can build up a hash by appending to state
 ///
-/// Its output is equivalent to calling [poseidon_hash_many] with the field elements.
+/// Its output is equivalent to calling [poseidon_hash_many] with the field
+/// elements.
 pub struct PoseidonHasher {
     state: PoseidonState,
     buffer: Option<MontFelt>,
@@ -96,13 +97,13 @@ impl Default for PoseidonHasher {
 
 #[cfg(test)]
 mod tests {
-    use crate::algebra::field::{Felt, MontFelt};
-
     use super::{poseidon_hash, poseidon_hash_many, PoseidonHasher};
+    use crate::algebra::field::{Felt, MontFelt};
 
     #[test]
     fn test_poseidon_hash() {
-        // The test vector is derived by running the Python implementation with random input.
+        // The test vector is derived by running the Python implementation with random
+        // input.
         let x =
             Felt::from_hex_str("0x23a77118133287637ebdcd9e87a1613e443df789558867f5ba91faf7a024204")
                 .unwrap();
@@ -117,7 +118,8 @@ mod tests {
 
     #[test]
     fn test_poseidon_hash_many_empty_input() {
-        // The test vector is derived by running the Python implementation with random input.
+        // The test vector is derived by running the Python implementation with random
+        // input.
         assert_eq!(
             poseidon_hash_many(&[]),
             Felt::from_hex_str("0x2272be0f580fd156823304800919530eaa97430e972d7213ee13f4fbf7a5dbc")
@@ -128,7 +130,8 @@ mod tests {
 
     #[test]
     fn test_poseidon_hash_many_single_input() {
-        // The test vector is derived by running the Python implementation with random input.
+        // The test vector is derived by running the Python implementation with random
+        // input.
         assert_eq!(
             poseidon_hash_many(&[Felt::from_hex_str(
                 "0x23a77118133287637ebdcd9e87a1613e443df789558867f5ba91faf7a024204"
@@ -143,7 +146,8 @@ mod tests {
 
     #[test]
     fn test_poseidon_hash_many_two_inputs() {
-        // The test vector is derived by running the Python implementation with random input.
+        // The test vector is derived by running the Python implementation with random
+        // input.
         assert_eq!(
             poseidon_hash_many(&[
                 Felt::from_hex_str(

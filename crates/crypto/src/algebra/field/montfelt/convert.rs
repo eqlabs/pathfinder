@@ -1,5 +1,6 @@
-use crate::{CurveOrderMontFelt, Felt, MontFelt};
 use bitvec::prelude::*;
+
+use crate::{CurveOrderMontFelt, Felt, MontFelt};
 
 impl MontFelt {
     pub const fn from_be_bytes(bytes: [u8; 32]) -> Self {

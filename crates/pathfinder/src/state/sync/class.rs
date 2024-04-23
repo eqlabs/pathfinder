@@ -53,12 +53,13 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                 class_hash.0
             );
 
-            // FIXME(integration reset): work-around for integration containing Sierra classes
-            // that are incompatible with production compiler. This will get "fixed" in the future
-            // by resetting integration to remove these classes at which point we can revert this.
+            // FIXME(integration reset): work-around for integration containing Sierra
+            // classes that are incompatible with production compiler. This will
+            // get "fixed" in the future by resetting integration to remove
+            // these classes at which point we can revert this.
             //
-            // The work-around ignores compilation errors on integration, and instead replaces the
-            // casm definition with empty bytes.
+            // The work-around ignores compilation errors on integration, and instead
+            // replaces the casm definition with empty bytes.
             let (casm_definition, sierra_definition) =
                 tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
                     (

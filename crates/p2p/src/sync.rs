@@ -36,13 +36,24 @@ pub mod protocol {
 }
 
 pub(crate) mod codec {
-    use super::protocol;
+    use std::marker::PhantomData;
+
     use async_trait::async_trait;
     use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-    use p2p_proto::{class, event, header, proto, receipt, state, transaction};
-    use p2p_proto::{ToProtobuf, TryFromProtobuf};
+    use p2p_proto::{
+        class,
+        event,
+        header,
+        proto,
+        receipt,
+        state,
+        transaction,
+        ToProtobuf,
+        TryFromProtobuf,
+    };
     use p2p_stream::Codec;
-    use std::marker::PhantomData;
+
+    use super::protocol;
 
     pub const ONE_MIB: usize = 1024 * 1024;
     pub const FOUR_MIB: usize = 4 * ONE_MIB;

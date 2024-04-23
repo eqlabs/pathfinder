@@ -28,8 +28,12 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Creating contract_addresses table")?;
 
-    let mut storage_updates_query = tx.prepare_cached("SELECT block_number, contract_address, storage_address, storage_value FROM storage_updates")
-    .context("Querying storage_updates")?;
+    let mut storage_updates_query = tx
+        .prepare_cached(
+            "SELECT block_number, contract_address, storage_address, storage_value FROM \
+             storage_updates",
+        )
+        .context("Querying storage_updates")?;
     let mut storage_updates = storage_updates_query
         .query_map([], |row| {
             Ok((
@@ -53,10 +57,11 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         .prepare_cached("INSERT INTO storage_addresses (storage_address) VALUES (?) RETURNING id")
         .context("Inserting into storage_addresses")?;
     let mut storage_updates_insert = tx
-    .prepare_cached(
-        "INSERT INTO storage_updates_normalized (block_number, contract_address_id, storage_address_id, storage_value) VALUES (?, ?, ?, ?)",
-    )
-    .context("Inserting into storage_updates_normalized")?;
+        .prepare_cached(
+            "INSERT INTO storage_updates_normalized (block_number, contract_address_id, \
+             storage_address_id, storage_value) VALUES (?, ?, ?, ?)",
+        )
+        .context("Inserting into storage_updates_normalized")?;
     let storage_updates_count = tx
         .query_row("SELECT COUNT(*) FROM storage_updates", [], |row| {
             row.get::<_, i64>(0)

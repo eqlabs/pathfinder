@@ -1,6 +1,5 @@
-use crate::dto::serialize;
-
 use super::serialize::SerializeForVersion;
+use crate::dto::serialize;
 
 pub struct SyncStatus<'a>(pub &'a crate::v02::types::syncing::Status);
 
@@ -121,13 +120,12 @@ impl SerializeForVersion for BlockNumber {
 
 #[cfg(test)]
 mod tests {
-    use crate::dto::serialize::Serializer;
-
-    use super::*;
-
     use pathfinder_common::macro_prelude::*;
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
+
+    use super::*;
+    use crate::dto::serialize::Serializer;
 
     #[test]
     fn felt() {

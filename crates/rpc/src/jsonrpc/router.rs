@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
-use crate::dto::serialize::SerializeForVersion;
-use crate::RpcVersion;
 use axum::async_trait;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -15,9 +13,11 @@ use serde_json::Value;
 use tracing::Instrument;
 
 use crate::context::RpcContext;
+use crate::dto::serialize::SerializeForVersion;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::request::{RawParams, RpcRequest};
 use crate::jsonrpc::response::{RpcResponse, RpcResult};
+use crate::RpcVersion;
 
 #[derive(Clone)]
 pub struct RpcRouter {
@@ -93,7 +93,8 @@ impl RpcRouter {
             return None;
         }
 
-        // Also grab the method_name as it is a static str, which is required by the metrics.
+        // Also grab the method_name as it is a static str, which is required by the
+        // metrics.
         let Some((&method_name, method)) = self.methods.get_key_value(request.method.as_ref())
         else {
             return Some(RpcResponse::method_not_found(request.id));
@@ -173,9 +174,10 @@ pub async fn rpc_handler(
         body: axum::body::Bytes,
     ) -> impl axum::response::IntoResponse {
         // Unfortunately due to this https://github.com/serde-rs/json/issues/497
-        // we cannot use an enum with borrowed raw values inside to do a single deserialization
-        // for us. Instead we have to distinguish manually between a single request and a batch
-        // request which we do by checking the first byte.
+        // we cannot use an enum with borrowed raw values inside to do a single
+        // deserialization for us. Instead we have to distinguish manually
+        // between a single request and a batch request which we do by checking
+        // the first byte.
         if body.as_ref().first() != Some(&b'[') {
             let request = match serde_json::from_slice::<&RawValue>(&body) {
                 Ok(request) => request,
@@ -247,19 +249,23 @@ pub trait RpcMethod: Send + Sync {
 
 /// Utility trait which automates the serde of an RPC methods input and output.
 ///
-/// This trait is sealed to prevent attempts at implementing it manually. This will
-/// likely clash with the existing blanket implementations with very unhelpful error
-/// messages.
+/// This trait is sealed to prevent attempts at implementing it manually. This
+/// will likely clash with the existing blanket implementations with very
+/// unhelpful error messages.
 ///
 /// This trait is automatically implemented for the following methods:
 /// ```
-/// async fn input_and_context(ctx: RpcContext, input: impl Deserialize) -> Result<impl Serialize, Into<RpcError>>;
+/// async fn input_and_context(
+///     ctx: RpcContext,
+///     input: impl Deserialize,
+/// ) -> Result<impl Serialize, Into<RpcError>>;
 /// async fn input_only(input: impl Deserialize) -> Result<impl Serialize, Into<RpcError>>;
 /// async fn context_only(ctx: RpcContext) -> Result<impl Serialize, Into<RpcError>>;
 /// ```
 ///
-/// The generics allow us to achieve a form of variadic specialization and can be ignored by callers.
-/// See [sealed::Sealed] to add more method signatures or more information on how this works.
+/// The generics allow us to achieve a form of variadic specialization and can
+/// be ignored by callers. See [sealed::Sealed] to add more method signatures or
+/// more information on how this works.
 pub trait IntoRpcMethod<'a, I, O, S>: sealed::Sealed<I, O, S> {
     fn into_method(self) -> Box<dyn RpcMethod>;
 }
@@ -276,20 +282,22 @@ where
 mod sealed {
     use std::marker::PhantomData;
 
-    use crate::{dto::serialize::Serializer, jsonrpc::error::RpcError, RpcVersion};
-
     use super::*;
+    use crate::dto::serialize::Serializer;
+    use crate::jsonrpc::error::RpcError;
+    use crate::RpcVersion;
 
     /// Sealed implementation of [RpcMethod].
     ///
-    /// The generics allow for a form of specialization over a methods Input, Output and State
-    /// by treating each as a tuple. Varying the tuple length allows us to target a specific method
-    /// signature. This same could be achieved with a single generic but it becomes less clear as
+    /// The generics allow for a form of specialization over a methods Input,
+    /// Output and State by treating each as a tuple. Varying the tuple
+    /// length allows us to target a specific method signature. This same
+    /// could be achieved with a single generic but it becomes less clear as
     /// each permutation would require a different tuple length.
     ///
-    /// By convention, the lack of a type is equivalent to the unit tuple (). So if we want to target functions
-    /// with no input params, no input state and an output:
-    /// ```
+    /// By convention, the lack of a type is equivalent to the unit tuple (). So
+    /// if we want to target functions with no input params, no input state
+    /// and an output: ```
     /// Sealed<I = (), S = (), O = ((), Output)>
     /// ```
     pub trait Sealed<I, O, S> {
@@ -540,8 +548,8 @@ pub trait RpcMethodHandler {
     async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
 }
 
-/// Performs asynchronous work concurrently on an input iterator, returning an `Iterator` with the output
-/// of each piece of work.
+/// Performs asynchronous work concurrently on an input iterator, returning an
+/// `Iterator` with the output of each piece of work.
 ///
 /// ⚠ Execution will be performed out of order. Results are
 /// eventually re-ordered.
@@ -585,7 +593,8 @@ where
                 //  * channel capacity is sized according to the input size,
                 //  * a sender is kept alive until completion
                 result_sender.send((index, result)).await.expect(
-                    "This channel is expected to be open and to not go over capacity. This is a bug.",
+                    "This channel is expected to be open and to not go over capacity. This is a \
+                     bug.",
                 );
             }
         })
@@ -608,10 +617,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde::Deserialize;
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
+
+    use super::*;
 
     async fn spawn_server(router: RpcRouter) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -631,7 +640,8 @@ mod tests {
         url
     }
 
-    /// Spawns an RPC server with the given router and queries it with the given request.
+    /// Spawns an RPC server with the given router and queries it with the given
+    /// request.
     async fn serve_and_query(router: RpcRouter, request: Value) -> Value {
         let url = spawn_server(router).await;
 
@@ -649,10 +659,11 @@ mod tests {
 
     mod specification_tests {
         //! Test cases lifted directly from the [RPC specification](https://www.jsonrpc.org/specification).
-        use super::*;
         use pretty_assertions_sorted::assert_eq;
         use rstest::rstest;
         use serde_json::json;
+
+        use super::*;
 
         fn spec_router() -> RpcRouter {
             crate::error::generate_rpc_error_subset!(ExampleError:);
@@ -1059,12 +1070,14 @@ mod tests {
     }
 
     mod concurrent_futures {
-        use super::*;
         use std::cmp::max;
         use std::sync::Arc;
         use std::time::Duration;
+
         use tokio::sync::Notify;
         use tokio::time::timeout;
+
+        use super::*;
 
         pub enum TaskEvent {
             Start(usize),
@@ -1079,8 +1092,9 @@ mod tests {
                 concurrent_count(iterations, NonZeroUsize::new(concurrency_limit).unwrap()).await;
             assert_eq!(max_concurrency_level(&events), concurrency_limit);
 
-            // The test should have messed up with the execution order, which is important to assess
-            // that the results are ordered according to the input order and not the execution order.
+            // The test should have messed up with the execution order, which is important
+            // to assess that the results are ordered according to the input
+            // order and not the execution order.
             let order_difference = events
                 .into_iter()
                 .filter_map(|event| {
@@ -1103,8 +1117,8 @@ mod tests {
                 concurrent_count(iterations, NonZeroUsize::new(concurrency_limit).unwrap()).await;
             assert_eq!(max_concurrency_level(&events), concurrency_limit);
 
-            // Make sure there isn't a change in the execution order so there is no change in
-            // behavior with the introduction of this feature.
+            // Make sure there isn't a change in the execution order so there is no change
+            // in behavior with the introduction of this feature.
             let order_match = events
                 .into_iter()
                 .filter_map(|event| {
@@ -1177,7 +1191,8 @@ mod tests {
                 events.push(event);
             }
 
-            // Allow all tasks to continue, descending order to mess up with completion order.
+            // Allow all tasks to continue, descending order to mess up with completion
+            // order.
             for i in (0..iterations).rev() {
                 task_states[i].notify.notify_one();
             }

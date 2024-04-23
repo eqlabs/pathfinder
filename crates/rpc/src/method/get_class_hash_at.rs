@@ -1,6 +1,7 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
+
+use crate::context::RpcContext;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
 
@@ -69,14 +70,15 @@ impl crate::dto::serialize::SerializeForVersion for Output {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use assert_matches::assert_matches;
-
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {

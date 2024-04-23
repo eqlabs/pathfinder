@@ -1,32 +1,75 @@
 use std::borrow::Cow;
 
 use anyhow::Context;
+use pathfinder_common::receipt::{
+    BuiltinCounters,
+    ExecutionDataAvailability,
+    ExecutionResources,
+    ExecutionStatus,
+    L2ToL1Message,
+    Receipt,
+};
+use pathfinder_common::state_update::StateUpdateCounts;
+use pathfinder_common::transaction::{
+    DataAvailabilityMode,
+    DeclareTransactionV0V1,
+    DeclareTransactionV2,
+    DeclareTransactionV3,
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransaction,
+    InvokeTransactionV0,
+    InvokeTransactionV1,
+    InvokeTransactionV3,
+    L1HandlerTransaction,
+    ResourceBound,
+    ResourceBounds,
+    Transaction,
+    TransactionVariant,
+};
 use pathfinder_common::{
-    receipt::{
-        BuiltinCounters, ExecutionDataAvailability, ExecutionResources, ExecutionStatus,
-        L2ToL1Message, Receipt,
-    },
-    state_update::StateUpdateCounts,
-    transaction::{
-        DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
-        DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransaction,
-        InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3, L1HandlerTransaction,
-        ResourceBound, ResourceBounds, Transaction, TransactionVariant,
-    },
-    AccountDeploymentDataElem, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
-    BlockHeader, BlockNumber, BlockTimestamp, ByteCodeOffset, CallParam, CasmHash, ClassCommitment,
-    ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress,
-    EventCommitment, EventData, EventKey, Fee, GasPrice, L1DataAvailabilityMode,
-    L2ToL1MessagePayloadElem, SequencerAddress, SignedBlockHeader, StateCommitment,
-    StorageCommitment, TransactionCommitment, TransactionHash, TransactionIndex, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    AccountDeploymentDataElem,
+    BlockCommitmentSignature,
+    BlockCommitmentSignatureElem,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    BlockTimestamp,
+    ByteCodeOffset,
+    CallParam,
+    CasmHash,
+    ClassCommitment,
+    ClassHash,
+    ConstructorParam,
+    ContractAddress,
+    ContractAddressSalt,
+    EntryPoint,
+    EthereumAddress,
+    EventCommitment,
+    EventData,
+    EventKey,
+    Fee,
+    GasPrice,
+    L1DataAvailabilityMode,
+    L2ToL1MessagePayloadElem,
+    SequencerAddress,
+    SignedBlockHeader,
+    StateCommitment,
+    StorageCommitment,
+    TransactionCommitment,
+    TransactionHash,
+    TransactionIndex,
+    TransactionNonce,
+    TransactionSignatureElem,
+    TransactionVersion,
 };
 use pathfinder_crypto::Felt;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 /// We don't want to introduce circular dependencies between crates
-/// and we need to work around for the orphan rule - implement conversion fns for types ourside our crate.
+/// and we need to work around for the orphan rule - implement conversion fns
+/// for types ourside our crate.
 pub trait TryFromDto<T> {
     fn try_from_dto(dto: T) -> anyhow::Result<Self>
     where
@@ -36,8 +79,9 @@ pub trait TryFromDto<T> {
 impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
     /// ## Important
     ///
-    /// This conversion leaves `class_commitment` and `storage_commitment` fields zeroed.
-    /// The caller must make sure to fill them with the correct values after the conversion succeeds.
+    /// This conversion leaves `class_commitment` and `storage_commitment`
+    /// fields zeroed. The caller must make sure to fill them with the
+    /// correct values after the conversion succeeds.
     fn try_from_dto(dto: p2p_proto::header::SignedBlockHeader) -> anyhow::Result<Self> {
         anyhow::ensure!(dto.signatures.len() == 1, "expected exactly one signature");
         let signature = dto
@@ -98,16 +142,27 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
 impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
     /// ## Important
     ///
-    /// This conversion does not compute deployed contract address for deploy account transactions
-    /// ([`TransactionVariant::DeployAccountV1`] and [`TransactionVariant::DeployAccountV3`]),
-    /// filling it with a zero address instead. The caller is responsible for performing the computation after the conversion succeeds.
+    /// This conversion does not compute deployed contract address for deploy
+    /// account transactions ([`TransactionVariant::DeployAccountV1`] and
+    /// [`TransactionVariant::DeployAccountV3`]), filling it with a zero
+    /// address instead. The caller is responsible for performing the
+    /// computation after the conversion succeeds.
     fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
         use p2p_proto::transaction::TransactionVariant::{
-            DeclareV0, DeclareV1, DeclareV2, DeclareV3, Deploy, DeployAccountV1, DeployAccountV3,
-            InvokeV0, InvokeV1, InvokeV3, L1HandlerV0,
+            DeclareV0,
+            DeclareV1,
+            DeclareV2,
+            DeclareV3,
+            Deploy,
+            DeployAccountV1,
+            DeployAccountV3,
+            InvokeV0,
+            InvokeV1,
+            InvokeV3,
+            L1HandlerV0,
         };
         Ok(match dto {
             DeclareV0(x) => Self::DeclareV0(DeclareTransactionV0V1 {
@@ -270,8 +325,11 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
     ) -> anyhow::Result<Self> {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         use p2p_proto::receipt::{
-            DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
-            InvokeTransactionReceipt, L1HandlerTransactionReceipt,
+            DeclareTransactionReceipt,
+            DeployAccountTransactionReceipt,
+            DeployTransactionReceipt,
+            InvokeTransactionReceipt,
+            L1HandlerTransactionReceipt,
         };
         match dto {
             Invoke(InvokeTransactionReceipt { common })

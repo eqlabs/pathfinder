@@ -1,7 +1,8 @@
 use anyhow::Context;
 use pathfinder_common::{BlockNumber, CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash};
 
-use crate::{prelude::*, BlockId};
+use crate::prelude::*;
+use crate::BlockId;
 
 impl Transaction<'_> {
     pub fn insert_sierra_class(
@@ -119,9 +120,11 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    /// Returns whether the Sierra or Cairo class definition exists in the database.
+    /// Returns whether the Sierra or Cairo class definition exists in the
+    /// database.
     ///
-    /// Note that this does not indicate that the class is actually declared -- only that we stored it.
+    /// Note that this does not indicate that the class is actually declared --
+    /// only that we stored it.
     pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         let mut stmt = self
             .inner()
@@ -139,7 +142,8 @@ impl Transaction<'_> {
             .map(|option| option.map(|(_block_number, definition)| definition))
     }
 
-    /// Returns the uncompressed class definition as well as the block number at which it was declared.
+    /// Returns the uncompressed class definition as well as the block number at
+    /// which it was declared.
     pub fn class_definition_with_block_number(
         &self,
         class_hash: ClassHash,
@@ -168,7 +172,8 @@ impl Transaction<'_> {
         Ok(Some((block_number, definition)))
     }
 
-    /// Returns the compressed class definition if it has been declared at `block_id`.
+    /// Returns the compressed class definition if it has been declared at
+    /// `block_id`.
     pub fn compressed_class_definition_at(
         &self,
         block_id: BlockId,
@@ -223,7 +228,8 @@ impl Transaction<'_> {
     .context("Querying for class definition")
     }
 
-    /// Returns the uncompressed class definition if it has been declared at `block_id`.
+    /// Returns the uncompressed class definition if it has been declared at
+    /// `block_id`.
     pub fn class_definition_at(
         &self,
         block_id: BlockId,
@@ -233,8 +239,8 @@ impl Transaction<'_> {
             .map(|option| option.map(|(_block_number, definition)| definition))
     }
 
-    /// Returns the uncompressed class definition if it has been declared at `block_id`, as well as
-    /// the block number at which it was declared.
+    /// Returns the uncompressed class definition if it has been declared at
+    /// `block_id`, as well as the block number at which it was declared.
     pub fn class_definition_at_with_block_number(
         &self,
         block_id: BlockId,
@@ -253,7 +259,8 @@ impl Transaction<'_> {
 
     /// Returns the uncompressed compiled class definition.
     pub fn casm_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
-        // Don't reuse the "_with_block_number" impl here since the suffixed one requires a join that this one doesn't.
+        // Don't reuse the "_with_block_number" impl here since the suffixed one
+        // requires a join that this one doesn't.
         let definition = self
             .inner()
             .query_row(
@@ -273,8 +280,8 @@ impl Transaction<'_> {
         Ok(Some(definition))
     }
 
-    /// Returns the uncompressed compiled class definition, as well as the block number at which it
-    ///  was declared.
+    /// Returns the uncompressed compiled class definition, as well as the block
+    /// number at which it  was declared.
     pub fn casm_definition_with_block_number(
         &self,
         class_hash: ClassHash,
@@ -314,7 +321,8 @@ impl Transaction<'_> {
         Ok(Some((block_number, definition)))
     }
 
-    /// Returns the uncompressed compiled class definition if it has been declared at `block_id`.
+    /// Returns the uncompressed compiled class definition if it has been
+    /// declared at `block_id`.
     pub fn casm_definition_at(
         &self,
         block_id: BlockId,
@@ -324,8 +332,9 @@ impl Transaction<'_> {
             .map(|option| option.map(|(_block_number, definition)| definition))
     }
 
-    /// Returns the uncompressed compiled class definition if it has been declared at `block_id`, as well
-    /// as the block number at which it was declared.
+    /// Returns the uncompressed compiled class definition if it has been
+    /// declared at `block_id`, as well as the block number at which it was
+    /// declared.
     pub fn casm_definition_at_with_block_number(
         &self,
         block_id: BlockId,
@@ -419,7 +428,8 @@ impl Transaction<'_> {
         Ok(compiled_class_hash)
     }
 
-    /// Returns the compiled class hash for a class if it has been declared at `block_id`.
+    /// Returns the compiled class hash for a class if it has been declared at
+    /// `block_id`.
     pub fn casm_hash_at(
         &self,
         block_id: BlockId,
@@ -507,10 +517,10 @@ impl Transaction<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use pathfinder_common::macro_prelude::*;
     use pathfinder_crypto::Felt;
+
+    use super::*;
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
         let hash = class_hash!("0x123");

@@ -1,60 +1,70 @@
-//! Starknet utilises a custom Binary Merkle-Patricia Tree to store and organise its state.
+//! Starknet utilises a custom Binary Merkle-Patricia Tree to store and organise
+//! its state.
 //!
-//! From an external perspective the tree is similar to a key-value store, where both key
-//! and value are [Felts](Felt). The difference is that each tree is immutable,
-//! and any mutations result in a new tree with a new root. This mutated variant can then
-//! be accessed via the new root, and the old variant via the old root.
+//! From an external perspective the tree is similar to a key-value store, where
+//! both key and value are [Felts](Felt). The difference is that each tree is
+//! immutable, and any mutations result in a new tree with a new root. This
+//! mutated variant can then be accessed via the new root, and the old variant
+//! via the old root.
 //!
-//! Trees share common nodes to be efficient. These nodes perform reference counting and
-//! will get deleted once all references are gone. State can therefore be tracked over time
-//! by mutating the current state, and storing the new root. Old states can be dropped by
-//! deleting old roots which are no longer required.
+//! Trees share common nodes to be efficient. These nodes perform reference
+//! counting and will get deleted once all references are gone. State can
+//! therefore be tracked over time by mutating the current state, and storing
+//! the new root. Old states can be dropped by deleting old roots which are no
+//! longer required.
 //!
 //! #### Tree definition
 //!
-//! It is important to understand that since all keys are [Felts](Felt), this means
-//! all paths to a key are equally long - 251 bits.
+//! It is important to understand that since all keys are [Felts](Felt), this
+//! means all paths to a key are equally long - 251 bits.
 //!
 //! Starknet defines three node types for a tree.
 //!
 //! `Leaf nodes` which represent an actual value stored.
 //!
-//! `Edge nodes` which connect two nodes, and __must be__ a maximal subtree (i.e. be as
-//! long as possible). This latter condition is important as it strictly defines a tree (i.e. all
-//! trees with the same leaves must have the same nodes). The path of an edge node can therefore
-//! be many bits long.
+//! `Edge nodes` which connect two nodes, and __must be__ a maximal subtree
+//! (i.e. be as long as possible). This latter condition is important as it
+//! strictly defines a tree (i.e. all trees with the same leaves must have the
+//! same nodes). The path of an edge node can therefore be many bits long.
 //!
-//! `Binary nodes` is a branch node with two children, left and right. This represents
-//! only a single bit on the path to a leaf.
+//! `Binary nodes` is a branch node with two children, left and right. This
+//! represents only a single bit on the path to a leaf.
 //!
-//! A tree storing a single key-value would consist of two nodes. The root node would be an edge node
-//! with a path equal to the key. This edge node is connected to a leaf node storing the value.
+//! A tree storing a single key-value would consist of two nodes. The root node
+//! would be an edge node with a path equal to the key. This edge node is
+//! connected to a leaf node storing the value.
 //!
 //! #### Implementation details
 //!
 //! We've defined an additional node type, an `Unresolved node`. This is used to
-//! represent a node who's hash is known, but has not yet been retrieved from storage (and we therefore
-//! have no further details about it).
+//! represent a node who's hash is known, but has not yet been retrieved from
+//! storage (and we therefore have no further details about it).
 //!
-//! Our implementation is a mix of nodes from persistent storage and any mutations are kept in-memory. It is
-//! done this way to allow many mutations to a tree before committing only the final result to storage. This
-//! may be confusing since we just said trees are immutable -- but since we are only changing the in-memory
-//! tree, the immutable tree still exists in storage. One can therefore think of the in-memory tree as containing
+//! Our implementation is a mix of nodes from persistent storage and any
+//! mutations are kept in-memory. It is done this way to allow many mutations to
+//! a tree before committing only the final result to storage. This
+//! may be confusing since we just said trees are immutable -- but since we are
+//! only changing the in-memory tree, the immutable tree still exists in
+//! storage. One can therefore think of the in-memory tree as containing
 //! the state changes between tree `N` and `N + 1`.
 //!
-//! The in-memory tree is built using a graph of `Rc<RefCell<Node>>` which is a bit painful.
+//! The in-memory tree is built using a graph of `Rc<RefCell<Node>>` which is a
+//! bit painful.
 
-use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
-use crate::storage::Storage;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ops::ControlFlow;
+use std::rc::Rc;
+
 use anyhow::Context;
-use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
+use bitvec::prelude::{BitSlice, BitVec, Msb0};
 use pathfinder_common::hash::FeltHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Node, NodeRef, StoredNode, TrieUpdate};
-use std::collections::HashMap;
-use std::ops::ControlFlow;
-use std::{cell::RefCell, rc::Rc};
+
+use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
+use crate::storage::Storage;
 
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
@@ -95,7 +105,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         }
     }
 
-    /// Commits all tree mutations and returns the [changes](TrieUpdate) to the tree.
+    /// Commits all tree mutations and returns the [changes](TrieUpdate) to the
+    /// tree.
     pub fn commit(self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = Vec::new();
@@ -194,7 +205,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 let persisted_node = match (left_child, right_child) {
                     (None, None) => Node::LeafBinary,
                     (Some(_), None) | (None, Some(_)) => {
-                        anyhow::bail!("Inconsistent binary children. Both children must be leaves or not leaves.")
+                        anyhow::bail!(
+                            "Inconsistent binary children. Both children must be leaves or not \
+                             leaves."
+                        )
                     }
                     (Some(left), Some(right)) => Node::Binary { left, right },
                 };
@@ -262,17 +276,21 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         //
         // 1. The leaf exists, in which case we simply change its value.
         //
-        // 2. The tree is empty, we insert the new leaf and the root becomes an edge node connecting to it.
+        // 2. The tree is empty, we insert the new leaf and the root becomes an edge
+        //    node connecting to it.
         //
-        // 3. The leaf does not exist, and the tree is not empty. The final node in the traversal will
-        //    be an edge node who's path diverges from our new leaf node's.
+        // 3. The leaf does not exist, and the tree is not empty. The final node in the
+        //    traversal will be an edge node who's path diverges from our new leaf
+        //    node's.
         //
-        //    This edge must be split into a new subtree containing both the existing edge's child and the
-        //    new leaf. This requires an edge followed by a binary node and then further edges to both the
-        //    current child and the new leaf. Any of these new edges may also end with an empty path in
-        //    which case they should be elided. It depends on the common path length of the current edge
-        //    and the new leaf i.e. the split may be at the first bit (in which case there is no leading
-        //    edge), or the split may be in the middle (requires both leading and post edges), or the
+        //    This edge must be split into a new subtree containing both the existing
+        // edge's child and the    new leaf. This requires an edge followed by a
+        // binary node and then further edges to both the    current child and
+        // the new leaf. Any of these new edges may also end with an empty path in
+        //    which case they should be elided. It depends on the common path length of
+        // the current edge    and the new leaf i.e. the split may be at the
+        // first bit (in which case there is no leading    edge), or the split
+        // may be in the middle (requires both leading and post edges), or the
         //    split may be the final bit (no post edge).
         use InternalNode::*;
         match path.last() {
@@ -379,8 +397,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Deletes a leaf node from the tree.
     ///
-    /// This is not an external facing API; the functionality is instead accessed by calling
-    /// [`MerkleTree::set`] with value set to [`Felt::ZERO`].
+    /// This is not an external facing API; the functionality is instead
+    /// accessed by calling [`MerkleTree::set`] with value set to
+    /// [`Felt::ZERO`].
     fn delete_leaf(
         &mut self,
         storage: &impl Storage,
@@ -393,7 +412,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         // must be a binary node. In either case we end up with a binary node
         // who's one child is deleted. This changes the binary to an edge node.
         //
-        // Note that its possible that there is no binary node -- if the resulting tree would be empty.
+        // Note that its possible that there is no binary node -- if the resulting tree
+        // would be empty.
         //
         // This new edge node may need to merge with the old binary node's parent node
         // and other remaining child node -- if they're also edges.
@@ -463,7 +483,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             }
         };
 
-        // Check the parent of the new edge. If it is also an edge, then they must merge.
+        // Check the parent of the new edge. If it is also an edge, then they must
+        // merge.
         if let Some(node) = node_iter.next() {
             if let InternalNode::Edge(edge) = &mut *node.borrow_mut() {
                 self.merge_edges(storage, edge)?;
@@ -502,8 +523,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Generates a merkle-proof for a given `key`.
     ///
-    /// Returns vector of [`TrieNode`] which form a chain from the root to the key,
-    /// if it exists, or down to the node which proves that the key does not exist.
+    /// Returns vector of [`TrieNode`] which form a chain from the root to the
+    /// key, if it exists, or down to the node which proves that the key
+    /// does not exist.
     ///
     /// The nodes are returned in order, root first.
     ///
@@ -607,12 +629,14 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// If the destination node exists, it will be the final node in the list.
     ///
-    /// This means that the final node will always be either a the destination [Leaf](InternalNode::Leaf) node,
-    /// or an [Edge](InternalNode::Edge) node who's path suffix does not match the leaf's path.
+    /// This means that the final node will always be either a the destination
+    /// [Leaf](InternalNode::Leaf) node, or an [Edge](InternalNode::Edge)
+    /// node who's path suffix does not match the leaf's path.
     ///
-    /// The final node can __not__ be a [Binary](InternalNode::Binary) node since it would always be possible to continue
-    /// on towards the destination. Nor can it be an [Unresolved](InternalNode::Unresolved) node since this would be
-    /// resolved to check if we can travel further.
+    /// The final node can __not__ be a [Binary](InternalNode::Binary) node
+    /// since it would always be possible to continue on towards the
+    /// destination. Nor can it be an [Unresolved](InternalNode::Unresolved)
+    /// node since this would be resolved to check if we can travel further.
     fn traverse(
         &self,
         storage: &impl Storage,
@@ -659,7 +683,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Retrieves the requested node from storage.
     ///
-    /// Result will be either a [Binary](InternalNode::Binary), [Edge](InternalNode::Edge) or [Leaf](InternalNode::Leaf) node.
+    /// Result will be either a [Binary](InternalNode::Binary),
+    /// [Edge](InternalNode::Edge) or [Leaf](InternalNode::Leaf) node.
     fn resolve(
         &self,
         storage: &impl Storage,
@@ -668,7 +693,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ) -> anyhow::Result<InternalNode> {
         anyhow::ensure!(
             height < HEIGHT,
-            "Attempted to resolve a node with height {height} which exceeds the tree height {HEIGHT}"
+            "Attempted to resolve a node with height {height} which exceeds the tree height \
+             {HEIGHT}"
         );
 
         let node = storage
@@ -705,12 +731,14 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(node)
     }
 
-    /// This is a convenience function which merges the edge node with its child __iff__ it is also an edge.
+    /// This is a convenience function which merges the edge node with its child
+    /// __iff__ it is also an edge.
     ///
     /// Does nothing if the child is not also an edge node.
     ///
-    /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
-    /// (since edge nodes __must be__ maximal subtrees).
+    /// This can occur when mutating the tree (e.g. deleting a child of a binary
+    /// node), and is an illegal state (since edge nodes __must be__ maximal
+    /// subtrees).
     fn merge_edges(&mut self, storage: &impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
         let resolved_child = match &*parent.child.borrow() {
             InternalNode::Unresolved(hash) => {
@@ -730,14 +758,18 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(())
     }
 
-    /// Visits all of the nodes in the tree in pre-order using the given visitor function.
+    /// Visits all of the nodes in the tree in pre-order using the given visitor
+    /// function.
     ///
-    /// For each node, there will first be a visit for `InternalNode::Unresolved(hash)` followed by visit
-    /// at the loaded node when [`Visit::ContinueDeeper`] is returned. At any time the visitor
-    /// function can also return `ControlFlow::Break` to stop the visit with the given return
-    /// value, which will be returned as `Some(value))` to the caller.
+    /// For each node, there will first be a visit for
+    /// `InternalNode::Unresolved(hash)` followed by visit at the loaded
+    /// node when [`Visit::ContinueDeeper`] is returned. At any time the visitor
+    /// function can also return `ControlFlow::Break` to stop the visit with the
+    /// given return value, which will be returned as `Some(value))` to the
+    /// caller.
     ///
-    /// The visitor function receives the node being visited, as well as the full path to that node.
+    /// The visitor function receives the node being visited, as well as the
+    /// full path to that node.
     ///
     /// Upon successful non-breaking visit of the tree, `None` will be returned.
     #[allow(dead_code)]
@@ -833,27 +865,30 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     }
 }
 
-/// Direction for the [`MerkleTree::dfs`] as the return value of the visitor function.
+/// Direction for the [`MerkleTree::dfs`] as the return value of the visitor
+/// function.
 #[derive(Default)]
 pub enum Visit {
-    /// Instructs that the visit should visit any subtrees of the current node. This is a no-op for
-    /// [`InternalNode::Leaf`].
+    /// Instructs that the visit should visit any subtrees of the current node.
+    /// This is a no-op for [`InternalNode::Leaf`].
     #[default]
     ContinueDeeper,
-    /// Returning this value for [`InternalNode::Binary`] or [`InternalNode::Edge`] will ignore all of the children
-    /// of the node for the rest of the iteration. This is useful because two trees often share a
-    /// number of subtrees with earlier blocks. Returning this for [`InternalNode::Leaf`] is a no-op.
+    /// Returning this value for [`InternalNode::Binary`] or
+    /// [`InternalNode::Edge`] will ignore all of the children of the node
+    /// for the rest of the iteration. This is useful because two trees often
+    /// share a number of subtrees with earlier blocks. Returning this for
+    /// [`InternalNode::Leaf`] is a no-op.
     StopSubtree,
 }
 
 #[cfg(test)]
 mod tests {
+    use bitvec::prelude::*;
+    use pathfinder_common::felt;
     use pathfinder_common::hash::PedersenHash;
     use pathfinder_storage::StoredNode;
 
     use super::*;
-    use bitvec::prelude::*;
-    use pathfinder_common::felt;
 
     type TestTree = MerkleTree<PedersenHash, 251>;
 
@@ -880,7 +915,8 @@ mod tests {
         }
     }
 
-    /// Commits the tree changes and persists them to storage, pruning any nodes that are no longer needed.
+    /// Commits the tree changes and persists them to storage, pruning any nodes
+    /// that are no longer needed.
     fn commit_and_persist_with_pruning<H: FeltHash, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
@@ -1163,8 +1199,8 @@ mod tests {
             uut.set(&storage, key0.clone(), value0).unwrap();
             uut.set(&storage, key1, value1).unwrap();
 
-            // The tree should consist of an edge node, terminating in a binary node connecting to
-            // the two leaf nodes.
+            // The tree should consist of an edge node, terminating in a binary node
+            // connecting to the two leaf nodes.
             let edge = uut
                 .root
                 .unwrap()
@@ -1375,7 +1411,8 @@ mod tests {
             }
             let root = commit_and_persist_with_pruning(uut, &mut storage);
 
-            // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
+            // Delete the final leaf; this exercises the bug as the nodes are all in storage
+            // (unresolved).
             let mut uut = TestTree::new(root.1);
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
@@ -1487,12 +1524,17 @@ mod tests {
     }
 
     mod real_world {
-        use super::*;
         use pathfinder_common::{
-            class_commitment, class_commitment_leaf_hash, felt, sierra_hash, BlockNumber,
+            class_commitment,
+            class_commitment_leaf_hash,
+            felt,
+            sierra_hash,
+            BlockNumber,
             ClassCommitmentLeafHash,
         };
         use pathfinder_storage::RootIndexUpdate;
+
+        use super::*;
 
         #[test]
         fn simple() {
@@ -1714,13 +1756,16 @@ mod tests {
     }
 
     mod dfs {
-        use super::{BinaryNode, EdgeNode, InternalNode, TestStorage, TestTree, Visit};
-        use bitvec::slice::BitSlice;
-        use bitvec::{bitvec, prelude::Msb0};
-        use pathfinder_common::felt;
         use std::cell::RefCell;
         use std::ops::ControlFlow;
         use std::rc::Rc;
+
+        use bitvec::bitvec;
+        use bitvec::prelude::Msb0;
+        use bitvec::slice::BitSlice;
+        use pathfinder_common::felt;
+
+        use super::{BinaryNode, EdgeNode, InternalNode, TestStorage, TestTree, Visit};
 
         #[test]
         fn empty_tree() {
@@ -1917,16 +1962,16 @@ mod tests {
     }
 
     mod proofs {
-        use crate::storage::Storage;
-        use crate::tree::tests::commit_and_persist_with_pruning;
-        use pathfinder_common::hash::PedersenHash;
-        use pathfinder_common::trie::TrieNode;
-
-        use super::{Direction, TestStorage, TestTree};
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
         use pathfinder_common::felt;
+        use pathfinder_common::hash::PedersenHash;
+        use pathfinder_common::trie::TrieNode;
         use pathfinder_crypto::Felt;
+
+        use super::{Direction, TestStorage, TestTree};
+        use crate::storage::Storage;
+        use crate::tree::tests::commit_and_persist_with_pruning;
 
         #[derive(Debug, PartialEq, Eq)]
         pub enum Membership {
@@ -1934,23 +1979,30 @@ mod tests {
             NonMember,
         }
 
-        /// Verifies that the key `key` with value `value` is indeed part of the MPT that has root
-        /// `root`, given `proofs`.
-        /// Supports proofs of non-membership as well as proof of membership: this function returns
-        /// an enum corresponding to the membership of `value`, or returns `None` in case of a hash mismatch.
+        /// Verifies that the key `key` with value `value` is indeed part of the
+        /// MPT that has root `root`, given `proofs`.
+        /// Supports proofs of non-membership as well as proof of membership:
+        /// this function returns an enum corresponding to the
+        /// membership of `value`, or returns `None` in case of a hash mismatch.
         /// The algorithm follows this logic:
         /// 1. init expected_hash <- root hash
         /// 2. loop over nodes: current <- nodes[i]
-        ///    1. verify the current node's hash matches expected_hash (if not then we have a bad proof)
+        ///    1. verify the current node's hash matches expected_hash (if not
+        ///       then we have a bad proof)
         ///    2. move towards the target - if current is:
-        ///       1. binary node then choose the child that moves towards the target, else if
+        ///       1. binary node then choose the child that moves towards the
+        ///          target, else if
         ///       2. edge node then check the path against the target bits
         ///          1. If it matches then proceed with the child, else
-        ///          2. if it does not match then we now have a proof that the target does not exist
-        ///    3. nibble off target bits according to which child you got in (2). If all bits are gone then you
-        ///       have reached the target and the child hash is the value you wanted and the proof is complete.
+        ///          2. if it does not match then we now have a proof that the
+        ///             target does not exist
+        ///    3. nibble off target bits according to which child you got in
+        ///       (2). If all bits are gone then you have reached the target and
+        ///       the child hash is the value you wanted and the proof is
+        ///       complete.
         ///    4. set expected_hash <- to the child hash
-        /// 3. check that the expected_hash is `value` (we should've reached the leaf)
+        /// 3. check that the expected_hash is `value` (we should've reached the
+        ///    leaf)
         fn verify_proof(
             root: Felt,
             key: &BitSlice<u8, Msb0>,
@@ -1988,9 +2040,11 @@ mod tests {
                     }
                     TrieNode::Edge { child, path } => {
                         if path != &remaining_path[..path.len()] {
-                            // If paths don't match, we've found a proof of non membership because we:
+                            // If paths don't match, we've found a proof of non membership because
+                            // we:
                             // 1. Correctly moved towards the target insofar as is possible, and
-                            // 2. hashing all the nodes along the path does result in the root hash, which means
+                            // 2. hashing all the nodes along the path does result in the root hash,
+                            //    which means
                             // 3. the target definitely does not exist in this tree
                             return Some(Membership::NonMember);
                         }
@@ -2050,7 +2104,8 @@ mod tests {
                 }
             }
 
-            /// Calls `get_proof` and `verify_proof` on every key/value pair in the random_tree.
+            /// Calls `get_proof` and `verify_proof` on every key/value pair in
+            /// the random_tree.
             fn verify(&mut self) {
                 let keys_bits: Vec<&BitSlice<u8, Msb0>> =
                     self.keys.iter().map(|k| k.view_bits()).collect();
@@ -2066,7 +2121,8 @@ mod tests {
             }
         }
 
-        /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
+        /// Generates a storage proof for each `key` in `keys` and returns the
+        /// result in the form of an array.
         fn get_proofs(
             keys: &'_ [&BitSlice<u8, Msb0>],
             root: u64,

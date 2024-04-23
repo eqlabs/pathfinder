@@ -1,7 +1,8 @@
-use crate::context::RpcContext;
-use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
+
+use crate::context::RpcContext;
+use crate::v02::types::ContractClass;
 
 crate::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
 
@@ -48,8 +49,8 @@ pub async fn get_class(
             return Err(GetClassError::BlockNotFound);
         }
 
-        // If the class is declared in the pending block, then we shouldn't check the class's
-        // declaration point.
+        // If the class is declared in the pending block, then we shouldn't check the
+        // class's declaration point.
         let definition = if is_pending {
             tx.class_definition(input.class_hash)
         } else {
@@ -72,14 +73,15 @@ pub async fn get_class(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use assert_matches::assert_matches;
-
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {

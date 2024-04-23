@@ -1,18 +1,18 @@
-use clap::{ArgAction, CommandFactory, Parser};
-#[cfg(feature = "p2p")]
-use ipnet::IpNet;
-#[cfg(feature = "p2p")]
-use p2p::libp2p::Multiaddr;
-use pathfinder_common::AllowedOrigins;
-use pathfinder_storage::JournalMode;
-use reqwest::Url;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use clap::{ArgAction, CommandFactory, Parser};
+#[cfg(feature = "p2p")]
+use ipnet::IpNet;
+#[cfg(feature = "p2p")]
+use p2p::libp2p::Multiaddr;
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
+use pathfinder_common::AllowedOrigins;
+use pathfinder_storage::JournalMode;
+use reqwest::Url;
 
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
@@ -88,7 +88,8 @@ Examples:
 
     #[arg(
         long = "rpc.execution-concurrency",
-        long_help = "The number of Cairo VM executors that can work concurrently. Defaults to the number of CPU cores available.",
+        long_help = "The number of Cairo VM executors that can work concurrently. Defaults to the \
+                     number of CPU cores available.",
         env = "PATHFINDER_RPC_EXECUTION_CONCURRENCY"
     )]
     execution_concurrency: Option<std::num::NonZeroU32>,
@@ -173,11 +174,10 @@ This should only be enabled for debugging purposes as it adds substantial proces
 
     #[arg(
         long = "rpc.batch-concurrency-limit",
-        long_help = "Sets the concurrency limit for request batch processing. \
-            May lower the latency for large batches. \
-            ⚠ While the response order is eventually preserved, execution may be performed out of \
-            order.\
-            Setting this to 1 effectively disables concurrency.",
+        long_help = "Sets the concurrency limit for request batch processing. May lower the \
+                     latency for large batches. ⚠ While the response order is eventually \
+                     preserved, execution may be performed out of order.Setting this to 1 \
+                     effectively disables concurrency.",
         env = "PATHFINDER_RPC_BATCH_CONCURRENCY_LIMIT",
         default_value = "1"
     )]
@@ -220,9 +220,9 @@ This should only be enabled for debugging purposes as it adds substantial proces
 
     #[arg(
         long = "storage.event-bloom-filter-cache-size",
-        long_help = "The number of blocks whose event bloom filters are cached in memory. \
-            This cache speeds up event related RPC queries at the cost of using extra memory. \
-            Each cached filter takes 2 KiB of memory.",
+        long_help = "The number of blocks whose event bloom filters are cached in memory. This \
+                     cache speeds up event related RPC queries at the cost of using extra memory. \
+                     Each cached filter takes 2 KiB of memory.",
         env = "PATHFINDER_STORAGE_BLOOM_FILTER_CACHE_SIZE",
         default_value = "524288"
     )]
@@ -230,8 +230,8 @@ This should only be enabled for debugging purposes as it adds substantial proces
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
-        long_help = "The number of blocks to scan for events when querying for events. \
-            This limit is used to prevent queries from taking too long.",
+        long_help = "The number of blocks to scan for events when querying for events. This limit \
+                     is used to prevent queries from taking too long.",
         env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOCKS_TO_SCAN",
         default_value = "500"
     )]
@@ -240,7 +240,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
     #[arg(
         long = "rpc.get-events-max-uncached-bloom-filters-to-load",
         long_help = "The number of Bloom filters to load for events when querying for events. \
-            This limit is used to prevent queries from taking too long.",
+                     This limit is used to prevent queries from taking too long.",
         env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_BLOOM_FILTERS_TO_LOAD",
         default_value = "100000"
     )]
@@ -266,8 +266,9 @@ pub enum Color {
 }
 
 impl Color {
-    /// Returns true if color should be enabled, either because the setting is [Color::Always],
-    /// or because it is [Color::Auto] and stdout is targeting a terminal.
+    /// Returns true if color should be enabled, either because the setting is
+    /// [Color::Always], or because it is [Color::Auto] and stdout is
+    /// targeting a terminal.
     pub fn is_color_enabled(&self) -> bool {
         use std::io::IsTerminal;
         match self {
@@ -358,14 +359,16 @@ struct P2PCli {
     proxy: bool,
     #[arg(
         long = "p2p.identity-config-file",
-        long_help = "Path to file containing the private key of the node. If not provided, a new random key will be generated.",
+        long_help = "Path to file containing the private key of the node. If not provided, a new \
+                     random key will be generated.",
         value_name = "PATH",
         env = "PATHFINDER_P2P_IDENTITY_CONFIG_FILE"
     )]
     identity_config_file: Option<std::path::PathBuf>,
     #[arg(
         long = "p2p.listen-on",
-        long_help = "The multiaddress on which to listen for incoming p2p connections. If not provided, default route on randomly assigned port will be used.",
+        long_help = "The multiaddress on which to listen for incoming p2p connections. If not \
+                     provided, default route on randomly assigned port will be used.",
         value_name = "MULTIADDRESS",
         default_value = "/ip4/0.0.0.0/tcp/0",
         env = "PATHFINDER_P2P_LISTEN_ON"
@@ -422,7 +425,9 @@ Example:
 
     #[arg(
         long = "p2p.low-watermark",
-        long_help = "The minimum number of outbound peers to maintain. If the number of outbound peers drops below this number, the node will attempt to connect to more peers.",
+        long_help = "The minimum number of outbound peers to maintain. If the number of outbound \
+                     peers drops below this number, the node will attempt to connect to more \
+                     peers.",
         value_name = "LOW_WATERMARK",
         env = "PATHFINDER_LOW_WATERMARK",
         default_value = "20"
@@ -431,7 +436,9 @@ Example:
 
     #[arg(
         long = "p2p.ip-whitelist",
-        long_help = "Comma separated list of IP addresses or IP address ranges (in CIDR) to whitelist for incoming connections. If not provided, all incoming connections are allowed.",
+        long_help = "Comma separated list of IP addresses or IP address ranges (in CIDR) to \
+                     whitelist for incoming connections. If not provided, all incoming \
+                     connections are allowed.",
         value_name = "LIST",
         default_value = "0.0.0.0/0,::/0",
         value_delimiter = ',',
@@ -499,7 +506,8 @@ fn parse_cors(inputs: Vec<String>) -> Result<Option<AllowedOrigins>, RpcCorsDoma
     let valid_origins = inputs
         .into_iter()
         .map(|input| match url::Url::parse(&input) {
-            // Valid URL but has to be limited to origin form, i.e. no path, query, trailing slash for default path etc.
+            // Valid URL but has to be limited to origin form, i.e. no path, query, trailing slash
+            // for default path etc.
             Ok(url) => {
                 let origin = url.origin();
 
@@ -547,7 +555,8 @@ enum RpcCorsDomainsParseError {
     #[error("Invalid allowed domain for CORS: {0}.")]
     InvalidDomain(String),
     #[error(
-        "Specify either wildcard '*' or a comma separated list of allowed domains for CORS, not both."
+        "Specify either wildcard '*' or a comma separated list of allowed domains for CORS, not \
+         both."
     )]
     WildcardAmongOtherValues,
 }
@@ -652,7 +661,13 @@ impl NetworkConfig {
             _ => {
                 use clap::error::ErrorKind;
 
-                Cli::command().error(ErrorKind::ArgumentConflict, "--gateway-url, --feeder-gateway-url and --chain-id may only be used with --network custom").exit()
+                Cli::command()
+                    .error(
+                        ErrorKind::ArgumentConflict,
+                        "--gateway-url, --feeder-gateway-url and --chain-id may only be used with \
+                         --network custom",
+                    )
+                    .exit()
             }
         };
 
@@ -670,9 +685,10 @@ impl P2PConfig {
 #[cfg(feature = "p2p")]
 impl P2PConfig {
     fn parse_or_exit(args: P2PCli) -> Self {
+        use std::str::FromStr;
+
         use clap::error::ErrorKind;
         use p2p::libp2p::multiaddr::Result;
-        use std::str::FromStr;
 
         let parse_multiaddr_vec = |multiaddrs: Vec<String>| -> Vec<Multiaddr> {
             multiaddrs
@@ -807,8 +823,8 @@ pub struct WebsocketConfig {
     #[arg(
         long = "rpc.websocket.buffer-capacity",
         long_help = "The socket buffer for outbound messages. If specific clients have their \
-            subscription sporadically closed due to lagging streams, consider increasing this \
-            buffer. See also `rpc.websocket.topic-capacity`",
+                     subscription sporadically closed due to lagging streams, consider increasing \
+                     this buffer. See also `rpc.websocket.topic-capacity`",
         value_name = "CAPACITY",
         default_value = "100",
         env = "PATHFINDER_WEBSOCKET_BUFFER_CAPACITY"
@@ -817,9 +833,9 @@ pub struct WebsocketConfig {
     #[arg(
         long = "rpc.websocket.topic-capacity",
         long_help = "The topic sender capacity. The topic senders are upstream of socket buffers \
-            and common to all clients and subscriptions. If a variety of clients regularly have their \
-            subscription closed due to a lagging stream, consider increasing this buffer. See also \
-            `rpc.websocket.buffer-capacity`",
+                     and common to all clients and subscriptions. If a variety of clients \
+                     regularly have their subscription closed due to a lagging stream, consider \
+                     increasing this buffer. See also `rpc.websocket.buffer-capacity`",
         value_name = "CAPACITY",
         default_value = "100",
         env = "PATHFINDER_WEBSOCKET_TOPIC_CAPACITY"

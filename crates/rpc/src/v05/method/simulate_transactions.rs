@@ -1,14 +1,13 @@
-use crate::{
-    context::RpcContext, executor::ExecutionStateError, v02::types::request::BroadcastedTransaction,
-};
-
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{
-    types::TransactionSimulation, L1BlobDataAvailability, TransactionExecutionError,
-};
+use pathfinder_executor::types::TransactionSimulation;
+use pathfinder_executor::{L1BlobDataAvailability, TransactionExecutionError};
 use serde::{Deserialize, Serialize};
+
+use crate::context::RpcContext;
+use crate::executor::ExecutionStateError;
+use crate::v02::types::request::BroadcastedTransaction;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -161,14 +160,12 @@ pub async fn simulate_transactions(
 
 pub mod dto {
     use serde_with::serde_as;
-
     use starknet_gateway_types::trace as gateway_trace;
 
+    use super::*;
     use crate::felt::RpcFelt;
     use crate::v03::method::get_state_update::types::StateDiff;
     use crate::v05::method::call::FunctionCall;
-
-    use super::*;
 
     #[derive(Debug, Deserialize, Eq, PartialEq)]
     pub struct SimulationFlags(pub Vec<SimulationFlag>);
@@ -181,10 +178,12 @@ pub mod dto {
         /// The Ethereum gas cost of the transaction
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub gas_consumed: primitive_types::U256,
-        /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        /// The gas price (in gwei) that was used in the cost estimation (input
+        /// to fee estimation)
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub gas_price: primitive_types::U256,
-        /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
+        /// The estimated fee for the transaction (in gwei), product of
+        /// gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub overall_fee: primitive_types::U256,
     }
@@ -549,19 +548,22 @@ pub mod dto {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{felt, ClassHash, StorageValue, TransactionVersion};
+    use starknet_gateway_test_fixtures::class_definitions::{
+        DUMMY_ACCOUNT_CLASS_HASH,
+        ERC20_CONTRACT_DEFINITION_CLASS_HASH,
+    };
+
+    use super::*;
     use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV1,
     };
     use crate::v02::types::ContractClass;
     use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
     pub(crate) use crate::v04::method::simulate_transactions::tests::setup_storage;
     use crate::v05::method::call::FunctionCall;
-    use pathfinder_common::{felt, macro_prelude::*, ClassHash, StorageValue, TransactionVersion};
-    use starknet_gateway_test_fixtures::class_definitions::{
-        DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
-    };
-
-    use super::*;
 
     #[tokio::test]
     async fn test_simulate_transaction_with_skip_fee_charge() {
@@ -795,9 +797,12 @@ pub(crate) mod tests {
 
     pub(crate) mod fixtures {
         use super::*;
-
         pub use crate::v04::method::simulate_transactions::tests::fixtures::{
-            CASM_DEFINITION, CASM_HASH, DEPLOYED_CONTRACT_ADDRESS, SIERRA_DEFINITION, SIERRA_HASH,
+            CASM_DEFINITION,
+            CASM_HASH,
+            DEPLOYED_CONTRACT_ADDRESS,
+            SIERRA_DEFINITION,
+            SIERRA_HASH,
             UNIVERSAL_DEPLOYER_CLASS_HASH,
         };
 
@@ -806,15 +811,18 @@ pub(crate) mod tests {
             pub use crate::v04::method::simulate_transactions::tests::fixtures::input::*;
         }
 
-        // We have a "duplicate" set of expected outputs here because of the changes in the output format.
+        // We have a "duplicate" set of expected outputs here because of the changes in
+        // the output format.
         pub mod expected_output {
-            use crate::v03::method::get_state_update::types::{
-                DeclaredSierraClass, StorageDiff, StorageEntry,
-            };
             use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
 
             use super::dto::*;
             use super::*;
+            use crate::v03::method::get_state_update::types::{
+                DeclaredSierraClass,
+                StorageDiff,
+                StorageEntry,
+            };
 
             const DECLARE_GAS_CONSUMED: u64 = 2768;
 

@@ -67,18 +67,29 @@ impl From<DataAvailabilityMode> for starknet_api::data_availability::DataAvailab
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use pathfinder_common::{
-        AccountDeploymentDataElem, CallParam, CasmHash, ChainId, ClassHash, ContractAddress,
-        ContractAddressSalt, EntryPoint, Fee, PaymasterDataElem, Tip, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        AccountDeploymentDataElem,
+        CallParam,
+        CasmHash,
+        ChainId,
+        ClassHash,
+        ContractAddress,
+        ContractAddressSalt,
+        EntryPoint,
+        Fee,
+        PaymasterDataElem,
+        Tip,
+        TransactionNonce,
+        TransactionSignatureElem,
+        TransactionVersion,
     };
     use serde::Deserialize;
     use serde_with::serde_as;
 
     /// "Broadcasted" L2 transaction in requests the RPC API.
     ///
-    /// "Broadcasted" transactions represent the data required to submit a new transaction.
-    /// Notably, it's missing values computed during execution of the transaction, like
-    /// transaction_hash or contract_address.
+    /// "Broadcasted" transactions represent the data required to submit a new
+    /// transaction. Notably, it's missing values computed during execution
+    /// of the transaction, like transaction_hash or contract_address.
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields, tag = "type")]
@@ -600,25 +611,36 @@ pub mod request {
             };
         }
 
-        /// The aim of these tests is to check if deserialization works correctly
-        /// **without resorting to serialization to prepare the test data**,
-        /// which in itself could contain an "opposite phase" bug that cancels out.
+        /// The aim of these tests is to check if deserialization works
+        /// correctly **without resorting to serialization to prepare
+        /// the test data**, which in itself could contain an "opposite
+        /// phase" bug that cancels out.
         ///
-        /// Serialization is tested btw, because the fixture and the data is already available.
+        /// Serialization is tested btw, because the fixture and the data is
+        /// already available.
         ///
-        /// These tests were added due to recurring regressions stemming from, among others:
-        /// - `serde(flatten)` and it's side-effects (for example when used in conjunction with `skip_serializing_none`),
-        /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
+        /// These tests were added due to recurring regressions stemming from,
+        /// among others:
+        /// - `serde(flatten)` and it's side-effects (for example when used in
+        ///   conjunction with `skip_serializing_none`),
+        /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to
+        ///   spec.
         mod serde {
+            use pathfinder_common::macro_prelude::*;
+            use pathfinder_common::{felt, ResourceAmount, ResourcePricePerUnit};
+            use pretty_assertions_sorted::assert_eq;
+
             use super::super::*;
             use crate::v02::types::{
-                CairoContractClass, ContractEntryPoints, DataAvailabilityMode, SierraContractClass,
-                SierraEntryPoint, SierraEntryPoints,
+                CairoContractClass,
+                ContractEntryPoints,
+                DataAvailabilityMode,
+                ResourceBound,
+                ResourceBounds,
+                SierraContractClass,
+                SierraEntryPoint,
+                SierraEntryPoints,
             };
-            use crate::v02::types::{ResourceBound, ResourceBounds};
-            use pathfinder_common::{felt, ResourcePricePerUnit};
-            use pathfinder_common::{macro_prelude::*, ResourceAmount};
-            use pretty_assertions_sorted::assert_eq;
 
             #[test]
             fn broadcasted_transaction() {

@@ -1,9 +1,10 @@
 use std::fmt::Debug;
 
-use crate::common::{Hash, Iteration};
-use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
+
+use crate::common::{Hash, Iteration};
+use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, PartialOrd, Ord)]
 #[protobuf(name = "crate::proto::class::EntryPoint")]

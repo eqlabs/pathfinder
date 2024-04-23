@@ -3,27 +3,27 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
+use std::{cmp, task};
 
-use crate::peers::{Connectivity, Direction, KeyedNetworkGroup, Peer};
-use crate::secret::Secret;
-use crate::sync::codec;
-use crate::{peers::PeerSet, Config};
 use libp2p::core::Endpoint;
-use libp2p::dcutr;
 use libp2p::gossipsub::{self, IdentTopic, MessageAuthenticity, MessageId};
-use libp2p::identify;
-use libp2p::identity;
-use libp2p::kad::{self, store::MemoryStore};
+use libp2p::kad::store::MemoryStore;
+use libp2p::kad::{self};
 use libp2p::multiaddr::Protocol;
-use libp2p::ping;
-use libp2p::relay;
 use libp2p::swarm::behaviour::ConnectionEstablished;
 use libp2p::swarm::{
-    ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, FromSwarm, NetworkBehaviour,
-    THandler, THandlerInEvent, THandlerOutEvent, ToSwarm,
+    ConnectionClosed,
+    ConnectionDenied,
+    ConnectionId,
+    DialFailure,
+    FromSwarm,
+    NetworkBehaviour,
+    THandler,
+    THandlerInEvent,
+    THandlerOutEvent,
+    ToSwarm,
 };
-use libp2p::StreamProtocol;
-use libp2p::{autonat, Multiaddr, PeerId};
+use libp2p::{autonat, dcutr, identify, identity, ping, relay, Multiaddr, PeerId, StreamProtocol};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
@@ -31,7 +31,11 @@ use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
-use std::{cmp, task};
+
+use crate::peers::{Connectivity, Direction, KeyedNetworkGroup, Peer, PeerSet};
+use crate::secret::Secret;
+use crate::sync::codec;
+use crate::Config;
 
 pub const IDENTIFY_PROTOCOL_NAME: &str = "/starknet/id/1.0.0";
 
@@ -85,8 +89,8 @@ impl NetworkBehaviour for Behaviour {
         // Is the peer connecting over a relay?
         let is_relayed = remote_addr.iter().any(|p| p == Protocol::P2pCircuit);
 
-        // Limit the number of inbound peer connections. Different limits apply to direct peers
-        // and peers connecting over a relay.
+        // Limit the number of inbound peer connections. Different limits apply to
+        // direct peers and peers connecting over a relay.
         if is_relayed {
             if self.inbound_relayed_peers().count() >= self.cfg.max_inbound_relayed_peers {
                 self.evict_inbound_peer(
@@ -285,7 +289,8 @@ impl NetworkBehaviour for Behaviour {
             return Err(ConnectionDenied::new("too many inbound connections"));
         }
 
-        // Extract the peer IP from the multiaddr, or disconnect the peer if he doesn't have one.
+        // Extract the peer IP from the multiaddr, or disconnect the peer if he doesn't
+        // have one.
         let peer_ip = Self::get_ip(remote_addr)?;
 
         // If the peer is not in the IP whitelist, disconnect.
@@ -311,8 +316,8 @@ impl NetworkBehaviour for Behaviour {
             }
             peer.connected_at().and_then(|connected_at| {
                 // If the connecting peer is relayed, only consider relayed peers for the recent
-                // peers set. Otherwise, only consider direct peers. Different connection timeouts
-                // apply to direct and relayed peers.
+                // peers set. Otherwise, only consider direct peers. Different connection
+                // timeouts apply to direct and relayed peers.
                 if is_relayed {
                     if !peer.is_relayed()
                         || connected_at.elapsed() >= self.cfg.relay_connection_timeout
@@ -341,22 +346,25 @@ impl NetworkBehaviour for Behaviour {
             _ => None,
         });
 
-        // If we can extract the peer ID, prevent evicted peers from reconnecting too quickly.
+        // If we can extract the peer ID, prevent evicted peers from reconnecting too
+        // quickly.
         if let Some(peer_id) = peer_id {
             self.prevent_evicted_peer_reconnections(peer_id)?;
         }
 
         drop(recent_peers);
 
-        // Limit the number of inbound peer connections. Different limits apply to direct peers
-        // and peers connecting over a relay.
+        // Limit the number of inbound peer connections. Different limits apply to
+        // direct peers and peers connecting over a relay.
         //
-        // This same check happens when the connection is established, but we are also checking
-        // here because it allows us to avoid potentially expensive protocol negotiation with the
-        // peer if there are already too many inbound connections.
+        // This same check happens when the connection is established, but we are also
+        // checking here because it allows us to avoid potentially expensive
+        // protocol negotiation with the peer if there are already too many
+        // inbound connections.
         //
-        // The check must be repeated when the connection is established due to race conditions,
-        // since multiple peers may be attempting to connect at the same time.
+        // The check must be repeated when the connection is established due to race
+        // conditions, since multiple peers may be attempting to connect at the
+        // same time.
         if is_relayed {
             if self.inbound_relayed_peers().count() >= self.cfg.max_inbound_relayed_peers {
                 self.evict_inbound_peer(
@@ -401,7 +409,8 @@ impl NetworkBehaviour for Behaviour {
                         if !peer.is_connected() {
                             peer.connectivity = Connectivity::Dialing;
                         } else {
-                            // If peer is already connected, this is a redial. The peer is still
+                            // If peer is already connected, this is a redial.
+                            // The peer is still
                             // connected.
                         }
                     },
@@ -439,8 +448,8 @@ impl Behaviour {
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
         kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
-        // This makes sure that the DHT we're implementing is incompatible with the "default" IPFS
-        // DHT from libp2p.
+        // This makes sure that the DHT we're implementing is incompatible with the
+        // "default" IPFS DHT from libp2p.
         kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
             kademlia_protocol_name(chain_id),
         )
@@ -542,8 +551,8 @@ impl Behaviour {
         }
     }
 
-    /// Only allow one connection per peer. If the peer is already connected, close the new
-    /// connection.
+    /// Only allow one connection per peer. If the peer is already connected,
+    /// close the new connection.
     fn check_duplicate_connection(&mut self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         if self
             .peers
@@ -566,8 +575,9 @@ impl Behaviour {
         // Only peers which are flagged as not useful are considered for eviction.
         candidates.retain(|(_, peer)| !peer.useful);
 
-        // The peer to be evicted is the one with the highest SHA3(eviction_secret || peer_id)
-        // value. This is deterministic but unpredictable by any outside observer.
+        // The peer to be evicted is the one with the highest SHA3(eviction_secret ||
+        // peer_id) value. This is deterministic but unpredictable by any
+        // outside observer.
         candidates.sort_by_key(|(peer_id, _)| {
             use sha3::{Digest, Sha3_256};
             let mut hasher = Sha3_256::default();
@@ -639,8 +649,9 @@ impl Behaviour {
         let mut sorted: Vec<_> = grouped.iter().collect();
         sorted.sort_by_key(|&(group, _)| group);
         for (_, peers) in sorted.iter().take(4) {
-            // Pick the peer with the smallest SHA3(eviction_secret || peer_id) value and protect
-            // it from eviction. This is deterministic but unpredictable by any outside observer.
+            // Pick the peer with the smallest SHA3(eviction_secret || peer_id) value and
+            // protect it from eviction. This is deterministic but unpredictable
+            // by any outside observer.
             if let Some(peer_id) = peers.iter().min_by_key(|peer_id| {
                 use sha3::{Digest, Sha3_256};
                 let mut hasher = Sha3_256::default();
@@ -758,7 +769,8 @@ impl Behaviour {
         }
     }
 
-    /// Get the IP address from a multiaddr, or disconnect the peer if it doesn't have one.
+    /// Get the IP address from a multiaddr, or disconnect the peer if it
+    /// doesn't have one.
     fn get_ip(addr: &Multiaddr) -> Result<IpAddr, ConnectionDenied> {
         addr.iter()
             .find_map(|p| match p {

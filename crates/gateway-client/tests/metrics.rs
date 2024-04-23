@@ -1,7 +1,10 @@
-//! This test was separated because the `metrics` crate uses a singleton recorder, so keeping a test
-//! that relies on metric values in a separate binary makes more sense than using an inter-test
-//! locking mechanism which can cause weird test failures without any obvious clue to what might
-//! have caused those failures in the first place.
+//! This test was separated because the `metrics` crate uses a singleton
+//! recorder, so keeping a test that relies on metric values in a separate
+//! binary makes more sense than using an inter-test locking mechanism which can
+//! cause weird test failures without any obvious clue to what might have caused
+//! those failures in the first place.
+
+use std::future::Future;
 
 use futures::stream::StreamExt;
 use pathfinder_common::{BlockId, BlockNumber};
@@ -9,7 +12,6 @@ use pretty_assertions_sorted::assert_eq;
 use starknet_gateway_client::test_utils::{response_from, setup_with_varied_responses};
 use starknet_gateway_client::{Client, GatewayApi};
 use starknet_gateway_types::error::KnownStarknetErrorCode;
-use std::future::Future;
 
 #[tokio::test]
 async fn all_counter_types_including_tags() {
@@ -80,8 +82,9 @@ where
 
     // IMPORTANT
     //
-    // We're not using any crate::sequencer::metrics consts here, because this is public API
-    // and we'd like to catch if/when it changed (apparently due to a bug)
+    // We're not using any crate::sequencer::metrics consts here, because this is
+    // public API and we'd like to catch if/when it changed (apparently due to a
+    // bug)
     [
         ("gateway_requests_total", None, None, 21),
         ("gateway_requests_total", Some("latest"), None, 7),

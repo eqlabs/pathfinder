@@ -1,10 +1,9 @@
-use blockifier::{
-    execution::errors::{
-        EntryPointExecutionError as BlockifierEntryPointExecutionError, PreExecutionError,
-    },
-    state::errors::StateError,
-    transaction::errors::TransactionExecutionError as BlockifierTransactionExecutionError,
+use blockifier::execution::errors::{
+    EntryPointExecutionError as BlockifierEntryPointExecutionError,
+    PreExecutionError,
 };
+use blockifier::state::errors::StateError;
+use blockifier::transaction::errors::TransactionExecutionError as BlockifierTransactionExecutionError;
 
 #[derive(Debug)]
 pub enum CallError {
@@ -115,10 +114,13 @@ mod tests {
     use super::*;
 
     mod transaction_errors_are_mapped_correctly {
-        //! Some variants in the blockifier are opaque and omit the inner error's data. We've patched this manually
-        //! and this tests ensures we don't accidentally stutter once the blockifier fixes this.
-        use super::*;
+        //! Some variants in the blockifier are opaque and omit the inner
+        //! error's data. We've patched this manually and this tests
+        //! ensures we don't accidentally stutter once the blockifier fixes
+        //! this.
         use blockifier::execution::errors::EntryPointExecutionError;
+
+        use super::*;
 
         #[test]
         fn contract_constructor_execution_failed() {

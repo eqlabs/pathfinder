@@ -1,10 +1,10 @@
 //! Metrics related utilities
-use super::{
-    builder::{stage::Method, Request},
-    SequencerError,
-};
 use futures::Future;
 use pathfinder_common::BlockId;
+
+use super::builder::stage::Method;
+use super::builder::Request;
+use super::SequencerError;
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
 const METRIC_FAILED_REQUESTS: &str = "gateway_requests_failed_total";
@@ -64,7 +64,8 @@ pub fn register() {
     });
 }
 
-/// Used to mark methods that touch special block tags to avoid reparsing the url.
+/// Used to mark methods that touch special block tags to avoid reparsing the
+/// url.
 #[derive(Clone, Copy, Debug)]
 pub enum BlockTag {
     None,
@@ -112,7 +113,8 @@ impl RequestMetadata {
 
 /// # Usage
 ///
-///  Awaits future `f` and increments the following counters for a particular method:
+///  Awaits future `f` and increments the following counters for a particular
+/// method:
 /// - `gateway_requests_total`,
 /// - `gateway_requests_failed_total` if the future returns the `Err()` variant.
 ///
@@ -121,9 +123,12 @@ impl RequestMetadata {
 /// 1. All the above counters are also duplicated for the special cases of:
 /// `("get_block" | "get_state_update") AND ("latest" | "pending")`.
 ///
-/// 2. `gateway_requests_failed_total` is also duplicated for the specific failure reasons:
-/// - `starknet`, if the future returns an `Err()` variant, which carries a Starknet specific error variant
-/// - `decode`, if the future returns an `Err()` variant, which carries a decode error variant
+/// 2. `gateway_requests_failed_total` is also duplicated for the specific
+///    failure reasons:
+/// - `starknet`, if the future returns an `Err()` variant, which carries a
+///   Starknet specific error variant
+/// - `decode`, if the future returns an `Err()` variant, which carries a decode
+///   error variant
 /// - `rate_limiting` if the future returns an `Err()` variant,
 /// which carries the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
 pub async fn with_metrics<T>(
@@ -141,8 +146,8 @@ pub async fn with_metrics<T>(
         }
     }
 
-    /// Increments the `gateway_requests_failed_total` counter for a given failure `reason`,
-    /// includes block tag specific variants if they exist
+    /// Increments the `gateway_requests_failed_total` counter for a given
+    /// failure `reason`, includes block tag specific variants if they exist
     fn increment_failed(meta: RequestMetadata, reason: &'static str) {
         let method = meta.method;
         let tag = meta.tag;

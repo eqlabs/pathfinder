@@ -1,9 +1,18 @@
+use std::time::SystemTime;
+
+use fake::{Dummy, Fake, Faker};
+
 use crate::common::{
-    Address, BlockId, ConsensusSignature, Hash, Iteration, L1DataAvailabilityMode, Merkle, Patricia,
+    Address,
+    BlockId,
+    ConsensusSignature,
+    Hash,
+    Iteration,
+    L1DataAvailabilityMode,
+    Merkle,
+    Patricia,
 };
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
-use fake::{Dummy, Fake, Faker};
-use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::header::SignedBlockHeader")]

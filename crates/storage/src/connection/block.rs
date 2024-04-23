@@ -3,7 +3,8 @@ use std::num::NonZeroUsize;
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice};
 
-use crate::{prelude::*, BlockId};
+use crate::prelude::*;
+use crate::BlockId;
 
 impl Transaction<'_> {
     pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
@@ -33,7 +34,8 @@ impl Transaction<'_> {
         },
     ).context("Inserting block header")?;
 
-        // This must occur after the header is inserted as this table references the header table.
+        // This must occur after the header is inserted as this table references the
+        // header table.
         self.inner()
             .execute(
                 "INSERT INTO canonical_blocks(number, hash) values(?,?)",
@@ -67,7 +69,8 @@ impl Transaction<'_> {
             .map_err(|x| x.into())
     }
 
-    /// Searches in reverse chronological order for a block that exists in storage, but whose parent does not.
+    /// Searches in reverse chronological order for a block that exists in
+    /// storage, but whose parent does not.
     ///
     /// Note that target is included in the search.
     pub fn next_ancestor_without_parent(
@@ -331,7 +334,8 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        // Fill in parent hash (unless we are at genesis in which case the current ZERO is correct).
+        // Fill in parent hash (unless we are at genesis in which case the current ZERO
+        // is correct).
         if header.number != BlockNumber::GENESIS {
             let parent_hash = self
                 .inner()
@@ -367,7 +371,8 @@ impl Transaction<'_> {
                 "
             SELECT number
             FROM block_headers
-            LEFT JOIN starknet_transactions ON starknet_transactions.block_hash = block_headers.hash
+            LEFT JOIN starknet_transactions ON starknet_transactions.block_hash = \
+                 block_headers.hash
             GROUP BY block_headers.hash
             HAVING COUNT(starknet_transactions.idx) = 0
             ORDER BY number ASC
@@ -388,18 +393,19 @@ impl Transaction<'_> {
 
     pub fn first_block_without_receipts(&self) -> anyhow::Result<Option<BlockNumber>> {
         let mut stmt = self
-        .inner()
-        .prepare(
-            "
+            .inner()
+            .prepare(
+                "
             SELECT block_headers.number
             FROM block_headers
             JOIN starknet_transactions
-            ON starknet_transactions.block_hash = block_headers.hash AND starknet_transactions.receipt IS NULL
+            ON starknet_transactions.block_hash = block_headers.hash AND \
+                 starknet_transactions.receipt IS NULL
             ORDER BY number ASC
             LIMIT 1;
             ",
-        )
-        .context("Preparing first_block_without_transactions query")?;
+            )
+            .context("Preparing first_block_without_transactions query")?;
 
         let mut rows = stmt
             .query(params![])
@@ -454,11 +460,12 @@ impl Transaction<'_> {
         };
 
         let mut stmt = self
-        .inner()
-        .prepare_cached(
-            "SELECT event_count FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
-        )
-        .context("Preparing get event counts statement")?;
+            .inner()
+            .prepare_cached(
+                "SELECT event_count FROM block_headers WHERE number >= ? ORDER BY number ASC \
+                 LIMIT ?",
+            )
+            .context("Preparing get event counts statement")?;
 
         let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
         let mut counts = stmt
@@ -540,8 +547,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::Connection;
-    use crate::StorageBuilder;
+    use crate::{Connection, StorageBuilder};
 
     // Create test database filled with block headers.
     fn setup() -> (Connection, Vec<BlockHeader>) {
@@ -716,8 +722,9 @@ mod tests {
     }
 
     mod next_ancestor {
-        use super::*;
         use pretty_assertions_sorted::assert_eq;
+
+        use super::*;
 
         #[test]
         fn empty_chain_returns_none() {
@@ -779,8 +786,9 @@ mod tests {
     }
 
     mod next_ancestor_without_parent {
-        use super::*;
         use pretty_assertions_sorted::assert_eq;
+
+        use super::*;
 
         #[test]
         fn empty_chain_returns_none() {

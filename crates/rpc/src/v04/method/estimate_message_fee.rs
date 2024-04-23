@@ -25,8 +25,8 @@ impl From<crate::v06::method::estimate_message_fee::EstimateMessageFeeError>
     }
 }
 
-// The implementation is the same as for v05 -- the only difference is that we have to map
-// ContractErrorV05 to an internal error.
+// The implementation is the same as for v05 -- the only difference is that we
+// have to map ContractErrorV05 to an internal error.
 pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,

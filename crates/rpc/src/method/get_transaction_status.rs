@@ -1,7 +1,8 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
 
-use crate::{context::RpcContext, dto::TxnExecutionStatus};
+use crate::context::RpcContext;
+use crate::dto::TxnExecutionStatus;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct Input {
@@ -78,8 +79,10 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
         .context("Fetching transaction from gateway")
         .map_err(Error::Internal)
         .and_then(|tx| {
-            use starknet_gateway_types::reply::transaction_status::FinalityStatus as GatewayFinalityStatus;
-            use starknet_gateway_types::reply::transaction_status::ExecutionStatus as GatewayExecutionStatus;
+            use starknet_gateway_types::reply::transaction_status::{
+                ExecutionStatus as GatewayExecutionStatus,
+                FinalityStatus as GatewayFinalityStatus,
+            };
 
             match (tx.finality_status, tx.execution_status) {
                 (GatewayFinalityStatus::NotReceived, _) => Err(Error::TxnHashNotFound),
@@ -87,16 +90,16 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
                 (GatewayFinalityStatus::Received, _) => Ok(Output::Received),
                 (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => {
                     Ok(Output::AcceptedOnL1(TxnExecutionStatus::Reverted))
-                },
+                }
                 (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => {
                     Ok(Output::AcceptedOnL1(TxnExecutionStatus::Succeeded))
-                },
+                }
                 (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => {
                     Ok(Output::AcceptedOnL2(TxnExecutionStatus::Reverted))
-                },
+                }
                 (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => {
                     Ok(Output::AcceptedOnL2(TxnExecutionStatus::Succeeded))
-                },
+                }
             }
         })
 }
@@ -138,9 +141,9 @@ mod tests {
 
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
+    use serde_json::json;
 
     use super::*;
-    use serde_json::json;
 
     #[rstest::rstest]
     #[case::rejected(Output::Rejected, json!({"finality_status":"REJECTED"}))]

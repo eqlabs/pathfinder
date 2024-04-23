@@ -1,13 +1,14 @@
-use crate::{
-    context::RpcContext, executor::ExecutionStateError, v02::types::request::BroadcastedTransaction,
-};
-
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{types::TransactionSimulation, TransactionExecutionError};
+use pathfinder_executor::types::TransactionSimulation;
+use pathfinder_executor::TransactionExecutionError;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::trace as gateway_trace;
+
+use crate::context::RpcContext;
+use crate::executor::ExecutionStateError;
+use crate::v02::types::request::BroadcastedTransaction;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -136,13 +137,12 @@ pub async fn simulate_transactions(
 }
 
 pub mod dto {
-    use crate::v05::method::simulate_transactions::dto as v05_dto;
     use serde_with::serde_as;
 
+    use super::*;
     use crate::felt::RpcFelt;
     use crate::v05::method::call::FunctionCall;
-
-    use super::*;
+    use crate::v05::method::simulate_transactions::dto as v05_dto;
 
     #[derive(Debug, Deserialize, Eq, PartialEq)]
     pub struct SimulationFlags(pub Vec<SimulationFlag>);
@@ -155,10 +155,12 @@ pub mod dto {
         /// The Ethereum gas cost of the transaction
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub gas_consumed: primitive_types::U256,
-        /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        /// The gas price (in gwei) that was used in the cost estimation (input
+        /// to fee estimation)
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub gas_price: primitive_types::U256,
-        /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
+        /// The estimated fee for the transaction (in gwei), product of
+        /// gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
         pub overall_fee: primitive_types::U256,
     }
@@ -598,22 +600,32 @@ pub mod dto {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
-        BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1,
-    };
-    use crate::v02::types::ContractClass;
-    use crate::v05::method::call::FunctionCall;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHeader, ContractAddress, StorageAddress, StorageValue, TransactionVersion,
+        felt,
+        BlockHeader,
+        ContractAddress,
+        Fee,
+        StarknetVersion,
+        StorageAddress,
+        StorageValue,
+        TransactionVersion,
     };
-    use pathfinder_common::{macro_prelude::*, Fee, StarknetVersion};
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::{
-        DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
+        DUMMY_ACCOUNT_CLASS_HASH,
+        ERC20_CONTRACT_DEFINITION_CLASS_HASH,
     };
 
     use super::*;
+    use crate::v02::types::request::{
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV2,
+        BroadcastedInvokeTransaction,
+        BroadcastedInvokeTransactionV1,
+    };
+    use crate::v02::types::ContractClass;
+    use crate::v05::method::call::FunctionCall;
 
     #[tokio::test]
     async fn test_simulate_transaction_with_skip_fee_charge() {
@@ -720,11 +732,9 @@ pub(crate) mod tests {
         pub mod input {
             use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip};
 
-            use crate::v02::types::{
-                request::BroadcastedInvokeTransactionV3, ResourceBound, ResourceBounds,
-            };
-
             use super::*;
+            use crate::v02::types::request::BroadcastedInvokeTransactionV3;
+            use crate::v02::types::{ResourceBound, ResourceBounds};
 
             pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
                 let contract_class = ContractClass::from_definition_bytes(SIERRA_DEFINITION)
@@ -760,9 +770,11 @@ pub(crate) mod tests {
                         sender_address: account_contract_address,
                         calldata: vec![
                             CallParam(*universal_deployer_address.get()),
-                            // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                            // Entry point selector for the called contract, i.e.
+                            // AccountCallArray::selector
                             CallParam(EntryPoint::hashed(b"deployContract").0),
-                            // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                            // Length of the call data for the called contract, i.e.
+                            // AccountCallArray::data_len
                             call_param!("4"),
                             // classHash
                             CallParam(SIERRA_HASH.0),
@@ -787,9 +799,11 @@ pub(crate) mod tests {
                         sender_address: account_contract_address,
                         calldata: vec![
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
-                            // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                            // Entry point selector for the called contract, i.e.
+                            // AccountCallArray::selector
                             CallParam(EntryPoint::hashed(b"get_data").0),
-                            // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                            // Length of the call data for the called contract, i.e.
+                            // AccountCallArray::data_len
                             call_param!("0"),
                         ],
                     },
@@ -820,9 +834,11 @@ pub(crate) mod tests {
                         sender_address: account_contract_address,
                         calldata: vec![
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
-                            // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                            // Entry point selector for the called contract, i.e.
+                            // AccountCallArray::selector
                             CallParam(EntryPoint::hashed(b"get_data").0),
-                            // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                            // Length of the call data for the called contract, i.e.
+                            // AccountCallArray::data_len
                             call_param!("0"),
                         ],
                     },

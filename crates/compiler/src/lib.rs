@@ -5,9 +5,10 @@ use pathfinder_common::{CasmHash, StarknetVersion};
 
 /// Compile a Sierra class definition into CASM.
 ///
-/// The class representation expected by the compiler doesn't match the representation used
-/// by the feeder gateway for Sierra classes, so we have to convert the JSON to something
-/// that can be parsed into the expected input format for the compiler.
+/// The class representation expected by the compiler doesn't match the
+/// representation used by the feeder gateway for Sierra classes, so we have to
+/// convert the JSON to something that can be parsed into the expected input
+/// format for the compiler.
 pub fn compile_to_casm(
     sierra_definition: &[u8],
     version: &StarknetVersion,
@@ -34,10 +35,11 @@ pub fn compile_to_casm(
     result.unwrap_or_else(|e| Err(panic_error(e)))
 }
 
-/// Compile a Sierra class definition to CASM _with the latest compiler we support_.
+/// Compile a Sierra class definition to CASM _with the latest compiler we
+/// support_.
 ///
-/// Execution depends on our ability to compile a Sierra class to CASM for which we
-/// always want to use the latest compiler.
+/// Execution depends on our ability to compile a Sierra class to CASM for which
+/// we always want to use the latest compiler.
 pub fn compile_to_casm_with_latest_compiler(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
     let definition = serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_definition)
         .context("Parsing Sierra class")?;
@@ -66,7 +68,8 @@ pub fn casm_class_hash(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
 mod v1_0_0_alpha6 {
     use anyhow::Context;
     use casm_compiler_v1_0_0_alpha6::allowed_libfuncs::{
-        validate_compatible_sierra_version, ListSelector,
+        validate_compatible_sierra_version,
+        ListSelector,
     };
     use casm_compiler_v1_0_0_alpha6::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_alpha6::contract_class::ContractClass;
@@ -112,7 +115,8 @@ mod v1_0_0_alpha6 {
 mod v1_0_0_rc0 {
     use anyhow::Context;
     use casm_compiler_v1_0_0_rc0::allowed_libfuncs::{
-        validate_compatible_sierra_version, ListSelector,
+        validate_compatible_sierra_version,
+        ListSelector,
     };
     use casm_compiler_v1_0_0_rc0::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_rc0::contract_class::ContractClass;
@@ -158,7 +162,8 @@ mod v1_0_0_rc0 {
 mod v1_1_1 {
     use anyhow::Context;
     use casm_compiler_v1_1_1::allowed_libfuncs::{
-        validate_compatible_sierra_version, ListSelector,
+        validate_compatible_sierra_version,
+        ListSelector,
     };
     use casm_compiler_v1_1_1::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_1_1::contract_class::ContractClass;
@@ -203,12 +208,11 @@ mod v1_1_1 {
 
 // This compiler is backwards compatible with v1.1.
 mod v2 {
-    use super::CasmHash;
     use anyhow::Context;
     use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
     use cairo_lang_starknet_classes::contract_class::ContractClass;
 
-    use super::FeederGatewayContractClass;
+    use super::{CasmHash, FeederGatewayContractClass};
 
     impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
         type Error = serde_json::Error;
@@ -277,13 +281,14 @@ struct FeederGatewayContractClass<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{compile_to_casm, FeederGatewayContractClass};
-
     use pathfinder_common::StarknetVersion;
 
+    use super::{compile_to_casm, FeederGatewayContractClass};
+
     mod starknet_v0_11_0 {
-        use super::*;
         use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_ALPHA5_SIERRA;
+
+        use super::*;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
@@ -302,8 +307,9 @@ mod tests {
     }
 
     mod starknet_v0_11_1 {
-        use super::*;
         use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_RC0_SIERRA;
+
+        use super::*;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
@@ -322,10 +328,12 @@ mod tests {
     }
 
     mod starknet_v0_11_2_onwards {
-        use super::*;
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_1_1_0_RC0_SIERRA, CAIRO_2_0_0_STACK_OVERFLOW,
+            CAIRO_1_1_0_RC0_SIERRA,
+            CAIRO_2_0_0_STACK_OVERFLOW,
         };
+
+        use super::*;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {

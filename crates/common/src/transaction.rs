@@ -1,12 +1,15 @@
-use pathfinder_crypto::hash::HashChain as PedersenHasher;
-use pathfinder_crypto::hash::PoseidonHasher;
+use pathfinder_crypto::hash::{HashChain as PedersenHasher, PoseidonHasher};
 use pathfinder_crypto::Felt;
 use primitive_types::H256;
 
-use crate::felt_bytes;
 use crate::prelude::*;
 use crate::{
-    AccountDeploymentDataElem, PaymasterDataElem, ResourceAmount, ResourcePricePerUnit, Tip,
+    felt_bytes,
+    AccountDeploymentDataElem,
+    PaymasterDataElem,
+    ResourceAmount,
+    ResourcePricePerUnit,
+    Tip,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,8 +95,9 @@ impl TransactionVariant {
         }
     }
 
-    /// Some variants had a different hash calculations for blocks around Starknet v0.8
-    /// and earlier. The hash excluded the transaction version and nonce.
+    /// Some variants had a different hash calculations for blocks around
+    /// Starknet v0.8 and earlier. The hash excluded the transaction version
+    /// and nonce.
     fn calculate_legacy_hash(&self, chain_id: ChainId) -> Option<TransactionHash> {
         let hash = match self {
             TransactionVariant::Deploy(tx) => tx.calculate_legacy_hash(chain_id),
@@ -779,7 +783,8 @@ mod tests {
     use super::*;
     use crate::macro_prelude::*;
 
-    // Goerli support was removed, however some of the fixtures originally come from Goerli.
+    // Goerli support was removed, however some of the fixtures originally come from
+    // Goerli.
     const GOERLI_TESTNET: ChainId = ChainId(match Felt::from_be_slice(b"SN_GOERLI") {
         Ok(chain_id) => chain_id,
         Err(_) => unreachable!(),

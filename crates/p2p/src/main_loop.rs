@@ -1,16 +1,22 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
-use futures::{channel::mpsc::Receiver as ResponseReceiver, StreamExt};
+use futures::channel::mpsc::Receiver as ResponseReceiver;
+use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
-use libp2p::identify;
 use libp2p::kad::{
-    self, BootstrapError, BootstrapOk, ProgressStep, QueryId, QueryInfo, QueryResult,
+    self,
+    BootstrapError,
+    BootstrapOk,
+    ProgressStep,
+    QueryId,
+    QueryInfo,
+    QueryResult,
 };
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
-use libp2p::PeerId;
+use libp2p::{identify, PeerId};
 use p2p_proto::class::ClassesResponse;
 use p2p_proto::event::EventsResponse;
 use p2p_proto::header::BlockHeadersResponse;
@@ -23,23 +29,22 @@ use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
 
-use crate::behaviour;
 #[cfg(test)]
 use crate::test_utils;
-use crate::Config;
-use crate::{Command, EmptyResultSender, Event, TestCommand, TestEvent};
+use crate::{behaviour, Command, Config, EmptyResultSender, Event, TestCommand, TestEvent};
 
 pub struct MainLoop {
     cfg: crate::Config,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
-    /// Match dial commands with their senders so that we can notify the caller when the dial
-    /// succeeds or fails.
+    /// Match dial commands with their senders so that we can notify the caller
+    /// when the dial succeeds or fails.
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
     // TODO there's no sync status message anymore so we have to:
-    // 1. set the idle connection timeout to maximum value to keep connections open (earlier: keep alive::Behavior)
+    // 1. set the idle connection timeout to maximum value to keep connections open (earlier: keep
+    //    alive::Behavior)
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
@@ -105,7 +110,8 @@ impl MainLoop {
     }
 
     pub async fn run(mut self) {
-        // Delay bootstrap so that by the time we attempt it we've connected to the bootstrap node
+        // Delay bootstrap so that by the time we attempt it we've connected to the
+        // bootstrap node
         let bootstrap_start = tokio::time::Instant::now() + self.cfg.bootstrap.start_offset;
         let mut bootstrap_interval =
             tokio::time::interval_at(bootstrap_start, self.cfg.bootstrap.period);
@@ -250,8 +256,9 @@ impl MainLoop {
                 }
             }
             SwarmEvent::Dialing {
-                // The only API available to the caller [`crate::client::peer_aware::Client`] only allows for dialing
-                // **known** peers, so we can discard the `None` case here.
+                // The only API available to the caller [`crate::client::peer_aware::Client`] only
+                // allows for dialing **known** peers, so we can discard the `None`
+                // case here.
                 peer_id: Some(peer_id),
                 connection_id: _, // TODO consider tracking connection ids for peers
             } => {
@@ -281,11 +288,15 @@ impl MainLoop {
                     //
                     // https://github.com/libp2p/rust-libp2p/blob/master/protocols/identify/CHANGELOG.md#0430
                     //
-                    // Observed addresses (aka. external address candidates) of the local node, reported by a remote node via libp2p-identify,
-                    // are no longer automatically considered confirmed external addresses, in other words they are no longer trusted by default.
-                    // Instead users need to confirm the reported observed address either manually, or by using libp2p-autonat.
-                    // In trusted environments users can simply extract observed addresses from a
-                    // libp2p-identify::Event::Received { info: libp2p_identify::Info { observed_addr }} and confirm them via Swarm::add_external_address.
+                    // Observed addresses (aka. external address candidates) of the local node,
+                    // reported by a remote node via libp2p-identify,
+                    // are no longer automatically considered confirmed external addresses, in other
+                    // words they are no longer trusted by default.
+                    // Instead users need to confirm the reported observed address either manually,
+                    // or by using libp2p-autonat. In trusted environments users
+                    // can simply extract observed addresses from a
+                    // libp2p-identify::Event::Received { info: libp2p_identify::Info {
+                    // observed_addr }} and confirm them via Swarm::add_external_address.
 
                     self.swarm.add_external_address(observed_addr);
 

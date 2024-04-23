@@ -1,7 +1,8 @@
+use fake::Dummy;
+
 use crate::prelude::*;
 use crate::state_update::StateUpdateCounts;
 use crate::BlockCommitmentSignature;
-use fake::Dummy;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {
@@ -56,21 +57,22 @@ impl SignedBlockHeader {
 pub struct BlockHeaderBuilder(BlockHeader);
 
 impl BlockHeader {
-    /// Creates a [builder](BlockHeaderBuilder) with all fields initialized to default values.
+    /// Creates a [builder](BlockHeaderBuilder) with all fields initialized to
+    /// default values.
     pub fn builder() -> BlockHeaderBuilder {
         BlockHeaderBuilder(BlockHeader::default())
     }
 
-    /// Creates a [builder](BlockHeaderBuilder) with an incremented block number and parent hash set to this
-    /// block's hash.
+    /// Creates a [builder](BlockHeaderBuilder) with an incremented block number
+    /// and parent hash set to this block's hash.
     pub fn child_builder(&self) -> BlockHeaderBuilder {
         BlockHeaderBuilder(BlockHeader::default())
             .with_number(self.number + 1)
             .with_parent_hash(self.hash)
     }
 
-    /// Creates a [StateUpdate] with the block hash and state commitment fields initialized
-    /// to match this header.
+    /// Creates a [StateUpdate] with the block hash and state commitment fields
+    /// initialized to match this header.
     pub fn init_state_update(&self) -> StateUpdate {
         StateUpdate::default()
             .with_block_hash(self.hash)
@@ -98,7 +100,8 @@ impl BlockHeaderBuilder {
         self
     }
 
-    /// Sets the [StateCommitment] by calculating its value from the current [StorageCommitment] and [ClassCommitment].
+    /// Sets the [StateCommitment] by calculating its value from the current
+    /// [StorageCommitment] and [ClassCommitment].
     pub fn with_calculated_state_commitment(mut self) -> Self {
         self.0.state_commitment =
             StateCommitment::calculate(self.0.storage_commitment, self.0.class_commitment);

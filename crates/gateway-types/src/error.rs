@@ -47,7 +47,8 @@ impl From<KnownStarknetErrorCode> for StarknetErrorCode {
     }
 }
 
-/// Represents well-known starknet specific error codes reported by the sequencer.
+/// Represents well-known starknet specific error codes reported by the
+/// sequencer.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub enum KnownStarknetErrorCode {
@@ -120,9 +121,8 @@ pub enum KnownStarknetErrorCode {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::KnownStarknetErrorCode;
-
     use super::StarknetErrorCode;
+    use crate::error::KnownStarknetErrorCode;
 
     #[test]
     fn test_known_error_code() {

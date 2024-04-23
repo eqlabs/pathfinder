@@ -190,12 +190,13 @@ fn lpad64(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::str::FromStr;
 
     use httpmock::prelude::*;
     use primitive_types::H160;
     use reqwest::Url;
-    use std::str::FromStr;
+
+    use super::*;
 
     #[tokio::test]
     #[ignore = "live ethereum call"]

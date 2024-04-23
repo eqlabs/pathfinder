@@ -6,11 +6,12 @@ use rayon::prelude::*;
 
 /// Verify transaction hashes in a pathfinder database.
 ///
-/// Iterates over all blocks in the database and verifies if the computed transaction hashes match
-/// values we store for the block.
+/// Iterates over all blocks in the database and verifies if the computed
+/// transaction hashes match values we store for the block.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example verify_transaction_hashes mainnet ./mainnet.sqlite 100`
+/// `cargo run --release -p pathfinder --example verify_transaction_hashes
+/// mainnet ./mainnet.sqlite 100`
 fn main() -> anyhow::Result<()> {
     let chain_name = std::env::args().nth(1).unwrap();
     let chain_id = match chain_name.as_str() {

@@ -89,8 +89,9 @@ mod tests {
     use super::*;
 
     mod block {
-        use super::*;
         use starknet_gateway_test_fixtures::traces::{TESTNET_889_517, TESTNET_GENESIS};
+
+        use super::*;
 
         #[test]
         fn parse_genesis() {

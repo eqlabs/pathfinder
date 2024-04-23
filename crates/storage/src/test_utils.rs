@@ -1,14 +1,18 @@
-use crate::{EmittedEvent, TransactionData};
-
 use pathfinder_common::event::Event;
 use pathfinder_common::macro_prelude::*;
 use pathfinder_common::receipt::{ExecutionDataAvailability, ExecutionResources, Receipt};
 use pathfinder_common::transaction::{
-    DeclareTransactionV0V1, DeployTransaction, EntryPointType, InvokeTransactionV0, Transaction,
+    DeclareTransactionV0V1,
+    DeployTransaction,
+    EntryPointType,
+    InvokeTransactionV0,
+    Transaction,
     TransactionVariant,
 };
 use pathfinder_common::*;
 use pathfinder_crypto::Felt;
+
+use crate::{EmittedEvent, TransactionData};
 
 pub const NUM_BLOCKS: usize = 4;
 pub const TRANSACTIONS_PER_BLOCK: usize = 15;

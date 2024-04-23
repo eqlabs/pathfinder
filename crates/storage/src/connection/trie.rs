@@ -6,19 +6,21 @@ use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 
-use crate::{prelude::*, BlockId, TriePruneMode};
+use crate::prelude::*;
+use crate::{BlockId, TriePruneMode};
 
 impl Transaction<'_> {
     pub fn class_root_index(&self, block_number: BlockNumber) -> anyhow::Result<Option<u64>> {
         self.inner()
-        .query_row(
-            "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
-            params![&block_number],
-            |row| row.get::<_, Option<u64>>(0),
-        )
-        .optional()
-        .map(|x| x.flatten())
-        .map_err(Into::into)
+            .query_row(
+                "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number \
+                 DESC LIMIT 1",
+                params![&block_number],
+                |row| row.get::<_, Option<u64>>(0),
+            )
+            .optional()
+            .map(|x| x.flatten())
+            .map_err(Into::into)
     }
 
     pub fn class_root_exists(&self, block_number: BlockNumber) -> anyhow::Result<bool> {
@@ -33,14 +35,15 @@ impl Transaction<'_> {
 
     pub fn storage_root_index(&self, block_number: BlockNumber) -> anyhow::Result<Option<u64>> {
         self.inner()
-        .query_row(
-            "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
-            params![&block_number],
-            |row| row.get::<_, Option<u64>>(0),
-        )
-        .optional()
-        .map(|x| x.flatten())
-        .map_err(Into::into)
+            .query_row(
+                "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY \
+                 block_number DESC LIMIT 1",
+                params![&block_number],
+                |row| row.get::<_, Option<u64>>(0),
+            )
+            .optional()
+            .map(|x| x.flatten())
+            .map_err(Into::into)
     }
 
     pub fn storage_root_exists(&self, block_number: BlockNumber) -> anyhow::Result<bool> {
@@ -59,14 +62,15 @@ impl Transaction<'_> {
         contract: ContractAddress,
     ) -> anyhow::Result<Option<u64>> {
         self.inner()
-        .query_row(
-            "SELECT root_index FROM contract_roots WHERE contract_address = ? AND block_number <= ? ORDER BY block_number DESC LIMIT 1",
-            params![&contract, &block_number],
-            |row| row.get::<_, Option<u64>>(0),
-        )
-        .optional()
-        .map(|x| x.flatten())
-        .map_err(Into::into)
+            .query_row(
+                "SELECT root_index FROM contract_roots WHERE contract_address = ? AND \
+                 block_number <= ? ORDER BY block_number DESC LIMIT 1",
+                params![&contract, &block_number],
+                |row| row.get::<_, Option<u64>>(0),
+            )
+            .optional()
+            .map(|x| x.flatten())
+            .map_err(Into::into)
     }
 
     pub fn contract_root(
@@ -145,8 +149,11 @@ impl Transaction<'_> {
             }
         }
 
-        self.inner().execute("INSERT OR REPLACE INTO contract_state_hashes(block_number, contract_address, state_hash) VALUES(?,?,?)", 
-        params![&block_number, &contract, &state_hash])?;
+        self.inner().execute(
+            "INSERT OR REPLACE INTO contract_state_hashes(block_number, contract_address, \
+             state_hash) VALUES(?,?,?)",
+            params![&block_number, &contract, &state_hash],
+        )?;
 
         Ok(())
     }
@@ -184,13 +191,14 @@ impl Transaction<'_> {
         contract: ContractAddress,
     ) -> anyhow::Result<Option<ContractStateHash>> {
         self.inner()
-        .query_row(
-            "SELECT state_hash FROM contract_state_hashes WHERE contract_address = ? AND block_number <= ? ORDER BY block_number DESC LIMIT 1",
-            params![&contract, &block_number],
-            |row| row.get_contract_state_hash(0),
-        )
-        .optional()
-        .map_err(Into::into)
+            .query_row(
+                "SELECT state_hash FROM contract_state_hashes WHERE contract_address = ? AND \
+                 block_number <= ? ORDER BY block_number DESC LIMIT 1",
+                params![&contract, &block_number],
+                |row| row.get_contract_state_hash(0),
+            )
+            .optional()
+            .map_err(Into::into)
     }
 
     pub fn insert_storage_root(
@@ -258,7 +266,8 @@ impl Transaction<'_> {
         }
 
         self.inner().execute(
-            "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
+            "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) \
+             VALUES(?, ?, ?)",
             params![&block_number, &contract, &new_root_index],
         )?;
 
@@ -313,7 +322,8 @@ impl Transaction<'_> {
         self.trie_node_hash(index, "trie_storage")
     }
 
-    /// Prune tries by removing nodes that are no longer needed at the given block.
+    /// Prune tries by removing nodes that are no longer needed at the given
+    /// block.
     pub fn prune_tries(&self) -> anyhow::Result<()> {
         let Some(block_number) = self.block_number(BlockId::Latest)? else {
             return Ok(());
@@ -513,7 +523,8 @@ impl Transaction<'_> {
                 Node::Edge { child, .. } => {
                     to_process.push(*child);
                 }
-                // Leaves are not stored as separate nodes but are instead serialized in-line in their parents.
+                // Leaves are not stored as separate nodes but are instead serialized in-line in
+                // their parents.
                 Node::LeafEdge { .. } | Node::LeafBinary { .. } => {}
             }
         }
@@ -523,7 +534,8 @@ impl Transaction<'_> {
         // Reusable (and oversized) buffer for encoding.
         let mut buffer = [0u8; 256];
 
-        // Insert nodes in reverse to ensure children always have an assigned index for the parent to use.
+        // Insert nodes in reverse to ensure children always have an assigned index for
+        // the parent to use.
         for idx in to_insert.into_iter().rev() {
             let (hash, node) = &update.nodes_added.get(idx).context("Node index missing")?;
 
@@ -552,8 +564,9 @@ impl Transaction<'_> {
 
     /// Returns the node with the given index.
     fn trie_node(&self, index: u64, table: &'static str) -> anyhow::Result<Option<StoredNode>> {
-        // We rely on sqlite caching the statement here. Storing the statement would be nice,
-        // however that leads to &mut requirements or interior mutable work-arounds.
+        // We rely on sqlite caching the statement here. Storing the statement would be
+        // nice, however that leads to &mut requirements or interior mutable
+        // work-arounds.
         let mut stmt = self
             .inner()
             .prepare_cached(&format!("SELECT data FROM {table} WHERE idx = ?"))
@@ -573,8 +586,9 @@ impl Transaction<'_> {
 
     /// Returns the hash of the node with the given index.
     fn trie_node_hash(&self, index: u64, table: &'static str) -> anyhow::Result<Option<Felt>> {
-        // We rely on sqlite caching the statement here. Storing the statement would be nice,
-        // however that leads to &mut requirements or interior mutable work-arounds.
+        // We rely on sqlite caching the statement here. Storing the statement would be
+        // nice, however that leads to &mut requirements or interior mutable
+        // work-arounds.
         let mut stmt = self
             .inner()
             .prepare_cached(&format!("SELECT hash FROM {table} WHERE idx = ?"))
@@ -593,7 +607,8 @@ const METRIC_TRIE_NODES_ADDED: &str = "pathfinder_storage_trie_nodes_added_total
 #[derive(Default, Debug)]
 pub struct TrieUpdate {
     /// New nodes added. Note that these may contain false positives if the
-    /// mutations resulted in removing and then re-adding the same nodes within the tree.
+    /// mutations resulted in removing and then re-adding the same nodes within
+    /// the tree.
     ///
     /// The last node is the root of the trie.
     pub nodes_added: Vec<(Felt, Node)>,
@@ -655,7 +670,8 @@ enum StoredSerde {
 impl StoredNode {
     const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
 
-    /// Writes the [StoredNode] into `buffer` and returns the number of bytes written.
+    /// Writes the [StoredNode] into `buffer` and returns the number of bytes
+    /// written.
     fn encode(&self, buffer: &mut [u8]) -> Result<usize, bincode::error::EncodeError> {
         let helper = match self {
             Self::Binary { left, right } => StoredSerde::Binary {
@@ -763,8 +779,9 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
+
+    use super::*;
 
     #[test]
     fn class_roots() {

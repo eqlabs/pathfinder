@@ -1,10 +1,14 @@
 //! Starknet L2 sequencer client.
+use std::fmt::Debug;
+use std::result::Result;
+use std::time::Duration;
+
 use pathfinder_common::{BlockHash, BlockId, BlockNumber, ClassHash, StateUpdate, TransactionHash};
 use reqwest::Url;
+use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::trace::{BlockTrace, TransactionTrace};
-use starknet_gateway_types::{error::SequencerError, reply, request};
-use std::{fmt::Debug, result::Result, time::Duration};
+use starknet_gateway_types::{reply, request};
 
 mod builder;
 mod metrics;
@@ -202,10 +206,13 @@ pub struct Client {
     gateway: Url,
     /// Starknet feeder gateway URL.
     feeder_gateway: Url,
-    /// Whether __read only__ requests should be retried, defaults to __true__ for production.
-    /// Use [disable_retry_for_tests](Client::disable_retry_for_tests) to disable retry logic for all __read only__ requests when testing.
+    /// Whether __read only__ requests should be retried, defaults to __true__
+    /// for production.
+    /// Use [disable_retry_for_tests](Client::disable_retry_for_tests) to
+    /// disable retry logic for all __read only__ requests when testing.
     retry: bool,
-    /// Api key added to each request as a value for 'X-Throttling-Bypass' header.
+    /// Api key added to each request as a value for 'X-Throttling-Bypass'
+    /// header.
     api_key: Option<String>,
 }
 
@@ -260,13 +267,15 @@ impl Client {
         })
     }
 
-    /// Sets the api key to be used for each request as a value for 'X-Throttling-Bypass' header.
+    /// Sets the api key to be used for each request as a value for
+    /// 'X-Throttling-Bypass' header.
     pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
         self.api_key = api_key;
         self
     }
 
-    /// Use this method to disable retry logic for all __non write__ requests when testing.
+    /// Use this method to disable retry logic for all __non write__ requests
+    /// when testing.
     pub fn disable_retry_for_tests(self) -> Self {
         Self {
             retry: false,
@@ -380,8 +389,9 @@ impl GatewayApi for Client {
     ///
     /// Available since Starknet 0.12.2.
     ///
-    /// This is useful because using fetching both in a single request guarantees the consistency
-    /// of the block and state update information for the pending block.
+    /// This is useful because using fetching both in a single request
+    /// guarantees the consistency of the block and state update information
+    /// for the pending block.
     #[tracing::instrument(skip(self))]
     async fn state_update_with_block(
         &self,
@@ -513,17 +523,21 @@ impl GatewayApi for Client {
 pub mod test_utils {
     use std::time::Duration;
 
-    use super::Client;
     use starknet_gateway_types::error::KnownStarknetErrorCode;
+
+    use super::Client;
 
     pub const GATEWAY_TIMEOUT: Duration = Duration::from_secs(5);
     /// Helper function which allows for easy creation of a response tuple
-    /// that contains a [StarknetError](starknet_gateway_types::error::StarknetError) for a given [KnownStarknetErrorCode].
+    /// that contains a
+    /// [StarknetError](starknet_gateway_types::error::StarknetError) for a
+    /// given [KnownStarknetErrorCode].
     ///
     /// The response tuple can then be used by the [setup] function.
     ///
     /// The `message` field is always an empty string.
-    /// The HTTP status code for this response is always `500` (`Internal Server Error`).
+    /// The HTTP status code for this response is always `500` (`Internal Server
+    /// Error`).
     pub fn response_from(code: KnownStarknetErrorCode) -> (String, u16) {
         use starknet_gateway_types::error::StarknetError;
 
@@ -595,17 +609,18 @@ pub mod test_utils {
 
     /// # Usage
     ///
-    /// Use to initialize a [Client] test case. The function does one of the following things:
-    /// - initializes a local mock server instance with the given expected
-    ///   url paths & queries and respective fixtures for replies
+    /// Use to initialize a [Client] test case. The function does one of the
+    /// following things:
+    /// - initializes a local mock server instance with the given expected url
+    ///   paths & queries and respective fixtures for replies
     /// - creates a [Client] instance which connects to the mock server
-    /// - replies for a particular path & query are consumed one at a time until exhausted
+    /// - replies for a particular path & query are consumed one at a time until
+    ///   exhausted
     ///
     /// # Panics
     ///
-    /// Panics if replies for a particular path & query have been exhausted and the
-    /// client still attempts to query the very same path.
-    ///
+    /// Panics if replies for a particular path & query have been exhausted and
+    /// the client still attempts to query the very same path.
     pub fn setup_with_varied_responses<const M: usize, const N: usize>(
         url_paths_queries_and_response_fixtures: [(String, [(String, u16); M]); N],
     ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
@@ -674,7 +689,6 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use super::{test_utils::*, *};
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
@@ -683,10 +697,14 @@ mod tests {
     use starknet_gateway_types::error::KnownStarknetErrorCode;
     use starknet_gateway_types::request::add_transaction::ContractDefinition;
 
+    use super::test_utils::*;
+    use super::*;
+
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
         use std::convert::Infallible;
+
+        use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
         use warp::Filter;
 
         let filter = warp::header::optional("user-agent").and_then(
@@ -720,8 +738,10 @@ mod tests {
     }
 
     mod transaction {
-        use super::{reply::Status, *};
         use pretty_assertions_sorted::assert_eq;
+
+        use super::reply::Status;
+        use super::*;
 
         #[tokio::test]
         async fn invalid_hash() {
@@ -755,13 +775,13 @@ mod tests {
     }
 
     mod add_transaction {
-        use super::*;
-        use pathfinder_common::ContractAddress;
-        use starknet_gateway_types::request::{
-            add_transaction::CairoContractDefinition,
-            contract::{EntryPointType, SelectorAndOffset},
-        };
         use std::collections::HashMap;
+
+        use pathfinder_common::ContractAddress;
+        use starknet_gateway_types::request::add_transaction::CairoContractDefinition;
+        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
+
+        use super::*;
 
         mod invoke {
             use super::*;
@@ -857,9 +877,8 @@ mod tests {
         }
 
         mod declare {
-            use starknet_gateway_types::request::{
-                add_transaction::SierraContractDefinition, contract::SelectorAndFunctionIndex,
-            };
+            use starknet_gateway_types::request::add_transaction::SierraContractDefinition;
+            use starknet_gateway_types::request::contract::SelectorAndFunctionIndex;
 
             use super::*;
 
@@ -997,13 +1016,15 @@ mod tests {
             }
         }
 
-        /// Return a contract definition that was dumped from a `starknet deploy`.
+        /// Return a contract definition that was dumped from a `starknet
+        /// deploy`.
         fn cairo_contract_class_from_fixture() -> CairoContractDefinition {
             let json = starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
             let json: serde_json::Value = serde_json::from_slice(json).unwrap();
             let program = &json["program"];
 
-            // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
+            // Program is expected to be a gzip-compressed then base64 encoded
+            // representation of the JSON.
             let mut gzip_encoder =
                 flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
             serde_json::to_writer(&mut gzip_encoder, program).unwrap();
@@ -1036,10 +1057,13 @@ mod tests {
         }
 
         mod deploy_token {
-            use super::*;
-            use http::StatusCode;
             use std::collections::HashMap;
-            use warp::{http::Response, Filter};
+
+            use http::StatusCode;
+            use warp::http::Response;
+            use warp::Filter;
+
+            use super::*;
 
             const EXPECTED_TOKEN: &str = "magic token value";
             const EXPECTED_ERROR_MESSAGE: &str = "error message";
@@ -1156,7 +1180,9 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn success_by_hash() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_block?blockHash=0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7&headerOnly=true",
+                "/feeder_gateway/get_block?\
+                 blockHash=0x6a2755817d86ade81ed0fea2eaf23d94264e2f25aff43ecb2e5000bf3ec28b7&\
+                 headerOnly=true",
                 (REPLY.to_owned(), 200),
             )]);
 

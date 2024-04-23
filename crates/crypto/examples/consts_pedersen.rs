@@ -1,11 +1,10 @@
 //! This example generates the constants for the Pedersen hash function.
 //!
-//! It uses the standard memory-time trade-off for the square-and-double algorithm, but preprocess
-//! an arbitrary number of bits rather than just one.
-use std::env;
+//! It uses the standard memory-time trade-off for the square-and-double
+//! algorithm, but preprocess an arbitrary number of bits rather than just one.
 use std::fmt::Write;
-use std::fs;
 use std::path::Path;
+use std::{env, fs};
 
 use pathfinder_crypto::algebra::curve::*;
 use pathfinder_crypto::hash::pedersen::*;

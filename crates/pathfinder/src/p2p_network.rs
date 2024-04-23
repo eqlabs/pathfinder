@@ -1,6 +1,7 @@
 use anyhow::Context;
 use p2p::client::peer_agnostic;
-use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr};
+use p2p::libp2p::identity::Keypair;
+use p2p::libp2p::multiaddr::Multiaddr;
 use p2p::{HeadRx, HeadTx};
 use p2p_proto::header::BlockHeadersResponse;
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
@@ -10,7 +11,12 @@ use tracing::Instrument;
 mod sync_handlers;
 
 use sync_handlers::{
-    get_classes, get_events, get_headers, get_receipts, get_state_diffs, get_transactions,
+    get_classes,
+    get_events,
+    get_headers,
+    get_receipts,
+    get_state_diffs,
+    get_transactions,
 };
 
 // Silence clippy

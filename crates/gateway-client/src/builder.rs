@@ -1,17 +1,21 @@
 //! Provides a builder API for creating and sending Sequencer REST requests.
 //!
-//! This builder utilises a type state builder pattern with generics to only allow valid operations at each stage of the build process.
-//! Each stage is consumed to generate the next stage and the final stage executes the query.
+//! This builder utilises a type state builder pattern with generics to only
+//! allow valid operations at each stage of the build process. Each stage is
+//! consumed to generate the next stage and the final stage executes the query.
 //!
 //! Here is an overview of the four builder stages.
 //!
-//!   1. [Init](stage::Init) which provides the entry point of the [builder](Request).
+//!   1. [Init](stage::Init) which provides the entry point of the
+//!      [builder](Request).
 //!   2. [Method](stage::Method) where you select the REST API method.
 //!   3. [Params](stage::Params) where you select the retry behavior.
-//!   4. [Final](stage::Final) where you select the REST operation type, which is then executed.
-use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
+//!   4. [Final](stage::Final) where you select the REST operation type, which
+//!      is then executed.
 use pathfinder_common::{BlockId, ClassHash, TransactionHash};
 use starknet_gateway_types::error::SequencerError;
+
+use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
 
 const X_THROTTLING_BYPASS: &str = "X-Throttling-Bypass";
 
@@ -43,7 +47,8 @@ pub mod stage {
     /// - [with_class_hash](super::Request::with_class_hash)
     /// - [with_optional_token](super::Request::with_optional_token)
     /// - [with_transaction_hash](super::Request::with_transaction_hash)
-    /// - [add_param](super::Request::add_param) (allows adding custom (name, value) parameter)
+    /// - [add_param](super::Request::add_param) (allows adding custom (name,
+    ///   value) parameter)
     ///
     /// and then specify the [retry behavior](super::Request::with_retry).
     pub struct Params {
@@ -220,7 +225,8 @@ impl<'a> Request<'a, stage::Params> {
 }
 
 impl<'a> Request<'a, stage::Final> {
-    /// Sends the Sequencer request as a REST `GET` operation and parses the response into `T`.
+    /// Sends the Sequencer request as a REST `GET` operation and parses the
+    /// response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
     where
         T: serde::de::DeserializeOwned,
@@ -260,7 +266,8 @@ impl<'a> Request<'a, stage::Final> {
         }
     }
 
-    /// Sends the Sequencer request as a REST `GET` operation and returns the response's bytes.
+    /// Sends the Sequencer request as a REST `GET` operation and returns the
+    /// response's bytes.
     pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
         async fn get_as_bytes_inner(
             url: reqwest::Url,
@@ -299,10 +306,11 @@ impl<'a> Request<'a, stage::Final> {
         }
     }
 
-    /// Sends the Sequencer request as a REST `POST` operation, in addition to the specified
-    /// JSON body. The response is parsed as type `T`.
+    /// Sends the Sequencer request as a REST `POST` operation, in addition to
+    /// the specified JSON body. The response is parsed as type `T`.
     ///
-    /// Can specify an optional timeout which will override the client's timeout.
+    /// Can specify an optional timeout which will override the client's
+    /// timeout.
     pub async fn post_with_json<T, J>(
         self,
         json: &J,
@@ -402,14 +410,16 @@ async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, Seq
         };
         return Err(error);
     }
-    // Status codes 401..499 and 501..599 are mapped to SequencerError::TransportError
+    // Status codes 401..499 and 501..599 are mapped to
+    // SequencerError::TransportError
     response.error_for_status_ref().map(|_| ())?;
     Ok(response)
 }
 
 pub trait RequestState {}
 
-/// Wrapper function to allow retrying sequencer queries in an exponential manner.
+/// Wrapper function to allow retrying sequencer queries in an exponential
+/// manner.
 async fn retry0<T, Fut, FutureFactory, Ret>(
     future_factory: FutureFactory,
     retry_condition: Ret,
@@ -419,8 +429,9 @@ where
     FutureFactory: FnMut() -> Fut,
     Ret: FnMut(&SequencerError) -> bool,
 {
-    use pathfinder_retry::Retry;
     use std::num::NonZeroU64;
+
+    use pathfinder_retry::Retry;
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
         .factor(NonZeroU64::new(1).unwrap())
@@ -474,13 +485,18 @@ fn retry_condition(e: &SequencerError) -> bool {
 #[cfg(test)]
 mod tests {
     mod retry {
+        use std::collections::VecDeque;
+        use std::convert::Infallible;
+        use std::net::SocketAddr;
+        use std::sync::Arc;
+        use std::time::Duration;
+
         use assert_matches::assert_matches;
-        use http::{response::Builder, StatusCode};
+        use http::response::Builder;
+        use http::StatusCode;
         use pretty_assertions_sorted::assert_eq;
-        use std::{
-            collections::VecDeque, convert::Infallible, net::SocketAddr, sync::Arc, time::Duration,
-        };
-        use tokio::{sync::Mutex, task::JoinHandle};
+        use tokio::sync::Mutex;
+        use tokio::task::JoinHandle;
         use warp::Filter;
 
         use crate::builder::{retry0, retry_condition};
@@ -551,8 +567,9 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn stop_on_fatal() {
-            use crate::builder;
             use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
+
+            use crate::builder;
 
             tokio::time::pause();
 
@@ -590,9 +607,9 @@ mod tests {
 
         #[tokio::test(flavor = "current_thread")]
         async fn request_timeout() {
-            use crate::builder;
-
             use std::sync::atomic::{AtomicUsize, Ordering};
+
+            use crate::builder;
 
             tokio::time::pause();
 
@@ -632,9 +649,11 @@ mod tests {
     }
 
     mod invalid_starknet_error_variant {
-        use crate::{test_utils::GATEWAY_TIMEOUT, Client, GatewayApi};
         use http::response::Builder;
         use warp::Filter;
+
+        use crate::test_utils::GATEWAY_TIMEOUT;
+        use crate::{Client, GatewayApi};
 
         fn server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
             let any = warp::any().then(|| async { Builder::new().status(500).body("whatever") });
@@ -663,10 +682,13 @@ mod tests {
     }
 
     mod api_key_is_set_when_configured {
-        use crate::{test_utils::GATEWAY_TIMEOUT, Client};
         use fake::{Fake, Faker};
-        use httpmock::{prelude::*, Mock};
+        use httpmock::prelude::*;
+        use httpmock::Mock;
         use serde_json::json;
+
+        use crate::test_utils::GATEWAY_TIMEOUT;
+        use crate::Client;
 
         async fn setup_with_fake_api_key(server: &MockServer) -> (Mock<'_>, Client) {
             let api_key = Faker.fake::<String>();

@@ -1,14 +1,20 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use fake::Dummy;
-use pathfinder_crypto::{
-    hash::{poseidon_hash_many, PoseidonHasher},
-    MontFelt,
-};
+use pathfinder_crypto::hash::{poseidon_hash_many, PoseidonHasher};
+use pathfinder_crypto::MontFelt;
 
 use crate::{
-    BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
-    StateDiffCommitment, StorageAddress, StorageValue,
+    BlockHash,
+    CasmHash,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    SierraHash,
+    StateCommitment,
+    StateDiffCommitment,
+    StorageAddress,
+    StorageValue,
 };
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Dummy)]
@@ -46,7 +52,8 @@ pub struct ContractUpdates {
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
-    /// The class associated with this update as the result of either a deploy or class replacement transaction.
+    /// The class associated with this update as the result of either a deploy
+    /// or class replacement transaction.
     pub class: Option<ContractClassUpdate>,
     pub nonce: Option<ContractNonce>,
 }
@@ -177,10 +184,12 @@ impl StateUpdate {
                 .sum::<usize>()
     }
 
-    /// Returns the contract's new [nonce](ContractNonce) value if it exists in this state update.
+    /// Returns the contract's new [nonce](ContractNonce) value if it exists in
+    /// this state update.
     ///
-    /// Note that this will return [Some(ContractNonce::ZERO)] for a contract that has been deployed,
-    /// but without an explicit nonce update. This is consistent with expectations.
+    /// Note that this will return [Some(ContractNonce::ZERO)] for a contract
+    /// that has been deployed, but without an explicit nonce update. This
+    /// is consistent with expectations.
     pub fn contract_nonce(&self, contract: ContractAddress) -> Option<ContractNonce> {
         self.contract_updates.get(&contract).and_then(|x| {
             x.nonce.or_else(|| {
@@ -196,14 +205,16 @@ impl StateUpdate {
         })
     }
 
-    /// A contract's new class hash, if it was deployed or replaced in this state update.
+    /// A contract's new class hash, if it was deployed or replaced in this
+    /// state update.
     pub fn contract_class(&self, contract: ContractAddress) -> Option<ClassHash> {
         self.contract_updates
             .get(&contract)
             .and_then(|x| x.class.as_ref().map(|x| x.class_hash()))
     }
 
-    /// Returns true if the class was declared as either a cairo 0 or sierra class.
+    /// Returns true if the class was declared as either a cairo 0 or sierra
+    /// class.
     pub fn class_is_declared(&self, class: ClassHash) -> bool {
         if self.declared_cairo_classes.contains(&class) {
             return true;
@@ -215,8 +226,8 @@ impl StateUpdate {
 
     /// The new storage value if it exists in this state update.
     ///
-    /// Note that this will also return the default zero value for a contract that has been deployed,
-    /// but without an explicit storage update.
+    /// Note that this will also return the default zero value for a contract
+    /// that has been deployed, but without an explicit storage update.
     pub fn storage_value(
         &self,
         contract: ContractAddress,
@@ -231,8 +242,8 @@ impl StateUpdate {
                     .find_map(|(k, v)| (k == &key).then_some(*v))
                     .or_else(|| {
                         update.class.as_ref().and_then(|c| match c {
-                            // If the contract has been deployed in pending but the key has not been set yet
-                            // return the default value of zero.
+                            // If the contract has been deployed in pending but the key has not been
+                            // set yet return the default value of zero.
                             ContractClassUpdate::Deploy(_) => Some(StorageValue::ZERO),
                             ContractClassUpdate::Replace(_) => None,
                         })

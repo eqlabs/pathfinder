@@ -1,10 +1,9 @@
 use pathfinder_common::TransactionHash;
 
-use crate::{context::RpcContext, error::TraceError};
-
-use crate::v05::method::trace_transaction as v05;
-
 use super::simulate_transactions::dto::TransactionTrace;
+use crate::context::RpcContext;
+use crate::error::TraceError;
+use crate::v05::method::trace_transaction as v05;
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(deny_unknown_fields)]

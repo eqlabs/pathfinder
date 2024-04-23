@@ -8,11 +8,12 @@ use starknet_gateway_types::reply::{Block, GasPrices, Status};
 
 /// Verify block hashes in a pathfinder database.
 ///
-/// Iterates over all blocks in the database and verifies if the computed block hash matches
-/// values we store for the block.
+/// Iterates over all blocks in the database and verifies if the computed block
+/// hash matches values we store for the block.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example verify_block_hashes mainnet ./mainnet.sqlite`
+/// `cargo run --release -p pathfinder --example verify_block_hashes mainnet
+/// ./mainnet.sqlite`
 fn main() -> anyhow::Result<()> {
     let chain_name = std::env::args().nth(1).unwrap();
     let (chain, chain_id) = match chain_name.as_str() {

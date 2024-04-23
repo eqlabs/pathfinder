@@ -3,11 +3,13 @@ use std::sync::Arc;
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
-use tokio::{sync::watch, time::Instant};
+use tokio::sync::watch;
+use tokio::time::Instant;
 
 use crate::state::sync::SyncEvent;
 
-/// Emits new pending data events while the current block is close to the latest block.
+/// Emits new pending data events while the current block is close to the latest
+/// block.
 pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: S,
@@ -87,22 +89,31 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
 mod tests {
     use std::sync::Arc;
 
-    use crate::state::sync::SyncEvent;
-
-    use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::transaction::{L1HandlerTransaction, Transaction, TransactionVariant};
     use pathfinder_common::{
-        BlockHash, BlockNumber, BlockTimestamp, GasPrice, StarknetVersion, StateCommitment,
+        BlockHash,
+        BlockNumber,
+        BlockTimestamp,
+        GasPrice,
+        StarknetVersion,
+        StateCommitment,
         StateUpdate,
     };
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{
-        Block, GasPrices, L1DataAvailabilityMode, PendingBlock, Status,
+        Block,
+        GasPrices,
+        L1DataAvailabilityMode,
+        PendingBlock,
+        Status,
     };
     use tokio::sync::watch;
+
+    use super::poll_pending;
+    use crate::state::sync::SyncEvent;
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
@@ -158,8 +169,8 @@ mod tests {
         };
     );
 
-    /// Arbitrary timeout for receiving emits on the tokio channel. Otherwise failing tests will
-    /// need to timeout naturally which may be forever.
+    /// Arbitrary timeout for receiving emits on the tokio channel. Otherwise
+    /// failing tests will need to timeout naturally which may be forever.
     const TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
     #[tokio::test]

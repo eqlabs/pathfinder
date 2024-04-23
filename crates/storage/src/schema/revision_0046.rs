@@ -1,10 +1,11 @@
 use std::time::{Duration, Instant};
 
-use crate::{bloom::BloomFilter, params::RowExt};
-
 use anyhow::Context;
 use pathfinder_common::EventKey;
 use rusqlite::params;
+
+use crate::bloom::BloomFilter;
+use crate::params::RowExt;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(

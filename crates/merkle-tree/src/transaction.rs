@@ -1,14 +1,16 @@
 use bitvec::view::BitView;
+use pathfinder_common::hash::PedersenHash;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::StoredNode;
 
 use crate::tree::MerkleTree;
-use pathfinder_common::hash::PedersenHash;
 
-/// A (Patricia Merkle tree)[MerkleTree] which can be used to calculate transaction or event commitments.
+/// A (Patricia Merkle tree)[MerkleTree] which can be used to calculate
+/// transaction or event commitments.
 ///
-/// The tree has a height of 64 bits and is ephemeral -- it has no persistent storage. This is sensible
-/// as each event or transaction tree is confined to a single starknet block i.e. each block a new event / transaction
+/// The tree has a height of 64 bits and is ephemeral -- it has no persistent
+/// storage. This is sensible as each event or transaction tree is confined to a
+/// single starknet block i.e. each block a new event / transaction
 /// tree is formed from an empty one.
 ///
 /// More information about these commitments can be found in the Starknet [documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/header/).
@@ -74,7 +76,8 @@ mod tests {
         }
 
         // produced by the cairo-lang Python implementation:
-        // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64, ffc=ffc))))`
+        // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64,
+        // ffc=ffc))))`
         let expected_root_hash =
             felt!("0x1a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
         let computed_root_hash = tree.commit().unwrap();

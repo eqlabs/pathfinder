@@ -1,9 +1,9 @@
-use crate::context::RpcContext;
-use crate::v02::types::reply::BlockStatus;
-
 use anyhow::Context;
 use pathfinder_common::BlockId;
 use serde::Deserialize;
+
+use crate::context::RpcContext;
+use crate::v02::types::reply::BlockStatus;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -70,9 +70,10 @@ pub async fn get_block_with_tx_hashes(
 }
 
 mod types {
-    use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{BlockHeader, TransactionHash};
     use serde::Serialize;
+
+    use crate::v02::types::reply::BlockStatus;
 
     /// L2 Block as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -96,7 +97,8 @@ mod types {
             }
         }
 
-        /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
+        /// Constructs [Block] from [sequencer's block
+        /// representation](starknet_gateway_types::reply::Block)
         pub fn from_sequencer_pending(
             pending: starknet_gateway_types::reply::PendingBlock,
         ) -> Self {
@@ -111,10 +113,11 @@ mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
     use serde_json::json;
+
+    use super::*;
 
     #[rstest::rstest]
     #[case::pending_by_position(json!(["pending"]), BlockId::Pending)]

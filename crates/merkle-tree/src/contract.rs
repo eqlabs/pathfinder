@@ -1,27 +1,36 @@
-//! Contains the [StorageCommitmentTree] and [ContractsStorageTree] trees, which combined
-//! store the total Starknet storage state.
+//! Contains the [StorageCommitmentTree] and [ContractsStorageTree] trees, which
+//! combined store the total Starknet storage state.
 //!
-//! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
+//! These are abstractions built-on the [Binary Merkle-Patricia
+//! Tree](MerkleTree).
 
-use crate::{
-    merkle_node::InternalNode,
-    tree::{MerkleTree, Visit},
-};
+use std::ops::ControlFlow;
+
 use anyhow::Context;
-use bitvec::{prelude::Msb0, slice::BitSlice};
+use bitvec::prelude::Msb0;
+use bitvec::slice::BitSlice;
 use pathfinder_common::hash::PedersenHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    BlockNumber, ContractAddress, ContractRoot, ContractStateHash, StorageAddress,
-    StorageCommitment, StorageValue,
+    BlockNumber,
+    ContractAddress,
+    ContractRoot,
+    ContractStateHash,
+    StorageAddress,
+    StorageCommitment,
+    StorageValue,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
-use std::ops::ControlFlow;
 
-/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to a Starknet contract's storage.
+use crate::merkle_node::InternalNode;
+use crate::tree::{MerkleTree, Visit};
+
+/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to a
+/// Starknet contract's storage.
 ///
-/// It maps a contract's [storage addresses](StorageAddress) to their [values](StorageValue).
+/// It maps a contract's [storage addresses](StorageAddress) to their
+/// [values](StorageValue).
 ///
 /// Tree data is persisted by a sqlite table 'tree_contracts'.
 pub struct ContractsStorageTree<'tx> {
@@ -97,8 +106,8 @@ impl<'tx> ContractsStorageTree<'tx> {
         self.tree.set(&self.storage, key, value.0)
     }
 
-    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
-    /// any potentially newly created nodes.
+    /// Commits the changes and calculates the new node hashes. Returns the new
+    /// commitment and any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(ContractRoot, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
         let commitment = ContractRoot(update.root_commitment);
@@ -114,9 +123,11 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 }
 
-/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to all of Starknet's storage.
+/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to all of
+/// Starknet's storage.
 ///
-/// It maps each contract's [address](ContractAddress) to it's [state hash](ContractStateHash).
+/// It maps each contract's [address](ContractAddress) to it's [state
+/// hash](ContractStateHash).
 ///
 /// Tree data is persisted by a sqlite table 'tree_global'.
 pub struct StorageCommitmentTree<'tx> {
@@ -170,8 +181,8 @@ impl<'tx> StorageCommitmentTree<'tx> {
         Ok(value.map(ContractStateHash))
     }
 
-    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
-    /// any potentially newly created nodes.
+    /// Commits the changes and calculates the new node hashes. Returns the new
+    /// commitment and any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(StorageCommitment, TrieUpdate)> {
         let update = self.tree.commit(&self.storage)?;
         let commitment = StorageCommitment(update.root_commitment);

@@ -10,7 +10,8 @@ use tokio::task::spawn_blocking;
 use super::error::SyncError;
 use crate::state::block_hash::calculate_event_commitment;
 
-/// Returns the first block number whose events are missing in storage, counting from genesis
+/// Returns the first block number whose events are missing in storage, counting
+/// from genesis
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,

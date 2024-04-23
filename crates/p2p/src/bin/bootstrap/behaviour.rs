@@ -1,16 +1,10 @@
 use std::time::Duration;
 
-use libp2p::autonat;
-use libp2p::dcutr;
-use libp2p::identify;
-use libp2p::identity;
-use libp2p::kad::{self, store::MemoryStore};
-use libp2p::ping;
-use libp2p::relay;
+use libp2p::kad::store::MemoryStore;
+use libp2p::kad::{self};
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::StreamProtocol;
-use p2p::kademlia_protocol_name;
-use p2p::IDENTIFY_PROTOCOL_NAME;
+use libp2p::{autonat, dcutr, identify, identity, ping, relay, StreamProtocol};
+use p2p::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
 use pathfinder_common::ChainId;
 
 #[derive(NetworkBehaviour)]
@@ -32,8 +26,8 @@ impl BootstrapBehaviour {
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
         kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
-        // FIXME: this make sure that the DHT we're implementing is incompatible with the "default" IPFS
-        // DHT from libp2p.
+        // FIXME: this make sure that the DHT we're implementing is incompatible with
+        // the "default" IPFS DHT from libp2p.
         kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
             kademlia_protocol_name(chain_id),
         )

@@ -1,6 +1,7 @@
-use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::BlockId;
+
+use crate::context::RpcContext;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -70,8 +71,9 @@ impl crate::dto::serialize::SerializeForVersion for Output {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
+
+    use super::*;
 
     #[rstest::rstest]
     #[case::latest(BlockId::Latest, 5)]

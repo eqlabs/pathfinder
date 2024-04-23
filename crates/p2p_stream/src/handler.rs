@@ -1,5 +1,5 @@
-// Equilibrium Labs: This work is an extension of libp2p's request-response protocol,
-// hence the original copyright notice is included below.
+// Equilibrium Labs: This work is an extension of libp2p's request-response
+// protocol, hence the original copyright notice is included below.
 //
 //
 // Copyright 2020 Parity Technologies (UK) Ltd.
@@ -24,31 +24,33 @@
 
 pub(crate) mod protocol;
 
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::Duration;
+use std::{fmt, io};
+
+use futures::channel::mpsc;
+use futures::prelude::*;
+use libp2p::swarm::handler::{
+    ConnectionEvent,
+    ConnectionHandler,
+    ConnectionHandlerEvent,
+    DialUpgradeError,
+    FullyNegotiatedInbound,
+    FullyNegotiatedOutbound,
+    ListenUpgradeError,
+    StreamUpgradeError,
+};
+use libp2p::swarm::SubstreamProtocol;
+
 use crate::codec::Codec;
 use crate::handler::protocol::Protocol;
 use crate::{InboundRequestId, OutboundRequestId, EMPTY_QUEUE_SHRINK_THRESHOLD};
 
-use futures::{channel::mpsc, prelude::*};
-use libp2p::swarm::handler::{
-    ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound, FullyNegotiatedOutbound,
-    ListenUpgradeError,
-};
-use libp2p::swarm::{
-    handler::{ConnectionHandler, ConnectionHandlerEvent, StreamUpgradeError},
-    SubstreamProtocol,
-};
-use std::{
-    collections::VecDeque,
-    fmt, io,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    task::{Context, Poll},
-    time::Duration,
-};
-
-/// A connection handler for a request/streaming-response [`Behaviour`](super::Behaviour) protocol.
+/// A connection handler for a request/streaming-response
+/// [`Behaviour`](super::Behaviour) protocol.
 pub struct Handler<TCodec>
 where
     TCodec: Codec,
@@ -59,7 +61,8 @@ where
     codec: TCodec,
     /// Queue of events to emit in `poll()`.
     pending_events: VecDeque<Event<TCodec>>,
-    /// Outbound upgrades waiting to be emitted as an `OutboundSubstreamRequest`.
+    /// Outbound upgrades waiting to be emitted as an
+    /// `OutboundSubstreamRequest`.
     pending_outbound: VecDeque<OutboundMessage<TCodec>>,
 
     requested_outbound: VecDeque<OutboundMessage<TCodec>>,
@@ -69,13 +72,15 @@ where
         TCodec::Request,
         mpsc::Sender<TCodec::Response>,
     )>,
-    /// The [`mpsc::Sender`] for the above receiver. Cloned for each inbound request.
+    /// The [`mpsc::Sender`] for the above receiver. Cloned for each inbound
+    /// request.
     inbound_sender: mpsc::Sender<(
         InboundRequestId,
         TCodec::Request,
         mpsc::Sender<TCodec::Response>,
     )>,
-    /// A channel for signalling that an outbound request has been sent. Cloned for each outbound request.
+    /// A channel for signalling that an outbound request has been sent. Cloned
+    /// for each outbound request.
     outbound_sender: mpsc::Sender<(OutboundRequestId, mpsc::Receiver<TCodec::Response>)>,
     /// The [`mpsc::Receiver`] for the above sender.
     outbound_receiver: mpsc::Receiver<(OutboundRequestId, mpsc::Receiver<TCodec::Response>)>,

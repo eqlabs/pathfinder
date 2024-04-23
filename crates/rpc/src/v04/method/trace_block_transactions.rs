@@ -2,8 +2,8 @@ use pathfinder_common::{BlockHash, TransactionHash};
 use serde::{Deserialize, Serialize};
 
 use super::simulate_transactions::dto::TransactionTrace;
-
-use crate::{context::RpcContext, v05::method::trace_block_transactions as v05};
+use crate::context::RpcContext;
+use crate::v05::method::trace_block_transactions as v05;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]

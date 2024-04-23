@@ -1,16 +1,17 @@
 //! _Low level_ client for p2p interaction. Caller has to manage peers manually.
-//! For syncing use [`crate::client::peer_agnostic::Client`] instead, which manages peers "under the hood".
+//! For syncing use [`crate::client::peer_agnostic::Client`] instead, which
+//! manages peers "under the hood".
 use std::collections::HashSet;
 
 use anyhow::Context;
 use futures::channel::mpsc::Receiver as ResponseReceiver;
-use libp2p::{gossipsub::IdentTopic, Multiaddr, PeerId};
+use libp2p::gossipsub::IdentTopic;
+use libp2p::{Multiaddr, PeerId};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
-use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
-
 use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use tokio::sync::{mpsc, oneshot};
 

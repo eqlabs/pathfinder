@@ -3,8 +3,9 @@ use crate::MontFelt;
 impl MontFelt {
     /// Computes the modular inverse modulo p
     ///
-    /// Based on arkworks which is based on "Efficient Software-Implementations of Finite Fields
-    /// with Applications to Cryptography" by Guajardo et al. (2006, alg. 16).
+    /// Based on arkworks which is based on "Efficient Software-Implementations
+    /// of Finite Fields with Applications to Cryptography" by Guajardo et
+    /// al. (2006, alg. 16).
     pub fn inverse(&self) -> Option<MontFelt> {
         if self.is_zero() {
             None

@@ -17,8 +17,8 @@ impl From<crate::v05::method::call::CallError> for CallError {
     }
 }
 
-// The implementation is the same as for v05 -- the only difference is that we have to map
-// ContractErrorV05 to an internal error.
+// The implementation is the same as for v05 -- the only difference is that we
+// have to map ContractErrorV05 to an internal error.
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
     crate::v05::method::call::call(context, input)
         .await

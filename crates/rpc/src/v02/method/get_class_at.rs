@@ -1,7 +1,8 @@
-use crate::context::RpcContext;
-use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress};
+
+use crate::context::RpcContext;
+use crate::v02::types::ContractClass;
 
 crate::error::generate_rpc_error_subset!(GetClassAtError: BlockNotFound, ContractNotFound);
 
@@ -72,14 +73,15 @@ pub async fn get_class_at(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use assert_matches::assert_matches;
-
     use pathfinder_common::macro_prelude::*;
 
+    use super::*;
+
     mod parsing {
-        use super::*;
         use serde_json::json;
+
+        use super::*;
 
         #[test]
         fn positional_args() {
