@@ -297,7 +297,8 @@ mod sealed {
     ///
     /// By convention, the lack of a type is equivalent to the unit tuple (). So
     /// if we want to target functions with no input params, no input state
-    /// and an output: ```
+    /// and an output:
+    /// ```rust
     /// Sealed<I = (), S = (), O = ((), Output)>
     /// ```
     pub trait Sealed<I, O, S> {
