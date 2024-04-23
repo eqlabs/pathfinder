@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.12.0] - 2024-04-23
+
 ### Added
 
 - Pathfinder now supports storing only the latest state of the Merkle tries. This can be enabled by specifying '--storage.prune-state-tries true' on the command line when creating a new database.
@@ -16,10 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pruned merkle tries take significantly less disk space than full ones.
   - Pathfinder stores this setting in its database and defaults to using that.
   - Once set pruning cannot be enabled/disabled for non-empty databases.
+  - Pruning achieves a ~75% reduction in overall storage compared to archive. 
 
 ### Removed
 
 - Support for Goerli testnet
+
+### Changed
+
+- Improved compactness of state diff and transaction data, resulting in noticeable storage savings.
+  - Roughly a 20% reduction for a state trie archive node, or a 45% reduction for a pruned variant.
 
 ## [0.11.6] - 2024-04-10
 

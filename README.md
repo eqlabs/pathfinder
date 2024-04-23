@@ -175,10 +175,14 @@ This produces uncompressed database file `testnet-sepolia.sqlite` that can then 
 
 ### Available database snapshots
 
-| Network         | Block  | Pathfinder version required | Filename                                  | Download URL                                                                                            | Compressed size | SHA2-256 checksum of compressed file                               |
-| --------------- | ------ | --------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| Sepolia testnet | 47191  | >= 0.11.0                   | `sepolia-testnet_0.11.0_47191.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.11.0_47191.sqlite.zst) | 1.91 GB         | `82704d8382bac460550c3d31dd3c1f4397c4c43a90fb0e38110b0cd07cd94831` |
-| mainnet         | 595424 | >= 0.11.0                   | `mainnet_0.11.0_595424.sqlite.zst`        | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0_595424.sqlite.zst)        | 469.63 GB       | `e42bae71c97c1a403116a7362f15f5180b19e8cc647efb1357f1ae8924dce654` |
+| Network         | Block  | Pathfinder version required | Mode    | Filename                                          | Download URL                                                                                                    | Compressed size | SHA2-256 checksum of compressed file                               |
+| --------------- | ------ | --------------------------- | ------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
+| Sepolia testnet | 47191  | >= 0.11.0                   | archive | `sepolia-testnet_0.11.0_47191.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.11.0_47191.sqlite.zst)         | 1.91 GB         | `82704d8382bac460550c3d31dd3c1f4397c4c43a90fb0e38110b0cd07cd94831` |
+| Sepolia testnet | 61322  | >= 0.12.0                   | archive | `sepolia-testnet_0.12.0_61322_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.12.0_61322_archive.sqlite.zst) | 3.56 GB         | `d25aa259ce62bb4b2e3ff49d243217799c99cd8b7e594a7bb24d4c091d980828` |
+| Sepolia testnet | 61322  | >= 0.12.0                   | pruned  | `sepolia-testnet_0.12.0_61322_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.12.0_61322_pruned.sqlite.zst)  | 1.26 GB         | `f2da766a8f8be93170997b3e5f268c0146aec1147c8ec569d0d6fdd5cd9bc3f1` |
+| Mainnet         | 595424 | >= 0.11.0                   | archive | `mainnet_0.11.0_595424.sqlite.zst`                | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0_595424.sqlite.zst)                | 469.63 GB       | `e42bae71c97c1a403116a7362f15f5180b19e8cc647efb1357f1ae8924dce654` |
+| Mainnet         | 635054 | >= 0.12.0                   | archive | `mainnet_0.12.0_635054_archive.sqlite.zst`        | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.12.0_635054_archive.sqlite.zst)        | 383.86 GB       | `d401902684cecaae4a88d6c0219498a0da1bbdb3334ea5b91e3a16212db9ee43` |
+| Mainnet         | 635054 | >= 0.12.0                   | pruned  | `mainnet_0.12.0_635054_pruned.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.12.0_635054_pruned.sqlite.zst)         | 59.89 GB        | `1d854423278611b414130ac05f486c66ef475f47a1c930c2af5296c9906f9ae0` |
 
 ## Configuration
 
@@ -199,6 +203,38 @@ sudo docker run --rm eqlabs/pathfinder:latest --help
 ### Pending Support
 
 Block times on `mainnet` can be prohibitively long for certain applications. As a workaround, Starknet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
+
+### State trie pruning
+
+Pathfinder allows you to control the number of blocks of state trie history to preserve. You can choose between archive:
+
+```
+--storage.state-tries = archive
+```
+
+which stores all of history, or to keep only the last `k+1` blocks:
+
+```
+--storage.state-tries = k
+```
+
+The latest block is always stored, though in the future we plan an option to disable this entirely. Currently at least
+one block is required to trustlessly verify Starknet's state update.
+
+State trie data consumes a massive amount of storage space. You can expect an overall storage reduction of ~75% when going
+from archive to pruned mode.
+
+The downside to pruning this data is that storage proofs are only available for blocks that are not pruned i.e. with
+`--storage.state-tries = k` you can only serve storage proofs for the latest `k+1` blocks.
+
+Note that this only impacts storage proofs - for all other considerations pathfinder is still an archive mode and no
+data is dropped.
+
+Also note that you cannot switch between archive and pruned modes. You may however change `k` between different runs of
+pathfinder.
+
+If you don't care about storage proofs, you can maximise storage savings by setting `--storage.state-tries = 0`, which
+will only store the latest block's state trie.
 
 ### Logging
 
