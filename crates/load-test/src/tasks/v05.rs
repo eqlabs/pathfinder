@@ -4,7 +4,8 @@ use rand::{Rng, SeedableRng};
 
 use crate::requests::v05::*;
 
-/// Fetch a random block, then fetch all individual transactions and receipts in the block.
+/// Fetch a random block, then fetch all individual transactions and receipts in
+/// the block.
 pub async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
     let mut rng = rand::rngs::StdRng::from_entropy();
     let block_number: u64 = rng.gen_range(1..290000);
@@ -236,11 +237,14 @@ pub async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
     // Taken from:
     // https://alpha-mainnet.starknet.io/feeder_gateway/get_state_update?blockNumber=1700
     //
-    // "block_hash": "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87"
+    // "block_hash":
+    // "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87"
     //
-    // "storage_diffs": {"0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056":
+    // "storage_diffs":
+    // {"0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056":
     // [{"key": "0x79deb98f1f7fc9a64df7073f93ce645a5f6a7588c34773ba76fdc879a2346e1",
-    // "value": "0x44054cde571399c485119e55cf0b9fc7dcc151fb3486f70020d3ee4d7b20f8d"}]
+    // "value": "0x44054cde571399c485119e55cf0b9fc7dcc151fb3486f70020d3ee4d7b20f8d"
+    // }]
     get_storage_at(
         user,
         Felt::from_hex_str("0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056")

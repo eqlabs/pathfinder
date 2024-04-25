@@ -1,11 +1,16 @@
 use goose::prelude::*;
-use serde::{de::DeserializeOwned, Deserialize};
+use pathfinder_crypto::Felt;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::json;
 
-use pathfinder_crypto::Felt;
-
 use crate::types::{
-    Block, ContractClass, FeeEstimate, StateUpdate, Transaction, TransactionReceipt,
+    Block,
+    ContractClass,
+    FeeEstimate,
+    StateUpdate,
+    Transaction,
+    TransactionReceipt,
 };
 
 pub type MethodResult<T> = Result<T, Box<goose::goose::TransactionError>>;
