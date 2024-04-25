@@ -171,6 +171,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                                 mem::take(&mut events_in_block),
                             ))
                             .context("Sending transactions to transformer")?;
+                        batch_size += 1;
                     }
                     break;
                 }
