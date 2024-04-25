@@ -34,7 +34,7 @@ use crate::client::peer_aware;
 use crate::sync::protocol;
 
 /// Data received from a specific peer.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PeerData<T> {
     pub peer: PeerId,
     pub data: T,
