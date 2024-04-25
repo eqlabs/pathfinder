@@ -29,13 +29,14 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         let transformer = thread::spawn(move || {
             for (block_number, transactions, events) in transform_rx.iter() {
                 let len = transactions.len();
-                let transactions: Vec<_> = transactions
+
+                let transactions_with_receipts: Vec<_> = transactions
                     .into_iter()
                     .map(|(tx, receipt)| {
                         let transaction = zstd::decode_all(tx.as_slice())
                             .context("Decompressing transaction")
                             .unwrap();
-                        let (transaction, _): (dto::Transaction, _) =
+                        let (transaction, _): (dto::OldTransaction, _) =
                             bincode::serde::decode_from_slice(
                                 &transaction,
                                 bincode::config::standard(),
@@ -45,39 +46,53 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                         let receipt = zstd::decode_all(receipt.as_slice())
                             .context("Decompressing receipt")
                             .unwrap();
-                        let (receipt, _): (dto::Receipt, _) = bincode::serde::decode_from_slice(
+                        let (receipt, _): (dto::OldReceipt, _) = bincode::serde::decode_from_slice(
                             &receipt,
                             bincode::config::standard(),
                         )
                         .context("Deserializing receipt")
                         .unwrap();
+
                         dto::TransactionWithReceipt {
-                            transaction,
-                            receipt,
+                            transaction: transaction.into(),
+                            receipt: receipt.into(),
                         }
                     })
                     .collect();
+
+                let transactions_with_receipts = dto::TransactionsWithReceiptsForBlock::V0 {
+                    transactions_with_receipts,
+                };
+
                 let events: Vec<_> = events
                     .into_iter()
                     .map(|events| {
                         let events = zstd::decode_all(events.as_slice())
                             .context("Decompressing events")
                             .unwrap();
-                        let (events, _): (dto::Events, _) =
+                        let (events, _): (dto::OldEvents, _) =
                             bincode::serde::decode_from_slice(&events, bincode::config::standard())
                                 .context("Deserializing events")
                                 .unwrap();
-                        events
+                        match events {
+                            dto::OldEvents::V0 { events } => events,
+                        }
                     })
                     .collect();
-                let transactions =
-                    bincode::serde::encode_to_vec(transactions, bincode::config::standard())
-                        .context("Serializing transaction")
-                        .unwrap();
+
+                let events = dto::EventsForBlock::V0 { events };
+
+                let transactions = bincode::serde::encode_to_vec(
+                    transactions_with_receipts,
+                    bincode::config::standard(),
+                )
+                .context("Serializing transaction")
+                .unwrap();
                 let transactions = tx_compressor
                     .compress(&transactions)
                     .context("Compressing transaction")
                     .unwrap();
+
                 let events = bincode::serde::encode_to_vec(events, bincode::config::standard())
                     .context("Serializing events")
                     .unwrap();
@@ -176,6 +191,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                             .context("Sending transactions to transformer")?;
                         batch_size += 1;
                     }
+
                     break;
                 }
                 Err(err) => return Err(err.into()),
@@ -317,8 +333,14 @@ pub(crate) mod dto {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub enum Events {
+    pub enum OldEvents {
         V0 { events: Vec<Event> },
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub enum EventsForBlock {
+        V0 { events: Vec<Vec<Event>> },
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -579,14 +601,14 @@ pub(crate) mod dto {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub enum Receipt {
-        V0(ReceiptV0),
+    pub enum OldReceipt {
+        V0(Receipt),
     }
 
     /// Represents deserialized L2 transaction receipt data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    pub struct ReceiptV0 {
+    pub struct Receipt {
         pub actual_fee: MinimalFelt,
         pub execution_resources: Option<ExecutionResources>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
@@ -595,11 +617,19 @@ pub(crate) mod dto {
         pub execution_status: ExecutionStatus,
     }
 
+    impl From<OldReceipt> for Receipt {
+        fn from(value: OldReceipt) -> Self {
+            match value {
+                OldReceipt::V0(receipt) => receipt,
+            }
+        }
+    }
+
     impl From<Receipt> for pathfinder_common::receipt::Receipt {
         fn from(value: Receipt) -> Self {
             use pathfinder_common::receipt as common;
 
-            let Receipt::V0(ReceiptV0 {
+            let Receipt {
                 actual_fee,
                 execution_resources,
                 // This information is redundant as it is already in the transaction itself.
@@ -607,7 +637,7 @@ pub(crate) mod dto {
                 transaction_hash,
                 transaction_index,
                 execution_status,
-            }) = value;
+            } = value;
 
             common::Receipt {
                 actual_fee: Fee(actual_fee.into()),
@@ -627,7 +657,7 @@ pub(crate) mod dto {
 
     impl From<&pathfinder_common::receipt::Receipt> for Receipt {
         fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
-            Self::V0(ReceiptV0 {
+            Self {
                 actual_fee: value.actual_fee.as_inner().to_owned().into(),
                 execution_resources: Some((&value.execution_resources).into()),
                 l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
@@ -639,7 +669,7 @@ pub(crate) mod dto {
                         reason: reason.clone(),
                     },
                 },
-            })
+            }
         }
     }
 
@@ -715,6 +745,14 @@ pub(crate) mod dto {
         }
     }
 
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub enum TransactionsWithReceiptsForBlock {
+        V0 {
+            transactions_with_receipts: Vec<TransactionWithReceipt>,
+        },
+    }
+
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     pub struct TransactionWithReceipt {
         pub transaction: Transaction,
@@ -723,11 +761,26 @@ pub(crate) mod dto {
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    pub enum Transaction {
+    pub enum OldTransaction {
         V0 {
             hash: MinimalFelt,
             variant: TransactionVariantV0,
         },
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
+    #[serde(deny_unknown_fields)]
+    pub struct Transaction {
+        hash: MinimalFelt,
+        variant: TransactionVariantV0,
+    }
+
+    impl From<OldTransaction> for Transaction {
+        fn from(value: OldTransaction) -> Self {
+            match value {
+                OldTransaction::V0 { hash, variant } => Self { hash, variant },
+            }
+        }
     }
 
     /// Represents deserialized L2 transaction data.
@@ -763,7 +816,7 @@ pub(crate) mod dto {
                     nonce,
                     sender_address,
                     signature,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV0(self::DeclareTransactionV0V1 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -782,7 +835,7 @@ pub(crate) mod dto {
                     nonce,
                     sender_address,
                     signature,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV1(self::DeclareTransactionV0V1 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -802,7 +855,7 @@ pub(crate) mod dto {
                     sender_address,
                     signature,
                     compiled_class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV2(self::DeclareTransactionV2 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -828,7 +881,7 @@ pub(crate) mod dto {
                     account_deployment_data,
                     sender_address,
                     compiled_class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV3(self::DeclareTransactionV3 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -859,7 +912,7 @@ pub(crate) mod dto {
                     class_hash,
                     constructor_calldata,
                     version,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::Deploy(self::DeployTransaction {
                         contract_address: contract_address.as_inner().to_owned().into(),
@@ -880,7 +933,7 @@ pub(crate) mod dto {
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeployAccountV1(
                         self::DeployAccountTransactionV1 {
@@ -915,7 +968,7 @@ pub(crate) mod dto {
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeployAccountV3(
                         self::DeployAccountTransactionV3 {
@@ -952,7 +1005,7 @@ pub(crate) mod dto {
                     entry_point_type,
                     max_fee,
                     signature,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::InvokeV0(self::InvokeTransactionV0 {
                         calldata: calldata
@@ -975,7 +1028,7 @@ pub(crate) mod dto {
                     max_fee,
                     signature,
                     nonce,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::InvokeV1(self::InvokeTransactionV1 {
                         calldata: calldata
@@ -1002,7 +1055,7 @@ pub(crate) mod dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::InvokeV3(self::InvokeTransactionV3 {
                         nonce: nonce.as_inner().to_owned().into(),
@@ -1034,7 +1087,7 @@ pub(crate) mod dto {
                     entry_point_selector,
                     nonce,
                     calldata,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::L1HandlerV0(self::L1HandlerTransactionV0 {
                         contract_address: contract_address.as_inner().to_owned().into(),
@@ -1056,7 +1109,7 @@ pub(crate) mod dto {
 
             let hash = value.hash();
             let variant = match value {
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV0(DeclareTransactionV0V1 {
@@ -1078,7 +1131,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV1(DeclareTransactionV0V1 {
@@ -1100,7 +1153,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV2(DeclareTransactionV2 {
@@ -1124,7 +1177,7 @@ pub(crate) mod dto {
                         compiled_class_hash: CasmHash::new_or_panic(compiled_class_hash.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV3(DeclareTransactionV3 {
@@ -1164,7 +1217,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::Deploy(DeployTransaction {
@@ -1186,7 +1239,7 @@ pub(crate) mod dto {
                         version: TransactionVersion(version.into()),
                     })
                 }
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeployAccountV1(DeployAccountTransactionV1 {
@@ -1215,7 +1268,7 @@ pub(crate) mod dto {
                         class_hash: ClassHash(class_hash.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeployAccountV3(DeployAccountTransactionV3 {
@@ -1255,7 +1308,7 @@ pub(crate) mod dto {
                         class_hash: ClassHash(class_hash.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::InvokeV0(InvokeTransactionV0 {
@@ -1279,7 +1332,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::InvokeV1(InvokeTransactionV1 {
@@ -1301,7 +1354,7 @@ pub(crate) mod dto {
                         nonce: TransactionNonce(nonce.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::InvokeV3(InvokeTransactionV3 {
@@ -1339,7 +1392,7 @@ pub(crate) mod dto {
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::L1HandlerV0(L1HandlerTransactionV0 {
@@ -1365,9 +1418,7 @@ pub(crate) mod dto {
     impl Transaction {
         /// Returns hash of the transaction
         pub fn hash(&self) -> TransactionHash {
-            match self {
-                Transaction::V0 { hash, .. } => TransactionHash(hash.to_owned().into()),
-            }
+            TransactionHash(self.hash.to_owned().into())
         }
     }
 

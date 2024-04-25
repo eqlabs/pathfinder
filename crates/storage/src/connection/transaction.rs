@@ -115,25 +115,31 @@ impl Transaction<'_> {
             ])?;
         }
 
-        let transactions: Vec<_> = transactions
+        let transactions_with_receipts: Vec<_> = transactions
             .iter()
             .map(|(transaction, receipt)| dto::TransactionWithReceipt {
                 transaction: dto::Transaction::from(transaction),
                 receipt: receipt.into(),
             })
             .collect();
-        let transactions = bincode::serde::encode_to_vec(transactions, bincode::config::standard())
-            .context("Serializing transaction")?;
-        let transactions =
-            compression::compress_transactions(&transactions).context("Compressing transaction")?;
+        let transactions_with_receipts = dto::TransactionsWithReceiptsForBlock::V0 {
+            transactions_with_receipts,
+        };
+        let transactions_with_receipts =
+            bincode::serde::encode_to_vec(transactions_with_receipts, bincode::config::standard())
+                .context("Serializing transaction")?;
+        let transactions_with_receipts =
+            compression::compress_transactions(&transactions_with_receipts)
+                .context("Compressing transaction")?;
+
         let encoded_events = match events {
             Some(events) => {
-                let events: Vec<_> = events
-                    .iter()
-                    .map(|events| dto::Events::V0 {
-                        events: events.iter().cloned().map(Into::into).collect(),
-                    })
-                    .collect();
+                let events = dto::EventsForBlock::V0 {
+                    events: events
+                        .iter()
+                        .map(|events| events.iter().cloned().map(Into::into).collect())
+                        .collect(),
+                };
                 let events = bincode::serde::encode_to_vec(events, bincode::config::standard())
                     .context("Serializing events")?;
                 Some(compression::compress_events(&events).context("Compressing events")?)
@@ -144,7 +150,7 @@ impl Transaction<'_> {
         insert_transaction_stmt
             .execute(named_params![
                 ":block_number": &block_number,
-                ":transactions": &transactions,
+                ":transactions": &transactions_with_receipts,
                 ":events": &encoded_events,
             ])
             .context("Inserting transaction data")?;
@@ -173,12 +179,12 @@ impl Transaction<'_> {
                 ",
             )
             .context("Preparing update events statement")?;
-        let events: Vec<_> = events
-            .into_iter()
-            .map(|events| dto::Events::V0 {
-                events: events.into_iter().map(Into::into).collect(),
-            })
-            .collect();
+        let events = dto::EventsForBlock::V0 {
+            events: events
+                .into_iter()
+                .map(|events| events.into_iter().map(Into::into).collect())
+                .collect(),
+        };
         let events = bincode::serde::encode_to_vec(events, bincode::config::standard())
             .context("Serializing events")?;
         let events = compression::compress_events(&events).context("Compressing events")?;
@@ -356,10 +362,12 @@ impl Transaction<'_> {
         let transactions = row.get_blob(0)?;
         let transactions = compression::decompress_transactions(transactions)
             .context("Decompressing transactions")?;
-        let transactions: Vec<dto::TransactionWithReceipt> =
+        let transactions: dto::TransactionsWithReceiptsForBlock =
             bincode::serde::decode_from_slice(&transactions, bincode::config::standard())
                 .context("Deserializing transactions")?
                 .0;
+        let transactions = transactions.transactions_with_receipts();
+
         Ok(Some(
             transactions
                 .into_iter()
@@ -411,11 +419,12 @@ impl Transaction<'_> {
         let transactions = row.get_blob(0)?;
         let transactions = compression::decompress_transactions(transactions)
             .context("Decompressing transactions")?;
-        let transactions: Vec<dto::TransactionWithReceipt> =
+        let transactions: dto::TransactionsWithReceiptsForBlock =
             bincode::serde::decode_from_slice(&transactions, bincode::config::standard())
                 .context("Deserializing transactions")?
                 .0;
-        let events: Option<Vec<dto::Events>> = match row.get_optional_blob(1)? {
+        let transactions = transactions.transactions_with_receipts();
+        let events: Option<dto::EventsForBlock> = match row.get_optional_blob(1)? {
             Some(events) => {
                 let events =
                     compression::decompress_events(events).context("Decompressing events")?;
@@ -427,6 +436,9 @@ impl Transaction<'_> {
             }
             None => None,
         };
+        let events = events.map(|events| match events {
+            dto::EventsForBlock::V0 { events } => events,
+        });
         Ok(Some((
             transactions
                 .into_iter()
@@ -440,9 +452,7 @@ impl Transaction<'_> {
             events.map(|events| {
                 events
                     .into_iter()
-                    .map(|events| match events {
-                        dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
-                    })
+                    .map(|e| e.into_iter().map(Into::into).collect())
                     .collect()
             }),
         )))
@@ -463,24 +473,25 @@ impl Transaction<'_> {
         let Some(row) = rows.next()? else {
             return Ok(None);
         };
-        let events: Option<Vec<dto::Events>> = match row.get_optional_blob(0)? {
+        let events: Option<dto::EventsForBlock> = match row.get_optional_blob(0)? {
             Some(events) => {
                 let events =
                     compression::decompress_events(events).context("Decompressing events")?;
-                Some(
+                let events: dto::EventsForBlock =
                     bincode::serde::decode_from_slice(&events, bincode::config::standard())
                         .context("Deserializing events")?
-                        .0,
-                )
+                        .0;
+
+                Some(events)
             }
             None => None,
         };
+        let events = events.map(|e| e.events());
+
         Ok(events.map(|events| {
             events
                 .into_iter()
-                .map(|events| match events {
-                    dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
-                })
+                .map(|e| e.into_iter().map(Into::into).collect())
                 .collect()
         }))
     }
@@ -491,7 +502,7 @@ impl Transaction<'_> {
     ) -> anyhow::Result<Option<(BlockNumber, StarknetTransaction, Receipt)>> {
         let mut stmt = self.inner().prepare(
             r"
-            SELECT transactions.block_number, transactions
+            SELECT transactions.block_number, transactions, idx
             FROM transactions
             JOIN transaction_hashes ON transactions.block_number = transaction_hashes.block_number
             WHERE hash = ?
@@ -503,24 +514,25 @@ impl Transaction<'_> {
         };
         let block_number = row.get_block_number(0)?;
         let transactions = row.get_blob(1)?;
+        let idx: usize = row.get_i64(2)?.try_into()?;
+
         let transactions = compression::decompress_transactions(transactions)
             .context("Decompressing transactions")?;
-        let transactions: Vec<dto::TransactionWithReceipt> =
+        let transactions: dto::TransactionsWithReceiptsForBlock =
             bincode::serde::decode_from_slice(&transactions, bincode::config::standard())
                 .context("Deserializing transactions")?
                 .0;
-        let (tx, receipt) = transactions
-            .into_iter()
-            .find_map(
-                |dto::TransactionWithReceipt {
-                     transaction,
-                     receipt,
-                 }| {
-                    (transaction.hash() == hash).then_some((transaction.into(), receipt.into()))
-                },
-            )
-            .context("Transaction not found")?;
-        Ok(Some((block_number, tx, receipt)))
+        let transactions = transactions.transactions_with_receipts();
+        let dto::TransactionWithReceipt {
+            transaction,
+            receipt,
+        } = transactions.get(idx).context("Transaction not found")?;
+
+        Ok(Some((
+            block_number,
+            transaction.clone().into(),
+            receipt.clone().into(),
+        )))
     }
 
     fn query_transaction_and_events_by_hash(
@@ -529,7 +541,7 @@ impl Transaction<'_> {
     ) -> anyhow::Result<Option<TransactionAndEventsByHash>> {
         let mut stmt = self.inner().prepare(
             r"
-            SELECT transactions.block_number, transactions, events
+            SELECT transactions.block_number, transactions, events, idx
             FROM transactions
             JOIN transaction_hashes ON transactions.block_number = transaction_hashes.block_number
             WHERE hash = ?
@@ -540,51 +552,46 @@ impl Transaction<'_> {
             return Ok(None);
         };
         let block_number = row.get_block_number(0)?;
+        let idx: usize = row.get_i64(3)?.try_into()?;
         let transactions = row.get_blob(1)?;
+
         let transactions = compression::decompress_transactions(transactions)
             .context("Decompressing transactions")?;
-        let transactions: Vec<dto::TransactionWithReceipt> =
+        let transactions: dto::TransactionsWithReceiptsForBlock =
             bincode::serde::decode_from_slice(&transactions, bincode::config::standard())
                 .context("Deserializing transactions")?
                 .0;
-        let events: Option<Vec<dto::Events>> = match row.get_optional_blob(2)? {
+        let transactions = transactions.transactions_with_receipts();
+
+        let events: Option<Vec<Vec<dto::Event>>> = match row.get_optional_blob(2)? {
             Some(events) => {
                 let events =
                     compression::decompress_events(events).context("Decompressing events")?;
-                Some(
+                let events: dto::EventsForBlock =
                     bincode::serde::decode_from_slice(&events, bincode::config::standard())
                         .context("Deserializing events")?
-                        .0,
-                )
+                        .0;
+                Some(events.events())
             }
             None => None,
         };
-        let (idx, tx, receipt) = transactions
-            .into_iter()
-            .enumerate()
-            .find_map(
-                |(
-                    i,
-                    dto::TransactionWithReceipt {
-                        transaction,
-                        receipt,
-                    },
-                )| {
-                    (transaction.hash() == hash).then_some((i, transaction.into(), receipt.into()))
-                },
-            )
-            .context("Transaction not found")?;
+        let dto::TransactionWithReceipt {
+            transaction,
+            receipt,
+        } = transactions.get(idx).context("Transaction not found")?;
         let events = match events {
             Some(events) => {
                 let events = events.get(idx).context("Events missing")?;
-                let events = match events {
-                    dto::Events::V0 { events } => events.iter().cloned().map(Into::into).collect(),
-                };
-                Some(events)
+                Some(events.iter().cloned().map(Into::into).collect())
             }
             None => None,
         };
-        Ok(Some((block_number, tx, receipt, events)))
+        Ok(Some((
+            block_number,
+            transaction.clone().into(),
+            receipt.clone().into(),
+            events,
+        )))
     }
 }
 
@@ -693,8 +700,16 @@ pub(crate) mod dto {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub enum Events {
-        V0 { events: Vec<Event> },
+    pub enum EventsForBlock {
+        V0 { events: Vec<Vec<Event>> },
+    }
+
+    impl EventsForBlock {
+        pub fn events(self) -> Vec<Vec<Event>> {
+            match self {
+                EventsForBlock::V0 { events } => events,
+            }
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -953,16 +968,10 @@ pub(crate) mod dto {
         Reverted { reason: String },
     }
 
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub enum Receipt {
-        V0(ReceiptV0),
-    }
-
     /// Represents deserialized L2 transaction receipt data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    pub struct ReceiptV0 {
+    pub struct Receipt {
         pub actual_fee: MinimalFelt,
         pub execution_resources: Option<ExecutionResources>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
@@ -975,7 +984,7 @@ pub(crate) mod dto {
         fn from(value: Receipt) -> Self {
             use pathfinder_common::receipt as common;
 
-            let Receipt::V0(ReceiptV0 {
+            let Receipt {
                 actual_fee,
                 execution_resources,
                 // This information is redundant as it is already in the transaction itself.
@@ -983,7 +992,7 @@ pub(crate) mod dto {
                 transaction_hash,
                 transaction_index,
                 execution_status,
-            }) = value;
+            } = value;
 
             common::Receipt {
                 actual_fee: Fee(actual_fee.into()),
@@ -1003,7 +1012,7 @@ pub(crate) mod dto {
 
     impl From<&pathfinder_common::receipt::Receipt> for Receipt {
         fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
-            Self::V0(ReceiptV0 {
+            Self {
                 actual_fee: value.actual_fee.as_inner().to_owned().into(),
                 execution_resources: Some((&value.execution_resources).into()),
                 l2_to_l1_messages: value.l2_to_l1_messages.iter().map(Into::into).collect(),
@@ -1015,7 +1024,7 @@ pub(crate) mod dto {
                         reason: reason.clone(),
                     },
                 },
-            })
+            }
         }
     }
 
@@ -1091,6 +1100,24 @@ pub(crate) mod dto {
         }
     }
 
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub enum TransactionsWithReceiptsForBlock {
+        V0 {
+            transactions_with_receipts: Vec<TransactionWithReceipt>,
+        },
+    }
+
+    impl TransactionsWithReceiptsForBlock {
+        pub fn transactions_with_receipts(self) -> Vec<TransactionWithReceipt> {
+            match self {
+                TransactionsWithReceiptsForBlock::V0 {
+                    transactions_with_receipts,
+                } => transactions_with_receipts,
+            }
+        }
+    }
+
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     pub struct TransactionWithReceipt {
         pub transaction: Transaction,
@@ -1099,11 +1126,9 @@ pub(crate) mod dto {
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    pub enum Transaction {
-        V0 {
-            hash: MinimalFelt,
-            variant: TransactionVariantV0,
-        },
+    pub struct Transaction {
+        hash: MinimalFelt,
+        variant: TransactionVariantV0,
     }
 
     /// Represents deserialized L2 transaction data.
@@ -1139,7 +1164,7 @@ pub(crate) mod dto {
                     nonce,
                     sender_address,
                     signature,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV0(self::DeclareTransactionV0V1 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -1158,7 +1183,7 @@ pub(crate) mod dto {
                     nonce,
                     sender_address,
                     signature,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV1(self::DeclareTransactionV0V1 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -1178,7 +1203,7 @@ pub(crate) mod dto {
                     sender_address,
                     signature,
                     compiled_class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV2(self::DeclareTransactionV2 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -1204,7 +1229,7 @@ pub(crate) mod dto {
                     account_deployment_data,
                     sender_address,
                     compiled_class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeclareV3(self::DeclareTransactionV3 {
                         class_hash: class_hash.as_inner().to_owned().into(),
@@ -1235,7 +1260,7 @@ pub(crate) mod dto {
                     class_hash,
                     constructor_calldata,
                     version,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::Deploy(self::DeployTransaction {
                         contract_address: contract_address.as_inner().to_owned().into(),
@@ -1256,7 +1281,7 @@ pub(crate) mod dto {
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeployAccountV1(
                         self::DeployAccountTransactionV1 {
@@ -1291,7 +1316,7 @@ pub(crate) mod dto {
                     contract_address_salt,
                     constructor_calldata,
                     class_hash,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::DeployAccountV3(
                         self::DeployAccountTransactionV3 {
@@ -1328,7 +1353,7 @@ pub(crate) mod dto {
                     entry_point_type,
                     max_fee,
                     signature,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::InvokeV0(self::InvokeTransactionV0 {
                         calldata: calldata
@@ -1351,7 +1376,7 @@ pub(crate) mod dto {
                     max_fee,
                     signature,
                     nonce,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::InvokeV1(self::InvokeTransactionV1 {
                         calldata: calldata
@@ -1378,7 +1403,7 @@ pub(crate) mod dto {
                     account_deployment_data,
                     calldata,
                     sender_address,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::InvokeV3(self::InvokeTransactionV3 {
                         nonce: nonce.as_inner().to_owned().into(),
@@ -1410,7 +1435,7 @@ pub(crate) mod dto {
                     entry_point_selector,
                     nonce,
                     calldata,
-                }) => Self::V0 {
+                }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::L1HandlerV0(self::L1HandlerTransactionV0 {
                         contract_address: contract_address.as_inner().to_owned().into(),
@@ -1432,7 +1457,7 @@ pub(crate) mod dto {
 
             let hash = value.hash();
             let variant = match value {
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV0(DeclareTransactionV0V1 {
@@ -1454,7 +1479,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV1(DeclareTransactionV0V1 {
@@ -1476,7 +1501,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV2(DeclareTransactionV2 {
@@ -1500,7 +1525,7 @@ pub(crate) mod dto {
                         compiled_class_hash: CasmHash::new_or_panic(compiled_class_hash.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeclareV3(DeclareTransactionV3 {
@@ -1540,7 +1565,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::Deploy(DeployTransaction {
@@ -1562,7 +1587,7 @@ pub(crate) mod dto {
                         version: TransactionVersion(version.into()),
                     })
                 }
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeployAccountV1(DeployAccountTransactionV1 {
@@ -1591,7 +1616,7 @@ pub(crate) mod dto {
                         class_hash: ClassHash(class_hash.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::DeployAccountV3(DeployAccountTransactionV3 {
@@ -1631,7 +1656,7 @@ pub(crate) mod dto {
                         class_hash: ClassHash(class_hash.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::InvokeV0(InvokeTransactionV0 {
@@ -1655,7 +1680,7 @@ pub(crate) mod dto {
                             .collect(),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::InvokeV1(InvokeTransactionV1 {
@@ -1677,7 +1702,7 @@ pub(crate) mod dto {
                         nonce: TransactionNonce(nonce.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::InvokeV3(InvokeTransactionV3 {
@@ -1715,7 +1740,7 @@ pub(crate) mod dto {
                         sender_address: ContractAddress::new_or_panic(sender_address.into()),
                     },
                 ),
-                Transaction::V0 {
+                Transaction {
                     hash: _,
                     variant:
                         TransactionVariantV0::L1HandlerV0(L1HandlerTransactionV0 {
@@ -1741,9 +1766,7 @@ pub(crate) mod dto {
     impl Transaction {
         /// Returns hash of the transaction
         pub fn hash(&self) -> TransactionHash {
-            match self {
-                Transaction::V0 { hash, .. } => TransactionHash(hash.to_owned().into()),
-            }
+            TransactionHash(self.hash.to_owned().into())
         }
     }
 

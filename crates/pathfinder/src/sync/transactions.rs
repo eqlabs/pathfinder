@@ -17,10 +17,7 @@ pub(super) async fn persist(
         let db = db.transaction().context("Creating database transaction")?;
         db.insert_transaction_data(
             block.number,
-            &transactions
-                .into_iter()
-                .map(|(transaction, receipt)| (transaction.into(), receipt.into()))
-                .collect::<Vec<_>>(),
+            &transactions,
             None,
         )
         .context("Inserting transactions with receipts")?;

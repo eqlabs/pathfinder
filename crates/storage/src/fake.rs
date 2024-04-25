@@ -182,15 +182,13 @@ pub mod init {
                 let t: common::Transaction = t.into();
                 let transaction_hash = t.hash;
 
-                let r: Receipt = crate::connection::transaction::dto::Receipt::V0(
-                    crate::connection::transaction::dto::ReceiptV0 {
-                        transaction_hash: transaction_hash.as_inner().to_owned().into(),
-                        transaction_index: TransactionIndex::new_or_panic(
-                            i.try_into().expect("u64 is at least as wide as usize"),
-                        ),
-                        ..Faker.fake_with_rng(rng)
-                    },
-                )
+                let r: Receipt = crate::connection::transaction::dto::Receipt {
+                    transaction_hash: transaction_hash.as_inner().to_owned().into(),
+                    transaction_index: TransactionIndex::new_or_panic(
+                        i.try_into().expect("u64 is at least as wide as usize"),
+                    ),
+                    ..Faker.fake_with_rng(rng)
+                }
                 .into();
                 let e: Vec<Event> = fake_non_empty_with_rng(rng);
                 (t, r, e)
