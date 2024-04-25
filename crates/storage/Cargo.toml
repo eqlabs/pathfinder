@@ -17,7 +17,9 @@ cached = { workspace = true }
 const_format = { workspace = true }
 data-encoding = { workspace = true }
 fake = { workspace = true }
-flume = { version = "0.11.0", default-features = false, features = ["eventual-fairness"] }
+flume = { version = "0.11.0", default-features = false, features = [
+    "eventual-fairness",
+] }
 hex = { workspace = true }
 lazy_static = { workspace = true }
 metrics = { workspace = true }
@@ -42,7 +44,7 @@ starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-zstd = { workspace = true }
+zstd = { workspace = true, features = ["experimental"] }
 
 [dev-dependencies]
 assert_matches = { workspace = true }

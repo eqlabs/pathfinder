@@ -5,6 +5,8 @@ use std::{mem, thread};
 use anyhow::Context;
 use rusqlite::params;
 
+use crate::connection::transaction::compression;
+
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tracing::info!("Migrating starknet_transactions to new format");
 
@@ -18,7 +20,12 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     {
         let insert_tx = insert_tx.clone();
         let transform_rx = transform_rx.clone();
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+
+        let mut tx_compressor =
+            compression::new_txs_compressor().context("Create zstd transaction compressor")?;
+        let mut events_compressor =
+            compression::new_events_compressor().context("Create zstd events compressor")?;
+
         let transformer = thread::spawn(move || {
             for (block_number, transactions, events) in transform_rx.iter() {
                 let len = transactions.len();
@@ -67,14 +74,14 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     bincode::serde::encode_to_vec(transactions, bincode::config::standard())
                         .context("Serializing transaction")
                         .unwrap();
-                let transactions = compressor
+                let transactions = tx_compressor
                     .compress(&transactions)
                     .context("Compressing transaction")
                     .unwrap();
                 let events = bincode::serde::encode_to_vec(events, bincode::config::standard())
                     .context("Serializing events")
                     .unwrap();
-                let events = compressor
+                let events = events_compressor
                     .compress(&events)
                     .context("Compressing events")
                     .unwrap();
