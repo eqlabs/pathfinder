@@ -101,14 +101,17 @@ impl Transaction<'_> {
         let mut insert_transaction_hash_stmt = self
             .inner()
             .prepare(
-                "INSERT INTO transaction_hashes (hash, block_number) VALUES (:hash, :block_number)",
+                "INSERT INTO transaction_hashes (hash, block_number, idx) VALUES (:hash, \
+                 :block_number, :idx)",
             )
             .context("Preparing insert transaction hash statement")?;
 
-        for (transaction, ..) in transactions.iter() {
+        for (idx, (transaction, ..)) in transactions.iter().enumerate() {
+            let idx: i64 = idx.try_into()?;
             insert_transaction_hash_stmt.execute(named_params![
                 ":hash": &transaction.hash,
                 ":block_number": &block_number,
+                ":idx": &idx,
             ])?;
         }
 
@@ -283,18 +286,23 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        let Some((transactions, events)) =
-            self.query_transactions_and_events_by_block(block_number)?
-        else {
+        let Some(events) = self.query_events_by_block(block_number)? else {
             return Ok(None);
         };
-        let events = events.context("Events missing")?;
+
+        let transaction_hashes = self
+            .query_transaction_hashes_by_block(block_number)
+            .context("Querying transaction hashes")?;
+
+        if events.len() != transaction_hashes.len() {
+            anyhow::bail!("Event list and transaction list mismatch");
+        }
 
         Ok(Some(
-            transactions
+            events
                 .into_iter()
-                .zip(events)
-                .map(|((transaction, _), events)| (transaction.hash, events))
+                .zip(transaction_hashes)
+                .map(|(events, transaction_hash)| (transaction_hash, events))
                 .collect(),
         ))
     }
@@ -307,16 +315,9 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        let Some(transactions) = self.query_transactions_by_block(block_number)? else {
-            return Ok(None);
-        };
+        let transactions = self.query_transaction_hashes_by_block(block_number)?;
 
-        Ok(Some(
-            transactions
-                .into_iter()
-                .map(|(transaction, ..)| transaction.hash)
-                .collect(),
-        ))
+        Ok(Some(transactions))
     }
 
     pub fn transaction_block_hash(
@@ -372,6 +373,26 @@ impl Transaction<'_> {
         ))
     }
 
+    fn query_transaction_hashes_by_block(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Vec<TransactionHash>> {
+        let mut stmt = self.inner().prepare(
+            r"
+            SELECT hash
+            FROM transaction_hashes
+            WHERE block_number = ? ORDER BY idx
+            ",
+        )?;
+        let transaction_hashes: Result<Vec<_>, _> = stmt
+            .query_map(params![&block_number], |row| row.get_transaction_hash(0))
+            .context("Querying transaction hashes for block")?
+            .collect();
+        let transaction_hashes = transaction_hashes?;
+
+        Ok(transaction_hashes)
+    }
+
     fn query_transactions_and_events_by_block(
         &self,
         block_number: BlockNumber,
@@ -425,6 +446,43 @@ impl Transaction<'_> {
                     .collect()
             }),
         )))
+    }
+
+    fn query_events_by_block(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Option<Vec<Vec<Event>>>> {
+        let mut stmt = self.inner().prepare(
+            r"
+            SELECT events
+            FROM transactions
+            WHERE block_number = ?
+            ",
+        )?;
+        let mut rows = stmt.query(params![&block_number])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        let events: Option<Vec<dto::Events>> = match row.get_optional_blob(0)? {
+            Some(events) => {
+                let events =
+                    compression::decompress_events(events).context("Decompressing events")?;
+                Some(
+                    bincode::serde::decode_from_slice(&events, bincode::config::standard())
+                        .context("Deserializing events")?
+                        .0,
+                )
+            }
+            None => None,
+        };
+        Ok(events.map(|events| {
+            events
+                .into_iter()
+                .map(|events| match events {
+                    dto::Events::V0 { events } => events.into_iter().map(Into::into).collect(),
+                })
+                .collect()
+        }))
     }
 
     fn query_transaction_by_hash(

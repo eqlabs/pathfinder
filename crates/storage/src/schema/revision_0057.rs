@@ -107,22 +107,24 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         );
         CREATE TABLE transaction_hashes (
             hash         BLOB PRIMARY KEY NOT NULL,
-            block_number INTEGER NOT NULL REFERENCES block_headers(number) ON DELETE CASCADE
+            block_number INTEGER NOT NULL REFERENCES block_headers(number) ON DELETE CASCADE,
+            idx          INTEGER NOT NULL
         );
-        CREATE INDEX transaction_hashes_block_number ON transaction_hashes(block_number);
+        CREATE INDEX transaction_hashes_block_number_idx ON transaction_hashes(block_number, idx);
         ",
     )
     .context("Creating new tables and indices")?;
     let mut query_stmt = tx.prepare_cached(
         r"
-        SELECT hash, tx, block_number, tx, receipt, events FROM starknet_transactions ORDER BY block_number, idx
+        SELECT hash, tx, block_number, tx, receipt, events, idx FROM starknet_transactions ORDER BY block_number, idx
         ",
     )?;
     let mut insert_transaction_stmt = tx.prepare_cached(
         r"INSERT INTO transactions (block_number, transactions, events) VALUES (?, ?, ?)",
     )?;
-    let mut insert_transaction_hash_stmt =
-        tx.prepare_cached(r"INSERT INTO transaction_hashes (hash, block_number) VALUES (?, ?)")?;
+    let mut insert_transaction_hash_stmt = tx.prepare_cached(
+        r"INSERT INTO transaction_hashes (hash, block_number, idx) VALUES (?, ?, ?)",
+    )?;
     const BATCH_SIZE: u32 = 10_000;
 
     const LOG_RATE: Duration = Duration::from_secs(10);
@@ -143,7 +145,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     let transaction = row.get_ref_unwrap("tx").as_blob()?.to_vec();
                     let receipt = row.get_ref_unwrap("receipt").as_blob()?.to_vec();
                     let events = row.get_ref_unwrap("events").as_blob()?.to_vec();
-                    insert_transaction_hash_stmt.execute(params![hash, block_number])?;
+                    let idx = row.get_ref_unwrap("idx").as_i64()?;
+                    insert_transaction_hash_stmt.execute(params![hash, block_number, idx])?;
                     if block_number != current_block {
                         transform_tx
                             .send((
