@@ -213,22 +213,24 @@ pub async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
     let events = get_events(
         user,
         EventFilter {
-            from_block: Some(1000),
-            to_block: Some(1100),
+            from_block: Some(600000),
+            to_block: Some(650000),
             address: Some(
                 Felt::from_hex_str(
-                    "0x103114c4c5ac233a360d39a9217b9067be6979f3d08e1cf971fd22baf8f8713",
+                    "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
                 )
                 .unwrap(),
             ),
-            keys: vec![],
-            page_size: 1024,
-            page_number: 0,
+            keys: vec![vec![Felt::from_hex_str(
+                "0x134692b230b9e1ffa39098904722134159652b09c5bc41d88d6698779d228ff",
+            )
+            .unwrap()]],
+            chunk_size: 500,
         },
     )
     .await?;
 
-    assert_eq!(events.events.len(), 1);
+    assert_eq!(events.events.len(), 500);
 
     Ok(())
 }

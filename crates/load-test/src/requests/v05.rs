@@ -181,7 +181,7 @@ pub async fn get_events(
             "to_block": to_block,
             "address": filter.address,
             "keys": filter.keys,
-            "chunk_size": 1000,
+            "chunk_size": filter.chunk_size,
         }}),
     )
     .await
@@ -192,8 +192,7 @@ pub struct EventFilter {
     pub to_block: Option<u64>,
     pub address: Option<Felt>,
     pub keys: Vec<Vec<Felt>>,
-    pub page_size: u64,
-    pub page_number: u64,
+    pub chunk_size: u64,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
