@@ -154,12 +154,13 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                             .context("Sending transactions to transformer")?;
                         current_block = block_number;
                         batch_size += 1;
-                        if batch_size == BATCH_SIZE {
-                            break;
-                        }
                     }
                     transactions_in_block.push((transaction, receipt));
                     events_in_block.push(events);
+
+                    if batch_size == BATCH_SIZE {
+                        break;
+                    }
                 }
                 Ok(None) => {
                     if !transactions_in_block.is_empty() {
