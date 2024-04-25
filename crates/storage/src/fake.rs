@@ -47,12 +47,15 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
                 &transaction_data
                     .iter()
                     .cloned()
-                    .map(|(tx, receipt, events)| crate::TransactionData {
-                        transaction: tx,
-                        receipt: Some(receipt),
-                        events: Some(events),
-                    })
+                    .map(|(tx, receipt, ..)| (tx, receipt))
                     .collect::<Vec<_>>(),
+                Some(
+                    &transaction_data
+                        .iter()
+                        .cloned()
+                        .map(|(_, _, events)| events)
+                        .collect::<Vec<_>>(),
+                ),
             )
             .unwrap();
             tx.insert_signature(header.header.number, &header.signature)

@@ -327,20 +327,14 @@ pub mod tests {
             })
             .unwrap();
         transaction.insert_block_header(&header).unwrap();
-        let transaction_data = block
+        let (transactions_data, events_data) = block
             .transactions
             .into_iter()
             .zip(block.transaction_receipts.into_iter())
-            .map(
-                |(tx, (receipt, events))| pathfinder_storage::TransactionData {
-                    transaction: tx,
-                    receipt: Some(receipt),
-                    events: Some(events),
-                },
-            )
-            .collect::<Vec<_>>();
+            .map(|(tx, (receipt, events))| ((tx, receipt), events))
+            .unzip::<_, _, Vec<_>, Vec<_>>();
         transaction
-            .insert_transaction_data(header.number, &transaction_data)
+            .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
             .unwrap();
         transaction.commit().unwrap();
 

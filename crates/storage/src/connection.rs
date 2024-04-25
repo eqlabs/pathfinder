@@ -26,7 +26,6 @@ use pathfinder_common::{BlockNumber, TransactionHash};
 pub(crate) use reorg_counter::ReorgCounter;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
-pub use transaction::{TransactionData, TransactionStatus};
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieUpdate};
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -87,12 +86,7 @@ pub enum TriePruneMode {
     Prune { num_blocks_kept: u64 },
 }
 
-type TransactionWithReceipt = (
-    StarknetTransaction,
-    Receipt,
-    Vec<pathfinder_common::event::Event>,
-    BlockNumber,
-);
+type TransactionWithReceipt = (StarknetTransaction, Receipt, Vec<Event>, BlockNumber);
 
 type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
 

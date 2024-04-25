@@ -19,14 +19,9 @@ pub(super) async fn persist(
             block.number,
             &transactions
                 .into_iter()
-                .map(
-                    |(transaction, receipt)| pathfinder_storage::TransactionData {
-                        transaction,
-                        receipt: Some(receipt),
-                        events: None,
-                    },
-                )
+                .map(|(transaction, receipt)| (transaction.into(), receipt.into()))
                 .collect::<Vec<_>>(),
+            None,
         )
         .context("Inserting transactions with receipts")?;
         db.commit().context("Committing database transaction")

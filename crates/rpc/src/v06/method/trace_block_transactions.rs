@@ -404,22 +404,11 @@ pub(crate) mod tests {
             tx.insert_transaction_data(
                 next_block_header.number,
                 &[
-                    pathfinder_storage::TransactionData {
-                        transaction: transactions[0].clone(),
-                        receipt: Some(dummy_receipt.clone()),
-                        events: Some(vec![]),
-                    },
-                    pathfinder_storage::TransactionData {
-                        transaction: transactions[1].clone(),
-                        receipt: Some(dummy_receipt.clone()),
-                        events: Some(vec![]),
-                    },
-                    pathfinder_storage::TransactionData {
-                        transaction: transactions[2].clone(),
-                        receipt: Some(dummy_receipt.clone()),
-                        events: Some(vec![]),
-                    },
+                    (transactions[0].clone(), dummy_receipt.clone()),
+                    (transactions[1].clone(), dummy_receipt.clone()),
+                    (transactions[2].clone(), dummy_receipt.clone()),
                 ],
+                Some(&[vec![], vec![], vec![]]),
             )?;
             tx.commit()?;
 
@@ -664,20 +653,14 @@ pub(crate) mod tests {
             })
             .unwrap();
         transaction.insert_block_header(&header).unwrap();
-        let transaction_data = block
+        let (transactions_data, events_data) = block
             .transactions
             .into_iter()
             .zip(block.transaction_receipts.into_iter())
-            .map(
-                |(tx, (receipt, events))| pathfinder_storage::TransactionData {
-                    transaction: tx,
-                    receipt: Some(receipt),
-                    events: Some(events),
-                },
-            )
-            .collect::<Vec<_>>();
+            .map(|(tx, (receipt, events))| ((tx, receipt), events))
+            .unzip::<_, _, Vec<_>, Vec<_>>();
         transaction
-            .insert_transaction_data(header.number, &transaction_data)
+            .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
             .unwrap();
         transaction.commit().unwrap();
 

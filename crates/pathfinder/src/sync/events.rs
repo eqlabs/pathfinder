@@ -133,11 +133,9 @@ pub(super) async fn persist(
         ))?;
 
         for (block_number, events_for_block) in events.into_iter().map(|x| x.data) {
-            for (txn_idx, events_for_txn) in events_for_block.into_iter().enumerate() {
-                transaction
-                    .update_events(block_number, txn_idx, &events_for_txn)
-                    .context("Updating events")?;
-            }
+            transaction
+                .update_events(block_number, events_for_block)
+                .context("Updating events")?;
         }
         transaction.commit()?;
 
