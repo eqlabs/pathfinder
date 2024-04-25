@@ -14,9 +14,8 @@ use p2p_proto::common::{
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHeader};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Storage, Transaction};
@@ -71,14 +70,6 @@ pub async fn get_transactions(
     spawn_blocking_get(request, storage, blocking::get_transactions, tx).await
 }
 
-pub async fn get_receipts(
-    storage: Storage,
-    request: ReceiptsRequest,
-    tx: futures::channel::mpsc::Sender<ReceiptsResponse>,
-) -> anyhow::Result<()> {
-    spawn_blocking_get(request, storage, blocking::get_receipts, tx).await
-}
-
 pub async fn get_events(
     storage: Storage,
     request: EventsRequest,
@@ -120,14 +111,6 @@ pub(crate) mod blocking {
         tx: mpsc::Sender<TransactionsResponse>,
     ) -> anyhow::Result<()> {
         iterate(db_tx, request.iteration, get_transactions_for_block, tx)
-    }
-
-    pub(crate) fn get_receipts(
-        db_tx: Transaction<'_>,
-        request: ReceiptsRequest,
-        tx: mpsc::Sender<ReceiptsResponse>,
-    ) -> anyhow::Result<()> {
-        iterate(db_tx, request.iteration, get_receipts_for_block, tx)
     }
 
     pub(crate) fn get_events(
@@ -330,26 +313,15 @@ fn get_transactions_for_block(
         return Ok(false);
     };
 
-    for (txn, _, _) in txn_data {
-        tx.blocking_send(TransactionsResponse::Transaction(txn.to_dto()))
-            .map_err(|_| anyhow::anyhow!("Sending transaction"))?;
-    }
-
-    Ok(true)
-}
-
-fn get_receipts_for_block(
-    db_tx: &Transaction<'_>,
-    block_number: BlockNumber,
-    tx: &mpsc::Sender<ReceiptsResponse>,
-) -> anyhow::Result<bool> {
-    let Some(txn_data) = db_tx.transaction_data_for_block(block_number.into())? else {
-        return Ok(false);
-    };
-
-    for (txn, r, _) in txn_data {
-        tx.blocking_send(ReceiptsResponse::Receipt((txn, r).to_dto()))
-            .map_err(|_| anyhow::anyhow!("Sending receipt"))?;
+    for (txn, receipt, _) in txn_data {
+        let receipt = (&txn, receipt).to_dto();
+        tx.blocking_send(TransactionsResponse::TransactionWithReceipt(
+            TransactionWithReceipt {
+                transaction: txn.to_dto(),
+                receipt,
+            },
+        ))
+        .map_err(|_| anyhow::anyhow!("Sending transaction"))?;
     }
 
     Ok(true)

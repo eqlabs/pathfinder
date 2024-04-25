@@ -2,7 +2,7 @@ use fake::Dummy;
 use pathfinder_crypto::Felt;
 use primitive_types::H160;
 
-use crate::common::{Hash, Iteration};
+use crate::common::Hash;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -97,20 +97,6 @@ pub enum Receipt {
     L1Handler(L1HandlerTransactionReceipt),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::ReceiptsRequest")]
-pub struct ReceiptsRequest {
-    pub iteration: Iteration,
-}
-
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
-pub enum ReceiptsResponse {
-    Receipt(Receipt),
-    #[default]
-    Fin,
-}
-
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self(H160::random_using(rng))
@@ -187,30 +173,5 @@ impl ToProtobuf<proto::receipt::Receipt> for Receipt {
             Receipt::L1Handler(r) => L1Handler(r.to_protobuf()),
         });
         proto::receipt::Receipt { r#type }
-    }
-}
-
-impl ToProtobuf<proto::receipt::ReceiptsResponse> for ReceiptsResponse {
-    fn to_protobuf(self) -> proto::receipt::ReceiptsResponse {
-        use proto::receipt::receipts_response::ReceiptMessage::{Fin, Receipt};
-        proto::receipt::ReceiptsResponse {
-            receipt_message: Some(match self {
-                Self::Receipt(r) => Receipt(r.to_protobuf()),
-                Self::Fin => Fin(proto::common::Fin {}),
-            }),
-        }
-    }
-}
-
-impl TryFromProtobuf<proto::receipt::ReceiptsResponse> for ReceiptsResponse {
-    fn try_from_protobuf(
-        input: proto::receipt::ReceiptsResponse,
-        field_name: &'static str,
-    ) -> Result<Self, std::io::Error> {
-        use proto::receipt::receipts_response::ReceiptMessage::{Fin, Receipt};
-        Ok(match proto_field(input.receipt_message, field_name)? {
-            Receipt(r) => Self::Receipt(TryFromProtobuf::try_from_protobuf(r, field_name)?),
-            Fin(_) => Self::Fin,
-        })
     }
 }

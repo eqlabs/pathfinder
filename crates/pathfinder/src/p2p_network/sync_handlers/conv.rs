@@ -198,7 +198,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
     }
 }
 
-impl ToDto<p2p_proto::receipt::Receipt> for (Transaction, Receipt) {
+impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
     fn to_dto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         let revert_reason = self

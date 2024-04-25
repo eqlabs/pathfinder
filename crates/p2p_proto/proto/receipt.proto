@@ -73,19 +73,3 @@ message Receipt {
     DeployAccount deploy_account    = 5;
   }
 }
-
-message ReceiptsRequest {
-  starknet.common.Iteration iteration = 1;
-}
-
-message Receipts {
-    repeated Receipt items = 2;
-}
-
-// Responses are sent ordered by the order given in the request.
-message ReceiptsResponse {
-    oneof receipt_message {
-        Receipt             receipt = 1;
-        starknet.common.Fin fin     = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its receipts.
-    }
-}

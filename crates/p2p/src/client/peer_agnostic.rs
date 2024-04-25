@@ -11,7 +11,6 @@ use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
@@ -271,14 +270,6 @@ impl Client {
         self.inner
             .send_transactions_sync_request(peer, request)
             .await
-    }
-
-    pub async fn send_receipts_sync_request(
-        &self,
-        peer: PeerId,
-        request: ReceiptsRequest,
-    ) -> anyhow::Result<futures::channel::mpsc::Receiver<ReceiptsResponse>> {
-        self.inner.send_receipts_sync_request(peer, request).await
     }
 
     pub fn contract_updates_stream(

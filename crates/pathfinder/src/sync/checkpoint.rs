@@ -8,7 +8,6 @@ use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::{Class, Client as P2PClient, EventsForBlockByTransaction};
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
@@ -250,123 +249,6 @@ impl Sync {
                         }
                         TransactionsResponse::Fin => {
                             tracing::debug!(%peer, "Unexpected transaction stream Fin");
-                            continue 'next_peer;
-                        }
-                    };
-                }
-            }
-        }
-    }
-
-    async fn sync_receipts(&self) -> anyhow::Result<()> {
-        let (first_block, last_block) = spawn_blocking({
-            let storage = self.storage.clone();
-            move || -> anyhow::Result<(Option<BlockNumber>, Option<BlockNumber>)> {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                let first_block = db
-                    .first_block_without_receipts()
-                    .context("Querying first block without receipts")?;
-                let last_block = db
-                    .block_id(pathfinder_storage::BlockId::Latest)
-                    .context("Querying latest block without receipts")?
-                    .map(|(block_number, _)| block_number);
-                Ok((first_block, last_block))
-            }
-        })
-        .await
-        .context("Joining blocking task")??;
-
-        let Some(first_block) = first_block else {
-            return Ok(());
-        };
-        let last_block = last_block.context("Last block not found but first block found")?;
-
-        let mut curr_block = headers::query(self.storage.clone(), first_block)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("First block not found"))?;
-
-        // Loop which refreshes peer set once we exhaust it.
-        loop {
-            let peers = self
-                .p2p
-                .get_update_peers_with_transaction_sync_capability()
-                .await;
-
-            // Attempt each peer.
-            'next_peer: for peer in peers {
-                let request = ReceiptsRequest {
-                    iteration: Iteration {
-                        start: BlockNumberOrHash::Number(curr_block.number.get()),
-                        direction: Direction::Forward,
-                        limit: last_block.get() - curr_block.number.get() + 1,
-                        step: 1.into(),
-                    },
-                };
-
-                let mut responses = match self.p2p.send_receipts_sync_request(peer, request).await {
-                    Ok(x) => x,
-                    Err(error) => {
-                        // Failed to establish connection, try next peer.
-                        tracing::debug!(%peer, reason=%error, "Receipts request failed");
-                        continue 'next_peer;
-                    }
-                };
-
-                let mut receipts = Vec::new();
-                while let Some(receipt) = responses.next().await {
-                    match receipt {
-                        ReceiptsResponse::Receipt(receipt) => {
-                            match Receipt::try_from_dto((
-                                receipt,
-                                TransactionIndex::new_or_panic(receipts.len().try_into().unwrap()),
-                            )) {
-                                Ok(receipt) if receipts.len() < curr_block.transaction_count => {
-                                    receipts.push(receipt)
-                                }
-                                Ok(receipt) => {
-                                    receipts::persist(
-                                        self.storage.clone(),
-                                        curr_block.clone(),
-                                        receipts.clone(),
-                                    )
-                                    .await
-                                    .context("Inserting receipts")?;
-                                    if curr_block.number == last_block {
-                                        return Ok(());
-                                    }
-                                    curr_block =
-                                        headers::query(self.storage.clone(), curr_block.number + 1)
-                                            .await?
-                                            .ok_or_else(|| {
-                                                anyhow::anyhow!("Next block not found")
-                                            })?;
-                                    receipts.clear();
-                                    receipts.push(receipt);
-                                }
-                                Err(error) => {
-                                    tracing::debug!(%peer, %error, "Receipt stream returned unexpected DTO");
-                                    continue 'next_peer;
-                                }
-                            }
-                        }
-                        ReceiptsResponse::Fin if curr_block.number == last_block => {
-                            if receipts.len() != curr_block.transaction_count {
-                                tracing::debug!(
-                                    "Invalid receipts for block {}, trying next peer",
-                                    curr_block.number
-                                );
-                                continue 'next_peer;
-                            }
-                            receipts::persist(self.storage.clone(), curr_block, receipts)
-                                .await
-                                .context("Inserting receipts")?;
-                            return Ok(());
-                        }
-                        ReceiptsResponse::Fin => {
-                            tracing::debug!(%peer, "Unexpected receipts stream Fin");
                             continue 'next_peer;
                         }
                     };

@@ -12,7 +12,6 @@ use libp2p::{swarm, Multiaddr, PeerId, Swarm};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber, ChainId};
@@ -160,11 +159,6 @@ enum Command {
         request: TransactionsRequest,
         sender: oneshot::Sender<anyhow::Result<ResponseReceiver<TransactionsResponse>>>,
     },
-    SendReceiptsSyncRequest {
-        peer_id: PeerId,
-        request: ReceiptsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<ReceiptsResponse>>>,
-    },
     SendEventsSyncRequest {
         peer_id: PeerId,
         request: EventsRequest,
@@ -213,11 +207,6 @@ pub enum Event {
         from: PeerId,
         request: TransactionsRequest,
         channel: ResponseSender<TransactionsResponse>,
-    },
-    InboundReceiptsSyncRequest {
-        from: PeerId,
-        request: ReceiptsRequest,
-        channel: ResponseSender<ReceiptsResponse>,
     },
     InboundEventsSyncRequest {
         from: PeerId,

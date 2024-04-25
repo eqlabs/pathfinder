@@ -2,6 +2,7 @@ use fake::Dummy;
 use pathfinder_crypto::Felt;
 
 use crate::common::{Address, Hash, Iteration};
+use crate::receipt::Receipt;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -182,6 +183,13 @@ pub struct Transaction {
     pub variant: TransactionVariant,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::transaction::TransactionWithReceipt")]
+pub struct TransactionWithReceipt {
+    pub transaction: Transaction,
+    pub receipt: Receipt,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::TransactionsRequest")]
 pub struct TransactionsRequest {
@@ -191,7 +199,7 @@ pub struct TransactionsRequest {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
 pub enum TransactionsResponse {
-    Transaction(Transaction),
+    TransactionWithReceipt(TransactionWithReceipt),
     #[default]
     Fin,
 }
@@ -269,10 +277,13 @@ impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionVarian
 
 impl ToProtobuf<proto::transaction::TransactionsResponse> for TransactionsResponse {
     fn to_protobuf(self) -> proto::transaction::TransactionsResponse {
-        use proto::transaction::transactions_response::TransactionMessage::{Fin, Transaction};
+        use proto::transaction::transactions_response::TransactionMessage::{
+            Fin,
+            TransactionWithReceipt,
+        };
         proto::transaction::TransactionsResponse {
             transaction_message: Some(match self {
-                Self::Transaction(t) => Transaction(t.to_protobuf()),
+                Self::TransactionWithReceipt(t) => TransactionWithReceipt(t.to_protobuf()),
                 Self::Fin => Fin(proto::common::Fin {}),
             }),
         }
@@ -284,9 +295,14 @@ impl TryFromProtobuf<proto::transaction::TransactionsResponse> for TransactionsR
         input: proto::transaction::TransactionsResponse,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::transaction::transactions_response::TransactionMessage::{Fin, Transaction};
+        use proto::transaction::transactions_response::TransactionMessage::{
+            Fin,
+            TransactionWithReceipt,
+        };
         Ok(match proto_field(input.transaction_message, field_name)? {
-            Transaction(t) => Self::Transaction(TryFromProtobuf::try_from_protobuf(t, field_name)?),
+            TransactionWithReceipt(t) => {
+                Self::TransactionWithReceipt(TryFromProtobuf::try_from_protobuf(t, field_name)?)
+            }
             Fin(_) => Self::Fin,
         })
     }

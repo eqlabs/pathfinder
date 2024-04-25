@@ -27,7 +27,6 @@ use libp2p::{autonat, dcutr, identify, identity, ping, relay, Multiaddr, PeerId,
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
@@ -65,7 +64,6 @@ pub struct Inner {
     classes_sync: p2p_stream::Behaviour<codec::Classes>,
     state_diffs_sync: p2p_stream::Behaviour<codec::StateDiffs>,
     transactions_sync: p2p_stream::Behaviour<codec::Transactions>,
-    receipts_sync: p2p_stream::Behaviour<codec::Receipts>,
     events_sync: p2p_stream::Behaviour<codec::Events>,
 }
 
@@ -481,7 +479,6 @@ impl Behaviour {
         let classes_sync = request_response_behavior::<codec::Classes>();
         let state_diffs_sync = request_response_behavior::<codec::StateDiffs>();
         let transactions_sync = request_response_behavior::<codec::Transactions>();
-        let receipts_sync = request_response_behavior::<codec::Receipts>();
         let events_sync = request_response_behavior::<codec::Events>();
 
         let (relay_transport, relay) = relay::client::new(peer_id);
@@ -510,7 +507,6 @@ impl Behaviour {
                     classes_sync,
                     state_diffs_sync,
                     transactions_sync,
-                    receipts_sync,
                     events_sync,
                 },
             },
@@ -814,10 +810,6 @@ impl Behaviour {
         &mut self.inner.transactions_sync
     }
 
-    pub fn receipts_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Receipts> {
-        &mut self.inner.receipts_sync
-    }
-
     pub fn events_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Events> {
         &mut self.inner.events_sync
     }
@@ -869,7 +861,6 @@ pub enum Event {
     ClassesSync(p2p_stream::Event<ClassesRequest, ClassesResponse>),
     StateDiffsSync(p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>),
     TransactionsSync(p2p_stream::Event<TransactionsRequest, TransactionsResponse>),
-    ReceiptsSync(p2p_stream::Event<ReceiptsRequest, ReceiptsResponse>),
     EventsSync(p2p_stream::Event<EventsRequest, EventsResponse>),
 }
 
@@ -936,12 +927,6 @@ impl From<p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>> for Event {
 impl From<p2p_stream::Event<TransactionsRequest, TransactionsResponse>> for Event {
     fn from(event: p2p_stream::Event<TransactionsRequest, TransactionsResponse>) -> Self {
         Event::TransactionsSync(event)
-    }
-}
-
-impl From<p2p_stream::Event<ReceiptsRequest, ReceiptsResponse>> for Event {
-    fn from(event: p2p_stream::Event<ReceiptsRequest, ReceiptsResponse>) -> Self {
-        Event::ReceiptsSync(event)
     }
 }
 

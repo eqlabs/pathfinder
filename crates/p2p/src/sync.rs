@@ -40,17 +40,7 @@ pub(crate) mod codec {
 
     use async_trait::async_trait;
     use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-    use p2p_proto::{
-        class,
-        event,
-        header,
-        proto,
-        receipt,
-        state,
-        transaction,
-        ToProtobuf,
-        TryFromProtobuf,
-    };
+    use p2p_proto::{class, event, header, proto, state, transaction, ToProtobuf, TryFromProtobuf};
     use p2p_stream::Codec;
 
     use super::protocol;
@@ -91,15 +81,6 @@ pub(crate) mod codec {
         transaction::TransactionsResponse,
         proto::transaction::TransactionsRequest,
         proto::transaction::TransactionsResponse,
-        ONE_MIB,
-    >;
-
-    pub type Receipts = SyncCodec<
-        protocol::Receipts,
-        receipt::ReceiptsRequest,
-        receipt::ReceiptsResponse,
-        proto::receipt::ReceiptsRequest,
-        proto::receipt::ReceiptsResponse,
         ONE_MIB,
     >;
 
