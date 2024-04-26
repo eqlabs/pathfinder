@@ -114,14 +114,19 @@ mod prop {
         StateDiffsRequest,
         StateDiffsResponse,
     };
-    use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+    use p2p_proto::transaction::{
+        TransactionWithReceipt,
+        TransactionsRequest,
+        TransactionsResponse,
+    };
     use pathfinder_common::event::Event;
+    use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{
         ContractClassUpdate,
         ContractUpdate,
         SystemContractUpdate,
     };
-    use pathfinder_common::transaction::TransactionVariant;
+    use pathfinder_common::transaction::{Transaction, TransactionVariant};
     use pathfinder_common::{
         ClassCommitment,
         ClassHash,
@@ -133,6 +138,7 @@ mod prop {
         StorageCommitment,
         StorageValue,
         TransactionHash,
+        TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_storage::fake::Block;
@@ -388,8 +394,8 @@ mod prop {
                     (
                         // Block number
                         header.header.number,
-                        // List of tuples (Transaction hash, Transaction variant)
-                        transaction_data.into_iter().map(|(t, _, _)| {
+                        // List of tuples (Transaction, Receipt)
+                        transaction_data.into_iter().map(|(t, mut rec, _)| {
                             let mut txn = workaround::for_legacy_l1_handlers(t);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
                             match &mut txn.variant {
@@ -398,7 +404,9 @@ mod prop {
                                 TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
                                 _ => {}
                             };
-                            (txn.hash, txn.variant)
+                            // P2P receipts don't carry transaction index
+                            rec.transaction_index = TransactionIndex::new_or_panic(0);
+                            (txn, rec)
                         }).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
@@ -416,7 +424,9 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                TransactionsResponse::Transaction(txn) => (TransactionHash(txn.hash.0), TransactionVariant::try_from_dto(txn.variant).unwrap()),
+                TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt { transaction, receipt }) => {
+                    (Transaction::try_from_dto(transaction).unwrap(), Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap())
+                }
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 

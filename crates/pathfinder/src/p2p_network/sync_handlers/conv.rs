@@ -244,7 +244,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
         };
 
         use pathfinder_common::transaction::TransactionVariant;
-        match self.0.variant {
+        match &self.0.variant {
             TransactionVariant::DeclareV0(_)
             | TransactionVariant::DeclareV1(_)
             | TransactionVariant::DeclareV2(_)
