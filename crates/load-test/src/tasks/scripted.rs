@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 
 use goose::prelude::*;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 
 use crate::requests::v05::*;
 
-/// Script from Starkware that contain some heavy-weight calls mixed with wallet-like calls.
+/// Script from Starkware that contain some heavy-weight calls mixed with
+/// wallet-like calls.
 const MAINNET_SCRIPT: &str = include_str!("mainnet_script.txt");
-/// A slight variation of `MAINNET_SCRIPT` that doesn't contain the heavy-weight calls.
+/// A slight variation of `MAINNET_SCRIPT` that doesn't contain the heavy-weight
+/// calls.
 const MAINNET_SCRIPT_WITHOUT_HUGE_CALLS: &str =
     include_str!("mainnet_script_without_huge_calls.txt");
 

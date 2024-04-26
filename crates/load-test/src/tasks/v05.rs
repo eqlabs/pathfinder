@@ -4,7 +4,8 @@ use rand::{Rng, SeedableRng};
 
 use crate::requests::v05::*;
 
-/// Fetch a random block, then fetch all individual transactions and receipts in the block.
+/// Fetch a random block, then fetch all individual transactions and receipts in
+/// the block.
 pub async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
     let mut rng = rand::rngs::StdRng::from_entropy();
     let block_number: u64 = rng.gen_range(1..290000);
@@ -212,22 +213,24 @@ pub async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
     let events = get_events(
         user,
         EventFilter {
-            from_block: Some(1000),
-            to_block: Some(1100),
+            from_block: Some(600000),
+            to_block: Some(650000),
             address: Some(
                 Felt::from_hex_str(
-                    "0x103114c4c5ac233a360d39a9217b9067be6979f3d08e1cf971fd22baf8f8713",
+                    "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
                 )
                 .unwrap(),
             ),
-            keys: vec![],
-            page_size: 1024,
-            page_number: 0,
+            keys: vec![vec![Felt::from_hex_str(
+                "0x134692b230b9e1ffa39098904722134159652b09c5bc41d88d6698779d228ff",
+            )
+            .unwrap()]],
+            chunk_size: 500,
         },
     )
     .await?;
 
-    assert_eq!(events.events.len(), 1);
+    assert_eq!(events.events.len(), 500);
 
     Ok(())
 }
@@ -236,11 +239,14 @@ pub async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
     // Taken from:
     // https://alpha-mainnet.starknet.io/feeder_gateway/get_state_update?blockNumber=1700
     //
-    // "block_hash": "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87"
+    // "block_hash":
+    // "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87"
     //
-    // "storage_diffs": {"0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056":
+    // "storage_diffs":
+    // {"0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056":
     // [{"key": "0x79deb98f1f7fc9a64df7073f93ce645a5f6a7588c34773ba76fdc879a2346e1",
-    // "value": "0x44054cde571399c485119e55cf0b9fc7dcc151fb3486f70020d3ee4d7b20f8d"}]
+    // "value": "0x44054cde571399c485119e55cf0b9fc7dcc151fb3486f70020d3ee4d7b20f8d"
+    // }]
     get_storage_at(
         user,
         Felt::from_hex_str("0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056")

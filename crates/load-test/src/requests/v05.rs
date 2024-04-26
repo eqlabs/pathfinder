@@ -1,11 +1,16 @@
 use goose::prelude::*;
-use serde::{de::DeserializeOwned, Deserialize};
+use pathfinder_crypto::Felt;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::json;
 
-use pathfinder_crypto::Felt;
-
 use crate::types::{
-    Block, ContractClass, FeeEstimate, StateUpdate, Transaction, TransactionReceipt,
+    Block,
+    ContractClass,
+    FeeEstimate,
+    StateUpdate,
+    Transaction,
+    TransactionReceipt,
 };
 
 pub type MethodResult<T> = Result<T, Box<goose::goose::TransactionError>>;
@@ -176,7 +181,7 @@ pub async fn get_events(
             "to_block": to_block,
             "address": filter.address,
             "keys": filter.keys,
-            "chunk_size": 1000,
+            "chunk_size": filter.chunk_size,
         }}),
     )
     .await
@@ -187,8 +192,7 @@ pub struct EventFilter {
     pub to_block: Option<u64>,
     pub address: Option<Felt>,
     pub keys: Vec<Vec<Felt>>,
-    pub page_size: u64,
-    pub page_number: u64,
+    pub chunk_size: u64,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]

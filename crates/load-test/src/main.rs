@@ -3,7 +3,8 @@
 //! Load test for pathfinder JSON-RPC endpoints.
 //!
 //! This program expects a mainnet pathfinder node synced until block 1800,
-//! since it contains references to transactions and contract addresses on mainnet.
+//! since it contains references to transactions and contract addresses on
+//! mainnet.
 //!
 //! Running the load test:
 //! ```
@@ -16,10 +17,7 @@ mod tasks;
 mod types;
 
 fn register_v05(attack: GooseAttack) -> GooseAttack {
-    use tasks::scripted::{
-        mainnet_scripted,
-        mainnet_scripted_without_huge_calls,
-    };
+    use tasks::scripted::{mainnet_scripted, mainnet_scripted_without_huge_calls};
     use tasks::v05::*;
 
     attack

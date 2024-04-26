@@ -1,9 +1,8 @@
 //! Contains simplified types for parsing JSON-RPC responses.
 //!
-//! In order not to depend on pathfinder_lib these types "duplicate" similar functionality
-//! already found in pathfinder. However, these types are simplified and are missing fields
-//! that are irrelevant for load tests.
-//!
+//! In order not to depend on pathfinder_lib these types "duplicate" similar
+//! functionality already found in pathfinder. However, these types are
+//! simplified and are missing fields that are irrelevant for load tests.
 use pathfinder_crypto::Felt;
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
