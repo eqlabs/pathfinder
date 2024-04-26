@@ -77,7 +77,10 @@ jobs:
           cargo clean
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
-      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
+      - run: |
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
+          cargo clippy --workspace --all-targets --all-features --locked --manifest-path crates/load-test/Cargo.toml -- -D warnings -D rust_2018_idioms
+
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -86,7 +89,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
-      - run: cargo +nightly fmt --all -- --check
+      - run: |
+          cargo +nightly fmt --all -- --check
+          cargo +nightly fmt --all --manifest-path crates/load-test/Cargo.toml -- --check
 
   doc:
     runs-on: ubuntu-latest
