@@ -8,8 +8,7 @@ use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::{Class, Client as P2PClient, EventsForBlockByTransaction};
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ClassHash, TransactionIndex};
@@ -26,7 +25,7 @@ use crate::state::block_hash::{
     TransactionCommitmentFinalHashType,
 };
 use crate::sync::error::SyncError;
-use crate::sync::{class_definitions, events, headers, receipts, state_updates, transactions};
+use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -197,23 +196,43 @@ impl Sync {
                 let mut transactions = Vec::new();
                 while let Some(transaction) = responses.next().await {
                     match transaction {
-                        TransactionsResponse::Transaction(tx) => {
-                            match Transaction::try_from_dto(tx) {
-                                Ok(tx) if transactions.len() < curr_block.transaction_count => {
-                                    transactions.push(tx)
+                        TransactionsResponse::TransactionWithReceipt(tx) => {
+                            let TransactionWithReceipt {
+                                transaction,
+                                receipt,
+                            } = tx;
+                            match (
+                                Transaction::try_from_dto(transaction),
+                                Receipt::try_from_dto((
+                                    receipt,
+                                    TransactionIndex::new_or_panic(
+                                        transactions.len().try_into().expect("ptr size is 64bits"),
+                                    ),
+                                )),
+                            ) {
+                                (Ok(tx), Ok(rec))
+                                    if transactions.len() < curr_block.transaction_count =>
+                                {
+                                    transactions.push((tx, rec))
                                 }
-                                Ok(tx) => {
-                                    if !check_transactions(&curr_block, &transactions).await? {
+                                (Ok(tx), Ok(rec)) => {
+                                    let Some(checked) = check_transactions(
+                                        &curr_block,
+                                        std::mem::take(&mut transactions),
+                                    )
+                                    .await?
+                                    else {
                                         tracing::debug!(
                                             "Invalid transactions for block {}, trying next peer",
                                             curr_block.number
                                         );
                                         continue 'next_peer;
-                                    }
+                                    };
+
                                     transactions::persist(
                                         self.storage.clone(),
                                         curr_block.clone(),
-                                        transactions.clone(),
+                                        checked,
                                     )
                                     .await
                                     .context("Inserting transactions")?;
@@ -226,147 +245,33 @@ impl Sync {
                                             .ok_or_else(|| {
                                                 anyhow::anyhow!("Next block not found")
                                             })?;
-                                    transactions.clear();
-                                    transactions.push(tx);
+                                    transactions.push((tx, rec));
                                 }
-                                Err(error) => {
+                                (Err(error), _) | (_, Err(error)) => {
                                     tracing::debug!(%peer, %error, "Transaction stream returned unexpected DTO");
                                     continue 'next_peer;
                                 }
                             }
                         }
                         TransactionsResponse::Fin if curr_block.number == last_block => {
-                            if !check_transactions(&curr_block, &transactions).await? {
+                            let Some(checked) =
+                                check_transactions(&curr_block, std::mem::take(&mut transactions))
+                                    .await?
+                            else {
                                 tracing::debug!(
                                     "Invalid transactions for block {}, trying next peer",
                                     curr_block.number
                                 );
                                 continue 'next_peer;
-                            }
-                            transactions::persist(self.storage.clone(), curr_block, transactions)
+                            };
+
+                            transactions::persist(self.storage.clone(), curr_block, checked)
                                 .await
                                 .context("Inserting transactions")?;
                             return Ok(());
                         }
                         TransactionsResponse::Fin => {
                             tracing::debug!(%peer, "Unexpected transaction stream Fin");
-                            continue 'next_peer;
-                        }
-                    };
-                }
-            }
-        }
-    }
-
-    async fn sync_receipts(&self) -> anyhow::Result<()> {
-        let (first_block, last_block) = spawn_blocking({
-            let storage = self.storage.clone();
-            move || -> anyhow::Result<(Option<BlockNumber>, Option<BlockNumber>)> {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                let first_block = db
-                    .first_block_without_receipts()
-                    .context("Querying first block without receipts")?;
-                let last_block = db
-                    .block_id(pathfinder_storage::BlockId::Latest)
-                    .context("Querying latest block without receipts")?
-                    .map(|(block_number, _)| block_number);
-                Ok((first_block, last_block))
-            }
-        })
-        .await
-        .context("Joining blocking task")??;
-
-        let Some(first_block) = first_block else {
-            return Ok(());
-        };
-        let last_block = last_block.context("Last block not found but first block found")?;
-
-        let mut curr_block = headers::query(self.storage.clone(), first_block)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("First block not found"))?;
-
-        // Loop which refreshes peer set once we exhaust it.
-        loop {
-            let peers = self
-                .p2p
-                .get_update_peers_with_transaction_sync_capability()
-                .await;
-
-            // Attempt each peer.
-            'next_peer: for peer in peers {
-                let request = ReceiptsRequest {
-                    iteration: Iteration {
-                        start: BlockNumberOrHash::Number(curr_block.number.get()),
-                        direction: Direction::Forward,
-                        limit: last_block.get() - curr_block.number.get() + 1,
-                        step: 1.into(),
-                    },
-                };
-
-                let mut responses = match self.p2p.send_receipts_sync_request(peer, request).await {
-                    Ok(x) => x,
-                    Err(error) => {
-                        // Failed to establish connection, try next peer.
-                        tracing::debug!(%peer, reason=%error, "Receipts request failed");
-                        continue 'next_peer;
-                    }
-                };
-
-                let mut receipts = Vec::new();
-                while let Some(receipt) = responses.next().await {
-                    match receipt {
-                        ReceiptsResponse::Receipt(receipt) => {
-                            match Receipt::try_from_dto((
-                                receipt,
-                                TransactionIndex::new_or_panic(receipts.len().try_into().unwrap()),
-                            )) {
-                                Ok(receipt) if receipts.len() < curr_block.transaction_count => {
-                                    receipts.push(receipt)
-                                }
-                                Ok(receipt) => {
-                                    receipts::persist(
-                                        self.storage.clone(),
-                                        curr_block.clone(),
-                                        receipts.clone(),
-                                    )
-                                    .await
-                                    .context("Inserting receipts")?;
-                                    if curr_block.number == last_block {
-                                        return Ok(());
-                                    }
-                                    curr_block =
-                                        headers::query(self.storage.clone(), curr_block.number + 1)
-                                            .await?
-                                            .ok_or_else(|| {
-                                                anyhow::anyhow!("Next block not found")
-                                            })?;
-                                    receipts.clear();
-                                    receipts.push(receipt);
-                                }
-                                Err(error) => {
-                                    tracing::debug!(%peer, %error, "Receipt stream returned unexpected DTO");
-                                    continue 'next_peer;
-                                }
-                            }
-                        }
-                        ReceiptsResponse::Fin if curr_block.number == last_block => {
-                            if receipts.len() != curr_block.transaction_count {
-                                tracing::debug!(
-                                    "Invalid receipts for block {}, trying next peer",
-                                    curr_block.number
-                                );
-                                continue 'next_peer;
-                            }
-                            receipts::persist(self.storage.clone(), curr_block, receipts)
-                                .await
-                                .context("Inserting receipts")?;
-                            return Ok(());
-                        }
-                        ReceiptsResponse::Fin => {
-                            tracing::debug!(%peer, "Unexpected receipts stream Fin");
                             continue 'next_peer;
                         }
                     };
@@ -487,26 +392,28 @@ async fn handle_event_stream(
     Ok(())
 }
 
+/// Takes ownership of transactions and returns them if verification passes.
 async fn check_transactions(
     block: &BlockHeader,
-    transactions: &[Transaction],
-) -> anyhow::Result<bool> {
+    transactions: Vec<(Transaction, Receipt)>,
+) -> anyhow::Result<Option<Vec<(Transaction, Receipt)>>> {
     if transactions.len() != block.transaction_count {
-        return Ok(false);
+        return Ok(None);
     }
     let transaction_final_hash_type =
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
-    let transaction_commitment = spawn_blocking({
-        let transactions = transactions.to_vec();
+    let (transaction_commitment, transactions) = spawn_blocking({
         move || {
-            calculate_transaction_commitment(&transactions, transaction_final_hash_type)
+            let txn_refs = transactions.iter().map(|(t, _)| t).collect::<Vec<_>>();
+            calculate_transaction_commitment(&txn_refs, transaction_final_hash_type)
                 .map_err(anyhow::Error::from)
+                .map(|commitment| (commitment, transactions))
         }
     })
     .await
     .context("Joining blocking task")?
     .context("Calculating transaction commitment")?;
-    Ok(transaction_commitment == block.transaction_commitment)
+    Ok((transaction_commitment == block.transaction_commitment).then_some(transactions))
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with

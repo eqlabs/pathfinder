@@ -39,7 +39,6 @@ mod boundary_conditions {
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::EventsRequest;
     use p2p_proto::header::BlockHeadersRequest;
-    use p2p_proto::receipt::ReceiptsRequest;
     use p2p_proto::state::StateDiffsRequest;
     use p2p_proto::transaction::TransactionsRequest;
     use pathfinder_storage::StorageBuilder;
@@ -51,7 +50,6 @@ mod boundary_conditions {
         get_classes,
         get_events,
         get_headers,
-        get_receipts,
         get_state_diffs,
         get_transactions,
     };
@@ -95,7 +93,6 @@ mod boundary_conditions {
         define_test!(bodies, get_classes, ClassesRequest);
         define_test!(state_diffs, get_state_diffs, StateDiffsRequest);
         define_test!(transactions, get_transactions, TransactionsRequest);
-        define_test!(receipts, get_receipts, ReceiptsRequest);
         define_test!(events, get_events, EventsRequest);
     }
 }
@@ -111,14 +108,17 @@ mod prop {
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-    use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
     use p2p_proto::state::{
         ContractDiff,
         ContractStoredValue,
         StateDiffsRequest,
         StateDiffsResponse,
     };
-    use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+    use p2p_proto::transaction::{
+        TransactionWithReceipt,
+        TransactionsRequest,
+        TransactionsResponse,
+    };
     use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{
@@ -126,7 +126,7 @@ mod prop {
         ContractUpdate,
         SystemContractUpdate,
     };
-    use pathfinder_common::transaction::TransactionVariant;
+    use pathfinder_common::transaction::{Transaction, TransactionVariant};
     use pathfinder_common::{
         ClassCommitment,
         ClassHash,
@@ -394,8 +394,8 @@ mod prop {
                     (
                         // Block number
                         header.header.number,
-                        // List of tuples (Transaction hash, Transaction variant)
-                        transaction_data.into_iter().map(|(t, _, _)| {
+                        // List of tuples (Transaction, Receipt)
+                        transaction_data.into_iter().map(|(t, mut rec, _)| {
                             let mut txn = workaround::for_legacy_l1_handlers(t);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
                             match &mut txn.variant {
@@ -404,7 +404,9 @@ mod prop {
                                 TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
                                 _ => {}
                             };
-                            (txn.hash, txn.variant)
+                            // P2P receipts don't carry transaction index
+                            rec.transaction_index = TransactionIndex::new_or_panic(0);
+                            (txn, rec)
                         }).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
@@ -422,53 +424,9 @@ mod prop {
 
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
-                TransactionsResponse::Transaction(txn) => (TransactionHash(txn.hash.0), TransactionVariant::try_from_dto(txn.variant).unwrap()),
-                _ => panic!("unexpected response"),
-            }).collect::<Vec<_>>();
-
-            for expected_for_block in expected {
-                let actual_for_block = actual.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
-                prop_assert_eq_sorted!(expected_for_block.1, actual_for_block, "block number: {}", expected_for_block.0);
-            }
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn get_receipts((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
-            // Fake storage with a given number of blocks
-            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
-            // Compute the overlapping set between the db and the request
-            // These are the receipts that we expect to be read from the db
-            // Grouped by block number
-            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|Block { header, transaction_data, .. }|
-                    (
-                        // Block number
-                        header.header.number,
-                        // List of receipts
-                        transaction_data.into_iter().map(|(_, mut r, _)| {
-                            // P2P receipts don't carry transaction index
-                            r.transaction_index = TransactionIndex::new_or_panic(0);
-                            r
-                        }).collect::<Vec<_>>()
-                    )
-            ).collect::<Vec<_>>();
-            // Run the handler
-            let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let mut responses = Runtime::new().unwrap().block_on(async {
-                let (tx, rx) = mpsc::channel(0);
-                let getter_fut = sync_handlers::get_receipts(storage, request, tx);
-                let (_, responses) = tokio::join!(getter_fut, rx.collect::<Vec<_>>());
-                responses
-            });
-
-            // Make sure the last reply is Fin
-            assert_eq!(responses.pop().unwrap(), ReceiptsResponse::Fin);
-
-            // Check the rest
-            let mut actual = responses.into_iter().map(|response| match response {
-                ReceiptsResponse::Receipt(receipt) => Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap(),
+                TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt { transaction, receipt }) => {
+                    (Transaction::try_from_dto(transaction).unwrap(), Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap())
+                }
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 

@@ -10,7 +10,6 @@ mod class_definitions;
 mod error;
 mod events;
 mod headers;
-mod receipts;
 mod state_updates;
 mod transactions;
 

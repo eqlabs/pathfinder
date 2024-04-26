@@ -10,7 +10,6 @@ use libp2p::{Multiaddr, PeerId};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
-use p2p_proto::receipt::{ReceiptsRequest, ReceiptsResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use tokio::sync::{mpsc, oneshot};
@@ -158,13 +157,6 @@ impl Client {
         SendTransactionsSyncRequest,
         TransactionsRequest,
         TransactionsResponse
-    );
-
-    impl_send!(
-        send_receipts_sync_request,
-        SendReceiptsSyncRequest,
-        ReceiptsRequest,
-        ReceiptsResponse
     );
 
     impl_send!(

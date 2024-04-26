@@ -391,32 +391,6 @@ impl Transaction<'_> {
         }
     }
 
-    pub fn first_block_without_receipts(&self) -> anyhow::Result<Option<BlockNumber>> {
-        let mut stmt = self
-            .inner()
-            .prepare(
-                "
-            SELECT block_headers.number
-            FROM block_headers
-            JOIN starknet_transactions
-            ON starknet_transactions.block_hash = block_headers.hash AND \
-                 starknet_transactions.receipt IS NULL
-            ORDER BY number ASC
-            LIMIT 1;
-            ",
-            )
-            .context("Preparing first_block_without_transactions query")?;
-
-        let mut rows = stmt
-            .query(params![])
-            .context("Executing first_block_without_transactions")?;
-
-        match rows.next()? {
-            Some(row) => Ok(Some(row.get_block_number(0)?)),
-            None => Ok(None),
-        }
-    }
-
     pub fn highest_block_with_all_class_definitions_downloaded(
         &self,
     ) -> anyhow::Result<Option<BlockNumber>> {

@@ -1,5 +1,6 @@
 syntax = "proto3";
 import "common.proto";
+import "receipt.proto";
 
 package starknet.transaction;
 
@@ -141,6 +142,11 @@ message Transaction
     starknet.common.Hash transaction_hash = 12;
 }
 
+message TransactionWithReceipt {
+    Transaction transaction = 1;
+    starknet.receipt.Receipt receipt = 2;
+}
+
 // TBD: can support a flag to return tx hashes only, good for standalone mempool to remove them,
 // or any node that keeps track of transaction streaming in the consensus.
 message TransactionsRequest {
@@ -150,7 +156,7 @@ message TransactionsRequest {
 // Responses are sent ordered by the order given in the request.
 message TransactionsResponse {
     oneof transaction_message {
-        Transaction         transaction = 1;
+        TransactionWithReceipt transaction_with_receipt = 1;
         starknet.common.Fin fin         = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its transactions.
     }
 }

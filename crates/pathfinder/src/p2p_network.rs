@@ -10,14 +10,7 @@ use tracing::Instrument;
 
 mod sync_handlers;
 
-use sync_handlers::{
-    get_classes,
-    get_events,
-    get_headers,
-    get_receipts,
-    get_state_diffs,
-    get_transactions,
-};
+use sync_handlers::{get_classes, get_events, get_headers, get_state_diffs, get_transactions};
 
 // Silence clippy
 pub type P2PNetworkHandle = (peer_agnostic::Client, HeadRx, tokio::task::JoinHandle<()>);
@@ -158,11 +151,6 @@ async fn handle_p2p_event(
             request, channel, ..
         } => {
             get_transactions(storage, request, channel).await?;
-        }
-        p2p::Event::InboundReceiptsSyncRequest {
-            request, channel, ..
-        } => {
-            get_receipts(storage, request, channel).await?;
         }
         p2p::Event::InboundEventsSyncRequest {
             request, channel, ..
