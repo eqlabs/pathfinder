@@ -13,9 +13,13 @@ message ContractDiff {
     starknet.common.Address          address     = 1;
     optional starknet.common.Felt252 nonce       = 2;  // Present only if the nonce was updated
     optional starknet.common.Felt252 class_hash  = 3;  // Present only if the contract was deployed or replaced in this block.
-    optional bool                    is_replaced = 4;  // Present only if the contract was deployed or replaced, in order to determine whether the contract was deployed or replaced.
-    repeated ContractStoredValue     values      = 5;
-    uint32                           domain      = 6;  // volition state domain
+    repeated ContractStoredValue     values      = 4;
+    uint32                           domain      = 5;  // volition state domain
+}
+
+message DeclaredClass {
+    starknet.common.Hash class_hash = 1;
+    optional starknet.common.Hash compiled_class_hash = 2;  // Present only if the class is Cairo1
 }
 
 message StateDiffsRequest {
@@ -26,7 +30,8 @@ message StateDiffsRequest {
 message StateDiffsResponse {
     // All of the messages related to a block need to be sent before a message from the next block is sent.
     oneof state_diff_message {
-        ContractDiff        contract_diff = 1; // Multiple contract diffs for the same contract may appear continuously if the diff is too large.
-        starknet.common.Fin fin           = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its state diff.
+        ContractDiff        contract_diff = 1; // Multiple contract diffs for the same contract may appear continuously if the diff is too large or if it's more convenient.
+        DeclaredClass       declared_class = 2;
+        starknet.common.Fin fin           = 3; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its state diff.
     }
 }

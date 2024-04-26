@@ -5,7 +5,7 @@ package starknet.class;
 
 message EntryPoint {
     starknet.common.Felt252 selector = 1;
-    starknet.common.Felt252 offset = 2;
+    uint64 offset = 2;
 }
 
 message Cairo0Class {
@@ -35,10 +35,6 @@ message Cairo1Class {
     bytes compiled = 5;
 }
 
-// is it better to separate the definition from the hashes? (will need to repeat the hashes
-// for the definitions stream)
-// or, make the definitions optional? maybe it is enough to know only that a class exists, not its definition
-// which may be fetched lazily later.
 message Class {
     oneof class {
         Cairo0Class cairo0 = 1;

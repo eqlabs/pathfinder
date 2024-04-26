@@ -32,15 +32,15 @@ message ConsensusSignature {
     Felt252 s = 2;
 }
 
-message Merkle {
+message Patricia {
     uint64 n_leaves = 1;  // needed to know the height, so as to how many nodes to expect in a proof.
                           // and also when receiving all leaves, how many to expect
     Hash   root     = 2;
 }
 
-message Patricia {
-    uint32 height = 1;
-    Hash   root   = 2;
+message StateDiffCommitment {
+    uint64 state_diff_length = 1;
+    Hash root = 2;
 }
 
 message BlockID {
