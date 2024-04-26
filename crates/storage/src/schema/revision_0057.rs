@@ -101,14 +101,13 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(
         r"
         CREATE TABLE transactions (
-            block_number INTEGER NOT NULL,
+            block_number INTEGER PRIMARY KEY REFERENCES block_headers(number) ON DELETE CASCADE,
             transactions BLOB NOT NULL,
             events BLOB
         );
-        CREATE INDEX transactions_block_number ON transactions(block_number);
         CREATE TABLE transaction_hashes (
             hash         BLOB PRIMARY KEY NOT NULL,
-            block_number INTEGER NOT NULL
+            block_number INTEGER NOT NULL REFERENCES block_headers(number) ON DELETE CASCADE
         );
         CREATE INDEX transaction_hashes_block_number ON transaction_hashes(block_number);
         ",
