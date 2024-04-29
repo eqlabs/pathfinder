@@ -6,10 +6,9 @@ use anyhow::Context;
 use rusqlite::params;
 
 use crate::connection::transaction::compression;
+use crate::params::RowExt;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
-    tracing::info!("Migrating starknet_transactions to new format");
-
     let mut transformers = Vec::new();
     let (insert_tx, insert_rx) = mpsc::channel();
     let (transform_tx, transform_rx) =
@@ -109,10 +108,21 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         });
         transformers.push(transformer);
     }
+    drop(insert_tx);
+    drop(transform_rx);
 
-    let count = tx.query_row("SELECT COUNT(*) FROM starknet_transactions", [], |row| {
+    tracing::info!("Determining number of transactions to migrate");
+
+    let block_count = tx.query_row("SELECT COUNT(*) FROM block_headers", [], |row| {
         row.get::<_, i64>(0)
     })?;
+    let transaction_count =
+        tx.query_row("SELECT COUNT(*) FROM starknet_transactions", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+
+    tracing::info!(%block_count, %transaction_count, "Migrating starknet_transactions to new format");
+
     tx.execute_batch(
         r"
         CREATE TABLE transactions (
@@ -129,94 +139,90 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         ",
     )
     .context("Creating new tables and indices")?;
-    let mut query_stmt = tx.prepare_cached(
+
+    let mut query_transactions_stmt = tx.prepare(
         r"
-        SELECT hash, tx, block_number, tx, receipt, events, idx FROM starknet_transactions ORDER BY block_number, idx
+        SELECT hash, tx, block_number, tx, receipt, events, idx
+        FROM starknet_transactions
+        WHERE block_number = ?
+        ORDER BY idx
         ",
     )?;
-    let mut insert_transaction_stmt = tx.prepare_cached(
+    let mut query_block_numbers_stmt =
+        tx.prepare("SELECT number FROM block_headers ORDER BY number")?;
+
+    let mut insert_transaction_stmt = tx.prepare(
         r"INSERT INTO transactions (block_number, transactions, events) VALUES (?, ?, ?)",
     )?;
-    let mut insert_transaction_hash_stmt = tx.prepare_cached(
-        r"INSERT INTO transaction_hashes (hash, block_number, idx) VALUES (?, ?, ?)",
-    )?;
-    const BATCH_SIZE: u32 = 10_000;
+    let mut insert_transaction_hash_stmt =
+        tx.prepare(r"INSERT INTO transaction_hashes (hash, block_number, idx) VALUES (?, ?, ?)")?;
 
     const LOG_RATE: Duration = Duration::from_secs(10);
     let mut last_log = std::time::Instant::now();
 
-    let mut rows = query_stmt.query([])?;
-    let mut progress = 0;
-    let mut current_block = 0i64;
-    let mut transactions_in_block = Vec::new();
-    let mut events_in_block = Vec::new();
-    loop {
-        let mut batch_size = 0;
-        loop {
-            match rows.next() {
-                Ok(Some(row)) => {
-                    let hash = row.get_ref_unwrap("hash").as_blob()?;
-                    let block_number = row.get_ref_unwrap("block_number").as_i64()?;
-                    let transaction = row.get_ref_unwrap("tx").as_blob()?.to_vec();
-                    let receipt = row.get_ref_unwrap("receipt").as_blob()?.to_vec();
-                    let events = row.get_ref_unwrap("events").as_blob()?.to_vec();
-                    let idx = row.get_ref_unwrap("idx").as_i64()?;
-                    insert_transaction_hash_stmt.execute(params![hash, block_number, idx])?;
-                    if block_number != current_block {
-                        transform_tx
-                            .send((
-                                current_block,
-                                mem::take(&mut transactions_in_block),
-                                mem::take(&mut events_in_block),
-                            ))
-                            .context("Sending transactions to transformer")?;
-                        current_block = block_number;
-                        batch_size += 1;
-                    }
-                    transactions_in_block.push((transaction, receipt));
-                    events_in_block.push(events);
+    // Go through each block number
+    const BATCH_SIZE_IN_BLOCKS: usize = 50;
+    let mut blocks_submitted = 0usize;
 
-                    if batch_size == BATCH_SIZE {
-                        break;
-                    }
-                }
-                Ok(None) => {
-                    if !transactions_in_block.is_empty() {
-                        transform_tx
-                            .send((
-                                current_block,
-                                mem::take(&mut transactions_in_block),
-                                mem::take(&mut events_in_block),
-                            ))
-                            .context("Sending transactions to transformer")?;
-                        batch_size += 1;
-                    }
+    // Aggregate how many transactions we've inserted
+    let mut transactions_inserted = 0usize;
 
-                    break;
-                }
-                Err(err) => return Err(err.into()),
+    let mut block_numbers = query_block_numbers_stmt.query([])?;
+    while let Some(row) = block_numbers.next()? {
+        let block_number = row.get_i64(0)?;
+
+        // Collect all transactions and events in the block.
+        let mut transactions_in_block = Vec::new();
+        let mut events_in_block = Vec::new();
+        let mut transactions_rows = query_transactions_stmt.query(params![&block_number])?;
+        while let Some(row) = transactions_rows.next()? {
+            let hash = row.get_ref_unwrap("hash").as_blob()?;
+            let transaction = row.get_ref_unwrap("tx").as_blob()?.to_vec();
+            let receipt = row.get_ref_unwrap("receipt").as_blob()?.to_vec();
+            let events = row.get_ref_unwrap("events").as_blob()?.to_vec();
+            let idx = row.get_ref_unwrap("idx").as_i64()?;
+            transactions_in_block.push((transaction, receipt));
+            events_in_block.push(events);
+            insert_transaction_hash_stmt.execute(params![hash, &block_number, &idx])?;
+        }
+
+        transform_tx
+            .send((
+                block_number,
+                mem::take(&mut transactions_in_block),
+                mem::take(&mut events_in_block),
+            ))
+            .context("Sending transactions to transformer")?;
+        blocks_submitted += 1;
+
+        if blocks_submitted >= BATCH_SIZE_IN_BLOCKS {
+            for _ in 0..blocks_submitted {
+                let (block_number, transactions, events, len) = insert_rx.recv()?;
+                insert_transaction_stmt.execute(params![block_number, transactions, events])?;
+                transactions_inserted += len;
             }
-        }
-        for _ in 0..batch_size {
-            let (block_number, transactions, events, len) = insert_rx.recv()?;
-            insert_transaction_stmt.execute(params![block_number, transactions, events])?;
-            progress += len;
-        }
-        if last_log.elapsed() > LOG_RATE {
-            last_log = std::time::Instant::now();
-            tracing::info!(
-                "Migrating: {:.2}%",
-                (progress as f64 / count as f64) * 100.0
-            );
-        }
-        if batch_size < BATCH_SIZE {
-            // This was the last batch.
-            break;
+            blocks_submitted = 0;
+
+            if last_log.elapsed() > LOG_RATE {
+                last_log = std::time::Instant::now();
+                tracing::info!(
+                    "Migrating: {:.2}%",
+                    (block_number as f64 / block_count as f64) * 100.0
+                );
+            }
         }
     }
 
-    drop(insert_tx);
+    // Process all results from blocks already submitted
     drop(transform_tx);
+    while let Ok((block_number, transactions, events, len)) = insert_rx.recv() {
+        insert_transaction_stmt.execute(params![block_number, transactions, events])?;
+        transactions_inserted += len;
+    }
+
+    // Ensure that we've processed _all_ transactions
+    let transactions_inserted: i64 = transactions_inserted.try_into()?;
+    assert_eq!(transaction_count, transactions_inserted);
 
     // Ensure that all transformers have finished successfully.
     for transformer in transformers {
