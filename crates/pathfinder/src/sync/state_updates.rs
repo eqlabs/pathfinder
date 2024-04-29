@@ -1,8 +1,8 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::PeerData;
-use pathfinder_common::state_update::{ContractUpdateCounts, ContractUpdates};
+use p2p::{PeerData, client::peer_agnostic::StateDiff};
+use pathfinder_common::state_update::ContractUpdateCounts;
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment};
 use pathfinder_merkle_tree::contract_state::{update_contract_state, ContractStateUpdateResult};
 use pathfinder_merkle_tree::StorageCommitmentTree;
@@ -84,14 +84,14 @@ pub(super) fn contract_update_counts_stream(
 }
 
 pub(super) async fn verify_signature(
-    contract_updates: PeerData<(BlockNumber, ContractUpdates)>,
-) -> Result<PeerData<(BlockNumber, ContractUpdates)>, SyncError> {
+    contract_updates: PeerData<(BlockNumber, StateDiff)>,
+) -> Result<PeerData<(BlockNumber, StateDiff)>, SyncError> {
     todo!()
 }
 
 pub(super) async fn persist(
     storage: Storage,
-    contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
+    contract_updates: Vec<PeerData<(BlockNumber, StateDiff)>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut connection = storage
@@ -140,13 +140,13 @@ pub(super) struct VerificationOk {
     storage_commitment: StorageCommitment,
     contract_update_results: Vec<ContractStateUpdateResult>,
     trie_update: TrieUpdate,
-    contract_updates: ContractUpdates,
+    contract_updates: StateDiff,
 }
 
 /// This function is a placeholder for further state trie update work
 pub(super) async fn _update_and_verify_state_trie(
     storage: Storage,
-    contract_updates: Vec<PeerData<(BlockNumber, ContractUpdates)>>,
+    contract_updates: Vec<PeerData<(BlockNumber, StateDiff)>>,
     verify_trie_hashes: bool,
 ) -> Result<Vec<PeerData<VerificationOk>>, SyncError> {
     tokio::task::spawn_blocking(move || {
@@ -161,7 +161,7 @@ pub(super) async fn _update_and_verify_state_trie(
 
 fn verify_one(
     storage: Storage,
-    contract_updates: PeerData<(BlockNumber, ContractUpdates)>,
+    contract_updates: PeerData<(BlockNumber, StateDiff)>,
     verify_hashes: bool,
 ) -> Result<PeerData<VerificationOk>, SyncError> {
     use rayon::prelude::*;

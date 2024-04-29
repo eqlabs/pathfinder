@@ -44,12 +44,6 @@ pub struct StateUpdate {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
-pub struct ContractUpdates {
-    pub regular: HashMap<ContractAddress, ContractUpdate>,
-    pub system: HashMap<ContractAddress, SystemContractUpdate>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
     /// The class associated with this update as the result of either a deploy

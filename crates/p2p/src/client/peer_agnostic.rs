@@ -11,20 +11,12 @@ use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
-use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates};
+use pathfinder_common::state_update::{ContractUpdateCounts, SystemContractUpdate};
 use pathfinder_common::{
-    BlockNumber,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    SierraHash,
-    SignedBlockHeader,
-    StorageAddress,
-    StorageValue,
-    TransactionHash,
+    BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, SignedBlockHeader, StorageAddress, StorageValue, TransactionHash
 };
 use tokio::sync::RwLock;
 
@@ -278,12 +270,13 @@ impl Client {
             .await
     }
 
-    pub fn contract_updates_stream(
+    pub fn state_diff_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
+        // TODO there's one counter for em all
         contract_update_counts_stream: impl futures::Stream<Item = anyhow::Result<ContractUpdateCounts>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ContractUpdates)>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateDiff)>>> {
         async_stream::try_stream! {
             pin_mut!(contract_update_counts_stream);
 
@@ -334,15 +327,14 @@ impl Client {
                             }
                         };
 
-                        let mut contract_updates = ContractUpdates::default();
+                        let mut state_diff = StateDiff::default();
 
-                        while let Some(contract_diff) = responses.next().await {
-                            match contract_diff {
+                        while let Some(state_diff_response) = responses.next().await {
+                            match state_diff_response {
                                 StateDiffsResponse::ContractDiff(ContractDiff {
                                     address,
                                     nonce,
                                     class_hash,
-                                    is_replaced,
                                     values,
                                     domain: _,
                                 }) => {
@@ -359,7 +351,7 @@ impl Client {
                                     }
 
                                     if address == ContractAddress::ONE {
-                                        let storage = &mut contract_updates
+                                        let storage = &mut state_diff
                                             .system
                                             .entry(address)
                                             .or_default()
@@ -373,7 +365,7 @@ impl Client {
                                             },
                                         );
                                     } else {
-                                        let update = &mut contract_updates
+                                        let update = &mut state_diff
                                             .regular
                                             .entry(address)
                                             .or_default();
@@ -409,15 +401,18 @@ impl Client {
                                                 }
                                             }
 
-                                            if is_replaced.unwrap_or_default() {
-                                                update.class =
-                                                    Some(ContractClassUpdate::Replace(class_hash));
-                                            } else {
-                                                update.class =
-                                                    Some(ContractClassUpdate::Deploy(class_hash));
-                                            }
+                                            update.class = Some(class_hash);
                                         }
                                     }
+                                }
+                                StateDiffsResponse::DeclaredClass(DeclaredClass { class_hash, compiled_class_hash }) => {
+                                    if let Some(compiled_class_hash) = compiled_class_hash {
+                                        state_diff.declared_sierra_classes.insert(SierraHash(class_hash.0), CasmHash(compiled_class_hash.0));
+                                    } else {
+                                        state_diff.declared_cairo_classes.insert(ClassHash(class_hash.0));
+                                    }
+
+                                    todo!("decrement counter")
                                 }
                                 StateDiffsResponse::Fin => {
                                     if current_counts.storage_diffs == 0
@@ -428,7 +423,7 @@ impl Client {
                                         // that the state update for this block is complete.
                                         yield PeerData::new(
                                             peer,
-                                            (start, std::mem::take(&mut contract_updates)),
+                                            (start, std::mem::take(&mut state_diff)),
                                         );
 
                                         if start < stop_inclusive {
@@ -800,3 +795,21 @@ impl Default for PeersWithCapability {
 }
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
+
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
+pub struct ContractUpdate {
+    pub storage: HashMap<StorageAddress, StorageValue>,
+    /// The class associated with this update as the result of either a deploy
+    /// or class replacement transaction.
+    pub class: Option<ClassHash>,
+    pub nonce: Option<ContractNonce>,
+}
+
+
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
+pub struct StateDiff {
+    pub regular: HashMap<ContractAddress, ContractUpdate>,
+    pub system: HashMap<ContractAddress, SystemContractUpdate>,
+    pub declared_cairo_classes: HashSet<ClassHash>,
+    pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+}

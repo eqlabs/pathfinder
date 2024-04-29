@@ -287,7 +287,7 @@ impl Sync {
         {
             self.p2p
                 .clone()
-                .contract_updates_stream(
+                .state_diff_stream(
                     start,
                     stop,
                     state_updates::contract_update_counts_stream(self.storage.clone(), start, stop),
