@@ -4,12 +4,14 @@ use std::time::Duration;
 use anyhow::{anyhow, Context};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
+    BlockCommitmentSignature,
     BlockHash,
     BlockNumber,
     Chain,
     ChainId,
     ClassHash,
     EventCommitment,
+    PublicKey,
     StarknetVersion,
     StateCommitment,
     StateUpdate,
@@ -92,6 +94,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub chain_id: ChainId,
     pub block_validation_mode: BlockValidationMode,
     pub storage: Storage,
+    pub sequencer_public_key: PublicKey,
 }
 
 pub async fn sync<GatewayClient>(
@@ -110,6 +113,7 @@ where
         chain_id,
         block_validation_mode,
         storage,
+        sequencer_public_key,
     } = context;
 
     'outer: loop {
@@ -256,7 +260,27 @@ where
             signature.signature_input.block_hash.0,
             block.block_hash.0,
         );
-        let signature = signature.into();
+        let signature: BlockCommitmentSignature = signature.into();
+
+        // Check block commitment signature
+        let (signature, state_update) = match block_validation_mode {
+            BlockValidationMode::Strict => {
+                let block_hash = block.block_hash;
+                let (verify_result, signature, state_update) = tokio::task::spawn_blocking(move || -> (Result<(), pathfinder_crypto::signature::SignatureError>, BlockCommitmentSignature, Box<StateUpdate>) {
+                    let state_diff_commitment = state_update.compute_state_diff_commitment();
+                    let verify_result = signature
+                        .verify(
+                            sequencer_public_key,
+                            block_hash,
+                            state_diff_commitment,
+                        );
+                    (verify_result, signature, state_update)
+                }).await?;
+                verify_result.context("Verifying block commitment signature")?;
+                (signature, state_update)
+            }
+            BlockValidationMode::AllowMismatch => (signature, state_update),
+        };
 
         head = Some((next, block.block_hash, state_update.state_commitment));
         blocks.push(next, block.block_hash, state_update.state_commitment);
@@ -652,6 +676,7 @@ mod tests {
             ClassHash,
             ContractAddress,
             GasPrice,
+            PublicKey,
             SequencerAddress,
             StarknetVersion,
             StateCommitment,
@@ -846,6 +871,7 @@ mod tests {
                 chain_id: ChainId::SEPOLIA_TESTNET,
                 block_validation_mode: MODE,
                 storage,
+                sequencer_public_key: PublicKey::ZERO,
             };
 
             let latest = tokio::sync::watch::channel(Default::default());
@@ -1219,6 +1245,7 @@ mod tests {
                     chain_id: ChainId::SEPOLIA_TESTNET,
                     block_validation_mode: MODE,
                     storage: StorageBuilder::in_memory().unwrap(),
+                    sequencer_public_key: PublicKey::ZERO,
                 };
                 let latest_track = tokio::sync::watch::channel(Default::default());
 

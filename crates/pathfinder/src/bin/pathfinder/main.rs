@@ -114,6 +114,12 @@ async fn async_main() -> anyhow::Result<()> {
 
     verify_networks(pathfinder_context.network, ethereum.chain)?;
 
+    let gateway_public_key = pathfinder_context
+        .gateway
+        .public_key()
+        .await
+        .context("Fetching Starknet gateway public key")?;
+
     // Setup and verify database
 
     let storage_manager =
@@ -252,6 +258,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
         gossiper,
+        sequencer_public_key: gateway_public_key,
     };
 
     let sync_handle = if config.is_sync_enabled {

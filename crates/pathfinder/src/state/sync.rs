@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::{BlockCommitmentSignature, Chain};
+use pathfinder_common::{BlockCommitmentSignature, Chain, PublicKey};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -73,6 +73,7 @@ pub struct SyncContext<G, E> {
     pub restart_delay: Duration,
     pub verify_tree_hashes: bool,
     pub gossiper: Gossiper,
+    pub sequencer_public_key: PublicKey,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -100,6 +101,7 @@ where
             chain_id: value.chain_id,
             block_validation_mode: value.block_validation_mode,
             storage: value.storage.clone(),
+            sequencer_public_key: value.sequencer_public_key,
         }
     }
 }
@@ -176,6 +178,7 @@ where
         restart_delay,
         verify_tree_hashes: _,
         gossiper,
+        sequencer_public_key: _,
     } = context;
 
     let mut db_conn = storage
