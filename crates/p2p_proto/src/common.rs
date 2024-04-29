@@ -28,16 +28,16 @@ pub struct ConsensusSignature {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
-#[protobuf(name = "crate::proto::common::Merkle")]
-pub struct Merkle {
+#[protobuf(name = "crate::proto::common::Patricia")]
+pub struct Patricia {
     pub n_leaves: u64,
     pub root: Hash,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
-#[protobuf(name = "crate::proto::common::Patricia")]
-pub struct Patricia {
-    pub height: u32,
+#[protobuf(name = "crate::proto::common::StateDiffCommitment")]
+pub struct StateDiffCommitment {
+    pub state_diff_length: u64,
     pub root: Hash,
 }
 

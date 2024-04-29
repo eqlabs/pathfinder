@@ -10,7 +10,7 @@ use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 #[protobuf(name = "crate::proto::class::EntryPoint")]
 pub struct EntryPoint {
     pub selector: Felt,
-    pub offset: Felt,
+    pub offset: u64,
 }
 
 #[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, PartialOrd, Ord)]

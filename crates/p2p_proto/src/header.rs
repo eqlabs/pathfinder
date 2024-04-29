@@ -9,8 +9,8 @@ use crate::common::{
     Hash,
     Iteration,
     L1DataAvailabilityMode,
-    Merkle,
     Patricia,
+    StateDiffCommitment,
 };
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
@@ -22,21 +22,17 @@ pub struct SignedBlockHeader {
     pub number: u64,
     pub time: u64,
     pub sequencer_address: Address,
-    pub state_diff_commitment: Hash,
-    pub state: Patricia,
-    pub transactions: Merkle,
-    pub events: Merkle,
-    pub receipts: Merkle,
+    pub state_root: Hash,
+    pub state_diff_commitment: StateDiffCommitment,
+    pub transactions: Patricia,
+    pub events: Patricia,
+    pub receipts: Hash,
     pub protocol_version: String,
     pub gas_price_fri: u128,
     pub gas_price_wei: u128,
     pub data_gas_price_fri: u128,
     pub data_gas_price_wei: u128,
     pub l1_data_availability_mode: L1DataAvailabilityMode,
-    pub num_storage_diffs: u64,
-    pub num_nonce_updates: u64,
-    pub num_declared_classes: u64,
-    pub num_deployed_contracts: u64,
     pub signatures: Vec<ConsensusSignature>,
 }
 
@@ -70,8 +66,8 @@ impl<T> Dummy<T> for SignedBlockHeader {
             parent_hash: Faker.fake_with_rng(rng),
             number: Faker.fake_with_rng(rng),
             sequencer_address: Faker.fake_with_rng(rng),
+            state_root: Faker.fake_with_rng(rng),
             state_diff_commitment: Faker.fake_with_rng(rng),
-            state: Faker.fake_with_rng(rng),
             transactions: Faker.fake_with_rng(rng),
             events: Faker.fake_with_rng(rng),
             receipts: Faker.fake_with_rng(rng),
@@ -81,10 +77,6 @@ impl<T> Dummy<T> for SignedBlockHeader {
             data_gas_price_fri: Faker.fake_with_rng(rng),
             data_gas_price_wei: Faker.fake_with_rng(rng),
             l1_data_availability_mode: Faker.fake_with_rng(rng),
-            num_storage_diffs: Faker.fake_with_rng(rng),
-            num_nonce_updates: Faker.fake_with_rng(rng),
-            num_declared_classes: Faker.fake_with_rng(rng),
-            num_deployed_contracts: Faker.fake_with_rng(rng),
             signatures: Faker.fake_with_rng(rng),
         }
     }
