@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
+use futures::stream::BoxStream;
 use futures::{Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
@@ -11,7 +12,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::sync::error::SyncError2;
 use crate::sync::events::{self, BlockEvents};
 use crate::sync::headers;
-use crate::sync::stream::{SyncStream, SyncStreamExt};
+use crate::sync::stream::{SyncResult, SyncStream, SyncStreamExt};
 
 pub struct Sync<L> {
     latest: L,
@@ -58,7 +59,14 @@ where
             headers: events,
         }
         .spawn()
-        .map_stage(events::VerifyCommitment, 10);
+        .map_stage(events::VerifyCommitment, 10)
+        .boxed();
+
+        let blocks = BlockStream {
+            header: headers,
+            events,
+        }
+        .spawn();
 
         todo!()
     }
@@ -106,8 +114,8 @@ where
 }
 
 struct HeaderFanout {
-    headers: Box<dyn SyncStream<SignedBlockHeader>>,
-    events: Box<dyn Stream<Item = BlockHeader> + Send + Unpin>,
+    headers: BoxStream<'static, PeerData<SyncResult<SignedBlockHeader>>>,
+    events: BoxStream<'static, BlockHeader>,
 }
 
 impl HeaderFanout {
@@ -139,15 +147,15 @@ impl HeaderFanout {
         });
 
         Self {
-            headers: Box::new(ReceiverStream::new(h_rx)),
-            events: Box::new(ReceiverStream::new(e_rx)),
+            headers: ReceiverStream::new(h_rx).boxed(),
+            events: ReceiverStream::new(e_rx).boxed(),
         }
     }
 }
 
 struct EventSource {
     p2p: P2PClient,
-    headers: Box<dyn Stream<Item = BlockHeader> + Unpin + Send>,
+    headers: BoxStream<'static, BlockHeader>,
 }
 
 impl EventSource {
@@ -196,4 +204,54 @@ impl EventSource {
 
         ReceiverStream::new(rx)
     }
+}
+
+struct BlockStream {
+    pub header: BoxStream<'static, PeerData<SyncResult<SignedBlockHeader>>>,
+    pub events: BoxStream<'static, PeerData<SyncResult<BlockEvents>>>,
+}
+
+impl BlockStream {
+    fn spawn(mut self) -> impl SyncStream<BlockData> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        tokio::spawn(async move {
+            loop {
+                let Some(data) = self.next().await else {
+                    return;
+                };
+
+                let is_err = data.data.is_err();
+
+                if tx.send(data).await.is_err() || is_err {
+                    return;
+                }
+            }
+        });
+
+        tokio_stream::wrappers::ReceiverStream::new(rx)
+    }
+
+    async fn next(&mut self) -> Option<PeerData<SyncResult<BlockData>>> {
+        let header = self.header.next().await?;
+        let PeerData { peer, data } = header;
+        let header = match data {
+            Ok(x) => x,
+            Err(err) => return Some(PeerData::new(peer, Err(err))),
+        };
+
+        let events = self.events.next().await?;
+        let PeerData { peer, data } = events;
+        let events = match data {
+            Ok(x) => x.events,
+            Err(err) => return Some(PeerData::new(peer, Err(err))),
+        };
+
+        Some(PeerData::new(peer, Ok(BlockData { header, events })))
+    }
+}
+
+struct BlockData {
+    pub header: SignedBlockHeader,
+    pub events: HashMap<TransactionHash, Vec<Event>>,
 }
