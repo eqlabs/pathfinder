@@ -12,7 +12,8 @@ use pathfinder_common::{
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
-use crate::sync::error::SyncError;
+use crate::sync::error::{SyncError, SyncError2};
+use crate::sync::stream::MapStage;
 
 type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 

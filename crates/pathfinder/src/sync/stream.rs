@@ -55,11 +55,15 @@ pub trait SyncStreamExt<T>: SyncStream<T> + Sized + Send + 'static {
     /// Adds a [MapStage] to the stream pipeline spawned as a separate task.
     ///
     /// `buffer` specifies the amount of buffering applied to the output stream.
-    fn map_stage<S>(mut self, mut stage: S, buffer: usize) -> impl SyncStream<S::Output>
+    fn map_stage<S>(
+        mut self,
+        mut stage: S,
+        buffer: usize,
+    ) -> impl SyncStream<S::Output> + Sized + Send + 'static
     where
         S: MapStage<Input = T> + Send + 'static,
         S::Output: Send,
-        T: Send + 'static,
+        T: Send,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 

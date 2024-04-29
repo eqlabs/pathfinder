@@ -3,6 +3,8 @@ use futures::{Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
 use pathfinder_common::{BlockHash, BlockNumber, SignedBlockHeader};
+use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, SignedBlockHeader, TransactionHash};
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::sync::error::SyncError2;
 use crate::sync::headers;
@@ -46,6 +48,8 @@ where
         )
         .map_stage(headers::VerifyHash {}, 100);
 
+        let HeaderFanout { headers, events } = HeaderFanout::from_source(headers, 10);
+
         todo!()
     }
 }
@@ -87,6 +91,46 @@ where
             }
         });
 
-        tokio_stream::wrappers::ReceiverStream::new(rx)
+        ReceiverStream::new(rx)
+    }
+}
+
+struct HeaderFanout {
+    headers: Box<dyn SyncStream<SignedBlockHeader>>,
+    events: Box<dyn Stream<Item = BlockHeader>>,
+}
+
+impl HeaderFanout {
+    fn from_source<S>(source: S, buffer: usize) -> Self
+    where
+        S: SyncStream<SignedBlockHeader> + Send + 'static,
+    {
+        let (h_tx, h_rx) = tokio::sync::mpsc::channel(buffer);
+        let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
+
+        tokio::spawn(async move {
+            let mut source = Box::pin(source);
+            while let Some(signed_header) = source.next().await {
+                let is_err = signed_header.data.is_err();
+
+                if h_tx.send(signed_header.clone()).await.is_err() || is_err {
+                    return;
+                }
+
+                let header = signed_header
+                    .data
+                    .expect("Error case already handled")
+                    .header;
+
+                if e_tx.send(header).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        Self {
+            headers: Box::new(ReceiverStream::new(h_rx)),
+            events: Box::new(ReceiverStream::new(e_rx)),
+        }
     }
 }
