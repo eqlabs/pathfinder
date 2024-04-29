@@ -56,6 +56,10 @@ pub(super) enum SyncError2 {
     BadClassHash,
     #[error("Event commitment mismatch")]
     EventCommitmentMismatch,
+    #[error("Too many events")]
+    TooManyEvents,
+    #[error("Too few events")]
+    TooFewEvents,
 }
 
 impl PartialEq for SyncError2 {

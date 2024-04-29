@@ -76,6 +76,10 @@ pub trait TryFromDto<T> {
         Self: Sized;
 }
 
+pub trait FromDto<T> {
+    fn from_dto(dto: T) -> Self;
+}
+
 impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
     /// ## Important
     ///
@@ -415,6 +419,16 @@ impl TryFromDto<String> for DataAvailabilityMode {
             "L1" => Ok(Self::L1),
             "L2" => Ok(Self::L2),
             _ => anyhow::bail!("Invalid data availability mode"),
+        }
+    }
+}
+
+impl FromDto<p2p_proto::event::Event> for pathfinder_common::event::Event {
+    fn from_dto(value: p2p_proto::event::Event) -> Self {
+        Self {
+            from_address: ContractAddress(value.from_address),
+            keys: value.keys.into_iter().map(EventKey).collect(),
+            data: value.data.into_iter().map(EventData).collect(),
         }
     }
 }

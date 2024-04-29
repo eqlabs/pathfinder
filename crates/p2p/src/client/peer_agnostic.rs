@@ -29,7 +29,7 @@ use pathfinder_common::{
 };
 use tokio::sync::RwLock;
 
-use crate::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
+use crate::client::conv::{CairoDefinition, FromDto, SierraDefinition, TryFromDto};
 use crate::client::peer_aware;
 use crate::sync::protocol;
 
@@ -589,6 +589,52 @@ impl Client {
                 }
             }
         }
+    }
+
+    pub async fn events_for_block(
+        self,
+        block: BlockNumber,
+    ) -> Option<(
+        PeerId,
+        impl futures::Stream<Item = (TransactionHash, Event)>,
+    )> {
+        let request = EventsRequest {
+            iteration: Iteration {
+                start: block.get().into(),
+                direction: Direction::Forward,
+                limit: 1,
+                step: 1.into(),
+            },
+        };
+
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Events::NAME)
+            .await;
+
+        for peer in peers {
+            let Ok(stream) = self
+                .inner
+                .send_events_sync_request(peer, request)
+                .await
+                .inspect_err(|error| tracing::debug!(%peer, %error, "Events request failed"))
+            else {
+                continue;
+            };
+
+            let stream = stream
+                .take_while(|x| std::future::ready(!matches!(x, &EventsResponse::Fin)))
+                .map(|x| match x {
+                    EventsResponse::Fin => unreachable!("Already handled Fin above"),
+                    EventsResponse::Event(event) => (
+                        TransactionHash(event.transaction_hash.0),
+                        Event::from_dto(event),
+                    ),
+                });
+
+            return Some((peer, stream));
+        }
+
+        None
     }
 
     /// ### Important

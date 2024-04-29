@@ -1,12 +1,15 @@
+use std::collections::HashMap;
+
 use anyhow::Context;
 use futures::{Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
-use pathfinder_common::{BlockHash, BlockNumber, SignedBlockHeader};
+use pathfinder_common::event::Event;
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, SignedBlockHeader, TransactionHash};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::sync::error::SyncError2;
+use crate::sync::events::{self, BlockEvents};
 use crate::sync::headers;
 use crate::sync::stream::{SyncStream, SyncStreamExt};
 
@@ -49,6 +52,13 @@ where
         .map_stage(headers::VerifyHash {}, 100);
 
         let HeaderFanout { headers, events } = HeaderFanout::from_source(headers, 10);
+
+        let events = EventSource {
+            p2p: self.p2p.clone(),
+            headers: events,
+        }
+        .spawn()
+        .map_stage(events::VerifyCommitment, 10);
 
         todo!()
     }
@@ -97,7 +107,7 @@ where
 
 struct HeaderFanout {
     headers: Box<dyn SyncStream<SignedBlockHeader>>,
-    events: Box<dyn Stream<Item = BlockHeader>>,
+    events: Box<dyn Stream<Item = BlockHeader> + Send + Unpin>,
 }
 
 impl HeaderFanout {
@@ -132,5 +142,58 @@ impl HeaderFanout {
             headers: Box::new(ReceiverStream::new(h_rx)),
             events: Box::new(ReceiverStream::new(e_rx)),
         }
+    }
+}
+
+struct EventSource {
+    p2p: P2PClient,
+    headers: Box<dyn Stream<Item = BlockHeader> + Unpin + Send>,
+}
+
+impl EventSource {
+    fn spawn(self) -> impl SyncStream<BlockEvents> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            let Self { p2p, mut headers } = self;
+
+            while let Some(header) = headers.next().await {
+                let (peer, mut events) = loop {
+                    if let Some(stream) = p2p.clone().events_for_block(header.number).await {
+                        break stream;
+                    }
+                };
+
+                let event_count = header.event_count;
+                let mut block_events = BlockEvents {
+                    header,
+                    events: Default::default(),
+                };
+
+                // Receive the exact amount of expected events for this block.
+                for _ in 0..event_count {
+                    let Some((tx_hash, event)) = events.next().await else {
+                        let err = PeerData::new(peer, Err(SyncError2::TooFewEvents));
+                        let _ = tx.send(err).await;
+                        return;
+                    };
+
+                    block_events.events.entry(tx_hash).or_default().push(event);
+                }
+
+                // Ensure that the stream is exhausted.
+                if events.next().await.is_some() {
+                    let err = PeerData::new(peer, Err(SyncError2::TooManyEvents));
+                    let _ = tx.send(err).await;
+                    return;
+                }
+
+                let block_events = PeerData::new(peer, Ok(block_events));
+                if tx.send(block_events).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        ReceiverStream::new(rx)
     }
 }
