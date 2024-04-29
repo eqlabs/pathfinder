@@ -226,7 +226,7 @@ pub mod add_transaction {
     /// we're using for class hash calculation. The actual program contents
     /// are not relevant for us, and they are sent as a gzip + base64
     /// encoded string via the API.
-    #[derive(Clone, Debug, serde::Serialize)]
+    #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
     #[serde(untagged)]
     pub enum ContractDefinition {
         Cairo(CairoContractDefinition),
@@ -234,7 +234,7 @@ pub mod add_transaction {
     }
 
     /// Definition of a Cairo 0.x contract.
-    #[derive(Clone, Debug, serde::Serialize)]
+    #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
     pub struct CairoContractDefinition {
         // gzip + base64 encoded JSON of the compiled contract JSON
         pub program: String,
@@ -253,7 +253,7 @@ pub mod add_transaction {
     }
 
     /// Account deployment transaction details.
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     #[serde(tag = "version")]
     pub enum DeployAccount {
         #[serde(rename = "0x0")]
@@ -265,7 +265,7 @@ pub mod add_transaction {
     }
 
     #[serde_as]
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     pub struct DeployAccountV0V1 {
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
@@ -279,7 +279,7 @@ pub mod add_transaction {
     }
 
     #[serde_as]
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     pub struct DeployAccountV3 {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -296,7 +296,7 @@ pub mod add_transaction {
     }
 
     /// Invoke contract transaction details.
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     #[serde(tag = "version")]
     pub enum InvokeFunction {
         #[serde(rename = "0x0")]
@@ -308,7 +308,7 @@ pub mod add_transaction {
     }
 
     #[serde_as]
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     pub struct InvokeFunctionV0V1 {
         // AccountTransaction properties
         pub max_fee: Fee,
@@ -325,7 +325,7 @@ pub mod add_transaction {
     }
 
     #[serde_as]
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     pub struct InvokeFunctionV3 {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -343,7 +343,7 @@ pub mod add_transaction {
 
     /// Declare transaction details.
     #[allow(clippy::large_enum_variant)]
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     #[serde(tag = "version")]
     pub enum Declare {
         #[serde(rename = "0x0")]
@@ -357,7 +357,7 @@ pub mod add_transaction {
     }
 
     #[serde_as]
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     pub struct DeclareV0V1V2 {
         // Transaction properties
         pub version: TransactionVersion,
@@ -376,7 +376,7 @@ pub mod add_transaction {
     }
 
     #[serde_as]
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     pub struct DeclareV3 {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -397,7 +397,7 @@ pub mod add_transaction {
     ///
     /// This adds the "type" attribute to the JSON request according the type of
     /// the transaction (invoke or deploy).
-    #[derive(Debug, serde::Serialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     #[serde(tag = "type")]
     pub enum AddTransaction {
         #[serde(rename = "INVOKE_FUNCTION")]
