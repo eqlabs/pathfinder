@@ -13,6 +13,7 @@ mod headers;
 mod receipts;
 mod state_updates;
 mod stream;
+mod track;
 mod transactions;
 
 const CHECKPOINT_MARGIN: u64 = 10;

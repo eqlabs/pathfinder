@@ -77,3 +77,9 @@ impl PartialEq for SyncError2 {
         }
     }
 }
+
+impl From<anyhow::Error> for SyncError2 {
+    fn from(value: anyhow::Error) -> Self {
+        Self::Other(Arc::new(value))
+    }
+}

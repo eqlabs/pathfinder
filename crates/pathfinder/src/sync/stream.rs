@@ -2,7 +2,7 @@ use futures::{Future, Stream, StreamExt, TryFutureExt, TryStream, TryStreamExt};
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 
-use super::error::SyncError2;
+use crate::sync::error::SyncError2;
 
 pub trait SyncStream<T>: Stream<Item = PeerData<SyncResult<T>>> {}
 pub type SyncResult<T> = Result<T, SyncError2>;

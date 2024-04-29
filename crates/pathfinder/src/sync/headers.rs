@@ -202,3 +202,64 @@ pub(super) async fn query(
     .await
     .context("Joining blocking task")?
 }
+
+/// Ensures that the hash chain is continuous i.e. that block numbers increment
+/// and hashes become parent hashes.
+pub struct ForwardContinuityCheck {
+    pub next_number: BlockNumber,
+    pub next_parent_hash: BlockHash,
+}
+
+/// Ensures that the block hash and signature are correct.
+pub struct VerifyHash;
+
+impl ForwardContinuityCheck {
+    pub fn new(latest: Option<(BlockNumber, BlockHash)>) -> Self {
+        let (next_number, next_parent_hash) = latest
+            .map(|(number, hash)| (number + 1, hash))
+            .unwrap_or_default();
+        Self {
+            next_number,
+            next_parent_hash,
+        }
+    }
+}
+
+impl MapStage for ForwardContinuityCheck {
+    type Input = SignedBlockHeader;
+    type Output = SignedBlockHeader;
+
+    async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let header = &input.header;
+
+        if header.number != self.next_number || header.parent_hash != self.next_parent_hash {
+            return Err(SyncError2::Discontinuity);
+        }
+
+        self.next_number += 1;
+        self.next_parent_hash = header.hash;
+
+        Ok(input)
+    }
+}
+
+impl MapStage for VerifyHash {
+    type Input = SignedBlockHeader;
+    type Output = SignedBlockHeader;
+
+    async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        tokio::task::spawn_blocking(move || {
+            if !input.header.verify_hash() {
+                return Err(SyncError2::BadBlockHash);
+            }
+
+            if !input.verify_signature() {
+                return Err(SyncError2::BadHeaderSignature);
+            }
+
+            Ok(input)
+        })
+        .await
+        .context("Joining blocking task")?
+    }
+}
