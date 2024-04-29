@@ -7,17 +7,18 @@ use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, SignedBlockHeader, TransactionHash};
+use pathfinder_storage::Storage;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::sync::error::SyncError2;
 use crate::sync::events::{self, BlockEvents};
 use crate::sync::headers;
-use crate::sync::stream::{SyncResult, SyncStream, SyncStreamExt};
+use crate::sync::stream::{MapStage, SyncResult, SyncStream, SyncStreamExt};
 
 pub struct Sync<L> {
     latest: L,
     p2p: P2PClient,
-    storage: pathfinder_storage::Storage,
+    storage: Storage,
 }
 
 impl<L> Sync<L>
@@ -66,7 +67,9 @@ where
             header: headers,
             events,
         }
-        .spawn();
+        .spawn()
+        .map_stage(StoreBlock::new(self.storage), 10);
+        // TODO: stream this through.
 
         todo!()
     }
@@ -254,4 +257,41 @@ impl BlockStream {
 struct BlockData {
     pub header: SignedBlockHeader,
     pub events: HashMap<TransactionHash, Vec<Event>>,
+}
+
+struct StoreBlock {
+    storage: Storage,
+}
+
+impl StoreBlock {
+    pub fn new(storage: Storage) -> Self {
+        Self { storage }
+    }
+}
+
+impl MapStage for StoreBlock {
+    type Input = BlockData;
+    type Output = ();
+
+    async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        tokio::task::spawn_blocking({
+            let storage = self.storage.clone();
+            move || {
+                let BlockData { header, events } = input;
+
+                let mut db = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let mut db = db.transaction().context("Creating database connection")?;
+
+                // TODO: write all the data to storage
+
+                db.commit()
+                    .context("Committing transaction")
+                    .map_err(Into::into)
+            }
+        })
+        .await
+        .context("Joining blocking task")?
+    }
 }
