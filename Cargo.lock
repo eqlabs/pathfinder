@@ -6206,6 +6206,7 @@ dependencies = [
  "assert_matches",
  "async-stream",
  "async-trait",
+ "axum",
  "base64 0.13.1",
  "bitvec",
  "bytes",

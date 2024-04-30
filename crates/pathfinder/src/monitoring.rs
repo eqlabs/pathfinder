@@ -1,60 +1,47 @@
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 use metrics_exporter_prometheus::PrometheusHandle;
-use warp::Filter;
 
 /// Spawns a server which hosts a `/health` endpoint.
 pub async fn spawn_server(
     addr: impl Into<std::net::SocketAddr> + 'static,
-    readiness: std::sync::Arc<AtomicBool>,
+    readiness: Arc<AtomicBool>,
     prometheus_handle: PrometheusHandle,
 ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
-    let server = warp::serve(routes(readiness, prometheus_handle));
-    let (addr, server) = server.bind_ephemeral(addr);
-
-    (addr, tokio::spawn(server))
-}
-
-fn routes(
-    readiness: std::sync::Arc<AtomicBool>,
-    prometheus_handle: PrometheusHandle,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    health_route()
-        .or(ready_route(readiness))
-        .or(metrics_route(prometheus_handle))
+    let app = axum::Router::new()
+        .route("/health", axum::routing::get(health_route))
+        .route("/ready", axum::routing::get(ready_route))
+        .route("/metrics", axum::routing::get(metrics_route))
+        .with_state((readiness, prometheus_handle));
+    let server = axum::Server::bind(&addr.into()).serve(app.into_make_service());
+    let addr = server.local_addr();
+    let spawn = tokio::spawn(async move { server.await.expect("server error") });
+    (addr, spawn)
 }
 
 /// Always returns `Ok(200)` at `/health`.
-fn health_route() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::get().and(warp::path!("health")).map(warp::reply)
+async fn health_route() -> http::StatusCode {
+    http::StatusCode::OK
 }
 
 /// Returns `Ok` if `readiness == true`, or `SERVICE_UNAVAILABLE` otherwise.
-fn ready_route(
-    readiness: std::sync::Arc<AtomicBool>,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::get()
-        .and(warp::path!("ready"))
-        .map(move || -> std::sync::Arc<AtomicBool> { readiness.clone() })
-        .and_then(|readiness: std::sync::Arc<AtomicBool>| async move {
-            match readiness.load(std::sync::atomic::Ordering::Relaxed) {
-                true => Ok::<_, std::convert::Infallible>(warp::http::StatusCode::OK),
-                false => Ok(warp::http::StatusCode::SERVICE_UNAVAILABLE),
-            }
-        })
+async fn ready_route(
+    axum::extract::State((readiness, _)): axum::extract::State<(Arc<AtomicBool>, PrometheusHandle)>,
+) -> http::StatusCode {
+    if readiness.load(std::sync::atomic::Ordering::Relaxed) {
+        http::StatusCode::OK
+    } else {
+        http::StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
 /// Returns Prometheus metrics snapshot at `/metrics`.
-fn metrics_route(
-    handle: PrometheusHandle,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::get()
-        .and(warp::path!("metrics"))
-        .map(move || -> PrometheusHandle { handle.clone() })
-        .and_then(|handle: PrometheusHandle| async move {
-            Ok::<_, std::convert::Infallible>(warp::http::Response::builder().body(handle.render()))
-        })
+async fn metrics_route(
+    axum::extract::State((_, handle)): axum::extract::State<(Arc<AtomicBool>, PrometheusHandle)>,
+) -> String {
+    handle.render()
 }
 
 #[cfg(test)]

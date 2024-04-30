@@ -20,6 +20,7 @@ rpc-full-serde = []
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
+axum = { workspace = true }
 base64 = { workspace = true, optional = true }
 bitvec = { workspace = true }
 bytes = { workspace = true }
@@ -27,6 +28,7 @@ clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { workspace = true, optional = true }
 fake = { workspace = true }
 futures = { workspace = true }
+http = { workspace = true }
 ipnet = { workspace = true }
 jemallocator = { workspace = true }
 lazy_static = { workspace = true }
@@ -67,7 +69,6 @@ tracing-subscriber = { workspace = true, features = [
     "ansi",
 ] }
 url = { workspace = true }
-warp = { workspace = true }
 zeroize = { workspace = true, optional = true }
 zstd = { workspace = true }
 
@@ -75,7 +76,6 @@ zstd = { workspace = true }
 assert_matches = { workspace = true }
 const-decoder = { workspace = true }
 flate2 = { workspace = true }
-http = { workspace = true }
 mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
@@ -90,3 +90,4 @@ serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet_api = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+warp = { workspace = true }
