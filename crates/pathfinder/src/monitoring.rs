@@ -44,7 +44,7 @@ fn ready_route(
         })
 }
 
-/// Returns Prometheus merics snapshot at `/metrics`.
+/// Returns Prometheus metrics snapshot at `/metrics`.
 fn metrics_route(
     handle: PrometheusHandle,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {

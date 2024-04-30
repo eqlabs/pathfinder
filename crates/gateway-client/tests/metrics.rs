@@ -7,9 +7,9 @@
 use std::future::Future;
 
 use futures::stream::StreamExt;
+use gateway_test_utils::{response_from, setup_with_varied_responses, GATEWAY_TIMEOUT};
 use pathfinder_common::{BlockId, BlockNumber};
 use pretty_assertions_sorted::assert_eq;
-use starknet_gateway_client::test_utils::{response_from, setup_with_varied_responses};
 use starknet_gateway_client::{Client, GatewayApi};
 use starknet_gateway_types::error::KnownStarknetErrorCode;
 
@@ -56,7 +56,7 @@ where
         ("".to_owned(), 429),
     ];
 
-    let (_jh, client) = setup_with_varied_responses([
+    let (_jh, url) = setup_with_varied_responses([
         (
             format!("/feeder_gateway/{method_name}?blockNumber=123&headerOnly=true"),
             responses.clone(),
@@ -70,6 +70,9 @@ where
             responses,
         ),
     ]);
+    let client = Client::with_base_url(url, GATEWAY_TIMEOUT)
+        .unwrap()
+        .disable_retry_for_tests();
 
     [BlockId::Number(BlockNumber::new_or_panic(123)); 7]
         .into_iter()

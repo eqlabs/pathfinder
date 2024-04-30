@@ -7,6 +7,7 @@ members = [
     "crates/executor",
     "crates/gateway-client",
     "crates/gateway-test-fixtures",
+    "crates/gateway-test-utils",
     "crates/gateway-types",
     "crates/merkle-tree",
     "crates/p2p",

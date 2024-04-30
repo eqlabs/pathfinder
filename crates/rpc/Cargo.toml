@@ -48,6 +48,7 @@ zstd = { workspace = true }
 assert_matches = { workspace = true }
 bytes = { workspace = true }
 flate2 = { workspace = true }
+gateway-test-utils = { path = "../gateway-test-utils" }
 hex = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }

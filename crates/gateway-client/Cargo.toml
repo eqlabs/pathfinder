@@ -27,13 +27,13 @@ serde_json = { workspace = true, features = [
 starknet-gateway-types = { path = "../gateway-types" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 tracing = { workspace = true }
-warp = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
 base64 = { workspace = true }
 fake = { workspace = true }
 flate2 = { workspace = true }
+gateway-test-utils = { path = "../gateway-test-utils" }
 httpmock = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
@@ -41,6 +41,7 @@ pretty_assertions_sorted = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }
+warp = { workspace = true }
 
 [[test]]
 name = "integration-metrics"
