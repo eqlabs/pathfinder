@@ -7,7 +7,6 @@ use pathfinder_common::state_update::{
     ContractUpdate,
     ContractUpdateCounts,
     ReverseContractUpdate,
-    StateUpdateCounts,
 };
 use pathfinder_common::{
     BlockHash,
@@ -191,32 +190,22 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    /// Inserts a [StateUpdateCounts] instance into storage.
-    pub fn update_state_update_counts(
+    /// `state_diff_length` is defined as
+    /// `num_storage_diffs + num_nonce_updates + num_deployed_contracts +
+    /// num_declared_classes`
+    pub fn update_state_diff_length(
         &self,
         block_number: BlockNumber,
-        counts: &StateUpdateCounts,
+        len: u64,
     ) -> anyhow::Result<()> {
         let mut stmt = self
             .inner()
-            .prepare_cached(
-                r"UPDATE block_headers SET
-                storage_diffs_count=?,
-                nonce_updates_count=?,
-                declared_classes_count=?,
-                deployed_contracts_count=?
-            WHERE number=?",
-            )
+            .prepare_cached(r"UPDATE block_headers SET state_diff_length=? WHERE number=?")
             .context("Preparing insert statement")?;
+        // let len = u64::try_from(len).expect("ptr size is 64 bits");
 
-        stmt.execute(params![
-            &counts.storage_diffs,
-            &counts.nonce_updates,
-            &counts.declared_classes,
-            &counts.deployed_contracts,
-            &block_number,
-        ])
-        .context("Inserting state update counts")?;
+        stmt.execute(params![&len, &block_number,])
+            .context("Inserting state update counts")?;
 
         Ok(())
     }
@@ -421,28 +410,21 @@ impl Transaction<'_> {
             .context("Querying highest storage update")
     }
 
-    pub fn state_update_counts(&self, block: BlockId) -> anyhow::Result<Option<StateUpdateCounts>> {
+    pub fn state_diff_lengths(&self, block: BlockId) -> anyhow::Result<Option<usize>> {
         let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
             return Ok(None);
         };
 
         let mut stmt = self
-        .inner()
-        .prepare_cached(
-            r"SELECT storage_diffs_count, nonce_updates_count, declared_classes_count, deployed_contracts_count
-                FROM block_headers WHERE number = ? ORDER BY number ASC LIMIT 1")
-        .context("Preparing get state update counts statement")?;
+            .inner()
+            .prepare_cached(
+                r"SELECT state_diff_length FROM block_headers WHERE number = ? ORDER BY number ASC LIMIT 1",
+            )
+            .context("Preparing get state update counts statement")?;
 
-        stmt.query_row(params![&block_number], |row| {
-            Ok(StateUpdateCounts {
-                storage_diffs: row.get(0)?,
-                nonce_updates: row.get(1)?,
-                declared_classes: row.get(2)?,
-                deployed_contracts: row.get(3)?,
-            })
-        })
-        .optional()
-        .context("Querying state update counts")
+        stmt.query_row(params![&block_number], |row| row.get(0))
+            .optional()
+            .context("Querying state update counts")
     }
 
     /// Items are sorted in descending order.

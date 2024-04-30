@@ -60,7 +60,7 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
             .unwrap();
             tx.insert_signature(header.header.number, &header.signature)
                 .unwrap();
-            tx.update_state_update_counts(header.header.number, &header.state_update_counts)
+            tx.update_state_diff_length(header.header.number, header.state_diff_length)
                 .unwrap();
 
             state_update
@@ -360,33 +360,43 @@ pub mod init {
             for Block {
                 header:
                     SignedBlockHeader {
-                        state_update_counts,
-                        ..
+                        state_diff_length, ..
                     },
                 state_update,
                 ..
             } in init.iter_mut()
             {
-                state_update_counts.storage_diffs = state_update.contract_updates.iter().fold(
+                *state_diff_length += u64::try_from(
+                    state_update.contract_updates.iter().fold(
+                        state_update
+                            .system_contract_updates
+                            .iter()
+                            .fold(0, |acc, (_, u)| acc + u.storage.len()),
+                        |acc, (_, u)| acc + u.storage.len(),
+                    ),
+                )
+                .expect("ptr size is 64 bits");
+                *state_diff_length += u64::try_from(
                     state_update
-                        .system_contract_updates
+                        .contract_updates
                         .iter()
-                        .fold(0, |acc, (_, u)| acc + u.storage.len()),
-                    |acc, (_, u)| acc + u.storage.len(),
-                ) as u64;
-                state_update_counts.nonce_updates = state_update
-                    .contract_updates
-                    .iter()
-                    .filter(|(_, u)| u.nonce.is_some())
-                    .count() as u64;
-                state_update_counts.declared_classes = (state_update.declared_cairo_classes.len()
-                    + state_update.declared_sierra_classes.len())
-                    as u64;
-                state_update_counts.deployed_contracts = state_update
-                    .contract_updates
-                    .iter()
-                    .filter(|(_, u)| u.class.is_some())
-                    .count() as u64;
+                        .filter(|(_, u)| u.nonce.is_some())
+                        .count(),
+                )
+                .expect("ptr size is 64 bits");
+                *state_diff_length = u64::try_from(
+                    state_update.declared_cairo_classes.len()
+                        + state_update.declared_sierra_classes.len(),
+                )
+                .expect("ptr size is 64 bits");
+                *state_diff_length = u64::try_from(
+                    state_update
+                        .contract_updates
+                        .iter()
+                        .filter(|(_, u)| u.class.is_some())
+                        .count(),
+                )
+                .expect("ptr size is 64 bits");
             }
         }
 

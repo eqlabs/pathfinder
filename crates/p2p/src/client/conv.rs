@@ -9,7 +9,6 @@ use pathfinder_common::receipt::{
     L2ToL1Message,
     Receipt,
 };
-use pathfinder_common::state_update::StateUpdateCounts;
 use pathfinder_common::transaction::{
     DataAvailabilityMode,
     DeclareTransactionV0V1,
@@ -55,6 +54,7 @@ use pathfinder_common::{
     SequencerAddress,
     SignedBlockHeader,
     StateCommitment,
+    StateDiffCommitment,
     StorageCommitment,
     TransactionCommitment,
     TransactionHash,
@@ -113,7 +113,7 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 starknet_version: dto.protocol_version.parse()?,
                 class_commitment: ClassCommitment::ZERO,
                 event_commitment: EventCommitment(dto.events.root.0),
-                state_commitment: StateCommitment(dto.state.root.0),
+                state_commitment: StateCommitment(dto.state_root.0),
                 storage_commitment: StorageCommitment::ZERO,
                 transaction_commitment: TransactionCommitment(dto.transactions.root.0),
                 transaction_count: dto.transactions.n_leaves.try_into()?,
@@ -121,12 +121,8 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             },
             signature,
-            state_update_counts: StateUpdateCounts {
-                storage_diffs: dto.num_storage_diffs,
-                nonce_updates: dto.num_nonce_updates,
-                declared_classes: dto.num_declared_classes,
-                deployed_contracts: dto.num_deployed_contracts,
-            },
+            state_diff_commitment: StateDiffCommitment::ZERO, // TODO
+            state_diff_length: 0,                             // TODO
         })
     }
 }
@@ -341,7 +337,7 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
             | L1Handler(L1HandlerTransactionReceipt { common, .. })
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
-                transaction_hash: TransactionHash(common.transaction_hash.0),
+                transaction_hash: TransactionHash::ZERO, // TODO
                 actual_fee: Fee(common.actual_fee),
                 execution_resources: ExecutionResources {
                     builtins: BuiltinCounters {
@@ -495,7 +491,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
             x.into_iter()
                 .map(|e| SelectorAndOffset {
                     selector: EntryPoint(e.selector),
-                    offset: ByteCodeOffset(e.offset),
+                    offset: ByteCodeOffset(Felt::from_u64(e.offset)),
                 })
                 .collect::<Vec<_>>()
         };

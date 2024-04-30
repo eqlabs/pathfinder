@@ -876,6 +876,7 @@ async fn l2_update(
             event_commitment,
             state_commitment,
             storage_commitment,
+            // TODO add state_diff_commitment
             transaction_commitment,
             transaction_count,
             event_count,
@@ -887,7 +888,7 @@ async fn l2_update(
             .context("Inserting block header into database")?;
 
         transaction
-            .update_state_update_counts(header.number, &state_update.counts())
+            .update_state_diff_length(header.number, state_update.state_diff_length())
             .context("Inserting state update counts into database")?;
 
         // Insert the transactions.

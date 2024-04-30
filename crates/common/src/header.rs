@@ -1,8 +1,7 @@
 use fake::Dummy;
 
 use crate::prelude::*;
-use crate::state_update::StateUpdateCounts;
-use crate::BlockCommitmentSignature;
+use crate::{BlockCommitmentSignature, StateDiffCommitment};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {
@@ -40,7 +39,8 @@ pub enum L1DataAvailabilityMode {
 pub struct SignedBlockHeader {
     pub header: BlockHeader,
     pub signature: BlockCommitmentSignature,
-    pub state_update_counts: StateUpdateCounts,
+    pub state_diff_commitment: StateDiffCommitment,
+    pub state_diff_length: u64,
 }
 
 impl SignedBlockHeader {
