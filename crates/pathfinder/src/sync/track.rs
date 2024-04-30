@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use futures::stream::BoxStream;
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
@@ -13,7 +13,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::sync::error::SyncError2;
 use crate::sync::events::{self, BlockEvents};
 use crate::sync::headers;
-use crate::sync::stream::{MapStage, SyncResult, SyncStream, SyncStreamExt};
+use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
 
 pub struct Sync<L> {
     latest: L,
@@ -25,33 +25,19 @@ impl<L> Sync<L>
 where
     L: Stream<Item = (BlockNumber, BlockHash)> + Clone + Send + 'static,
 {
-    pub async fn run(self) -> Result<(), SyncError2> {
-        let latest_local = tokio::task::spawn_blocking({
-            let storage = self.storage.clone();
-            move || {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-
-                db.block_id(pathfinder_storage::BlockId::Latest)
-            }
-        })
-        .await
-        .context("Joining blocking task")?
-        .context("Querying latest local block ID")?;
-
+    pub async fn run(
+        self,
+        next: BlockNumber,
+        parent_hash: BlockHash,
+    ) -> Result<(), PeerData<SyncError2>> {
         let mut headers = HeaderSource {
             p2p: self.p2p.clone(),
             latest_onchain: self.latest.clone(),
-            start: latest_local.unwrap_or_default().0,
+            start: next,
         }
         .spawn()
-        .map_stage(
-            headers::ForwardContinuityCheck::new(latest_local.clone()),
-            100,
-        )
-        .map_stage(headers::VerifyHash {}, 100);
+        .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
+        .pipe(headers::VerifyHash {}, 100);
 
         let HeaderFanout { headers, events } = HeaderFanout::from_source(headers, 10);
 
@@ -60,18 +46,17 @@ where
             headers: events,
         }
         .spawn()
-        .map_stage(events::VerifyCommitment, 10)
-        .boxed();
+        .pipe(events::VerifyCommitment, 10);
 
-        let blocks = BlockStream {
+        BlockStream {
             header: headers,
             events,
         }
         .spawn()
-        .map_stage(StoreBlock::new(self.storage), 10);
-        // TODO: stream this through.
-
-        todo!()
+        .pipe(StoreBlock::new(self.storage), 10)
+        .into_stream()
+        .try_fold((), |_, _| std::future::ready(Ok(())))
+        .await
     }
 }
 
@@ -85,7 +70,7 @@ impl<L> HeaderSource<L>
 where
     L: Stream<Item = (BlockNumber, BlockHash)> + Send + 'static,
 {
-    fn spawn(self) -> impl SyncStream<SignedBlockHeader> {
+    fn spawn(self) -> SyncReceiver<SignedBlockHeader> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         let Self {
             p2p,
@@ -98,49 +83,45 @@ where
             while let Some(latest_onchain) = latest_onchain.next().await {
                 // Ignore reorgs for now. Unsure how to handle this properly.
 
+                // TODO: Probably need a loop here if we don't get enough headers?
                 let mut headers =
                     Box::pin(p2p.clone().header_stream(start, latest_onchain.0, false));
 
                 while let Some(header) = headers.next().await {
                     start = header.data.header.number + 1;
 
-                    let header = PeerData::new(header.peer, Ok(header.data));
-                    if tx.send(header).await.is_err() {
+                    if tx.send(Ok(header)).await.is_err() {
                         return;
                     }
                 }
             }
         });
 
-        ReceiverStream::new(rx)
+        SyncReceiver::from_receiver(rx)
     }
 }
 
 struct HeaderFanout {
-    headers: BoxStream<'static, PeerData<SyncResult<SignedBlockHeader>>>,
+    headers: SyncReceiver<SignedBlockHeader>,
     events: BoxStream<'static, BlockHeader>,
 }
 
 impl HeaderFanout {
-    fn from_source<S>(source: S, buffer: usize) -> Self
-    where
-        S: SyncStream<SignedBlockHeader> + Send + 'static,
-    {
+    fn from_source(mut source: SyncReceiver<SignedBlockHeader>, buffer: usize) -> Self {
         let (h_tx, h_rx) = tokio::sync::mpsc::channel(buffer);
         let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
 
         tokio::spawn(async move {
-            let mut source = Box::pin(source);
-            while let Some(signed_header) = source.next().await {
-                let is_err = signed_header.data.is_err();
+            while let Some(signed_header) = source.recv().await {
+                let is_err = signed_header.is_err();
 
                 if h_tx.send(signed_header.clone()).await.is_err() || is_err {
                     return;
                 }
 
                 let header = signed_header
-                    .data
                     .expect("Error case already handled")
+                    .data
                     .header;
 
                 if e_tx.send(header).await.is_err() {
@@ -150,7 +131,7 @@ impl HeaderFanout {
         });
 
         Self {
-            headers: ReceiverStream::new(h_rx).boxed(),
+            headers: SyncReceiver::from_receiver(h_rx),
             events: ReceiverStream::new(e_rx).boxed(),
         }
     }
@@ -162,7 +143,7 @@ struct EventSource {
 }
 
 impl EventSource {
-    fn spawn(self) -> impl SyncStream<BlockEvents> {
+    fn spawn(self) -> SyncReceiver<BlockEvents> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
@@ -183,8 +164,8 @@ impl EventSource {
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..event_count {
                     let Some((tx_hash, event)) = events.next().await else {
-                        let err = PeerData::new(peer, Err(SyncError2::TooFewEvents));
-                        let _ = tx.send(err).await;
+                        let err = PeerData::new(peer, SyncError2::TooFewEvents);
+                        let _ = tx.send(Err(err)).await;
                         return;
                     };
 
@@ -193,64 +174,67 @@ impl EventSource {
 
                 // Ensure that the stream is exhausted.
                 if events.next().await.is_some() {
-                    let err = PeerData::new(peer, Err(SyncError2::TooManyEvents));
-                    let _ = tx.send(err).await;
+                    let err = PeerData::new(peer, SyncError2::TooManyEvents);
+                    let _ = tx.send(Err(err)).await;
                     return;
                 }
 
-                let block_events = PeerData::new(peer, Ok(block_events));
-                if tx.send(block_events).await.is_err() {
+                let block_events = PeerData::new(peer, block_events);
+                if tx.send(Ok(block_events)).await.is_err() {
                     return;
                 }
             }
         });
 
-        ReceiverStream::new(rx)
+        SyncReceiver::from_receiver(rx)
     }
 }
 
 struct BlockStream {
-    pub header: BoxStream<'static, PeerData<SyncResult<SignedBlockHeader>>>,
-    pub events: BoxStream<'static, PeerData<SyncResult<BlockEvents>>>,
+    pub header: SyncReceiver<SignedBlockHeader>,
+    pub events: SyncReceiver<BlockEvents>,
 }
 
 impl BlockStream {
-    fn spawn(mut self) -> impl SyncStream<BlockData> {
+    fn spawn(mut self) -> SyncReceiver<BlockData> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
         tokio::spawn(async move {
             loop {
-                let Some(data) = self.next().await else {
+                let Some(result) = self.next().await else {
                     return;
                 };
 
-                let is_err = data.data.is_err();
+                let is_err = result.is_err();
 
-                if tx.send(data).await.is_err() || is_err {
+                if tx.send(result).await.is_err() || is_err {
                     return;
                 }
             }
         });
 
-        tokio_stream::wrappers::ReceiverStream::new(rx)
+        SyncReceiver::from_receiver(rx)
     }
 
-    async fn next(&mut self) -> Option<PeerData<SyncResult<BlockData>>> {
-        let header = self.header.next().await?;
-        let PeerData { peer, data } = header;
-        let header = match data {
+    async fn next(&mut self) -> Option<SyncResult<BlockData>> {
+        let header = self.header.recv().await?;
+        let header = match header {
             Ok(x) => x,
-            Err(err) => return Some(PeerData::new(peer, Err(err))),
+            Err(err) => return Some(Err(err)),
         };
 
-        let events = self.events.next().await?;
-        let PeerData { peer, data } = events;
-        let events = match data {
-            Ok(x) => x.events,
-            Err(err) => return Some(PeerData::new(peer, Err(err))),
+        let events = self.events.recv().await?;
+        let events = match events {
+            Ok(x) => x,
+            Err(err) => return Some(Err(err)),
         };
 
-        Some(PeerData::new(peer, Ok(BlockData { header, events })))
+        let data = BlockData {
+            header: header.data,
+            events: events.data.events,
+        };
+
+        Some(Ok(PeerData::new(header.peer, data)))
     }
 }
 
@@ -269,7 +253,7 @@ impl StoreBlock {
     }
 }
 
-impl MapStage for StoreBlock {
+impl ProcessStage for StoreBlock {
     type Input = BlockData;
     type Output = ();
 

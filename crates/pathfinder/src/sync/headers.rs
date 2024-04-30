@@ -13,7 +13,7 @@ use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
 use crate::sync::error::{SyncError, SyncError2};
-use crate::sync::stream::MapStage;
+use crate::sync::stream::ProcessStage;
 
 type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 
@@ -206,45 +206,39 @@ pub(super) async fn query(
 
 /// Ensures that the hash chain is continuous i.e. that block numbers increment
 /// and hashes become parent hashes.
-pub struct ForwardContinuityCheck {
-    pub next_number: BlockNumber,
-    pub next_parent_hash: BlockHash,
+pub struct ForwardContinuity {
+    next: BlockNumber,
+    parent_hash: BlockHash,
 }
 
 /// Ensures that the block hash and signature are correct.
 pub struct VerifyHash;
 
-impl ForwardContinuityCheck {
-    pub fn new(latest: Option<(BlockNumber, BlockHash)>) -> Self {
-        let (next_number, next_parent_hash) = latest
-            .map(|(number, hash)| (number + 1, hash))
-            .unwrap_or_default();
-        Self {
-            next_number,
-            next_parent_hash,
-        }
+impl ForwardContinuity {
+    pub fn new(next: BlockNumber, parent_hash: BlockHash) -> Self {
+        Self { next, parent_hash }
     }
 }
 
-impl MapStage for ForwardContinuityCheck {
+impl ProcessStage for ForwardContinuity {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
     async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let header = &input.header;
 
-        if header.number != self.next_number || header.parent_hash != self.next_parent_hash {
+        if header.number != self.next || header.parent_hash != self.parent_hash {
             return Err(SyncError2::Discontinuity);
         }
 
-        self.next_number += 1;
-        self.next_parent_hash = header.hash;
+        self.next += 1;
+        self.parent_hash = header.hash;
 
         Ok(input)
     }
 }
 
-impl MapStage for VerifyHash {
+impl ProcessStage for VerifyHash {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 

@@ -11,7 +11,7 @@ use tokio::task::spawn_blocking;
 
 use super::error::SyncError;
 use crate::state::block_hash::calculate_event_commitment;
-use crate::sync::stream::MapStage;
+use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose events are missing in storage, counting
 /// from genesis
@@ -156,7 +156,7 @@ pub struct BlockEvents {
 }
 pub struct VerifyCommitment;
 
-impl MapStage for VerifyCommitment {
+impl ProcessStage for VerifyCommitment {
     type Input = BlockEvents;
     type Output = BlockEvents;
 
