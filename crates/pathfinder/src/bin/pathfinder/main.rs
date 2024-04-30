@@ -71,6 +71,8 @@ async fn async_main() -> anyhow::Result<()> {
     // monitoring.
     let readiness = Arc::new(AtomicBool::new(false));
 
+    let sync_state = Arc::new(SyncState::default());
+
     let ethereum = EthereumContext::setup(config.ethereum.url, config.ethereum.password)
         .await
         .context("Creating Ethereum context")?;
@@ -91,9 +93,14 @@ async fn async_main() -> anyhow::Result<()> {
             NetworkConfig::SepoliaIntegration => "integration-sepolia",
             NetworkConfig::Custom { .. } => "custom",
         };
-        spawn_monitoring(network_label, address, readiness.clone())
-            .await
-            .context("Starting monitoring task")?;
+        spawn_monitoring(
+            network_label,
+            address,
+            readiness.clone(),
+            sync_state.clone(),
+        )
+        .await
+        .context("Starting monitoring task")?;
     }
 
     let pathfinder_context = PathfinderContext::configure_and_proxy_check(
@@ -182,8 +189,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .context(r"Creating database transaction")?
         .prune_tries()
         .context("Pruning tries on startup")?;
-
-    let sync_state = Arc::new(SyncState::default());
 
     let (tx_pending, rx_pending) = tokio::sync::watch::channel(Default::default());
 
@@ -458,6 +463,7 @@ async fn spawn_monitoring(
     network: &str,
     address: SocketAddr,
     readiness: Arc<AtomicBool>,
+    sync_state: Arc<SyncState>,
 ) -> anyhow::Result<tokio::task::JoinHandle<()>> {
     let prometheus_handle = PrometheusBuilder::new()
         .add_global_label("network", network)
@@ -466,7 +472,8 @@ async fn spawn_monitoring(
 
     metrics::gauge!("pathfinder_build_info", 1.0, "version" => VERGEN_GIT_DESCRIBE);
 
-    let (_, handle) = monitoring::spawn_server(address, readiness, prometheus_handle).await;
+    let (_, handle) =
+        monitoring::spawn_server(address, readiness, sync_state, prometheus_handle).await;
     Ok(handle)
 }
 
