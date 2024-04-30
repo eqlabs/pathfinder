@@ -174,14 +174,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     .await
     .context("Verifying database")?;
 
-    sync_storage
-        .connection()
-        .context("Creating database connection")?
-        .transaction()
-        .context(r"Creating database transaction")?
-        .prune_tries()
-        .context("Pruning tries on startup")?;
-
     let (tx_pending, rx_pending) = tokio::sync::watch::channel(Default::default());
 
     let rpc_config = pathfinder_rpc::context::RpcConfig {

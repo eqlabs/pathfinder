@@ -81,7 +81,6 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use metrics_exporter_prometheus::PrometheusBuilder;
     use pathfinder_common::BlockNumber;
     use pathfinder_rpc::v02::types::syncing::{NumberedBlock, Status, Syncing};
     use pathfinder_rpc::SyncState;
