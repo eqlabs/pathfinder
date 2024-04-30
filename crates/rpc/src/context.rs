@@ -76,8 +76,8 @@ impl RpcContext {
         chain: pathfinder_common::Chain,
         trie_prune_mode: pathfinder_storage::TriePruneMode,
     ) -> Self {
+        use gateway_test_utils::GATEWAY_TIMEOUT;
         use pathfinder_common::Chain;
-        use starknet_gateway_client::test_utils::GATEWAY_TIMEOUT;
 
         let (chain_id, sequencer) = match chain {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet(GATEWAY_TIMEOUT)),

@@ -1,91 +1,104 @@
+use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 use metrics_exporter_prometheus::PrometheusHandle;
-use warp::Filter;
 
 /// Spawns a server which hosts a `/health` endpoint.
 pub async fn spawn_server(
     addr: impl Into<std::net::SocketAddr> + 'static,
-    readiness: std::sync::Arc<AtomicBool>,
+    readiness: Arc<AtomicBool>,
     prometheus_handle: PrometheusHandle,
-) -> tokio::task::JoinHandle<()> {
-    let server = warp::serve(routes(readiness, prometheus_handle));
-    let server = server.bind(addr);
-
-    tokio::spawn(server)
-}
-
-fn routes(
-    readiness: std::sync::Arc<AtomicBool>,
-    prometheus_handle: PrometheusHandle,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    health_route()
-        .or(ready_route(readiness))
-        .or(metrics_route(prometheus_handle))
+) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    let app = axum::Router::new()
+        .route("/health", axum::routing::get(health_route))
+        .route("/ready", axum::routing::get(ready_route))
+        .route("/metrics", axum::routing::get(metrics_route))
+        .with_state((readiness, prometheus_handle));
+    let server = axum::Server::bind(&addr.into()).serve(app.into_make_service());
+    let addr = server.local_addr();
+    let spawn = tokio::spawn(async move { server.await.expect("server error") });
+    (addr, spawn)
 }
 
 /// Always returns `Ok(200)` at `/health`.
-fn health_route() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::get().and(warp::path!("health")).map(warp::reply)
+async fn health_route() -> http::StatusCode {
+    http::StatusCode::OK
 }
 
 /// Returns `Ok` if `readiness == true`, or `SERVICE_UNAVAILABLE` otherwise.
-fn ready_route(
-    readiness: std::sync::Arc<AtomicBool>,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::get()
-        .and(warp::path!("ready"))
-        .map(move || -> std::sync::Arc<AtomicBool> { readiness.clone() })
-        .and_then(|readiness: std::sync::Arc<AtomicBool>| async move {
-            match readiness.load(std::sync::atomic::Ordering::Relaxed) {
-                true => Ok::<_, std::convert::Infallible>(warp::http::StatusCode::OK),
-                false => Ok(warp::http::StatusCode::SERVICE_UNAVAILABLE),
-            }
-        })
+async fn ready_route(
+    axum::extract::State((readiness, _)): axum::extract::State<(Arc<AtomicBool>, PrometheusHandle)>,
+) -> http::StatusCode {
+    if readiness.load(std::sync::atomic::Ordering::Relaxed) {
+        http::StatusCode::OK
+    } else {
+        http::StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
-/// Returns Prometheus merics snapshot at `/metrics`.
-fn metrics_route(
-    handle: PrometheusHandle,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    warp::get()
-        .and(warp::path!("metrics"))
-        .map(move || -> PrometheusHandle { handle.clone() })
-        .and_then(|handle: PrometheusHandle| async move {
-            Ok::<_, std::convert::Infallible>(warp::http::Response::builder().body(handle.render()))
-        })
+/// Returns Prometheus metrics snapshot at `/metrics`.
+async fn metrics_route(
+    axum::extract::State((_, handle)): axum::extract::State<(Arc<AtomicBool>, PrometheusHandle)>,
+) -> String {
+    handle.render()
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use metrics_exporter_prometheus::PrometheusBuilder;
 
+    async fn wait_healthy(client: &reqwest::Client, url: reqwest::Url) {
+        let url = url.join("health").unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let resp = client.get(url.clone()).send().await.unwrap();
+                if resp.status().is_success() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
     #[tokio::test]
     async fn health() {
-        let recorder = PrometheusBuilder::new().build_recorder();
-        let handle = recorder.handle();
         let readiness = Arc::new(AtomicBool::new(false));
-        let filter = super::routes(readiness, handle);
-        let response = warp::test::request().path("/health").reply(&filter).await;
-
-        assert_eq!(response.status(), http::StatusCode::OK);
+        let handle = PrometheusBuilder::new().build_recorder().handle();
+        let (addr, _) = super::spawn_server(([127, 0, 0, 1], 0), readiness.clone(), handle).await;
+        let url = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        wait_healthy(&client, url).await;
     }
 
     #[tokio::test]
     async fn ready() {
-        let recorder = PrometheusBuilder::new().build_recorder();
-        let handle = recorder.handle();
         let readiness = Arc::new(AtomicBool::new(false));
-        let filter = super::routes(readiness.clone(), handle);
-        let response = warp::test::request().path("/ready").reply(&filter).await;
-        assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        let handle = PrometheusBuilder::new().build_recorder().handle();
+        let (addr, _) = super::spawn_server(([127, 0, 0, 1], 0), readiness.clone(), handle).await;
+        let url = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        wait_healthy(&client, url.clone()).await;
+
+        let url = url.join("ready").unwrap();
+        let resp = client.get(url.clone()).send().await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::SERVICE_UNAVAILABLE);
 
         readiness.store(true, std::sync::atomic::Ordering::Relaxed);
-        let response = warp::test::request().path("/ready").reply(&filter).await;
-        assert_eq!(response.status(), http::StatusCode::OK);
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
     }
 
     #[tokio::test]
@@ -104,10 +117,21 @@ mod tests {
         counter.increment(123);
 
         let readiness = Arc::new(AtomicBool::new(false));
-        let filter = super::routes(readiness.clone(), handle);
-        let response = warp::test::request().path("/metrics").reply(&filter).await;
+        let (addr, _) = super::spawn_server(([127, 0, 0, 1], 0), readiness.clone(), handle).await;
+        let url = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        wait_healthy(&client, url.clone()).await;
 
-        assert_eq!(response.status(), http::StatusCode::OK);
-        assert_eq!(response.body(), "# TYPE x counter\nx 123\n\n");
+        let url = url.join("metrics").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert_eq!(
+            String::from_utf8(resp.bytes().await.unwrap().to_vec()).unwrap(),
+            "# TYPE x counter\nx 123\n\n"
+        );
     }
 }

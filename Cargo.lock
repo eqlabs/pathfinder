@@ -3842,6 +3842,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gateway-test-utils"
+version = "0.12.0"
+dependencies = [
+ "http 0.2.12",
+ "reqwest",
+ "serde_json",
+ "starknet-gateway-types",
+ "tokio",
+ "warp",
+]
+
+[[package]]
 name = "genco"
 version = "0.17.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6194,6 +6206,7 @@ dependencies = [
  "assert_matches",
  "async-stream",
  "async-trait",
+ "axum",
  "base64 0.13.1",
  "bitvec",
  "bytes",
@@ -6383,6 +6396,7 @@ dependencies = [
  "bytes",
  "flate2",
  "futures",
+ "gateway-test-utils",
  "hex",
  "http 0.2.12",
  "hyper",
@@ -8093,6 +8107,7 @@ dependencies = [
  "fake",
  "flate2",
  "futures",
+ "gateway-test-utils",
  "http 0.2.12",
  "httpmock",
  "lazy_static",

@@ -649,10 +649,10 @@ mod tests {
     }
 
     mod invalid_starknet_error_variant {
+        use gateway_test_utils::GATEWAY_TIMEOUT;
         use http::response::Builder;
         use warp::Filter;
 
-        use crate::test_utils::GATEWAY_TIMEOUT;
         use crate::{Client, GatewayApi};
 
         fn server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
@@ -683,11 +683,11 @@ mod tests {
 
     mod api_key_is_set_when_configured {
         use fake::{Fake, Faker};
+        use gateway_test_utils::GATEWAY_TIMEOUT;
         use httpmock::prelude::*;
         use httpmock::Mock;
         use serde_json::json;
 
-        use crate::test_utils::GATEWAY_TIMEOUT;
         use crate::Client;
 
         async fn setup_with_fake_api_key(server: &MockServer) -> (Mock<'_>, Client) {
