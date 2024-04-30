@@ -466,7 +466,7 @@ async fn spawn_monitoring(
 
     metrics::gauge!("pathfinder_build_info", 1.0, "version" => VERGEN_GIT_DESCRIBE);
 
-    let handle = monitoring::spawn_server(address, readiness, prometheus_handle).await;
+    let (_, handle) = monitoring::spawn_server(address, readiness, prometheus_handle).await;
     Ok(handle)
 }
 
