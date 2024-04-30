@@ -307,6 +307,12 @@ Pathfinder has a monitoring API which can be enabled with the `--monitor-address
 
 `/ready` provides a way of checking whether the node's JSON-RPC API is ready to be queried. It returns a `503 Service Unavailable` status until all startup tasks complete, and then `200 OK` from then on.
 
+### Synced
+
+Similar to `/ready`, `/ready/synced` checks whether the node's JSON-RPC API is ready to be queried _and_ also checks if the node is synced (within 6 blocks of the current tip of the chain). It returns a `503 Service Unavailable` status if either check fails, and `200 OK` if they both pass.
+
+This endpoint is useful for Docker nodes which only want to present themselves as ready after they have synced.
+
 ### Metrics
 
 `/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently the following metrics are available:
