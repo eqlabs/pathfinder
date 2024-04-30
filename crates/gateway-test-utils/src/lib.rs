@@ -25,7 +25,7 @@ pub fn response_from(code: KnownStarknetErrorCode) -> (String, u16) {
 
 /// # Usage
 ///
-/// Use to initialize a [Client] test case.
+/// Use to initialize a server that the gateway client can connect to.
 pub fn setup<S1, S2, const N: usize>(
     url_paths_queries_and_response_fixtures: [(S1, (S2, u16)); N],
 ) -> (Option<tokio::task::JoinHandle<()>>, reqwest::Url)
@@ -80,11 +80,10 @@ where
 
 /// # Usage
 ///
-/// Use to initialize a [Client] test case. The function does one of the
-/// following things:
+/// Use to initialize a server that the gateway client can connect to. The
+/// function does one of the following things:
 /// - initializes a local mock server instance with the given expected url paths
 ///   & queries and respective fixtures for replies
-/// - creates a [Client] instance which connects to the mock server
 /// - replies for a particular path & query are consumed one at a time until
 ///   exhausted
 ///
