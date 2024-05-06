@@ -6,6 +6,7 @@ pub struct ContractClass<'a>(pub &'a crate::v02::types::SierraContractClass);
 
 pub struct DeprecatedCairoEntryPoint<'a>(pub &'a crate::v02::types::ContractEntryPoint);
 pub struct ContractAbi<'a>(pub &'a [crate::v02::types::ContractAbiEntry]);
+pub struct ContractAbiEntry<'a>(pub &'a crate::v02::types::ContractAbiEntry);
 
 impl SerializeForVersion for DeprecatedContractClass<'_> {
     fn serialize(
@@ -88,6 +89,18 @@ impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
 }
 
 impl SerializeForVersion for ContractAbi<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer.serialize_iter(
+            self.0.len(),
+            &mut self.0.iter().map(|x| ContractAbiEntry(x)),
+        )
+    }
+}
+
+impl SerializeForVersion for ContractAbiEntry<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
