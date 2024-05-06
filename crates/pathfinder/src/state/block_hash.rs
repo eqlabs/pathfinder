@@ -57,10 +57,8 @@ pub fn verify_block_hash(
 
     let transaction_final_hash_type =
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
-    let transaction_commitment = calculate_transaction_commitment(
-        block.transactions.iter().collect::<Vec<_>>().as_slice(),
-        transaction_final_hash_type,
-    )?;
+    let transaction_commitment =
+        calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
     let event_commitment = calculate_event_commitment(
         &block
             .transaction_receipts
@@ -315,7 +313,7 @@ impl TransactionCommitmentFinalHashType {
 /// transaction_hash_with_signature) key-value pairs to the tree and computing
 /// the root hash.
 pub fn calculate_transaction_commitment(
-    transactions: &[&Transaction],
+    transactions: &[Transaction],
     final_hash_type: TransactionCommitmentFinalHashType,
 ) -> Result<TransactionCommitment> {
     use rayon::prelude::*;

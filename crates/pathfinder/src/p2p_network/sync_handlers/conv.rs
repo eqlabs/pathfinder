@@ -38,8 +38,8 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
         use p2p_proto::transaction as proto;
         use pathfinder_common::transaction::TransactionVariant::*;
 
-        let variant = match self.variant {
-            DeclareV0(x) => proto::TransactionVariant::DeclareV0(proto::DeclareV0 {
+        match self.variant {
+            DeclareV0(x) => proto::Transaction::DeclareV0(proto::DeclareV0 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -47,7 +47,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 },
                 class_hash: Hash(x.class_hash.0),
             }),
-            DeclareV1(x) => proto::TransactionVariant::DeclareV1(proto::DeclareV1 {
+            DeclareV1(x) => proto::Transaction::DeclareV1(proto::DeclareV1 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -56,7 +56,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
             }),
-            DeclareV2(x) => proto::TransactionVariant::DeclareV2(proto::DeclareV2 {
+            DeclareV2(x) => proto::Transaction::DeclareV2(proto::DeclareV2 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -66,7 +66,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce: x.nonce.0,
                 compiled_class_hash: x.compiled_class_hash.0,
             }),
-            DeclareV3(x) => proto::TransactionVariant::DeclareV3(proto::DeclareV3 {
+            DeclareV3(x) => proto::Transaction::DeclareV3(proto::DeclareV3 {
                 sender: Address(x.sender_address.0),
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -94,7 +94,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce_domain: x.nonce_data_availability_mode.to_dto(),
                 fee_domain: x.fee_data_availability_mode.to_dto(),
             }),
-            Deploy(x) => proto::TransactionVariant::Deploy(proto::Deploy {
+            Deploy(x) => proto::Transaction::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
@@ -102,20 +102,18 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 // Only these two values are allowed in storage
                 version: if x.version.is_zero() { 0 } else { 1 },
             }),
-            DeployAccountV1(x) => {
-                proto::TransactionVariant::DeployAccountV1(proto::DeployAccountV1 {
-                    max_fee: x.max_fee.0,
-                    signature: AccountSignature {
-                        parts: x.signature.into_iter().map(|s| s.0).collect(),
-                    },
-                    class_hash: Hash(x.class_hash.0),
-                    nonce: x.nonce.0,
-                    address_salt: x.contract_address_salt.0,
-                    calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
-                })
-            }
+            DeployAccountV1(x) => proto::Transaction::DeployAccountV1(proto::DeployAccountV1 {
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+            }),
             DeployAccountV3(x) => {
-                proto::TransactionVariant::DeployAccountV3(proto::DeployAccountV3 {
+                proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
                     signature: AccountSignature {
                         parts: x.signature.into_iter().map(|s| s.0).collect(),
                     },
@@ -138,7 +136,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                     fee_domain: x.fee_data_availability_mode.to_dto(),
                 })
             }
-            InvokeV0(x) => proto::TransactionVariant::InvokeV0(proto::InvokeV0 {
+            InvokeV0(x) => proto::Transaction::InvokeV0(proto::InvokeV0 {
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -147,7 +145,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 entry_point_selector: x.entry_point_selector.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-            InvokeV1(x) => proto::TransactionVariant::InvokeV1(proto::InvokeV1 {
+            InvokeV1(x) => proto::Transaction::InvokeV1(proto::InvokeV1 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -156,7 +154,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce: x.nonce.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-            InvokeV3(x) => proto::TransactionVariant::InvokeV3(proto::InvokeV3 {
+            InvokeV3(x) => proto::Transaction::InvokeV3(proto::InvokeV3 {
                 sender: Address(x.sender_address.0),
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -183,17 +181,12 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 fee_domain: x.fee_data_availability_mode.to_dto(),
                 nonce: x.nonce.0,
             }),
-            L1Handler(x) => proto::TransactionVariant::L1HandlerV0(proto::L1HandlerV0 {
+            L1Handler(x) => proto::Transaction::L1HandlerV0(proto::L1HandlerV0 {
                 nonce: x.nonce.0,
                 address: Address(x.contract_address.0),
                 entry_point_selector: x.entry_point_selector.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-        };
-
-        p2p_proto::transaction::Transaction {
-            hash: Hash(self.hash.0),
-            variant,
         }
     }
 }

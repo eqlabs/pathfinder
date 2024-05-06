@@ -121,12 +121,8 @@ mod prop {
     };
     use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
-    use pathfinder_common::state_update::{
-        ContractClassUpdate,
-        ContractUpdate,
-        SystemContractUpdate,
-    };
-    use pathfinder_common::transaction::{Transaction, TransactionVariant};
+    use pathfinder_common::state_update::SystemContractUpdate;
+    use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::{
         ClassCommitment,
         ClassHash,
@@ -229,7 +225,11 @@ mod prop {
                 .map(|Block { header, state_update, .. }|
                     (
                         header.header.number, // Block number
-                        state_update.contract_updates,
+                        state_update.contract_updates.into_iter().map(|(k, v)| (k, p2p::client::peer_agnostic::ContractUpdate {
+                            storage: v.storage,
+                            class: v.class.map(|x| x.class_hash()),
+                            nonce: v.nonce,
+                        })).collect::<HashMap<_, _>>(),
                         state_update.system_contract_updates,
                     )
             ).collect::<Vec<_>>();
@@ -263,10 +263,10 @@ mod prop {
                         actual_contract_updates.push(
                             (
                                 ContractAddress(address.0),
-                                ContractUpdate {
+                                p2p::client::peer_agnostic::ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),
-                                    class: class_hash.map(ClassHash).map(ContractClassUpdate::Deploy),
+                                    class: class_hash.map(ClassHash),
                                     nonce: nonce.map(ContractNonce)}
                             ));
                     }
@@ -346,14 +346,13 @@ mod prop {
             EntryPointType,
             InvokeTransactionV0,
             L1HandlerTransaction,
-            Transaction,
             TransactionVariant,
         };
         use pathfinder_common::TransactionNonce;
 
         // Align with the deserialization workaround to avoid false negative mismatches
-        pub fn for_legacy_l1_handlers(tx: Transaction) -> Transaction {
-            match tx.variant {
+        pub fn for_legacy_l1_handlers(tx: TransactionVariant) -> TransactionVariant {
+            match tx {
                 TransactionVariant::InvokeV0(InvokeTransactionV0 {
                     entry_point_type: Some(EntryPointType::L1Handler),
                     calldata,
@@ -361,15 +360,12 @@ mod prop {
                     entry_point_selector,
                     max_fee: _,
                     signature: _,
-                }) => Transaction {
-                    variant: TransactionVariant::L1Handler(L1HandlerTransaction {
-                        contract_address: sender_address,
-                        entry_point_selector,
-                        nonce: TransactionNonce::ZERO,
-                        calldata,
-                    }),
-                    hash: tx.hash,
-                },
+                }) => TransactionVariant::L1Handler(L1HandlerTransaction {
+                    contract_address: sender_address,
+                    entry_point_selector,
+                    nonce: TransactionNonce::ZERO,
+                    calldata,
+                }),
                 _ => tx,
             }
         }
@@ -388,11 +384,12 @@ mod prop {
                     (
                         // Block number
                         header.header.number,
-                        // List of tuples (Transaction, Receipt)
+                        // List of tuples (TransactionVariant, Receipt)
                         transaction_data.into_iter().map(|(t, mut rec, _)| {
-                            let mut txn = workaround::for_legacy_l1_handlers(t);
+                            // P2P transactions don't carry contract transaction hashes
+                            let mut txn = workaround::for_legacy_l1_handlers(t.variant);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
-                            match &mut txn.variant {
+                            match &mut txn {
                                 TransactionVariant::Deploy(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV1(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
@@ -400,6 +397,8 @@ mod prop {
                             };
                             // P2P receipts don't carry transaction index
                             rec.transaction_index = TransactionIndex::new_or_panic(0);
+                            // P2P receipts don't carry transaction hashes
+                            rec.transaction_hash = TransactionHash::ZERO;
                             (txn, rec)
                         }).collect::<Vec<_>>()
                     )
@@ -419,7 +418,7 @@ mod prop {
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
                 TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt { transaction, receipt }) => {
-                    (Transaction::try_from_dto(transaction).unwrap(), Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap())
+                    (TransactionVariant::try_from_dto(transaction).unwrap(), Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap())
                 }
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();

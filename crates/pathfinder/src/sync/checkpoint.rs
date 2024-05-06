@@ -10,7 +10,7 @@ use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::Transaction;
+use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ClassHash, TransactionIndex};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
@@ -202,7 +202,7 @@ impl Sync {
                                 receipt,
                             } = tx;
                             match (
-                                Transaction::try_from_dto(transaction),
+                                TransactionVariant::try_from_dto(transaction),
                                 Receipt::try_from_dto((
                                     receipt,
                                     TransactionIndex::new_or_panic(
@@ -395,17 +395,34 @@ async fn handle_event_stream(
 /// Takes ownership of transactions and returns them if verification passes.
 async fn check_transactions(
     block: &BlockHeader,
-    transactions: Vec<(Transaction, Receipt)>,
+    transactions: Vec<(TransactionVariant, Receipt)>,
 ) -> anyhow::Result<Option<Vec<(Transaction, Receipt)>>> {
     if transactions.len() != block.transaction_count {
         return Ok(None);
     }
+    let (transaction_variants, receipts): (Vec<TransactionVariant>, Vec<Receipt>) =
+        transactions.into_iter().unzip();
     let transaction_final_hash_type =
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let (transaction_commitment, transactions) = spawn_blocking({
         move || {
-            let txn_refs = transactions.iter().map(|(t, _)| t).collect::<Vec<_>>();
-            calculate_transaction_commitment(&txn_refs, transaction_final_hash_type)
+            let mut transactions = Vec::new();
+
+            rayon::scope(|s| {
+                s.spawn(|_| {
+                    use rayon::prelude::*;
+
+                    transactions = transaction_variants
+                        .into_par_iter()
+                        .map(|variant| Transaction {
+                            hash: todo!(), //variant.calculate_hash(chain_id, query_only),
+                            variant,
+                        })
+                        .collect();
+                })
+            });
+
+            calculate_transaction_commitment(&transactions, transaction_final_hash_type)
                 .map_err(anyhow::Error::from)
                 .map(|commitment| (commitment, transactions))
         }
@@ -413,7 +430,8 @@ async fn check_transactions(
     .await
     .context("Joining blocking task")?
     .context("Calculating transaction commitment")?;
-    Ok((transaction_commitment == block.transaction_commitment).then_some(transactions))
+    Ok((transaction_commitment == block.transaction_commitment)
+        .then_some(transactions.into_iter().zip(receipts).collect()))
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with

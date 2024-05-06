@@ -23,7 +23,6 @@ use pathfinder_common::transaction::{
     L1HandlerTransaction,
     ResourceBound,
     ResourceBounds,
-    Transaction,
     TransactionVariant,
 };
 use pathfinder_common::{
@@ -127,19 +126,7 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
     }
 }
 
-impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
-    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(Transaction {
-            hash: TransactionHash(dto.hash.0),
-            variant: TransactionVariant::try_from_dto(dto.variant)?,
-        })
-    }
-}
-
-impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
+impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
     /// ## Important
     ///
     /// This conversion does not compute deployed contract address for deploy
@@ -147,11 +134,11 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
     /// [`TransactionVariant::DeployAccountV3`]), filling it with a zero
     /// address instead. The caller is responsible for performing the
     /// computation after the conversion succeeds.
-    fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
+    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        use p2p_proto::transaction::TransactionVariant::{
+        use p2p_proto::transaction::Transaction::{
             DeclareV0,
             DeclareV1,
             DeclareV2,

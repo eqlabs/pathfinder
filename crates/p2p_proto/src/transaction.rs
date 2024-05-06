@@ -160,7 +160,7 @@ pub struct L1HandlerV0 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
-pub enum TransactionVariant {
+pub enum Transaction {
     DeclareV0(DeclareV0),
     DeclareV1(DeclareV1),
     DeclareV2(DeclareV2),
@@ -172,15 +172,6 @@ pub enum TransactionVariant {
     InvokeV1(InvokeV1),
     InvokeV3(InvokeV3),
     L1HandlerV0(L1HandlerV0),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::transaction::Transaction")]
-pub struct Transaction {
-    #[rename(transaction_hash)]
-    pub hash: Hash,
-    #[rename(txn)]
-    pub variant: TransactionVariant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -204,8 +195,8 @@ pub enum TransactionsResponse {
     Fin,
 }
 
-impl ToProtobuf<proto::transaction::transaction::Txn> for TransactionVariant {
-    fn to_protobuf(self) -> proto::transaction::transaction::Txn {
+impl ToProtobuf<proto::transaction::Transaction> for Transaction {
+    fn to_protobuf(self) -> proto::transaction::Transaction {
         use proto::transaction::transaction::Txn::{
             DeclareV0,
             DeclareV1,
@@ -219,25 +210,27 @@ impl ToProtobuf<proto::transaction::transaction::Txn> for TransactionVariant {
             InvokeV3,
             L1Handler,
         };
-        match self {
-            Self::DeclareV0(txn) => DeclareV0(txn.to_protobuf()),
-            Self::DeclareV1(txn) => DeclareV1(txn.to_protobuf()),
-            Self::DeclareV2(txn) => DeclareV2(txn.to_protobuf()),
-            Self::DeclareV3(txn) => DeclareV3(txn.to_protobuf()),
-            Self::Deploy(txn) => Deploy(txn.to_protobuf()),
-            Self::DeployAccountV1(txn) => DeployAccountV1(txn.to_protobuf()),
-            Self::DeployAccountV3(txn) => DeployAccountV3(txn.to_protobuf()),
-            Self::InvokeV0(txn) => InvokeV0(txn.to_protobuf()),
-            Self::InvokeV1(txn) => InvokeV1(txn.to_protobuf()),
-            Self::InvokeV3(txn) => InvokeV3(txn.to_protobuf()),
-            Self::L1HandlerV0(txn) => L1Handler(txn.to_protobuf()),
+        proto::transaction::Transaction {
+            txn: Some(match self {
+                Self::DeclareV0(txn) => DeclareV0(txn.to_protobuf()),
+                Self::DeclareV1(txn) => DeclareV1(txn.to_protobuf()),
+                Self::DeclareV2(txn) => DeclareV2(txn.to_protobuf()),
+                Self::DeclareV3(txn) => DeclareV3(txn.to_protobuf()),
+                Self::Deploy(txn) => Deploy(txn.to_protobuf()),
+                Self::DeployAccountV1(txn) => DeployAccountV1(txn.to_protobuf()),
+                Self::DeployAccountV3(txn) => DeployAccountV3(txn.to_protobuf()),
+                Self::InvokeV0(txn) => InvokeV0(txn.to_protobuf()),
+                Self::InvokeV1(txn) => InvokeV1(txn.to_protobuf()),
+                Self::InvokeV3(txn) => InvokeV3(txn.to_protobuf()),
+                Self::L1HandlerV0(txn) => L1Handler(txn.to_protobuf()),
+            }),
         }
     }
 }
 
-impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionVariant {
+impl TryFromProtobuf<proto::transaction::Transaction> for Transaction {
     fn try_from_protobuf(
-        input: proto::transaction::transaction::Txn,
+        input: proto::transaction::Transaction,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::transaction::transaction::Txn::{
@@ -253,7 +246,7 @@ impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionVarian
             InvokeV3,
             L1Handler,
         };
-        match input {
+        match proto_field(input.txn, field_name)? {
             DeclareV0(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV0),
             DeclareV1(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV1),
             DeclareV2(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV2),
