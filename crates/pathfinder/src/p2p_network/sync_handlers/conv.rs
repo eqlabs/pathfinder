@@ -207,8 +207,8 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
             .map(|x| x.to_owned())
             .unwrap_or_default();
         let common = ReceiptCommon {
-            transaction_hash: Hash(self.1.transaction_hash.0),
             actual_fee: self.1.actual_fee.0,
+            price_unit: p2p_proto::receipt::PriceUnit::Wei, // TODO
             messages_sent: self
                 .1
                 .l2_to_l1_messages
@@ -354,7 +354,11 @@ pub fn sierra_def_into_dto(sierra: Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class
 pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
     let into_dto = |x: SelectorAndOffset| EntryPoint {
         selector: x.selector.0,
-        offset: x.offset.0,
+        offset: u64::from_be_bytes(
+            x.offset.0.as_be_bytes()[24..]
+                .try_into()
+                .expect("slice len matches"),
+        ),
     };
 
     Cairo0Class {

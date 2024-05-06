@@ -121,8 +121,8 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             },
             signature,
-            state_diff_commitment: StateDiffCommitment::ZERO, // TODO
-            state_diff_length: 0,                             // TODO
+            state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
+            state_diff_length: dto.state_diff_commitment.state_diff_length,
         })
     }
 }
@@ -320,6 +320,10 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
 }
 
 impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
+    /// ## Important
+    ///
+    /// This conversion leaves `transaction_hash` zeroed. The caller must make
+    /// sure to compute its value after the conversion succeeds.
     fn try_from_dto(
         (dto, transaction_index): (p2p_proto::receipt::Receipt, TransactionIndex),
     ) -> anyhow::Result<Self> {
@@ -337,7 +341,7 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
             | L1Handler(L1HandlerTransactionReceipt { common, .. })
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
-                transaction_hash: TransactionHash::ZERO, // TODO
+                transaction_hash: TransactionHash::ZERO,
                 actual_fee: Fee(common.actual_fee),
                 execution_resources: ExecutionResources {
                     builtins: BuiltinCounters {

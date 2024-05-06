@@ -250,7 +250,7 @@ mod prop {
 
             // Check the rest
             responses.into_iter().for_each(|response| match response {
-                StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, is_replaced, values, domain: _ }) => {
+                StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, values, domain: _ }) => {
                     if address.0 == Felt::from_u64(1) {
                         actual_system_contract_updates.push(
                             (
@@ -260,19 +260,13 @@ mod prop {
                                         |ContractStoredValue { key, value }| (StorageAddress(key), StorageValue(value))).collect()}
                             ));
                     } else {
-                        let class = match (class_hash, is_replaced) {
-                            (Some(hash), Some(true)) => Some(ContractClassUpdate::Replace(ClassHash(hash))),
-                            (Some(hash), Some(false)) => Some(ContractClassUpdate::Deploy(ClassHash(hash))),
-                            (None, None) => None,
-                            _ => panic!("unexpected response"),
-                        };
                         actual_contract_updates.push(
                             (
                                 ContractAddress(address.0),
                                 ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),
-                                    class,
+                                    class: class_hash.map(ClassHash).map(ContractClassUpdate::Deploy),
                                     nonce: nonce.map(ContractNonce)}
                             ));
                     }

@@ -410,7 +410,7 @@ impl Transaction<'_> {
             .context("Querying highest storage update")
     }
 
-    pub fn state_diff_lengths(&self, block: BlockId) -> anyhow::Result<Option<usize>> {
+    pub fn state_diff_length(&self, block: BlockId) -> anyhow::Result<Option<usize>> {
         let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
             return Ok(None);
         };

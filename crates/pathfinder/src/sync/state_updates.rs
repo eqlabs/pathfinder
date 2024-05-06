@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use p2p::{PeerData, client::peer_agnostic::StateDiff};
-use pathfinder_common::state_update::ContractUpdateCounts;
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, ContractUpdateCounts};
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment};
 use pathfinder_merkle_tree::contract_state::{update_contract_state, ContractStateUpdateResult};
 use pathfinder_merkle_tree::StorageCommitmentTree;
@@ -107,7 +107,7 @@ pub(super) async fn persist(
                 "Verification results are empty, no block to persist"
             ))?;
 
-        for (block_number, contract_updates_for_block) in
+        for (block_number, state_diff) in
             contract_updates.into_iter().map(|x| x.data)
         {
             let block_hash = transaction
@@ -117,8 +117,14 @@ pub(super) async fn persist(
 
             let state_update = StateUpdate {
                 block_hash,
-                contract_updates: contract_updates_for_block.regular,
-                system_contract_updates: contract_updates_for_block.system,
+                contract_updates: state_diff.regular.into_iter().map(|(k, v)| (k, ContractUpdate {
+                    storage: v.storage,
+                    nonce: v.nonce,
+                    class: v.class.map(ContractClassUpdate::Deploy),
+                })).collect(),
+                system_contract_updates: state_diff.system,
+                declared_cairo_classes: state_diff.declared_cairo_classes,
+                declared_sierra_classes: state_diff.declared_sierra_classes,
                 ..Default::default()
             };
 
@@ -215,7 +221,7 @@ fn verify_one(
                             *contract_address,
                             &update.storage,
                             update.nonce,
-                            update.class.as_ref().map(|x| x.class_hash()),
+                            update.class,
                             &transaction,
                             verify_hashes,
                             block_number,
