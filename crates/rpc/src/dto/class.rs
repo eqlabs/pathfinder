@@ -41,27 +41,19 @@ impl SerializeForVersion for DeprecatedContractClass<'_> {
                 serializer.serialize_iter(
                     "CONSTRUCTOR",
                     self.0.constructor.len(),
-                    &mut self
-                        .0
-                        .constructor
-                        .iter()
-                        .map(|x| DeprecatedCairoEntryPoint(x)),
+                    &mut self.0.constructor.iter().map(DeprecatedCairoEntryPoint),
                 )?;
 
                 serializer.serialize_iter(
                     "EXTERNAL",
                     self.0.external.len(),
-                    &mut self.0.external.iter().map(|x| DeprecatedCairoEntryPoint(x)),
+                    &mut self.0.external.iter().map(DeprecatedCairoEntryPoint),
                 )?;
 
                 serializer.serialize_iter(
                     "L1_HANDLER",
                     self.0.l1_handler.len(),
-                    &mut self
-                        .0
-                        .l1_handler
-                        .iter()
-                        .map(|x| DeprecatedCairoEntryPoint(x)),
+                    &mut self.0.l1_handler.iter().map(DeprecatedCairoEntryPoint),
                 )?;
 
                 serializer.end()
@@ -75,7 +67,7 @@ impl SerializeForVersion for DeprecatedContractClass<'_> {
             "entry_points_by_type",
             &EntryPointsByType(&self.0.entry_points_by_type),
         )?;
-        serializer.serialize_optional("abi", self.0.abi.as_ref().map(|x| ContractAbi(&x)))?;
+        serializer.serialize_optional("abi", self.0.abi.as_ref().map(|x| ContractAbi(x)))?;
 
         serializer.end()
     }
@@ -98,19 +90,19 @@ impl SerializeForVersion for ContractClass<'_> {
                 serializer.serialize_iter(
                     "CONSTRUCTOR",
                     self.0.constructor.len(),
-                    &mut self.0.constructor.iter().map(|x| SierraEntryPoint(x)),
+                    &mut self.0.constructor.iter().map(SierraEntryPoint),
                 )?;
 
                 serializer.serialize_iter(
                     "EXTERNAL",
                     self.0.external.len(),
-                    &mut self.0.external.iter().map(|x| SierraEntryPoint(x)),
+                    &mut self.0.external.iter().map(SierraEntryPoint),
                 )?;
 
                 serializer.serialize_iter(
                     "L1_HANDLER",
                     self.0.l1_handler.len(),
-                    &mut self.0.l1_handler.iter().map(|x| SierraEntryPoint(x)),
+                    &mut self.0.l1_handler.iter().map(SierraEntryPoint),
                 )?;
 
                 serializer.end()
@@ -172,10 +164,7 @@ impl SerializeForVersion for ContractAbi<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        serializer.serialize_iter(
-            self.0.len(),
-            &mut self.0.iter().map(|x| ContractAbiEntry(x)),
-        )
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(ContractAbiEntry))
     }
 }
 
