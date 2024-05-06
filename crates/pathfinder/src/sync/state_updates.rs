@@ -1,7 +1,8 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::{PeerData, client::peer_agnostic::StateDiff};
+use p2p::client::peer_agnostic::StateDiff;
+use p2p::PeerData;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, ContractUpdateCounts};
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment};
 use pathfinder_merkle_tree::contract_state::{update_contract_state, ContractStateUpdateResult};
@@ -107,9 +108,7 @@ pub(super) async fn persist(
                 "Verification results are empty, no block to persist"
             ))?;
 
-        for (block_number, state_diff) in
-            contract_updates.into_iter().map(|x| x.data)
-        {
+        for (block_number, state_diff) in contract_updates.into_iter().map(|x| x.data) {
             let block_hash = transaction
                 .block_hash(block_number.into())
                 .context("Getting block hash")?
@@ -117,11 +116,20 @@ pub(super) async fn persist(
 
             let state_update = StateUpdate {
                 block_hash,
-                contract_updates: state_diff.regular.into_iter().map(|(k, v)| (k, ContractUpdate {
-                    storage: v.storage,
-                    nonce: v.nonce,
-                    class: v.class.map(ContractClassUpdate::Deploy),
-                })).collect(),
+                contract_updates: state_diff
+                    .regular
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            ContractUpdate {
+                                storage: v.storage,
+                                nonce: v.nonce,
+                                class: v.class.map(ContractClassUpdate::Deploy),
+                            },
+                        )
+                    })
+                    .collect(),
                 system_contract_updates: state_diff.system,
                 declared_cairo_classes: state_diff.declared_cairo_classes,
                 declared_sierra_classes: state_diff.declared_sierra_classes,

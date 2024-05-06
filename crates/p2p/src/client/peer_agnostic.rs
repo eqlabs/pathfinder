@@ -11,12 +11,27 @@ use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::state::{
+    ContractDiff,
+    ContractStoredValue,
+    DeclaredClass,
+    StateDiffsRequest,
+    StateDiffsResponse,
+};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractUpdateCounts, SystemContractUpdate};
 use pathfinder_common::{
-    BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, SignedBlockHeader, StorageAddress, StorageValue, TransactionHash
+    BlockNumber,
+    CasmHash,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    SierraHash,
+    SignedBlockHeader,
+    StorageAddress,
+    StorageValue,
+    TransactionHash,
 };
 use tokio::sync::RwLock;
 
@@ -804,7 +819,6 @@ pub struct ContractUpdate {
     pub class: Option<ClassHash>,
     pub nonce: Option<ContractNonce>,
 }
-
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct StateDiff {

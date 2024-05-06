@@ -143,9 +143,12 @@ fn get_header(
                     time: header.timestamp.get(),
                     sequencer_address: Address(header.sequencer_address.0),
                     state_root: Hash(header.state_commitment.0),
-                    state_diff_commitment: StateDiffCommitment { state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"), root: Hash(
-                        Felt::ZERO, // TODO
-                    ) },
+                    state_diff_commitment: StateDiffCommitment {
+                        state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"),
+                        root: Hash(
+                            Felt::ZERO, // TODO
+                        ),
+                    },
                     transactions: Patricia {
                         n_leaves: txn_count,
                         root: Hash(header.transaction_commitment.0),
