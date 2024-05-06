@@ -8,6 +8,8 @@ pub struct DeprecatedContractClass<'a>(pub &'a types::CairoContractClass);
 pub struct ContractClass<'a>(pub &'a types::SierraContractClass);
 
 pub struct DeprecatedCairoEntryPoint<'a>(pub &'a types::ContractEntryPoint);
+pub struct SierraEntryPoint<'a>(pub &'a types::SierraEntryPoint);
+
 pub struct ContractAbi<'a>(pub &'a [types::ContractAbiEntry]);
 pub struct ContractAbiEntry<'a>(pub &'a types::ContractAbiEntry);
 pub struct FunctionAbiEntry<'a>(pub &'a types::FunctionAbiEntry);
@@ -84,7 +86,56 @@ impl SerializeForVersion for ContractClass<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        struct EntryPointsByType<'a>(&'a types::SierraEntryPoints);
+
+        impl SerializeForVersion for EntryPointsByType<'_> {
+            fn serialize(
+                &self,
+                serializer: serialize::Serializer,
+            ) -> Result<serialize::Ok, serialize::Error> {
+                let mut serializer = serializer.serialize_struct()?;
+
+                serializer.serialize_iter(
+                    "CONSTRUCTOR",
+                    self.0.constructor.len(),
+                    &mut self.0.constructor.iter().map(|x| SierraEntryPoint(x)),
+                )?;
+
+                serializer.serialize_iter(
+                    "EXTERNAL",
+                    self.0.external.len(),
+                    &mut self.0.external.iter().map(|x| SierraEntryPoint(x)),
+                )?;
+
+                serializer.serialize_iter(
+                    "L1_HANDLER",
+                    self.0.l1_handler.len(),
+                    &mut self.0.l1_handler.iter().map(|x| SierraEntryPoint(x)),
+                )?;
+
+                serializer.end()
+            }
+        }
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_iter(
+            "sierra_program",
+            self.0.sierra_program.len(),
+            &mut self.0.sierra_program.iter().map(Felt),
+        )?;
+
+        serializer.serialize_field("contract_class_version", &self.0.contract_class_version)?;
+        serializer.serialize_field(
+            "entry_points_by_type",
+            &EntryPointsByType(&self.0.entry_points_by_type),
+        )?;
+
+        // ABI is optional, so skip if its empty.
+        let abi = (!self.0.abi.is_empty()).then_some(&self.0.abi);
+        serializer.serialize_optional("abi", abi)?;
+
+        serializer.end()
     }
 }
 
@@ -99,6 +150,15 @@ impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
         serializer.serialize_field("selector", &Felt(&self.0.selector))?;
 
         serializer.end()
+    }
+}
+
+impl SerializeForVersion for SierraEntryPoint<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
     }
 }
 
