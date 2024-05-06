@@ -1,19 +1,23 @@
 use crate::dto::serialize::SerializeForVersion;
 use crate::dto::{serialize, Felt, NumAsHex};
+use crate::v02::types;
 
-pub struct DeprecatedContractClass<'a>(pub &'a crate::v02::types::CairoContractClass);
-pub struct ContractClass<'a>(pub &'a crate::v02::types::SierraContractClass);
+pub struct DeprecatedContractClass<'a>(pub &'a types::CairoContractClass);
+pub struct ContractClass<'a>(pub &'a types::SierraContractClass);
 
-pub struct DeprecatedCairoEntryPoint<'a>(pub &'a crate::v02::types::ContractEntryPoint);
-pub struct ContractAbi<'a>(pub &'a [crate::v02::types::ContractAbiEntry]);
-pub struct ContractAbiEntry<'a>(pub &'a crate::v02::types::ContractAbiEntry);
+pub struct DeprecatedCairoEntryPoint<'a>(pub &'a types::ContractEntryPoint);
+pub struct ContractAbi<'a>(pub &'a [types::ContractAbiEntry]);
+pub struct ContractAbiEntry<'a>(pub &'a types::ContractAbiEntry);
+pub struct FunctionAbiEntry<'a>(pub &'a types::FunctionAbiEntry);
+pub struct EventAbiEntry<'a>(pub &'a types::EventAbiEntry);
+pub struct StructAbiEntry<'a>(pub &'a types::StructAbiEntry);
 
 impl SerializeForVersion for DeprecatedContractClass<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        struct EntryPointsByType<'a>(&'a crate::v02::types::ContractEntryPoints);
+        struct EntryPointsByType<'a>(&'a types::ContractEntryPoints);
 
         impl SerializeForVersion for EntryPointsByType<'_> {
             fn serialize(
@@ -101,6 +105,37 @@ impl SerializeForVersion for ContractAbi<'_> {
 }
 
 impl SerializeForVersion for ContractAbiEntry<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        match self.0 {
+            types::ContractAbiEntry::Function(f) => FunctionAbiEntry(f).serialize(serializer),
+            types::ContractAbiEntry::Event(e) => EventAbiEntry(e).serialize(serializer),
+            types::ContractAbiEntry::Struct(s) => StructAbiEntry(s).serialize(serializer),
+        }
+    }
+}
+
+impl SerializeForVersion for FunctionAbiEntry<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for EventAbiEntry<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for StructAbiEntry<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
