@@ -392,20 +392,20 @@ pub struct EventAbiEntry {
 #[serde(deny_unknown_fields)]
 pub struct FunctionAbiEntry {
     r#type: FunctionAbiType,
-    name: String,
+    pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    inputs: Option<Vec<TypedParameter>>,
+    pub inputs: Option<Vec<TypedParameter>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    outputs: Option<Vec<TypedParameter>>,
+    pub outputs: Option<Vec<TypedParameter>>,
     // This is not part of the JSON-RPC specification, but because we use these
     // types to parse the `starknet_estimateFee` request and then serialize the
     // class definition in the transaction for the Python layer we have to keep
     // this property when serializing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "stateMutability")]
-    state_mutability: Option<String>,
+    pub state_mutability: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

@@ -12,6 +12,10 @@ pub struct FunctionAbiEntry<'a>(pub &'a types::FunctionAbiEntry);
 pub struct EventAbiEntry<'a>(pub &'a types::EventAbiEntry);
 pub struct StructAbiEntry<'a>(pub &'a types::StructAbiEntry);
 
+pub struct FunctionAbiType;
+pub struct TypedParameter<'a>(pub &'a types::TypedParameter);
+pub struct FunctionStateMutability<'a>(pub &'a str);
+
 impl SerializeForVersion for DeprecatedContractClass<'_> {
     fn serialize(
         &self,
@@ -122,7 +126,34 @@ impl SerializeForVersion for FunctionAbiEntry<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("type", &FunctionAbiType)?;
+        serializer.serialize_field("name", &self.0.name)?;
+
+        let inputs = self.0.inputs.as_deref().unwrap_or_default();
+        serializer.serialize_iter(
+            "inputs",
+            inputs.len(),
+            &mut inputs.iter().map(TypedParameter),
+        )?;
+
+        let outputs = self.0.outputs.as_deref().unwrap_or_default();
+        serializer.serialize_iter(
+            "outputs",
+            outputs.len(),
+            &mut outputs.iter().map(TypedParameter),
+        )?;
+
+        serializer.serialize_optional(
+            "stateMutability",
+            self.0
+                .state_mutability
+                .as_deref()
+                .map(FunctionStateMutability),
+        );
+
+        serializer.end()
     }
 }
 
@@ -136,6 +167,33 @@ impl SerializeForVersion for EventAbiEntry<'_> {
 }
 
 impl SerializeForVersion for StructAbiEntry<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for FunctionAbiType {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for TypedParameter<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for FunctionStateMutability<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
