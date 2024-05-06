@@ -231,7 +231,7 @@ impl SerializeForVersion for StructAbiType {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        serializer.serialize_str("struct")
     }
 }
 
