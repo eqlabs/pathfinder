@@ -411,8 +411,8 @@ pub struct FunctionAbiEntry {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TypedParameter {
-    name: String,
-    r#type: String,
+    pub name: String,
+    pub r#type: String,
 }
 
 /// A Cairo 1.x (i.e. Sierra) class.

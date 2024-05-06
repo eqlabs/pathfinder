@@ -1,3 +1,5 @@
+use serde_with::ser::SerializeAsWrap;
+
 use crate::dto::serialize::SerializeForVersion;
 use crate::dto::{serialize, Felt, NumAsHex};
 use crate::v02::types;
@@ -240,7 +242,12 @@ impl SerializeForVersion for TypedParameter<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("name", &self.0.name)?;
+        serializer.serialize_field("type", &self.0.r#type)?;
+
+        serializer.end()
     }
 }
 
