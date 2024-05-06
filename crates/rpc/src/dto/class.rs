@@ -265,6 +265,17 @@ impl SerializeForVersion for StructMember<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        // FIXME: these clones could be removed if the types::* definitions were
+        // smarter.
+        let parameter = types::TypedParameter {
+            name: self.0.typed_parameter_name.clone(),
+            r#type: self.0.typed_parameter_type.clone(),
+        };
+        serializer.flatten(&TypedParameter(&parameter))?;
+        serializer.serialize_field("offset", &self.0.offset)?;
+
+        serializer.end()
     }
 }

@@ -358,10 +358,10 @@ pub struct StructMember {
     // Serde does not support deny_unknown_fields + flatten, so we
     // flatten TypedParameter manually here.
     #[serde(rename = "name")]
-    typed_parameter_name: String,
+    pub typed_parameter_name: String,
     #[serde(rename = "type")]
-    typed_parameter_type: String,
-    offset: u64,
+    pub typed_parameter_type: String,
+    pub offset: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
