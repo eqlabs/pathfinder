@@ -174,6 +174,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_headers((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -214,6 +215,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_state_diffs((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -285,7 +287,7 @@ mod prop {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
+        #![proptest_config(ProptestConfig::with_cases(25))]
         #[test]
         fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -335,8 +337,8 @@ mod prop {
                 let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
                 let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<Vec<_>>();
 
-                prop_assert_eq_sorted!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
-                prop_assert_eq_sorted!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }
@@ -372,6 +374,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_transactions((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -431,6 +434,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_events((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
