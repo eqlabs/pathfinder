@@ -222,7 +222,7 @@ impl SerializeForVersion for EventAbiType {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        serializer.serialize_str("event")
     }
 }
 
