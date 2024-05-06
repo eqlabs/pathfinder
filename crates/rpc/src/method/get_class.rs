@@ -92,8 +92,10 @@ impl SerializeForVersion for Output {
         serializer: dto::serialize::Serializer,
     ) -> Result<dto::serialize::Ok, dto::serialize::Error> {
         match self {
-            Output::DeprecatedClass(cairo) => todo!(),
-            Output::Class(sierra) => todo!(),
+            Output::DeprecatedClass(cairo) => {
+                dto::DeprecatedContractClass(&cairo).serialize(serializer)
+            }
+            Output::Class(sierra) => dto::ContractClass(&sierra).serialize(serializer),
         }
     }
 }
