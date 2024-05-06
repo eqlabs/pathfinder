@@ -347,9 +347,9 @@ pub enum FunctionAbiType {
 #[serde(deny_unknown_fields)]
 pub struct StructAbiEntry {
     r#type: StructAbiType,
-    name: String,
-    size: u64,
-    members: Vec<StructMember>,
+    pub name: String,
+    pub size: u64,
+    pub members: Vec<StructMember>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

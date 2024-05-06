@@ -14,9 +14,11 @@ pub struct StructAbiEntry<'a>(pub &'a types::StructAbiEntry);
 
 pub struct FunctionAbiType;
 pub struct EventAbiType;
+pub struct StructAbiType;
 
 pub struct TypedParameter<'a>(pub &'a types::TypedParameter);
 pub struct FunctionStateMutability<'a>(pub &'a str);
+pub struct StructMember<'a>(pub &'a types::StructMember);
 
 impl SerializeForVersion for DeprecatedContractClass<'_> {
     fn serialize(
@@ -184,7 +186,20 @@ impl SerializeForVersion for StructAbiEntry<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("type", &EventAbiType)?;
+        serializer.serialize_field("name", &self.0.name)?;
+        // FIXME: this should be a NonZero according to the RPC spec.
+        serializer.serialize_field("size", &self.0.size)?;
+
+        serializer.serialize_iter(
+            "members",
+            self.0.members.len(),
+            &mut self.0.members.iter().map(StructMember),
+        )?;
+
+        serializer.end()
     }
 }
 
@@ -206,6 +221,15 @@ impl SerializeForVersion for EventAbiType {
     }
 }
 
+impl SerializeForVersion for StructAbiType {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
 impl SerializeForVersion for TypedParameter<'_> {
     fn serialize(
         &self,
@@ -216,6 +240,15 @@ impl SerializeForVersion for TypedParameter<'_> {
 }
 
 impl SerializeForVersion for FunctionStateMutability<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for StructMember<'_> {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
