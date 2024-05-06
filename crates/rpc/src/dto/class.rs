@@ -19,7 +19,7 @@ pub struct EventAbiType;
 pub struct StructAbiType;
 
 pub struct TypedParameter<'a>(pub &'a types::TypedParameter);
-pub struct FunctionStateMutability<'a>(pub &'a str);
+pub struct FunctionStateMutability;
 pub struct StructMember<'a>(pub &'a types::StructMember);
 
 impl SerializeForVersion for DeprecatedContractClass<'_> {
@@ -155,8 +155,8 @@ impl SerializeForVersion for FunctionAbiEntry<'_> {
             "stateMutability",
             self.0
                 .state_mutability
-                .as_deref()
-                .map(FunctionStateMutability),
+                .as_ref()
+                .map(|_| FunctionStateMutability),
         );
 
         serializer.end()
@@ -251,12 +251,12 @@ impl SerializeForVersion for TypedParameter<'_> {
     }
 }
 
-impl SerializeForVersion for FunctionStateMutability<'_> {
+impl SerializeForVersion for FunctionStateMutability {
     fn serialize(
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        serializer.serialize_str("view")
     }
 }
 
