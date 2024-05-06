@@ -3,7 +3,15 @@ use std::fmt::Debug;
 use std::result::Result;
 use std::time::Duration;
 
-use pathfinder_common::{BlockHash, BlockId, BlockNumber, ClassHash, StateUpdate, TransactionHash};
+use pathfinder_common::{
+    BlockHash,
+    BlockId,
+    BlockNumber,
+    ClassHash,
+    PublicKey,
+    StateUpdate,
+    TransactionHash,
+};
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::PendingBlock;
@@ -103,6 +111,10 @@ pub trait GatewayApi: Sync {
     async fn signature(&self, block: BlockId) -> Result<reply::BlockSignature, SequencerError> {
         unimplemented!();
     }
+
+    async fn public_key(&self) -> Result<PublicKey, SequencerError> {
+        unimplemented!();
+    }
 }
 
 #[async_trait::async_trait]
@@ -185,6 +197,10 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 
     async fn signature(&self, block: BlockId) -> Result<reply::BlockSignature, SequencerError> {
         self.as_ref().signature(block).await
+    }
+
+    async fn public_key(&self) -> Result<PublicKey, SequencerError> {
+        self.as_ref().public_key().await
     }
 }
 
@@ -514,6 +530,15 @@ impl GatewayApi for Client {
         self.feeder_gateway_request()
             .get_signature()
             .with_block(block)
+            .with_retry(self.retry)
+            .get()
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn public_key(&self) -> Result<PublicKey, SequencerError> {
+        self.feeder_gateway_request()
+            .get_public_key()
             .with_retry(self.retry)
             .get()
             .await

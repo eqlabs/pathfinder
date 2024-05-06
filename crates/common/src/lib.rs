@@ -513,6 +513,7 @@ macros::felt_newtypes!(
         L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem,
         PaymasterDataElem,
+        PublicKey,
         SequencerAddress,
         StateCommitment,
         StateDiffCommitment,
