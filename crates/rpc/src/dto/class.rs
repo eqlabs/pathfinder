@@ -158,7 +158,12 @@ impl SerializeForVersion for SierraEntryPoint<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("selector", &Felt(&self.0.selector))?;
+        serializer.serialize_field("function_idx", &self.0.function_idx)?;
+
+        serializer.end()
     }
 }
 
