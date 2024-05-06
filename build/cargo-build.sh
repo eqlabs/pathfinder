@@ -7,5 +7,6 @@ elif [[ "${TARGETARCH}" == "arm64" ]]; then
     C_INCLUDE_PATH=/build/sysroot/usr/include \
     OPENSSL_LIB_DIR=/build/sysroot/usr/lib/aarch64-linux-gnu \
     OPENSSL_INCLUDE_DIR=/build/sysroot/usr/include/aarch64-linux-gnu \
+    JEMALLOC_SYS_WITH_LG_PAGE=16 \
     cargo build --target aarch64-unknown-linux-gnu $*
 fi

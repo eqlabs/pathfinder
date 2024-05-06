@@ -45,7 +45,7 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@v3
         with:
-          config-inline: |
+          buildkitd-config-inline: |
             [worker.oci]
               max-parallelism = 4
       - name: Login to Docker Hub
@@ -84,13 +84,9 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-      - name: Pull image
-        run: docker pull eqlabs/pathfinder:snapshot-${{ github.sha }}
       - name: Tag image with release name
-        run: docker tag eqlabs/pathfinder:snapshot-${{ github.sha }} eqlabs/pathfinder:${{ github.event.release.tag_name }}
+        run: docker buildx imagetools create -t eqlabs/pathfinder:${{ github.event.release.tag_name }} eqlabs/pathfinder:snapshot-${{ github.sha }}
         # Only tag the image as 'latest' if its a release i.e. not a prerelease.
       - name: Tag image with 'latest'
         if: ${{ !github.event.release.prerelease }}
-        run: docker tag eqlabs/pathfinder:snapshot-${{ github.sha }} eqlabs/pathfinder:latest
-      - name: Push image tags
-        run: docker push --all-tags eqlabs/pathfinder
+        run: docker buildx imagetools create -t eqlabs/pathfinder:latest eqlabs/pathfinder:snapshot-${{ github.sha }}
