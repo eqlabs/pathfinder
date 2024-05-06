@@ -1,5 +1,5 @@
-use crate::dto::serialize;
 use crate::dto::serialize::SerializeForVersion;
+use crate::dto::{serialize, Felt, NumAsHex};
 
 pub struct DeprecatedContractClass<'a>(pub &'a crate::v02::types::CairoContractClass);
 pub struct ContractClass<'a>(pub &'a crate::v02::types::SierraContractClass);
@@ -78,7 +78,12 @@ impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("offset", &NumAsHex(self.0.offset))?;
+        serializer.serialize_field("selector", &Felt(&self.0.selector))?;
+
+        serializer.end()
     }
 }
 
