@@ -13,6 +13,8 @@ pub struct EventAbiEntry<'a>(pub &'a types::EventAbiEntry);
 pub struct StructAbiEntry<'a>(pub &'a types::StructAbiEntry);
 
 pub struct FunctionAbiType;
+pub struct EventAbiType;
+
 pub struct TypedParameter<'a>(pub &'a types::TypedParameter);
 pub struct FunctionStateMutability<'a>(pub &'a str);
 
@@ -162,7 +164,18 @@ impl SerializeForVersion for EventAbiEntry<'_> {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("type", &EventAbiType)?;
+        serializer.serialize_field("name", &self.0.name)?;
+
+        let keys = self.0.keys.as_deref().unwrap_or_default();
+        serializer.serialize_iter("keys", keys.len(), &mut keys.iter().map(TypedParameter))?;
+
+        let data = self.0.data.as_deref().unwrap_or_default();
+        serializer.serialize_iter("data", data.len(), &mut data.iter().map(TypedParameter))?;
+
+        serializer.end()
     }
 }
 
@@ -176,6 +189,15 @@ impl SerializeForVersion for StructAbiEntry<'_> {
 }
 
 impl SerializeForVersion for FunctionAbiType {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for EventAbiType {
     fn serialize(
         &self,
         serializer: serialize::Serializer,

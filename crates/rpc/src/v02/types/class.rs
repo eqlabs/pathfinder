@@ -368,13 +368,13 @@ pub struct StructMember {
 #[serde(deny_unknown_fields)]
 pub struct EventAbiEntry {
     r#type: EventAbiType,
-    name: String,
+    pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    keys: Option<Vec<TypedParameter>>,
+    pub keys: Option<Vec<TypedParameter>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    data: Option<Vec<TypedParameter>>,
+    pub data: Option<Vec<TypedParameter>>,
     // The `inputs` and `outputs` property is not part of the JSON-RPC
     // specification, but because we use these types to parse the
     // `starknet_estimateFee` request and then serialize the class definition in
