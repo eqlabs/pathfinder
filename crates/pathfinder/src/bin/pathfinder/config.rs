@@ -547,10 +547,6 @@ pub fn parse_cors_or_exit(input: Vec<String>) -> Option<AllowedOrigins> {
 }
 
 #[derive(Debug, thiserror::Error, PartialEq)]
-#[error("Invalid domain for CORS: {0}")]
-struct InvalidCorsDomainError(String);
-
-#[derive(Debug, thiserror::Error, PartialEq)]
 enum RpcCorsDomainsParseError {
     #[error("Invalid allowed domain for CORS: {0}.")]
     InvalidDomain(String),

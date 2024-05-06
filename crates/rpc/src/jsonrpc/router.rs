@@ -9,7 +9,6 @@ use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
 use serde_json::value::RawValue;
-use serde_json::Value;
 use tracing::Instrument;
 
 use crate::context::RpcContext;
@@ -543,12 +542,6 @@ mod sealed {
     }
 }
 
-/// Handles invoking an RPC route's methods.
-#[async_trait]
-pub trait RpcMethodHandler {
-    async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
-}
-
 /// Performs asynchronous work concurrently on an input iterator, returning an
 /// `Iterator` with the output of each piece of work.
 ///
@@ -619,7 +612,7 @@ where
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::*;
 

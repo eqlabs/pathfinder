@@ -31,6 +31,7 @@ pub mod stage {
     use crate::metrics::RequestMetadata;
 
     /// Provides the [builder](super::Request::builder) entry-point.
+    #[allow(dead_code)]
     pub struct Init;
 
     /// Select the Sequencer API method to call:

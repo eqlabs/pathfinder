@@ -48,6 +48,7 @@ pub trait ToSql {
 }
 
 pub trait TryIntoSql {
+    #[allow(dead_code)]
     fn try_into_sql(&self) -> Result<ToSqlOutput<'_>>;
 }
 
