@@ -331,7 +331,7 @@ pub enum EventAbiType {
     Event,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(deny_unknown_fields)]
 pub enum FunctionAbiType {
@@ -391,7 +391,7 @@ pub struct EventAbiEntry {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionAbiEntry {
-    r#type: FunctionAbiType,
+    pub r#type: FunctionAbiType,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]

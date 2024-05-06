@@ -12,7 +12,7 @@ pub struct FunctionAbiEntry<'a>(pub &'a types::FunctionAbiEntry);
 pub struct EventAbiEntry<'a>(pub &'a types::EventAbiEntry);
 pub struct StructAbiEntry<'a>(pub &'a types::StructAbiEntry);
 
-pub struct FunctionAbiType;
+pub struct FunctionAbiType(pub types::FunctionAbiType);
 pub struct EventAbiType;
 pub struct StructAbiType;
 
@@ -132,7 +132,7 @@ impl SerializeForVersion for FunctionAbiEntry<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("type", &FunctionAbiType)?;
+        serializer.serialize_field("type", &FunctionAbiType(self.0.r#type))?;
         serializer.serialize_field("name", &self.0.name)?;
 
         let inputs = self.0.inputs.as_deref().unwrap_or_default();
@@ -208,7 +208,12 @@ impl SerializeForVersion for FunctionAbiType {
         &self,
         serializer: serialize::Serializer,
     ) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        match self.0 {
+            types::FunctionAbiType::Function => "function",
+            types::FunctionAbiType::L1Handler => "l1_handler",
+            types::FunctionAbiType::Constructor => "constructor",
+        }
+        .serialize(serializer)
     }
 }
 
