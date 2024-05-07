@@ -224,7 +224,7 @@ impl ProcessStage for ForwardContinuity {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let header = &input.header;
 
         if header.number != self.next || header.parent_hash != self.parent_hash {
@@ -242,19 +242,15 @@ impl ProcessStage for VerifyHash {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        tokio::task::spawn_blocking(move || {
-            if !input.header.verify_hash() {
-                return Err(SyncError2::BadBlockHash);
-            }
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        if !input.header.verify_hash() {
+            return Err(SyncError2::BadBlockHash);
+        }
 
-            if !input.verify_signature() {
-                return Err(SyncError2::BadHeaderSignature);
-            }
+        if !input.verify_signature() {
+            return Err(SyncError2::BadHeaderSignature);
+        }
 
-            Ok(input)
-        })
-        .await
-        .context("Joining blocking task")?
+        Ok(input)
     }
 }

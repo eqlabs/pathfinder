@@ -160,9 +160,7 @@ impl ProcessStage for VerifyCommitment {
     type Input = BlockEvents;
     type Output = BlockEvents;
 
-    async fn map(&mut self, input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
-        tokio::task::spawn_blocking(move || todo!("Calculate and verify event commitment"))
-            .await
-            .context("Joining blocking task")?
+    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+        todo!()
     }
 }

@@ -15,10 +15,7 @@ pub trait ProcessStage {
     type Input;
     type Output;
 
-    fn map(
-        &mut self,
-        input: Self::Input,
-    ) -> impl Future<Output = Result<Self::Output, SyncError2>> + Send;
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
 }
 
 impl<T: Send + 'static> SyncReceiver<T> {
@@ -32,19 +29,18 @@ impl<T: Send + 'static> SyncReceiver<T> {
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        tokio::spawn(async move {
-            while let Some(input) = self.inner.recv().await {
+        std::thread::spawn(move || {
+            while let Some(input) = self.inner.blocking_recv() {
                 let result = match input {
                     Ok(PeerData { peer, data }) => stage
                         .map(data)
-                        .await
                         .map(|x| PeerData::new(peer, x))
                         .map_err(|e| PeerData::new(peer, e)),
                     Err(e) => Err(e),
                 };
 
                 let is_err = result.is_err();
-                if tx.send(result).await.is_err() || is_err {
+                if tx.blocking_send(result).is_err() || is_err {
                     return;
                 }
             }
@@ -109,7 +105,7 @@ mod tests {
             type Input = u8;
             type Output = u8;
 
-            async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+            fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
                 Ok(input)
             }
         }
@@ -141,7 +137,7 @@ mod tests {
             type Input = u8;
             type Output = u8;
 
-            async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+            fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
                 if self.0 == 0 {
                     self.0 = 1;
                     Ok(input)

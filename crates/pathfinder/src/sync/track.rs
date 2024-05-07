@@ -30,6 +30,16 @@ where
         next: BlockNumber,
         parent_hash: BlockHash,
     ) -> Result<(), PeerData<SyncError2>> {
+        let storage_connection = self
+            .storage
+            .connection()
+            .context("Creating database connection")
+            // FIXME: PeerData should allow for None peers.
+            .map_err(|e| PeerData {
+                peer: p2p::libp2p::PeerId::random(),
+                data: SyncError2::from(e),
+            })?;
+
         let mut headers = HeaderSource {
             p2p: self.p2p.clone(),
             latest_onchain: self.latest.clone(),
@@ -53,7 +63,7 @@ where
             events,
         }
         .spawn()
-        .pipe(StoreBlock::new(self.storage), 10)
+        .pipe(StoreBlock::new(storage_connection), 10)
         .into_stream()
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
@@ -244,12 +254,12 @@ struct BlockData {
 }
 
 struct StoreBlock {
-    storage: Storage,
+    connection: pathfinder_storage::Connection,
 }
 
 impl StoreBlock {
-    pub fn new(storage: Storage) -> Self {
-        Self { storage }
+    pub fn new(connection: pathfinder_storage::Connection) -> Self {
+        Self { connection }
     }
 }
 
@@ -257,25 +267,18 @@ impl ProcessStage for StoreBlock {
     type Input = BlockData;
     type Output = ();
 
-    async fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        tokio::task::spawn_blocking({
-            let storage = self.storage.clone();
-            move || {
-                let BlockData { header, events } = input;
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let BlockData { header, events } = input;
 
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let mut db = db.transaction().context("Creating database connection")?;
+        let db = self
+            .connection
+            .transaction()
+            .context("Creating database connection")?;
 
-                // TODO: write all the data to storage
+        // TODO: write all the data to storage
 
-                db.commit()
-                    .context("Committing transaction")
-                    .map_err(Into::into)
-            }
-        })
-        .await
-        .context("Joining blocking task")?
+        db.commit()
+            .context("Committing transaction")
+            .map_err(Into::into)
     }
 }
