@@ -1,3 +1,5 @@
+use pathfinder_common::ContractAddress;
+
 use super::serialize::SerializeForVersion;
 use crate::dto::serialize;
 
@@ -8,6 +10,7 @@ pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
 pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 pub struct NumAsHex(pub u64);
+pub struct Address<'a>(pub &'a ContractAddress);
 
 mod hex_str {
     use std::borrow::Cow;
@@ -126,6 +129,15 @@ impl SerializeForVersion for NumAsHex {
     ) -> Result<serialize::Ok, serialize::Error> {
         let hex_str = hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes());
         serializer.serialize_str(&hex_str)
+    }
+}
+
+impl SerializeForVersion for Address<'_> {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer.serialize(&Felt(&self.0 .0))
     }
 }
 
