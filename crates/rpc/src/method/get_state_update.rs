@@ -15,7 +15,7 @@ crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
 #[derive(PartialEq, Debug)]
 pub enum Output {
-    Full(StateUpdate),
+    Full(Box<StateUpdate>),
     Pending(Arc<StateUpdate>),
 }
 
@@ -25,8 +25,8 @@ impl dto::serialize::SerializeForVersion for Output {
         serializer: dto::serialize::Serializer,
     ) -> Result<dto::serialize::Ok, dto::serialize::Error> {
         match self {
-            Output::Full(full) => dto::StateUpdate(&full).serialize(serializer),
-            Output::Pending(pending) => dto::PendingStateUpdate(&pending).serialize(serializer),
+            Output::Full(full) => dto::StateUpdate(full).serialize(serializer),
+            Output::Pending(pending) => dto::PendingStateUpdate(pending).serialize(serializer),
         }
     }
 }
@@ -63,7 +63,7 @@ pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Outpu
             .context("Fetching state diff")?
             .ok_or(Error::BlockNotFound)?;
 
-        Ok(Output::Full(state_update))
+        Ok(Output::Full(Box::new(state_update)))
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -79,7 +79,7 @@ mod tests {
     use super::*;
 
     impl Output {
-        fn unwrap_full(self) -> StateUpdate {
+        fn unwrap_full(self) -> Box<StateUpdate> {
             match self {
                 Output::Full(x) => x,
                 Output::Pending(_) => panic!("Output was Pending variant"),
@@ -148,7 +148,7 @@ mod tests {
         .unwrap()
         .unwrap_full();
 
-        assert_eq!(result, in_storage.pop().unwrap());
+        assert_eq!(*result, in_storage.pop().unwrap());
     }
 
     #[tokio::test]
@@ -165,7 +165,7 @@ mod tests {
         .unwrap()
         .unwrap_full();
 
-        assert_eq!(result, in_storage[0].clone());
+        assert_eq!(*result, in_storage[0].clone());
     }
 
     #[tokio::test]
@@ -182,7 +182,7 @@ mod tests {
         .unwrap()
         .unwrap_full();
 
-        assert_eq!(result, in_storage[1].clone());
+        assert_eq!(*result, in_storage[1].clone());
     }
 
     #[tokio::test]
