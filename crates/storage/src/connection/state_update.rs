@@ -748,7 +748,7 @@ impl Transaction<'_> {
         let storage_updates = self.reverse_storage_updates(from, to)?;
         let nonce_updates: Vec<(ContractAddress, Option<ContractNonce>)> =
             self.reverse_nonce_updates(from, to)?;
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"WITH
                 updated_contracts(contract_address) AS (
                     SELECT DISTINCT
@@ -825,7 +825,7 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
     ) -> anyhow::Result<HashMap<ContractAddress, StorageUpdates>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"
             WITH
                 updated_addresses(contract_address, storage_address, contract_address_id, storage_address_id) AS (
@@ -890,7 +890,7 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
     ) -> anyhow::Result<Vec<(ContractAddress, Option<ContractNonce>)>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"WITH
                 updated_nonces(contract_address) AS (
                     SELECT DISTINCT
@@ -936,7 +936,7 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
     ) -> anyhow::Result<Vec<(SierraHash, Option<CasmHash>)>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"WITH declared_sierra_classes(class_hash) AS (
                 SELECT
                     class_definitions.hash AS class_hash

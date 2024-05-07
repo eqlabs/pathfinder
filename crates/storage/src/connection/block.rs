@@ -367,7 +367,7 @@ impl Transaction<'_> {
     pub fn first_block_without_transactions(&self) -> anyhow::Result<Option<BlockNumber>> {
         let mut stmt = self
             .inner()
-            .prepare(
+            .prepare_cached(
                 r"
                 SELECT number
                 FROM block_headers

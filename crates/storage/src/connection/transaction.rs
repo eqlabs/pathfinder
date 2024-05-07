@@ -93,14 +93,14 @@ impl Transaction<'_> {
 
         let mut insert_transaction_stmt = self
             .inner()
-            .prepare(
+            .prepare_cached(
                 "INSERT INTO transactions (block_number, transactions, events) VALUES \
                  (:block_number, :transactions, :events)",
             )
             .context("Preparing insert transaction statement")?;
         let mut insert_transaction_hash_stmt = self
             .inner()
-            .prepare(
+            .prepare_cached(
                 "INSERT INTO transaction_hashes (hash, block_number, idx) VALUES (:hash, \
                  :block_number, :idx)",
             )
@@ -171,7 +171,7 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let mut stmt = self
             .inner()
-            .prepare(
+            .prepare_cached(
                 r"
                 UPDATE transactions
                 SET events = :events
@@ -348,7 +348,7 @@ impl Transaction<'_> {
         &self,
         block_number: BlockNumber,
     ) -> anyhow::Result<Option<Vec<(StarknetTransaction, Receipt)>>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"
             SELECT transactions
             FROM transactions
@@ -385,7 +385,7 @@ impl Transaction<'_> {
         &self,
         block_number: BlockNumber,
     ) -> anyhow::Result<Vec<TransactionHash>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"
             SELECT hash
             FROM transaction_hashes
@@ -405,7 +405,7 @@ impl Transaction<'_> {
         &self,
         block_number: BlockNumber,
     ) -> anyhow::Result<Option<TransactionsAndEventsByBlock>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"
             SELECT transactions, events
             FROM transactions
@@ -462,7 +462,7 @@ impl Transaction<'_> {
         &self,
         block_number: BlockNumber,
     ) -> anyhow::Result<Option<Vec<Vec<Event>>>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"
             SELECT events
             FROM transactions
@@ -500,7 +500,7 @@ impl Transaction<'_> {
         &self,
         hash: TransactionHash,
     ) -> anyhow::Result<Option<(BlockNumber, StarknetTransaction, Receipt)>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"
             SELECT transactions.block_number, transactions, idx
             FROM transactions
@@ -539,7 +539,7 @@ impl Transaction<'_> {
         &self,
         hash: TransactionHash,
     ) -> anyhow::Result<Option<TransactionAndEventsByHash>> {
-        let mut stmt = self.inner().prepare(
+        let mut stmt = self.inner().prepare_cached(
             r"
             SELECT transactions.block_number, transactions, events, idx
             FROM transactions

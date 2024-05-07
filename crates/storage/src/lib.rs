@@ -357,11 +357,14 @@ fn setup_connection(
     connection: &mut rusqlite::Connection,
     journal_mode: JournalMode,
 ) -> Result<(), rusqlite::Error> {
-    // enable foreign keys
+    // Enable foreign keys.
     connection.set_db_config(
         rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY,
         true,
     )?;
+
+    // Use a large cache for prepared statements.
+    connection.set_prepared_statement_cache_capacity(1000);
 
     match journal_mode {
         JournalMode::Rollback => {

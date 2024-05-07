@@ -411,7 +411,7 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let mut stmt = self
             .inner()
-            .prepare(&format!(
+            .prepare_cached(&format!(
                 "UPDATE {table}_removals
                 SET block_number = ?1
                 WHERE block_number > ?1"

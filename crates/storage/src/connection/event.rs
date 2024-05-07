@@ -73,9 +73,9 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         events: impl Iterator<Item = &'a Event>,
     ) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare("INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)")?;
+        let mut stmt = self.inner().prepare_cached(
+            "INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)",
+        )?;
 
         let mut bloom = BloomFilter::new();
         for event in events {
