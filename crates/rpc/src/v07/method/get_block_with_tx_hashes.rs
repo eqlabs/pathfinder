@@ -30,7 +30,6 @@ pub struct BlockWithTxHashes {
 pub struct PendingBlockWithTxHashes {
     #[serde(flatten)]
     header: dto::header::PendingHeader,
-    status: BlockStatus,
     transactions: Vec<TransactionHash>,
 }
 
@@ -62,7 +61,6 @@ pub async fn get_block_with_tx_hashes(context: RpcContext, input: Input) -> Resu
 
                 return Ok(Output::Pending(PendingBlockWithTxHashes {
                     header: pending.header().into(),
-                    status: BlockStatus::Pending,
                     transactions,
                 }));
             }
