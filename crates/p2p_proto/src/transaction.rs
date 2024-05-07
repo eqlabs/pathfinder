@@ -1,7 +1,7 @@
 use fake::Dummy;
 use pathfinder_crypto::Felt;
 
-use crate::common::{Address, Hash, Iteration};
+use crate::common::{Address, DataAvailabilityMode, Hash, Iteration};
 use crate::receipt::Receipt;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
@@ -53,7 +53,7 @@ pub struct DeclareV2 {
     pub signature: AccountSignature,
     pub class_hash: Hash,
     pub nonce: Felt,
-    pub compiled_class_hash: Felt,
+    pub compiled_class_hash: Hash,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -63,13 +63,13 @@ pub struct DeclareV3 {
     pub signature: AccountSignature,
     pub class_hash: Hash,
     pub nonce: Felt,
-    pub compiled_class_hash: Felt,
+    pub compiled_class_hash: Hash,
     pub resource_bounds: ResourceBounds,
-    pub tip: Felt,
-    pub paymaster_data: Address,
-    pub account_deployment_data: Address,
-    pub nonce_domain: String,
-    pub fee_domain: String,
+    pub tip: u64,
+    pub paymaster_data: Vec<Felt>,
+    pub account_deployment_data: Vec<Felt>,
+    pub nonce_data_availability_mode: DataAvailabilityMode,
+    pub fee_data_availability_mode: DataAvailabilityMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -101,10 +101,10 @@ pub struct DeployAccountV3 {
     pub address_salt: Felt,
     pub calldata: Vec<Felt>,
     pub resource_bounds: ResourceBounds,
-    pub tip: Felt,
-    pub paymaster_data: Address,
-    pub nonce_domain: String,
-    pub fee_domain: String,
+    pub tip: u64,
+    pub paymaster_data: Vec<Felt>,
+    pub nonce_data_availability_mode: DataAvailabilityMode,
+    pub fee_data_availability_mode: DataAvailabilityMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -142,11 +142,11 @@ pub struct InvokeV3 {
     pub signature: AccountSignature,
     pub calldata: Vec<Felt>,
     pub resource_bounds: ResourceBounds,
-    pub tip: Felt,
-    pub paymaster_data: Address,
-    pub account_deployment_data: Address,
-    pub nonce_domain: String,
-    pub fee_domain: String,
+    pub tip: u64,
+    pub paymaster_data: Vec<Felt>,
+    pub account_deployment_data: Vec<Felt>,
+    pub nonce_data_availability_mode: DataAvailabilityMode,
+    pub fee_data_availability_mode: DataAvailabilityMode,
     pub nonce: Felt,
 }
 

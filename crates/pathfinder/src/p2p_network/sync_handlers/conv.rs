@@ -18,12 +18,7 @@ use p2p_proto::transaction::{AccountSignature, ResourceBounds};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, Transaction};
-use pathfinder_common::{
-    AccountDeploymentDataElem,
-    L1DataAvailabilityMode,
-    PaymasterDataElem,
-    TransactionHash,
-};
+use pathfinder_common::{L1DataAvailabilityMode, TransactionHash};
 use pathfinder_crypto::Felt;
 use starknet_gateway_types::class_definition::{Cairo, Sierra};
 use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
@@ -64,7 +59,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 },
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
-                compiled_class_hash: x.compiled_class_hash.0,
+                compiled_class_hash: Hash(x.compiled_class_hash.0),
             }),
             DeclareV3(x) => proto::Transaction::DeclareV3(proto::DeclareV3 {
                 sender: Address(x.sender_address.0),
@@ -73,26 +68,20 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 },
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
-                compiled_class_hash: x.compiled_class_hash.0,
+                compiled_class_hash: Hash(x.compiled_class_hash.0),
                 resource_bounds: ResourceBounds {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
                 },
-                tip: x.tip.0.into(),
-                paymaster_data: Address(
-                    x.paymaster_data
-                        .first()
-                        .unwrap_or(&PaymasterDataElem::ZERO)
-                        .0,
-                ), // TODO
-                account_deployment_data: Address(
-                    x.account_deployment_data
-                        .first()
-                        .unwrap_or(&AccountDeploymentDataElem::ZERO)
-                        .0,
-                ), // TODO
-                nonce_domain: x.nonce_data_availability_mode.to_dto(),
-                fee_domain: x.fee_data_availability_mode.to_dto(),
+                tip: x.tip.0,
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(|a| a.0)
+                    .collect(),
+                nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
+                fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
             }),
             Deploy(x) => proto::Transaction::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
@@ -112,30 +101,23 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
             }),
-            DeployAccountV3(x) => {
-                proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
-                    signature: AccountSignature {
-                        parts: x.signature.into_iter().map(|s| s.0).collect(),
-                    },
-                    class_hash: Hash(x.class_hash.0),
-                    nonce: x.nonce.0,
-                    address_salt: x.contract_address_salt.0,
-                    calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
-                    resource_bounds: ResourceBounds {
-                        l1_gas: x.resource_bounds.l1_gas.to_dto(),
-                        l2_gas: x.resource_bounds.l2_gas.to_dto(),
-                    },
-                    tip: x.tip.0.into(),
-                    paymaster_data: Address(
-                        x.paymaster_data
-                            .first()
-                            .unwrap_or(&PaymasterDataElem::ZERO)
-                            .0,
-                    ), // TODO
-                    nonce_domain: x.nonce_data_availability_mode.to_dto(),
-                    fee_domain: x.fee_data_availability_mode.to_dto(),
-                })
-            }
+            DeployAccountV3(x) => proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                resource_bounds: ResourceBounds {
+                    l1_gas: x.resource_bounds.l1_gas.to_dto(),
+                    l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                },
+                tip: x.tip.0,
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
+                fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
+            }),
             InvokeV0(x) => proto::Transaction::InvokeV0(proto::InvokeV0 {
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -164,21 +146,15 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
                 },
-                tip: x.tip.0.into(),
-                paymaster_data: Address(
-                    x.paymaster_data
-                        .first()
-                        .unwrap_or(&PaymasterDataElem::ZERO)
-                        .0,
-                ), // TODO
-                account_deployment_data: Address(
-                    x.account_deployment_data
-                        .first()
-                        .unwrap_or(&AccountDeploymentDataElem::ZERO)
-                        .0,
-                ), // TODO
-                nonce_domain: x.nonce_data_availability_mode.to_dto(),
-                fee_domain: x.fee_data_availability_mode.to_dto(),
+                tip: x.tip.0,
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(|a| a.0)
+                    .collect(),
+                nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
+                fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
                 nonce: x.nonce.0,
             }),
             L1Handler(x) => proto::Transaction::L1HandlerV0(proto::L1HandlerV0 {
@@ -285,11 +261,11 @@ impl ToDto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
     }
 }
 
-impl ToDto<String> for DataAvailabilityMode {
-    fn to_dto(self) -> String {
+impl ToDto<p2p_proto::common::DataAvailabilityMode> for DataAvailabilityMode {
+    fn to_dto(self) -> p2p_proto::common::DataAvailabilityMode {
         match self {
-            DataAvailabilityMode::L1 => "L1".to_owned(),
-            DataAvailabilityMode::L2 => "L2".to_owned(),
+            Self::L1 => p2p_proto::common::DataAvailabilityMode::L1,
+            Self::L2 => p2p_proto::common::DataAvailabilityMode::L2,
         }
     }
 }

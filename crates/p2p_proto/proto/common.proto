@@ -53,6 +53,11 @@ enum L1DataAvailabilityMode {
     Blob = 1;
 }
 
+enum DataAvailabilityMode {
+    L1 = 0;
+    L2 = 1;
+}
+
 message Iteration {
     enum Direction {
         Forward  = 0;
