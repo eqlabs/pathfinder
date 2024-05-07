@@ -69,6 +69,22 @@ pub enum ContractClassUpdate {
     Replace(ClassHash),
 }
 
+impl ContractUpdate {
+    pub fn replaced_class(&self) -> Option<&ClassHash> {
+        match &self.class {
+            Some(ContractClassUpdate::Replace(hash)) => Some(hash),
+            _ => None,
+        }
+    }
+
+    pub fn deployed_class(&self) -> Option<&ClassHash> {
+        match &self.class {
+            Some(ContractClassUpdate::Deploy(hash)) => Some(hash),
+            _ => None,
+        }
+    }
+}
+
 impl ContractClassUpdate {
     pub fn class_hash(&self) -> ClassHash {
         match self {
