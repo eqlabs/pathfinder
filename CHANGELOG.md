@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- `starknet_getBlockWithTxHashes` and `starknet_getBlockWithTxs` returns the pending block with a `status` property that's not in the JSON-RPC specification. This has been fixed for the JSON-RPC 0.7 API endpoint.
+
 ### Added
 
 - `/ready/synced` endpoint to check if the JSON RPC API is ready _and_ also check if the node is synced. Useful for Docker nodes which only want to be available after syncing.
