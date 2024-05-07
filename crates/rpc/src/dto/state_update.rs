@@ -193,7 +193,35 @@ impl SerializeForVersion for StateDiff<'_> {
 
 impl SerializeForVersion for ContractStorageDiffItem<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        struct StorageEntry<'a> {
+            key: &'a StorageAddress,
+            value: &'a StorageValue,
+        }
+
+        impl SerializeForVersion for StorageEntry<'_> {
+            fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+                let mut serializer = serializer.serialize_struct()?;
+
+                serializer.serialize_field("key", &dto::Felt(&self.key.0))?;
+                serializer.serialize_field("value", &dto::Felt(&self.value.0))?;
+
+                serializer.end()
+            }
+        }
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("address", &dto::Felt(&self.address.0))?;
+        serializer.serialize_iter(
+            "storage_entries",
+            self.storage_entries.len(),
+            &mut self
+                .storage_entries
+                .iter()
+                .map(|(key, value)| StorageEntry { key, value }),
+        )?;
+
+        serializer.end()
     }
 }
 
