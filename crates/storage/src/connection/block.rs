@@ -107,7 +107,7 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                "DELETE FROM starknet_transactions WHERE block_number = ?",
+                "DELETE FROM transactions WHERE block_number = ?",
                 params![&block],
             )
             .context("Deleting transactions")?;
@@ -367,17 +367,16 @@ impl Transaction<'_> {
     pub fn first_block_without_transactions(&self) -> anyhow::Result<Option<BlockNumber>> {
         let mut stmt = self
             .inner()
-            .prepare(
-                "
-            SELECT number
-            FROM block_headers
-            LEFT JOIN starknet_transactions ON starknet_transactions.block_hash = \
-                 block_headers.hash
-            GROUP BY block_headers.hash
-            HAVING COUNT(starknet_transactions.idx) = 0
-            ORDER BY number ASC
-            LIMIT 1;
-            ",
+            .prepare_cached(
+                r"
+                SELECT number
+                FROM block_headers
+                LEFT JOIN transactions ON transactions.block_number = block_headers.number
+                GROUP BY block_headers.number
+                HAVING COUNT(transactions.block_number) = 0
+                ORDER BY number ASC
+                LIMIT 1;
+                ",
             )
             .context("Preparing first_block_without_transactions query")?;
 

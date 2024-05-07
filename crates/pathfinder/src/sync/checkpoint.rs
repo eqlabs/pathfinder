@@ -654,7 +654,7 @@ mod tests {
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::{fake as fake_storage, StorageBuilder, TransactionData};
+        use pathfinder_storage::{fake as fake_storage, StorageBuilder};
 
         use super::super::handle_event_stream;
         use super::*;
@@ -811,7 +811,7 @@ mod tests {
         use pathfinder_common::{felt, CasmHash, ClassHash, SierraHash, TransactionHash};
         use pathfinder_crypto::Felt;
         use pathfinder_storage::fake::{self as fake_storage, Block};
-        use pathfinder_storage::{StorageBuilder, TransactionData};
+        use pathfinder_storage::StorageBuilder;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_10_TUPLES_INTEGRATION,
             CAIRO_0_11_SIERRA,

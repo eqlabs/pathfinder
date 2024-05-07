@@ -42,7 +42,7 @@ starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-zstd = { workspace = true }
+zstd = { workspace = true, features = ["experimental"] }
 
 [dev-dependencies]
 assert_matches = { workspace = true }

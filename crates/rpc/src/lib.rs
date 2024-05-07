@@ -257,7 +257,7 @@ pub mod test_utils {
     };
     use pathfinder_common::transaction::*;
     use pathfinder_merkle_tree::StorageCommitmentTree;
-    use pathfinder_storage::{BlockId, Storage, StorageBuilder, TransactionData};
+    use pathfinder_storage::{BlockId, Storage, StorageBuilder};
     use primitive_types::H160;
     use starknet_gateway_types::reply::GasPrices;
 
@@ -570,58 +570,26 @@ pub mod test_utils {
             reason: "Reverted because".to_owned(),
         };
 
-        let transaction_data0 = [TransactionData {
-            transaction: txn0,
-            receipt: Some(receipt0),
-            events: Some(events0),
-        }];
-        let transaction_data1 = [
-            TransactionData {
-                transaction: txn1,
-                receipt: Some(receipt1),
-                events: Some(vec![]),
-            },
-            TransactionData {
-                transaction: txn2,
-                receipt: Some(receipt2),
-                events: Some(vec![]),
-            },
+        let transactions0 = vec![(txn0, receipt0)];
+        let events0 = vec![events0];
+        let transactions1 = vec![(txn1, receipt1), (txn2, receipt2)];
+        let events1 = vec![vec![], vec![]];
+        let transactions2 = vec![
+            (txn3, receipt3),
+            (txn4, receipt4),
+            (txn5, receipt5),
+            (txn6, receipt6),
+            (txn_reverted, receipt_reverted),
         ];
-        let transaction_data2 = [
-            TransactionData {
-                transaction: txn3,
-                receipt: Some(receipt3),
-                events: Some(vec![]),
-            },
-            TransactionData {
-                transaction: txn4,
-                receipt: Some(receipt4),
-                events: Some(vec![]),
-            },
-            TransactionData {
-                transaction: txn5,
-                receipt: Some(receipt5),
-                events: Some(vec![]),
-            },
-            TransactionData {
-                transaction: txn6,
-                receipt: Some(receipt6),
-                events: Some(vec![]),
-            },
-            TransactionData {
-                transaction: txn_reverted,
-                receipt: Some(receipt_reverted),
-                events: Some(vec![]),
-            },
-        ];
+        let events2 = vec![vec![], vec![], vec![], vec![], vec![]];
         db_txn
-            .insert_transaction_data(header0.number, &transaction_data0)
+            .insert_transaction_data(header0.number, &transactions0, Some(&events0))
             .unwrap();
         db_txn
-            .insert_transaction_data(header1.number, &transaction_data1)
+            .insert_transaction_data(header1.number, &transactions1, Some(&events1))
             .unwrap();
         db_txn
-            .insert_transaction_data(header2.number, &transaction_data2)
+            .insert_transaction_data(header2.number, &transactions2, Some(&events2))
             .unwrap();
 
         // Mark block 0 as L1 accepted.

@@ -73,9 +73,9 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         events: impl Iterator<Item = &'a Event>,
     ) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare("INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)")?;
+        let mut stmt = self.inner().prepare_cached(
+            "INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)",
+        )?;
 
         let mut bloom = BloomFilter::new();
         for event in events {
@@ -386,7 +386,6 @@ mod tests {
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
-    use crate::connection::TransactionData;
     use crate::test_utils;
 
     lazy_static::lazy_static!(
@@ -499,17 +498,10 @@ mod tests {
         tx.insert_transaction_data(
             header.number,
             &vec![
-                TransactionData {
-                    transaction: transactions[0].clone(),
-                    receipt: Some(receipts[0].clone()),
-                    events: Some(expected_events[..3].to_vec()),
-                },
-                TransactionData {
-                    transaction: transactions[1].clone(),
-                    receipt: Some(receipts[1].clone()),
-                    events: Some(expected_events[3..].to_vec()),
-                },
+                (transactions[0].clone(), receipts[0].clone()),
+                (transactions[1].clone(), receipts[1].clone()),
             ],
+            Some(&[expected_events[..3].to_vec(), expected_events[3..].to_vec()]),
         )
         .unwrap();
 

@@ -101,22 +101,11 @@ pub(crate) mod tests {
             tx.insert_transaction_data(
                 next_block_header.number,
                 &[
-                    pathfinder_storage::TransactionData {
-                        transaction: transactions[0].clone(),
-                        receipt: Some(dummy_receipt.clone()),
-                        events: Some(vec![]),
-                    },
-                    pathfinder_storage::TransactionData {
-                        transaction: transactions[1].clone(),
-                        receipt: Some(dummy_receipt.clone()),
-                        events: Some(vec![]),
-                    },
-                    pathfinder_storage::TransactionData {
-                        transaction: transactions[2].clone(),
-                        receipt: Some(dummy_receipt.clone()),
-                        events: Some(vec![]),
-                    },
+                    (transactions[0].clone(), dummy_receipt.clone()),
+                    (transactions[1].clone(), dummy_receipt.clone()),
+                    (transactions[2].clone(), dummy_receipt.clone()),
                 ],
+                Some(&[vec![], vec![], vec![]]),
             )?;
             tx.commit()?;
 

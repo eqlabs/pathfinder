@@ -12,7 +12,7 @@ use pathfinder_common::transaction::{
 use pathfinder_common::*;
 use pathfinder_crypto::Felt;
 
-use crate::{EmittedEvent, TransactionData};
+use crate::EmittedEvent;
 
 pub const NUM_BLOCKS: usize = 4;
 pub const TRANSACTIONS_PER_BLOCK: usize = 15;
@@ -200,12 +200,16 @@ pub fn setup_test_storage() -> (crate::Storage, TestData) {
                 [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK]
                 .iter()
                 .cloned()
-                .map(|(tx, receipt, events)| TransactionData {
-                    transaction: tx,
-                    receipt: Some(receipt),
-                    events: Some(events),
-                })
+                .map(|(tx, receipt, ..)| (tx, receipt))
                 .collect::<Vec<_>>(),
+            Some(
+                &transactions_and_receipts
+                    [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK]
+                    .iter()
+                    .cloned()
+                    .map(|(_, _, events)| events)
+                    .collect::<Vec<_>>(),
+            ),
         )
         .unwrap();
     }
