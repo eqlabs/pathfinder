@@ -268,7 +268,7 @@ mod prop {
                                 p2p::client::peer_agnostic::ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),
-                                    class: class_hash.map(ClassHash),
+                                    class: class_hash.map(|x| ClassHash(x.0)),
                                     nonce: nonce.map(ContractNonce)}
                             ));
                     }

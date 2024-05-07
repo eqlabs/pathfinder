@@ -20,7 +20,7 @@ pub struct ContractDiff {
     #[optional]
     pub nonce: Option<Felt>,
     #[optional]
-    pub class_hash: Option<Felt>,
+    pub class_hash: Option<Hash>,
     pub values: Vec<ContractStoredValue>,
     pub domain: u32,
 }

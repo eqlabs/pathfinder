@@ -265,7 +265,7 @@ fn get_state_diff(
         tx.blocking_send(StateDiffsResponse::ContractDiff(ContractDiff {
             address: Address(address.0),
             nonce: update.nonce.map(|n| n.0),
-            class_hash: update.class.as_ref().map(|c| c.class_hash().0),
+            class_hash: update.class.as_ref().map(|c| Hash(c.class_hash().0)),
             values: update
                 .storage
                 .into_iter()

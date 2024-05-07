@@ -395,7 +395,7 @@ impl Client {
                                             update.nonce = Some(ContractNonce(nonce));
                                         }
 
-                                        if let Some(class_hash) = class_hash.map(ClassHash) {
+                                        if let Some(class_hash) = class_hash.map(|x| ClassHash(x.0)) {
                                             match current_counts.deployed_contracts.checked_sub(1) {
                                                 Some(x) => current_counts.deployed_contracts = x,
                                                 None => {
