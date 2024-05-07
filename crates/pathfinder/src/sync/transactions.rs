@@ -15,12 +15,8 @@ pub(super) async fn persist(
             .connection()
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
-        db.insert_transaction_data(
-            block.number,
-            &transactions,
-            None,
-        )
-        .context("Inserting transactions with receipts")?;
+        db.insert_transaction_data(block.number, &transactions, None)
+            .context("Inserting transactions with receipts")?;
         db.commit().context("Committing database transaction")
     })
     .await
