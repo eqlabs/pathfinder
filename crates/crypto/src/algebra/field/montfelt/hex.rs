@@ -1,6 +1,23 @@
 use crate::MontFelt;
 
 impl MontFelt {
+    pub fn to_hex(&self) -> String {
+        const ALPHABET: &[u8] = "0123456789ABCDEF".as_bytes();
+        let mut buf: Vec<u8> = vec![0u8; 64];
+        let mut i = 0;
+        while i < 4 {
+            let limb = self.0[3 - i];
+            let mut j = 0;
+            while j < 16 {
+                let v = (limb >> ((15 - j) * 4)) & 0xFu64;
+                buf[i * 16 + j] = ALPHABET[v as usize];
+                j += 1;
+            }
+            i += 1;
+        }
+        unsafe { String::from_utf8_unchecked(buf) }
+    }
+
     pub const fn from_hex(s: &str) -> MontFelt {
         let s_bytes = s.as_bytes();
 

@@ -119,7 +119,7 @@ pub fn compress_roundkeys_partial(rcs: &[[MontFelt; 3]]) -> Vec<MontFelt> {
 
 /// Serializes roundkeys to u64
 pub fn serialize_roundkeys(rcs: &[MontFelt]) -> Vec<[u64; 4]> {
-    rcs.iter().map(|v| v.raw()).collect()
+    rcs.iter().map(|v| v.0).collect()
 }
 
 /// Generates the Rust code

@@ -12,7 +12,7 @@ impl MontFelt {
             rng.gen::<u64>(),
         ]);
         s.0[3] &= 0xffffffffffffffffu64 >> MontFelt::ZERO_BITS;
-        if s.lt(&MontFelt::P) {
+        if s.const_lt(&MontFelt::P) {
             Some(s)
         } else {
             None

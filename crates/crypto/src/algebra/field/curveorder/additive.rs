@@ -1,4 +1,4 @@
-use crate::algebra::field::core::{adc, sbb};
+use crate::algebra::field::core::{const_adc, const_sbb};
 use crate::CurveOrderMontFelt;
 
 impl CurveOrderMontFelt {
@@ -9,7 +9,7 @@ impl CurveOrderMontFelt {
         let mut res = [0u64; 4];
         let mut i = 0;
         while i < 4 {
-            let (lo, hi) = adc(self.0[i], x.0[i], carry);
+            let (lo, hi) = const_adc(self.0[i], x.0[i], carry);
             res[i] = lo;
             carry = hi;
             i += 1;
@@ -24,7 +24,7 @@ impl CurveOrderMontFelt {
         let mut res = [0u64; 4];
         let mut i = 0;
         while i < 4 {
-            let (lo, hi) = sbb(self.0[i], x.0[i], borrow);
+            let (lo, hi) = const_sbb(self.0[i], x.0[i], borrow);
             res[i] = lo;
             borrow = hi;
             i += 1;

@@ -24,42 +24,6 @@ use rand::Rng;
 pub struct FqConfig;
 pub type Fq = Fp256<MontBackend<FqConfig, 4>>;
 
-/// Arkworks multiplication for assembly debugging
-#[no_mangle]
-pub fn ark_mul(a: Fq, b: &Fq) -> Fq {
-    a * b
-}
-
-/// FF multiplication for assembly debugging
-#[no_mangle]
-pub fn ff_mul(a: Fp, b: &Fp) -> Fp {
-    a * b
-}
-
-/// Our multiplication for assembly debugging
-#[no_mangle]
-pub fn pf_mul(a: MontFelt, b: &MontFelt) -> MontFelt {
-    a * b
-}
-/// Arkworks double for assembly debugging
-#[no_mangle]
-pub fn ark_double(a: Fq) -> Fq {
-    a.double()
-}
-
-/// FF double for assembly debugging
-#[no_mangle]
-pub fn ff_double(a: Fp) -> Fp {
-    use ff::Field;
-    a.double()
-}
-
-/// Our double for assembly debugging
-#[no_mangle]
-pub fn pf_double(a: MontFelt) -> MontFelt {
-    a.double()
-}
-
 pub fn criterion_benchmark(c: &mut Criterion) {
     // Bench field
     bench_field(c);
@@ -84,7 +48,7 @@ pub fn bench_field(c: &mut Criterion) {
 
     let rand: [u64; 4] = [rng.gen(), rng.gen(), rng.gen(), rng.gen()];
     let ark_elm = Fq::new_unchecked(BigInt(rand));
-    let pf_elm = MontFelt::from_limbs(rand);
+    let pf_elm = MontFelt::from_native_limbs(rand);
     let ff_elm = <Fp as ff::PrimeField>::from_repr(FpRepr(pf_elm.to_be_bytes())).unwrap();
 
     // MUL

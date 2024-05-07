@@ -94,8 +94,8 @@ fn push_points(
 
 /// Pushes a point to the buffer
 fn push_point(buf: &mut String, p: &AffinePoint) -> std::fmt::Result {
-    let x = p.x.raw();
-    let y = p.y.raw();
+    let x = p.x.0;
+    let y = p.y.0;
     buf.push_str("    AffinePoint::from_raw(");
     buf.push_str("\n        [");
     write!(buf, "{},", x[0])?;
