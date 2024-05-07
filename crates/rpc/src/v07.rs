@@ -20,7 +20,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getStorageAt",                        crate::method::get_storage_at)
         
         .register("starknet_getEvents",                           v03_method::get_events)
-        .register("starknet_getStateUpdate",                      v03_method::get_state_update)
+        .register("starknet_getStateUpdate",                      crate::method::get_state_update)
 
         .register("starknet_syncing",                             crate::method::syncing)
 
