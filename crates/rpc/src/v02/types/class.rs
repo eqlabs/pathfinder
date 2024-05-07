@@ -331,7 +331,7 @@ pub enum EventAbiType {
     Event,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(deny_unknown_fields)]
 pub enum FunctionAbiType {
@@ -347,9 +347,9 @@ pub enum FunctionAbiType {
 #[serde(deny_unknown_fields)]
 pub struct StructAbiEntry {
     r#type: StructAbiType,
-    name: String,
-    size: u64,
-    members: Vec<StructMember>,
+    pub name: String,
+    pub size: u64,
+    pub members: Vec<StructMember>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -358,23 +358,23 @@ pub struct StructMember {
     // Serde does not support deny_unknown_fields + flatten, so we
     // flatten TypedParameter manually here.
     #[serde(rename = "name")]
-    typed_parameter_name: String,
+    pub typed_parameter_name: String,
     #[serde(rename = "type")]
-    typed_parameter_type: String,
-    offset: u64,
+    pub typed_parameter_type: String,
+    pub offset: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EventAbiEntry {
     r#type: EventAbiType,
-    name: String,
+    pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    keys: Option<Vec<TypedParameter>>,
+    pub keys: Option<Vec<TypedParameter>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    data: Option<Vec<TypedParameter>>,
+    pub data: Option<Vec<TypedParameter>>,
     // The `inputs` and `outputs` property is not part of the JSON-RPC
     // specification, but because we use these types to parse the
     // `starknet_estimateFee` request and then serialize the class definition in
@@ -391,28 +391,28 @@ pub struct EventAbiEntry {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionAbiEntry {
-    r#type: FunctionAbiType,
-    name: String,
+    pub r#type: FunctionAbiType,
+    pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    inputs: Option<Vec<TypedParameter>>,
+    pub inputs: Option<Vec<TypedParameter>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    outputs: Option<Vec<TypedParameter>>,
+    pub outputs: Option<Vec<TypedParameter>>,
     // This is not part of the JSON-RPC specification, but because we use these
     // types to parse the `starknet_estimateFee` request and then serialize the
     // class definition in the transaction for the Python layer we have to keep
     // this property when serializing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "stateMutability")]
-    state_mutability: Option<String>,
+    pub state_mutability: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TypedParameter {
-    name: String,
-    r#type: String,
+    pub name: String,
+    pub r#type: String,
 }
 
 /// A Cairo 1.x (i.e. Sierra) class.
