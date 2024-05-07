@@ -7,7 +7,7 @@ function rpc_call() {
      curl -s -X POST \
           -H 'Content-Type: application/json' \
           -d "${1}" \
-          http://127.0.0.1:9545
+          http://127.0.0.1:9545/rpc/pathfinder/v0.1
      printf "\n\n"
 }
 
