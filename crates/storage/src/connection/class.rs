@@ -261,13 +261,13 @@ impl Transaction<'_> {
     pub fn casm_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
         // Don't reuse the "_with_block_number" impl here since the suffixed one
         // requires a join that this one doesn't.
-        let definition = self
+        let mut stmt = self
             .inner()
-            .query_row(
-                "SELECT definition FROM casm_definitions WHERE hash = ?",
-                params![&class_hash],
-                |row| row.get_blob(0).map(|x| x.to_vec()),
-            )
+            .prepare_cached("SELECT definition FROM casm_definitions WHERE hash = ?")?;
+        let definition = stmt
+            .query_row(params![&class_hash], |row| {
+                row.get_blob(0).map(|x| x.to_vec())
+            })
             .optional()
             .context("Querying for compiled class definition")?;
 
@@ -292,10 +292,8 @@ impl Transaction<'_> {
             Ok((block_number, definition))
         };
 
-        let result = self
-            .inner()
-            .query_row(
-                r"
+        let mut stmt = self.inner().prepare_cached(
+            r"
             SELECT
                 casm_definitions.definition,
                 class_definitions.block_number
@@ -306,9 +304,9 @@ impl Transaction<'_> {
                 )
             WHERE
                 casm_definitions.hash = ?",
-                params![&class_hash],
-                from_row,
-            )
+        )?;
+        let result = stmt
+            .query_row(params![&class_hash], from_row)
             .optional()
             .context("Querying for compiled class definition")?;
 
@@ -347,7 +345,39 @@ impl Transaction<'_> {
         };
 
         let definition = match block_id {
-        BlockId::Latest => self.inner().query_row(
+        BlockId::Latest => {
+            let mut stmt = self.inner().prepare_cached(
+                r"SELECT
+                casm_definitions.definition,
+                class_definitions.block_number
+            FROM
+                casm_definitions
+                INNER JOIN class_definitions ON (
+                    class_definitions.hash = casm_definitions.hash
+                )
+            WHERE
+                casm_definitions.hash = ?
+                AND class_definitions.block_number IS NOT NULL"
+            )?;
+            stmt.query_row(params![&class_hash],from_row)
+        }
+        BlockId::Number(number) => {
+            let mut stmt = self.inner().prepare_cached(
+                r"SELECT
+                casm_definitions.definition,
+                class_definitions.block_number
+            FROM
+                casm_definitions
+                INNER JOIN class_definitions ON (
+                    class_definitions.hash = casm_definitions.hash
+                )
+            WHERE
+                casm_definitions.hash = ?
+                AND class_definitions.block_number <= ?")?;
+            stmt.query_row(params![&class_hash, &number], from_row,)
+        },
+        BlockId::Hash(hash) => {
+            let mut stmt = self.inner().prepare_cached(
             r"SELECT
                 casm_definitions.definition,
                 class_definitions.block_number
@@ -358,40 +388,9 @@ impl Transaction<'_> {
                 )
             WHERE
                 casm_definitions.hash = ?
-                AND class_definitions.block_number IS NOT NULL",
-            params![&class_hash],
-            from_row,
-        ),
-        BlockId::Number(number) => self.inner().query_row(
-            r"SELECT
-                casm_definitions.definition,
-                class_definitions.block_number
-            FROM
-                casm_definitions
-                INNER JOIN class_definitions ON (
-                    class_definitions.hash = casm_definitions.hash
-                )
-            WHERE
-                casm_definitions.hash = ?
-                AND class_definitions.block_number <= ?",
-            params![&class_hash, &number],
-            from_row,
-        ),
-        BlockId::Hash(hash) => self.inner().query_row(
-            r"SELECT
-                casm_definitions.definition,
-                class_definitions.block_number
-            FROM
-                casm_definitions
-                INNER JOIN class_definitions ON (
-                    class_definitions.hash = casm_definitions.hash
-                )
-            WHERE
-                casm_definitions.hash = ?
-                AND class_definitions.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)",
-            params![&class_hash, &hash],
-            from_row,
-        ),
+                AND class_definitions.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)")?;
+            stmt.query_row(params![&class_hash, &hash], from_row)
+        },
     }
     .optional()
     .context("Querying for compiled class definition")?;
@@ -407,21 +406,11 @@ impl Transaction<'_> {
 
     /// Returns the compiled class hash for a class.
     pub fn casm_hash(&self, class_hash: ClassHash) -> anyhow::Result<Option<CasmHash>> {
-        let compiled_class_hash = self
+        let mut stmt = self
             .inner()
-            .query_row(
-                r#"SELECT
-                casm_definitions.compiled_class_hash
-            FROM
-                casm_definitions
-                INNER JOIN class_definitions ON (
-                    class_definitions.hash = casm_definitions.hash
-                )
-            WHERE
-                casm_definitions.hash = ?"#,
-                params![&class_hash],
-                |row| row.get_casm_hash(0),
-            )
+            .prepare_cached("SELECT compiled_class_hash FROM casm_definitions WHERE hash = ?")?;
+        let compiled_class_hash = stmt
+            .query_row(params![&class_hash], |row| row.get_casm_hash(0))
             .optional()
             .context("Querying for compiled class definition")?;
 
@@ -436,7 +425,8 @@ impl Transaction<'_> {
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<CasmHash>> {
         let compiled_class_hash = match block_id {
-        BlockId::Latest => self.inner().query_row(
+        BlockId::Latest => {
+            let mut stmt = self.inner().prepare_cached(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
             FROM
@@ -446,11 +436,11 @@ impl Transaction<'_> {
                 )
             WHERE
                 casm_definitions.hash = ?
-                AND class_definitions.block_number IS NOT NULL"#,
-            params![&class_hash],
-            |row| row.get_casm_hash(0),
-        ),
-        BlockId::Number(number) => self.inner().query_row(
+                AND class_definitions.block_number IS NOT NULL"#)?;
+            stmt.query_row(params![&class_hash], |row| row.get_casm_hash(0))
+        }
+        BlockId::Number(number) => {
+            let mut stmt = self.inner().prepare_cached(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
             FROM
@@ -460,11 +450,11 @@ impl Transaction<'_> {
                 )
             WHERE
                 casm_definitions.hash = ?
-                AND class_definitions.block_number <= ?"#,
-            params![&class_hash, &number],
-            |row| row.get_casm_hash(0),
-        ),
-        BlockId::Hash(hash) => self.inner().query_row(
+                AND class_definitions.block_number <= ?"#)?;
+            stmt.query_row(params![&class_hash, &number], |row| row.get_casm_hash(0))
+        }
+        BlockId::Hash(hash) => {
+            let mut stmt = self.inner().prepare_cached(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
             FROM
@@ -474,15 +464,27 @@ impl Transaction<'_> {
                 )
             WHERE
                 casm_definitions.hash = ?
-                AND class_definitions.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)"#,
-            params![&class_hash, &hash],
-            |row| row.get_casm_hash(0),
-        ),
+                AND class_definitions.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)"#)?;
+            stmt.query_row(params![&class_hash, &hash], |row| row.get_casm_hash(0))
+        }
     }
     .optional()
     .context("Querying for class definition")?;
 
         Ok(compiled_class_hash)
+    }
+
+    pub fn is_sierra(&self, class_hash: ClassHash) -> anyhow::Result<Option<bool>> {
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM casm_definitions WHERE casm_definitions.hash = ?)",
+        )?;
+
+        let is_sierra = stmt
+            .query_row(params![&class_hash], |row| row.get(0))
+            .optional()
+            .context("Querying if class is sierra")?;
+
+        Ok(is_sierra)
     }
 
     pub fn insert_class_commitment_leaf(
@@ -504,14 +506,14 @@ impl Transaction<'_> {
         block: BlockNumber,
         casm_hash: &CasmHash,
     ) -> anyhow::Result<Option<ClassCommitmentLeafHash>> {
-        self.inner()
-            .query_row(
-                "SELECT leaf FROM class_commitment_leaves WHERE casm = ? AND block_number <= ?",
-                params![casm_hash, &block],
-                |row| row.get_class_commitment_leaf(0),
-            )
-            .optional()
-            .map_err(Into::into)
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT leaf FROM class_commitment_leaves WHERE casm = ? AND block_number <= ?",
+        )?;
+        stmt.query_row(params![casm_hash, &block], |row| {
+            row.get_class_commitment_leaf(0)
+        })
+        .optional()
+        .map_err(Into::into)
     }
 }
 

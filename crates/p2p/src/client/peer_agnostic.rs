@@ -89,7 +89,6 @@ pub enum Class {
         block_number: BlockNumber,
         sierra_hash: SierraHash,
         sierra_definition: Vec<u8>,
-        casm_definition: Vec<u8>,
     },
 }
 
@@ -115,16 +114,6 @@ impl Class {
             Self::Sierra {
                 sierra_definition, ..
             } => sierra_definition.clone(),
-        }
-    }
-
-    /// Return Casm definition for Sierra variant, otherwise None.
-    pub fn casm_definition(&self) -> Option<Vec<u8>> {
-        match self {
-            Self::Cairo { .. } => None,
-            Self::Sierra {
-                casm_definition, ..
-            } => Some(casm_definition.clone()),
         }
     }
 }
@@ -564,8 +553,7 @@ impl Client {
                                         Class::Sierra {
                                             block_number: start,
                                             sierra_hash: SierraHash(class_hash.0),
-                                            sierra_definition: definition.sierra,
-                                            casm_definition: definition.casm,
+                                            sierra_definition: definition.0,
                                         },
                                     );
                                 }

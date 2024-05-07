@@ -917,7 +917,6 @@ mod tests {
                             block_number: blocks[1].header.header.number,
                             sierra_hash,
                             sierra_definition,
-                            casm_definition,
                         }))
                     })
                     .chain(
@@ -943,7 +942,7 @@ mod tests {
                                 block: class.block_number(),
                                 class: class.hash(),
                             },
-                            (class.class_definition(), class.casm_definition()),
+                            (class.class_definition(), Default::default()), // TODO casm
                         )
                     })
                     .unzip::<_, _, Vec<DeclaredClass>, Vec<(Vec<u8>, Option<Vec<u8>>)>>();
@@ -1010,7 +1009,7 @@ mod tests {
             block_number: ONE,
             sierra_hash: SierraHash::ZERO,
             sierra_definition: Default::default(),
-            casm_definition: Default::default()
+            // TODO casm
         })]
         #[tokio::test]
         async fn bad_layout(#[case] class: Class) {

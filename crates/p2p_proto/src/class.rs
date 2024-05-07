@@ -13,44 +13,24 @@ pub struct EntryPoint {
     pub offset: u64,
 }
 
-#[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, ToProtobuf, TryFromProtobuf, PartialOrd, Ord)]
 #[protobuf(name = "crate::proto::class::Cairo0Class")]
 pub struct Cairo0Class {
-    pub abi: Vec<u8>,
+    pub abi: String,
     pub externals: Vec<EntryPoint>,
     pub l1_handlers: Vec<EntryPoint>,
     pub constructors: Vec<EntryPoint>,
-    pub program: Vec<u8>,
-}
-
-impl Debug for Cairo0Class {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Cairo0Class")
-            .field(
-                "abi",
-                &std::str::from_utf8(&self.abi)
-                    .unwrap_or(&format!("invalid utf8: {:#x?}", &self.abi)),
-            )
-            .field("externals", &self.externals)
-            .field("l1_handlers", &self.l1_handlers)
-            .field("constructors", &self.constructors)
-            .field(
-                "program",
-                &std::str::from_utf8(&self.program)
-                    .unwrap_or(&format!("invalid utf8: {:#x?}", &self.program)),
-            )
-            .finish()
-    }
+    pub program: String,
 }
 
 impl<T> Dummy<T> for Cairo0Class {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
-            abi: Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+            abi: Faker.fake_with_rng(rng),
             externals: Faker.fake_with_rng(rng),
             l1_handlers: Faker.fake_with_rng(rng),
             constructors: Faker.fake_with_rng(rng),
-            program: serde_json::to_vec(&serde_json::Value::Object(Faker.fake_with_rng(rng)))
+            program: serde_json::to_string(&serde_json::Value::Object(Faker.fake_with_rng(rng)))
                 .unwrap(),
         }
     }
@@ -71,44 +51,22 @@ pub struct Cairo1EntryPoints {
     pub constructors: Vec<SierraEntryPoint>,
 }
 
-#[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, ToProtobuf, TryFromProtobuf, PartialOrd, Ord)]
 #[protobuf(name = "crate::proto::class::Cairo1Class")]
 pub struct Cairo1Class {
-    pub abi: Vec<u8>,
+    pub abi: String,
     pub entry_points: Cairo1EntryPoints,
     pub program: Vec<Felt>,
     pub contract_class_version: String,
-    pub compiled: Vec<u8>,
-}
-
-impl Debug for Cairo1Class {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Cairo1Class")
-            .field(
-                "abi",
-                &std::str::from_utf8(&self.abi)
-                    .unwrap_or(&format!("invalid utf8: {:#x?}", &self.abi)),
-            )
-            .field("entry_points", &self.entry_points)
-            .field("program", &self.program)
-            .field("contract_class_version", &self.contract_class_version)
-            .field(
-                "compiled",
-                &std::str::from_utf8(&self.abi)
-                    .unwrap_or(&format!("invalid utf8: {:#x?}", &self.compiled)),
-            )
-            .finish()
-    }
 }
 
 impl<T> Dummy<T> for Cairo1Class {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
-            abi: Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+            abi: Faker.fake_with_rng(rng),
             entry_points: Faker.fake_with_rng(rng),
             program: Faker.fake_with_rng(rng),
             contract_class_version: "0.1.0".into(),
-            compiled: Faker.fake_with_rng(rng),
         }
     }
 }

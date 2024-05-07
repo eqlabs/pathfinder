@@ -327,8 +327,8 @@ mod prop {
                     actual_cairo.push((ClassHash(class_hash.0), CairoDefinition::try_from_dto(class).unwrap().0));
                 },
                 ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash }) => {
-                    let SierraDefinition {casm, sierra} = SierraDefinition::try_from_dto(class).unwrap();
-                    actual_sierra.push((SierraHash(class_hash.0), sierra, casm));
+                    let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
+                    actual_sierra.push((SierraHash(class_hash.0), sierra, Vec::new() /*TODO*/));
                 },
                 _ => panic!("unexpected response"),
             });

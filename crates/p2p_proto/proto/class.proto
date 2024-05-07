@@ -9,11 +9,12 @@ message EntryPoint {
 }
 
 message Cairo0Class {
-    bytes abi = 1;
+    string abi = 1;
     repeated EntryPoint externals = 2;
     repeated EntryPoint l1_handlers = 3;
     repeated EntryPoint constructors = 4;
-    bytes program = 5;
+    // Compressed in base64 representation.
+    string program = 5;
 }
 
 message SierraEntryPoint {
@@ -28,11 +29,10 @@ message Cairo1EntryPoints {
 }
 
 message Cairo1Class {
-    bytes abi = 1;
+    string abi = 1;
     Cairo1EntryPoints entry_points = 2;
     repeated starknet.common.Felt252 program = 3;
     string contract_class_version = 4;
-    bytes compiled = 5;
 }
 
 message Class {

@@ -185,7 +185,7 @@ fn get_header(
 #[derive(Debug, Clone)]
 enum ClassDefinition {
     Cairo(Vec<u8>),
-    Sierra { sierra: Vec<u8>, casm: Vec<u8> },
+    Sierra { sierra: Vec<u8>, _casm: Vec<u8> },
 }
 
 fn get_classes_for_block(
@@ -206,9 +206,9 @@ fn get_classes_for_block(
                 })?;
             let casm_definition = db_tx.casm_definition(class_hash)?;
             Ok(match casm_definition {
-                Some(casm) => ClassDefinition::Sierra {
+                Some(_casm) => ClassDefinition::Sierra {
                     sierra: definition,
-                    casm,
+                    _casm: Vec::new(), // TODO casm
                 },
                 None => ClassDefinition::Cairo(definition),
             })
@@ -231,11 +231,14 @@ fn get_classes_for_block(
                     class_hash: Hash(class_hash.0),
                 }
             }
-            ClassDefinition::Sierra { sierra, casm } => {
+            ClassDefinition::Sierra {
+                sierra,
+                _casm: _, /* TODO */
+            } => {
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
 
                 Class::Cairo1 {
-                    class: sierra_def_into_dto(sierra_class, casm),
+                    class: sierra_def_into_dto(sierra_class),
                     domain: 0, // TODO
                     class_hash: Hash(class_hash.0),
                 }

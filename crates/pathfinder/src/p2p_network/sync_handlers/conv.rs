@@ -308,7 +308,7 @@ impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode
     }
 }
 
-pub fn sierra_def_into_dto(sierra: Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class {
+pub fn sierra_def_into_dto(sierra: Sierra<'_>) -> Cairo1Class {
     let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
         selector: x.selector.0,
         index: x.function_idx,
@@ -336,10 +336,9 @@ pub fn sierra_def_into_dto(sierra: Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class
     };
 
     Cairo1Class {
-        abi: sierra.abi.as_bytes().to_owned(),
+        abi: sierra.abi.to_string(),
         program: sierra.sierra_program,
         entry_points,
-        compiled, // TODO not sure if encoding in storage and dto is the same
         contract_class_version: sierra.contract_class_version.into(),
     }
 }
@@ -355,7 +354,7 @@ pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
     };
 
     Cairo0Class {
-        abi: cairo.abi.get().as_bytes().to_owned(),
+        abi: cairo.abi.to_string(),
         externals: cairo
             .entry_points_by_type
             .external
@@ -374,6 +373,6 @@ pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
             .into_iter()
             .map(into_dto)
             .collect(),
-        program: cairo.program.get().as_bytes().to_owned(),
+        program: cairo.program.to_string(),
     }
 }

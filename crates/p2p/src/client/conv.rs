@@ -497,8 +497,8 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
         struct Abi<'a>(#[serde(borrow)] &'a RawValue);
 
         let class_def = Cairo {
-            abi: Cow::Borrowed(serde_json::from_slice::<Abi<'_>>(&abi).unwrap().0),
-            program: serde_json::from_slice(&program)
+            abi: Cow::Borrowed(serde_json::from_str::<Abi<'_>>(&abi).unwrap().0),
+            program: serde_json::from_str(&program)
                 .context("verify that cairo class program is UTF-8")?,
             entry_points_by_type: CairoEntryPoints {
                 external,
@@ -512,11 +512,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
     }
 }
 
-#[derive(Debug)]
-pub struct SierraDefinition {
-    pub sierra: Vec<u8>,
-    pub casm: Vec<u8>,
-}
+pub struct SierraDefinition(pub Vec<u8>);
 
 impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
     fn try_from_dto(dto: p2p_proto::class::Cairo1Class) -> anyhow::Result<Self> {
@@ -560,7 +556,6 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
                 .collect::<Vec<_>>()
         };
 
-        let abi = std::str::from_utf8(&dto.abi).context("parsing abi as utf8")?;
         let entry_points = SierraEntryPoints {
             external: from_dto(dto.entry_points.externals),
             l1_handler: from_dto(dto.entry_points.l1_handlers),
@@ -568,10 +563,9 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
         };
         let program = dto.program;
         let contract_class_version = dto.contract_class_version;
-        let casm = dto.compiled;
 
         let sierra = Sierra {
-            abi: Cow::Borrowed(abi),
+            abi: dto.abi.into(),
             sierra_program: program,
             contract_class_version: contract_class_version.into(),
             entry_points_by_type: entry_points,
@@ -579,6 +573,6 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
 
         let sierra = serde_json::to_vec(&sierra).context("serialize sierra class definition")?;
 
-        Ok(Self { sierra, casm })
+        Ok(Self(sierra))
     }
 }
