@@ -43,7 +43,7 @@ message Receipt {
     PriceUnit               price_unit          = 3;
     repeated MessageToL1    messages_sent       = 4;
     ExecutionResources      execution_resources = 5;
-    string                  revert_reason       = 6;
+    optional string         revert_reason       = 6;
   }
 
 

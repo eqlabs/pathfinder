@@ -57,7 +57,8 @@ pub struct ReceiptCommon {
     pub price_unit: PriceUnit,
     pub messages_sent: Vec<MessageToL1>,
     pub execution_resources: ExecutionResources,
-    pub revert_reason: String,
+    #[optional]
+    pub revert_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

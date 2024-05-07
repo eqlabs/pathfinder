@@ -362,12 +362,9 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
                         to_address: EthereumAddress(x.to_address.0),
                     })
                     .collect(),
-                execution_status: if common.revert_reason.is_empty() {
-                    ExecutionStatus::Succeeded
-                } else {
-                    ExecutionStatus::Reverted {
-                        reason: common.revert_reason,
-                    }
+                execution_status: match common.revert_reason {
+                    Some(reason) => ExecutionStatus::Reverted { reason },
+                    None => ExecutionStatus::Succeeded,
                 },
                 transaction_index,
             }),
