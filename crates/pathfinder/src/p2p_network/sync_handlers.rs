@@ -129,8 +129,8 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            let state_diff_len = db_tx.state_diff_length(block_number.into())?;
-            if let Some(state_diff_len) = state_diff_len {
+            let state_diff_cl = db_tx.state_diff_commitment_and_length(block_number)?;
+            if let Some((state_diff_commitment, state_diff_len)) = state_diff_cl {
                 let txn_count = header
                     .transaction_count
                     .try_into()
@@ -145,9 +145,7 @@ fn get_header(
                     state_root: Hash(header.state_commitment.0),
                     state_diff_commitment: StateDiffCommitment {
                         state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"),
-                        root: Hash(
-                            Felt::ZERO, // TODO
-                        ),
+                        root: Hash(state_diff_commitment.0),
                     },
                     transactions: Patricia {
                         n_leaves: txn_count,

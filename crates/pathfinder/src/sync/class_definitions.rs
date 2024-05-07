@@ -81,7 +81,7 @@ pub(super) fn declared_class_counts_stream(
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.declared_classes_counts(start.into(), batch_size)
+                db.declared_classes_counts(start, batch_size)
                     .context("Querying declared classes counts")
             })
             .await

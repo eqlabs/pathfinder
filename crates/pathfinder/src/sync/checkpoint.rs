@@ -290,7 +290,7 @@ impl Sync {
                 .state_diff_stream(
                     start,
                     stop,
-                    state_updates::contract_update_counts_stream(self.storage.clone(), start, stop),
+                    state_updates::state_diff_lengths_stream(self.storage.clone(), start, stop),
                 )
                 .map_err(Into::into)
                 .and_then(state_updates::verify_signature)

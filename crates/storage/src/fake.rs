@@ -60,8 +60,12 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
             .unwrap();
             tx.insert_signature(header.header.number, &header.signature)
                 .unwrap();
-            tx.update_state_diff_length(header.header.number, header.state_diff_length)
-                .unwrap();
+            tx.update_state_diff_commitment_and_length(
+                header.header.number,
+                header.state_diff_commitment,
+                header.state_diff_length,
+            )
+            .unwrap();
 
             state_update
                 .declared_cairo_classes
@@ -360,7 +364,9 @@ pub mod init {
             for Block {
                 header:
                     SignedBlockHeader {
-                        state_diff_length, ..
+                        state_diff_length,
+                        state_diff_commitment,
+                        ..
                     },
                 state_update,
                 ..
@@ -397,6 +403,8 @@ pub mod init {
                         .count(),
                 )
                 .expect("ptr size is 64 bits");
+
+                *state_diff_commitment = state_update.compute_state_diff_commitment();
             }
         }
 

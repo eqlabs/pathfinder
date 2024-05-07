@@ -168,7 +168,6 @@ pub(super) async fn persist(
                 state_commitment: header.state_commitment,
                 storage_commitment: StorageCommitment::ZERO,
                 transaction_commitment: header.transaction_commitment,
-                // state_diff_commitment: TODO
                 transaction_count: header.transaction_count,
                 event_count: header.event_count,
                 l1_da_mode: header.l1_da_mode,
@@ -176,8 +175,12 @@ pub(super) async fn persist(
             .context("Persisting block header")?;
             tx.insert_signature(header.number, signature)
                 .context("Persisting block signature")?;
-            tx.update_state_diff_length(header.number, *state_diff_length)
-                .context("Persisting state diff length")?;
+            tx.update_state_diff_commitment_and_length(
+                header.number,
+                *state_diff_commitment,
+                *state_diff_length,
+            )
+            .context("Persisting state diff length")?;
         }
 
         tx.commit().context("Committing database transaction")?;

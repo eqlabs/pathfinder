@@ -17,13 +17,6 @@ use crate::{
     StorageValue,
 };
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Dummy)]
-pub struct ContractUpdateCounts {
-    pub storage_diffs: u64,
-    pub nonce_updates: u64,
-    pub deployed_contracts: u64,
-}
-
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct StateUpdate {
     pub block_hash: BlockHash,
