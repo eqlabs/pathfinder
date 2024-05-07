@@ -11,6 +11,8 @@ mod error;
 mod events;
 mod headers;
 mod state_updates;
+mod stream;
+mod track;
 mod transactions;
 
 const CHECKPOINT_MARGIN: u64 = 10;

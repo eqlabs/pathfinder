@@ -1,14 +1,17 @@
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use p2p::client::peer_agnostic::EventsForBlockByTransaction;
 use p2p::PeerData;
-use pathfinder_common::BlockNumber;
+use pathfinder_common::event::Event;
+use pathfinder_common::{BlockHeader, BlockNumber, TransactionHash};
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
 use super::error::SyncError;
 use crate::state::block_hash::calculate_event_commitment;
+use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose events are missing in storage, counting
 /// from genesis
@@ -145,4 +148,19 @@ pub(super) async fn persist(
     })
     .await
     .context("Joining blocking task")?
+}
+
+pub struct BlockEvents {
+    pub header: BlockHeader,
+    pub events: HashMap<TransactionHash, Vec<Event>>,
+}
+pub struct VerifyCommitment;
+
+impl ProcessStage for VerifyCommitment {
+    type Input = BlockEvents;
+    type Output = BlockEvents;
+
+    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+        todo!()
+    }
 }
