@@ -227,6 +227,11 @@ impl SerializeForVersion for ContractStorageDiffItem<'_> {
 
 impl SerializeForVersion for DeployedContractItem<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("address", &dto::Felt(&self.address.0))?;
+        serializer.serialize_field("class_hash", &dto::Felt(&self.class_hash.0))?;
+
+        serializer.end()
     }
 }
