@@ -21,7 +21,12 @@ impl SerializeForVersion for StateUpdate<'_> {
 
 impl SerializeForVersion for PendingStateUpdate<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("old_root", &dto::Felt(&self.0.state_commitment.0))?;
+        serializer.serialize_field("state_diff", &StateDiff(&self.0))?;
+
+        serializer.end()
     }
 }
 
