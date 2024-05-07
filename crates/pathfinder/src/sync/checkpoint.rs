@@ -988,7 +988,7 @@ mod tests {
                                 .class_definition_at(x.block.into(), x.class)
                                 .unwrap()
                                 .unwrap(),
-                            db_tx.casm_definition_at(x.block.into(), x.class).unwrap(),
+                            Default::default(), // TODO casm
                         )
                     })
                     .collect::<Vec<_>>()

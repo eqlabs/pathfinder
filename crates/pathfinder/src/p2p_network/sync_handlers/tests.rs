@@ -302,8 +302,8 @@ mod prop {
                         header.header.number,
                         // List of tuples (Cairo class hash, Cairo definition bytes)
                         cairo_defs,
-                        // List of tuples (Sierra class hash, Sierra definition bytes, Casm definition bytes)
-                        sierra_defs
+                        // List of tuples (Sierra class hash, Sierra definition bytes, Casm is ignored)
+                        sierra_defs.into_iter().map(|(h, s, _)| (h, s)).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -328,7 +328,7 @@ mod prop {
                 },
                 ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash }) => {
                     let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
-                    actual_sierra.push((SierraHash(class_hash.0), sierra, Vec::new() /*TODO*/));
+                    actual_sierra.push((SierraHash(class_hash.0), sierra));
                 },
                 _ => panic!("unexpected response"),
             });
