@@ -11,6 +11,10 @@ pub struct Event<'a> {
     keys: &'a [EventKey],
     data: &'a [EventData],
 }
+pub struct EventContext<'a> {
+    keys: &'a [EventKey],
+    data: &'a [EventData],
+}
 
 impl SerializeForVersion for EventsChunk<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
@@ -47,6 +51,20 @@ impl SerializeForVersion for EmittedEvent<'_> {
 }
 
 impl SerializeForVersion for Event<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("from_address", &dto::Address(self.address))?;
+        serializer.flatten(&EventContext {
+            keys: self.keys,
+            data: self.data,
+        })?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for EventContext<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         todo!()
     }
