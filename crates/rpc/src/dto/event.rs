@@ -66,6 +66,19 @@ impl SerializeForVersion for Event<'_> {
 
 impl SerializeForVersion for EventContext<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_iter(
+            "keys",
+            self.keys.len(),
+            &mut self.keys.iter().map(|x| dto::Felt(&x.0)),
+        )?;
+        serializer.serialize_iter(
+            "data",
+            self.data.len(),
+            &mut self.data.iter().map(|x| dto::Felt(&x.0)),
+        )?;
+
+        serializer.end()
     }
 }
