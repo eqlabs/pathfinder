@@ -7,13 +7,13 @@ pub struct EventsChunk<'a>(pub &'a crate::method::get_events::types::GetEventsRe
 
 pub struct EmittedEvent<'a>(pub &'a crate::method::get_events::types::EmittedEvent);
 pub struct Event<'a> {
-    address: &'a ContractAddress,
-    keys: &'a [EventKey],
-    data: &'a [EventData],
+    pub address: &'a ContractAddress,
+    pub keys: &'a [EventKey],
+    pub data: &'a [EventData],
 }
 pub struct EventContext<'a> {
-    keys: &'a [EventKey],
-    data: &'a [EventData],
+    pub keys: &'a [EventKey],
+    pub data: &'a [EventData],
 }
 
 impl SerializeForVersion for EventsChunk<'_> {

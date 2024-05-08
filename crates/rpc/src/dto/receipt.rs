@@ -1,7 +1,7 @@
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
 use super::serialize;
 use crate::dto::serialize::{SerializeForVersion, Serializer};
@@ -52,6 +52,17 @@ pub struct TxnReceipt<'a> {
     pub events: &'a [Event],
     pub finality: TxnFinalityStatus,
 }
+
+pub struct CommonReceiptProperties<'a> {
+    pub receipt: &'a Receipt,
+    pub transaction_hash: &'a TransactionHash,
+    pub events: &'a [Event],
+    pub finality: TxnFinalityStatus,
+}
+
+pub struct FeePayment<'a>(pub &'a pathfinder_common::Fee);
+pub struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
+pub struct ExecutionResources<'a>(pub &'a pathfinder_common::receipt::ExecutionResources);
 
 impl SerializeForVersion for TxnStatus {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
@@ -113,6 +124,54 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
 }
 
 impl SerializeForVersion for TxnReceipt<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for CommonReceiptProperties<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("transaction_hash", &dto::TxnHash(self.transaction_hash))?;
+        serializer.serialize_field("actual_fee", &FeePayment(&self.receipt.actual_fee))?;
+        serializer.serialize_field("finality_status", &self.finality)?;
+        serializer.serialize_iter(
+            "messages_sent",
+            self.receipt.l2_to_l1_messages.len(),
+            &mut self.receipt.l2_to_l1_messages.iter().map(MsgToL1),
+        )?;
+        serializer.serialize_iter(
+            "events",
+            self.events.len(),
+            &mut self.events.iter().map(|e| dto::Event {
+                address: &e.from_address,
+                keys: &e.keys,
+                data: &e.data,
+            }),
+        )?;
+        serializer.serialize_field(
+            "execution_resources",
+            &ExecutionResources(&self.receipt.execution_resources),
+        )?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for FeePayment<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for MsgToL1<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+
+impl SerializeForVersion for ExecutionResources<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         todo!()
     }
