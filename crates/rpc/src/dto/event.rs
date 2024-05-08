@@ -1,9 +1,16 @@
+use pathfinder_common::{ContractAddress, EventData, EventKey};
+
 use crate::dto;
 use crate::dto::serialize::{self, SerializeForVersion, Serializer};
 
 pub struct EventsChunk<'a>(pub &'a crate::method::get_events::types::GetEventsResult);
 
 pub struct EmittedEvent<'a>(pub &'a crate::method::get_events::types::EmittedEvent);
+pub struct Event<'a> {
+    address: &'a ContractAddress,
+    keys: &'a [EventKey],
+    data: &'a [EventData],
+}
 
 impl SerializeForVersion for EventsChunk<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
@@ -21,6 +28,25 @@ impl SerializeForVersion for EventsChunk<'_> {
 }
 
 impl SerializeForVersion for EmittedEvent<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.flatten(&Event {
+            address: &self.0.from_address,
+            keys: &self.0.keys,
+            data: &self.0.data,
+        })?;
+
+        serializer
+            .serialize_optional("block_hash", self.0.block_hash.as_ref().map(dto::BlockHash))?;
+        serializer.serialize_optional("block_number", self.0.block_number.map(dto::BlockNumber))?;
+        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.0.transaction_hash))?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for Event<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         todo!()
     }
