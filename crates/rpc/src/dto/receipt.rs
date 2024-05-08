@@ -46,6 +46,13 @@ pub struct TxnReceiptWithBlockInfo<'a> {
     pub finality: TxnFinalityStatus,
 }
 
+pub struct TxnReceipt<'a> {
+    pub receipt: &'a Receipt,
+    pub transaction: &'a Transaction,
+    pub events: &'a [Event],
+    pub finality: TxnFinalityStatus,
+}
+
 impl SerializeForVersion for TxnStatus {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         match self {
@@ -79,6 +86,33 @@ impl SerializeForVersion for TxnFinalityStatus {
 }
 
 impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let Self {
+            block_hash,
+            block_number,
+            receipt,
+            transaction,
+            events,
+            finality,
+        } = self;
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.flatten(&TxnReceipt {
+            receipt,
+            transaction,
+            events,
+            finality: *finality,
+        })?;
+
+        serializer.serialize_optional("block_hash", block_hash.map(dto::BlockHash))?;
+        serializer.serialize_optional("block_number", block_number.map(dto::BlockNumber))?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for TxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         todo!()
     }
