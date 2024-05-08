@@ -31,6 +31,7 @@ use pathfinder_common::{
     SierraHash,
     StarknetVersion,
     StateCommitment,
+    StateDiffCommitment,
     StorageAddress,
     StorageCommitment,
     StorageValue,
@@ -111,6 +112,7 @@ to_sql_felt!(
     SierraHash,
     TransactionHash,
     StateCommitment,
+    StateDiffCommitment,
     StorageAddress,
     StorageCommitment,
     TransactionCommitment,
@@ -349,6 +351,7 @@ pub trait RowExt {
     row_felt_wrapper!(get_casm_hash, CasmHash);
     row_felt_wrapper!(get_class_hash, ClassHash);
     row_felt_wrapper!(get_state_commitment, StateCommitment);
+    row_felt_wrapper!(get_state_diff_commitment, StateDiffCommitment);
     row_felt_wrapper!(get_storage_commitment, StorageCommitment);
     row_felt_wrapper!(get_sequencer_address, SequencerAddress);
     row_felt_wrapper!(get_contract_root, ContractRoot);

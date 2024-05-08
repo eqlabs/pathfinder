@@ -11,12 +11,19 @@ use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::state::{
+    ContractDiff,
+    ContractStoredValue,
+    DeclaredClass,
+    StateDiffsRequest,
+    StateDiffsResponse,
+};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
-use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdateCounts, ContractUpdates};
+use pathfinder_common::state_update::SystemContractUpdate;
 use pathfinder_common::{
     BlockNumber,
+    CasmHash,
     ClassHash,
     ContractAddress,
     ContractNonce,
@@ -82,7 +89,6 @@ pub enum Class {
         block_number: BlockNumber,
         sierra_hash: SierraHash,
         sierra_definition: Vec<u8>,
-        casm_definition: Vec<u8>,
     },
 }
 
@@ -108,16 +114,6 @@ impl Class {
             Self::Sierra {
                 sierra_definition, ..
             } => sierra_definition.clone(),
-        }
-    }
-
-    /// Return Casm definition for Sierra variant, otherwise None.
-    pub fn casm_definition(&self) -> Option<Vec<u8>> {
-        match self {
-            Self::Cairo { .. } => None,
-            Self::Sierra {
-                casm_definition, ..
-            } => Some(casm_definition.clone()),
         }
     }
 }
@@ -278,16 +274,16 @@ impl Client {
             .await
     }
 
-    pub fn contract_updates_stream(
+    pub fn state_diff_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        contract_update_counts_stream: impl futures::Stream<Item = anyhow::Result<ContractUpdateCounts>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, ContractUpdates)>>> {
+        state_diff_lengths_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateDiff)>>> {
         async_stream::try_stream! {
-            pin_mut!(contract_update_counts_stream);
+            pin_mut!(state_diff_lengths_stream);
 
-            let mut current_counts_outer = None;
+            let mut current_count_outer = None;
 
             if start <= stop_inclusive {
                 // Loop which refreshes peer set once we exhaust it.
@@ -322,44 +318,41 @@ impl Client {
                             }
                         };
 
-                        let mut current_counts = match current_counts_outer {
+                        let mut current_count = match current_count_outer {
                             // Still the same block
                             Some(backup) => backup,
                             // Move to the next block
                             None => {
-                                let x = contract_update_counts_stream.next().await
+                                let x = state_diff_lengths_stream.next().await
                                         .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
-                                current_counts_outer = Some(x);
+                                current_count_outer = Some(x);
                                 x
                             }
                         };
 
-                        let mut contract_updates = ContractUpdates::default();
+                        let mut state_diff = StateDiff::default();
 
-                        while let Some(contract_diff) = responses.next().await {
-                            match contract_diff {
+                        while let Some(state_diff_response) = responses.next().await {
+                            match state_diff_response {
                                 StateDiffsResponse::ContractDiff(ContractDiff {
                                     address,
                                     nonce,
                                     class_hash,
-                                    is_replaced,
                                     values,
                                     domain: _,
                                 }) => {
                                     let address = ContractAddress(address.0);
-                                    let num_values =
-                                        u64::try_from(values.len()).expect("ptr size is 64 bits");
-                                    match current_counts.storage_diffs.checked_sub(num_values) {
-                                        Some(x) => current_counts.storage_diffs = x,
+                                    match current_count.checked_sub(values.len()) {
+                                        Some(x) => current_count = x,
                                         None => {
-                                            tracing::debug!(%peer, "Too many storage diffs: {num_values} > {}", current_counts.storage_diffs);
+                                            tracing::debug!(%peer, "Too many storage diffs: {} > {}", values.len(), current_count);
                                             // TODO punish the peer
                                             continue 'next_peer;
                                         }
                                     }
 
                                     if address == ContractAddress::ONE {
-                                        let storage = &mut contract_updates
+                                        let storage = &mut state_diff
                                             .system
                                             .entry(address)
                                             .or_default()
@@ -373,7 +366,7 @@ impl Client {
                                             },
                                         );
                                     } else {
-                                        let update = &mut contract_updates
+                                        let update = &mut state_diff
                                             .regular
                                             .entry(address)
                                             .or_default();
@@ -387,8 +380,8 @@ impl Client {
                                         );
 
                                         if let Some(nonce) = nonce {
-                                            match current_counts.nonce_updates.checked_sub(1) {
-                                                Some(x) => current_counts.nonce_updates = x,
+                                            match current_count.checked_sub(1) {
+                                                Some(x) => current_count = x,
                                                 None => {
                                                     tracing::debug!(%peer, "Too many nonce updates");
                                                     // TODO punish the peer
@@ -399,9 +392,9 @@ impl Client {
                                             update.nonce = Some(ContractNonce(nonce));
                                         }
 
-                                        if let Some(class_hash) = class_hash.map(ClassHash) {
-                                            match current_counts.deployed_contracts.checked_sub(1) {
-                                                Some(x) => current_counts.deployed_contracts = x,
+                                        if let Some(class_hash) = class_hash.map(|x| ClassHash(x.0)) {
+                                            match current_count.checked_sub(1) {
+                                                Some(x) => current_count = x,
                                                 None => {
                                                     tracing::debug!(%peer, "Too many deployed contracts");
                                                     // TODO punish the peer
@@ -409,34 +402,42 @@ impl Client {
                                                 }
                                             }
 
-                                            if is_replaced.unwrap_or_default() {
-                                                update.class =
-                                                    Some(ContractClassUpdate::Replace(class_hash));
-                                            } else {
-                                                update.class =
-                                                    Some(ContractClassUpdate::Deploy(class_hash));
-                                            }
+                                            update.class = Some(class_hash);
+                                        }
+                                    }
+                                }
+                                StateDiffsResponse::DeclaredClass(DeclaredClass { class_hash, compiled_class_hash }) => {
+                                    if let Some(compiled_class_hash) = compiled_class_hash {
+                                        state_diff.declared_sierra_classes.insert(SierraHash(class_hash.0), CasmHash(compiled_class_hash.0));
+                                    } else {
+                                        state_diff.declared_cairo_classes.insert(ClassHash(class_hash.0));
+                                    }
+
+                                    match current_count.checked_sub(1) {
+                                        Some(x) => current_count = x,
+                                        None => {
+                                            tracing::debug!(%peer, "Too many declared classes");
+                                            // TODO punish the peer
+                                            continue 'next_peer;
                                         }
                                     }
                                 }
                                 StateDiffsResponse::Fin => {
-                                    if current_counts.storage_diffs == 0
-                                        && current_counts.nonce_updates == 0
-                                        && current_counts.deployed_contracts == 0
+                                    if current_count == 0
                                     {
                                         // All the counters for this block have been exhausted which means
                                         // that the state update for this block is complete.
                                         yield PeerData::new(
                                             peer,
-                                            (start, std::mem::take(&mut contract_updates)),
+                                            (start, std::mem::take(&mut state_diff)),
                                         );
 
                                         if start < stop_inclusive {
                                             // Move to the next block
                                             start += 1;
-                                            current_counts = contract_update_counts_stream.next().await
+                                            current_count = state_diff_lengths_stream.next().await
                                                     .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
-                                            current_counts_outer = Some(current_counts);
+                                            current_count_outer = Some(current_count);
                                             tracing::debug!(%peer, "State diff stream Fin");
                                         } else {
                                             // We're done, terminate the stream
@@ -554,8 +555,7 @@ impl Client {
                                         Class::Sierra {
                                             block_number: start,
                                             sierra_hash: SierraHash(class_hash.0),
-                                            sierra_definition: definition.sierra,
-                                            casm_definition: definition.casm,
+                                            sierra_definition: definition.0,
                                         },
                                     );
                                 }
@@ -800,3 +800,20 @@ impl Default for PeersWithCapability {
 }
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
+
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
+pub struct ContractUpdate {
+    pub storage: HashMap<StorageAddress, StorageValue>,
+    /// The class associated with this update as the result of either a deploy
+    /// or class replacement transaction.
+    pub class: Option<ClassHash>,
+    pub nonce: Option<ContractNonce>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
+pub struct StateDiff {
+    pub regular: HashMap<ContractAddress, ContractUpdate>,
+    pub system: HashMap<ContractAddress, SystemContractUpdate>,
+    pub declared_cairo_classes: HashSet<ClassHash>,
+    pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+}

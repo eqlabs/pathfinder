@@ -9,6 +9,11 @@ message MessageToL1 {
   EthereumAddress                  to_address   = 3;
 }
 
+enum PriceUnit {
+  Wei = 0;
+  Fri = 1;
+}
+
 message EthereumAddress {
   bytes elements = 1;
 }
@@ -34,11 +39,11 @@ message Receipt {
   }
 
   message Common {
-    starknet.common.Hash    transaction_hash    = 1;
     starknet.common.Felt252 actual_fee          = 2;
-    repeated MessageToL1    messages_sent       = 3;
-    ExecutionResources      execution_resources = 4;
-    string                  revert_reason       = 5;
+    PriceUnit               price_unit          = 3;
+    repeated MessageToL1    messages_sent       = 4;
+    ExecutionResources      execution_resources = 5;
+    optional string         revert_reason       = 6;
   }
 
 

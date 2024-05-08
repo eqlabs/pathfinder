@@ -81,7 +81,7 @@ pub(super) fn declared_class_counts_stream(
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.declared_classes_counts(start.into(), batch_size)
+                db.declared_classes_counts(start, batch_size)
                     .context("Querying declared classes counts")
             })
             .await
@@ -131,7 +131,6 @@ pub(super) async fn verify_layout(
             block_number,
             sierra_hash,
             sierra_definition,
-            casm_definition,
         } => {
             let layout = ClassDefinition::Sierra(
                 serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
@@ -146,7 +145,6 @@ pub(super) async fn verify_layout(
                         block_number,
                         sierra_hash,
                         sierra_definition,
-                        casm_definition,
                     },
                     layout,
                 },
@@ -283,7 +281,6 @@ pub(super) async fn persist(
                 Class::Sierra {
                     sierra_hash,
                     sierra_definition,
-                    casm_definition,
                     ..
                 } => {
                     let casm_hash = transaction
@@ -296,7 +293,7 @@ pub(super) async fn persist(
                             &sierra_hash,
                             &sierra_definition,
                             &casm_hash,
-                            &casm_definition,
+                            &Vec::new(), // TODO fetch from gateway or compile
                         )
                         .context("Updating sierra class definition")?;
                 }

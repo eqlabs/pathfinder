@@ -148,7 +148,8 @@ pub(super) async fn persist(
         for SignedBlockHeader {
             header,
             signature,
-            state_update_counts,
+            state_diff_commitment,
+            state_diff_length,
         } in signed_headers.iter().map(|x| &x.data)
         {
             tx.insert_block_header(&pathfinder_common::BlockHeader {
@@ -174,8 +175,12 @@ pub(super) async fn persist(
             .context("Persisting block header")?;
             tx.insert_signature(header.number, signature)
                 .context("Persisting block signature")?;
-            tx.update_state_update_counts(header.number, state_update_counts)
-                .context("Persisting state update counts")?;
+            tx.update_state_diff_commitment_and_length(
+                header.number,
+                *state_diff_commitment,
+                *state_diff_length,
+            )
+            .context("Persisting state diff length")?;
         }
 
         tx.commit().context("Committing database transaction")?;

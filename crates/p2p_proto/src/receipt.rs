@@ -13,6 +13,12 @@ pub struct MessageToL1 {
     pub to_address: EthereumAddress,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+pub enum PriceUnit {
+    Wei,
+    Fri,
+}
+
 // Avoid pathfinder_common dependency
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct EthereumAddress(pub H160);
@@ -47,11 +53,12 @@ pub mod execution_resources {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::receipt::Common")]
 pub struct ReceiptCommon {
-    pub transaction_hash: Hash,
     pub actual_fee: Felt,
+    pub price_unit: PriceUnit,
     pub messages_sent: Vec<MessageToL1>,
     pub execution_resources: ExecutionResources,
-    pub revert_reason: String,
+    #[optional]
+    pub revert_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -95,6 +102,24 @@ pub enum Receipt {
     Deploy(DeployTransactionReceipt),
     DeployAccount(DeployAccountTransactionReceipt),
     L1Handler(L1HandlerTransactionReceipt),
+}
+
+impl ToProtobuf<proto::receipt::PriceUnit> for PriceUnit {
+    fn to_protobuf(self) -> proto::receipt::PriceUnit {
+        match self {
+            Self::Wei => proto::receipt::PriceUnit::Wei,
+            Self::Fri => proto::receipt::PriceUnit::Fri,
+        }
+    }
+}
+
+impl TryFromProtobuf<i32> for PriceUnit {
+    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+        Ok(match TryFrom::try_from(input)? {
+            proto::receipt::PriceUnit::Wei => Self::Wei,
+            proto::receipt::PriceUnit::Fri => Self::Fri,
+        })
+    }
 }
 
 impl<T> Dummy<T> for EthereumAddress {

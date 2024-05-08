@@ -14,6 +14,7 @@ use pathfinder_common::{
     PublicKey,
     StarknetVersion,
     StateCommitment,
+    StateDiffCommitment,
     StateUpdate,
     TransactionCommitment,
 };
@@ -260,7 +261,8 @@ where
             signature.signature_input.block_hash.0,
             block.block_hash.0,
         );
-        let signature: BlockCommitmentSignature = signature.into();
+        let (signature, state_diff_commitment): (BlockCommitmentSignature, StateDiffCommitment) =
+            signature.into();
 
         // Check block commitment signature
         let (signature, state_update) = match block_validation_mode {
@@ -296,6 +298,7 @@ where
                 (block, commitments),
                 state_update,
                 Box::new(signature),
+                Box::new(state_diff_commitment),
                 timings,
             ))
             .await
@@ -1174,7 +1177,7 @@ mod tests {
                     SyncEvent::CairoClass { hash, .. } => {
                         assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq_sorted!(*state_update, *STATE_UPDATE0);
                     assert_eq!(*signature, BLOCK0_COMMITMENT_SIGNATURE);
@@ -1183,7 +1186,7 @@ mod tests {
                     SyncEvent::CairoClass { hash, .. } => {
                     assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq_sorted!(*state_update, *STATE_UPDATE1);
                     assert_eq!(*signature, BLOCK1_COMMITMENT_SIGNATURE);
@@ -1264,7 +1267,7 @@ mod tests {
                 SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -1423,7 +1426,7 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq_sorted!(*state_update, *STATE_UPDATE0);
                 });
@@ -1435,7 +1438,7 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq_sorted!(*state_update, *STATE_UPDATE0_V2);
                 });
@@ -1638,7 +1641,7 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -1646,11 +1649,11 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
@@ -1662,11 +1665,11 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, block1_v2);
                     assert!(state_update.contract_updates.is_empty());
                 });
@@ -1928,7 +1931,7 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -1936,15 +1939,15 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, block3);
                     assert_eq!(*state_update, *STATE_UPDATE3);
                 });
@@ -1952,11 +1955,11 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -2131,7 +2134,7 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -2139,11 +2142,11 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
@@ -2151,7 +2154,7 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK2_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -2342,7 +2345,7 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -2350,7 +2353,7 @@ mod tests {
                     SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -2358,11 +2361,11 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {
                     assert_eq!(*block, block2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });

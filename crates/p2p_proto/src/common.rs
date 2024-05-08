@@ -28,16 +28,16 @@ pub struct ConsensusSignature {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
-#[protobuf(name = "crate::proto::common::Merkle")]
-pub struct Merkle {
+#[protobuf(name = "crate::proto::common::Patricia")]
+pub struct Patricia {
     pub n_leaves: u64,
     pub root: Hash,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
-#[protobuf(name = "crate::proto::common::Patricia")]
-pub struct Patricia {
-    pub height: u32,
+#[protobuf(name = "crate::proto::common::StateDiffCommitment")]
+pub struct StateDiffCommitment {
+    pub state_diff_length: u64,
     pub root: Hash,
 }
 
@@ -55,6 +55,12 @@ pub struct BlockId {
 pub enum L1DataAvailabilityMode {
     Calldata,
     Blob,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+pub enum DataAvailabilityMode {
+    L1,
+    L2,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -180,6 +186,26 @@ impl TryFromProtobuf<i32> for L1DataAvailabilityMode {
         Ok(match TryFrom::try_from(input)? {
             Calldata => L1DataAvailabilityMode::Calldata,
             Blob => L1DataAvailabilityMode::Blob,
+        })
+    }
+}
+
+impl ToProtobuf<i32> for DataAvailabilityMode {
+    fn to_protobuf(self) -> i32 {
+        use proto::common::DataAvailabilityMode::{L1, L2};
+        match self {
+            DataAvailabilityMode::L1 => L1 as i32,
+            DataAvailabilityMode::L2 => L2 as i32,
+        }
+    }
+}
+
+impl TryFromProtobuf<i32> for DataAvailabilityMode {
+    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+        use proto::common::DataAvailabilityMode::{L1, L2};
+        Ok(match TryFrom::try_from(input)? {
+            L1 => DataAvailabilityMode::L1,
+            L2 => DataAvailabilityMode::L2,
         })
     }
 }

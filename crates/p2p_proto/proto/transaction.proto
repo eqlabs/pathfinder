@@ -41,22 +41,22 @@ message Transaction
         AccountSignature        signature           = 3;
         starknet.common.Hash    class_hash          = 4;
         starknet.common.Felt252 nonce               = 5;
-        starknet.common.Felt252 compiled_class_hash = 6;
+        starknet.common.Hash    compiled_class_hash = 6;
     }
 
     // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41d1f5206ef58a443e7d3d1ca073171ec25fa75313394318fc83a074a6631c3
     message DeclareV3 {
-        starknet.common.Address sender                  = 1;
-        AccountSignature        signature               = 2;
-        starknet.common.Hash    class_hash              = 3;
-        starknet.common.Felt252 nonce                   = 4;
-        starknet.common.Felt252 compiled_class_hash     = 5;
-        ResourceBounds          resource_bounds         = 6;
-        starknet.common.Felt252 tip                     = 7;
-        starknet.common.Address paymaster_data          = 8;
-        starknet.common.Address account_deployment_data = 9;
-        string                  nonce_domain            = 10; // rename to nonce_data_availability_mode ?
-        string                  fee_domain              = 11; // rename to fee_data_availability_mode ?
+        starknet.common.Address              sender                       = 1;
+        AccountSignature                     signature                    = 2;
+        starknet.common.Hash                 class_hash                   = 3;
+        starknet.common.Felt252              nonce                        = 4;
+        starknet.common.Hash                 compiled_class_hash          = 5;
+        ResourceBounds                       resource_bounds              = 6;
+        uint64                               tip                          = 7;
+        repeated starknet.common.Felt252     paymaster_data               = 8;
+        repeated starknet.common.Felt252     account_deployment_data      = 9;
+        starknet.common.DataAvailabilityMode nonce_data_availability_mode = 10;
+        starknet.common.DataAvailabilityMode fee_data_availability_mode   = 11;
     }
 
     message Deploy {
@@ -77,16 +77,16 @@ message Transaction
 
     // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x29fd7881f14380842414cdfdd8d6c0b1f2174f8916edcfeb1ede1eb26ac3ef0
     message DeployAccountV3 {
-        AccountSignature                 signature        = 1;
-        starknet.common.Hash             class_hash       = 2;
-        starknet.common.Felt252          nonce            = 3;
-        starknet.common.Felt252          address_salt     = 4;
-        repeated starknet.common.Felt252 calldata         = 5;
-        ResourceBounds                   resource_bounds  = 6;
-        starknet.common.Felt252          tip              = 7;
-        starknet.common.Address          paymaster_data   = 8;
-        string                           nonce_domain     = 9;  // rename to nonce_data_availability_mode ?
-        string                           fee_domain       = 10; // rename to fee_data_availability_mode ?
+        AccountSignature                     signature                    = 1;
+        starknet.common.Hash                 class_hash                   = 2;
+        starknet.common.Felt252              nonce                        = 3;
+        starknet.common.Felt252              address_salt                 = 4;
+        repeated starknet.common.Felt252     calldata                     = 5;
+        ResourceBounds                       resource_bounds              = 6;
+        uint64                               tip                          = 7;
+        repeated starknet.common.Felt252     paymaster_data               = 8;
+        starknet.common.DataAvailabilityMode nonce_data_availability_mode = 10;
+        starknet.common.DataAvailabilityMode fee_data_availability_mode   = 11;
     }
 
     message InvokeV0 {
@@ -107,16 +107,16 @@ message Transaction
 
     // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41906f1c314cca5f43170ea75d3b1904196a10101190d2b12a41cc61cfd17c
     message InvokeV3 {
-        starknet.common.Address          sender                  = 1;
-        AccountSignature                 signature               = 2;
-        repeated starknet.common.Felt252 calldata                = 3;
-        ResourceBounds                   resource_bounds         = 4;
-        starknet.common.Felt252          tip                     = 5;
-        starknet.common.Address          paymaster_data          = 6;
-        starknet.common.Address          account_deployment_data = 7;
-        string                           nonce_domain            = 8;  // rename to nonce_data_availability_mode ?
-        string                           fee_domain              = 9;  // rename to fee_data_availability_mode ?
-        starknet.common.Felt252          nonce                   = 10;
+        starknet.common.Address              sender                       = 1;
+        AccountSignature                     signature                    = 2;
+        repeated starknet.common.Felt252     calldata                     = 3;
+        ResourceBounds                       resource_bounds              = 4;
+        uint64                               tip                          = 5;
+        repeated starknet.common.Felt252     paymaster_data               = 6;
+        repeated starknet.common.Felt252     account_deployment_data      = 7;
+        starknet.common.DataAvailabilityMode nonce_data_availability_mode = 8;
+        starknet.common.DataAvailabilityMode fee_data_availability_mode   = 9;
+        starknet.common.Felt252              nonce                        = 10;
     }
 
     message L1HandlerV0 {
@@ -139,7 +139,6 @@ message Transaction
         InvokeV3        invoke_v3         = 10;
         L1HandlerV0     l1_handler        = 11;
     }
-    starknet.common.Hash transaction_hash = 12;
 }
 
 message TransactionWithReceipt {
@@ -153,10 +152,11 @@ message TransactionsRequest {
     starknet.common.Iteration iteration = 1;
 }
 
-// Responses are sent ordered by the order given in the request.
+// Responses are sent ordered by the order given in the request. The order inside each block is
+// according to the execution order.
 message TransactionsResponse {
     oneof transaction_message {
         TransactionWithReceipt transaction_with_receipt = 1;
-        starknet.common.Fin fin         = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its transactions.
+        starknet.common.Fin    fin                      = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its transactions.
     }
 }

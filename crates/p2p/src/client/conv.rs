@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use anyhow::Context;
+use anyhow::{Context, Ok};
 use pathfinder_common::receipt::{
     BuiltinCounters,
     ExecutionDataAvailability,
@@ -9,7 +9,6 @@ use pathfinder_common::receipt::{
     L2ToL1Message,
     Receipt,
 };
-use pathfinder_common::state_update::StateUpdateCounts;
 use pathfinder_common::transaction::{
     DataAvailabilityMode,
     DeclareTransactionV0V1,
@@ -24,7 +23,6 @@ use pathfinder_common::transaction::{
     L1HandlerTransaction,
     ResourceBound,
     ResourceBounds,
-    Transaction,
     TransactionVariant,
 };
 use pathfinder_common::{
@@ -55,6 +53,7 @@ use pathfinder_common::{
     SequencerAddress,
     SignedBlockHeader,
     StateCommitment,
+    StateDiffCommitment,
     StorageCommitment,
     TransactionCommitment,
     TransactionHash,
@@ -113,7 +112,7 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 starknet_version: dto.protocol_version.parse()?,
                 class_commitment: ClassCommitment::ZERO,
                 event_commitment: EventCommitment(dto.events.root.0),
-                state_commitment: StateCommitment(dto.state.root.0),
+                state_commitment: StateCommitment(dto.state_root.0),
                 storage_commitment: StorageCommitment::ZERO,
                 transaction_commitment: TransactionCommitment(dto.transactions.root.0),
                 transaction_count: dto.transactions.n_leaves.try_into()?,
@@ -121,29 +120,13 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             },
             signature,
-            state_update_counts: StateUpdateCounts {
-                storage_diffs: dto.num_storage_diffs,
-                nonce_updates: dto.num_nonce_updates,
-                declared_classes: dto.num_declared_classes,
-                deployed_contracts: dto.num_deployed_contracts,
-            },
+            state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
+            state_diff_length: dto.state_diff_commitment.state_diff_length,
         })
     }
 }
 
-impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
-    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(Transaction {
-            hash: TransactionHash(dto.hash.0),
-            variant: TransactionVariant::try_from_dto(dto.variant)?,
-        })
-    }
-}
-
-impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
+impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
     /// ## Important
     ///
     /// This conversion does not compute deployed contract address for deploy
@@ -151,11 +134,11 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
     /// [`TransactionVariant::DeployAccountV3`]), filling it with a zero
     /// address instead. The caller is responsible for performing the
     /// computation after the conversion succeeds.
-    fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
+    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        use p2p_proto::transaction::TransactionVariant::{
+        use p2p_proto::transaction::Transaction::{
             DeclareV0,
             DeclareV1,
             DeclareV2,
@@ -204,27 +187,37 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                     .into_iter()
                     .map(TransactionSignatureElem)
                     .collect(),
-                compiled_class_hash: CasmHash(x.compiled_class_hash),
+                compiled_class_hash: CasmHash(x.compiled_class_hash.0),
             }),
             DeclareV3(x) => Self::DeclareV3(DeclareTransactionV3 {
                 class_hash: ClassHash(x.class_hash.0),
                 nonce: TransactionNonce(x.nonce),
-                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
-                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
+                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                    x.nonce_data_availability_mode,
+                )?,
+                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                    x.fee_data_availability_mode,
+                )?,
                 resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
-                tip: pathfinder_common::Tip(x.tip.try_into()?),
-                paymaster_data: vec![pathfinder_common::PaymasterDataElem(x.paymaster_data.0)],
+                tip: pathfinder_common::Tip(x.tip),
+                paymaster_data: x
+                    .paymaster_data
+                    .into_iter()
+                    .map(pathfinder_common::PaymasterDataElem)
+                    .collect(),
                 signature: x
                     .signature
                     .parts
                     .into_iter()
                     .map(TransactionSignatureElem)
                     .collect(),
-                account_deployment_data: vec![AccountDeploymentDataElem(
-                    x.account_deployment_data.0,
-                )],
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(AccountDeploymentDataElem)
+                    .collect(),
                 sender_address: ContractAddress(x.sender.0),
-                compiled_class_hash: CasmHash(x.compiled_class_hash),
+                compiled_class_hash: CasmHash(x.compiled_class_hash.0),
             }),
             Deploy(x) => Self::Deploy(DeployTransaction {
                 contract_address: ContractAddress::ZERO,
@@ -260,11 +253,19 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                     .map(TransactionSignatureElem)
                     .collect(),
                 nonce: TransactionNonce(x.nonce),
-                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
-                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
+                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                    x.nonce_data_availability_mode,
+                )?,
+                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                    x.fee_data_availability_mode,
+                )?,
                 resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
-                tip: pathfinder_common::Tip(x.tip.try_into()?),
-                paymaster_data: vec![pathfinder_common::PaymasterDataElem(x.paymaster_data.0)],
+                tip: pathfinder_common::Tip(x.tip),
+                paymaster_data: x
+                    .paymaster_data
+                    .into_iter()
+                    .map(pathfinder_common::PaymasterDataElem)
+                    .collect(),
                 contract_address_salt: ContractAddressSalt(x.address_salt),
                 constructor_calldata: x.calldata.into_iter().map(CallParam).collect(),
                 class_hash: ClassHash(x.class_hash.0),
@@ -302,14 +303,24 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                     .map(TransactionSignatureElem)
                     .collect(),
                 nonce: TransactionNonce(x.nonce),
-                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(x.nonce_domain)?,
-                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(x.fee_domain)?,
+                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                    x.nonce_data_availability_mode,
+                )?,
+                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                    x.fee_data_availability_mode,
+                )?,
                 resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
-                tip: pathfinder_common::Tip(x.tip.try_into()?),
-                paymaster_data: vec![pathfinder_common::PaymasterDataElem(x.paymaster_data.0)],
-                account_deployment_data: vec![AccountDeploymentDataElem(
-                    x.account_deployment_data.0,
-                )],
+                tip: pathfinder_common::Tip(x.tip),
+                paymaster_data: x
+                    .paymaster_data
+                    .into_iter()
+                    .map(pathfinder_common::PaymasterDataElem)
+                    .collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(AccountDeploymentDataElem)
+                    .collect(),
                 calldata: x.calldata.into_iter().map(CallParam).collect(),
                 sender_address: ContractAddress(x.sender.0),
             }),
@@ -324,6 +335,10 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
 }
 
 impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
+    /// ## Important
+    ///
+    /// This conversion leaves `transaction_hash` zeroed. The caller must make
+    /// sure to compute its value after the conversion succeeds.
     fn try_from_dto(
         (dto, transaction_index): (p2p_proto::receipt::Receipt, TransactionIndex),
     ) -> anyhow::Result<Self> {
@@ -341,7 +356,7 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
             | L1Handler(L1HandlerTransactionReceipt { common, .. })
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
-                transaction_hash: TransactionHash(common.transaction_hash.0),
+                transaction_hash: TransactionHash::ZERO,
                 actual_fee: Fee(common.actual_fee),
                 execution_resources: ExecutionResources {
                     builtins: BuiltinCounters {
@@ -375,12 +390,9 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
                         to_address: EthereumAddress(x.to_address.0),
                     })
                     .collect(),
-                execution_status: if common.revert_reason.is_empty() {
-                    ExecutionStatus::Succeeded
-                } else {
-                    ExecutionStatus::Reverted {
-                        reason: common.revert_reason,
-                    }
+                execution_status: match common.revert_reason {
+                    Some(reason) => ExecutionStatus::Reverted { reason },
+                    None => ExecutionStatus::Succeeded,
                 },
                 transaction_index,
             }),
@@ -410,16 +422,15 @@ impl TryFromDto<p2p_proto::transaction::ResourceBounds> for ResourceBounds {
     }
 }
 
-impl TryFromDto<String> for DataAvailabilityMode {
-    fn try_from_dto(dto: String) -> anyhow::Result<Self>
+impl TryFromDto<p2p_proto::common::DataAvailabilityMode> for DataAvailabilityMode {
+    fn try_from_dto(dto: p2p_proto::common::DataAvailabilityMode) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        match dto.as_str() {
-            "L1" => Ok(Self::L1),
-            "L2" => Ok(Self::L2),
-            _ => anyhow::bail!("Invalid data availability mode"),
-        }
+        Ok(match dto {
+            p2p_proto::common::DataAvailabilityMode::L1 => Self::L1,
+            p2p_proto::common::DataAvailabilityMode::L2 => Self::L2,
+        })
     }
 }
 
@@ -495,7 +506,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
             x.into_iter()
                 .map(|e| SelectorAndOffset {
                     selector: EntryPoint(e.selector),
-                    offset: ByteCodeOffset(e.offset),
+                    offset: ByteCodeOffset(Felt::from_u64(e.offset)),
                 })
                 .collect::<Vec<_>>()
         };
@@ -510,8 +521,8 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
         struct Abi<'a>(#[serde(borrow)] &'a RawValue);
 
         let class_def = Cairo {
-            abi: Cow::Borrowed(serde_json::from_slice::<Abi<'_>>(&abi).unwrap().0),
-            program: serde_json::from_slice(&program)
+            abi: Cow::Borrowed(serde_json::from_str::<Abi<'_>>(&abi).unwrap().0),
+            program: serde_json::from_str(&program)
                 .context("verify that cairo class program is UTF-8")?,
             entry_points_by_type: CairoEntryPoints {
                 external,
@@ -525,11 +536,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
     }
 }
 
-#[derive(Debug)]
-pub struct SierraDefinition {
-    pub sierra: Vec<u8>,
-    pub casm: Vec<u8>,
-}
+pub struct SierraDefinition(pub Vec<u8>);
 
 impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
     fn try_from_dto(dto: p2p_proto::class::Cairo1Class) -> anyhow::Result<Self> {
@@ -573,7 +580,6 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
                 .collect::<Vec<_>>()
         };
 
-        let abi = std::str::from_utf8(&dto.abi).context("parsing abi as utf8")?;
         let entry_points = SierraEntryPoints {
             external: from_dto(dto.entry_points.externals),
             l1_handler: from_dto(dto.entry_points.l1_handlers),
@@ -581,10 +587,9 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
         };
         let program = dto.program;
         let contract_class_version = dto.contract_class_version;
-        let casm = dto.compiled;
 
         let sierra = Sierra {
-            abi: Cow::Borrowed(abi),
+            abi: dto.abi.into(),
             sierra_program: program,
             contract_class_version: contract_class_version.into(),
             entry_points_by_type: entry_points,
@@ -592,6 +597,6 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
 
         let sierra = serde_json::to_vec(&sierra).context("serialize sierra class definition")?;
 
-        Ok(Self { sierra, casm })
+        Ok(Self(sierra))
     }
 }

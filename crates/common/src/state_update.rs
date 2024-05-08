@@ -17,21 +17,6 @@ use crate::{
     StorageValue,
 };
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Dummy)]
-pub struct StateUpdateCounts {
-    pub storage_diffs: u64,
-    pub nonce_updates: u64,
-    pub declared_classes: u64,
-    pub deployed_contracts: u64,
-}
-
-#[derive(Default, Debug, Copy, Clone, PartialEq, Dummy)]
-pub struct ContractUpdateCounts {
-    pub storage_diffs: u64,
-    pub nonce_updates: u64,
-    pub deployed_contracts: u64,
-}
-
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct StateUpdate {
     pub block_hash: BlockHash,
@@ -41,12 +26,6 @@ pub struct StateUpdate {
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
     pub declared_cairo_classes: HashSet<ClassHash>,
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Dummy)]
-pub struct ContractUpdates {
-    pub regular: HashMap<ContractAddress, ContractUpdate>,
-    pub system: HashMap<ContractAddress, SystemContractUpdate>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
@@ -457,23 +436,18 @@ impl StateUpdate {
         hasher.finish()
     }
 
-    pub fn counts(&self) -> StateUpdateCounts {
-        let mut counts = StateUpdateCounts::default();
+    pub fn state_diff_length(&self) -> u64 {
+        let mut len = 0;
         self.contract_updates.iter().for_each(|(_, update)| {
-            counts.storage_diffs +=
-                u64::try_from(update.storage.len()).expect("ptr size is 64bits");
-            counts.nonce_updates += u64::from(update.nonce.is_some());
-            counts.deployed_contracts += u64::from(update.class.is_some());
+            len += update.storage.len();
+            len += usize::from(update.nonce.is_some());
+            len += usize::from(update.class.is_some());
         });
         self.system_contract_updates.iter().for_each(|(_, update)| {
-            counts.storage_diffs +=
-                u64::try_from(update.storage.len()).expect("ptr size is 64bits");
+            len += update.storage.len();
         });
-        counts.declared_classes = (self.declared_cairo_classes.len()
-            + self.declared_sierra_classes.len())
-        .try_into()
-        .expect("ptr size is 64bits");
-        counts
+        len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
+        len.try_into().expect("ptr size is 64bits")
     }
 }
 

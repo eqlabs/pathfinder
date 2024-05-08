@@ -10,7 +10,7 @@ use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::Transaction;
+use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ClassHash, TransactionIndex};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
@@ -202,7 +202,7 @@ impl Sync {
                                 receipt,
                             } = tx;
                             match (
-                                Transaction::try_from_dto(transaction),
+                                TransactionVariant::try_from_dto(transaction),
                                 Receipt::try_from_dto((
                                     receipt,
                                     TransactionIndex::new_or_panic(
@@ -287,10 +287,10 @@ impl Sync {
         {
             self.p2p
                 .clone()
-                .contract_updates_stream(
+                .state_diff_stream(
                     start,
                     stop,
-                    state_updates::contract_update_counts_stream(self.storage.clone(), start, stop),
+                    state_updates::state_diff_lengths_stream(self.storage.clone(), start, stop),
                 )
                 .map_err(Into::into)
                 .and_then(state_updates::verify_signature)
@@ -395,17 +395,34 @@ async fn handle_event_stream(
 /// Takes ownership of transactions and returns them if verification passes.
 async fn check_transactions(
     block: &BlockHeader,
-    transactions: Vec<(Transaction, Receipt)>,
+    transactions: Vec<(TransactionVariant, Receipt)>,
 ) -> anyhow::Result<Option<Vec<(Transaction, Receipt)>>> {
     if transactions.len() != block.transaction_count {
         return Ok(None);
     }
+    let (transaction_variants, receipts): (Vec<TransactionVariant>, Vec<Receipt>) =
+        transactions.into_iter().unzip();
     let transaction_final_hash_type =
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let (transaction_commitment, transactions) = spawn_blocking({
         move || {
-            let txn_refs = transactions.iter().map(|(t, _)| t).collect::<Vec<_>>();
-            calculate_transaction_commitment(&txn_refs, transaction_final_hash_type)
+            let mut transactions = Vec::new();
+
+            rayon::scope(|s| {
+                s.spawn(|_| {
+                    use rayon::prelude::*;
+
+                    transactions = transaction_variants
+                        .into_par_iter()
+                        .map(|variant| Transaction {
+                            hash: todo!(),
+                            variant,
+                        })
+                        .collect();
+                })
+            });
+
+            calculate_transaction_commitment(&transactions, transaction_final_hash_type)
                 .map_err(anyhow::Error::from)
                 .map(|commitment| (commitment, transactions))
         }
@@ -413,7 +430,8 @@ async fn check_transactions(
     .await
     .context("Joining blocking task")?
     .context("Calculating transaction commitment")?;
-    Ok((transaction_commitment == block.transaction_commitment).then_some(transactions))
+    Ok((transaction_commitment == block.transaction_commitment)
+        .then_some(transactions.into_iter().zip(receipts).collect()))
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with
@@ -899,7 +917,6 @@ mod tests {
                             block_number: blocks[1].header.header.number,
                             sierra_hash,
                             sierra_definition,
-                            casm_definition,
                         }))
                     })
                     .chain(
@@ -925,7 +942,7 @@ mod tests {
                                 block: class.block_number(),
                                 class: class.hash(),
                             },
-                            (class.class_definition(), class.casm_definition()),
+                            (class.class_definition(), Default::default()), // TODO casm
                         )
                     })
                     .unzip::<_, _, Vec<DeclaredClass>, Vec<(Vec<u8>, Option<Vec<u8>>)>>();
@@ -971,7 +988,7 @@ mod tests {
                                 .class_definition_at(x.block.into(), x.class)
                                 .unwrap()
                                 .unwrap(),
-                            db_tx.casm_definition_at(x.block.into(), x.class).unwrap(),
+                            Default::default(), // TODO casm
                         )
                     })
                     .collect::<Vec<_>>()
@@ -992,7 +1009,7 @@ mod tests {
             block_number: ONE,
             sierra_hash: SierraHash::ZERO,
             sierra_definition: Default::default(),
-            casm_definition: Default::default()
+            // TODO casm
         })]
         #[tokio::test]
         async fn bad_layout(#[case] class: Class) {

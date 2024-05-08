@@ -122,7 +122,7 @@ impl From<BlockNumberOrTag> for pathfinder_common::BlockId {
 pub mod contract {
     use std::fmt;
 
-    use fake::Dummy;
+    use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{ByteCodeOffset, EntryPoint};
     use pathfinder_crypto::Felt;
     use serde_with::serde_as;
@@ -150,7 +150,7 @@ pub mod contract {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Dummy)]
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct SelectorAndOffset {
         pub selector: EntryPoint,
@@ -189,6 +189,15 @@ pub mod contract {
                 OffsetSerde::Decimal(decimal) => Felt::from_u64(decimal),
             };
             Ok(ByteCodeOffset(offset))
+        }
+    }
+
+    impl<T> Dummy<T> for SelectorAndOffset {
+        fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                selector: Faker.fake_with_rng(rng),
+                offset: ByteCodeOffset(Felt::from_u64(rng.gen())),
+            }
         }
     }
 

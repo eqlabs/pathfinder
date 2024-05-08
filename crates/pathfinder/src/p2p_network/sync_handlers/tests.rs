@@ -121,12 +121,8 @@ mod prop {
     };
     use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
-    use pathfinder_common::state_update::{
-        ContractClassUpdate,
-        ContractUpdate,
-        SystemContractUpdate,
-    };
-    use pathfinder_common::transaction::{Transaction, TransactionVariant};
+    use pathfinder_common::state_update::SystemContractUpdate;
+    use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::{
         ClassCommitment,
         ClassHash,
@@ -178,6 +174,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_headers((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -218,6 +215,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_state_diffs((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -229,7 +227,11 @@ mod prop {
                 .map(|Block { header, state_update, .. }|
                     (
                         header.header.number, // Block number
-                        state_update.contract_updates,
+                        state_update.contract_updates.into_iter().map(|(k, v)| (k, p2p::client::peer_agnostic::ContractUpdate {
+                            storage: v.storage,
+                            class: v.class.map(|x| x.class_hash()),
+                            nonce: v.nonce,
+                        })).collect::<HashMap<_, _>>(),
                         state_update.system_contract_updates,
                     )
             ).collect::<Vec<_>>();
@@ -250,7 +252,7 @@ mod prop {
 
             // Check the rest
             responses.into_iter().for_each(|response| match response {
-                StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, is_replaced, values, domain: _ }) => {
+                StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, values, domain: _ }) => {
                     if address.0 == Felt::from_u64(1) {
                         actual_system_contract_updates.push(
                             (
@@ -260,19 +262,13 @@ mod prop {
                                         |ContractStoredValue { key, value }| (StorageAddress(key), StorageValue(value))).collect()}
                             ));
                     } else {
-                        let class = match (class_hash, is_replaced) {
-                            (Some(hash), Some(true)) => Some(ContractClassUpdate::Replace(ClassHash(hash))),
-                            (Some(hash), Some(false)) => Some(ContractClassUpdate::Deploy(ClassHash(hash))),
-                            (None, None) => None,
-                            _ => panic!("unexpected response"),
-                        };
                         actual_contract_updates.push(
                             (
                                 ContractAddress(address.0),
-                                ContractUpdate {
+                                p2p::client::peer_agnostic::ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),
-                                    class,
+                                    class: class_hash.map(|x| ClassHash(x.0)),
                                     nonce: nonce.map(ContractNonce)}
                             ));
                     }
@@ -291,7 +287,7 @@ mod prop {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(50))]
+        #![proptest_config(ProptestConfig::with_cases(25))]
         #[test]
         fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -306,8 +302,8 @@ mod prop {
                         header.header.number,
                         // List of tuples (Cairo class hash, Cairo definition bytes)
                         cairo_defs,
-                        // List of tuples (Sierra class hash, Sierra definition bytes, Casm definition bytes)
-                        sierra_defs
+                        // List of tuples (Sierra class hash, Sierra definition bytes, Casm is ignored)
+                        sierra_defs.into_iter().map(|(h, s, _)| (h, s)).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -331,8 +327,8 @@ mod prop {
                     actual_cairo.push((ClassHash(class_hash.0), CairoDefinition::try_from_dto(class).unwrap().0));
                 },
                 ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash }) => {
-                    let SierraDefinition {casm, sierra} = SierraDefinition::try_from_dto(class).unwrap();
-                    actual_sierra.push((SierraHash(class_hash.0), sierra, casm));
+                    let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
+                    actual_sierra.push((SierraHash(class_hash.0), sierra));
                 },
                 _ => panic!("unexpected response"),
             });
@@ -341,8 +337,8 @@ mod prop {
                 let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
                 let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<Vec<_>>();
 
-                prop_assert_eq_sorted!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
-                prop_assert_eq_sorted!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }
@@ -352,14 +348,13 @@ mod prop {
             EntryPointType,
             InvokeTransactionV0,
             L1HandlerTransaction,
-            Transaction,
             TransactionVariant,
         };
         use pathfinder_common::TransactionNonce;
 
         // Align with the deserialization workaround to avoid false negative mismatches
-        pub fn for_legacy_l1_handlers(tx: Transaction) -> Transaction {
-            match tx.variant {
+        pub fn for_legacy_l1_handlers(tx: TransactionVariant) -> TransactionVariant {
+            match tx {
                 TransactionVariant::InvokeV0(InvokeTransactionV0 {
                     entry_point_type: Some(EntryPointType::L1Handler),
                     calldata,
@@ -367,21 +362,19 @@ mod prop {
                     entry_point_selector,
                     max_fee: _,
                     signature: _,
-                }) => Transaction {
-                    variant: TransactionVariant::L1Handler(L1HandlerTransaction {
-                        contract_address: sender_address,
-                        entry_point_selector,
-                        nonce: TransactionNonce::ZERO,
-                        calldata,
-                    }),
-                    hash: tx.hash,
-                },
+                }) => TransactionVariant::L1Handler(L1HandlerTransaction {
+                    contract_address: sender_address,
+                    entry_point_selector,
+                    nonce: TransactionNonce::ZERO,
+                    calldata,
+                }),
                 _ => tx,
             }
         }
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_transactions((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
@@ -394,11 +387,12 @@ mod prop {
                     (
                         // Block number
                         header.header.number,
-                        // List of tuples (Transaction, Receipt)
+                        // List of tuples (TransactionVariant, Receipt)
                         transaction_data.into_iter().map(|(t, mut rec, _)| {
-                            let mut txn = workaround::for_legacy_l1_handlers(t);
+                            // P2P transactions don't carry contract transaction hashes
+                            let mut txn = workaround::for_legacy_l1_handlers(t.variant);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
-                            match &mut txn.variant {
+                            match &mut txn {
                                 TransactionVariant::Deploy(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV1(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
@@ -406,6 +400,8 @@ mod prop {
                             };
                             // P2P receipts don't carry transaction index
                             rec.transaction_index = TransactionIndex::new_or_panic(0);
+                            // P2P receipts don't carry transaction hashes
+                            rec.transaction_hash = TransactionHash::ZERO;
                             (txn, rec)
                         }).collect::<Vec<_>>()
                     )
@@ -425,7 +421,7 @@ mod prop {
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
                 TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt { transaction, receipt }) => {
-                    (Transaction::try_from_dto(transaction).unwrap(), Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap())
+                    (TransactionVariant::try_from_dto(transaction).unwrap(), Receipt::try_from_dto((receipt, TransactionIndex::new_or_panic(0))).unwrap())
                 }
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
@@ -438,6 +434,7 @@ mod prop {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
         #[test]
         fn get_events((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks

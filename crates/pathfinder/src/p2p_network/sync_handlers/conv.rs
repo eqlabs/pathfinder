@@ -18,12 +18,7 @@ use p2p_proto::transaction::{AccountSignature, ResourceBounds};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, Transaction};
-use pathfinder_common::{
-    AccountDeploymentDataElem,
-    L1DataAvailabilityMode,
-    PaymasterDataElem,
-    TransactionHash,
-};
+use pathfinder_common::{L1DataAvailabilityMode, TransactionHash};
 use pathfinder_crypto::Felt;
 use starknet_gateway_types::class_definition::{Cairo, Sierra};
 use starknet_gateway_types::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
@@ -38,8 +33,8 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
         use p2p_proto::transaction as proto;
         use pathfinder_common::transaction::TransactionVariant::*;
 
-        let variant = match self.variant {
-            DeclareV0(x) => proto::TransactionVariant::DeclareV0(proto::DeclareV0 {
+        match self.variant {
+            DeclareV0(x) => proto::Transaction::DeclareV0(proto::DeclareV0 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -47,7 +42,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 },
                 class_hash: Hash(x.class_hash.0),
             }),
-            DeclareV1(x) => proto::TransactionVariant::DeclareV1(proto::DeclareV1 {
+            DeclareV1(x) => proto::Transaction::DeclareV1(proto::DeclareV1 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -56,7 +51,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
             }),
-            DeclareV2(x) => proto::TransactionVariant::DeclareV2(proto::DeclareV2 {
+            DeclareV2(x) => proto::Transaction::DeclareV2(proto::DeclareV2 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -64,37 +59,31 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 },
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
-                compiled_class_hash: x.compiled_class_hash.0,
+                compiled_class_hash: Hash(x.compiled_class_hash.0),
             }),
-            DeclareV3(x) => proto::TransactionVariant::DeclareV3(proto::DeclareV3 {
+            DeclareV3(x) => proto::Transaction::DeclareV3(proto::DeclareV3 {
                 sender: Address(x.sender_address.0),
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
                 },
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
-                compiled_class_hash: x.compiled_class_hash.0,
+                compiled_class_hash: Hash(x.compiled_class_hash.0),
                 resource_bounds: ResourceBounds {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
                 },
-                tip: x.tip.0.into(),
-                paymaster_data: Address(
-                    x.paymaster_data
-                        .first()
-                        .unwrap_or(&PaymasterDataElem::ZERO)
-                        .0,
-                ), // TODO
-                account_deployment_data: Address(
-                    x.account_deployment_data
-                        .first()
-                        .unwrap_or(&AccountDeploymentDataElem::ZERO)
-                        .0,
-                ), // TODO
-                nonce_domain: x.nonce_data_availability_mode.to_dto(),
-                fee_domain: x.fee_data_availability_mode.to_dto(),
+                tip: x.tip.0,
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(|a| a.0)
+                    .collect(),
+                nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
+                fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
             }),
-            Deploy(x) => proto::TransactionVariant::Deploy(proto::Deploy {
+            Deploy(x) => proto::Transaction::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
@@ -102,43 +91,34 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 // Only these two values are allowed in storage
                 version: if x.version.is_zero() { 0 } else { 1 },
             }),
-            DeployAccountV1(x) => {
-                proto::TransactionVariant::DeployAccountV1(proto::DeployAccountV1 {
-                    max_fee: x.max_fee.0,
-                    signature: AccountSignature {
-                        parts: x.signature.into_iter().map(|s| s.0).collect(),
-                    },
-                    class_hash: Hash(x.class_hash.0),
-                    nonce: x.nonce.0,
-                    address_salt: x.contract_address_salt.0,
-                    calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
-                })
-            }
-            DeployAccountV3(x) => {
-                proto::TransactionVariant::DeployAccountV3(proto::DeployAccountV3 {
-                    signature: AccountSignature {
-                        parts: x.signature.into_iter().map(|s| s.0).collect(),
-                    },
-                    class_hash: Hash(x.class_hash.0),
-                    nonce: x.nonce.0,
-                    address_salt: x.contract_address_salt.0,
-                    calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
-                    resource_bounds: ResourceBounds {
-                        l1_gas: x.resource_bounds.l1_gas.to_dto(),
-                        l2_gas: x.resource_bounds.l2_gas.to_dto(),
-                    },
-                    tip: x.tip.0.into(),
-                    paymaster_data: Address(
-                        x.paymaster_data
-                            .first()
-                            .unwrap_or(&PaymasterDataElem::ZERO)
-                            .0,
-                    ), // TODO
-                    nonce_domain: x.nonce_data_availability_mode.to_dto(),
-                    fee_domain: x.fee_data_availability_mode.to_dto(),
-                })
-            }
-            InvokeV0(x) => proto::TransactionVariant::InvokeV0(proto::InvokeV0 {
+            DeployAccountV1(x) => proto::Transaction::DeployAccountV1(proto::DeployAccountV1 {
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+            }),
+            DeployAccountV3(x) => proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                resource_bounds: ResourceBounds {
+                    l1_gas: x.resource_bounds.l1_gas.to_dto(),
+                    l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                },
+                tip: x.tip.0,
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
+                fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
+            }),
+            InvokeV0(x) => proto::Transaction::InvokeV0(proto::InvokeV0 {
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -147,7 +127,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 entry_point_selector: x.entry_point_selector.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-            InvokeV1(x) => proto::TransactionVariant::InvokeV1(proto::InvokeV1 {
+            InvokeV1(x) => proto::Transaction::InvokeV1(proto::InvokeV1 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -156,7 +136,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce: x.nonce.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-            InvokeV3(x) => proto::TransactionVariant::InvokeV3(proto::InvokeV3 {
+            InvokeV3(x) => proto::Transaction::InvokeV3(proto::InvokeV3 {
                 sender: Address(x.sender_address.0),
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -166,34 +146,23 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
                 },
-                tip: x.tip.0.into(),
-                paymaster_data: Address(
-                    x.paymaster_data
-                        .first()
-                        .unwrap_or(&PaymasterDataElem::ZERO)
-                        .0,
-                ), // TODO
-                account_deployment_data: Address(
-                    x.account_deployment_data
-                        .first()
-                        .unwrap_or(&AccountDeploymentDataElem::ZERO)
-                        .0,
-                ), // TODO
-                nonce_domain: x.nonce_data_availability_mode.to_dto(),
-                fee_domain: x.fee_data_availability_mode.to_dto(),
+                tip: x.tip.0,
+                paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
+                account_deployment_data: x
+                    .account_deployment_data
+                    .into_iter()
+                    .map(|a| a.0)
+                    .collect(),
+                nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
+                fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
                 nonce: x.nonce.0,
             }),
-            L1Handler(x) => proto::TransactionVariant::L1HandlerV0(proto::L1HandlerV0 {
+            L1Handler(x) => proto::Transaction::L1HandlerV0(proto::L1HandlerV0 {
                 nonce: x.nonce.0,
                 address: Address(x.contract_address.0),
                 entry_point_selector: x.entry_point_selector.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-        };
-
-        p2p_proto::transaction::Transaction {
-            hash: Hash(self.hash.0),
-            variant,
         }
     }
 }
@@ -201,14 +170,10 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
 impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
     fn to_dto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
-        let revert_reason = self
-            .1
-            .revert_reason()
-            .map(|x| x.to_owned())
-            .unwrap_or_default();
+        let revert_reason = self.1.revert_reason().map(ToOwned::to_owned);
         let common = ReceiptCommon {
-            transaction_hash: Hash(self.1.transaction_hash.0),
             actual_fee: self.1.actual_fee.0,
+            price_unit: p2p_proto::receipt::PriceUnit::Wei, // TODO
             messages_sent: self
                 .1
                 .l2_to_l1_messages
@@ -296,11 +261,11 @@ impl ToDto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
     }
 }
 
-impl ToDto<String> for DataAvailabilityMode {
-    fn to_dto(self) -> String {
+impl ToDto<p2p_proto::common::DataAvailabilityMode> for DataAvailabilityMode {
+    fn to_dto(self) -> p2p_proto::common::DataAvailabilityMode {
         match self {
-            DataAvailabilityMode::L1 => "L1".to_owned(),
-            DataAvailabilityMode::L2 => "L2".to_owned(),
+            Self::L1 => p2p_proto::common::DataAvailabilityMode::L1,
+            Self::L2 => p2p_proto::common::DataAvailabilityMode::L2,
         }
     }
 }
@@ -315,7 +280,7 @@ impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode
     }
 }
 
-pub fn sierra_def_into_dto(sierra: Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class {
+pub fn sierra_def_into_dto(sierra: Sierra<'_>) -> Cairo1Class {
     let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
         selector: x.selector.0,
         index: x.function_idx,
@@ -343,10 +308,9 @@ pub fn sierra_def_into_dto(sierra: Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class
     };
 
     Cairo1Class {
-        abi: sierra.abi.as_bytes().to_owned(),
+        abi: sierra.abi.to_string(),
         program: sierra.sierra_program,
         entry_points,
-        compiled, // TODO not sure if encoding in storage and dto is the same
         contract_class_version: sierra.contract_class_version.into(),
     }
 }
@@ -354,11 +318,15 @@ pub fn sierra_def_into_dto(sierra: Sierra<'_>, compiled: Vec<u8>) -> Cairo1Class
 pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
     let into_dto = |x: SelectorAndOffset| EntryPoint {
         selector: x.selector.0,
-        offset: x.offset.0,
+        offset: u64::from_be_bytes(
+            x.offset.0.as_be_bytes()[24..]
+                .try_into()
+                .expect("slice len matches"),
+        ),
     };
 
     Cairo0Class {
-        abi: cairo.abi.get().as_bytes().to_owned(),
+        abi: cairo.abi.to_string(),
         externals: cairo
             .entry_points_by_type
             .external
@@ -377,6 +345,6 @@ pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
             .into_iter()
             .map(into_dto)
             .collect(),
-        program: cairo.program.get().as_bytes().to_owned(),
+        program: cairo.program.to_string(),
     }
 }

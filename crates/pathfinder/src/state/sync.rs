@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::{BlockCommitmentSignature, Chain, PublicKey};
+use pathfinder_common::{BlockCommitmentSignature, Chain, PublicKey, StateDiffCommitment};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -35,6 +35,7 @@ pub enum SyncEvent {
         (Box<Block>, (TransactionCommitment, EventCommitment)),
         Box<StateUpdate>,
         Box<BlockCommitmentSignature>,
+        Box<StateDiffCommitment>,
         l2::Timings,
     ),
     /// An L2 reorg was detected, contains the reorg-tail which
@@ -468,7 +469,13 @@ async fn consumer(
                 l1_update(&mut db_conn, &update).await?;
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
-            Block((block, (tx_comm, ev_comm)), state_update, signature, timings) => {
+            Block(
+                (block, (tx_comm, ev_comm)),
+                state_update,
+                signature,
+                state_diff_commitment,
+                timings,
+            ) => {
                 if block.block_number < next_number {
                     tracing::debug!("Ignoring duplicate block {}", block.block_number);
                     continue;
@@ -490,6 +497,7 @@ async fn consumer(
                     ev_comm,
                     *state_update,
                     *signature,
+                    *state_diff_commitment,
                     verify_tree_hashes,
                     storage.clone(),
                     &mut websocket_txs,
@@ -807,6 +815,7 @@ async fn l2_update(
     event_commitment: EventCommitment,
     state_update: StateUpdate,
     signature: BlockCommitmentSignature,
+    state_diff_commitment: StateDiffCommitment,
     verify_tree_hashes: bool,
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
@@ -886,10 +895,6 @@ async fn l2_update(
             .insert_block_header(&header)
             .context("Inserting block header into database")?;
 
-        transaction
-            .update_state_update_counts(header.number, &state_update.counts())
-            .context("Inserting state update counts into database")?;
-
         // Insert the transactions.
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),
@@ -912,6 +917,14 @@ async fn l2_update(
         transaction
             .insert_state_update(block.block_number, &state_update)
             .context("Insert state update into database")?;
+
+        transaction
+            .update_state_diff_commitment_and_length(
+                header.number,
+                state_diff_commitment,
+                state_update.state_diff_length(),
+            )
+            .context("Inserting state diff length into database")?;
 
         // Insert signature
         transaction
@@ -1177,6 +1190,7 @@ mod tests {
         EventCommitment,
         SierraHash,
         StateCommitment,
+        StateDiffCommitment,
         StateUpdate,
         TransactionCommitment,
     };
@@ -1196,6 +1210,7 @@ mod tests {
         (Box<Block>, (TransactionCommitment, EventCommitment)),
         Box<StateUpdate>,
         Box<BlockCommitmentSignature>,
+        Box<StateDiffCommitment>,
         l2::Timings,
     )> {
         let genesis_header =
@@ -1252,6 +1267,8 @@ mod tests {
                 s: block_commitment_signature_elem!("0x1002"),
             });
 
+            let state_diff_commitment = Box::new(state_diff_commitment!("0x1003"));
+
             data.push((
                 (
                     block,
@@ -1259,6 +1276,7 @@ mod tests {
                 ),
                 state_update,
                 signature,
+                state_diff_commitment,
                 timings,
             ));
 
@@ -1279,8 +1297,11 @@ mod tests {
         let num_blocks = block_data.len();
 
         // Send block updates, followed by a reorg to genesis.
-        for (a, b, c, d) in block_data {
-            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
+        for (a, b, c, d, e) in block_data {
+            event_tx
+                .send(SyncEvent::Block(a, b, c, d, e))
+                .await
+                .unwrap();
         }
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
@@ -1321,8 +1342,11 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
         // Send block updates, followed by a reorg to genesis.
-        for (a, b, c, d) in generate_block_data() {
-            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
+        for (a, b, c, d, e) in generate_block_data() {
+            event_tx
+                .send(SyncEvent::Block(a, b, c, d, e))
+                .await
+                .unwrap();
         }
         event_tx
             .send(SyncEvent::Reorg(BlockNumber::new_or_panic(2)))
@@ -1372,8 +1396,11 @@ mod tests {
         // Then republish block 2, which should succeed.
         let blocks = generate_block_data();
         let block2 = blocks[2].clone();
-        for (a, b, c, d) in blocks {
-            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
+        for (a, b, c, d, e) in blocks {
+            event_tx
+                .send(SyncEvent::Block(a, b, c, d, e))
+                .await
+                .unwrap();
         }
         event_tx
             .send(SyncEvent::Reorg(block2.0 .0.block_number))
@@ -1383,7 +1410,9 @@ mod tests {
         // updated after a reorg, causing the reorg'd block numbers to be considered
         // duplicates and skipped - breaking sync.
         event_tx
-            .send(SyncEvent::Block(block2.0, block2.1, block2.2, block2.3))
+            .send(SyncEvent::Block(
+                block2.0, block2.1, block2.2, block2.3, block2.4,
+            ))
             .await
             .unwrap();
         // Close the event channel which allows the consumer task to exit.
@@ -1424,8 +1453,11 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
         // Send block updates, followed by a reorg to genesis.
-        for (a, b, c, d) in generate_block_data() {
-            event_tx.send(SyncEvent::Block(a, b, c, d)).await.unwrap();
+        for (a, b, c, d, e) in generate_block_data() {
+            event_tx
+                .send(SyncEvent::Block(a, b, c, d, e))
+                .await
+                .unwrap();
         }
         event_tx
             .send(SyncEvent::Reorg(BlockNumber::GENESIS))
@@ -1536,14 +1568,20 @@ mod tests {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
 
         let blocks = generate_block_data();
-        let (a, b, c, d) = blocks[0].clone();
+        let (a, b, c, d, e) = blocks[0].clone();
 
         event_tx
-            .send(SyncEvent::Block(a.clone(), b.clone(), c.clone(), d))
+            .send(SyncEvent::Block(
+                a.clone(),
+                b.clone(),
+                c.clone(),
+                d.clone(),
+                e,
+            ))
             .await
             .unwrap();
         event_tx
-            .send(SyncEvent::Block(a.clone(), b.clone(), c, d))
+            .send(SyncEvent::Block(a.clone(), b.clone(), c, d, e))
             .await
             .unwrap();
         drop(event_tx);

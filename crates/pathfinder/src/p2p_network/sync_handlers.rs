@@ -8,8 +8,8 @@ use p2p_proto::common::{
     Direction,
     Hash,
     Iteration,
-    Merkle,
     Patricia,
+    StateDiffCommitment,
     Step,
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -129,8 +129,8 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            let counts = db_tx.state_update_counts(block_number.into())?;
-            if let Some(counts) = counts {
+            let state_diff_cl = db_tx.state_diff_commitment_and_length(block_number)?;
+            if let Some((state_diff_commitment, state_diff_len)) = state_diff_cl {
                 let txn_count = header
                     .transaction_count
                     .try_into()
@@ -142,35 +142,28 @@ fn get_header(
                     number: header.number.get(),
                     time: header.timestamp.get(),
                     sequencer_address: Address(header.sequencer_address.0),
-                    state_diff_commitment: Hash(Felt::ZERO), // TODO
-                    state: Patricia {
-                        height: 251,
-                        root: Hash(header.state_commitment.0),
+                    state_root: Hash(header.state_commitment.0),
+                    state_diff_commitment: StateDiffCommitment {
+                        state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"),
+                        root: Hash(state_diff_commitment.0),
                     },
-                    transactions: Merkle {
+                    transactions: Patricia {
                         n_leaves: txn_count,
                         root: Hash(header.transaction_commitment.0),
                     },
-                    events: Merkle {
+                    events: Patricia {
                         n_leaves: header
                             .event_count
                             .try_into()
                             .context("invalid event count")?,
                         root: Hash(header.event_commitment.0),
                     },
-                    receipts: Merkle {
-                        n_leaves: txn_count,
-                        root: Hash(Felt::ZERO), // TODO
-                    },
+                    receipts: Hash(Felt::ZERO), // TODO
                     protocol_version: header.starknet_version.to_string(),
                     gas_price_wei: header.eth_l1_gas_price.0,
                     gas_price_fri: header.strk_l1_gas_price.0,
                     data_gas_price_wei: header.eth_l1_data_gas_price.0,
                     data_gas_price_fri: header.strk_l1_data_gas_price.0,
-                    num_storage_diffs: counts.storage_diffs,
-                    num_nonce_updates: counts.nonce_updates,
-                    num_declared_classes: counts.declared_classes,
-                    num_deployed_contracts: counts.deployed_contracts,
                     l1_data_availability_mode: header.l1_da_mode.to_dto(),
                     signatures: vec![ConsensusSignature {
                         r: signature.r.0,
@@ -190,7 +183,7 @@ fn get_header(
 #[derive(Debug, Clone)]
 enum ClassDefinition {
     Cairo(Vec<u8>),
-    Sierra { sierra: Vec<u8>, casm: Vec<u8> },
+    Sierra { sierra: Vec<u8>, _casm: Vec<u8> },
 }
 
 fn get_classes_for_block(
@@ -211,9 +204,9 @@ fn get_classes_for_block(
                 })?;
             let casm_definition = db_tx.casm_definition(class_hash)?;
             Ok(match casm_definition {
-                Some(casm) => ClassDefinition::Sierra {
+                Some(_casm) => ClassDefinition::Sierra {
                     sierra: definition,
-                    casm,
+                    _casm: Vec::new(), // TODO casm
                 },
                 None => ClassDefinition::Cairo(definition),
             })
@@ -236,11 +229,14 @@ fn get_classes_for_block(
                     class_hash: Hash(class_hash.0),
                 }
             }
-            ClassDefinition::Sierra { sierra, casm } => {
+            ClassDefinition::Sierra {
+                sierra,
+                _casm: _, /* TODO */
+            } => {
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
 
                 Class::Cairo1 {
-                    class: sierra_def_into_dto(sierra_class, casm),
+                    class: sierra_def_into_dto(sierra_class),
                     domain: 0, // TODO
                     class_hash: Hash(class_hash.0),
                 }
@@ -267,8 +263,7 @@ fn get_state_diff(
         tx.blocking_send(StateDiffsResponse::ContractDiff(ContractDiff {
             address: Address(address.0),
             nonce: update.nonce.map(|n| n.0),
-            class_hash: update.class.as_ref().map(|c| c.class_hash().0),
-            is_replaced: update.class.map(|c| c.is_replaced()),
+            class_hash: update.class.as_ref().map(|c| Hash(c.class_hash().0)),
             values: update
                 .storage
                 .into_iter()
@@ -287,7 +282,6 @@ fn get_state_diff(
             address: Address(address.0),
             nonce: None,
             class_hash: None,
-            is_replaced: None,
             values: update
                 .storage
                 .into_iter()
