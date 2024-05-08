@@ -9,6 +9,7 @@ pub mod get_events;
 pub mod get_nonce;
 pub mod get_state_update;
 pub mod get_storage_at;
+pub mod get_transaction_receipt;
 pub mod get_transaction_status;
 pub mod syncing;
 
@@ -23,5 +24,6 @@ pub use get_events::get_events;
 pub use get_nonce::get_nonce;
 pub use get_state_update::get_state_update;
 pub use get_storage_at::get_storage_at;
+pub use get_transaction_receipt::get_transaction_receipt;
 pub use get_transaction_status::get_transaction_status;
 pub use syncing::syncing;

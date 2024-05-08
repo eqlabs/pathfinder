@@ -1,7 +1,11 @@
+use pathfinder_common::event::Event;
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::transaction::Transaction;
+use pathfinder_common::{BlockHash, BlockNumber};
+
 use super::serialize;
-use crate::dto::serialize::SerializeForVersion;
-use crate::dto::*;
-use crate::RpcVersion;
+use crate::dto::serialize::{SerializeForVersion, Serializer};
+use crate::{dto, RpcVersion};
 
 #[derive(Copy, Clone)]
 pub enum TxnStatus {
@@ -33,11 +37,17 @@ pub enum TxnFinalityStatus {
     AcceptedOnL1,
 }
 
+pub struct TxnReceiptWithBlockInfo<'a> {
+    pub block_hash: Option<&'a BlockHash>,
+    pub block_number: Option<BlockNumber>,
+    pub receipt: &'a Receipt,
+    pub transaction: &'a Transaction,
+    pub events: &'a [Event],
+    pub finality: TxnFinalityStatus,
+}
+
 impl SerializeForVersion for TxnStatus {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         match self {
             TxnStatus::Received => "RECEIVED",
             TxnStatus::Rejected => "REJECTED",
@@ -49,10 +59,7 @@ impl SerializeForVersion for TxnStatus {
 }
 
 impl SerializeForVersion for TxnExecutionStatus {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         match self {
             TxnExecutionStatus::Succeeded => "SUCCEEDED",
             TxnExecutionStatus::Reverted => "REVERTED",
@@ -62,15 +69,18 @@ impl SerializeForVersion for TxnExecutionStatus {
 }
 
 impl SerializeForVersion for TxnFinalityStatus {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         match self {
             TxnFinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
             TxnFinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
         }
         .serialize(serializer)
+    }
+}
+
+impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
     }
 }
 

@@ -20,6 +20,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getStateUpdate",                      crate::method::get_state_update)
         .register("starknet_getStorageAt",                        crate::method::get_storage_at)
         .register("starknet_syncing",                             crate::method::syncing)
+        .register("starknet_getTransactionReceipt",               crate::method::get_transaction_receipt)
         .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
 
         .register("starknet_call",                                v05_method::call)
@@ -34,7 +35,6 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_estimateMessageFee",                  method::estimate_message_fee)
         .register("starknet_getBlockWithTxHashes",                method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs",                     method::get_block_with_txs)
-        .register("starknet_getTransactionReceipt",               method::get_transaction_receipt)
         .register("starknet_simulateTransactions",                method::simulate_transactions)
         .register("starknet_specVersion",                         || "0.7.1")
         .register("starknet_traceBlockTransactions",              method::trace_block_transactions)
