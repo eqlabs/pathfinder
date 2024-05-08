@@ -415,7 +415,7 @@ async fn check_transactions(
                     transactions = transaction_variants
                         .into_par_iter()
                         .map(|variant| Transaction {
-                            hash: todo!(), //variant.calculate_hash(chain_id, query_only),
+                            hash: todo!(),
                             variant,
                         })
                         .collect();
