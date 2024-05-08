@@ -16,7 +16,9 @@ pub fn adc(a: &mut u64, b: u64, carry: u8) -> u8 {
 
     #[cfg(not(target_arch = "x86_64"))]
     {
-        adc64(a, b, carry as u64) as u8
+        let tmp = (*a as u128) + (b as u128) + (carry as u128);
+        *a = tmp as u64;
+        (tmp >> 64) as u8
     }
 }
 
