@@ -15,6 +15,7 @@ impl MontFelt {
             }
             i += 1;
         }
+        // SAFETY: Only hex characters are used, making this safe.
         unsafe { String::from_utf8_unchecked(buf) }
     }
 
