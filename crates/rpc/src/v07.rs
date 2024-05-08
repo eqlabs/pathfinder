@@ -2,7 +2,6 @@ pub mod dto;
 pub mod method;
 
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
-use crate::v03::method as v03_method;
 use crate::v05::method as v05_method;
 use crate::v06::method as v06_method;
 
@@ -16,16 +15,14 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getClass",                            crate::method::get_class)
         .register("starknet_getClassAt",                          crate::method::get_class_at)
         .register("starknet_getClassHashAt",                      crate::method::get_class_hash_at)
+        .register("starknet_getEvents",                           crate::method::get_events)
         .register("starknet_getNonce",                            crate::method::get_nonce)
-        .register("starknet_getStorageAt",                        crate::method::get_storage_at)
-        
-        .register("starknet_getEvents",                           v03_method::get_events)
         .register("starknet_getStateUpdate",                      crate::method::get_state_update)
-
+        .register("starknet_getStorageAt",                        crate::method::get_storage_at)
         .register("starknet_syncing",                             crate::method::syncing)
+        .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
 
         .register("starknet_call",                                v05_method::call)
-        .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
 
         .register("starknet_addDeclareTransaction",               v06_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction",         v06_method::add_deploy_account_transaction)
