@@ -22,7 +22,7 @@ impl MontFelt {
     }
 
     pub const fn to_be_bytes(&self) -> [u8; 32] {
-        let s = self.reduce_full();
+        let s = self.const_reduce_full();
 
         let r0 = s.0[0].to_be_bytes();
         let r1 = s.0[1].to_be_bytes();
@@ -41,19 +41,9 @@ impl MontFelt {
         bytes
     }
 
-    /// Create a Montgomery field element from it's native representation
+    /// Create a Montgomery field element from a raw representation
     pub const fn from_raw(x: [u64; 4]) -> Self {
         MontFelt(x)
-    }
-
-    /// Get native representation of field element
-    pub fn raw(&self) -> [u64; 4] {
-        self.0
-    }
-
-    /// Create a new field element from a big-integer representation
-    pub const fn from_limbs(x: [u64; 4]) -> Self {
-        MontFelt::from_raw(x).const_mul(&MontFelt(MontFelt::R2))
     }
 
     /// Convert a field element to little-endian bits

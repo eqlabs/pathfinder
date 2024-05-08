@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
+
 use crate::MontFelt;
 
 impl MontFelt {
-    /// Return whether the value is zero
+    /// Returns whether the value is zero
     #[inline(always)]
     pub const fn is_zero(&self) -> bool {
         self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
@@ -16,71 +18,98 @@ impl MontFelt {
             && self.0[3] == MontFelt::R[3]
     }
 
+    /// Compares two elements' native integer representation
     #[inline(always)]
-    #[allow(clippy::comparison_chain)]
-    pub fn mont_cmp(&self, x: &MontFelt) -> isize {
-        let a = self.reduce_full();
-        let b = x.reduce_full();
+    pub const fn const_cmp_native(&self, x: &MontFelt) -> Ordering {
+        let a = self.const_reduce_full();
+        let b = x.const_reduce_full();
+        a.const_cmp(&b)
+    }
 
+    /// Compare representations
+    #[inline(always)]
+    pub const fn const_cmp(&self, x: &MontFelt) -> Ordering {
         let mut i = 4;
         while i > 0 {
             i -= 1;
-            if a.0[i] > b.0[i] {
-                return 1;
-            } else if a.0[i] < b.0[i] {
-                return -1;
+            if self.0[i] < x.0[i] {
+                return Ordering::Less;
+            } else if self.0[i] > x.0[i] {
+                return Ordering::Greater;
             }
         }
-        0
+        Ordering::Equal
     }
 
+    /// Equality
     #[inline(always)]
-    pub const fn cmp(&self, x: &MontFelt) -> isize {
-        let mut i = 4;
-        while i > 0 {
-            i -= 1;
-            if self.0[i] > x.0[i] {
-                return 1;
-            } else if self.0[i] < x.0[i] {
-                return -1;
-            }
-        }
-        0
+    pub const fn const_eq(&self, x: &MontFelt) -> bool {
+        self.const_cmp(x) as i8 == 0
     }
 
+    /// Greater than
     #[inline(always)]
-    pub const fn eq(&self, x: &MontFelt) -> bool {
-        self.cmp(x) == 0
+    pub const fn const_gt(&self, x: &MontFelt) -> bool {
+        self.const_cmp(x) as i8 > 0
     }
 
+    /// Greater than or equal
     #[inline(always)]
-    pub const fn gt(&self, x: &MontFelt) -> bool {
-        self.cmp(x) > 0
+    pub const fn const_geq(&self, x: &MontFelt) -> bool {
+        self.const_cmp(x) as i8 >= 0
     }
 
+    /// Less than
     #[inline(always)]
-    pub const fn geq(&self, x: &MontFelt) -> bool {
-        self.cmp(x) >= 0
+    pub const fn const_lt(&self, x: &MontFelt) -> bool {
+        (self.const_cmp(x) as i8) < 0
     }
 
+    /// Less than or equal
     #[inline(always)]
-    pub const fn lt(&self, x: &MontFelt) -> bool {
-        self.cmp(x) < 0
-    }
-
-    #[inline(always)]
-    pub const fn leq(&self, x: &MontFelt) -> bool {
-        self.cmp(x) <= 0
+    pub const fn const_leq(&self, x: &MontFelt) -> bool {
+        self.const_cmp(x) as i8 <= 0
     }
 }
 
-impl std::cmp::PartialOrd for MontFelt {
+impl Ord for MontFelt {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.const_cmp_native(other)
+    }
+}
+
+impl PartialOrd for MontFelt {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.mont_cmp(other) {
-            1 => Some(std::cmp::Ordering::Greater),
-            -1 => Some(std::cmp::Ordering::Less),
-            0 => Some(std::cmp::Ordering::Equal),
-            _ => None,
-        }
+        Some(self.cmp(other))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ord() {
+        let a = MontFelt::ONE;
+        let b = MontFelt::ONE + MontFelt::ONE;
+        let c = MontFelt::ONE + MontFelt::ONE + MontFelt::ONE;
+
+        assert!(a < b);
+        assert!(a <= b);
+        assert!(a < c);
+        assert!(a <= c);
+        assert!(b < c);
+        assert!(b <= c);
+
+        assert!(b > a);
+        assert!(b >= a);
+        assert!(c > a);
+        assert!(c >= a);
+        assert!(c > b);
+        assert!(c >= b);
+
+        assert!(a == a);
+        assert!(b == b);
+        assert!(c == c);
     }
 }

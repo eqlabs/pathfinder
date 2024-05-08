@@ -39,7 +39,7 @@ impl MontFelt {
                     }
                 }
 
-                if v.cmp(&u) == -1 {
+                if v.const_lt(&u) {
                     u = u.sub_noreduce(&v);
                     b = b.const_sub(&c);
                 } else {
@@ -62,10 +62,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_inverse() {
+    fn test_inverse_base() {
         let x = MontFelt::from_hex("9");
         let inv = x.inverse().unwrap();
         let xinv = x * inv;
         assert_eq!(xinv, MontFelt::ONE);
+    }
+
+    #[test]
+    fn test_inverse_random() {
+        let mut rng = rand::thread_rng();
+        for _ in 0..100 {
+            let x = MontFelt::random(&mut rng);
+            let inv = x.inverse().unwrap();
+            let xinv = x * inv;
+            assert_eq!(xinv, MontFelt::ONE);
+        }
     }
 }
