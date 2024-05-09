@@ -5,17 +5,20 @@ use p2p::client::peer_agnostic::TransactionsForBlock;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockHeader, BlockNumber};
+use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
-use tokio::task::spawn_blocking;
 
 use super::error::SyncError;
+use crate::state::block_hash::{
+    calculate_transaction_commitment,
+    TransactionCommitmentFinalHashType,
+};
 
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -82,23 +85,77 @@ pub(super) fn counts_stream(
     }
 }
 
+pub(super) async fn compute_hashes(
+    mut transactions: PeerData<TransactionsForBlock>,
+    storage: Storage,
+    chain_id: ChainId,
+) -> Result<PeerData<TransactionsForBlock>, SyncError> {
+    Ok(tokio::task::spawn_blocking(move || {
+        use rayon::prelude::*;
+
+        transactions
+            .data
+            .1
+            .par_iter_mut()
+            .for_each(|(transaction, receipt)| {
+                let hash = transaction.variant.calculate_hash(chain_id, false);
+                transaction.hash = hash;
+                receipt.transaction_hash = hash;
+            });
+
+        transactions
+    })
+    .await
+    .context("Joining blocking task")?)
+}
+
+// TODO verify receipt commitments
 pub(super) async fn verify_commitment(
     transactions: PeerData<TransactionsForBlock>,
     storage: Storage,
 ) -> Result<PeerData<TransactionsForBlock>, SyncError> {
-    let PeerData {
-        peer,
-        data: transactions,
-    } = transactions;
+    tokio::task::spawn_blocking(move || {
+        let PeerData {
+            peer,
+            data: (block_number, transactions_with_receipts),
+        } = transactions;
+        let mut db = storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+        let expected = db
+            .block_header(block_number.into())
+            .context("Querying block header")?
+            .context("Block header not found")?
+            .transaction_commitment;
 
-    todo!()
+        let (transactions, receipts): (Vec<_>, Vec<_>) =
+            transactions_with_receipts.into_iter().unzip();
+        let actual = calculate_transaction_commitment(
+            &transactions,
+            TransactionCommitmentFinalHashType::Normal,
+        )?;
+        if actual == expected {
+            Ok(PeerData {
+                peer,
+                data: (
+                    block_number,
+                    transactions.into_iter().zip(receipts).collect::<Vec<_>>(),
+                ),
+            })
+        } else {
+            Err(SyncError::TransactionCommitmentMismatch(peer))
+        }
+    })
+    .await
+    .context("Joining blocking task")?
 }
 
 pub(super) async fn persist(
     storage: Storage,
     transactions: Vec<PeerData<TransactionsForBlock>>,
 ) -> Result<BlockNumber, SyncError> {
-    spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -112,8 +169,7 @@ pub(super) async fn persist(
             db.insert_transaction_data(block_number, &transactions, None)
                 .context("Inserting transactions")?;
         }
-
-        db.commit().context("Committing database transaction");
+        db.commit().context("Committing db transaction")?;
         Ok(tail)
     })
     .await

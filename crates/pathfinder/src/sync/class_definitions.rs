@@ -299,6 +299,7 @@ pub(super) async fn persist(
                 }
             }
         }
+        transaction.commit().context("Committing db transaction")?;
 
         Ok(tail)
     })

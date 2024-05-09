@@ -141,7 +141,7 @@ pub(super) async fn persist(
                 .update_events(block_number, events_for_block)
                 .context("Updating events")?;
         }
-        transaction.commit()?;
+        transaction.commit().context("Committing db transaction")?;
 
         Ok(tail)
     })
