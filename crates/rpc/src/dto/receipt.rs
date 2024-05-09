@@ -1,6 +1,6 @@
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::{Transaction, TransactionVariant};
+use pathfinder_common::transaction::{Transaction, TransactionKind, TransactionVariant};
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash, TransactionVersion};
 use serde::ser::Error;
 
@@ -60,12 +60,7 @@ pub struct DeclareTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
 pub struct DeployTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
 pub struct DeployAccountTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
 
-pub struct CommonReceiptProperties<'a> {
-    pub receipt: &'a Receipt,
-    pub transaction: &'a Transaction,
-    pub events: &'a [Event],
-    pub finality: TxnFinalityStatus,
-}
+pub struct CommonReceiptProperties<'a>(pub &'a TxnReceipt<'a>);
 
 #[derive(Copy, Clone)]
 pub struct PriceUnit<'a>(pub &'a TransactionVersion);
@@ -139,8 +134,6 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
 
 impl SerializeForVersion for TxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        use pathfinder_common::transaction::TransactionKind;
-
         match self.transaction.variant.kind() {
             TransactionKind::Declare => serializer.serialize(&DeclareTxnReceipt(&self)),
             TransactionKind::Deploy => serializer.serialize(&DeployTxnReceipt(&self)),
@@ -153,13 +146,39 @@ impl SerializeForVersion for TxnReceipt<'_> {
 
 impl SerializeForVersion for DeclareTxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        if self.0.transaction.variant.kind() != TransactionKind::Declare {
+            return Err(serde_json::error::Error::custom(
+                "expected Declare transaction",
+            ));
+        }
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("type", &"DECLARE")?;
+        serializer.flatten(&CommonReceiptProperties(self.0))?;
+
+        serializer.end()
     }
 }
 
 impl SerializeForVersion for DeployTxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let contract_address = match &self.0.transaction.variant {
+            TransactionVariant::Deploy(tx) => &tx.contract_address,
+            _ => {
+                return Err(serde_json::error::Error::custom(
+                    "expected Deploy transaction",
+                ))
+            }
+        };
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.flatten(&CommonReceiptProperties(self.0))?;
+        serializer.serialize_field("type", &"DEPLOY")?;
+        serializer.serialize_field("contract_address", &dto::Felt(&contract_address.0))?;
+
+        serializer.end()
     }
 }
 impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
@@ -181,24 +200,24 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.transaction.hash))?;
+        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.0.transaction.hash))?;
         serializer.serialize_field(
             "actual_fee",
             &FeePayment {
-                amount: &self.receipt.actual_fee,
-                transaction_version: &self.transaction.version(),
+                amount: &self.0.receipt.actual_fee,
+                transaction_version: &self.0.transaction.version(),
             },
         )?;
-        serializer.serialize_field("finality_status", &self.finality)?;
+        serializer.serialize_field("finality_status", &self.0.finality)?;
         serializer.serialize_iter(
             "messages_sent",
-            self.receipt.l2_to_l1_messages.len(),
-            &mut self.receipt.l2_to_l1_messages.iter().map(MsgToL1),
+            self.0.receipt.l2_to_l1_messages.len(),
+            &mut self.0.receipt.l2_to_l1_messages.iter().map(MsgToL1),
         )?;
         serializer.serialize_iter(
             "events",
-            self.events.len(),
-            &mut self.events.iter().map(|e| dto::Event {
+            self.0.events.len(),
+            &mut self.0.events.iter().map(|e| dto::Event {
                 address: &e.from_address,
                 keys: &e.keys,
                 data: &e.data,
@@ -206,7 +225,7 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
         )?;
         serializer.serialize_field(
             "execution_resources",
-            &ExecutionResources(&self.receipt.execution_resources),
+            &ExecutionResources(&self.0.receipt.execution_resources),
         )?;
 
         serializer.end()
