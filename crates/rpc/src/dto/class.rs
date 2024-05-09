@@ -138,7 +138,7 @@ impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("offset", &NumAsHex(self.0.offset))?;
+        serializer.serialize_field("offset", &NumAsHex::U64(self.0.offset))?;
         serializer.serialize_field("selector", &Felt(&self.0.selector))?;
 
         serializer.end()

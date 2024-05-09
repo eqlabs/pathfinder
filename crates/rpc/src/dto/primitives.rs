@@ -9,7 +9,10 @@ pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
 pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
-pub struct NumAsHex(pub u64);
+pub enum NumAsHex<'a> {
+    U64(u64),
+    H256(&'a primitive_types::H256),
+}
 pub struct Address<'a>(pub &'a ContractAddress);
 pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
 
@@ -108,9 +111,12 @@ impl SerializeForVersion for BlockNumber {
     }
 }
 
-impl SerializeForVersion for NumAsHex {
+impl SerializeForVersion for NumAsHex<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        let hex_str = hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes());
+        let hex_str = match self {
+            NumAsHex::U64(x) => hex_str::bytes_to_hex_str_stripped(&x.to_be_bytes()),
+            NumAsHex::H256(x) => hex_str::bytes_to_hex_str_stripped(x.as_bytes()),
+        };
         serializer.serialize_str(&hex_str)
     }
 }
@@ -209,8 +215,21 @@ mod tests {
     }
 
     #[test]
-    fn num_as_hex() {
-        let uut = NumAsHex(0x1234);
+    fn num_as_hex_h256() {
+        let mut bytes = [0u8; 32];
+        bytes[30] = 0x12;
+        bytes[31] = 0x34;
+        let uut = primitive_types::H256(bytes);
+        let uut = NumAsHex::H256(&uut);
+        let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn num_as_hex_u64() {
+        let uut = NumAsHex::U64(0x1234);
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
 
