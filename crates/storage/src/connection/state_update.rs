@@ -31,14 +31,6 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         state_update: &StateUpdate,
     ) -> anyhow::Result<()> {
-        let mut insert_nonce = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO nonce_updates (block_number, contract_address, nonce) VALUES (?, ?, \
-                 ?)",
-            )
-            .context("Preparing nonce insert statement")?;
-
         let mut query_contract_address = self
             .inner()
             .prepare_cached("SELECT id FROM contract_addresses WHERE contract_address = ?")
@@ -60,6 +52,14 @@ impl Transaction<'_> {
                 "INSERT INTO storage_addresses (storage_address) VALUES (?) RETURNING id",
             )
             .context("Preparing storage address insert statement")?;
+
+        let mut insert_nonce = self
+            .inner()
+            .prepare_cached(
+                "INSERT INTO nonce_updates (block_number, contract_address_id, nonce) VALUES (?, \
+                 ?, ?)",
+            )
+            .context("Preparing nonce insert statement")?;
 
         let mut insert_storage = self
             .inner()
@@ -91,22 +91,22 @@ impl Transaction<'_> {
                     .context("Inserting deployed contract")?;
             }
 
+            let contract_address_id = query_contract_address
+                .query_map(params![address], |row| row.get::<_, i64>(0))
+                .context("Querying contract address")?
+                .next()
+                .unwrap_or_else(|| {
+                    insert_contract_address.query_row(params![address], |row| row.get::<_, i64>(0))
+                })
+                .context("Inserting contract address")?;
+
             if let Some(nonce) = &update.nonce {
                 insert_nonce
-                    .execute(params![&block_number, address, nonce])
+                    .execute(params![&block_number, &contract_address_id, nonce])
                     .context("Inserting nonce update")?;
             }
 
             for (key, value) in &update.storage {
-                let contract_address_id = query_contract_address
-                    .query_map(params![address], |row| row.get::<_, i64>(0))
-                    .context("Querying contract address")?
-                    .next()
-                    .unwrap_or_else(|| {
-                        insert_contract_address
-                            .query_row(params![address], |row| row.get::<_, i64>(0))
-                    })
-                    .context("Inserting contract address")?;
                 let storage_address_id = query_storage_address
                     .query_map(params![key], |row| row.get::<_, i64>(0))
                     .context("Querying storage address")?
@@ -127,16 +127,15 @@ impl Transaction<'_> {
         }
 
         for (address, update) in &state_update.system_contract_updates {
+            let contract_address_id = query_contract_address
+                .query_map(params![address], |row| row.get::<_, i64>(0))
+                .context("Querying contract address")?
+                .next()
+                .unwrap_or_else(|| {
+                    insert_contract_address.query_row(params![address], |row| row.get::<_, i64>(0))
+                })
+                .context("Inserting contract address")?;
             for (key, value) in &update.storage {
-                let contract_address_id = query_contract_address
-                    .query_map(params![address], |row| row.get::<_, i64>(0))
-                    .context("Querying contract address")?
-                    .next()
-                    .unwrap_or_else(|| {
-                        insert_contract_address
-                            .query_row(params![address], |row| row.get::<_, i64>(0))
-                    })
-                    .context("Inserting contract address")?;
                 let storage_address_id = query_storage_address
                     .query_map(params![key], |row| row.get::<_, i64>(0))
                     .context("Querying storage address")?
@@ -265,7 +264,11 @@ impl Transaction<'_> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                "SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?",
+                r"
+                SELECT contract_address, nonce FROM nonce_updates
+                JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
+                WHERE block_number = ?
+                ",
             )
             .context("Preparing nonce update query statement")?;
 
@@ -626,17 +629,23 @@ impl Transaction<'_> {
         match block_id {
             BlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
-                    r"SELECT nonce FROM nonce_updates
-                WHERE contract_address = ?
-                ORDER BY block_number DESC LIMIT 1",
+                    r"
+                    SELECT nonce FROM nonce_updates
+                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
+                    WHERE contract_address = ?
+                    ORDER BY block_number DESC LIMIT 1
+                    ",
                 )?;
                 stmt.query_row(params![&contract_address], |row| row.get_contract_nonce(0))
             }
             BlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
-                    r"SELECT nonce FROM nonce_updates
-                WHERE contract_address = ? AND block_number <= ?
-                ORDER BY block_number DESC LIMIT 1",
+                    r"
+                    SELECT nonce FROM nonce_updates
+                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
+                    WHERE contract_address = ? AND block_number <= ?
+                    ORDER BY block_number DESC LIMIT 1
+                    ",
                 )?;
                 stmt.query_row(params![&contract_address, &number], |row| {
                     row.get_contract_nonce(0)
@@ -644,11 +653,14 @@ impl Transaction<'_> {
             }
             BlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
-                    r"SELECT nonce FROM nonce_updates
-                WHERE contract_address = ? AND block_number <= (
-                    SELECT number FROM canonical_blocks WHERE hash = ?
-                )
-                ORDER BY block_number DESC LIMIT 1",
+                    r"
+                    SELECT nonce FROM nonce_updates
+                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
+                    WHERE contract_address = ? AND block_number <= (
+                        SELECT number FROM canonical_blocks WHERE hash = ?
+                    )
+                    ORDER BY block_number DESC LIMIT 1
+                    ",
                 )?;
                 stmt.query_row(params![&contract_address, &hash], |row| {
                     row.get_contract_nonce(0)
@@ -852,10 +864,10 @@ impl Transaction<'_> {
     ) -> anyhow::Result<Vec<(ContractAddress, Option<ContractNonce>)>> {
         let mut stmt = self.inner().prepare_cached(
             r"WITH
-                updated_nonces(contract_address) AS (
-                    SELECT DISTINCT
-                        contract_address
+                updated_nonces(contract_address_id, contract_address) AS (
+                    SELECT DISTINCT contract_address_id, contract_address
                     FROM nonce_updates
+                    JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
                     WHERE
                         block_number > ?2 AND block_number <= ?1
                 )
@@ -865,7 +877,7 @@ impl Transaction<'_> {
                     SELECT nonce
                     FROM nonce_updates
                     WHERE
-                        contract_address=updated_nonces.contract_address AND block_number <= ?2
+                        contract_address_id=updated_nonces.contract_address_id AND block_number <= ?2
                     ORDER BY block_number DESC
                     LIMIT 1
                 ) AS old_nonce
