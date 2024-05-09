@@ -214,7 +214,18 @@ impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
 }
 impl SerializeForVersion for InvokeTxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        if self.0.transaction.variant.kind() != TransactionKind::Invoke {
+            return Err(serde_json::error::Error::custom(
+                "expected Invoke transaction",
+            ));
+        }
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("type", &"INVOKE")?;
+        serializer.flatten(&CommonReceiptProperties(self.0))?;
+
+        serializer.end()
     }
 }
 impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
