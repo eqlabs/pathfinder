@@ -1,7 +1,7 @@
 use pathfinder_common::ContractAddress;
 
 use super::serialize::SerializeForVersion;
-use crate::dto::serialize;
+use crate::dto::serialize::{self, Serializer};
 
 pub struct SyncStatus<'a>(pub &'a crate::v02::types::syncing::Status);
 
@@ -11,6 +11,7 @@ pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 pub struct NumAsHex(pub u64);
 pub struct Address<'a>(pub &'a ContractAddress);
+pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
 
 mod hex_str {
     use std::borrow::Cow;
@@ -69,10 +70,7 @@ mod hex_str {
 }
 
 impl SerializeForVersion for SyncStatus<'_> {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("starting_block_hash", &BlockHash(&self.0.starting.hash))?;
         serializer.serialize_field("starting_block_num", &BlockNumber(self.0.starting.number))?;
@@ -85,59 +83,48 @@ impl SerializeForVersion for SyncStatus<'_> {
 }
 
 impl SerializeForVersion for Felt<'_> {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let hex_str = hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes());
         serializer.serialize_str(&hex_str)
     }
 }
 
 impl SerializeForVersion for BlockHash<'_> {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         serializer.serialize(&Felt(&self.0 .0))
     }
 }
 
 impl SerializeForVersion for ChainId<'_> {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let hex_str = hex_str::bytes_to_hex_str_stripped(self.0 .0.as_be_bytes());
         serializer.serialize_str(&hex_str)
     }
 }
 
 impl SerializeForVersion for BlockNumber {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         serializer.serialize_u64(self.0.get())
     }
 }
 
 impl SerializeForVersion for NumAsHex {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let hex_str = hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes());
         serializer.serialize_str(&hex_str)
     }
 }
 
 impl SerializeForVersion for Address<'_> {
-    fn serialize(
-        &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         serializer.serialize(&Felt(&self.0 .0))
+    }
+}
+
+impl SerializeForVersion for EthAddress<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let hex_str = hex_str::bytes_to_hex_str_full(self.0 .0.as_bytes());
+        serializer.serialize_str(&hex_str)
     }
 }
 
@@ -145,6 +132,7 @@ impl SerializeForVersion for Address<'_> {
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pretty_assertions_sorted::assert_eq;
+    use primitive_types::H160;
     use serde_json::json;
 
     use super::*;
@@ -224,6 +212,20 @@ mod tests {
     fn num_as_hex() {
         let uut = NumAsHex(0x1234);
         let expected = json!("0x1234");
+        let encoded = uut.serialize(Default::default()).unwrap();
+
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn eth_address() {
+        let mut bytes = [0u8; 20];
+        bytes[18] = 0x12;
+        bytes[19] = 0x34;
+
+        let uut = pathfinder_common::EthereumAddress(H160(bytes));
+        let uut = EthAddress(&uut);
+        let expected = json!("0x0000000000000000000000000000000000001234");
         let encoded = uut.serialize(Default::default()).unwrap();
 
         assert_eq!(encoded, expected);
