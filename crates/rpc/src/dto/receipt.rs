@@ -230,7 +230,31 @@ impl SerializeForVersion for InvokeTxnReceipt<'_> {
 }
 impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let message_hash = match &self.0.transaction.variant {
+            TransactionVariant::L1Handler(tx) => tx.calculate_message_hash(),
+            TransactionVariant::DeclareV0(_)
+            | TransactionVariant::DeclareV1(_)
+            | TransactionVariant::DeclareV2(_)
+            | TransactionVariant::DeclareV3(_)
+            | TransactionVariant::Deploy(_)
+            | TransactionVariant::DeployAccountV1(_)
+            | TransactionVariant::DeployAccountV3(_)
+            | TransactionVariant::InvokeV0(_)
+            | TransactionVariant::InvokeV1(_)
+            | TransactionVariant::InvokeV3(_) => {
+                return Err(serde_json::error::Error::custom(
+                    "expected L1Handler transaction",
+                ))
+            }
+        };
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.flatten(&CommonReceiptProperties(self.0))?;
+        serializer.serialize_field("type", &"L1_HANDLER")?;
+        serializer.serialize_field("message_hash", &dto::NumAsHex::H256(&message_hash))?;
+
+        serializer.end()
     }
 }
 impl SerializeForVersion for CommonReceiptProperties<'_> {
