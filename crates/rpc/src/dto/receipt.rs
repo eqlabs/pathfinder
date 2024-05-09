@@ -69,6 +69,7 @@ pub struct FeePayment<'a> {
 }
 pub struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
 pub struct ExecutionResources<'a>(pub &'a pathfinder_common::receipt::ExecutionResources);
+pub struct ComputationResources<'a>(pub &'a pathfinder_common::receipt::ExecutionResources);
 
 impl SerializeForVersion for TxnStatus {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
@@ -202,7 +203,28 @@ impl SerializeForVersion for MsgToL1<'_> {
 
 impl SerializeForVersion for ExecutionResources<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        struct DataAvailability<'a>(&'a pathfinder_common::receipt::ExecutionDataAvailability);
+
+        impl SerializeForVersion for DataAvailability<'_> {
+            fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+                let mut serializer = serializer.serialize_struct()?;
+
+                serializer.serialize_field("l1_gas", &self.0.l1_gas)?;
+                serializer.serialize_field("l1_data_gas", &self.0.l1_data_gas)?;
+
+                serializer.end()
+            }
+        }
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.flatten(&ComputationResources(&self.0))?;
+        serializer.serialize_field(
+            "data_availability",
+            &DataAvailability(&self.0.data_availability),
+        )?;
+
+        serializer.end()
     }
 }
 
@@ -215,6 +237,12 @@ impl SerializeForVersion for PriceUnit<'_> {
             _ => "FRI",
         }
         .serialize(serializer)
+    }
+}
+
+impl SerializeForVersion for ComputationResources<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
     }
 }
 
