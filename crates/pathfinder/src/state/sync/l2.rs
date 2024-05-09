@@ -278,7 +278,9 @@ where
                         );
                     (verify_result, signature, state_update)
                 }).await?;
-                verify_result.context("Verifying block commitment signature")?;
+                if let Err(error) = verify_result {
+                    tracing::warn!(%error, block_number=%block.block_number, "Block commitment signature mismatch");
+                }
                 (signature, state_update)
             }
             BlockValidationMode::AllowMismatch => (signature, state_update),
