@@ -54,6 +54,12 @@ pub struct TxnReceipt<'a> {
     pub finality: TxnFinalityStatus,
 }
 
+pub struct InvokeTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
+pub struct L1HandlerTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
+pub struct DeclareTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
+pub struct DeployTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
+pub struct DeployAccountTxnReceipt<'a>(pub &'a TxnReceipt<'a>);
+
 pub struct CommonReceiptProperties<'a> {
     pub receipt: &'a Receipt,
     pub transaction: &'a Transaction,
@@ -133,10 +139,44 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
 
 impl SerializeForVersion for TxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        use pathfinder_common::transaction::TransactionKind;
+
+        match self.transaction.variant.kind() {
+            TransactionKind::Declare => serializer.serialize(&DeclareTxnReceipt(&self)),
+            TransactionKind::Deploy => serializer.serialize(&DeployTxnReceipt(&self)),
+            TransactionKind::DeployAccount => serializer.serialize(&DeployAccountTxnReceipt(&self)),
+            TransactionKind::Invoke => serializer.serialize(&InvokeTxnReceipt(&self)),
+            TransactionKind::L1Handler => serializer.serialize(&DeclareTxnReceipt(&self)),
+        }
+    }
+}
+
+impl SerializeForVersion for DeclareTxnReceipt<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         todo!()
     }
 }
 
+impl SerializeForVersion for DeployTxnReceipt<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+impl SerializeForVersion for InvokeTxnReceipt<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
+impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        todo!()
+    }
+}
 impl SerializeForVersion for CommonReceiptProperties<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
