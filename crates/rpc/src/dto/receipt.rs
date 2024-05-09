@@ -164,6 +164,8 @@ impl SerializeForVersion for DeclareTxnReceipt<'_> {
 impl SerializeForVersion for DeployTxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let contract_address = match &self.0.transaction.variant {
+            // Partial match here is safe since this variant is deprecated.
+            // i.e. no risk of forgetting to handle a new variant.
             TransactionVariant::Deploy(tx) => &tx.contract_address,
             _ => {
                 return Err(serde_json::error::Error::custom(
@@ -183,7 +185,31 @@ impl SerializeForVersion for DeployTxnReceipt<'_> {
 }
 impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let contract_address = match &self.0.transaction.variant {
+            TransactionVariant::DeployAccountV1(tx) => &tx.contract_address,
+            TransactionVariant::DeployAccountV3(tx) => &tx.contract_address,
+            TransactionVariant::DeclareV0(_)
+            | TransactionVariant::DeclareV1(_)
+            | TransactionVariant::DeclareV2(_)
+            | TransactionVariant::DeclareV3(_)
+            | TransactionVariant::Deploy(_)
+            | TransactionVariant::InvokeV0(_)
+            | TransactionVariant::InvokeV1(_)
+            | TransactionVariant::InvokeV3(_)
+            | TransactionVariant::L1Handler(_) => {
+                return Err(serde_json::error::Error::custom(
+                    "expected Deploy transaction",
+                ))
+            }
+        };
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.flatten(&CommonReceiptProperties(self.0))?;
+        serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
+        serializer.serialize_field("contract_address", &dto::Felt(&contract_address.0))?;
+
+        serializer.end()
     }
 }
 impl SerializeForVersion for InvokeTxnReceipt<'_> {
