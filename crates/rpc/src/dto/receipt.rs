@@ -1,7 +1,7 @@
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
+use pathfinder_common::transaction::{Transaction, TransactionVariant};
+use pathfinder_common::{BlockHash, BlockNumber, TransactionHash, TransactionVersion};
 
 use super::serialize;
 use crate::dto::serialize::{SerializeForVersion, Serializer};
@@ -55,10 +55,13 @@ pub struct TxnReceipt<'a> {
 
 pub struct CommonReceiptProperties<'a> {
     pub receipt: &'a Receipt,
-    pub transaction_hash: &'a TransactionHash,
+    pub transaction: &'a Transaction,
     pub events: &'a [Event],
     pub finality: TxnFinalityStatus,
 }
+
+#[derive(Copy, Clone)]
+pub struct PriceUnit<'a>(pub &'a TransactionVersion);
 
 pub struct FeePayment<'a>(pub &'a pathfinder_common::Fee);
 pub struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
@@ -133,7 +136,7 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("transaction_hash", &dto::TxnHash(self.transaction_hash))?;
+        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.transaction.hash))?;
         serializer.serialize_field("actual_fee", &FeePayment(&self.receipt.actual_fee))?;
         serializer.serialize_field("finality_status", &self.finality)?;
         serializer.serialize_iter(
@@ -174,6 +177,18 @@ impl SerializeForVersion for MsgToL1<'_> {
 impl SerializeForVersion for ExecutionResources<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         todo!()
+    }
+}
+
+impl SerializeForVersion for PriceUnit<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        match self.0 {
+            &TransactionVersion::ZERO | &TransactionVersion::ONE | &TransactionVersion::TWO => {
+                "WEI"
+            }
+            _ => "FRI",
+        }
+        .serialize(serializer)
     }
 }
 
