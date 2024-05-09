@@ -63,7 +63,10 @@ pub struct CommonReceiptProperties<'a> {
 #[derive(Copy, Clone)]
 pub struct PriceUnit<'a>(pub &'a TransactionVersion);
 
-pub struct FeePayment<'a>(pub &'a pathfinder_common::Fee);
+pub struct FeePayment<'a> {
+    amount: &'a pathfinder_common::Fee,
+    transaction_version: &'a TransactionVersion,
+}
 pub struct MsgToL1<'a>(pub &'a pathfinder_common::receipt::L2ToL1Message);
 pub struct ExecutionResources<'a>(pub &'a pathfinder_common::receipt::ExecutionResources);
 
@@ -137,7 +140,13 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.transaction.hash))?;
-        serializer.serialize_field("actual_fee", &FeePayment(&self.receipt.actual_fee))?;
+        serializer.serialize_field(
+            "actual_fee",
+            &FeePayment {
+                amount: &self.receipt.actual_fee,
+                transaction_version: &self.transaction.version(),
+            },
+        )?;
         serializer.serialize_field("finality_status", &self.finality)?;
         serializer.serialize_iter(
             "messages_sent",
@@ -164,7 +173,12 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
 
 impl SerializeForVersion for FeePayment<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("amount", &dto::Felt(&self.amount.0))?;
+        serializer.serialize_field("unit", &PriceUnit(&self.transaction_version))?;
+
+        serializer.end()
     }
 }
 
