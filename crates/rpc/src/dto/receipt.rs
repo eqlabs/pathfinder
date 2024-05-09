@@ -2,6 +2,7 @@ use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash, TransactionVersion};
+use serde::ser::Error;
 
 use super::serialize;
 use crate::dto::serialize::{SerializeForVersion, Serializer};
@@ -242,7 +243,36 @@ impl SerializeForVersion for PriceUnit<'_> {
 
 impl SerializeForVersion for ComputationResources<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        todo!()
+        use std::num::NonZeroU64;
+
+        // All values are required to be non-zero. Steps MUST be non-zero as it is
+        // required, however the rest are simply skipped if zero.
+        let steps = NonZeroU64::new(self.0.n_steps)
+            .ok_or_else(|| serde_json::error::Error::custom("steps was zero which is invalid"))?;
+        let memory_holes = NonZeroU64::new(self.0.n_memory_holes);
+        let range_check = NonZeroU64::new(self.0.builtins.range_check);
+        let pedersen = NonZeroU64::new(self.0.builtins.pedersen);
+        let poseidon = NonZeroU64::new(self.0.builtins.poseidon);
+        let ec_op = NonZeroU64::new(self.0.builtins.ec_op);
+        let edcsa = NonZeroU64::new(self.0.builtins.ecdsa);
+        let bitwise = NonZeroU64::new(self.0.builtins.bitwise);
+        let keccak = NonZeroU64::new(self.0.builtins.keccak);
+        let segment_arena = NonZeroU64::new(self.0.builtins.segment_arena);
+
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("steps", &steps)?;
+        serializer.serialize_optional("memory_holes", memory_holes)?;
+        serializer.serialize_optional("range_check_builtin_applications", range_check)?;
+        serializer.serialize_optional("pedersen_builtin_applications", pedersen)?;
+        serializer.serialize_optional("poseidon_builtin_applications", poseidon)?;
+        serializer.serialize_optional("ec_op_builtin_applications", ec_op)?;
+        serializer.serialize_optional("ecdsa_builtin_applications", edcsa)?;
+        serializer.serialize_optional("bitwise_builtin_applications", bitwise)?;
+        serializer.serialize_optional("keccak_builtin_applications", keccak)?;
+        serializer.serialize_optional("segment_arena_builtin", segment_arena)?;
+
+        serializer.end()
     }
 }
 
