@@ -47,7 +47,7 @@ impl serialize::SerializeForVersion for Output {
                 block_number: Some(*block_number),
                 receipt,
                 transaction,
-                events: &events,
+                events,
                 finality: *finality,
             },
             Output::Pending {
@@ -59,7 +59,7 @@ impl serialize::SerializeForVersion for Output {
                 block_number: None,
                 receipt,
                 transaction,
-                events: &events,
+                events,
                 finality: dto::TxnFinalityStatus::AcceptedOnL2,
             },
         }
