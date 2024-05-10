@@ -4,13 +4,14 @@ use bitvec::slice::BitSlice;
 use crate::algebra::curve::*;
 use crate::algebra::field::*;
 
-/// A projective point on an elliptic curve over [MontFelt].
+/// A projective point on an elliptic curve over [MontFelt] satisfying:
+///   x = X / Z
+///   y = Y / Z
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectivePoint {
     pub x: MontFelt,
     pub y: MontFelt,
     pub z: MontFelt,
-    pub infinity: bool,
 }
 
 impl From<&AffinePoint> for ProjectivePoint {
@@ -18,12 +19,7 @@ impl From<&AffinePoint> for ProjectivePoint {
         let x = p.x;
         let y = p.y;
         let z = MontFelt::ONE;
-        ProjectivePoint {
-            x,
-            y,
-            z,
-            infinity: false,
-        }
+        ProjectivePoint { x, y, z }
     }
 }
 
@@ -36,7 +32,6 @@ impl ProjectivePoint {
             x,
             y,
             z: MontFelt::ONE,
-            infinity: false,
         }
     }
 
@@ -48,7 +43,6 @@ impl ProjectivePoint {
             x,
             y,
             z: MontFelt::ONE,
-            infinity: false,
         }
     }
 
@@ -63,8 +57,7 @@ impl ProjectivePoint {
         Self {
             x: MontFelt::ZERO,
             y: MontFelt::ZERO,
-            z: MontFelt::ONE,
-            infinity: true,
+            z: MontFelt::ZERO,
         }
     }
 
@@ -73,9 +66,14 @@ impl ProjectivePoint {
         self.y = -self.y;
     }
 
+    /// Check if the point is the point of infinity
+    pub fn is_infinity(&self) -> bool {
+        self.z.is_zero()
+    }
+
     /// Double a point
     pub fn double(&mut self) {
-        if self.infinity {
+        if self.is_infinity() {
             return;
         }
 
@@ -99,14 +97,13 @@ impl ProjectivePoint {
 
     /// Add a point to this point
     pub fn add(&mut self, other: &ProjectivePoint) {
-        if other.infinity {
+        if other.is_infinity() {
             return;
         }
-        if self.infinity {
+        if self.is_infinity() {
             self.x = other.x;
             self.y = other.y;
             self.z = other.z;
-            self.infinity = other.infinity;
             return;
         }
         let u0 = self.x * other.z;
@@ -115,7 +112,7 @@ impl ProjectivePoint {
         let t1 = other.y * self.z;
         if u0 == u1 {
             if t0 != t1 {
-                self.infinity = true;
+                self.z = MontFelt::ZERO;
             } else {
                 self.double();
             }
@@ -144,11 +141,15 @@ impl ProjectivePoint {
         if other.infinity {
             return;
         }
-        if self.infinity {
+        if self.is_infinity() {
             self.x = other.x;
             self.y = other.y;
-            self.z = MontFelt::ONE;
-            self.infinity = other.infinity;
+            self.z = if other.infinity {
+                MontFelt::ZERO
+            } else {
+                MontFelt::ONE
+            };
+
             return;
         }
         let u0 = self.x;
@@ -157,7 +158,7 @@ impl ProjectivePoint {
         let t1 = other.y * self.z;
         if u0 == u1 {
             if t0 != t1 {
-                self.infinity = true;
+                self.z = MontFelt::ZERO;
                 return;
             } else {
                 self.double();

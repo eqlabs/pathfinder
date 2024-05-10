@@ -19,20 +19,22 @@ pub fn pedersen_hash(a: Felt, b: Felt) -> Felt {
 
     // Preprocessed material is lookup-tables for each chunk of bits
     let table_size = (1 << CURVE_CONSTS_BITS) - 1;
-    let add_points = |acc: &mut ProjectivePoint, bits: &BitSlice<u8, _>, prep: &[AffinePoint]| {
+    let add_points = |acc: &mut XYZZPoint, bits: &BitSlice<u8, _>, prep: &[AffinePoint]| {
         bits.chunks(CURVE_CONSTS_BITS)
             .enumerate()
             .for_each(|(i, v)| {
                 let offset: usize = v.load_le();
                 if offset > 0 {
                     // Table lookup at 'offset-1' in table for chunk 'i'
-                    acc.add_affine(&prep[i * table_size + offset - 1]);
+                    // We can add unchecked, since acc and prep. point cannot be infinity.
+                    acc.add_affine_unchecked(&prep[i * table_size + offset - 1]);
                 }
             });
     };
 
     // Compute hash
-    let mut acc = PEDERSEN_P0;
+    let mut acc = XYZZPoint::from(&PEDERSEN_P0);
+
     add_points(&mut acc, &a_bits[..248], &CURVE_CONSTS_P1); // Add a_low * P1
     add_points(&mut acc, &a_bits[248..252], &CURVE_CONSTS_P2); // Add a_high * P2
     add_points(&mut acc, &b_bits[..248], &CURVE_CONSTS_P3); // Add b_low * P3

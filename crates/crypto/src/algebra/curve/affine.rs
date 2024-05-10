@@ -25,6 +25,20 @@ impl From<&ProjectivePoint> for AffinePoint {
     }
 }
 
+impl From<&XYZZPoint> for AffinePoint {
+    fn from(p: &XYZZPoint) -> Self {
+        let a = p.zzz.inverse().unwrap();
+        let b = (p.zz * a).square();
+        let x = p.x * b;
+        let y = p.y * a;
+        AffinePoint {
+            x,
+            y,
+            infinity: false,
+        }
+    }
+}
+
 impl AffinePoint {
     /// Create a point from (x,y) as raw u64's in Montgomery representation
     pub const fn from_raw(x: [u64; 4], y: [u64; 4]) -> Self {
