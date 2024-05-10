@@ -69,9 +69,9 @@ use crate::storage::Storage;
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
-    root: Option<Rc<RefCell<InternalNode>>>,
-    leaves: HashMap<BitVec<u8, Msb0>, Felt>,
-    nodes_removed: Vec<u64>,
+    pub root: Option<Rc<RefCell<InternalNode>>>,
+    pub leaves: HashMap<BitVec<u8, Msb0>, Felt>,
+    pub nodes_removed: Vec<u64>,
     _hasher: std::marker::PhantomData<H>,
     /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
@@ -537,6 +537,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         root: u64,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
+
     ) -> anyhow::Result<Option<Vec<TrieNode>>> {
         // Manually traverse towards the key.
         let mut nodes = Vec::new();
