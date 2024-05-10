@@ -5,7 +5,12 @@ use std::sync::{Arc, RwLock};
 use anyhow::Context;
 use futures::{pin_mut, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
-use p2p::client::peer_agnostic::{Class, Client as P2PClient, EventsForBlockByTransaction};
+use p2p::client::peer_agnostic::{
+    Class,
+    Client as P2PClient,
+    EventsForBlockByTransaction,
+    TransactionsForBlock,
+};
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
@@ -237,7 +242,7 @@ impl Sync {
 
 async fn handle_transaction_stream(
     transaction_stream: impl futures::Stream<
-        Item = Result<PeerData<(BlockNumber, Vec<(Transaction, Receipt)>)>, anyhow::Error>,
+        Item = Result<PeerData<TransactionsForBlock>, anyhow::Error>,
     >,
     storage: Storage,
     chain_id: ChainId,
@@ -571,7 +576,121 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 mod tests {
     use super::*;
 
-    mod handle_transaction_stream {}
+    mod handle_transaction_stream {
+        use fake::{Dummy, Faker};
+        use futures::stream;
+        use p2p::client::peer_agnostic::TransactionsForBlock;
+        use p2p::libp2p::PeerId;
+        use pathfinder_common::receipt::Receipt;
+        use pathfinder_common::transaction::TransactionVariant;
+        use pathfinder_common::TransactionHash;
+        use pathfinder_crypto::Felt;
+        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::StorageBuilder;
+
+        use super::super::handle_transaction_stream;
+        use super::*;
+
+        struct Setup {
+            pub streamed_transactions: Vec<anyhow::Result<PeerData<TransactionsForBlock>>>,
+            pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
+            pub storage: Storage,
+        }
+
+        async fn setup(num_blocks: usize) -> Setup {
+            tokio::task::spawn_blocking(move || {
+                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let streamed_transactions = blocks
+                    .iter()
+                    .map(|block| {
+                        anyhow::Result::Ok(PeerData::for_tests((
+                            block.header.header.number,
+                            block
+                                .transaction_data
+                                .iter()
+                                .map(|x| (x.0.clone(), x.1.clone()))
+                                .collect::<Vec<_>>(),
+                        )))
+                    })
+                    .collect::<Vec<_>>();
+                let expected_transactions = blocks
+                    .iter()
+                    .map(|block| {
+                        block
+                            .transaction_data
+                            .iter()
+                            .map(|x| (x.0.clone(), x.1.clone()))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                blocks.iter_mut().for_each(|b| {
+                    let transaction_commitment = calculate_transaction_commitment(
+                        b.transaction_data
+                            .iter()
+                            .map(|(t, _, _)| t.clone())
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        TransactionCommitmentFinalHashType::Normal,
+                    )
+                    .unwrap();
+                    b.header.header.transaction_commitment = transaction_commitment;
+                    // Purge transaction data.
+                    b.transaction_data = Default::default();
+                });
+
+                let storage = StorageBuilder::in_memory().unwrap();
+                fake_storage::fill(&storage, &blocks);
+                Setup {
+                    streamed_transactions,
+                    expected_transactions,
+                    storage,
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        #[tokio::test]
+        async fn happy_path() {
+            const NUM_BLOCKS: usize = 10;
+            let Setup {
+                streamed_transactions,
+                expected_transactions,
+                storage,
+            } = setup(NUM_BLOCKS).await;
+
+            let x = expected_transactions
+                .iter()
+                .map(|x| x.iter().map(|y| y.0.hash).collect::<Vec<_>>())
+                .collect::<Vec<_>>();
+
+            handle_transaction_stream(
+                stream::iter(streamed_transactions),
+                storage.clone(),
+                ChainId::SEPOLIA_TESTNET,
+            )
+            .await
+            .unwrap();
+
+            let actual_transactions = tokio::task::spawn_blocking(move || {
+                let mut conn = storage.connection().unwrap();
+                let db_tx = conn.transaction().unwrap();
+                (0..NUM_BLOCKS)
+                    .map(|n| {
+                        db_tx
+                            .transactions_with_receipts_for_block(
+                                BlockNumber::new_or_panic(n as u64).into(),
+                            )
+                            .unwrap()
+                            .unwrap()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap();
+            pretty_assertions_sorted::assert_eq!(expected_transactions, actual_transactions);
+        }
+    }
 
     mod handle_class_stream {
         use std::collections::HashMap;

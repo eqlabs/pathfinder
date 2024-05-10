@@ -6,3 +6,7 @@
 # everyone who runs the test benefits from these saved cases.
 cc bc13615220330a9aa3dcbad1f71a6b8c74a7d14e36ffa93a182243c593cc866c # shrinks to (num_blocks, seed, start_block, limit, step, direction) = (1, 8902626232982046058, 0, 1, Step(1), Forward)
 cc 57069d20aea6c1421adac0b72bef7431b6c650f5f41dd6d3b16c2da0121486c3 # shrinks to (num_blocks, seed, start_block, limit, step, direction) = (1, 649405005586826819, 0, 1, Step(1), Forward)
+cc bfb2d0ca5bc6271afdb10db6bb941552417549d62313cfdab5b1c8d63bed4559 # shrinks to (num_blocks, seed, start_block, limit, step, direction) = (7, 1516226182208585536, 0, 1, Step(1), Forward)
+cc 362172e92f8c3bb8b57add0452a53575bef5640a22e0d9cfcabe821c5150086f # shrinks to (num_blocks, seed, start_block, limit, step, direction) = (4, 1507789758493800495, 1, 3, Step(1), Backward)
+cc 3c0631f4271587b05d7638c8f95a767a85062d1ffb771167a3b24028376315df # shrinks to (num_blocks, seed, start_block, limit, step, direction) = (7, 9090751796217969733, 1, 4, Step(1), Backward)
+cc e61a757eb84e98a3e8429942c16b6937603d36bd6272a92db52a392df2370a84 # shrinks to (num_blocks, seed, start_block, limit, step, direction) = (9, 12221019298661150784, 5, 3, Step(1), Backward)

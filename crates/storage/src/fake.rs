@@ -1,13 +1,8 @@
 //! Create fake blockchain data for test purposes
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::{
-    transaction as common,
-    ClassHash,
-    SierraHash,
-    SignedBlockHeader,
-    StateUpdate,
-};
+use pathfinder_common::transaction::Transaction;
+use pathfinder_common::{ClassHash, SierraHash, SignedBlockHeader, StateUpdate};
 use rand::Rng;
 
 use crate::Storage;
@@ -15,7 +10,7 @@ use crate::Storage;
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Block {
     pub header: SignedBlockHeader,
-    pub transaction_data: Vec<(common::Transaction, Receipt, Vec<Event>)>,
+    pub transaction_data: Vec<(Transaction, Receipt, Vec<Event>)>,
     pub state_update: StateUpdate,
     pub cairo_defs: Vec<(ClassHash, Vec<u8>)>, // Cairo 0 definitions
     pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
@@ -33,6 +28,7 @@ pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<Block> {
 pub fn fill(storage: &Storage, blocks: &[Block]) {
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
+
     blocks.iter().for_each(
         |Block {
              header,
@@ -118,11 +114,12 @@ pub mod init {
         SystemContractUpdate,
     };
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
+    use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        transaction as common,
         BlockHash,
         BlockHeader,
         BlockNumber,
+        ChainId,
         ContractAddress,
         SignedBlockHeader,
         StateCommitment,
@@ -157,8 +154,9 @@ pub mod init {
     ///       limit in protobuf encoding of 1MiB**, btw see usage of
     ///       `p2p_proto::MESSAGE_SIZE_LIMIT` et al.
     ///     - casm definitions for sierra classes are empty
-    ///
-    ///     
+    /// - transactions
+    ///     - transaction hashes are calculated from their respective variant,
+    ///       with ChainId set to `SEPOLIA_TESTNET`
     pub fn with_n_blocks(n: usize) -> Vec<Block> {
         let mut rng = rand::thread_rng();
         with_n_blocks_and_rng(n, &mut rng)
@@ -183,8 +181,9 @@ pub mod init {
             .into_iter()
             .enumerate()
             .map(|(i, t)| {
-                let t: common::Transaction = t.into();
-                let transaction_hash = t.hash;
+                let mut t: Transaction = t.into();
+                let transaction_hash = t.variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+                t.hash = transaction_hash;
 
                 let r: Receipt = crate::connection::transaction::dto::Receipt {
                     transaction_hash: transaction_hash.as_inner().to_owned().into(),
