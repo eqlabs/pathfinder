@@ -258,7 +258,6 @@ pub mod test_utils {
     use pathfinder_common::transaction::*;
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage, StorageBuilder};
-    use primitive_types::H160;
     use starknet_gateway_types::reply::GasPrices;
 
     use crate::pending::PendingData;
@@ -550,7 +549,7 @@ pub mod test_utils {
                     l2_to_l1_message_payload_elem!("0x2"),
                     l2_to_l1_message_payload_elem!("0x3"),
                 ],
-                to_address: EthereumAddress(H160::zero()),
+                to_address: ContractAddress::ZERO,
             }],
             ..receipt0.clone()
         };

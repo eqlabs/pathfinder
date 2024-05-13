@@ -181,7 +181,11 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
                 .map(|m| MessageToL1 {
                     from_address: m.from_address.0,
                     payload: m.payload.into_iter().map(|p| p.0).collect(),
-                    to_address: EthereumAddress(m.to_address.0),
+                    // FIXME: to_address is incorrect in the p2p specification and should actually
+                    // be a Felt type. Once the spec is fixed, we can remove this temporary hack.
+                    to_address: EthereumAddress(primitive_types::H160::from_slice(
+                        &m.to_address.0.to_be_bytes()[12..],
+                    )),
                 })
                 .collect(),
             execution_resources: {
