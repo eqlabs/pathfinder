@@ -74,7 +74,7 @@ pub(super) fn state_diff_lengths_stream(
 
             if batch.is_empty() {
                 Err(anyhow::anyhow!(
-                    "No state update counts found for range: start {start}, batch_size (batch_size)"
+                    "No state update counts found for range: start {start}, batch_size {batch_size}"
                 ))?;
                 break;
             }
@@ -104,15 +104,13 @@ pub(super) async fn persist(
         let tail = contract_updates
             .last()
             .map(|x| x.data.0)
-            .ok_or(anyhow::anyhow!(
-                "Verification results are empty, no block to persist"
-            ))?;
+            .context("Verification results are empty, no block to persist")?;
 
         for (block_number, state_diff) in contract_updates.into_iter().map(|x| x.data) {
             let block_hash = transaction
                 .block_hash(block_number.into())
                 .context("Getting block hash")?
-                .ok_or(anyhow::anyhow!("Block hash not found"))?;
+                .context("Block hash not found")?;
 
             let state_update = StateUpdate {
                 block_hash,
@@ -197,7 +195,7 @@ fn verify_one(
     } = transaction
         .block_header(block_number.into())
         .context("getting block header")?
-        .ok_or(anyhow::anyhow!("Block header not found"))?;
+        .context("Block header not found")?;
 
     let mut storage_commitment_tree = match block_number.parent() {
         Some(parent) => StorageCommitmentTree::load(&transaction, parent)

@@ -287,6 +287,19 @@ impl Transaction<'_> {
             }))
     }
 
+    pub fn transactions_with_receipts_for_block(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<Vec<(StarknetTransaction, Receipt)>>> {
+        let Some(block_number) = self.block_number(block)? else {
+            return Ok(None);
+        };
+
+        Ok(self
+            .query_transactions_by_block(block_number)?
+            .map(|transactions| transactions.into_iter().map(|(t, r, ..)| (t, r)).collect()))
+    }
+
     pub fn events_for_block(&self, block: BlockId) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(None);
@@ -1856,7 +1869,7 @@ pub(crate) mod dto {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
                 version: Felt::from_u64(rng.gen_range(0..=1)).into(),
-                contract_address: ContractAddress::ZERO.0.into(), // Faker.fake_with_rng(rng), FIXME
+                contract_address: Faker.fake_with_rng(rng),
                 contract_address_salt: Faker.fake_with_rng(rng),
                 class_hash: Faker.fake_with_rng(rng),
                 constructor_calldata: Faker.fake_with_rng(rng),

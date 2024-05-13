@@ -1,13 +1,12 @@
 use std::borrow::Cow;
 
-use anyhow::{Context, Ok};
+use anyhow::Context;
 use pathfinder_common::receipt::{
     BuiltinCounters,
     ExecutionDataAvailability,
     ExecutionResources,
     ExecutionStatus,
     L2ToL1Message,
-    Receipt,
 };
 use pathfinder_common::transaction::{
     DataAvailabilityMode,
@@ -56,7 +55,6 @@ use pathfinder_common::{
     StateDiffCommitment,
     StorageCommitment,
     TransactionCommitment,
-    TransactionHash,
     TransactionIndex,
     TransactionNonce,
     TransactionSignatureElem,
@@ -65,6 +63,8 @@ use pathfinder_common::{
 use pathfinder_crypto::Felt;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
+
+use crate::client::peer_agnostic::Receipt;
 
 /// We don't want to introduce circular dependencies between crates
 /// and we need to work around for the orphan rule - implement conversion fns
@@ -100,10 +100,8 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             header: BlockHeader {
                 hash: BlockHash(dto.block_hash.0),
                 parent_hash: BlockHash(dto.parent_hash.0),
-                number: BlockNumber::new(dto.number)
-                    .ok_or(anyhow::anyhow!("block number > i64::MAX"))?,
-                timestamp: BlockTimestamp::new(dto.time)
-                    .ok_or(anyhow::anyhow!("block timestamp > i64::MAX"))?,
+                number: BlockNumber::new(dto.number).context("block number > i64::MAX")?,
+                timestamp: BlockTimestamp::new(dto.time).context("block timestamp > i64::MAX")?,
                 eth_l1_gas_price: GasPrice(dto.gas_price_wei),
                 strk_l1_gas_price: GasPrice(dto.gas_price_fri),
                 eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
@@ -334,12 +332,10 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
     }
 }
 
-impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
-    /// ## Important
-    ///
-    /// This conversion leaves `transaction_hash` zeroed. The caller must make
-    /// sure to compute its value after the conversion succeeds.
-    fn try_from_dto(
+impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
+    type Error = anyhow::Error;
+
+    fn try_from(
         (dto, transaction_index): (p2p_proto::receipt::Receipt, TransactionIndex),
     ) -> anyhow::Result<Self> {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
@@ -356,7 +352,6 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
             | L1Handler(L1HandlerTransactionReceipt { common, .. })
             | Deploy(DeployTransactionReceipt { common, .. })
             | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
-                transaction_hash: TransactionHash::ZERO,
                 actual_fee: Fee(common.actual_fee),
                 execution_resources: ExecutionResources {
                     builtins: BuiltinCounters {

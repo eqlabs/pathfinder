@@ -5,13 +5,25 @@ use std::sync::{Arc, RwLock};
 use anyhow::Context;
 use futures::{pin_mut, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
-use p2p::client::peer_agnostic::{Class, Client as P2PClient, EventsForBlockByTransaction};
+use p2p::client::peer_agnostic::{
+    Class,
+    Client as P2PClient,
+    EventsForBlockByTransaction,
+    TransactionBlockData,
+};
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
-use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ClassHash, TransactionIndex};
+use pathfinder_common::{
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    ChainId,
+    ClassHash,
+    TransactionIndex,
+};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
@@ -35,6 +47,7 @@ pub struct Sync {
     // TODO: merge these two inside the client.
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
+    pub chain_id: ChainId,
 }
 
 impl Sync {
@@ -42,12 +55,14 @@ impl Sync {
         storage: Storage,
         p2p: P2PClient,
         ethereum: (pathfinder_ethereum::EthereumClient, H160),
+        chain_id: ChainId,
     ) -> Self {
         Self {
             storage,
             p2p,
             eth_client: ethereum.0,
             eth_address: ethereum.1,
+            chain_id,
         }
     }
 
@@ -83,9 +98,7 @@ impl Sync {
         self.sync_headers(anchor).await?;
 
         // Sync the rest of the data in chronological order.
-        self.sync_transactions()
-            .await
-            .context("Syncing transactions")?;
+        self.sync_transactions(head, self.chain_id).await?;
         self.sync_state_updates(head).await?;
         self.sync_class_definitions(head).await?;
         self.sync_events(head).await?;
@@ -135,149 +148,27 @@ impl Sync {
         Ok(())
     }
 
-    async fn sync_transactions(&self) -> anyhow::Result<()> {
-        let (first_block, last_block) = spawn_blocking({
-            let storage = self.storage.clone();
-            move || -> anyhow::Result<(Option<BlockNumber>, Option<BlockNumber>)> {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                let first_block = db
-                    .first_block_without_transactions()
-                    .context("Querying first block without transactions")?;
-                let last_block = db
-                    .block_id(pathfinder_storage::BlockId::Latest)
-                    .context("Querying latest block without transactions")?
-                    .map(|(block_number, _)| block_number);
-                Ok((first_block, last_block))
-            }
-        })
-        .await
-        .context("Joining blocking task")??;
-
-        let Some(first_block) = first_block else {
+    async fn sync_transactions(
+        &self,
+        stop: BlockNumber,
+        chain_id: ChainId,
+    ) -> Result<(), SyncError> {
+        let Some(start) = transactions::next_missing(self.storage.clone(), stop)
+            .await
+            .context("Finding next block with missing transaction(s)")?
+        else {
             return Ok(());
         };
-        let last_block = last_block.context("Last block not found but first block found")?;
 
-        let mut curr_block = headers::query(self.storage.clone(), first_block)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("First block not found"))?;
+        let transaction_stream = self.p2p.clone().transactions_stream(
+            start,
+            stop,
+            transactions::counts_stream(self.storage.clone(), start, stop),
+        );
 
-        // Loop which refreshes peer set once we exhaust it.
-        loop {
-            let peers = self
-                .p2p
-                .get_update_peers_with_transaction_sync_capability()
-                .await;
+        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id).await?;
 
-            // Attempt each peer.
-            'next_peer: for peer in peers {
-                let request = TransactionsRequest {
-                    iteration: Iteration {
-                        start: BlockNumberOrHash::Number(curr_block.number.get()),
-                        direction: Direction::Forward,
-                        limit: last_block.get() - curr_block.number.get() + 1,
-                        step: 1.into(),
-                    },
-                };
-
-                let mut responses =
-                    match self.p2p.send_transactions_sync_request(peer, request).await {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
-                            continue 'next_peer;
-                        }
-                    };
-
-                let mut transactions = Vec::new();
-                while let Some(transaction) = responses.next().await {
-                    match transaction {
-                        TransactionsResponse::TransactionWithReceipt(tx) => {
-                            let TransactionWithReceipt {
-                                transaction,
-                                receipt,
-                            } = tx;
-                            match (
-                                TransactionVariant::try_from_dto(transaction),
-                                Receipt::try_from_dto((
-                                    receipt,
-                                    TransactionIndex::new_or_panic(
-                                        transactions.len().try_into().expect("ptr size is 64bits"),
-                                    ),
-                                )),
-                            ) {
-                                (Ok(tx), Ok(rec))
-                                    if transactions.len() < curr_block.transaction_count =>
-                                {
-                                    transactions.push((tx, rec))
-                                }
-                                (Ok(tx), Ok(rec)) => {
-                                    let Some(checked) = check_transactions(
-                                        &curr_block,
-                                        std::mem::take(&mut transactions),
-                                    )
-                                    .await?
-                                    else {
-                                        tracing::debug!(
-                                            "Invalid transactions for block {}, trying next peer",
-                                            curr_block.number
-                                        );
-                                        continue 'next_peer;
-                                    };
-
-                                    transactions::persist(
-                                        self.storage.clone(),
-                                        curr_block.clone(),
-                                        checked,
-                                    )
-                                    .await
-                                    .context("Inserting transactions")?;
-                                    if curr_block.number == last_block {
-                                        return Ok(());
-                                    }
-                                    curr_block =
-                                        headers::query(self.storage.clone(), curr_block.number + 1)
-                                            .await?
-                                            .ok_or_else(|| {
-                                                anyhow::anyhow!("Next block not found")
-                                            })?;
-                                    transactions.push((tx, rec));
-                                }
-                                (Err(error), _) | (_, Err(error)) => {
-                                    tracing::debug!(%peer, %error, "Transaction stream returned unexpected DTO");
-                                    continue 'next_peer;
-                                }
-                            }
-                        }
-                        TransactionsResponse::Fin if curr_block.number == last_block => {
-                            let Some(checked) =
-                                check_transactions(&curr_block, std::mem::take(&mut transactions))
-                                    .await?
-                            else {
-                                tracing::debug!(
-                                    "Invalid transactions for block {}, trying next peer",
-                                    curr_block.number
-                                );
-                                continue 'next_peer;
-                            };
-
-                            transactions::persist(self.storage.clone(), curr_block, checked)
-                                .await
-                                .context("Inserting transactions")?;
-                            return Ok(());
-                        }
-                        TransactionsResponse::Fin => {
-                            tracing::debug!(%peer, "Unexpected transaction stream Fin");
-                            continue 'next_peer;
-                        }
-                    };
-                }
-            }
-        }
+        Ok(())
     }
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {
@@ -349,6 +240,27 @@ impl Sync {
     }
 }
 
+async fn handle_transaction_stream(
+    transaction_stream: impl futures::Stream<
+        Item = Result<PeerData<TransactionBlockData>, anyhow::Error>,
+    >,
+    storage: Storage,
+    chain_id: ChainId,
+) -> Result<(), SyncError> {
+    transaction_stream
+        .map_err(Into::into)
+        .and_then(|x| transactions::compute_hashes(x, storage.clone(), chain_id))
+        .and_then(|x| transactions::verify_commitment(x, storage.clone()))
+        .try_chunks(100)
+        .map_err(|e| e.1)
+        .and_then(|x| transactions::persist(storage.clone(), x))
+        .inspect_ok(|x| tracing::info!(tail=%x, "Transactions chunk synced"))
+        // Drive stream to completion.
+        .try_fold((), |_, _| std::future::ready(Ok(())))
+        .await?;
+    Ok(())
+}
+
 async fn handle_class_stream(
     class_stream: impl futures::Stream<Item = Result<PeerData<Class>, anyhow::Error>>,
     storage: Storage,
@@ -390,48 +302,6 @@ async fn handle_event_stream(
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await?;
     Ok(())
-}
-
-/// Takes ownership of transactions and returns them if verification passes.
-async fn check_transactions(
-    block: &BlockHeader,
-    transactions: Vec<(TransactionVariant, Receipt)>,
-) -> anyhow::Result<Option<Vec<(Transaction, Receipt)>>> {
-    if transactions.len() != block.transaction_count {
-        return Ok(None);
-    }
-    let (transaction_variants, receipts): (Vec<TransactionVariant>, Vec<Receipt>) =
-        transactions.into_iter().unzip();
-    let transaction_final_hash_type =
-        TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
-    let (transaction_commitment, transactions) = spawn_blocking({
-        move || {
-            let mut transactions = Vec::new();
-
-            rayon::scope(|s| {
-                s.spawn(|_| {
-                    use rayon::prelude::*;
-
-                    transactions = transaction_variants
-                        .into_par_iter()
-                        .map(|variant| Transaction {
-                            hash: todo!(),
-                            variant,
-                        })
-                        .collect();
-                })
-            });
-
-            calculate_transaction_commitment(&transactions, transaction_final_hash_type)
-                .map_err(anyhow::Error::from)
-                .map(|commitment| (commitment, transactions))
-        }
-    })
-    .await
-    .context("Joining blocking task")?
-    .context("Calculating transaction commitment")?;
-    Ok((transaction_commitment == block.transaction_commitment)
-        .then_some(transactions.into_iter().zip(receipts).collect()))
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with
@@ -664,30 +534,31 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 mod tests {
     use super::*;
 
-    mod handle_event_stream {
-        use fake::{Fake, Faker};
+    mod handle_transaction_stream {
+        use fake::{Dummy, Faker};
         use futures::stream;
+        use p2p::client::peer_agnostic::TransactionBlockData;
         use p2p::libp2p::PeerId;
-        use pathfinder_common::event::Event;
+        use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::{fake as fake_storage, StorageBuilder};
+        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::StorageBuilder;
 
-        use super::super::handle_event_stream;
+        use super::super::handle_transaction_stream;
         use super::*;
-        use crate::state::block_hash::calculate_event_commitment;
 
         struct Setup {
-            pub streamed_events: Vec<anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
-            pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
+            pub streamed_transactions: Vec<anyhow::Result<PeerData<TransactionBlockData>>>,
+            pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
 
-        async fn setup(num_blocks: usize, compute_event_commitments: bool) -> Setup {
+        async fn setup(num_blocks: usize) -> Setup {
             tokio::task::spawn_blocking(move || {
                 let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
-                let streamed_events = blocks
+                let streamed_transactions = blocks
                     .iter()
                     .map(|block| {
                         anyhow::Result::Ok(PeerData::for_tests((
@@ -695,45 +566,41 @@ mod tests {
                             block
                                 .transaction_data
                                 .iter()
-                                .map(|x| x.2.clone())
+                                .map(|x| (x.0.variant.clone(), x.1.clone().into()))
                                 .collect::<Vec<_>>(),
                         )))
                     })
                     .collect::<Vec<_>>();
-                let expected_events = blocks
+                let expected_transactions = blocks
                     .iter()
                     .map(|block| {
                         block
                             .transaction_data
                             .iter()
-                            .map(|x| (x.0.hash, x.2.clone()))
+                            .map(|x| (x.0.clone(), x.1.clone()))
                             .collect::<Vec<_>>()
                     })
                     .collect::<Vec<_>>();
+                blocks.iter_mut().for_each(|b| {
+                    let transaction_commitment = calculate_transaction_commitment(
+                        b.transaction_data
+                            .iter()
+                            .map(|(t, _, _)| t.clone())
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        TransactionCommitmentFinalHashType::Normal,
+                    )
+                    .unwrap();
+                    b.header.header.transaction_commitment = transaction_commitment;
+                    // Purge transaction data.
+                    b.transaction_data = Default::default();
+                });
 
                 let storage = StorageBuilder::in_memory().unwrap();
-                blocks.iter_mut().for_each(|block| {
-                    if compute_event_commitments {
-                        block.header.header.event_commitment = calculate_event_commitment(
-                            &block
-                                .transaction_data
-                                .iter()
-                                .flat_map(|(_, _, events)| events)
-                                .collect::<Vec<_>>(),
-                        )
-                        .unwrap();
-                    }
-                    // Purge events
-                    block
-                        .transaction_data
-                        .iter_mut()
-                        .for_each(|(_, _, events)| events.clear());
-                    block.cairo_defs.iter_mut().for_each(|(_, def)| def.clear());
-                });
                 fake_storage::fill(&storage, &blocks);
                 Setup {
-                    streamed_events,
-                    expected_events,
+                    streamed_transactions,
+                    expected_transactions,
                     storage,
                 }
             })
@@ -745,22 +612,33 @@ mod tests {
         async fn happy_path() {
             const NUM_BLOCKS: usize = 10;
             let Setup {
-                streamed_events,
-                expected_events,
+                streamed_transactions,
+                expected_transactions,
                 storage,
-            } = setup(NUM_BLOCKS, true).await;
+            } = setup(NUM_BLOCKS).await;
 
-            handle_event_stream(stream::iter(streamed_events), storage.clone())
-                .await
-                .unwrap();
+            let x = expected_transactions
+                .iter()
+                .map(|x| x.iter().map(|y| y.0.hash).collect::<Vec<_>>())
+                .collect::<Vec<_>>();
 
-            let actual_events = tokio::task::spawn_blocking(move || {
+            handle_transaction_stream(
+                stream::iter(streamed_transactions),
+                storage.clone(),
+                ChainId::SEPOLIA_TESTNET,
+            )
+            .await
+            .unwrap();
+
+            let actual_transactions = tokio::task::spawn_blocking(move || {
                 let mut conn = storage.connection().unwrap();
                 let db_tx = conn.transaction().unwrap();
                 (0..NUM_BLOCKS)
                     .map(|n| {
                         db_tx
-                            .events_for_block(BlockNumber::new_or_panic(n as u64).into())
+                            .transactions_with_receipts_for_block(
+                                BlockNumber::new_or_panic(n as u64).into(),
+                            )
                             .unwrap()
                             .unwrap()
                     })
@@ -768,52 +646,7 @@ mod tests {
             })
             .await
             .unwrap();
-
-            pretty_assertions_sorted::assert_eq!(expected_events, actual_events);
-        }
-
-        #[tokio::test]
-        async fn commitment_mismatch() {
-            const NUM_BLOCKS: usize = 1;
-            let Setup {
-                streamed_events,
-                expected_events,
-                storage,
-            } = setup(NUM_BLOCKS, false).await;
-            let expected_peer_id = streamed_events[0].as_ref().unwrap().peer;
-
-            assert_matches::assert_matches!(
-                handle_event_stream(stream::iter(streamed_events), storage.clone())
-                    .await
-                    .unwrap_err(),
-                SyncError::EventCommitmentMismatch(x) => assert_eq!(x, expected_peer_id)
-            );
-        }
-
-        #[tokio::test]
-        async fn stream_failure() {
-            assert_matches::assert_matches!(
-                handle_event_stream(
-                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
-                    StorageBuilder::in_memory().unwrap()
-                )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
-            );
-        }
-
-        #[tokio::test]
-        async fn header_missing() {
-            assert_matches::assert_matches!(
-                handle_event_stream(
-                    stream::once(std::future::ready(Ok(Faker.fake()))),
-                    StorageBuilder::in_memory().unwrap()
-                )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
-            );
+            pretty_assertions_sorted::assert_eq!(expected_transactions, actual_transactions);
         }
     }
 
@@ -1074,6 +907,159 @@ mod tests {
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     Faker.fake::<DeclaredClasses>().to_stream()
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+    }
+
+    mod handle_event_stream {
+        use fake::{Fake, Faker};
+        use futures::stream;
+        use p2p::libp2p::PeerId;
+        use pathfinder_common::event::Event;
+        use pathfinder_common::transaction::TransactionVariant;
+        use pathfinder_common::TransactionHash;
+        use pathfinder_crypto::Felt;
+        use pathfinder_storage::{fake as fake_storage, StorageBuilder};
+
+        use super::super::handle_event_stream;
+        use super::*;
+        use crate::state::block_hash::calculate_event_commitment;
+
+        struct Setup {
+            pub streamed_events: Vec<anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
+            pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
+            pub storage: Storage,
+        }
+
+        async fn setup(num_blocks: usize, compute_event_commitments: bool) -> Setup {
+            tokio::task::spawn_blocking(move || {
+                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let streamed_events = blocks
+                    .iter()
+                    .map(|block| {
+                        anyhow::Result::Ok(PeerData::for_tests((
+                            block.header.header.number,
+                            block
+                                .transaction_data
+                                .iter()
+                                .map(|x| x.2.clone())
+                                .collect::<Vec<_>>(),
+                        )))
+                    })
+                    .collect::<Vec<_>>();
+                let expected_events = blocks
+                    .iter()
+                    .map(|block| {
+                        block
+                            .transaction_data
+                            .iter()
+                            .map(|x| (x.0.hash, x.2.clone()))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+
+                let storage = StorageBuilder::in_memory().unwrap();
+                blocks.iter_mut().for_each(|block| {
+                    if compute_event_commitments {
+                        block.header.header.event_commitment = calculate_event_commitment(
+                            &block
+                                .transaction_data
+                                .iter()
+                                .flat_map(|(_, _, events)| events)
+                                .collect::<Vec<_>>(),
+                        )
+                        .unwrap();
+                    }
+                    // Purge events
+                    block
+                        .transaction_data
+                        .iter_mut()
+                        .for_each(|(_, _, events)| events.clear());
+                    block.cairo_defs.iter_mut().for_each(|(_, def)| def.clear());
+                });
+                fake_storage::fill(&storage, &blocks);
+                Setup {
+                    streamed_events,
+                    expected_events,
+                    storage,
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        #[tokio::test]
+        async fn happy_path() {
+            const NUM_BLOCKS: usize = 10;
+            let Setup {
+                streamed_events,
+                expected_events,
+                storage,
+            } = setup(NUM_BLOCKS, true).await;
+
+            handle_event_stream(stream::iter(streamed_events), storage.clone())
+                .await
+                .unwrap();
+
+            let actual_events = tokio::task::spawn_blocking(move || {
+                let mut conn = storage.connection().unwrap();
+                let db_tx = conn.transaction().unwrap();
+                (0..NUM_BLOCKS)
+                    .map(|n| {
+                        db_tx
+                            .events_for_block(BlockNumber::new_or_panic(n as u64).into())
+                            .unwrap()
+                            .unwrap()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap();
+
+            pretty_assertions_sorted::assert_eq!(expected_events, actual_events);
+        }
+
+        #[tokio::test]
+        async fn commitment_mismatch() {
+            const NUM_BLOCKS: usize = 1;
+            let Setup {
+                streamed_events,
+                expected_events,
+                storage,
+            } = setup(NUM_BLOCKS, false).await;
+            let expected_peer_id = streamed_events[0].as_ref().unwrap().peer;
+
+            assert_matches::assert_matches!(
+                handle_event_stream(stream::iter(streamed_events), storage.clone())
+                    .await
+                    .unwrap_err(),
+                SyncError::EventCommitmentMismatch(x) => assert_eq!(x, expected_peer_id)
+            );
+        }
+
+        #[tokio::test]
+        async fn stream_failure() {
+            assert_matches::assert_matches!(
+                handle_event_stream(
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
+                    StorageBuilder::in_memory().unwrap()
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn header_missing() {
+            assert_matches::assert_matches!(
+                handle_event_stream(
+                    stream::once(std::future::ready(Ok(Faker.fake()))),
+                    StorageBuilder::in_memory().unwrap()
                 )
                 .await
                 .unwrap_err(),

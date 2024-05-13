@@ -1,3 +1,4 @@
+use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, EthereumChain, StateCommitment};
 use pathfinder_crypto::Felt;
 use primitive_types::{H160, H256, U256};
@@ -156,7 +157,7 @@ fn get_h256(value: &serde_json::Value) -> anyhow::Result<H256> {
         .as_str()
         .map(lpad64)
         .and_then(|val| H256::from_str(&val).ok())
-        .ok_or(anyhow::anyhow!("Failed to fetch H256"))
+        .context("Failed to fetch H256")
 }
 
 fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
@@ -165,7 +166,7 @@ fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
         .as_str()
         .map(lpad64)
         .and_then(|val| U256::from_str(&val).ok())
-        .ok_or(anyhow::anyhow!("Failed to fetch U256"))
+        .context("Failed to fetch U256")
 }
 
 fn get_felt(value: H256) -> anyhow::Result<Felt> {
@@ -175,7 +176,7 @@ fn get_felt(value: H256) -> anyhow::Result<Felt> {
 
 fn get_number(value: U256) -> anyhow::Result<BlockNumber> {
     let value = value.as_u64();
-    BlockNumber::new(value).ok_or(anyhow::anyhow!("Failed to read u64 from U256"))
+    BlockNumber::new(value).context("Failed to read u64 from U256")
 }
 
 fn lpad64(value: &str) -> String {

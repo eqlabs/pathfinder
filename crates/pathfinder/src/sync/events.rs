@@ -77,7 +77,7 @@ pub(super) fn counts_stream(
 
             if batch.is_empty() {
                 Err(anyhow::anyhow!(
-                    "No event counts found for range: start {start}, batch_size (batch_size)"
+                    "No event counts found for range: start {start}, batch_size {batch_size}"
                 ))?;
                 break;
             }
@@ -107,7 +107,7 @@ pub(super) async fn verify_commitment(
         let expected = transaction
             .block_header(block_number.into())
             .context("Querying block header")?
-            .ok_or(anyhow::anyhow!("Block header not found"))?
+            .context("Block header not found")?
             .event_commitment;
         if computed != expected {
             return Err(SyncError::EventCommitmentMismatch(peer));
@@ -131,16 +131,17 @@ pub(super) async fn persist(
         let transaction = connection
             .transaction()
             .context("Creating database transaction")?;
-        let tail = events.last().map(|x| x.data.0).ok_or(anyhow::anyhow!(
-            "Verification results are empty, no block to persist"
-        ))?;
+        let tail = events
+            .last()
+            .map(|x| x.data.0)
+            .context("Verification results are empty, no block to persist")?;
 
         for (block_number, events_for_block) in events.into_iter().map(|x| x.data) {
             transaction
                 .update_events(block_number, events_for_block)
                 .context("Updating events")?;
         }
-        transaction.commit()?;
+        transaction.commit().context("Committing db transaction")?;
 
         Ok(tail)
     })

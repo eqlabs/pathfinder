@@ -1,8 +1,9 @@
 #![cfg(feature = "p2p")]
 #![allow(dead_code, unused)]
 
-use anyhow::Context;
+use anyhow::{Chain, Context};
 use p2p::client::peer_agnostic::Client as P2PClient;
+use pathfinder_common::ChainId;
 use primitive_types::H160;
 
 mod checkpoint;
@@ -22,6 +23,7 @@ pub struct Sync {
     pub p2p: P2PClient,
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
+    pub chain_id: ChainId,
 }
 
 impl Sync {
@@ -54,6 +56,7 @@ impl Sync {
                 p2p: self.p2p.clone(),
                 eth_client: self.eth_client.clone(),
                 eth_address: self.eth_address,
+                chain_id: self.chain_id,
             }
             .run(checkpoint.clone())
             .await;

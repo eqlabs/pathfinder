@@ -94,7 +94,7 @@ fn setup() -> anyhow::Result<Setup> {
             pathfinder_url: Url::parse(pathfinder_url).context("Failed to parse <pathfinder-url> as URL")?,
             poll_delay: Duration::from_secs(delay_seconds.parse().context("Failed to parse <poll-seconds> integer")?),
         }))
-        .ok_or(anyhow::anyhow!("Failed to parse arguments: <listen-at> <gateway-url> <pathfinder-url> <poll-delay-seconds>"))?
+        .context("Failed to parse arguments: <listen-at> <gateway-url> <pathfinder-url> <poll-delay-seconds>")?
 }
 
 fn stream<'a, T, R>(
@@ -134,11 +134,11 @@ async fn get_gateway_latest(gateway_url: &Url) -> anyhow::Result<Head> {
 
     let block_number = json["block_number"]
         .as_i64()
-        .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
+        .context("Failed to fetch block number")?;
 
     let block_timestamp = json["timestamp"]
         .as_i64()
-        .ok_or(anyhow::anyhow!("Failed to fetch block timestamp"))?;
+        .context("Failed to fetch block timestamp")?;
 
     Ok(Head {
         block_number,
@@ -160,15 +160,15 @@ async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<Head> {
 
     let block_number = json["result"]
         .as_object()
-        .ok_or(anyhow::anyhow!("Response 'result' missing"))?["block_number"]
+        .context("Response 'result' missing")?["block_number"]
         .as_i64()
-        .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
+        .context("Failed to fetch block number")?;
 
     let block_timestamp = json["result"]
         .as_object()
-        .ok_or(anyhow::anyhow!("Response 'result' missing"))?["timestamp"]
+        .context("Response 'result' missing")?["timestamp"]
         .as_i64()
-        .ok_or(anyhow::anyhow!("Failed to fetch block timestamp"))?;
+        .context("Failed to fetch block timestamp")?;
 
     Ok(Head {
         block_number,

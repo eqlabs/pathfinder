@@ -457,6 +457,41 @@ impl Transaction<'_> {
 
         Ok(ret)
     }
+
+    pub fn transaction_counts(
+        &self,
+        block: BlockId,
+        max_len: NonZeroUsize,
+    ) -> anyhow::Result<Vec<usize>> {
+        let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
+            return Ok(Default::default());
+        };
+
+        let mut stmt = self
+            .inner()
+            .prepare_cached(
+                "SELECT transaction_count FROM block_headers WHERE number >= ? ORDER BY number \
+                 ASC LIMIT ?",
+            )
+            .context("Preparing get transaction counts statement")?;
+
+        let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
+        let mut counts = stmt
+            .query_map(params![&block_number, &max_len], |row| row.get(0))
+            .context("Querying event counts")?;
+
+        let mut ret = Vec::new();
+
+        while let Some(stat) = counts
+            .next()
+            .transpose()
+            .context("Iterating over transaction counts rows")?
+        {
+            ret.push(stat);
+        }
+
+        Ok(ret)
+    }
 }
 
 fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader> {

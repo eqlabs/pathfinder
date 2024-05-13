@@ -26,6 +26,8 @@ pub(super) enum SyncError {
     BadClassHash(PeerId),
     #[error("Event commitment mismatch")]
     EventCommitmentMismatch(PeerId),
+    #[error("Transaction commitment mismatch")]
+    TransactionCommitmentMismatch(PeerId),
 }
 
 impl PartialEq for SyncError {
