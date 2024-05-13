@@ -195,19 +195,6 @@ pub(super) enum RpcResponses<'a> {
     Multiple(Vec<RpcResponse<'a>>),
 }
 
-impl serde::ser::Serialize for RpcResponses<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            RpcResponses::Empty => ().serialize(serializer),
-            RpcResponses::Single(response) => response.serialize(serializer),
-            RpcResponses::Multiple(responses) => responses.serialize(serializer),
-        }
-    }
-}
-
 /// Helper to scope the responses so we can set the content-type afterwards
 /// instead of dealing with branches / early exits.
 pub(super) async fn handle_json_rpc_body<'a>(

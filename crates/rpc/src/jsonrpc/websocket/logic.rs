@@ -18,6 +18,7 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
 use crate::jsonrpc::request::RawParams;
+use crate::jsonrpc::router::RpcRequestError;
 use crate::jsonrpc::websocket::data::{Kind, ResponseEvent, SubscriptionId, SubscriptionItem};
 use crate::jsonrpc::{RequestId, RpcRequest, RpcRouter};
 use crate::BlockHeader;
@@ -132,8 +133,9 @@ async fn read(
     let websocket_context = router
         .context
         .websocket
+        .as_ref()
         .expect("Websocket handler should not be called with Websocket disabled");
-    let source = websocket_context.broadcasters;
+    let source = &websocket_context.broadcasters;
     let mut subscription_manager = SubscriptionManager::default();
 
     loop {
@@ -155,7 +157,7 @@ async fn read(
             }
         };
 
-        let request = match serde_json::from_slice::<RpcRequest<'_>>(&request) {
+        let parsed_request = match serde_json::from_slice::<RpcRequest<'_>>(&request) {
             Ok(request) => request,
             Err(err) => {
                 match response_sender.try_send(ResponseEvent::InvalidRequest(err.to_string())) {
@@ -169,19 +171,23 @@ async fn read(
         };
 
         // Handle request.
-        let response = match request.method.as_ref() {
+        let response = match parsed_request.method.as_ref() {
             SUBSCRIBE_METHOD => subscription_manager.subscribe(
-                request.id,
-                request.params,
+                parsed_request.id,
+                parsed_request.params,
                 response_sender.clone(),
                 source.clone(),
             ),
             UNSUBSCRIBE_METHOD => {
                 subscription_manager
-                    .unsubscribe(request.id, request.params)
+                    .unsubscribe(parsed_request.id, parsed_request.params)
                     .await
             }
-            _ => ResponseEvent::InvalidMethod(request.id.into()),
+            _ => match super::super::router::handle_json_rpc_body(&router, &request).await {
+                Ok(responses) => ResponseEvent::Responses(responses.into()),
+                Err(RpcRequestError::ParseError(e)) => ResponseEvent::InvalidRequest(e),
+                Err(RpcRequestError::InvalidRequest(e)) => ResponseEvent::InvalidRequest(e),
+            },
         };
 
         if let Err(e) = response_sender.try_send(response) {
@@ -494,6 +500,28 @@ mod tests {
         client.destroy().await;
     }
 
+    #[tokio::test]
+    async fn fall_back_to_rpc_method() {
+        let mut client = Client::new().await;
+
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from("pathfinder_test"),
+                params: Default::default(),
+                id: RequestId::Number(1),
+            })
+            .await;
+
+        client
+            .expect_response(&RpcResponse {
+                output: Ok(json!("0x534e5f5345504f4c4941")),
+                id: RequestId::Number(1),
+            })
+            .await;
+
+        client.destroy().await;
+    }
+
     // TODO Prevent duplicate subscriptions?
     // This is actually tolerated by Alchemy, you can subscribe multiple times
     // to the same topic and receive duplicated messages as a result.
@@ -520,7 +548,9 @@ mod tests {
     impl Client {
         async fn new() -> Client {
             let context = RpcContext::for_tests().with_websockets(WebsocketContext::default());
-            let router = RpcRouter::builder(crate::RpcVersion::V07).build(context.clone());
+            let router = RpcRouter::builder(crate::RpcVersion::V07)
+                .register("pathfinder_test", rpc_test_method)
+                .build(context.clone());
             let head_sender = context
                 .websocket
                 .unwrap_or_default()
@@ -618,5 +648,11 @@ mod tests {
             self.server_handle.abort();
             let _ignored = self.server_handle.await;
         }
+    }
+
+    pub async fn rpc_test_method(
+        context: RpcContext,
+    ) -> Result<pathfinder_common::ChainId, RpcError> {
+        Ok(context.chain_id)
     }
 }
