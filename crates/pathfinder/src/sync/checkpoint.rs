@@ -648,6 +648,59 @@ mod tests {
             .unwrap();
             pretty_assertions_sorted::assert_eq!(expected_transactions, actual_transactions);
         }
+
+        #[tokio::test]
+        async fn commitment_mismatch() {
+            let Setup {
+                streamed_transactions,
+                storage,
+                ..
+            } = setup(1).await;
+            assert_matches::assert_matches!(
+                handle_transaction_stream(
+                    stream::iter(streamed_transactions),
+                    storage,
+                    // Causes mismatches for all transaction hashes because setup assumes
+                    // ChainId::SEPOLIA_TESTNET
+                    ChainId::MAINNET
+                )
+                .await
+                .unwrap_err(),
+                SyncError::TransactionCommitmentMismatch(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn stream_failure() {
+            assert_matches::assert_matches!(
+                handle_transaction_stream(
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
+                    StorageBuilder::in_memory().unwrap(),
+                    ChainId::SEPOLIA_TESTNET
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn header_missing() {
+            let Setup {
+                streamed_transactions,
+                ..
+            } = setup(1).await;
+            assert_matches::assert_matches!(
+                handle_transaction_stream(
+                    stream::iter(streamed_transactions),
+                    StorageBuilder::in_memory().unwrap(),
+                    ChainId::SEPOLIA_TESTNET
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
     }
 
     mod handle_class_stream {
