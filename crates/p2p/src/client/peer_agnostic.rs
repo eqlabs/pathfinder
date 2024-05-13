@@ -288,7 +288,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         transaction_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<TransactionsForBlock>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<TransactionBlockData>>> {
         async_stream::try_stream! {
             pin_mut!(transaction_counts_stream);
 
@@ -941,7 +941,7 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
     }
 }
 
-pub type TransactionsForBlock = (BlockNumber, Vec<(TransactionVariant, Receipt)>);
+pub type TransactionBlockData = (BlockNumber, Vec<(TransactionVariant, Receipt)>);
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
 

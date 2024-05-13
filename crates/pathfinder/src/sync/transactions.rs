@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::peer_agnostic::TransactionsForBlock;
+use p2p::client::peer_agnostic::TransactionBlockData;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
@@ -88,7 +88,7 @@ pub(super) fn counts_stream(
 }
 
 pub(super) async fn compute_hashes(
-    mut transactions: PeerData<TransactionsForBlock>,
+    mut transactions: PeerData<TransactionBlockData>,
     storage: Storage,
     chain_id: ChainId,
 ) -> Result<PeerData<TransactionsWithHashesForBlock>, SyncError> {

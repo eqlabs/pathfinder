@@ -9,7 +9,7 @@ use p2p::client::peer_agnostic::{
     Class,
     Client as P2PClient,
     EventsForBlockByTransaction,
-    TransactionsForBlock,
+    TransactionBlockData,
 };
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
@@ -242,7 +242,7 @@ impl Sync {
 
 async fn handle_transaction_stream(
     transaction_stream: impl futures::Stream<
-        Item = Result<PeerData<TransactionsForBlock>, anyhow::Error>,
+        Item = Result<PeerData<TransactionBlockData>, anyhow::Error>,
     >,
     storage: Storage,
     chain_id: ChainId,
@@ -579,7 +579,7 @@ mod tests {
     mod handle_transaction_stream {
         use fake::{Dummy, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::TransactionsForBlock;
+        use p2p::client::peer_agnostic::TransactionBlockData;
         use p2p::libp2p::PeerId;
         use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
@@ -592,7 +592,7 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_transactions: Vec<anyhow::Result<PeerData<TransactionsForBlock>>>,
+            pub streamed_transactions: Vec<anyhow::Result<PeerData<TransactionBlockData>>>,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }

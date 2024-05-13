@@ -104,7 +104,7 @@ mod prop {
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p::client::peer_agnostic::{Receipt, TransactionsForBlock};
+    use p2p::client::peer_agnostic::{Receipt, TransactionBlockData};
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -402,7 +402,7 @@ mod prop {
                             (tv, r.into())
                         }).collect::<Vec<_>>()
                     )
-            ).collect::<Vec<TransactionsForBlock>>();
+            ).collect::<Vec<TransactionBlockData>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
