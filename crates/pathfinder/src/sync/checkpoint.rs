@@ -304,48 +304,6 @@ async fn handle_event_stream(
     Ok(())
 }
 
-/// Takes ownership of transactions and returns them if verification passes.
-async fn check_transactions(
-    block: &BlockHeader,
-    transactions: Vec<(TransactionVariant, Receipt)>,
-) -> anyhow::Result<Option<Vec<(Transaction, Receipt)>>> {
-    if transactions.len() != block.transaction_count {
-        return Ok(None);
-    }
-    let (transaction_variants, receipts): (Vec<TransactionVariant>, Vec<Receipt>) =
-        transactions.into_iter().unzip();
-    let transaction_final_hash_type =
-        TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
-    let (transaction_commitment, transactions) = spawn_blocking({
-        move || {
-            let mut transactions = Vec::new();
-
-            rayon::scope(|s| {
-                s.spawn(|_| {
-                    use rayon::prelude::*;
-
-                    transactions = transaction_variants
-                        .into_par_iter()
-                        .map(|variant| Transaction {
-                            hash: todo!(),
-                            variant,
-                        })
-                        .collect();
-                })
-            });
-
-            calculate_transaction_commitment(&transactions, transaction_final_hash_type)
-                .map_err(anyhow::Error::from)
-                .map(|commitment| (commitment, transactions))
-        }
-    })
-    .await
-    .context("Joining blocking task")?
-    .context("Calculating transaction commitment")?;
-    Ok((transaction_commitment == block.transaction_commitment)
-        .then_some(transactions.into_iter().zip(receipts).collect()))
-}
-
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with
 /// a given L1 checkpoint, and [handles](Self::handle) the result.
 enum CheckpointAnalysis {
