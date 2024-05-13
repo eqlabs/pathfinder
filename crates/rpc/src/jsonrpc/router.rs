@@ -19,7 +19,7 @@ use crate::RpcVersion;
 
 #[derive(Clone)]
 pub struct RpcRouter {
-    context: RpcContext,
+    pub context: RpcContext,
     methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
     version: RpcVersion,
 }

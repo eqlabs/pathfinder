@@ -19,7 +19,7 @@ use tracing::error;
 
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::websocket::data::{Kind, ResponseEvent, SubscriptionId, SubscriptionItem};
-use crate::jsonrpc::{RequestId, RpcRequest};
+use crate::jsonrpc::{RequestId, RpcRequest, RpcRouter};
 use crate::BlockHeader;
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
@@ -55,9 +55,9 @@ impl Default for WebsocketContext {
 
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
-    State(state): State<WebsocketContext>,
+    State(router): State<RpcRouter>,
 ) -> impl IntoResponse {
-    let mut upgrade_response = ws.on_upgrade(|socket| handle_socket(socket, state));
+    let mut upgrade_response = ws.on_upgrade(|socket| handle_socket(socket, router));
 
     static APPLICATION_JSON: http::HeaderValue = http::HeaderValue::from_static("application/json");
     upgrade_response
@@ -67,7 +67,12 @@ pub async fn websocket_handler(
     upgrade_response
 }
 
-async fn handle_socket(socket: WebSocket, context: WebsocketContext) {
+async fn handle_socket(socket: WebSocket, router: RpcRouter) {
+    let websocket_context = router
+        .context
+        .websocket
+        .as_ref()
+        .expect("Websocket handler should not be called with Websocket disabled");
     let (ws_sender, ws_receiver) = socket.split();
 
     let (response_sender, response_receiver) = mpsc::channel(10);
@@ -75,9 +80,9 @@ async fn handle_socket(socket: WebSocket, context: WebsocketContext) {
     tokio::spawn(write(
         ws_sender,
         response_receiver,
-        context.socket_buffer_capacity,
+        websocket_context.socket_buffer_capacity,
     ));
-    tokio::spawn(read(ws_receiver, response_sender, context.broadcasters));
+    tokio::spawn(read(ws_receiver, response_sender, router));
 }
 
 async fn write(
@@ -122,8 +127,13 @@ async fn send_response(
 async fn read(
     mut receiver: SplitStream<WebSocket>,
     response_sender: mpsc::Sender<ResponseEvent>,
-    source: TopicBroadcasters,
+    router: RpcRouter,
 ) {
+    let websocket_context = router
+        .context
+        .websocket
+        .expect("Websocket handler should not be called with Websocket disabled");
+    let source = websocket_context.broadcasters;
     let mut subscription_manager = SubscriptionManager::default();
 
     loop {
@@ -395,6 +405,7 @@ mod tests {
     use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
     use super::*;
+    use crate::context::RpcContext;
     use crate::jsonrpc::websocket::data::successful_response;
     use crate::jsonrpc::{RpcError, RpcResponse};
 
@@ -508,12 +519,18 @@ mod tests {
 
     impl Client {
         async fn new() -> Client {
-            let context = WebsocketContext::default();
-            let head_sender = context.broadcasters.new_head.clone();
+            let context = RpcContext::for_tests().with_websockets(WebsocketContext::default());
+            let router = RpcRouter::builder(crate::RpcVersion::V07).build(context.clone());
+            let head_sender = context
+                .websocket
+                .unwrap_or_default()
+                .broadcasters
+                .new_head
+                .clone();
 
             let router = axum::Router::new()
                 .route("/ws", get(websocket_handler))
-                .with_state(context)
+                .with_state(router)
                 .layer(tower::ServiceBuilder::new());
 
             let listener = std::net::TcpListener::bind("127.0.0.1:0")
