@@ -172,28 +172,20 @@ impl Sync {
     }
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {
-        if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
+        let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
-        {
-            self.p2p
-                .clone()
-                .state_diff_stream(
-                    start,
-                    stop,
-                    state_updates::state_diff_lengths_stream(self.storage.clone(), start, stop),
-                )
-                .map_err(Into::into)
-                .and_then(state_updates::verify_signature)
-                .try_chunks(100)
-                .map_err(|e| e.1)
-                // Persist state updates (without: state commitments and declared classes)
-                .and_then(|x| state_updates::persist(self.storage.clone(), x))
-                .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
-                // Drive stream to completion.
-                .try_fold((), |_, _| std::future::ready(Ok(())))
-                .await?;
-        }
+        else {
+            return Ok(());
+        };
+
+        let stream = self.p2p.clone().state_diff_stream(
+            start,
+            stop,
+            state_updates::state_diff_lengths_stream(self.storage.clone(), start, stop),
+        );
+
+        handle_state_diff_stream(stream, self.storage.clone()).await?;
 
         Ok(())
     }
@@ -255,6 +247,29 @@ async fn handle_transaction_stream(
         .map_err(|e| e.1)
         .and_then(|x| transactions::persist(storage.clone(), x))
         .inspect_ok(|x| tracing::info!(tail=%x, "Transactions chunk synced"))
+        // Drive stream to completion.
+        .try_fold((), |_, _| std::future::ready(Ok(())))
+        .await?;
+    Ok(())
+}
+
+async fn handle_state_diff_stream(
+    stream: impl futures::Stream<
+        Item = Result<
+            PeerData<(BlockNumber, p2p::client::peer_agnostic::StateDiff)>,
+            anyhow::Error,
+        >,
+    >,
+    storage: Storage,
+) -> Result<(), SyncError> {
+    stream
+        .map_err(Into::into)
+        .and_then(state_updates::verify_signature)
+        .try_chunks(100)
+        .map_err(|e| e.1)
+        // Persist state updates (without: state commitments and declared classes)
+        .and_then(|x| state_updates::persist(storage.clone(), x))
+        .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
         // Drive stream to completion.
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await?;
