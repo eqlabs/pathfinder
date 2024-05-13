@@ -57,6 +57,15 @@ pub enum TransactionVariant {
     L1Handler(L1HandlerTransaction),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransactionKind {
+    Declare,
+    Deploy,
+    DeployAccount,
+    Invoke,
+    L1Handler,
+}
+
 impl TransactionVariant {
     #[must_use = "Should act on verification result"]
     fn verify_hash(&self, chain_id: ChainId, expected: TransactionHash) -> bool {
@@ -92,6 +101,22 @@ impl TransactionVariant {
             TransactionVariant::InvokeV1(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::InvokeV3(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::L1Handler(tx) => tx.calculate_hash(chain_id),
+        }
+    }
+
+    pub fn kind(&self) -> TransactionKind {
+        match self {
+            TransactionVariant::DeclareV0(_) => TransactionKind::Declare,
+            TransactionVariant::DeclareV1(_) => TransactionKind::Declare,
+            TransactionVariant::DeclareV2(_) => TransactionKind::Declare,
+            TransactionVariant::DeclareV3(_) => TransactionKind::Declare,
+            TransactionVariant::Deploy(_) => TransactionKind::Deploy,
+            TransactionVariant::DeployAccountV1(_) => TransactionKind::DeployAccount,
+            TransactionVariant::DeployAccountV3(_) => TransactionKind::DeployAccount,
+            TransactionVariant::InvokeV0(_) => TransactionKind::Invoke,
+            TransactionVariant::InvokeV1(_) => TransactionKind::Invoke,
+            TransactionVariant::InvokeV3(_) => TransactionKind::Invoke,
+            TransactionVariant::L1Handler(_) => TransactionKind::L1Handler,
         }
     }
 
