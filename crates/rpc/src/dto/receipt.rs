@@ -308,14 +308,8 @@ impl SerializeForVersion for MsgToL1<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        // FIXME: This clone could be elided if either the specification is fixed to
-        // represent this as an ETH_ADDRESS. Alternatively, we can amend dto::Felt to an
-        // enum over [Felt, EthAddress] but that seems worse than the clone imo.
-        let to_address = pathfinder_crypto::Felt::from_be_slice(self.0.to_address.0.as_bytes())
-            .expect("Ethereum address should fit in a felt");
-
         serializer.serialize_field("from_address", &dto::Felt(&self.0.from_address.0))?;
-        serializer.serialize_field("to_address", &dto::Felt(&to_address))?;
+        serializer.serialize_field("to_address", &dto::Felt(&self.0.to_address.0))?;
         serializer.serialize_field("from_address", &dto::Felt(&self.0.from_address.0))?;
 
         serializer.end()

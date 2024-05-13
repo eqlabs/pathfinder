@@ -918,12 +918,24 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 to L1 message.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: MinimalFelt,
         pub payload: Vec<MinimalFelt>,
-        pub to_address: EthereumAddress,
+        pub to_address: MinimalFelt,
+    }
+
+    impl<T> Dummy<T> for L2ToL1Message {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                from_address: Faker.fake_with_rng(rng),
+                payload: fake::vec![MinimalFelt; 1..10],
+                // Create a Felt using only 160 bits. This is required because p2p specification
+                // uses the wrong type to represent this field.
+                to_address: MinimalFelt(Felt::from_be_slice(&fake::vec![u8; 20]).unwrap()),
+            }
+        }
     }
 
     impl From<L2ToL1Message> for pathfinder_common::receipt::L2ToL1Message {
@@ -939,7 +951,7 @@ pub(crate) mod dto {
                     .into_iter()
                     .map(|x| L2ToL1MessagePayloadElem(x.into()))
                     .collect(),
-                to_address,
+                to_address: ContractAddress::new_or_panic(to_address.into()),
             }
         }
     }
@@ -957,7 +969,7 @@ pub(crate) mod dto {
                     .into_iter()
                     .map(|x| x.as_inner().to_owned().into())
                     .collect(),
-                to_address,
+                to_address: to_address.as_inner().to_owned().into(),
             }
         }
     }

@@ -42,7 +42,6 @@ use pathfinder_common::{
     ContractAddress,
     ContractAddressSalt,
     EntryPoint,
-    EthereumAddress,
     EventCommitment,
     EventData,
     EventKey,
@@ -387,7 +386,10 @@ impl TryFromDto<(p2p_proto::receipt::Receipt, TransactionIndex)> for Receipt {
                             .into_iter()
                             .map(L2ToL1MessagePayloadElem)
                             .collect(),
-                        to_address: EthereumAddress(x.to_address.0),
+                        to_address: ContractAddress::new_or_panic(
+                            Felt::from_be_slice(x.to_address.0.as_bytes())
+                                .expect("H160 should always fix in Felt"),
+                        ),
                     })
                     .collect(),
                 execution_status: match common.revert_reason {

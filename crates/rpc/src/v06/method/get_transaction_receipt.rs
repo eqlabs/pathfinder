@@ -92,7 +92,6 @@ pub mod types {
         BlockHash,
         BlockNumber,
         ContractAddress,
-        EthereumAddress,
         EventData,
         EventKey,
         Fee,
@@ -100,7 +99,7 @@ pub mod types {
         TransactionHash,
         TransactionVersion,
     };
-    use pathfinder_serde::{u64_as_hex_str, EthereumAddressAsHexStr, H256AsNoLeadingZerosHexStr};
+    use pathfinder_serde::{u64_as_hex_str, H256AsNoLeadingZerosHexStr};
     use primitive_types::H256;
     use serde::Serialize;
     use serde_with::serde_as;
@@ -697,8 +696,7 @@ pub mod types {
     #[serde(deny_unknown_fields)]
     pub struct MessageToL1 {
         pub from_address: ContractAddress,
-        #[serde_as(as = "EthereumAddressAsHexStr")]
-        pub to_address: EthereumAddress,
+        pub to_address: ContractAddress,
         #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<L2ToL1MessagePayloadElem>,
     }
@@ -769,8 +767,7 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::receipt::{BuiltinCounters, ExecutionResources};
-    use pathfinder_common::{BlockNumber, EthereumAddress};
-    use primitive_types::H160;
+    use pathfinder_common::BlockNumber;
 
     use super::types::ExecutionResourcesProperties;
     use super::*;
@@ -899,7 +896,7 @@ mod tests {
                         block_number: BlockNumber::new_or_panic(2),
                         messages_sent: vec![MessageToL1 {
                             from_address: contract_address!("0xcafebabe"),
-                            to_address: EthereumAddress(H160::zero()),
+                            to_address: pathfinder_common::ContractAddress::ZERO,
                             payload: vec![
                                 l2_to_l1_message_payload_elem!("0x1"),
                                 l2_to_l1_message_payload_elem!("0x2"),

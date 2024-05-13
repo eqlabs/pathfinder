@@ -27,7 +27,11 @@ impl Receipt {
 pub struct L2ToL1Message {
     pub from_address: ContractAddress,
     pub payload: Vec<L2ToL1MessagePayloadElem>,
-    pub to_address: EthereumAddress,
+    // This is purposefully not EthereumAddress even though this
+    // represents an Ethereum address normally. Starknet allows this value
+    // to be Felt sized; so technically callers can send a message to a garbage
+    // address.
+    pub to_address: ContractAddress,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

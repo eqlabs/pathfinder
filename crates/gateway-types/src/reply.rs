@@ -484,8 +484,7 @@ pub(crate) mod transaction {
         pub from_address: ContractAddress,
         #[serde_as(as = "Vec<L2ToL1MessagePayloadElemAsDecimalStr>")]
         pub payload: Vec<L2ToL1MessagePayloadElem>,
-        #[serde_as(as = "EthereumAddressAsHexStr")]
-        pub to_address: EthereumAddress,
+        pub to_address: ContractAddress,
     }
 
     impl From<L2ToL1Message> for pathfinder_common::receipt::L2ToL1Message {
