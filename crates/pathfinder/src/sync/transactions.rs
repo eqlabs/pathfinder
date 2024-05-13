@@ -14,6 +14,8 @@ use crate::state::block_hash::{
     TransactionCommitmentFinalHashType,
 };
 
+pub type TransactionsWithHashesForBlock = (BlockNumber, Vec<(Transaction, Receipt)>);
+
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
@@ -89,21 +91,35 @@ pub(super) async fn compute_hashes(
     mut transactions: PeerData<TransactionsForBlock>,
     storage: Storage,
     chain_id: ChainId,
-) -> Result<PeerData<TransactionsForBlock>, SyncError> {
+) -> Result<PeerData<TransactionsWithHashesForBlock>, SyncError> {
     Ok(tokio::task::spawn_blocking(move || {
         use rayon::prelude::*;
+        let PeerData {
+            peer,
+            data: (block_number, transactions),
+        } = transactions;
 
-        transactions
-            .data
-            .1
-            .par_iter_mut()
-            .for_each(|(transaction, receipt)| {
-                let hash = transaction.variant.calculate_hash(chain_id, false);
-                transaction.hash = hash;
-                receipt.transaction_hash = hash;
-            });
+        let transactions = transactions
+            .into_par_iter()
+            .map(|(tv, r)| {
+                let transaction_hash = tv.calculate_hash(chain_id, false);
+                let transaction = Transaction {
+                    hash: transaction_hash,
+                    variant: tv,
+                };
+                let receipt = Receipt {
+                    actual_fee: r.actual_fee,
+                    execution_resources: r.execution_resources,
+                    l2_to_l1_messages: r.l2_to_l1_messages,
+                    execution_status: r.execution_status,
+                    transaction_hash,
+                    transaction_index: r.transaction_index,
+                };
+                (transaction, receipt)
+            })
+            .collect::<Vec<_>>();
 
-        transactions
+        PeerData::new(peer, (block_number, transactions))
     })
     .await
     .context("Joining blocking task")?)
@@ -111,9 +127,9 @@ pub(super) async fn compute_hashes(
 
 // TODO verify receipt commitments
 pub(super) async fn verify_commitment(
-    transactions: PeerData<TransactionsForBlock>,
+    transactions: PeerData<TransactionsWithHashesForBlock>,
     storage: Storage,
-) -> Result<PeerData<TransactionsForBlock>, SyncError> {
+) -> Result<PeerData<TransactionsWithHashesForBlock>, SyncError> {
     tokio::task::spawn_blocking(move || {
         let PeerData {
             peer,
@@ -153,7 +169,7 @@ pub(super) async fn verify_commitment(
 
 pub(super) async fn persist(
     storage: Storage,
-    transactions: Vec<PeerData<TransactionsForBlock>>,
+    transactions: Vec<PeerData<TransactionsWithHashesForBlock>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut db = storage

@@ -20,15 +20,16 @@ use p2p_proto::state::{
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
-use pathfinder_common::receipt::Receipt;
+use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Message};
 use pathfinder_common::state_update::SystemContractUpdate;
-use pathfinder_common::transaction::{Transaction, TransactionVariant};
+use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
     BlockNumber,
     CasmHash,
     ClassHash,
     ContractAddress,
     ContractNonce,
+    Fee,
     SierraHash,
     SignedBlockHeader,
     StorageAddress,
@@ -343,8 +344,8 @@ impl Client {
                                     transaction,
                                     receipt,
                                 }) => {
-                                    let t = Transaction { variant: TransactionVariant::try_from_dto(transaction)?, hash: TransactionHash::ZERO };
-                                    let r = Receipt::try_from_dto((
+                                    let t = TransactionVariant::try_from_dto(transaction)?;
+                                    let r = Receipt::try_from((
                                         receipt,
                                         TransactionIndex::new_or_panic(
                                             transactions.len().try_into().expect("ptr size is 64bits"),
@@ -919,7 +920,28 @@ impl Default for PeersWithCapability {
     }
 }
 
-pub type TransactionsForBlock = (BlockNumber, Vec<(Transaction, Receipt)>);
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct Receipt {
+    pub actual_fee: Fee,
+    pub execution_resources: ExecutionResources,
+    pub l2_to_l1_messages: Vec<L2ToL1Message>,
+    pub execution_status: ExecutionStatus,
+    pub transaction_index: TransactionIndex,
+}
+
+impl From<pathfinder_common::receipt::Receipt> for Receipt {
+    fn from(receipt: pathfinder_common::receipt::Receipt) -> Self {
+        Self {
+            actual_fee: receipt.actual_fee,
+            execution_resources: receipt.execution_resources,
+            l2_to_l1_messages: receipt.l2_to_l1_messages,
+            execution_status: receipt.execution_status,
+            transaction_index: receipt.transaction_index,
+        }
+    }
+}
+
+pub type TransactionsForBlock = (BlockNumber, Vec<(TransactionVariant, Receipt)>);
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
 

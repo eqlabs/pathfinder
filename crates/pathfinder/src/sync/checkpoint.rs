@@ -608,7 +608,7 @@ mod tests {
                             block
                                 .transaction_data
                                 .iter()
-                                .map(|x| (x.0.clone(), x.1.clone()))
+                                .map(|x| (x.0.variant.clone(), x.1.clone().into()))
                                 .collect::<Vec<_>>(),
                         )))
                     })
