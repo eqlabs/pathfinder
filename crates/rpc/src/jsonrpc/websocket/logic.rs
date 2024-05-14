@@ -58,7 +58,10 @@ pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(router): State<RpcRouter>,
 ) -> impl IntoResponse {
-    let mut upgrade_response = ws.on_upgrade(|socket| handle_socket(socket, router));
+    let mut upgrade_response = ws
+        .max_message_size(crate::REQUEST_MAX_SIZE)
+        .on_failed_upgrade(|error| tracing::debug!(%error, "Websocket upgrade failed"))
+        .on_upgrade(|socket| handle_socket(socket, router));
 
     static APPLICATION_JSON: http::HeaderValue = http::HeaderValue::from_static("application/json");
     upgrade_response

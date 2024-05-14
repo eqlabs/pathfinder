@@ -65,6 +65,11 @@ impl RpcVersion {
     }
 }
 
+// TODO: make this configurable
+const REQUEST_MAX_SIZE: usize = 10 * 1024 * 1024;
+// TODO: make this configurable
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,
@@ -99,11 +104,6 @@ impl RpcServer {
     /// Starts the HTTP-RPC server.
     pub fn spawn(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use axum::routing::{get, post};
-
-        // TODO: make this configurable
-        const REQUEST_MAX_SIZE: usize = 10 * 1024 * 1024;
-        // TODO: make this configurable
-        const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
         let listener = match std::net::TcpListener::bind(self.addr) {
             Ok(listener) => listener,
