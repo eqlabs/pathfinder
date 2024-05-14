@@ -79,7 +79,7 @@ impl RpcRouter {
     async fn run_request(&self, request: &str) -> Option<RpcResponse> {
         tracing::trace!(%request, "Running request");
 
-        let request = match serde_json::from_str::<RpcRequest>(request) {
+        let request = match serde_json::from_str::<RpcRequest<'_>>(request) {
             Ok(request) => request,
             Err(e) => {
                 return Some(RpcResponse::invalid_request(e.to_string()));

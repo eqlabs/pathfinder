@@ -187,7 +187,7 @@ async fn read(
                     .await
             }
             _ => match super::super::router::handle_json_rpc_body(&router, &request).await {
-                Ok(responses) => ResponseEvent::Responses(responses.into()),
+                Ok(responses) => ResponseEvent::Responses(responses),
                 Err(RpcRequestError::ParseError(e)) => ResponseEvent::InvalidRequest(e),
                 Err(RpcRequestError::InvalidRequest(e)) => ResponseEvent::InvalidRequest(e),
             },
@@ -221,11 +221,11 @@ impl SubscriptionManager {
         let subscription_id = match request_params.deserialize::<SubscriptionId>() {
             Ok(x) => x,
             Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                return ResponseEvent::InvalidParams(request_id.into(), e)
+                return ResponseEvent::InvalidParams(request_id, e)
             }
             Err(_) => {
                 return ResponseEvent::InvalidParams(
-                    request_id.into(),
+                    request_id,
                     "Unexpected parsing error".to_owned(),
                 )
             }
@@ -244,7 +244,7 @@ impl SubscriptionManager {
 
         ResponseEvent::Unsubscribed {
             success,
-            request_id: request_id.into(),
+            request_id,
         }
     }
 
@@ -258,11 +258,11 @@ impl SubscriptionManager {
         let kind = match request_params.deserialize::<Kind<'_>>() {
             Ok(x) => x,
             Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                return ResponseEvent::InvalidParams(request_id.into(), e)
+                return ResponseEvent::InvalidParams(request_id, e)
             }
             Err(_) => {
                 return ResponseEvent::InvalidParams(
-                    request_id.into(),
+                    request_id,
                     "Unexpected parsing error".to_owned(),
                 )
             }
@@ -279,7 +279,7 @@ impl SubscriptionManager {
             )),
             _ => {
                 return ResponseEvent::InvalidParams(
-                    request_id.into(),
+                    request_id,
                     "Unknown subscription type".to_owned(),
                 )
             }
@@ -289,7 +289,7 @@ impl SubscriptionManager {
 
         ResponseEvent::Subscribed {
             subscription_id,
-            request_id: request_id.into(),
+            request_id,
         }
     }
 
