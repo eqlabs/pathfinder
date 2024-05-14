@@ -215,7 +215,7 @@ struct SubscriptionManager {
 impl SubscriptionManager {
     async fn unsubscribe(
         &mut self,
-        request_id: RequestId<'_>,
+        request_id: RequestId,
         request_params: RawParams<'_>,
     ) -> ResponseEvent {
         let subscription_id = match request_params.deserialize::<SubscriptionId>() {
@@ -250,7 +250,7 @@ impl SubscriptionManager {
 
     fn subscribe(
         &mut self,
-        request_id: RequestId<'_>,
+        request_id: RequestId,
         request_params: RawParams<'_>,
         response_sender: mpsc::Sender<ResponseEvent>,
         websocket_source: TopicBroadcasters,

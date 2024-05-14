@@ -76,10 +76,10 @@ impl RpcRouter {
     }
 
     /// Parses and executes a request. Returns [None] if its a notification.
-    async fn run_request<'a>(&self, request: &'a str) -> Option<RpcResponse<'a>> {
+    async fn run_request(&self, request: &str) -> Option<RpcResponse> {
         tracing::trace!(%request, "Running request");
 
-        let request = match serde_json::from_str::<RpcRequest<'_>>(request) {
+        let request = match serde_json::from_str::<RpcRequest>(request) {
             Ok(request) => request,
             Err(e) => {
                 return Some(RpcResponse::invalid_request(e.to_string()));
@@ -189,18 +189,31 @@ pub(super) enum RpcRequestError {
     InvalidRequest(String),
 }
 
-pub(super) enum RpcResponses<'a> {
+pub(super) enum RpcResponses {
     Empty,
-    Single(RpcResponse<'a>),
-    Multiple(Vec<RpcResponse<'a>>),
+    Single(RpcResponse),
+    Multiple(Vec<RpcResponse>),
+}
+
+impl serde::ser::Serialize for RpcResponses {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Empty => ().serialize(serializer),
+            Self::Single(response) => response.serialize(serializer),
+            Self::Multiple(responses) => responses.serialize(serializer),
+        }
+    }
 }
 
 /// Helper to scope the responses so we can set the content-type afterwards
 /// instead of dealing with branches / early exits.
-pub(super) async fn handle_json_rpc_body<'a>(
+pub(super) async fn handle_json_rpc_body(
     state: &RpcRouter,
-    body: &'a [u8],
-) -> Result<RpcResponses<'a>, RpcRequestError> {
+    body: &[u8],
+) -> Result<RpcResponses, RpcRequestError> {
     // Unfortunately due to this https://github.com/serde-rs/json/issues/497
     // we cannot use an enum with borrowed raw values inside to do a single
     // deserialization for us. Instead we have to distinguish manually
@@ -243,7 +256,7 @@ pub(super) async fn handle_json_rpc_body<'a>(
         )
         .await
         .flatten()
-        .collect::<Vec<RpcResponse<'_>>>();
+        .collect::<Vec<RpcResponse>>();
 
         // All requests were notifications.
         if responses.is_empty() {

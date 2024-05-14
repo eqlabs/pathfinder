@@ -9,7 +9,7 @@ use crate::jsonrpc::{RequestId, RpcError};
 pub struct RpcRequest<'a> {
     pub method: Cow<'a, str>,
     pub params: RawParams<'a>,
-    pub id: RequestId<'a>,
+    pub id: RequestId,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -66,10 +66,9 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
         /// [IdHelper::Some(Value::Null)].
         #[derive(Deserialize, Debug)]
         #[serde(untagged)]
-        enum IdHelper<'a> {
+        enum IdHelper {
             Number(i64),
-            #[serde(borrow)]
-            String(Cow<'a, str>),
+            String(String),
         }
 
         #[derive(Deserialize)]
@@ -79,8 +78,8 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
             //
             // The first Option lets us distinguish between None and null. The second Option is
             // then used to parse the null case.
-            #[serde(default, borrow, deserialize_with = "deserialize_some")]
-            id: Option<Option<IdHelper<'a>>>,
+            #[serde(default, deserialize_with = "deserialize_some")]
+            id: Option<Option<IdHelper>>,
             method: Cow<'a, str>,
             #[serde(default, borrow)]
             params: RawParams<'a>,
@@ -141,7 +140,7 @@ mod tests {
     #[case::string      (Some(json!("text")), RequestId::String("text".into()))]
     #[case::number      (Some(json!(456)),    RequestId::Number(456))]
     #[case::notification(None, RequestId::Notification)]
-    fn request_id(#[case] id: Option<serde_json::Value>, #[case] expected: RequestId<'_>) {
+    fn request_id(#[case] id: Option<serde_json::Value>, #[case] expected: RequestId) {
         let params = json!([1, 2, 3]);
         let request = if let Some(id) = id {
             json!({

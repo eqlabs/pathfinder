@@ -7,34 +7,34 @@ use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::RequestId;
 
 #[derive(Debug, PartialEq)]
-pub struct RpcResponse<'a> {
+pub struct RpcResponse {
     pub output: RpcResult,
-    pub id: RequestId<'a>,
+    pub id: RequestId,
 }
 
-impl<'a> RpcResponse<'a> {
-    pub const fn parse_error(error: String) -> RpcResponse<'a> {
+impl RpcResponse {
+    pub const fn parse_error(error: String) -> RpcResponse {
         Self {
             output: Err(RpcError::ParseError(error)),
             id: RequestId::Null,
         }
     }
 
-    pub const fn invalid_request(error: String) -> RpcResponse<'a> {
+    pub const fn invalid_request(error: String) -> RpcResponse {
         Self {
             output: Err(RpcError::InvalidRequest(error)),
             id: RequestId::Null,
         }
     }
 
-    pub const fn method_not_found(id: RequestId<'a>) -> RpcResponse<'a> {
+    pub const fn method_not_found(id: RequestId) -> RpcResponse {
         Self {
             output: Err(RpcError::MethodNotFound),
             id,
         }
     }
 
-    pub const fn invalid_params(id: RequestId<'a>, error: String) -> RpcResponse<'a> {
+    pub const fn invalid_params(id: RequestId, error: String) -> RpcResponse {
         Self {
             output: Err(RpcError::InvalidParams(error)),
             id,
@@ -44,7 +44,7 @@ impl<'a> RpcResponse<'a> {
 
 pub type RpcResult = Result<Value, RpcError>;
 
-impl Serialize for RpcResponse<'_> {
+impl Serialize for RpcResponse {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -70,7 +70,7 @@ impl Serialize for RpcResponse<'_> {
     }
 }
 
-impl IntoResponse for RpcResponse<'_> {
+impl IntoResponse for RpcResponse {
     fn into_response(self) -> axum::response::Response {
         // Log internal errors.
         match &self.output {
