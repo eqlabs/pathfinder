@@ -1,8 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
+// TODO remove `derive[..., Dummy]` from all types here, if possible
 use fake::Dummy;
-use pathfinder_crypto::hash::{poseidon_hash_many, PoseidonHasher};
-use pathfinder_crypto::MontFelt;
 
 use crate::{
     BlockHash,
@@ -22,6 +21,14 @@ pub struct StateUpdate {
     pub block_hash: BlockHash,
     pub parent_state_commitment: StateCommitment,
     pub state_commitment: StateCommitment,
+    pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
+    pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
+    pub declared_cairo_classes: HashSet<ClassHash>,
+    pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct StateUpdateData {
     pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
     pub declared_cairo_classes: HashSet<ClassHash>,
@@ -256,30 +263,103 @@ impl StateUpdate {
             })
     }
 
+    pub fn compute_state_diff_commitment(&self) -> StateDiffCommitment {
+        state_diff_commitment::compute(
+            &self.contract_updates,
+            &self.system_contract_updates,
+            &self.declared_cairo_classes,
+            &self.declared_sierra_classes,
+        )
+    }
+
+    pub fn state_diff_length(&self) -> u64 {
+        let mut len = 0;
+        self.contract_updates.iter().for_each(|(_, update)| {
+            len += update.storage.len();
+            len += usize::from(update.nonce.is_some());
+            len += usize::from(update.class.is_some());
+        });
+        self.system_contract_updates.iter().for_each(|(_, update)| {
+            len += update.storage.len();
+        });
+        len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
+        len.try_into().expect("ptr size is 64bits")
+    }
+}
+
+impl StateUpdateData {
+    pub fn compute_state_diff_commitment(&self) -> StateDiffCommitment {
+        state_diff_commitment::compute(
+            &self.contract_updates,
+            &self.system_contract_updates,
+            &self.declared_cairo_classes,
+            &self.declared_sierra_classes,
+        )
+    }
+}
+
+impl From<StateUpdate> for StateUpdateData {
+    fn from(state_update: StateUpdate) -> Self {
+        Self {
+            contract_updates: state_update.contract_updates,
+            system_contract_updates: state_update.system_contract_updates,
+            declared_cairo_classes: state_update.declared_cairo_classes,
+            declared_sierra_classes: state_update.declared_sierra_classes,
+        }
+    }
+}
+
+mod state_diff_commitment {
+    use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+    use pathfinder_crypto::hash::{poseidon_hash_many, PoseidonHasher};
+    use pathfinder_crypto::MontFelt;
+
+    use super::{ContractUpdate, SystemContractUpdate};
+    use crate::{
+        CasmHash,
+        ClassHash,
+        ContractAddress,
+        ContractNonce,
+        SierraHash,
+        StateDiffCommitment,
+        StorageAddress,
+        StorageValue,
+    };
+
     /// Compute the state diff commitment used in block commitment signatures.
     ///
     /// How to compute the value is documented in [this Starknet Community article](https://community.starknet.io/t/introducing-p2p-authentication-and-mismatch-resolution-in-v0-12-2/97993).
-    pub fn compute_state_diff_commitment(&self) -> StateDiffCommitment {
+    pub fn compute(
+        contract_updates: &HashMap<ContractAddress, ContractUpdate>,
+        system_contract_updates: &HashMap<ContractAddress, SystemContractUpdate>,
+        declared_cairo_classes: &HashSet<ClassHash>,
+        declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
+    ) -> StateDiffCommitment {
         StateDiffCommitment(
             poseidon_hash_many(&[
                 // state_diff_version
                 MontFelt::ZERO,
-                self.compute_hash_of_deployed_contracts(),
-                self.compute_hash_of_declared_classes(),
-                self.compute_hash_of_old_declared_classes(),
+                compute_hash_of_deployed_contracts(contract_updates),
+                compute_hash_of_declared_classes(declared_sierra_classes),
+                compute_hash_of_old_declared_classes(declared_cairo_classes),
                 // number_of_DA_modes
                 MontFelt::ONE,
                 // DA_mode_0
                 MontFelt::ZERO,
-                self.compute_hash_of_storage_domain_state_diff(),
+                compute_hash_of_storage_domain_state_diff(
+                    contract_updates,
+                    system_contract_updates,
+                ),
             ])
             .into(),
         )
     }
 
-    fn compute_hash_of_deployed_contracts(&self) -> MontFelt {
-        let deployed_contracts: BTreeMap<ContractAddress, ClassHash> = self
-            .contract_updates
+    fn compute_hash_of_deployed_contracts(
+        contract_updates: &HashMap<ContractAddress, ContractUpdate>,
+    ) -> MontFelt {
+        let deployed_contracts: BTreeMap<ContractAddress, ClassHash> = contract_updates
             .iter()
             .filter_map(|(address, update)| {
                 update
@@ -308,9 +388,10 @@ impl StateUpdate {
             .finish()
     }
 
-    fn compute_hash_of_declared_classes(&self) -> MontFelt {
-        let declared_classes: BTreeSet<(SierraHash, CasmHash)> = self
-            .declared_sierra_classes
+    fn compute_hash_of_declared_classes(
+        declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
+    ) -> MontFelt {
+        let declared_classes: BTreeSet<(SierraHash, CasmHash)> = declared_sierra_classes
             .iter()
             .map(|(sierra, casm)| (*sierra, *casm))
             .collect();
@@ -334,9 +415,11 @@ impl StateUpdate {
             .finish()
     }
 
-    fn compute_hash_of_old_declared_classes(&self) -> MontFelt {
+    fn compute_hash_of_old_declared_classes(
+        declared_cairo_classes: &HashSet<ClassHash>,
+    ) -> MontFelt {
         let declared_classes: BTreeSet<ClassHash> =
-            self.declared_cairo_classes.iter().copied().collect();
+            declared_cairo_classes.iter().copied().collect();
 
         let number_of_declared_classes = declared_classes.len() as u64;
 
@@ -356,25 +439,25 @@ impl StateUpdate {
             .finish()
     }
 
-    fn compute_hash_of_storage_domain_state_diff(&self) -> MontFelt {
-        let storage_diffs = self
-            .contract_updates
-            .iter()
-            .filter_map(|(address, update)| {
-                if update.storage.is_empty() {
-                    None
-                } else {
-                    let updates = update
-                        .storage
-                        .iter()
-                        .map(|(key, value)| (*key, *value))
-                        .collect();
+    fn compute_hash_of_storage_domain_state_diff(
+        contract_updates: &HashMap<ContractAddress, ContractUpdate>,
+        system_contract_updates: &HashMap<ContractAddress, SystemContractUpdate>,
+    ) -> MontFelt {
+        let storage_diffs = contract_updates.iter().filter_map(|(address, update)| {
+            if update.storage.is_empty() {
+                None
+            } else {
+                let updates = update
+                    .storage
+                    .iter()
+                    .map(|(key, value)| (*key, *value))
+                    .collect();
 
-                    Some((*address, updates))
-                }
-            });
+                Some((*address, updates))
+            }
+        });
         let system_storage_diffs =
-            self.system_contract_updates
+            system_contract_updates
                 .iter()
                 .filter_map(|(address, update)| {
                     if update.storage.is_empty() {
@@ -413,8 +496,7 @@ impl StateUpdate {
             },
         );
 
-        let nonces: BTreeMap<ContractAddress, ContractNonce> = self
-            .contract_updates
+        let nonces: BTreeMap<ContractAddress, ContractNonce> = contract_updates
             .iter()
             .filter_map(|(address, update)| update.nonce.map(|nonce| (*address, nonce)))
             .collect();
@@ -434,20 +516,6 @@ impl StateUpdate {
         );
 
         hasher.finish()
-    }
-
-    pub fn state_diff_length(&self) -> u64 {
-        let mut len = 0;
-        self.contract_updates.iter().for_each(|(_, update)| {
-            len += update.storage.len();
-            len += usize::from(update.nonce.is_some());
-            len += usize::from(update.class.is_some());
-        });
-        self.system_contract_updates.iter().for_each(|(_, update)| {
-            len += update.storage.len();
-        });
-        len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
-        len.try_into().expect("ptr size is 64bits")
     }
 }
 

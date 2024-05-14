@@ -15,6 +15,7 @@ use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
@@ -254,17 +255,12 @@ async fn handle_transaction_stream(
 }
 
 async fn handle_state_diff_stream(
-    stream: impl futures::Stream<
-        Item = Result<
-            PeerData<(BlockNumber, p2p::client::peer_agnostic::StateDiff)>,
-            anyhow::Error,
-        >,
-    >,
+    stream: impl futures::Stream<Item = Result<PeerData<(BlockNumber, StateUpdateData)>, anyhow::Error>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     stream
         .map_err(Into::into)
-        .and_then(state_updates::verify_signature)
+        .and_then(|x| state_updates::verify_commitment(x, storage.clone()))
         .try_chunks(100)
         .map_err(|e| e.1)
         // Persist state updates (without: state commitments and declared classes)
@@ -717,6 +713,8 @@ mod tests {
             );
         }
     }
+
+    mod handle_state_diff_stream {}
 
     mod handle_class_stream {
         use std::collections::HashMap;

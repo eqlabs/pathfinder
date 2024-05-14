@@ -21,7 +21,7 @@ use p2p_proto::state::{
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Message};
-use pathfinder_common::state_update::SystemContractUpdate;
+use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
     BlockNumber,
@@ -395,12 +395,17 @@ impl Client {
         }
     }
 
+    /// ### Important
+    ///
+    /// Contract class updates are by default set to
+    /// `ContractClassUpdate::Deploy` but __the caller is responsible for
+    /// determining if the class was really deployed or replaced__.
     pub fn state_diff_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         state_diff_lengths_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateDiff)>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>> {
         async_stream::try_stream! {
             pin_mut!(state_diff_lengths_stream);
 
@@ -451,7 +456,7 @@ impl Client {
                             }
                         };
 
-                        let mut state_diff = StateDiff::default();
+                        let mut state_diff = StateUpdateData::default();
 
                         while let Some(state_diff_response) = responses.next().await {
                             match state_diff_response {
@@ -474,7 +479,7 @@ impl Client {
 
                                     if address == ContractAddress::ONE {
                                         let storage = &mut state_diff
-                                            .system
+                                            .system_contract_updates
                                             .entry(address)
                                             .or_default()
                                             .storage;
@@ -488,7 +493,7 @@ impl Client {
                                         );
                                     } else {
                                         let update = &mut state_diff
-                                            .regular
+                                            .contract_updates
                                             .entry(address)
                                             .or_default();
                                         values.into_iter().for_each(
@@ -523,7 +528,7 @@ impl Client {
                                                 }
                                             }
 
-                                            update.class = Some(class_hash);
+                                            update.class = Some(ContractClassUpdate::Deploy(class_hash));
                                         }
                                     }
                                 }
@@ -944,20 +949,3 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
 pub type TransactionBlockData = (BlockNumber, Vec<(TransactionVariant, Receipt)>);
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
-
-#[derive(Default, Debug, Clone, PartialEq, Dummy)]
-pub struct ContractUpdate {
-    pub storage: HashMap<StorageAddress, StorageValue>,
-    /// The class associated with this update as the result of either a deploy
-    /// or class replacement transaction.
-    pub class: Option<ClassHash>,
-    pub nonce: Option<ContractNonce>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Dummy)]
-pub struct StateDiff {
-    pub regular: HashMap<ContractAddress, ContractUpdate>,
-    pub system: HashMap<ContractAddress, SystemContractUpdate>,
-    pub declared_cairo_classes: HashSet<ClassHash>,
-    pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
-}

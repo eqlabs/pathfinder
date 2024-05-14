@@ -250,6 +250,7 @@ fn get_classes_for_block(
     Ok(true)
 }
 
+/// FIXME emit StateDiffsResponse::DeclaredClass too
 fn get_state_diff(
     db_tx: &Transaction<'_>,
     block_number: BlockNumber,

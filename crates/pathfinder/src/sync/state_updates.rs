@@ -1,9 +1,8 @@
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::peer_agnostic::StateDiff;
 use p2p::PeerData;
-use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate};
+use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StateUpdate, StorageCommitment};
 use pathfinder_merkle_tree::contract_state::{update_contract_state, ContractStateUpdateResult};
 use pathfinder_merkle_tree::StorageCommitmentTree;
@@ -84,15 +83,38 @@ pub(super) fn state_diff_lengths_stream(
     }
 }
 
-pub(super) async fn verify_signature(
-    contract_updates: PeerData<(BlockNumber, StateDiff)>,
-) -> Result<PeerData<(BlockNumber, StateDiff)>, SyncError> {
-    todo!()
+pub(super) async fn verify_commitment(
+    state_diff: PeerData<(BlockNumber, StateUpdateData)>,
+    storage: Storage,
+) -> Result<PeerData<(BlockNumber, StateUpdateData)>, SyncError> {
+    tokio::task::spawn_blocking(move || {
+        let block_number = state_diff.data.0;
+
+        let mut db = storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let (expected, _) = db
+            .state_diff_commitment_and_length(block_number)
+            .context("Querying state diff commitment and length")?
+            .context("State diff commitment not found")?;
+
+        let actual = state_diff.data.1.compute_state_diff_commitment();
+
+        if actual != expected {
+            return Err(SyncError::StateDiffCommitmentMismatch(state_diff.peer));
+        }
+
+        Ok(state_diff)
+    })
+    .await
+    .context("Joining blocking task")?
 }
 
 pub(super) async fn persist(
     storage: Storage,
-    contract_updates: Vec<PeerData<(BlockNumber, StateDiff)>>,
+    state_diff: Vec<PeerData<(BlockNumber, StateUpdateData)>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut connection = storage
@@ -101,41 +123,14 @@ pub(super) async fn persist(
         let transaction = connection
             .transaction()
             .context("Creating database transaction")?;
-        let tail = contract_updates
+        let tail = state_diff
             .last()
             .map(|x| x.data.0)
             .context("Verification results are empty, no block to persist")?;
 
-        for (block_number, state_diff) in contract_updates.into_iter().map(|x| x.data) {
-            let block_hash = transaction
-                .block_hash(block_number.into())
-                .context("Getting block hash")?
-                .context("Block hash not found")?;
-
-            let state_update = StateUpdate {
-                block_hash,
-                contract_updates: state_diff
-                    .regular
-                    .into_iter()
-                    .map(|(k, v)| {
-                        (
-                            k,
-                            ContractUpdate {
-                                storage: v.storage,
-                                nonce: v.nonce,
-                                class: v.class.map(ContractClassUpdate::Deploy),
-                            },
-                        )
-                    })
-                    .collect(),
-                system_contract_updates: state_diff.system,
-                declared_cairo_classes: state_diff.declared_cairo_classes,
-                declared_sierra_classes: state_diff.declared_sierra_classes,
-                ..Default::default()
-            };
-
+        for (block_number, state_diff) in state_diff.into_iter().map(|x| x.data) {
             transaction
-                .insert_state_update(block_number, &state_update)
+                .insert_state_update_data(block_number, &state_diff)
                 .context("Inserting state update")?;
         }
 
@@ -143,180 +138,4 @@ pub(super) async fn persist(
     })
     .await
     .context("Joining blocking task")?
-}
-
-#[derive(Debug)]
-pub(super) struct VerificationOk {
-    block_number: BlockNumber,
-    block_hash: BlockHash,
-    storage_commitment: StorageCommitment,
-    contract_update_results: Vec<ContractStateUpdateResult>,
-    trie_update: TrieUpdate,
-    contract_updates: StateDiff,
-}
-
-/// This function is a placeholder for further state trie update work
-pub(super) async fn _update_and_verify_state_trie(
-    storage: Storage,
-    contract_updates: Vec<PeerData<(BlockNumber, StateDiff)>>,
-    verify_trie_hashes: bool,
-) -> Result<Vec<PeerData<VerificationOk>>, SyncError> {
-    tokio::task::spawn_blocking(move || {
-        contract_updates
-            .into_iter()
-            .map(|x| verify_one(storage.clone(), x, verify_trie_hashes))
-            .collect::<Result<Vec<_>, _>>()
-    })
-    .await
-    .context("Joining blocking task")?
-}
-
-fn verify_one(
-    storage: Storage,
-    contract_updates: PeerData<(BlockNumber, StateDiff)>,
-    verify_hashes: bool,
-) -> Result<PeerData<VerificationOk>, SyncError> {
-    use rayon::prelude::*;
-
-    let peer = contract_updates.peer;
-    let block_number = contract_updates.data.0;
-    let contract_updates = contract_updates.data.1;
-    let mut connection = storage
-        .connection()
-        .context("Creating database connection")?;
-    let transaction = connection
-        .transaction()
-        .context("Creating database transaction")?;
-
-    let BlockHeader {
-        hash: block_hash,
-        storage_commitment,
-        ..
-    } = transaction
-        .block_header(block_number.into())
-        .context("getting block header")?
-        .context("Block header not found")?;
-
-    let mut storage_commitment_tree = match block_number.parent() {
-        Some(parent) => StorageCommitmentTree::load(&transaction, parent)
-            .context("Loading storage commitment tree")?,
-        None => StorageCommitmentTree::empty(&transaction),
-    }
-    .with_verify_hashes(verify_hashes);
-
-    let (send, recv) = std::sync::mpsc::channel();
-
-    // Apply contract storage updates to the storage commitment tree.
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            let result: Result<Vec<_>, _> = contract_updates
-                .regular
-                .par_iter()
-                .map_init(
-                    || storage.clone().connection(),
-                    |connection, (contract_address, update)| {
-                        let connection = match connection {
-                            Ok(connection) => connection,
-                            Err(e) => anyhow::bail!(
-                                "Failed to create database connection in rayon thread: {}",
-                                e
-                            ),
-                        };
-                        let transaction = connection.transaction()?;
-                        update_contract_state(
-                            *contract_address,
-                            &update.storage,
-                            update.nonce,
-                            update.class,
-                            &transaction,
-                            verify_hashes,
-                            block_number,
-                        )
-                    },
-                )
-                .collect();
-            let _ = send.send(result);
-        })
-    });
-
-    let mut contract_update_results = recv.recv().context("Panic on rayon thread")??;
-
-    for contract_update_result in contract_update_results.iter() {
-        storage_commitment_tree
-            .set(
-                contract_update_result.contract_address,
-                contract_update_result.state_hash,
-            )
-            .context("Updating storage commitment tree")?;
-    }
-
-    let (send, recv) = std::sync::mpsc::channel();
-
-    // Apply system contract storage updates to the storage commitment tree.
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            let result: Result<Vec<_>, _> = contract_updates
-                .system
-                .par_iter()
-                .map_init(
-                    || storage.clone().connection(),
-                    |connection, (contract_address, update)| {
-                        let connection = match connection {
-                            Ok(connection) => connection,
-                            Err(e) => anyhow::bail!(
-                                "Failed to create database connection in rayon thread: {}",
-                                e
-                            ),
-                        };
-                        let transaction = connection.transaction()?;
-                        update_contract_state(
-                            *contract_address,
-                            &update.storage,
-                            None,
-                            None,
-                            &transaction,
-                            verify_hashes,
-                            block_number,
-                        )
-                    },
-                )
-                .collect();
-
-            let _ = send.send(result);
-        })
-    });
-
-    let system_contract_update_results = recv.recv().context("Panic on rayon thread")??;
-
-    for system_contract_update_result in system_contract_update_results.iter() {
-        storage_commitment_tree
-            .set(
-                system_contract_update_result.contract_address,
-                system_contract_update_result.state_hash,
-            )
-            .context("Updating storage commitment tree")?;
-    }
-
-    // Apply storage commitment tree changes.
-    let (computed_storage_commitment, trie_update) = storage_commitment_tree
-        .commit()
-        .context("Apply storage commitment tree updates")?;
-
-    if storage_commitment != computed_storage_commitment {
-        return Err(SyncError::StateDiffCommitmentMismatch(peer));
-    }
-
-    contract_update_results.extend(system_contract_update_results);
-
-    Ok(PeerData::new(
-        peer,
-        VerificationOk {
-            block_number,
-            block_hash,
-            storage_commitment,
-            contract_update_results,
-            trie_update,
-            contract_updates,
-        },
-    ))
 }
