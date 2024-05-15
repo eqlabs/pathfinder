@@ -10,19 +10,55 @@
             "name": "pathfinder_subscribe",
             "summary": "Open a new websocket subscription",
             "description": "Creates a websocket stream which will fire events of the requested subscription type. Only available for websocket connections.",
-            "params": [
-                {
-                    "name": "kind",
-                    "summary": "The type of subscription",
-                    "required": true,
-                    "schema": {
-                        "type": "string",
-                        "enum": [
-                            "newHeads"
-                        ]
-                    }
-                }
-            ],
+            "params": {
+                "oneOf": [
+                    [
+                        {
+                            "name": "kind",
+                            "summary": "The type of subscription",
+                            "required": true,
+                            "schema": {
+                                "type": "string",
+                                "enum": [
+                                    "newHeads"
+                                ]
+                            }
+                        }
+                    ],
+                    [
+                        {
+                            "name": "kind",
+                            "summary": "The type of subscription",
+                            "required": true,
+                            "schema": {
+                                "type": "string",
+                                "enum": [
+                                    "events"
+                                ]
+                            }
+                        },
+                        {
+                            "name": "address",
+                            "summary": "The from_address to filter events by",
+                            "required": false,
+                            "schema": {
+                                "$ref": "#/components/schemas/FELT"
+                            }
+                        },
+                        {
+                            "name": "keys",
+                            "summary": "The keys to filter events by",
+                            "required": false,
+                            "schema": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/FELT"
+                                }
+                            }
+                        }
+                    ]
+                ]
+            },
             "result": {
                 "name": "subscription ID",
                 "description": "An identifier for this subscription stream used to associate events with this subscription.",
@@ -87,6 +123,17 @@
     "components": {
         "contentDescriptors": {},
         "schemas": {
+            "SUBSCRIPTION_EVENT": {
+                "title": "Subscription event",
+                "oneOf": [
+                    {
+                        "$ref": "#/components/schemas/BLOCK_HEADER"
+                    },
+                    {
+                        "$ref": "#/components/schemas/EMITTED_EVENT"
+                    }
+                ]
+            },
             "BLOCK_HEADER": {
                 "type": "object",
                 "properties": {
@@ -166,6 +213,9 @@
                     "transaction_count",
                     "event_count"
                 ]
+            },
+            "EMITTED_EVENT": {
+                "$ref": "./v07/starknet_api_openrpc.json#/components/schemas/EMITTED_EVENT"
             },
             "FELT": {
                 "$ref": "./pathfinder_rpc_api.json#/components/schemas/FELT"
