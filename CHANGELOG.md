@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `/ready/synced` endpoint to check if the JSON RPC API is ready _and_ also check if the node is synced. Useful for Docker nodes which only want to be available after syncing.
+- Websocket endpoints now serve all JSON-RPC methods, not just `pathfinder_subscribe` and `pathfinder_unsubscribe`. Version-specific endpoints have been added for the 0.6 and 0.7 JSON-RPC API and the Pathfinder extension API.
 
 ## [0.12.0] - 2024-04-23
 
