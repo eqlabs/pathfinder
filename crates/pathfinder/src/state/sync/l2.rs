@@ -410,7 +410,7 @@ pub async fn download_new_classes(
     .context("Querying database for missing classes")?;
 
     for class_hash in require_downloading {
-        let class = download_class(sequencer, class_hash, version.clone())
+        let class = download_class(sequencer, class_hash, *version)
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 

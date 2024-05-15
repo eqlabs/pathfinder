@@ -3,17 +3,28 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use pathfinder_common::EventKey;
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
+use crate::method::get_events::types::EmittedEvent;
 
 #[derive(serde::Deserialize, Serialize)]
 pub(super) struct Kind<'a> {
     #[serde(borrow)]
     pub(super) kind: Cow<'a, str>,
+}
+
+#[derive(Debug, serde::Deserialize, Serialize)]
+pub(super) struct EventFilterParams {
+    pub(super) kind: String,
+    #[serde(default)]
+    pub(super) address: Option<pathfinder_common::ContractAddress>,
+    #[serde(default)]
+    pub(super) keys: Vec<Vec<EventKey>>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -69,6 +80,7 @@ pub(super) enum ResponseEvent {
     InvalidParams(RequestId, String),
     Header(SubscriptionItem<Arc<Value>>),
     Responses(RpcResponses),
+    Event(SubscriptionItem<Arc<EmittedEvent>>),
 }
 
 impl ResponseEvent {
@@ -76,6 +88,7 @@ impl ResponseEvent {
         match self {
             ResponseEvent::InvalidRequest(_) => "InvalidRequest",
             ResponseEvent::Header(_) => "BlockHeader",
+            ResponseEvent::Event(_) => "Event",
             ResponseEvent::Subscribed { .. } => "Subscribed",
             ResponseEvent::Unsubscribed { .. } => "Unsubscribed",
             ResponseEvent::SubscriptionClosed { .. } => "SubscriptionClosed",
@@ -98,6 +111,7 @@ impl Serialize for ResponseEvent {
                 RpcResponse::invalid_params(request_id.clone(), e.clone()).serialize(serializer)
             }
             ResponseEvent::Header(header) => header.serialize(serializer),
+            ResponseEvent::Event(event) => event.serialize(serializer),
             ResponseEvent::Subscribed {
                 subscription_id,
                 request_id,

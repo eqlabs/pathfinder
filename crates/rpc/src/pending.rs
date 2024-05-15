@@ -31,7 +31,7 @@ impl PendingData {
             eth_l1_data_gas_price: self.block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: self.block.l1_data_gas_price.price_in_fri,
             sequencer_address: self.block.sequencer_address,
-            starknet_version: self.block.starknet_version.clone(),
+            starknet_version: self.block.starknet_version,
             // Pending block does not know what these are yet.
             hash: Default::default(),
             class_commitment: Default::default(),

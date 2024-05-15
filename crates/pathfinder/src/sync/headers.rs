@@ -162,7 +162,7 @@ pub(super) async fn persist(
                 eth_l1_data_gas_price: header.eth_l1_data_gas_price,
                 strk_l1_data_gas_price: header.strk_l1_data_gas_price,
                 sequencer_address: header.sequencer_address,
-                starknet_version: header.starknet_version.clone(),
+                starknet_version: header.starknet_version,
                 class_commitment: ClassCommitment::ZERO,
                 event_commitment: header.event_commitment,
                 state_commitment: header.state_commitment,

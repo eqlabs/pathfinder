@@ -45,7 +45,7 @@ impl<'a> RawParams<'a> {
         false
     }
 
-    pub fn deserialize<T: Deserialize<'a>>(self) -> Result<T, RpcError> {
+    pub fn deserialize<T: Deserialize<'a>>(&self) -> Result<T, RpcError> {
         let s = self.0.map(|x| x.get()).unwrap_or_default();
 
         serde_json::from_str::<T>(s).map_err(|e| RpcError::InvalidParams(e.to_string()))
