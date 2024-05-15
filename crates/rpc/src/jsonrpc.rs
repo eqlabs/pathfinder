@@ -10,14 +10,14 @@ pub use response::RpcResponse;
 pub use router::{rpc_handler, RpcRouter, RpcRouterBuilder};
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum RequestId<'a> {
+pub enum RequestId {
     Number(i64),
-    String(std::borrow::Cow<'a, str>),
+    String(String),
     Null,
     Notification,
 }
 
-impl RequestId<'_> {
+impl RequestId {
     pub fn is_notification(&self) -> bool {
         self == &RequestId::Notification
     }

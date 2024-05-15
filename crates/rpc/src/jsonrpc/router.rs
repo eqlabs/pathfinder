@@ -12,7 +12,6 @@ use serde_json::value::RawValue;
 use tracing::Instrument;
 
 use crate::context::RpcContext;
-use crate::dto::serialize::SerializeForVersion;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::request::{RawParams, RpcRequest};
 use crate::jsonrpc::response::{RpcResponse, RpcResult};
@@ -20,7 +19,7 @@ use crate::RpcVersion;
 
 #[derive(Clone)]
 pub struct RpcRouter {
-    context: RpcContext,
+    pub context: RpcContext,
     methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
     version: RpcVersion,
 }
@@ -77,7 +76,7 @@ impl RpcRouter {
     }
 
     /// Parses and executes a request. Returns [None] if its a notification.
-    async fn run_request<'a>(&self, request: &'a str) -> Option<RpcResponse<'a>> {
+    async fn run_request(&self, request: &str) -> Option<RpcResponse> {
         tracing::trace!(%request, "Running request");
 
         let request = match serde_json::from_str::<RpcRequest<'_>>(request) {
@@ -165,68 +164,17 @@ pub async fn rpc_handler(
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
-    #[inline]
-    /// Helper to scope the responses so we can set the content-type afterwards
-    /// instead of dealing with branches / early exits.
-    async fn handle(
-        state: RpcRouter,
-        body: axum::body::Bytes,
-    ) -> impl axum::response::IntoResponse {
-        // Unfortunately due to this https://github.com/serde-rs/json/issues/497
-        // we cannot use an enum with borrowed raw values inside to do a single
-        // deserialization for us. Instead we have to distinguish manually
-        // between a single request and a batch request which we do by checking
-        // the first byte.
-        if body.as_ref().first() != Some(&b'[') {
-            let request = match serde_json::from_slice::<&RawValue>(&body) {
-                Ok(request) => request,
-                Err(e) => {
-                    return RpcResponse::parse_error(e.to_string()).into_response();
-                }
-            };
-
-            match state.run_request(request.get()).await {
-                Some(response) => response.into_response(),
-                None => ().into_response(),
+    let mut response = match handle_json_rpc_body(&state, body.as_ref()).await {
+        Ok(responses) => match responses {
+            RpcResponses::Empty => ().into_response(),
+            RpcResponses::Single(response) => response.into_response(),
+            RpcResponses::Multiple(responses) => {
+                serde_json::to_string(&responses).unwrap().into_response()
             }
-        } else {
-            let requests = match serde_json::from_slice::<Vec<&RawValue>>(&body) {
-                Ok(requests) => requests,
-                Err(e) => {
-                    return RpcResponse::parse_error(e.to_string()).into_response();
-                }
-            };
-
-            if requests.is_empty() {
-                return RpcResponse::invalid_request(
-                    "A batch request must contain at least one request".to_owned(),
-                )
-                .into_response();
-            }
-
-            let responses = run_concurrently(
-                state.context.config.batch_concurrency_limit,
-                requests.into_iter().enumerate(),
-                |(idx, request)| {
-                    state
-                        .run_request(request.get())
-                        .instrument(tracing::debug_span!("batch", idx))
-                },
-            )
-            .await
-            .flatten()
-            .collect::<Vec<RpcResponse<'_>>>();
-
-            // All requests were notifications.
-            if responses.is_empty() {
-                return ().into_response();
-            }
-
-            serde_json::to_string(&responses).unwrap().into_response()
-        }
-    }
-
-    let mut response = handle(state, body).await.into_response();
+        },
+        Err(RpcRequestError::ParseError(e)) => RpcResponse::parse_error(e).into_response(),
+        Err(RpcRequestError::InvalidRequest(e)) => RpcResponse::invalid_request(e).into_response(),
+    };
 
     use http::header::CONTENT_TYPE;
     static APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
@@ -234,6 +182,89 @@ pub async fn rpc_handler(
         .headers_mut()
         .insert(CONTENT_TYPE, APPLICATION_JSON.clone());
     response
+}
+
+pub(super) enum RpcRequestError {
+    ParseError(String),
+    InvalidRequest(String),
+}
+
+pub(super) enum RpcResponses {
+    Empty,
+    Single(RpcResponse),
+    Multiple(Vec<RpcResponse>),
+}
+
+impl serde::ser::Serialize for RpcResponses {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Empty => ().serialize(serializer),
+            Self::Single(response) => response.serialize(serializer),
+            Self::Multiple(responses) => responses.serialize(serializer),
+        }
+    }
+}
+
+/// Helper to scope the responses so we can set the content-type afterwards
+/// instead of dealing with branches / early exits.
+pub(super) async fn handle_json_rpc_body(
+    state: &RpcRouter,
+    body: &[u8],
+) -> Result<RpcResponses, RpcRequestError> {
+    // Unfortunately due to this https://github.com/serde-rs/json/issues/497
+    // we cannot use an enum with borrowed raw values inside to do a single
+    // deserialization for us. Instead we have to distinguish manually
+    // between a single request and a batch request which we do by checking
+    // the first byte.
+    if body.first() != Some(&b'[') {
+        let request = match serde_json::from_slice::<&RawValue>(body) {
+            Ok(request) => request,
+            Err(e) => {
+                return Err(RpcRequestError::ParseError(e.to_string()));
+            }
+        };
+
+        match state.run_request(request.get()).await {
+            Some(response) => Ok(RpcResponses::Single(response)),
+            None => Ok(RpcResponses::Empty),
+        }
+    } else {
+        let requests = match serde_json::from_slice::<Vec<&RawValue>>(body) {
+            Ok(requests) => requests,
+            Err(e) => {
+                return Err(RpcRequestError::ParseError(e.to_string()));
+            }
+        };
+
+        if requests.is_empty() {
+            return Err(RpcRequestError::InvalidRequest(
+                "A batch request must contain at least one request".to_owned(),
+            ));
+        }
+
+        let responses = run_concurrently(
+            state.context.config.batch_concurrency_limit,
+            requests.into_iter().enumerate(),
+            |(idx, request)| {
+                state
+                    .run_request(request.get())
+                    .instrument(tracing::debug_span!("batch", idx))
+            },
+        )
+        .await
+        .flatten()
+        .collect::<Vec<RpcResponse>>();
+
+        // All requests were notifications.
+        if responses.is_empty() {
+            return Ok(RpcResponses::Empty);
+        }
+
+        Ok(RpcResponses::Multiple(responses))
+    }
 }
 
 #[axum::async_trait]
@@ -282,7 +313,7 @@ mod sealed {
     use std::marker::PhantomData;
 
     use super::*;
-    use crate::dto::serialize::Serializer;
+    use crate::dto::serialize::{SerializeForVersion, Serializer};
     use crate::jsonrpc::error::RpcError;
     use crate::RpcVersion;
 

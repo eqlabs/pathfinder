@@ -7,6 +7,7 @@ use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
 
 #[derive(serde::Deserialize, Serialize)]
@@ -51,64 +52,35 @@ impl<T: Serialize> Serialize for SubscriptionItem<T> {
     }
 }
 
-pub(super) enum OwnedRequestId {
-    Number(i64),
-    String(String),
-    Null,
-    Notification,
-}
-
-impl From<RequestId<'_>> for OwnedRequestId {
-    fn from(value: RequestId<'_>) -> Self {
-        match value {
-            RequestId::Number(x) => OwnedRequestId::Number(x),
-            RequestId::String(x) => OwnedRequestId::String(x.into_owned()),
-            RequestId::Null => OwnedRequestId::Null,
-            RequestId::Notification => OwnedRequestId::Notification,
-        }
-    }
-}
-
-impl<'a> From<&'a OwnedRequestId> for RequestId<'a> {
-    fn from(value: &'a OwnedRequestId) -> Self {
-        match value {
-            OwnedRequestId::Number(x) => RequestId::Number(*x),
-            OwnedRequestId::String(x) => RequestId::String(x.into()),
-            OwnedRequestId::Null => RequestId::Null,
-            OwnedRequestId::Notification => RequestId::Notification,
-        }
-    }
-}
-
 pub(super) enum ResponseEvent {
     Subscribed {
         subscription_id: u32,
-        request_id: OwnedRequestId,
+        request_id: RequestId,
     },
     Unsubscribed {
         success: bool,
-        request_id: OwnedRequestId,
+        request_id: RequestId,
     },
     SubscriptionClosed {
         subscription_id: u32,
         reason: String,
     },
     InvalidRequest(String),
-    InvalidMethod(OwnedRequestId),
-    InvalidParams(OwnedRequestId, String),
+    InvalidParams(RequestId, String),
     Header(SubscriptionItem<Arc<Value>>),
+    Responses(RpcResponses),
 }
 
 impl ResponseEvent {
     pub(super) fn kind(&self) -> &'static str {
         match self {
             ResponseEvent::InvalidRequest(_) => "InvalidRequest",
-            ResponseEvent::InvalidMethod(_) => "InvalidMethod",
             ResponseEvent::Header(_) => "BlockHeader",
             ResponseEvent::Subscribed { .. } => "Subscribed",
             ResponseEvent::Unsubscribed { .. } => "Unsubscribed",
             ResponseEvent::SubscriptionClosed { .. } => "SubscriptionClosed",
             ResponseEvent::InvalidParams(..) => "InvalidParams",
+            ResponseEvent::Responses(_) => "Responses",
         }
     }
 }
@@ -122,23 +94,20 @@ impl Serialize for ResponseEvent {
             ResponseEvent::InvalidRequest(e) => {
                 RpcResponse::invalid_request(e.clone()).serialize(serializer)
             }
-            ResponseEvent::InvalidMethod(id) => {
-                RpcResponse::method_not_found(id.into()).serialize(serializer)
-            }
-            ResponseEvent::InvalidParams(id, e) => {
-                RpcResponse::invalid_params(id.into(), e.clone()).serialize(serializer)
+            ResponseEvent::InvalidParams(request_id, e) => {
+                RpcResponse::invalid_params(request_id.clone(), e.clone()).serialize(serializer)
             }
             ResponseEvent::Header(header) => header.serialize(serializer),
             ResponseEvent::Subscribed {
                 subscription_id,
                 request_id,
-            } => successful_response(&subscription_id, request_id.into())
+            } => successful_response(&subscription_id, request_id.clone())
                 .map_err(|_json_err| Error::custom("Payload serialization failed"))?
                 .serialize(serializer),
             ResponseEvent::Unsubscribed {
                 success,
                 request_id,
-            } => successful_response(&success, request_id.into())
+            } => successful_response(&success, request_id.clone())
                 .map_err(|_json_err| Error::custom("Payload serialization failed"))?
                 .serialize(serializer),
             ResponseEvent::SubscriptionClosed {
@@ -152,14 +121,15 @@ impl Serialize for ResponseEvent {
                 id: RequestId::Null,
             }
             .serialize(serializer),
+            ResponseEvent::Responses(responses) => responses.serialize(serializer),
         }
     }
 }
 
-pub(super) fn successful_response<'a, P>(
+pub(super) fn successful_response<P>(
     payload: &P,
-    request_id: RequestId<'a>,
-) -> Result<RpcResponse<'a>, serde_json::Error>
+    request_id: RequestId,
+) -> Result<RpcResponse, serde_json::Error>
 where
     P: Serialize,
 {

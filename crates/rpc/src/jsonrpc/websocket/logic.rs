@@ -18,8 +18,9 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
 use crate::jsonrpc::request::RawParams;
+use crate::jsonrpc::router::RpcRequestError;
 use crate::jsonrpc::websocket::data::{Kind, ResponseEvent, SubscriptionId, SubscriptionItem};
-use crate::jsonrpc::{RequestId, RpcRequest};
+use crate::jsonrpc::{RequestId, RpcRequest, RpcRouter};
 use crate::BlockHeader;
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
@@ -55,9 +56,12 @@ impl Default for WebsocketContext {
 
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
-    State(state): State<WebsocketContext>,
+    State(router): State<RpcRouter>,
 ) -> impl IntoResponse {
-    let mut upgrade_response = ws.on_upgrade(|socket| handle_socket(socket, state));
+    let mut upgrade_response = ws
+        .max_message_size(crate::REQUEST_MAX_SIZE)
+        .on_failed_upgrade(|error| tracing::debug!(%error, "Websocket upgrade failed"))
+        .on_upgrade(|socket| handle_socket(socket, router));
 
     static APPLICATION_JSON: http::HeaderValue = http::HeaderValue::from_static("application/json");
     upgrade_response
@@ -67,7 +71,12 @@ pub async fn websocket_handler(
     upgrade_response
 }
 
-async fn handle_socket(socket: WebSocket, context: WebsocketContext) {
+async fn handle_socket(socket: WebSocket, router: RpcRouter) {
+    let websocket_context = router
+        .context
+        .websocket
+        .as_ref()
+        .expect("Websocket handler should not be called with Websocket disabled");
     let (ws_sender, ws_receiver) = socket.split();
 
     let (response_sender, response_receiver) = mpsc::channel(10);
@@ -75,9 +84,9 @@ async fn handle_socket(socket: WebSocket, context: WebsocketContext) {
     tokio::spawn(write(
         ws_sender,
         response_receiver,
-        context.socket_buffer_capacity,
+        websocket_context.socket_buffer_capacity,
     ));
-    tokio::spawn(read(ws_receiver, response_sender, context.broadcasters));
+    tokio::spawn(read(ws_receiver, response_sender, router));
 }
 
 async fn write(
@@ -122,8 +131,14 @@ async fn send_response(
 async fn read(
     mut receiver: SplitStream<WebSocket>,
     response_sender: mpsc::Sender<ResponseEvent>,
-    source: TopicBroadcasters,
+    router: RpcRouter,
 ) {
+    let websocket_context = router
+        .context
+        .websocket
+        .as_ref()
+        .expect("Websocket handler should not be called with Websocket disabled");
+    let source = &websocket_context.broadcasters;
     let mut subscription_manager = SubscriptionManager::default();
 
     loop {
@@ -145,7 +160,7 @@ async fn read(
             }
         };
 
-        let request = match serde_json::from_slice::<RpcRequest<'_>>(&request) {
+        let parsed_request = match serde_json::from_slice::<RpcRequest<'_>>(&request) {
             Ok(request) => request,
             Err(err) => {
                 match response_sender.try_send(ResponseEvent::InvalidRequest(err.to_string())) {
@@ -159,19 +174,23 @@ async fn read(
         };
 
         // Handle request.
-        let response = match request.method.as_ref() {
+        let response = match parsed_request.method.as_ref() {
             SUBSCRIBE_METHOD => subscription_manager.subscribe(
-                request.id,
-                request.params,
+                parsed_request.id,
+                parsed_request.params,
                 response_sender.clone(),
                 source.clone(),
             ),
             UNSUBSCRIBE_METHOD => {
                 subscription_manager
-                    .unsubscribe(request.id, request.params)
+                    .unsubscribe(parsed_request.id, parsed_request.params)
                     .await
             }
-            _ => ResponseEvent::InvalidMethod(request.id.into()),
+            _ => match super::super::router::handle_json_rpc_body(&router, &request).await {
+                Ok(responses) => ResponseEvent::Responses(responses),
+                Err(RpcRequestError::ParseError(e)) => ResponseEvent::InvalidRequest(e),
+                Err(RpcRequestError::InvalidRequest(e)) => ResponseEvent::InvalidRequest(e),
+            },
         };
 
         if let Err(e) = response_sender.try_send(response) {
@@ -196,17 +215,17 @@ struct SubscriptionManager {
 impl SubscriptionManager {
     async fn unsubscribe(
         &mut self,
-        request_id: RequestId<'_>,
+        request_id: RequestId,
         request_params: RawParams<'_>,
     ) -> ResponseEvent {
         let subscription_id = match request_params.deserialize::<SubscriptionId>() {
             Ok(x) => x,
             Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                return ResponseEvent::InvalidParams(request_id.into(), e)
+                return ResponseEvent::InvalidParams(request_id, e)
             }
             Err(_) => {
                 return ResponseEvent::InvalidParams(
-                    request_id.into(),
+                    request_id,
                     "Unexpected parsing error".to_owned(),
                 )
             }
@@ -225,13 +244,13 @@ impl SubscriptionManager {
 
         ResponseEvent::Unsubscribed {
             success,
-            request_id: request_id.into(),
+            request_id,
         }
     }
 
     fn subscribe(
         &mut self,
-        request_id: RequestId<'_>,
+        request_id: RequestId,
         request_params: RawParams<'_>,
         response_sender: mpsc::Sender<ResponseEvent>,
         websocket_source: TopicBroadcasters,
@@ -239,11 +258,11 @@ impl SubscriptionManager {
         let kind = match request_params.deserialize::<Kind<'_>>() {
             Ok(x) => x,
             Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                return ResponseEvent::InvalidParams(request_id.into(), e)
+                return ResponseEvent::InvalidParams(request_id, e)
             }
             Err(_) => {
                 return ResponseEvent::InvalidParams(
-                    request_id.into(),
+                    request_id,
                     "Unexpected parsing error".to_owned(),
                 )
             }
@@ -260,7 +279,7 @@ impl SubscriptionManager {
             )),
             _ => {
                 return ResponseEvent::InvalidParams(
-                    request_id.into(),
+                    request_id,
                     "Unknown subscription type".to_owned(),
                 )
             }
@@ -270,7 +289,7 @@ impl SubscriptionManager {
 
         ResponseEvent::Subscribed {
             subscription_id,
-            request_id: request_id.into(),
+            request_id,
         }
     }
 
@@ -395,6 +414,7 @@ mod tests {
     use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
     use super::*;
+    use crate::context::RpcContext;
     use crate::jsonrpc::websocket::data::successful_response;
     use crate::jsonrpc::{RpcError, RpcResponse};
 
@@ -483,6 +503,28 @@ mod tests {
         client.destroy().await;
     }
 
+    #[tokio::test]
+    async fn fall_back_to_rpc_method() {
+        let mut client = Client::new().await;
+
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from("pathfinder_test"),
+                params: Default::default(),
+                id: RequestId::Number(1),
+            })
+            .await;
+
+        client
+            .expect_response(&RpcResponse {
+                output: Ok(json!("0x534e5f5345504f4c4941")),
+                id: RequestId::Number(1),
+            })
+            .await;
+
+        client.destroy().await;
+    }
+
     // TODO Prevent duplicate subscriptions?
     // This is actually tolerated by Alchemy, you can subscribe multiple times
     // to the same topic and receive duplicated messages as a result.
@@ -508,12 +550,20 @@ mod tests {
 
     impl Client {
         async fn new() -> Client {
-            let context = WebsocketContext::default();
-            let head_sender = context.broadcasters.new_head.clone();
+            let context = RpcContext::for_tests().with_websockets(WebsocketContext::default());
+            let router = RpcRouter::builder(crate::RpcVersion::V07)
+                .register("pathfinder_test", rpc_test_method)
+                .build(context.clone());
+            let head_sender = context
+                .websocket
+                .unwrap_or_default()
+                .broadcasters
+                .new_head
+                .clone();
 
             let router = axum::Router::new()
                 .route("/ws", get(websocket_handler))
-                .with_state(context)
+                .with_state(router)
                 .layer(tower::ServiceBuilder::new());
 
             let listener = std::net::TcpListener::bind("127.0.0.1:0")
@@ -601,5 +651,11 @@ mod tests {
             self.server_handle.abort();
             let _ignored = self.server_handle.await;
         }
+    }
+
+    pub async fn rpc_test_method(
+        context: RpcContext,
+    ) -> Result<pathfinder_common::ChainId, RpcError> {
+        Ok(context.chain_id)
     }
 }

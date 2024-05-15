@@ -65,6 +65,11 @@ impl RpcVersion {
     }
 }
 
+// TODO: make this configurable
+const REQUEST_MAX_SIZE: usize = 10 * 1024 * 1024;
+// TODO: make this configurable
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,
@@ -99,11 +104,6 @@ impl RpcServer {
     /// Starts the HTTP-RPC server.
     pub fn spawn(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use axum::routing::{get, post};
-
-        // TODO: make this configurable
-        const REQUEST_MAX_SIZE: usize = 10 * 1024 * 1024;
-        // TODO: make this configurable
-        const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
         let listener = match std::net::TcpListener::bind(self.addr) {
             Ok(listener) => listener,
@@ -187,7 +187,7 @@ impl RpcServer {
             // Also return success for get's with an empty body. These are often
             // used by monitoring bots to check service health.
             .route("/", get(empty_body).post(rpc_handler))
-            .with_state(default_router)
+            .with_state(default_router.clone())
             .route("/rpc/v0.4", post(rpc_handler))
             .route("/rpc/v0_4", post(rpc_handler))
             .with_state(v04_routes)
@@ -195,21 +195,25 @@ impl RpcServer {
             .route("/rpc/v0_5", post(rpc_handler))
             .with_state(v05_routes)
             .route("/rpc/v0_6", post(rpc_handler))
-            .with_state(v06_routes)
+            .with_state(v06_routes.clone())
             .route("/rpc/v0_7", post(rpc_handler))
-            .with_state(v07_routes)
+            .with_state(v07_routes.clone())
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
             .with_state(pathfinder_routes);
 
         let router = if self.context.websocket.is_some() {
-            router.route("/ws", get(websocket_handler))
-        } else {
             router
+                .route("/ws", get(websocket_handler))
+                .with_state(default_router)
+                .route("/ws/rpc/v0_6", get(websocket_handler))
+                .with_state(v06_routes)
+                .route("/ws/rpc/v0_7", get(websocket_handler))
+                .with_state(v07_routes)
+        } else {
+            router.with_state(default_router)
         };
 
-        let router = router
-            .with_state(self.context.websocket.clone().unwrap_or_default())
-            .layer(middleware);
+        let router = router.layer(middleware);
 
         let server_handle = tokio::spawn(async move {
             server
