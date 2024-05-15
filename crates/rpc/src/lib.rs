@@ -199,7 +199,7 @@ impl RpcServer {
             .route("/rpc/v0_7", post(rpc_handler))
             .with_state(v07_routes.clone())
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
-            .with_state(pathfinder_routes);
+            .with_state(pathfinder_routes.clone());
 
         let router = if self.context.websocket.is_some() {
             router
@@ -209,6 +209,8 @@ impl RpcServer {
                 .with_state(v06_routes)
                 .route("/ws/rpc/v0_7", get(websocket_handler))
                 .with_state(v07_routes)
+                .route("/ws/rpc/pathfinder/v0_1", get(websocket_handler))
+                .with_state(pathfinder_routes)
         } else {
             router.with_state(default_router)
         };
