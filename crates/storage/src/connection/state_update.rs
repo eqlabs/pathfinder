@@ -114,12 +114,25 @@ impl Transaction<'_> {
             )
             .context("Preparing contract insert statement")?;
 
-        let mut update_class_defs = self
+        // ON CONFLICT is required to handle legacy syncing logic, where the definition
+        // is inserted before the state update
+        let mut upsert_declared_at = self
             .inner()
             .prepare_cached(
-                "UPDATE class_definitions SET block_number=? WHERE hash=? AND block_number IS NULL",
+                r"INSERT INTO class_definitions (block_number, hash) VALUES (?, ?)
+                ON CONFLICT(hash)
+                DO UPDATE SET block_number=excluded.block_number
+                WHERE block_number IS NOT NULL",
             )
-            .context("Preparing class definition block number update statement")?;
+            .context("Preparing class hash and block number upsert statement")?;
+        // OR IGNORE is required to handle legacy syncing logic, where the casm
+        // definition is inserted before the state update
+        let mut insert_casm_hash = self
+            .inner()
+            .prepare_cached(
+                "INSERT OR IGNORE INTO casm_definitions (hash, compiled_class_hash) VALUES (?, ?)",
+            )
+            .context("Preparing casm hash insert statement")?;
 
         for (address, update) in contract_updates {
             if let Some(class_update) = &update.class {
@@ -214,7 +227,13 @@ impl Transaction<'_> {
         let declared_classes = sierra.chain(cairo).chain(deployed);
 
         for class in declared_classes {
-            update_class_defs.execute(params![&block_number, &class])?;
+            upsert_declared_at.execute(params![&block_number, &class])?;
+        }
+
+        for (sierra_hash, casm_hash) in declared_sierra_classes {
+            insert_casm_hash
+                .execute(params![sierra_hash, casm_hash])
+                .context("Inserting casm hash")?;
         }
 
         Ok(())
