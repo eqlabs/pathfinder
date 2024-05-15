@@ -44,7 +44,7 @@ pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ComputedCla
 ///
 /// Due to an issue in serde_json we can't use an untagged enum and simply
 /// derive a Deserialize implementation: <https://github.com/serde-rs/json/issues/559>
-fn parse_contract_definition(
+pub fn parse_contract_definition(
     contract_definition_dump: &[u8],
 ) -> serde_json::Result<json::ContractDefinition<'_>> {
     serde_json::from_slice::<json::SierraContractDefinition<'_>>(contract_definition_dump)
@@ -110,6 +110,34 @@ pub mod from_parts {
 
         super::compute_sierra_class_hash(contract_definition)
     }
+}
+
+
+pub fn compute_cairo_hinted_class_hash(contract_definition: &json::CairoContractDefinition) -> Result<Felt> {
+    use std::io::Write;
+
+    // It's less efficient than tweaking the formatter to emit the encoding but I
+    // don't know how and this is an emergency issue (mainnt nodes stuck).
+    let mut string_buffer = vec![];
+
+    let mut ser =
+        serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
+    contract_definition
+        .serialize(&mut ser)
+        .context("Serializing contract_definition for Keccak256")?;
+
+    let raw_json_output = unsafe {
+        // We never emit invalid UTF-8.
+        String::from_utf8_unchecked(string_buffer)
+    };
+
+    let mut keccak_writer = KeccakWriter::default();
+    keccak_writer
+        .write_all(raw_json_output.as_bytes())
+        .expect("writing to KeccakWriter never fails");
+
+    let KeccakWriter(hash) = keccak_writer;
+    Ok(truncated_keccak(<[u8; 32]>::from(hash.finalize())))
 }
 
 /// Computes the class hash for given Cairo class definition.
@@ -234,32 +262,7 @@ fn compute_cairo_class_hash(
         add_extra_space_to_cairo_named_tuples(&mut contract_definition.program.reference_manager);
     }
 
-    let truncated_keccak = {
-        use std::io::Write;
-
-        // It's less efficient than tweaking the formatter to emit the encoding but I
-        // don't know how and this is an emergency issue (mainnt nodes stuck).
-        let mut string_buffer = vec![];
-
-        let mut ser =
-            serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
-        contract_definition
-            .serialize(&mut ser)
-            .context("Serializing contract_definition for Keccak256")?;
-
-        let raw_json_output = unsafe {
-            // We never emit invalid UTF-8.
-            String::from_utf8_unchecked(string_buffer)
-        };
-
-        let mut keccak_writer = KeccakWriter::default();
-        keccak_writer
-            .write_all(raw_json_output.as_bytes())
-            .expect("writing to KeccakWriter never fails");
-
-        let KeccakWriter(hash) = keccak_writer;
-        truncated_keccak(<[u8; 32]>::from(hash.finalize()))
-    };
+    let truncated_keccak = compute_cairo_hinted_class_hash(&contract_definition)?;
 
     // what follows is defined over at the contract.cairo
 
@@ -496,7 +499,7 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
     }
 }
 
-mod json {
+pub mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
 
