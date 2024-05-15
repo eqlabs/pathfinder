@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-// TODO remove `derive[..., Dummy]` from all types here, if possible
 use fake::Dummy;
 
 use crate::{
@@ -16,7 +15,7 @@ use crate::{
     StorageValue,
 };
 
-#[derive(Default, Debug, Clone, PartialEq, Dummy)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct StateUpdate {
     pub block_hash: BlockHash,
     pub parent_state_commitment: StateCommitment,
