@@ -433,7 +433,7 @@ impl std::fmt::Display for Chain {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Dummy)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Dummy)]
 pub struct StarknetVersion(u8, u8, u8, u8);
 
 impl StarknetVersion {

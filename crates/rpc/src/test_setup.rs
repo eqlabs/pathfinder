@@ -28,7 +28,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
     let header = BlockHeader::builder()
         .with_number(BlockNumber::GENESIS)
         .with_timestamp(BlockTimestamp::new_or_panic(0))
-        .with_starknet_version(version.clone())
+        .with_starknet_version(version)
         .finalize_with_hash(BlockHash(felt!("0xb00")));
     tx.insert_block_header(&header).unwrap();
 

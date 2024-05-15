@@ -14,18 +14,27 @@ use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use serde::Serialize;
 use serde_json::Value;
+use starknet_gateway_types::reply::Block;
 use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
-use crate::jsonrpc::websocket::data::{Kind, ResponseEvent, SubscriptionId, SubscriptionItem};
+use crate::jsonrpc::websocket::data::{
+    EventFilterParams,
+    Kind,
+    ResponseEvent,
+    SubscriptionId,
+    SubscriptionItem,
+};
 use crate::jsonrpc::{RequestId, RpcRequest, RpcRouter};
+use crate::method::get_events::types::EmittedEvent;
 use crate::BlockHeader;
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
 const UNSUBSCRIBE_METHOD: &str = "pathfinder_unsubscribe";
 const NEW_HEADS_TOPIC: &str = "newHeads";
+const EVENTS_TOPIC: &str = "events";
 
 #[derive(Clone)]
 pub struct WebsocketContext {
@@ -270,13 +279,36 @@ impl SubscriptionManager {
 
         let subscription_id = self.next_id;
         self.next_id += 1;
-        let receiver = websocket_source.new_head.subscribe();
         let handle = match kind.kind.as_ref() {
-            NEW_HEADS_TOPIC => tokio::spawn(header_subscription(
-                response_sender,
-                receiver,
-                subscription_id,
-            )),
+            NEW_HEADS_TOPIC => {
+                let receiver = websocket_source.new_head.subscribe();
+                tokio::spawn(header_subscription(
+                    response_sender,
+                    receiver,
+                    subscription_id,
+                ))
+            }
+            EVENTS_TOPIC => {
+                let filter = match request_params.deserialize::<EventFilterParams>() {
+                    Ok(x) => x,
+                    Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
+                        return ResponseEvent::InvalidParams(request_id, e)
+                    }
+                    Err(_) => {
+                        return ResponseEvent::InvalidParams(
+                            request_id,
+                            "Unexpected parsing error".to_owned(),
+                        )
+                    }
+                };
+                let receiver = websocket_source.blocks.subscribe();
+                tokio::spawn(event_subscription(
+                    response_sender,
+                    receiver,
+                    subscription_id,
+                    filter,
+                ))
+            }
             _ => {
                 return ResponseEvent::InvalidParams(
                     request_id,
@@ -314,10 +346,7 @@ async fn header_subscription(
             }),
             Err(RecvError::Closed) => break,
             Err(RecvError::Lagged(amount)) => {
-                tracing::info!(
-                    amount,
-                    "Lagging header stream, missed some events, closing subscription"
-                );
+                tracing::debug!(%subscription_id, %amount, kind="header", "Subscription consumer too slow, closing.");
 
                 // No explicit break here, the loop will be broken by the dropped receiver.
                 ResponseEvent::SubscriptionClosed {
@@ -331,6 +360,80 @@ async fn header_subscription(
         if msg_sender.send(response).await.is_err() {
             break;
         }
+    }
+}
+
+async fn event_subscription(
+    msg_sender: mpsc::Sender<ResponseEvent>,
+    mut blocks: broadcast::Receiver<Arc<Block>>,
+    subscription_id: u32,
+    filter: EventFilterParams,
+) {
+    use broadcast::error::RecvError;
+    let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
+    let keys: Vec<std::collections::HashSet<_>> = filter
+        .keys
+        .iter()
+        .map(|keys| keys.iter().collect())
+        .collect();
+    'outer: loop {
+        match blocks.recv().await {
+            Ok(block) => {
+                for (receipt, events) in block.transaction_receipts.iter() {
+                    for event in events {
+                        // Check if the event matches the filter.
+                        if let Some(address) = filter.address {
+                            if event.from_address != address {
+                                continue;
+                            }
+                        }
+                        let matches_keys = if key_filter_is_empty {
+                            true
+                        } else if event.keys.len() < keys.len() {
+                            false
+                        } else {
+                            event
+                                .keys
+                                .iter()
+                                .zip(keys.iter())
+                                .all(|(key, filter)| filter.is_empty() || filter.contains(key))
+                        };
+                        if !matches_keys {
+                            continue;
+                        }
+
+                        let response = ResponseEvent::Event(SubscriptionItem {
+                            subscription_id,
+                            item: Arc::new(EmittedEvent {
+                                data: event.data.clone(),
+                                keys: event.keys.clone(),
+                                from_address: event.from_address,
+                                block_hash: Some(block.block_hash),
+                                block_number: Some(block.block_number),
+                                transaction_hash: receipt.transaction_hash,
+                            }),
+                        });
+                        if msg_sender.send(response).await.is_err() {
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+            Err(RecvError::Closed) => break,
+            Err(RecvError::Lagged(amount)) => {
+                tracing::debug!(%subscription_id, %amount, kind="event", "Subscription consumer too slow, closing.");
+
+                // No explicit break here, the loop will be broken by the dropped receiver.
+                let response = ResponseEvent::SubscriptionClosed {
+                    subscription_id,
+                    reason: "Lagging stream, some events were skipped. Closing subscription."
+                        .to_owned(),
+                };
+                if msg_sender.send(response).await.is_err() {
+                    break;
+                }
+            }
+        };
     }
 }
 
@@ -376,6 +479,7 @@ where
 #[derive(Debug, Clone)]
 pub struct TopicBroadcasters {
     pub new_head: JsonBroadcaster<BlockHeader>,
+    pub blocks: broadcast::Sender<Arc<Block>>,
 }
 
 impl TopicBroadcasters {
@@ -385,6 +489,7 @@ impl TopicBroadcasters {
                 sender: broadcast::channel(capacity.get()).0,
                 item_type: PhantomData {},
             },
+            blocks: broadcast::channel(capacity.get()).0,
         }
     }
 }
@@ -404,9 +509,28 @@ mod tests {
 
     use axum::routing::get;
     use futures::{SinkExt, StreamExt};
+    use pathfinder_common::event::Event;
+    use pathfinder_common::{
+        block_hash,
+        event_commitment,
+        event_key,
+        state_commitment,
+        transaction_commitment,
+        transaction_hash,
+        BlockNumber,
+        BlockTimestamp,
+        ContractAddress,
+        EventData,
+        EventKey,
+        GasPrice,
+        StarknetVersion,
+    };
+    use pathfinder_crypto::Felt;
+    use pretty_assertions_sorted::assert_eq;
     use serde::Serialize;
     use serde_json::value::RawValue;
     use serde_json::{json, Number, Value};
+    use starknet_gateway_types::reply::GasPrices;
     use tokio::net::TcpStream;
     use tokio::task::JoinHandle;
     use tokio::time::timeout;
@@ -443,16 +567,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn can_subscribe() {
+    async fn subscribe_new_heads() {
         let mut client = Client::new().await;
 
         let req_id = RequestId::Number(37);
         client
             .send_request(&RpcRequest {
                 method: Cow::from(SUBSCRIBE_METHOD),
-                params: RawParams(Some(&value(&Kind {
-                    kind: NEW_HEADS_TOPIC.into(),
-                }))),
+                params: RawParams(Some(
+                    &RawValue::from_string(r#"["newHeads"]"#.to_owned()).unwrap(),
+                )),
                 id: req_id.clone(),
             })
             .await;
@@ -525,6 +649,182 @@ mod tests {
         client.destroy().await;
     }
 
+    #[tokio::test]
+    async fn subscribe_events() {
+        let mut client = Client::new().await;
+        let block = block_sample();
+
+        let req_id = RequestId::Number(37);
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(SUBSCRIBE_METHOD),
+                params: RawParams(Some(
+                    &RawValue::from_string(r#"["events"]"#.to_owned()).unwrap(),
+                )),
+                id: req_id.clone(),
+            })
+            .await;
+
+        client
+            .expect_response(&successful_response(&0, req_id).unwrap())
+            .await;
+
+        client.blocks_sender.send(block.clone().into()).unwrap();
+
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 0,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("2").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("a").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("b").unwrap()),
+                        event_key!("0xdeadbeef"),
+                    ],
+                    block_hash: Some(block_hash!("0x1")),
+                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    transaction_hash: transaction_hash!("0x1"),
+                },
+            })
+            .await;
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 0,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("3").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("c").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("d").unwrap()),
+                        event_key!("0xcafebabe"),
+                    ],
+                    block_hash: Some(block_hash!("0x1")),
+                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    transaction_hash: transaction_hash!("0x2"),
+                },
+            })
+            .await;
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 0,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("4").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("e").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("f").unwrap()),
+                        event_key!("0x1234"),
+                    ],
+                    block_hash: Some(block_hash!("0x1")),
+                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    transaction_hash: transaction_hash!("0x2"),
+                },
+            })
+            .await;
+
+        client.expect_no_response().await;
+
+        let req_id = RequestId::String("unsub_1".into());
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(UNSUBSCRIBE_METHOD),
+                params: RawParams(Some(&value(&SubscriptionId { id: 0 }))),
+                id: req_id.clone(),
+            })
+            .await;
+        client
+            .expect_response(&successful_response(&true, req_id).unwrap())
+            .await;
+
+        let req_id = RequestId::Number(38);
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(SUBSCRIBE_METHOD),
+                params: RawParams(Some(
+                    &RawValue::from_string(
+                        r#"{"kind": "events", "keys": [[], ["0xdeadbeef"]]}"#.to_owned(),
+                    )
+                    .unwrap(),
+                )),
+                id: req_id.clone(),
+            })
+            .await;
+
+        client
+            .expect_response(&successful_response(&1, req_id).unwrap())
+            .await;
+
+        client.blocks_sender.send(block.clone().into()).unwrap();
+
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 1,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("2").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("a").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("b").unwrap()),
+                        event_key!("0xdeadbeef"),
+                    ],
+                    block_hash: Some(block_hash!("0x1")),
+                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    transaction_hash: transaction_hash!("0x1"),
+                },
+            })
+            .await;
+
+        client.expect_no_response().await;
+
+        let req_id = RequestId::String("unsub_2".into());
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(UNSUBSCRIBE_METHOD),
+                params: RawParams(Some(&value(&SubscriptionId { id: 1 }))),
+                id: req_id.clone(),
+            })
+            .await;
+        client
+            .expect_response(&successful_response(&true, req_id).unwrap())
+            .await;
+
+        let req_id = RequestId::Number(39);
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(SUBSCRIBE_METHOD),
+                params: RawParams(Some(
+                    &RawValue::from_string(r#"{"kind": "events", "address": "0x3"}"#.to_owned())
+                        .unwrap(),
+                )),
+                id: req_id.clone(),
+            })
+            .await;
+
+        client
+            .expect_response(&successful_response(&2, req_id).unwrap())
+            .await;
+
+        client.blocks_sender.send(block.into()).unwrap();
+
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 2,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("3").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("c").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("d").unwrap()),
+                        event_key!("0xcafebabe"),
+                    ],
+                    block_hash: Some(block_hash!("0x1")),
+                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    transaction_hash: transaction_hash!("0x2"),
+                },
+            })
+            .await;
+
+        client.expect_no_response().await;
+
+        client.destroy().await;
+    }
+
     // TODO Prevent duplicate subscriptions?
     // This is actually tolerated by Alchemy, you can subscribe multiple times
     // to the same topic and receive duplicated messages as a result.
@@ -541,11 +841,83 @@ mod tests {
         BlockHeader(Default::default())
     }
 
+    fn block_sample() -> Block {
+        Block {
+            block_hash: block_hash!("0x1"),
+            block_number: BlockNumber::new_or_panic(1),
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice(0),
+                price_in_fri: GasPrice(0),
+            },
+            l1_data_gas_price: GasPrices {
+                price_in_wei: GasPrice(0),
+                price_in_fri: GasPrice(0),
+            },
+            parent_block_hash: block_hash!("0x2"),
+            sequencer_address: None,
+            state_commitment: state_commitment!("0x3"),
+            status: starknet_gateway_types::reply::Status::AcceptedOnL2,
+            timestamp: BlockTimestamp::new_or_panic(1),
+            transaction_receipts: vec![
+                (
+                    pathfinder_common::receipt::Receipt {
+                        transaction_hash: transaction_hash!("0x1"),
+                        ..Default::default()
+                    },
+                    vec![Event {
+                        from_address: ContractAddress::new_or_panic(
+                            Felt::from_hex_str("2").unwrap(),
+                        ),
+                        data: vec![EventData(Felt::from_hex_str("a").unwrap())],
+                        keys: vec![
+                            EventKey(Felt::from_hex_str("b").unwrap()),
+                            event_key!("0xdeadbeef"),
+                        ],
+                    }],
+                ),
+                (
+                    pathfinder_common::receipt::Receipt {
+                        transaction_hash: transaction_hash!("0x2"),
+                        ..Default::default()
+                    },
+                    vec![
+                        Event {
+                            from_address: ContractAddress::new_or_panic(
+                                Felt::from_hex_str("3").unwrap(),
+                            ),
+                            data: vec![EventData(Felt::from_hex_str("c").unwrap())],
+                            keys: vec![
+                                EventKey(Felt::from_hex_str("d").unwrap()),
+                                event_key!("0xcafebabe"),
+                            ],
+                        },
+                        Event {
+                            from_address: ContractAddress::new_or_panic(
+                                Felt::from_hex_str("4").unwrap(),
+                            ),
+                            data: vec![EventData(Felt::from_hex_str("e").unwrap())],
+                            keys: vec![
+                                EventKey(Felt::from_hex_str("f").unwrap()),
+                                event_key!("0x1234"),
+                            ],
+                        },
+                    ],
+                ),
+            ],
+            transactions: vec![],
+            starknet_version: StarknetVersion::new(1, 1, 1, 1),
+            transaction_commitment: transaction_commitment!("0x4"),
+            event_commitment: event_commitment!("0x5"),
+            l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Blob,
+        }
+    }
+
     struct Client {
         sender: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
         receiver: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
         server_handle: JoinHandle<()>,
         head_sender: JsonBroadcaster<BlockHeader>,
+        blocks_sender: broadcast::Sender<Arc<Block>>,
     }
 
     impl Client {
@@ -554,12 +926,9 @@ mod tests {
             let router = RpcRouter::builder(crate::RpcVersion::V07)
                 .register("pathfinder_test", rpc_test_method)
                 .build(context.clone());
-            let head_sender = context
-                .websocket
-                .unwrap_or_default()
-                .broadcasters
-                .new_head
-                .clone();
+            let websocket_context = context.websocket.unwrap_or_default();
+            let head_sender = websocket_context.broadcasters.new_head.clone();
+            let blocks_sender = websocket_context.broadcasters.blocks.clone();
 
             let router = axum::Router::new()
                 .route("/ws", get(websocket_handler))
@@ -587,6 +956,7 @@ mod tests {
 
             Client {
                 head_sender,
+                blocks_sender,
                 sender,
                 receiver,
                 server_handle,

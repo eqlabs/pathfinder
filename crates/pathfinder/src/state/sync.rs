@@ -904,8 +904,9 @@ async fn l2_update(
         );
         let (transactions_data, events_data): (Vec<_>, Vec<_>) = block
             .transactions
-            .into_iter()
-            .zip(block.transaction_receipts.into_iter())
+            .iter()
+            .cloned()
+            .zip(block.transaction_receipts.iter().cloned())
             .map(|(tx, (receipt, events))| ((tx, receipt), events))
             .unzip();
 
@@ -961,6 +962,14 @@ async fn l2_update(
                 // error. It is unlikely that any error here wouldn't simply
                 // repeat indefinitely.
                 *websocket_txs = None;
+                return Ok(());
+            }
+            if sender.blocks.receiver_count() > 0 {
+                if let Err(e) = sender.blocks.send(block.into()) {
+                    tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
+                    *websocket_txs = None;
+                    return Ok(());
+                }
             }
         }
 
