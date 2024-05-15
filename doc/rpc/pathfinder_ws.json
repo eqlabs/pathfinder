@@ -104,7 +104,7 @@
                             "type": "integer"
                         },
                         "event": {
-                            "$ref": "#/components/schemas/BLOCK_HEADER"
+                            "$ref": "#/components/schemas/SUBSCRIPTION_EVENT"
                         }
                     },
                     "required": [
