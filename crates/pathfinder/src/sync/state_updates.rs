@@ -88,13 +88,12 @@ pub(super) async fn verify_commitment(
     storage: Storage,
 ) -> Result<PeerData<(BlockNumber, StateUpdateData)>, SyncError> {
     tokio::task::spawn_blocking(move || {
-        let block_number = state_diff.data.0;
-
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
+        let block_number = state_diff.data.0;
         let (expected, _) = db
             .state_diff_commitment_and_length(block_number)
             .context("Querying state diff commitment and length")?
@@ -117,22 +116,21 @@ pub(super) async fn persist(
     state_diff: Vec<PeerData<(BlockNumber, StateUpdateData)>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
-        let mut connection = storage
+        let mut db = storage
             .connection()
             .context("Creating database connection")?;
-        let transaction = connection
-            .transaction()
-            .context("Creating database transaction")?;
+        let db = db.transaction().context("Creating database transaction")?;
         let tail = state_diff
             .last()
             .map(|x| x.data.0)
             .context("Verification results are empty, no block to persist")?;
 
         for (block_number, state_diff) in state_diff.into_iter().map(|x| x.data) {
-            transaction
-                .insert_state_update_data(block_number, &state_diff)
+            db.insert_state_update_data(block_number, &state_diff)
                 .context("Inserting state update")?;
         }
+
+        db.commit().context("Committing database transaction")?;
 
         Ok(tail)
     })
