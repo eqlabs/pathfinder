@@ -56,14 +56,9 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         // fail when querying a desync'd feeder gateway which isn't aware of the
         // new pending classes. In this case, ignore the new pending data as it
         // is incomplete.
-        if let Err(e) = super::l2::download_new_classes(
-            &state_update,
-            &sequencer,
-            &tx_event,
-            &block.starknet_version,
-            storage.clone(),
-        )
-        .await
+        if let Err(e) =
+            super::l2::download_new_classes(&state_update, &sequencer, &tx_event, storage.clone())
+                .await
         {
             tracing::debug!(reason=?e, "Failed to download pending classes");
         } else {

@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
 use anyhow::Context;
-use pathfinder_common::{CasmHash, StarknetVersion};
+use pathfinder_common::{felt, CasmHash};
+use pathfinder_crypto::Felt;
 
 /// Compile a Sierra class definition into CASM.
 ///
@@ -9,42 +10,20 @@ use pathfinder_common::{CasmHash, StarknetVersion};
 /// representation used by the feeder gateway for Sierra classes, so we have to
 /// convert the JSON to something that can be parsed into the expected input
 /// format for the compiler.
-pub fn compile_to_casm(
-    sierra_definition: &[u8],
-    version: &StarknetVersion,
-) -> anyhow::Result<Vec<u8>> {
+pub fn compile_to_casm(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
     let definition = serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_definition)
         .context("Parsing Sierra class")?;
 
-    const V_0_11_0: StarknetVersion = StarknetVersion::new(0, 11, 0, 0);
-    const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
-    const V_0_11_2: StarknetVersion = StarknetVersion::new(0, 11, 2, 0);
+    let sierra_version =
+        parse_sierra_version(definition.sierra_program).context("Parsing Sierra version")?;
 
-    let result = std::panic::catch_unwind(|| {
-        if version > &V_0_11_2 {
-            v2::compile(definition)
-        } else if version > &V_0_11_1 {
-            v1_1_1::compile(definition)
-        } else if version > &V_0_11_0 {
-            v1_0_0_rc0::compile(definition)
-        } else {
-            v1_0_0_alpha6::compile(definition)
-        }
+    let result = std::panic::catch_unwind(|| match sierra_version {
+        SierraVersion(0, 1, 0) => v1_0_0_alpha6::compile(definition),
+        SierraVersion(1, 0, 0) => v1_0_0_rc0::compile(definition),
+        SierraVersion(1, 1, 0) => v1_1_1::compile(definition),
+        _ => v2::compile(definition),
     });
 
-    result.unwrap_or_else(|e| Err(panic_error(e)))
-}
-
-/// Compile a Sierra class definition to CASM _with the latest compiler we
-/// support_.
-///
-/// Execution depends on our ability to compile a Sierra class to CASM for which
-/// we always want to use the latest compiler.
-pub fn compile_to_casm_with_latest_compiler(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
-    let definition = serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_definition)
-        .context("Parsing Sierra class")?;
-
-    let result = std::panic::catch_unwind(|| v2::compile(definition));
     result.unwrap_or_else(|e| Err(panic_error(e)))
 }
 
@@ -55,6 +34,33 @@ fn panic_error(e: Box<dyn std::any::Any>) -> anyhow::Error {
             Some(e) => anyhow::anyhow!("Compiler panicked: {}", e),
             None => anyhow::anyhow!("Compiler panicked"),
         },
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct SierraVersion(u64, u64, u64);
+
+/// Parse Sierra version from the JSON representation of the program.
+///
+/// Sierra programs contain the version number in two possible formats.
+/// For pre-1.0-rc0 Cairo versions the program contains the Sierra version
+/// "0.1.0" as a shortstring in its first Felt (0x302e312e30 = "0.1.0").
+/// For all subsequent versions the version number is the first three felts
+/// representing the three parts of a semantic version number.
+fn parse_sierra_version(program: &serde_json::value::RawValue) -> anyhow::Result<SierraVersion> {
+    let felts: Vec<Felt> =
+        serde_json::from_str(program.get()).context("Deserializing Sierra program felts")?;
+
+    const VERSION_0_1_0_AS_SHORTSTRING: Felt = felt!("0x302e312e30");
+
+    match felts.as_slice() {
+        [VERSION_0_1_0_AS_SHORTSTRING, ..] => Ok(SierraVersion(0, 1, 0)),
+        [a, b, c, ..] => {
+            let (a, b, c) = ((*a).try_into()?, (*b).try_into()?, (*c).try_into()?);
+
+            Ok(SierraVersion(a, b, c))
+        }
+        _ => Err(anyhow::anyhow!("Invalid version felts")),
     }
 }
 
@@ -281,9 +287,31 @@ struct FeederGatewayContractClass<'a> {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::StarknetVersion;
-
     use super::{compile_to_casm, FeederGatewayContractClass};
+
+    mod parse_version {
+        use rstest::rstest;
+        use starknet_gateway_test_fixtures::class_definitions::{
+            CAIRO_1_0_0_ALPHA5_SIERRA,
+            CAIRO_1_0_0_RC0_SIERRA,
+            CAIRO_1_1_0_RC0_SIERRA,
+            CAIRO_2_0_0_STACK_OVERFLOW,
+        };
+
+        use super::super::{parse_sierra_version, FeederGatewayContractClass, SierraVersion};
+
+        #[rstest]
+        #[case(CAIRO_1_0_0_ALPHA5_SIERRA, SierraVersion(0, 1, 0))]
+        #[case(CAIRO_1_0_0_RC0_SIERRA, SierraVersion(1, 0, 0))]
+        #[case(CAIRO_1_1_0_RC0_SIERRA, SierraVersion(1, 1, 0))]
+        #[case(CAIRO_2_0_0_STACK_OVERFLOW, SierraVersion(1, 2, 0))]
+        fn parse_version(#[case] sierra_json: &[u8], #[case] expected_version: SierraVersion) {
+            let sierra =
+                serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_json).unwrap();
+            let sierra_version = parse_sierra_version(sierra.sierra_program).unwrap();
+            assert_eq!(sierra_version, expected_version);
+        }
+    }
 
     mod starknet_v0_11_0 {
         use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_ALPHA5_SIERRA;
@@ -302,7 +330,7 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            compile_to_casm(CAIRO_1_0_0_ALPHA5_SIERRA, &StarknetVersion::default()).unwrap();
+            compile_to_casm(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
         }
     }
 
@@ -323,7 +351,7 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            compile_to_casm(CAIRO_1_0_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 1, 0)).unwrap();
+            compile_to_casm(CAIRO_1_0_0_RC0_SIERRA).unwrap();
         }
     }
 
@@ -347,17 +375,13 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            compile_to_casm(CAIRO_1_1_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 2, 0)).unwrap();
+            compile_to_casm(CAIRO_1_1_0_RC0_SIERRA).unwrap();
         }
 
         #[test]
         fn regression_stack_overflow() {
             // This class caused a stack-overflow in v2 compilers <= v2.0.1
-            compile_to_casm(
-                CAIRO_2_0_0_STACK_OVERFLOW,
-                &StarknetVersion::new(0, 12, 0, 0),
-            )
-            .unwrap();
+            compile_to_casm(CAIRO_2_0_0_STACK_OVERFLOW).unwrap();
         }
     }
 }

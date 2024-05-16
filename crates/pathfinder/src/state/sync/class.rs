@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{ClassHash, SierraHash, StarknetVersion};
+use pathfinder_common::{ClassHash, SierraHash};
 use starknet_gateway_client::GatewayApi;
 
 pub enum DownloadedClass {
@@ -17,7 +17,6 @@ pub enum DownloadedClass {
 pub async fn download_class<SequencerClient: GatewayApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
-    version: StarknetVersion,
 ) -> Result<DownloadedClass, anyhow::Error> {
     use starknet_gateway_types::class_hash::compute_class_hash;
 
@@ -63,7 +62,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
             let (casm_definition, sierra_definition) =
                 tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
                     (
-                        pathfinder_compiler::compile_to_casm(&definition, &version)
+                        pathfinder_compiler::compile_to_casm(&definition)
                             .context("Compiling Sierra class"),
                         definition,
                     )
