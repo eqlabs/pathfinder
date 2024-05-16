@@ -713,7 +713,7 @@ mod tests {
     }
 
     mod handle_state_diff_stream {
-        use fake::{Dummy, Faker};
+        use fake::{Dummy, Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;
         use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
@@ -811,6 +811,60 @@ mod tests {
             .unwrap();
 
             pretty_assertions_sorted::assert_eq!(expected_state_diffs, actual_state_diffs);
+        }
+
+        #[tokio::test]
+        async fn commitment_mismatch() {
+            let Setup {
+                mut streamed_state_diffs,
+                storage,
+                ..
+            } = setup(1).await;
+
+            streamed_state_diffs[0]
+                .as_mut()
+                .unwrap()
+                .data
+                .1
+                .declared_cairo_classes
+                .insert(Faker.fake());
+
+            assert_matches::assert_matches!(
+                handle_state_diff_stream(stream::iter(streamed_state_diffs), storage)
+                    .await
+                    .unwrap_err(),
+                SyncError::StateDiffCommitmentMismatch(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn stream_failure() {
+            assert_matches::assert_matches!(
+                handle_state_diff_stream(
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
+                    StorageBuilder::in_memory().unwrap(),
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn header_missing() {
+            let Setup {
+                streamed_state_diffs,
+                ..
+            } = setup(1).await;
+            assert_matches::assert_matches!(
+                handle_state_diff_stream(
+                    stream::iter(streamed_state_diffs),
+                    StorageBuilder::in_memory().unwrap(),
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
         }
     }
 
