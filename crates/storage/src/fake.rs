@@ -63,29 +63,24 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
             )
             .unwrap();
 
-            state_update
-                .declared_cairo_classes
-                .iter()
-                .zip(cairo_defs.iter())
-                .for_each(|(&cairo_hash, (_, definition))| {
-                    tx.insert_cairo_class(cairo_hash, definition).unwrap()
-                });
+            cairo_defs.iter().for_each(|(cairo_hash, definition)| {
+                tx.insert_cairo_class(*cairo_hash, definition).unwrap()
+            });
 
-            state_update
-                .declared_sierra_classes
+            sierra_defs
                 .iter()
-                .zip(sierra_defs.iter())
-                .for_each(
-                    |((sierra_hash, casm_hash), (_, sierra_definition, casm_definition))| {
-                        tx.insert_sierra_class(
-                            sierra_hash,
-                            sierra_definition,
-                            casm_hash,
-                            casm_definition,
-                        )
-                        .unwrap()
-                    },
-                );
+                .for_each(|(sierra_hash, sierra_definition, casm_definition)| {
+                    tx.insert_sierra_class(
+                        sierra_hash,
+                        sierra_definition,
+                        state_update
+                            .declared_sierra_classes
+                            .get(sierra_hash)
+                            .unwrap(),
+                        casm_definition,
+                    )
+                    .unwrap()
+                });
 
             tx.insert_state_update(header.header.number, state_update)
                 .unwrap();
@@ -135,7 +130,8 @@ pub mod init {
     /// guarantees__:
     /// - block headers:
     ///     - consecutive numbering starting from genesis (`0`) up to `n-1`
-    ///     - parent hash wrt previous block, genesis' parent hash is `0`
+    ///     - parent hash wrt previous block, parent hash of the genesis block
+    ///       is `0s`
     ///     - state commitment is a hash of storage and class commitments
     /// - block bodies:
     ///     - transaction indices within a block
@@ -143,17 +139,20 @@ pub mod init {
     ///     - at least 1 transaction with receipt per block
     /// - state updates:
     ///     - block hashes
-    ///     - old roots wrt previous state update, genesis' old root is `0`
+    ///     - old roots wrt previous state update, old root of the genesis state
+    ///       update is `0s`
     ///     - replaced classes for block N point to some deployed contracts from
     ///       block N-1
     ///     - each storage diff has its respective nonce update
     ///     - storage entries constrain at least 1 element
+    ///     - deployed Cairo0 contracts are treated as implicit declarations and
+    ///       are added to declared cairo classes`
     /// - declared cairo|sierra definitions
-    ///     - each declared class has random bytes inserted as its definition
+    ///     - class definition is a serialized to JSON representation of
+    ///       `class_definition::Cairo|Sierra` respectively with random fields
     ///     - all those definitions are **very short and fall far below the soft
-    ///       limit in protobuf encoding of 1MiB**, btw see usage of
-    ///       `p2p_proto::MESSAGE_SIZE_LIMIT` et al.
-    ///     - casm definitions for sierra classes are empty
+    ///       limit in protobuf encoding
+    ///     - casm definitions for sierra classes are purely random Strings
     /// - transactions
     ///     - transaction hashes are calculated from their respective variant,
     ///       with ChainId set to `SEPOLIA_TESTNET`
@@ -354,8 +353,8 @@ pub mod init {
                                 // deployed class but it is still possible
                                 .or_default()
                                 .class =
-                                Some(ContractClassUpdate::Replace(Faker.fake_with_rng(rng)))
-                        })
+                                Some(ContractClassUpdate::Replace(Faker.fake_with_rng(rng)));
+                        });
                 }
             }
 
@@ -368,9 +367,36 @@ pub mod init {
                         ..
                     },
                 state_update,
+                cairo_defs,
                 ..
             } in init.iter_mut()
             {
+                // All remaining Deploys in the current block should also be
+                // added to `declared_cairo_classes` because Cairo0 Deploys
+                // were not initially preceded by an explicit declare
+                // transaction
+                let implicitly_declared =
+                    state_update
+                        .contract_updates
+                        .iter()
+                        .filter_map(|(_, update)| match update.class {
+                            Some(ContractClassUpdate::Deploy(class_hash)) => Some(class_hash),
+                            Some(ContractClassUpdate::Replace(_)) | None => None,
+                        });
+
+                state_update
+                    .declared_cairo_classes
+                    .extend(implicitly_declared.clone());
+                cairo_defs.extend(implicitly_declared.map(|class_hash| {
+                    (
+                        class_hash,
+                        serde_json::to_vec(
+                            &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
+                        )
+                        .unwrap(),
+                    )
+                }));
+
                 *state_diff_length += u64::try_from(
                     state_update.contract_updates.iter().fold(
                         state_update
