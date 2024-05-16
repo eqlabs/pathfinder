@@ -1,6 +1,8 @@
 use anyhow::Context;
 
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
+    tracing::info!("Removing not null constraint on definitions in the casm_definitions table");
+
     tx.execute_batch(
         r"
         CREATE TABLE new_casm_definitions (
