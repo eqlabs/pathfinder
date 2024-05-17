@@ -117,12 +117,12 @@ impl Transaction<'_> {
 
         let transactions_with_receipts: Vec<_> = transactions
             .iter()
-            .map(|(transaction, receipt)| dto::TransactionWithReceiptV0 {
+            .map(|(transaction, receipt)| dto::TransactionWithReceiptV1 {
                 transaction: dto::Transaction::from(transaction),
                 receipt: receipt.into(),
             })
             .collect();
-        let transactions_with_receipts = dto::TransactionsWithReceiptsForBlock::V0 {
+        let transactions_with_receipts = dto::TransactionsWithReceiptsForBlock::V1 {
             transactions_with_receipts,
         };
         let transactions_with_receipts =
@@ -385,7 +385,7 @@ impl Transaction<'_> {
             transactions
                 .into_iter()
                 .map(
-                    |dto::TransactionWithReceiptV0 {
+                    |dto::TransactionWithReceiptV1 {
                          transaction,
                          receipt,
                      }| { (transaction.into(), receipt.into()) },
@@ -456,7 +456,7 @@ impl Transaction<'_> {
             transactions
                 .into_iter()
                 .map(
-                    |dto::TransactionWithReceiptV0 {
+                    |dto::TransactionWithReceiptV1 {
                          transaction,
                          receipt,
                      }| { (transaction.into(), receipt.into()) },
@@ -536,7 +536,7 @@ impl Transaction<'_> {
                 .context("Deserializing transactions")?
                 .0;
         let transactions = transactions.transactions_with_receipts();
-        let dto::TransactionWithReceiptV0 {
+        let dto::TransactionWithReceiptV1 {
             transaction,
             receipt,
         } = transactions.get(idx).context("Transaction not found")?;
@@ -588,7 +588,7 @@ impl Transaction<'_> {
             }
             None => None,
         };
-        let dto::TransactionWithReceiptV0 {
+        let dto::TransactionWithReceiptV1 {
             transaction,
             receipt,
         } = transactions.get(idx).context("Transaction not found")?;
@@ -939,9 +939,30 @@ pub(crate) mod dto {
         pub to_address: EthereumAddress,
     }
 
-    impl From<L2ToL1MessageV0> for pathfinder_common::receipt::L2ToL1Message {
+    /// Represents deserialized L2 to L1 message.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[serde(deny_unknown_fields)]
+    pub struct L2ToL1MessageV1 {
+        pub from_address: MinimalFelt,
+        pub payload: Vec<MinimalFelt>,
+        pub to_address: MinimalFelt,
+    }
+
+    impl From<L2ToL1MessageV0> for L2ToL1MessageV1 {
         fn from(value: L2ToL1MessageV0) -> Self {
-            let L2ToL1MessageV0 {
+            Self {
+                from_address: value.from_address,
+                payload: value.payload,
+                to_address: Felt::from_be_slice(value.to_address.0.as_bytes())
+                    .expect("H160 will always fit into a Felt")
+                    .into(),
+            }
+        }
+    }
+
+    impl From<L2ToL1MessageV1> for pathfinder_common::receipt::L2ToL1Message {
+        fn from(value: L2ToL1MessageV1) -> Self {
+            let L2ToL1MessageV1 {
                 from_address,
                 payload,
                 to_address,
@@ -952,15 +973,12 @@ pub(crate) mod dto {
                     .into_iter()
                     .map(|x| L2ToL1MessagePayloadElem(x.into()))
                     .collect(),
-                to_address: ContractAddress::new_or_panic(
-                    Felt::from_be_slice(to_address.0.as_bytes())
-                        .expect("H160 always fits in a Felt"),
-                ),
+                to_address: ContractAddress::new_or_panic(to_address.into()),
             }
         }
     }
 
-    impl From<&pathfinder_common::receipt::L2ToL1Message> for L2ToL1MessageV0 {
+    impl From<&pathfinder_common::receipt::L2ToL1Message> for L2ToL1MessageV1 {
         fn from(value: &pathfinder_common::receipt::L2ToL1Message) -> Self {
             let pathfinder_common::receipt::L2ToL1Message {
                 from_address,
@@ -973,11 +991,7 @@ pub(crate) mod dto {
                     .into_iter()
                     .map(|x| x.as_inner().to_owned().into())
                     .collect(),
-                // This cast is safe and lossless _only_ because at the time this variant existed
-                // only H160's were present for this field.
-                to_address: EthereumAddress(primitive_types::H160::from_slice(
-                    &to_address.as_inner().as_be_bytes()[12..],
-                )),
+                to_address: to_address.as_inner().to_owned().into(),
             }
         }
     }
@@ -1000,11 +1014,40 @@ pub(crate) mod dto {
         pub execution_status: ExecutionStatus,
     }
 
-    impl From<ReceiptV0> for pathfinder_common::receipt::Receipt {
+    /// Represents deserialized L2 transaction receipt data.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[serde(deny_unknown_fields)]
+    pub struct ReceiptV1 {
+        pub actual_fee: MinimalFelt,
+        pub execution_resources: Option<ExecutionResources>,
+        pub l2_to_l1_messages: Vec<L2ToL1MessageV1>,
+        pub transaction_hash: MinimalFelt,
+        pub transaction_index: TransactionIndex,
+        pub execution_status: ExecutionStatus,
+    }
+
+    impl From<ReceiptV0> for ReceiptV1 {
         fn from(value: ReceiptV0) -> Self {
+            Self {
+                actual_fee: value.actual_fee,
+                execution_resources: value.execution_resources,
+                l2_to_l1_messages: value
+                    .l2_to_l1_messages
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                transaction_hash: value.transaction_hash,
+                transaction_index: value.transaction_index,
+                execution_status: value.execution_status,
+            }
+        }
+    }
+
+    impl From<ReceiptV1> for pathfinder_common::receipt::Receipt {
+        fn from(value: ReceiptV1) -> Self {
             use pathfinder_common::receipt as common;
 
-            let ReceiptV0 {
+            let ReceiptV1 {
                 actual_fee,
                 execution_resources,
                 // This information is redundant as it is already in the transaction itself.
@@ -1030,7 +1073,7 @@ pub(crate) mod dto {
         }
     }
 
-    impl From<&pathfinder_common::receipt::Receipt> for ReceiptV0 {
+    impl From<&pathfinder_common::receipt::Receipt> for ReceiptV1 {
         fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
             Self {
                 actual_fee: value.actual_fee.as_inner().to_owned().into(),
@@ -1126,12 +1169,18 @@ pub(crate) mod dto {
         V0 {
             transactions_with_receipts: Vec<TransactionWithReceiptV0>,
         },
+        V1 {
+            transactions_with_receipts: Vec<TransactionWithReceiptV1>,
+        },
     }
 
     impl TransactionsWithReceiptsForBlock {
-        pub fn transactions_with_receipts(self) -> Vec<TransactionWithReceiptV0> {
+        pub fn transactions_with_receipts(self) -> Vec<TransactionWithReceiptV1> {
             match self {
                 TransactionsWithReceiptsForBlock::V0 {
+                    transactions_with_receipts: v0,
+                } => v0.into_iter().map(Into::into).collect(),
+                TransactionsWithReceiptsForBlock::V1 {
                     transactions_with_receipts,
                 } => transactions_with_receipts,
             }
@@ -1142,6 +1191,21 @@ pub(crate) mod dto {
     pub struct TransactionWithReceiptV0 {
         pub transaction: Transaction,
         pub receipt: ReceiptV0,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct TransactionWithReceiptV1 {
+        pub transaction: Transaction,
+        pub receipt: ReceiptV1,
+    }
+
+    impl From<TransactionWithReceiptV0> for TransactionWithReceiptV1 {
+        fn from(v0: TransactionWithReceiptV0) -> Self {
+            Self {
+                transaction: v0.transaction,
+                receipt: v0.receipt.into(),
+            }
+        }
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
