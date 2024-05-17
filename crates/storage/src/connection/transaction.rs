@@ -940,12 +940,24 @@ pub(crate) mod dto {
     }
 
     /// Represents deserialized L2 to L1 message.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1MessageV1 {
         pub from_address: MinimalFelt,
         pub payload: Vec<MinimalFelt>,
         pub to_address: MinimalFelt,
+    }
+
+    impl<T> Dummy<T> for L2ToL1MessageV1 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                from_address: Faker.fake_with_rng(rng),
+                payload: fake::vec![MinimalFelt; 1..10],
+                // Create a Felt using only 160 bits. This is required because p2p specification
+                // uses the wrong type to represent this field.
+                to_address: MinimalFelt(Felt::from_be_slice(&fake::vec![u8; 20]).unwrap()),
+            }
+        }
     }
 
     impl From<L2ToL1MessageV0> for L2ToL1MessageV1 {
