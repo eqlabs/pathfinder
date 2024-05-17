@@ -12,7 +12,6 @@ use pathfinder_common::{
     ClassHash,
     EventCommitment,
     PublicKey,
-    StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
     StateUpdate,
@@ -217,15 +216,9 @@ where
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        download_new_classes(
-            &state_update,
-            &sequencer,
-            &tx_event,
-            &block.starknet_version,
-            storage.clone(),
-        )
-        .await
-        .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        download_new_classes(&state_update, &sequencer, &tx_event, storage.clone())
+            .await
+            .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
 
         // Download signature
@@ -356,7 +349,6 @@ pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
     tx_event: &mpsc::Sender<SyncEvent>,
-    version: &StarknetVersion,
     storage: Storage,
 ) -> Result<(), anyhow::Error> {
     let deployed_classes = state_update
@@ -410,7 +402,7 @@ pub async fn download_new_classes(
     .context("Querying database for missing classes")?;
 
     for class_hash in require_downloading {
-        let class = download_class(sequencer, class_hash, *version)
+        let class = download_class(sequencer, class_hash)
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 

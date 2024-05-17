@@ -55,13 +55,12 @@ pub(crate) fn map_broadcasted_transaction(
             Some(ClassInfo::new(&contract_class, 0, 0)?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
-            let casm_contract_definition =
-                pathfinder_compiler::compile_to_casm_with_latest_compiler(
-                    &tx.contract_class
-                        .serialize_to_json()
-                        .context("Serializing Sierra class definition")?,
-                )
-                .context("Compiling Sierra class definition to CASM")?;
+            let casm_contract_definition = pathfinder_compiler::compile_to_casm(
+                &tx.contract_class
+                    .serialize_to_json()
+                    .context("Serializing Sierra class definition")?,
+            )
+            .context("Compiling Sierra class definition to CASM")?;
 
             let casm_contract_definition =
                 pathfinder_executor::parse_casm_definition(casm_contract_definition)
@@ -73,13 +72,12 @@ pub(crate) fn map_broadcasted_transaction(
             )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
-            let casm_contract_definition =
-                pathfinder_compiler::compile_to_casm_with_latest_compiler(
-                    &tx.contract_class
-                        .serialize_to_json()
-                        .context("Serializing Sierra class definition")?,
-                )
-                .context("Compiling Sierra class definition to CASM")?;
+            let casm_contract_definition = pathfinder_compiler::compile_to_casm(
+                &tx.contract_class
+                    .serialize_to_json()
+                    .context("Serializing Sierra class definition")?,
+            )
+            .context("Compiling Sierra class definition to CASM")?;
 
             let casm_contract_definition =
                 pathfinder_executor::parse_casm_definition(casm_contract_definition)
