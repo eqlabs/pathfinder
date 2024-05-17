@@ -528,7 +528,9 @@ mod dto {
                     .into_iter()
                     .map(|x| L2ToL1MessagePayloadElem(x.into()))
                     .collect(),
-                to_address,
+                to_address: ContractAddress::new_or_panic(
+                    Felt::from_be_slice(to_address.0.as_bytes()).expect("H160 always fits in Felt"),
+                ),
             }
         }
     }
@@ -546,7 +548,11 @@ mod dto {
                     .into_iter()
                     .map(|x| x.as_inner().to_owned().into())
                     .collect(),
-                to_address,
+                // This is lossless and safe only because at the time of migration only values of
+                // H160 were stored.
+                to_address: EthereumAddress(primitive_types::H160::from_slice(
+                    &to_address.as_inner().as_be_bytes()[12..],
+                )),
             }
         }
     }
@@ -1845,7 +1851,9 @@ pub(crate) mod old_dto {
             pathfinder_common::receipt::L2ToL1Message {
                 from_address,
                 payload,
-                to_address,
+                to_address: ContractAddress::new_or_panic(
+                    Felt::from_be_slice(to_address.0.as_bytes()).expect("H160 always fits in Felt"),
+                ),
             }
         }
     }
@@ -1860,7 +1868,11 @@ pub(crate) mod old_dto {
             Self {
                 from_address,
                 payload,
-                to_address,
+                // This is lossless and safe only because at the time of migration only values of
+                // H160 were stored.
+                to_address: EthereumAddress(primitive_types::H160::from_slice(
+                    &to_address.as_inner().as_be_bytes()[12..],
+                )),
             }
         }
     }
