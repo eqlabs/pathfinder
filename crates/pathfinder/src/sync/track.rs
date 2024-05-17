@@ -6,7 +6,14 @@ use futures::{Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
-use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, SignedBlockHeader, TransactionHash};
+use pathfinder_common::{
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    SignedBlockHeader,
+    StateUpdate,
+    TransactionHash,
+};
 use pathfinder_storage::Storage;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -49,7 +56,11 @@ where
         .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
         .pipe(headers::VerifyHash {}, 100);
 
-        let HeaderFanout { headers, events } = HeaderFanout::from_source(headers, 10);
+        let HeaderFanout {
+            headers,
+            events,
+            state_diff,
+        } = HeaderFanout::from_source(headers, 10);
 
         let events = EventSource {
             p2p: self.p2p.clone(),
@@ -58,9 +69,17 @@ where
         .spawn()
         .pipe(events::VerifyCommitment, 10);
 
+        let state_diff = StateDiffSource {
+            p2p: self.p2p.clone(),
+            headers: state_diff,
+        }
+        .spawn()
+        .pipe(crate::sync::state_updates::VerifyDiff, 10);
+
         BlockStream {
             header: headers,
             events,
+            state_diff,
         }
         .spawn()
         .pipe(StoreBlock::new(storage_connection), 10)
@@ -114,12 +133,14 @@ where
 struct HeaderFanout {
     headers: SyncReceiver<SignedBlockHeader>,
     events: BoxStream<'static, BlockHeader>,
+    state_diff: BoxStream<'static, BlockHeader>,
 }
 
 impl HeaderFanout {
     fn from_source(mut source: SyncReceiver<SignedBlockHeader>, buffer: usize) -> Self {
         let (h_tx, h_rx) = tokio::sync::mpsc::channel(buffer);
         let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
+        let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
 
         tokio::spawn(async move {
             while let Some(signed_header) = source.recv().await {
@@ -134,7 +155,11 @@ impl HeaderFanout {
                     .data
                     .header;
 
-                if e_tx.send(header).await.is_err() {
+                if e_tx.send(header.clone()).await.is_err() {
+                    return;
+                }
+
+                if s_tx.send(header).await.is_err() {
                     return;
                 }
             }
@@ -143,6 +168,7 @@ impl HeaderFanout {
         Self {
             headers: SyncReceiver::from_receiver(h_rx),
             events: ReceiverStream::new(e_rx).boxed(),
+            state_diff: ReceiverStream::new(s_rx).boxed(),
         }
     }
 }
@@ -200,9 +226,21 @@ impl EventSource {
     }
 }
 
+struct StateDiffSource {
+    p2p: P2PClient,
+    headers: BoxStream<'static, BlockHeader>,
+}
+
+impl StateDiffSource {
+    fn spawn(self) -> SyncReceiver<StateUpdate> {
+        todo!()
+    }
+}
+
 struct BlockStream {
     pub header: SyncReceiver<SignedBlockHeader>,
     pub events: SyncReceiver<BlockEvents>,
+    pub state_diff: SyncReceiver<StateUpdate>,
 }
 
 impl BlockStream {
@@ -239,9 +277,16 @@ impl BlockStream {
             Err(err) => return Some(Err(err)),
         };
 
+        let state_diff = self.state_diff.recv().await?;
+        let state_diff = match state_diff {
+            Ok(x) => x,
+            Err(err) => return Some(Err(err)),
+        };
+
         let data = BlockData {
             header: header.data,
             events: events.data.events,
+            state_diff: state_diff.data,
         };
 
         Some(Ok(PeerData::new(header.peer, data)))
@@ -251,6 +296,7 @@ impl BlockStream {
 struct BlockData {
     pub header: SignedBlockHeader,
     pub events: HashMap<TransactionHash, Vec<Event>>,
+    pub state_diff: StateUpdate,
 }
 
 struct StoreBlock {
@@ -268,7 +314,11 @@ impl ProcessStage for StoreBlock {
     type Output = ();
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let BlockData { header, events } = input;
+        let BlockData {
+            header,
+            events,
+            state_diff,
+        } = input;
 
         let db = self
             .connection
