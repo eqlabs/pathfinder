@@ -512,7 +512,7 @@ mod dto {
     pub struct L2ToL1Message {
         pub from_address: MinimalFelt,
         pub payload: Vec<MinimalFelt>,
-        pub to_address: MinimalFelt,
+        pub to_address: EthereumAddress,
     }
 
     impl From<L2ToL1Message> for pathfinder_common::receipt::L2ToL1Message {
@@ -528,7 +528,7 @@ mod dto {
                     .into_iter()
                     .map(|x| L2ToL1MessagePayloadElem(x.into()))
                     .collect(),
-                to_address: ContractAddress::new_or_panic(to_address.into()),
+                to_address,
             }
         }
     }
@@ -546,7 +546,7 @@ mod dto {
                     .into_iter()
                     .map(|x| x.as_inner().to_owned().into())
                     .collect(),
-                to_address: to_address.as_inner().to_owned().into(),
+                to_address,
             }
         }
     }
@@ -1634,6 +1634,7 @@ pub(crate) mod old_dto {
     use pathfinder_serde::{
         CallParamAsDecimalStr,
         ConstructorParamAsDecimalStr,
+        EthereumAddressAsHexStr,
         L2ToL1MessagePayloadElemAsDecimalStr,
         ResourceAmountAsHexStr,
         ResourcePricePerUnitAsHexStr,
@@ -1830,7 +1831,8 @@ pub(crate) mod old_dto {
         pub from_address: ContractAddress,
         #[serde_as(as = "Vec<L2ToL1MessagePayloadElemAsDecimalStr>")]
         pub payload: Vec<L2ToL1MessagePayloadElem>,
-        pub to_address: ContractAddress,
+        #[serde_as(as = "EthereumAddressAsHexStr")]
+        pub to_address: EthereumAddress,
     }
 
     impl From<L2ToL1Message> for pathfinder_common::receipt::L2ToL1Message {
