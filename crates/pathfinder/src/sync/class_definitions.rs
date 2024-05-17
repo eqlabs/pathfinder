@@ -8,7 +8,8 @@ use futures::stream::StreamExt;
 use p2p::client::peer_agnostic::ClassDefinition as P2PClassDefinition;
 use p2p::PeerData;
 use p2p_proto::transaction;
-use pathfinder_common::{BlockNumber, ClassHash, SierraHash};
+use pathfinder_common::state_update::DeclaredClasses;
+use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
@@ -26,9 +27,10 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
 use crate::sync::error::SyncError;
+use crate::sync::stream::ProcessStage;
 
 #[derive(Debug)]
-pub(super) struct ClassWithLayout {
+pub struct ClassWithLayout {
     pub block_number: BlockNumber,
     pub definition: ClassDefinition,
     pub layout: GwClassDefinition<'static>,
@@ -396,4 +398,15 @@ pub(super) async fn persist(
     })
     .await
     .context("Joining blocking task")?
+}
+
+pub struct VerifyClassHashes;
+
+impl ProcessStage for VerifyClassHashes {
+    type Input = (DeclaredClasses, Vec<ClassWithLayout>);
+    type Output = Vec<GwClassDefinition<'static>>;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+        todo!()
+    }
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use futures::stream::BoxStream;
@@ -7,18 +7,22 @@ use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    ClassHash,
     SignedBlockHeader,
     StateUpdate,
     TransactionHash,
 };
 use pathfinder_storage::Storage;
+use starknet_gateway_types::class_definition::ClassDefinition;
 use tokio_stream::wrappers::ReceiverStream;
 
+use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
 use crate::sync::events::{self, BlockEvents};
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
@@ -56,7 +60,7 @@ where
         }
         .spawn()
         .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
-        .pipe(headers::VerifyHash {}, 100);
+        .pipe(headers::VerifyHash, 100);
 
         let HeaderFanout {
             headers,
@@ -79,6 +83,11 @@ where
         .spawn()
         .pipe(crate::sync::state_updates::VerifyDiff, 10);
 
+        let StateDiffFanout {
+            state_diff,
+            declarations,
+        } = StateDiffFanout::from_source(state_diff, 10);
+
         let transactions = TransactionSource {
             p2p: self.p2p.clone(),
             headers: transactions,
@@ -87,11 +96,20 @@ where
         .pipe(transactions::CalculateHashes, 10)
         .pipe(transactions::VerifyCommitment, 10);
 
+        let classes = ClassSource {
+            p2p: self.p2p.clone(),
+            declarations,
+            start: next,
+        }
+        .spawn()
+        .pipe(class_definitions::VerifyClassHashes, 10);
+
         BlockStream {
             header: headers,
             events,
             state_diff,
             transactions,
+            classes,
         }
         .spawn()
         .pipe(StoreBlock::new(storage_connection), 10)
@@ -139,6 +157,42 @@ where
         });
 
         SyncReceiver::from_receiver(rx)
+    }
+}
+
+struct StateDiffFanout {
+    state_diff: SyncReceiver<StateUpdate>,
+    declarations: BoxStream<'static, DeclaredClasses>,
+}
+
+impl StateDiffFanout {
+    fn from_source(mut source: SyncReceiver<StateUpdate>, buffer: usize) -> Self {
+        let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
+        let (c_tx, c_rx) = tokio::sync::mpsc::channel(buffer);
+
+        tokio::spawn(async move {
+            while let Some(state_update) = source.recv().await {
+                let is_err = state_update.is_err();
+
+                if s_tx.send(state_update.clone()).await.is_err() || is_err {
+                    return;
+                }
+
+                let class_declarations = state_update
+                    .expect("Error case already handled")
+                    .data
+                    .declared_classes();
+
+                if c_tx.send(class_declarations).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        Self {
+            state_diff: SyncReceiver::from_receiver(s_rx),
+            declarations: ReceiverStream::new(c_rx).boxed(),
+        }
     }
 }
 
@@ -272,11 +326,24 @@ impl TransactionSource {
     }
 }
 
+struct ClassSource {
+    p2p: P2PClient,
+    declarations: BoxStream<'static, DeclaredClasses>,
+    start: BlockNumber,
+}
+
+impl ClassSource {
+    fn spawn(self) -> SyncReceiver<(DeclaredClasses, Vec<ClassWithLayout>)> {
+        todo!()
+    }
+}
+
 struct BlockStream {
     pub header: SyncReceiver<SignedBlockHeader>,
     pub events: SyncReceiver<BlockEvents>,
     pub state_diff: SyncReceiver<StateUpdate>,
     pub transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
+    pub classes: SyncReceiver<Vec<ClassDefinition<'static>>>,
 }
 
 impl BlockStream {
@@ -325,11 +392,18 @@ impl BlockStream {
             Err(err) => return Some(Err(err)),
         };
 
+        let classes = self.classes.recv().await?;
+        let classes = match classes {
+            Ok(x) => x,
+            Err(err) => return Some(Err(err)),
+        };
+
         let data = BlockData {
             header: header.data,
             events: events.data.events,
             state_diff: state_diff.data,
             transactions: transactions.data,
+            classes: classes.data,
         };
 
         Some(Ok(PeerData::new(header.peer, data)))
@@ -341,6 +415,7 @@ struct BlockData {
     pub events: HashMap<TransactionHash, Vec<Event>>,
     pub state_diff: StateUpdate,
     pub transactions: Vec<(Transaction, Receipt)>,
+    pub classes: Vec<ClassDefinition<'static>>,
 }
 
 struct StoreBlock {
@@ -363,6 +438,7 @@ impl ProcessStage for StoreBlock {
             events,
             state_diff,
             transactions,
+            classes,
         } = input;
 
         let db = self
