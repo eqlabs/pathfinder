@@ -22,8 +22,6 @@ pub(super) enum SyncError {
     BadClassLayout(PeerId),
     #[error("Unexpected class definition")]
     UnexpectedClass(PeerId),
-    #[error("Class hash verification failed")]
-    BadClassHash(PeerId),
     #[error("Event commitment mismatch")]
     EventCommitmentMismatch(PeerId),
     #[error("Transaction commitment mismatch")]
@@ -54,8 +52,6 @@ pub(super) enum SyncError2 {
     BadClassLayout,
     #[error("Unexpected class definition")]
     UnexpectedClass,
-    #[error("Class hash verification failed")]
-    BadClassHash,
     #[error("Event commitment mismatch")]
     EventCommitmentMismatch,
     #[error("Too many events")]
@@ -77,7 +73,6 @@ impl PartialEq for SyncError2 {
             }
             (SyncError2::BadClassLayout, SyncError2::BadClassLayout) => true,
             (SyncError2::UnexpectedClass, SyncError2::UnexpectedClass) => true,
-            (SyncError2::BadClassHash, SyncError2::BadClassHash) => true,
             (SyncError2::EventCommitmentMismatch, SyncError2::EventCommitmentMismatch) => true,
             _ => false,
         }

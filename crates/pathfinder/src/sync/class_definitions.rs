@@ -8,7 +8,7 @@ use futures::stream::StreamExt;
 use p2p::client::peer_agnostic::Class;
 use p2p::PeerData;
 use p2p_proto::transaction;
-use pathfinder_common::{BlockNumber, ClassHash};
+use pathfinder_common::{BlockNumber, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use starknet_gateway_types::class_definition::{Cairo, ClassDefinition, Sierra};
 use starknet_gateway_types::class_hash::from_parts::{
@@ -24,6 +24,12 @@ use crate::sync::error::SyncError;
 pub struct ClassWithLayout {
     pub class: Class,
     pub layout: ClassDefinition<'static>,
+}
+
+#[derive(Debug)]
+pub struct ClassWithHash {
+    pub class: Class,
+    pub hash: ClassHash,
 }
 
 /// Returns the first block number which is missing at least one class
@@ -106,7 +112,6 @@ pub(super) async fn verify_layout(
     match data {
         Class::Cairo {
             block_number,
-            hash,
             definition,
         } => {
             let layout = ClassDefinition::Cairo(
@@ -120,7 +125,6 @@ pub(super) async fn verify_layout(
                 ClassWithLayout {
                     class: Class::Cairo {
                         block_number,
-                        hash,
                         definition,
                     },
                     layout,
@@ -129,7 +133,6 @@ pub(super) async fn verify_layout(
         }
         Class::Sierra {
             block_number,
-            sierra_hash,
             sierra_definition,
         } => {
             let layout = ClassDefinition::Sierra(
@@ -143,7 +146,6 @@ pub(super) async fn verify_layout(
                 ClassWithLayout {
                     class: Class::Sierra {
                         block_number,
-                        sierra_hash,
                         sierra_definition,
                     },
                     layout,
@@ -192,8 +194,8 @@ pub(super) fn declared_classes_at_block_stream(
 pub(super) fn verify_declared_at(
     mut declared_classes_at_block: impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
         + Unpin,
-    mut classes: impl futures::Stream<Item = Result<PeerData<ClassWithLayout>, SyncError>> + Unpin,
-) -> impl futures::Stream<Item = Result<PeerData<ClassWithLayout>, SyncError>> {
+    mut classes: impl futures::Stream<Item = Result<PeerData<ClassWithHash>, SyncError>> + Unpin,
+) -> impl futures::Stream<Item = Result<PeerData<ClassWithHash>, SyncError>> {
     async_stream::try_stream! {
         while let Some(declared) = declared_classes_at_block.next().await {
             let (declared_at, mut declared) = declared?;
@@ -210,9 +212,7 @@ pub(super) fn verify_declared_at(
                     Err(SyncError::UnexpectedClass(class.peer))?;
                 }
 
-                let class_hash = class.data.class.hash();
-
-                if declared.remove(&class_hash) {
+                if declared.remove(&class.data.hash) {
                     yield class;
                 } else {
                     Err(SyncError::UnexpectedClass(class.peer))?;
@@ -223,13 +223,13 @@ pub(super) fn verify_declared_at(
     }
 }
 
-pub(super) async fn verify_hash(
+pub(super) async fn compute_hash(
     peer_data: PeerData<ClassWithLayout>,
-) -> Result<PeerData<Class>, SyncError> {
+) -> Result<PeerData<ClassWithHash>, SyncError> {
     let PeerData { peer, data } = peer_data;
     let ClassWithLayout { class, layout } = data;
 
-    let computed = tokio::task::spawn_blocking(move || match layout {
+    let hash = tokio::task::spawn_blocking(move || match layout {
         ClassDefinition::Cairo(c) => compute_cairo_class_hash(
             c.abi.as_ref().get().as_bytes(),
             c.program.as_ref().get().as_bytes(),
@@ -248,14 +248,12 @@ pub(super) async fn verify_hash(
     .context("Joining blocking task")?
     .context("Computing class hash")?;
 
-    (computed == class.hash())
-        .then_some(PeerData::new(peer, class))
-        .ok_or(SyncError::BadClassHash(peer))
+    Ok(PeerData::new(peer, ClassWithHash { class, hash }))
 }
 
 pub(super) async fn persist(
     storage: Storage,
-    classes: Vec<PeerData<Class>>,
+    classes: Vec<PeerData<ClassWithHash>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut connection = storage
@@ -266,31 +264,27 @@ pub(super) async fn persist(
             .context("Creating database transaction")?;
         let tail = classes
             .last()
-            .map(|x| x.data.block_number())
+            .map(|x| x.data.class.block_number())
             .context("No class definitions to persist")?;
 
-        for class in classes.into_iter().map(|x| x.data) {
+        for ClassWithHash { class, hash } in classes.into_iter().map(|x| x.data) {
             match class {
-                Class::Cairo {
-                    hash, definition, ..
-                } => {
+                Class::Cairo { definition, .. } => {
                     transaction
                         .update_cairo_class(hash, &definition)
                         .context("Updating cairo class definition")?;
                 }
                 Class::Sierra {
-                    sierra_hash,
-                    sierra_definition,
-                    ..
+                    sierra_definition, ..
                 } => {
                     let casm_hash = transaction
-                        .casm_hash(ClassHash(sierra_hash.0))
+                        .casm_hash(hash)
                         .context("Getting casm hash for sierra class")?
                         .context("Casm hash not found")?;
 
                     transaction
                         .update_sierra_class(
-                            &sierra_hash,
+                            &SierraHash(hash.0),
                             &sierra_definition,
                             &casm_hash,
                             &Vec::new(), // TODO fetch from gateway or compile

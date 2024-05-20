@@ -11,6 +11,7 @@ use p2p_proto::common::{
     Patricia,
     StateDiffCommitment,
     Step,
+    VolitionDomain,
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHeader};
@@ -226,7 +227,6 @@ fn get_classes_for_block(
                 Class::Cairo0 {
                     class: cairo_def_into_dto(cairo_class),
                     domain: 0, // TODO
-                    class_hash: Hash(class_hash.0),
                 }
             }
             ClassDefinition::Sierra {
@@ -238,7 +238,6 @@ fn get_classes_for_block(
                 Class::Cairo1 {
                     class: sierra_def_into_dto(sierra_class),
                     domain: 0, // TODO
-                    class_hash: Hash(class_hash.0),
                 }
             }
         };
@@ -273,7 +272,7 @@ fn get_state_diff(
                     value: v.0,
                 })
                 .collect(),
-            domain: 0, // TODO
+            domain: VolitionDomain::L1, // TODO
         }))
         .map_err(|_| anyhow::anyhow!("Sending state diff"))?;
     }
@@ -291,7 +290,7 @@ fn get_state_diff(
                     value: v.0,
                 })
                 .collect(),
-            domain: 0, // TODO
+            domain: VolitionDomain::L1, // TODO
         }))
         .map_err(|_| anyhow::anyhow!("Sending state diff"))?;
     }
