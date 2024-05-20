@@ -18,19 +18,17 @@ pub mod protocol {
         };
     }
 
-    define_protocol!(Headers, "/starknet/headers/1");
-    define_protocol!(StateDiffs, "/starknet/state_diffs/1");
-    define_protocol!(Classes, "/starknet/classes/1");
-    define_protocol!(Transactions, "/starknet/transactions/1");
-    define_protocol!(Receipts, "/starknet/receipts/1");
-    define_protocol!(Events, "/starknet/events/1");
+    define_protocol!(Headers, "/starknet/headers/0.1.0-rc.0");
+    define_protocol!(StateDiffs, "/starknet/state_diffs/0.1.0-rc.0");
+    define_protocol!(Classes, "/starknet/classes/0.1.0-rc.0");
+    define_protocol!(Transactions, "/starknet/transactions/0.1.0-rc.0");
+    define_protocol!(Events, "/starknet/events/0.1.0-rc.0");
 
     pub const PROTOCOLS: &[&str] = &[
         Headers::NAME,
         StateDiffs::NAME,
         Classes::NAME,
         Transactions::NAME,
-        Receipts::NAME,
         Events::NAME,
     ];
 }

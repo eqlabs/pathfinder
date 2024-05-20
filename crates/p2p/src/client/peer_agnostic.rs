@@ -180,11 +180,6 @@ impl Client {
             .await
     }
 
-    pub async fn get_update_peers_with_receipt_sync_capability(&self) -> Vec<PeerId> {
-        self.get_update_peers_with_sync_capability(protocol::Receipts::NAME)
-            .await
-    }
-
     pub fn header_stream(
         self,
         start: BlockNumber,
