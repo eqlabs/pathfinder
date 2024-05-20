@@ -83,7 +83,7 @@ impl<T, U: Dummy<T>> Dummy<T> for PeerData<U> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Class {
+pub enum ClassDefinition {
     Cairo {
         block_number: BlockNumber,
         definition: Vec<u8>,
@@ -94,7 +94,7 @@ pub enum Class {
     },
 }
 
-impl Class {
+impl ClassDefinition {
     pub fn block_number(&self) -> BlockNumber {
         match self {
             Self::Cairo { block_number, .. } => *block_number,
@@ -109,6 +109,19 @@ impl Class {
             Self::Sierra {
                 sierra_definition, ..
             } => sierra_definition.clone(),
+        }
+    }
+
+    pub fn into_parts(self) -> (BlockNumber, Vec<u8>) {
+        match self {
+            Self::Cairo {
+                block_number,
+                definition,
+            } => (block_number, definition),
+            Self::Sierra {
+                block_number,
+                sierra_definition,
+            } => (block_number, sierra_definition),
         }
     }
 }
@@ -574,7 +587,7 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<Class>>> {
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<ClassDefinition>>> {
         async_stream::try_stream! {
             pin_mut!(declared_class_counts_stream);
 
@@ -640,7 +653,7 @@ impl Client {
                                     }
                                     yield PeerData::new(
                                         peer,
-                                        Class::Cairo {
+                                        ClassDefinition::Cairo {
                                             block_number: start,
                                             definition,
                                         },
@@ -661,7 +674,7 @@ impl Client {
                                     }
                                     yield PeerData::new(
                                         peer,
-                                        Class::Sierra {
+                                        ClassDefinition::Sierra {
                                             block_number: start,
                                             sierra_definition: definition.0,
                                         },

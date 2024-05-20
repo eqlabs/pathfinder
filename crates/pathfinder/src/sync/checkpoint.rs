@@ -6,7 +6,7 @@ use anyhow::Context;
 use futures::{pin_mut, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::{
-    Class,
+    ClassDefinition,
     Client as P2PClient,
     EventsForBlockByTransaction,
     TransactionBlockData,
@@ -32,7 +32,6 @@ use serde_json::de;
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
-use super::class_definitions::ClassWithLayout;
 use crate::state::block_hash::{
     calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
@@ -271,7 +270,7 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream(
-    class_stream: impl futures::Stream<Item = anyhow::Result<PeerData<Class>>>,
+    class_stream: impl futures::Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
     storage: Storage,
     declared_classes_at_block_stream: impl futures::Stream<
         Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>,
@@ -286,7 +285,8 @@ async fn handle_class_stream(
 
     let b = class_definitions::verify_declared_at(declared_classes_at_block_stream, a);
 
-    b.try_chunks(10)
+    b.and_then(class_definitions::compile_sierra_to_casm_or_fetch)
+        .try_chunks(10)
         .map_err(|e| e.1)
         .and_then(|x| class_definitions::persist(storage.clone(), x))
         .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
@@ -922,7 +922,7 @@ mod tests {
         }
 
         struct Setup {
-            pub streamed_classes: Vec<anyhow::Result<PeerData<Class>>>,
+            pub streamed_classes: Vec<anyhow::Result<PeerData<ClassDefinition>>>,
             pub declared_classes: DeclaredClasses,
             pub expected_defs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
             pub storage: Storage,
@@ -970,7 +970,7 @@ mod tests {
                                 block: block_number,
                                 class: ClassHash(sierra_hash.0),
                             },
-                            anyhow::Result::Ok(PeerData::for_tests(Class::Sierra {
+                            anyhow::Result::Ok(PeerData::for_tests(ClassDefinition::Sierra {
                                 block_number,
                                 sierra_definition,
                             })),
@@ -988,10 +988,12 @@ mod tests {
                                         block: block_number,
                                         class: hash,
                                     },
-                                    anyhow::Result::Ok(PeerData::for_tests(Class::Cairo {
-                                        block_number,
-                                        definition,
-                                    })),
+                                    anyhow::Result::Ok(PeerData::for_tests(
+                                        ClassDefinition::Cairo {
+                                            block_number,
+                                            definition,
+                                        },
+                                    )),
                                 )
                             }),
                     )
@@ -1057,17 +1059,17 @@ mod tests {
         }
 
         #[rstest::rstest]
-        #[case::cairo(Class::Cairo {
+        #[case::cairo(ClassDefinition::Cairo {
             block_number: ONE,
             definition: Default::default()
         })]
-        #[case::sierra(Class::Sierra {
+        #[case::sierra(ClassDefinition::Sierra {
             block_number: ONE,
             sierra_definition: Default::default(),
             // TODO casm
         })]
         #[tokio::test]
-        async fn bad_layout(#[case] class: Class) {
+        async fn bad_layout(#[case] class: ClassDefinition) {
             let storage = StorageBuilder::in_memory().unwrap();
             let data = PeerData::for_tests(class);
             let expected_peer_id = data.peer;
