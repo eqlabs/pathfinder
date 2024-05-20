@@ -214,6 +214,25 @@ mod prop {
         }
     }
 
+    /// Deploy/Replace agnostic version of
+    /// [`pathfinder_common::state_update::ContractUpdate`]
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct ContractUpdate {
+        pub storage: HashMap<StorageAddress, StorageValue>,
+        pub class: Option<ClassHash>,
+        pub nonce: Option<ContractNonce>,
+    }
+
+    impl From<pathfinder_common::state_update::ContractUpdate> for ContractUpdate {
+        fn from(update: pathfinder_common::state_update::ContractUpdate) -> Self {
+            Self {
+                storage: update.storage,
+                class: update.class.map(|x| x.class_hash()),
+                nonce: update.nonce,
+            }
+        }
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(25))]
         #[test]
@@ -227,11 +246,7 @@ mod prop {
                 .map(|Block { header, state_update, .. }|
                     (
                         header.header.number, // Block number
-                        state_update.contract_updates.into_iter().map(|(k, v)| (k, p2p::client::peer_agnostic::ContractUpdate {
-                            storage: v.storage,
-                            class: v.class.map(|x| x.class_hash()),
-                            nonce: v.nonce,
-                        })).collect::<HashMap<_, _>>(),
+                        state_update.contract_updates.into_iter().map(|(k, v)| (k, v.into())).collect::<HashMap<_,_>>(),
                         state_update.system_contract_updates,
                     )
             ).collect::<Vec<_>>();
@@ -265,7 +280,7 @@ mod prop {
                         actual_contract_updates.push(
                             (
                                 ContractAddress(address.0),
-                                p2p::client::peer_agnostic::ContractUpdate {
+                                ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),
                                     class: class_hash.map(|x| ClassHash(x.0)),

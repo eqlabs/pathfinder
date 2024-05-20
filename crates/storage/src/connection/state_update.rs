@@ -1,8 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, ReverseContractUpdate};
+use pathfinder_common::state_update::{
+    ContractClassUpdate,
+    ContractUpdate,
+    ReverseContractUpdate,
+    StateUpdateData,
+    SystemContractUpdate,
+};
 use pathfinder_common::{
     BlockHash,
     BlockNumber,
@@ -30,6 +36,37 @@ impl Transaction<'_> {
         &self,
         block_number: BlockNumber,
         state_update: &StateUpdate,
+    ) -> anyhow::Result<()> {
+        self.insert_state_update_data0(
+            block_number,
+            &state_update.contract_updates,
+            &state_update.system_contract_updates,
+            &state_update.declared_cairo_classes,
+            &state_update.declared_sierra_classes,
+        )
+    }
+
+    pub fn insert_state_update_data(
+        &self,
+        block_number: BlockNumber,
+        state_update: &StateUpdateData,
+    ) -> anyhow::Result<()> {
+        self.insert_state_update_data0(
+            block_number,
+            &state_update.contract_updates,
+            &state_update.system_contract_updates,
+            &state_update.declared_cairo_classes,
+            &state_update.declared_sierra_classes,
+        )
+    }
+
+    fn insert_state_update_data0(
+        &self,
+        block_number: BlockNumber,
+        contract_updates: &HashMap<ContractAddress, ContractUpdate>,
+        system_contract_updates: &HashMap<ContractAddress, SystemContractUpdate>,
+        declared_cairo_classes: &HashSet<ClassHash>,
+        declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
     ) -> anyhow::Result<()> {
         let mut query_contract_address = self
             .inner()
@@ -77,14 +114,26 @@ impl Transaction<'_> {
             )
             .context("Preparing contract insert statement")?;
 
-        let mut update_class_defs = self
+        // ON CONFLICT is required to handle legacy syncing logic, where the definition
+        // is inserted before the state update
+        let mut upsert_declared_at = self
             .inner()
             .prepare_cached(
-                "UPDATE class_definitions SET block_number=? WHERE hash=? AND block_number IS NULL",
+                r"INSERT INTO class_definitions (block_number, hash) VALUES (?1, ?2)
+                ON CONFLICT(hash) WHERE block_number IS NULL
+                DO UPDATE SET block_number=excluded.block_number",
             )
-            .context("Preparing class definition block number update statement")?;
+            .context("Preparing class hash and block number upsert statement")?;
+        // OR IGNORE is required to handle legacy syncing logic, where the casm
+        // definition is inserted before the state update
+        let mut insert_casm_hash = self
+            .inner()
+            .prepare_cached(
+                "INSERT OR IGNORE INTO casm_definitions (hash, compiled_class_hash) VALUES (?, ?)",
+            )
+            .context("Preparing casm hash insert statement")?;
 
-        for (address, update) in &state_update.contract_updates {
+        for (address, update) in contract_updates {
             if let Some(class_update) = &update.class {
                 insert_contract
                     .execute(params![&block_number, address, &class_update.class_hash()])
@@ -126,7 +175,7 @@ impl Transaction<'_> {
             }
         }
 
-        for (address, update) in &state_update.system_contract_updates {
+        for (address, update) in system_contract_updates {
             let contract_address_id = query_contract_address
                 .query_map(params![address], |row| row.get::<_, i64>(0))
                 .context("Querying contract address")?
@@ -159,17 +208,15 @@ impl Transaction<'_> {
         // separate mechanism, prior to state update inserts. However, since the
         // class insertion does not know with which block number to
         // associate with the class definition, we need to fill it in here.
-        let sierra = state_update
-            .declared_sierra_classes
+        let sierra = declared_sierra_classes
             .keys()
             .map(|sierra| ClassHash(sierra.0));
-        let cairo = state_update.declared_cairo_classes.iter().copied();
+        let cairo = declared_cairo_classes.iter().copied();
         // Older cairo 0 classes were never declared, but instead got implicitly
         // declared on first deployment. Until such classes disappear we need to
         // cater for them here. This works because the sql only updates the row
         // if it is null.
-        let deployed = state_update
-            .contract_updates
+        let deployed = contract_updates
             .iter()
             .filter_map(|(_, update)| match update.class {
                 Some(ContractClassUpdate::Deploy(x)) => Some(x),
@@ -179,7 +226,13 @@ impl Transaction<'_> {
         let declared_classes = sierra.chain(cairo).chain(deployed);
 
         for class in declared_classes {
-            update_class_defs.execute(params![&block_number, &class])?;
+            upsert_declared_at.execute(params![&block_number, &class])?;
+        }
+
+        for (sierra_hash, casm_hash) in declared_sierra_classes {
+            insert_casm_hash
+                .execute(params![sierra_hash, casm_hash])
+                .context("Inserting casm hash")?;
         }
 
         Ok(())

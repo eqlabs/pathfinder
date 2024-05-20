@@ -15,6 +15,7 @@ use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
@@ -172,28 +173,20 @@ impl Sync {
     }
 
     async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {
-        if let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
+        let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
-        {
-            self.p2p
-                .clone()
-                .state_diff_stream(
-                    start,
-                    stop,
-                    state_updates::state_diff_lengths_stream(self.storage.clone(), start, stop),
-                )
-                .map_err(Into::into)
-                .and_then(state_updates::verify_signature)
-                .try_chunks(100)
-                .map_err(|e| e.1)
-                // Persist state updates (without: state commitments and declared classes)
-                .and_then(|x| state_updates::persist(self.storage.clone(), x))
-                .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
-                // Drive stream to completion.
-                .try_fold((), |_, _| std::future::ready(Ok(())))
-                .await?;
-        }
+        else {
+            return Ok(());
+        };
+
+        let stream = self.p2p.clone().state_diff_stream(
+            start,
+            stop,
+            state_updates::state_diff_lengths_stream(self.storage.clone(), start, stop),
+        );
+
+        handle_state_diff_stream(stream, self.storage.clone()).await?;
 
         Ok(())
     }
@@ -241,9 +234,7 @@ impl Sync {
 }
 
 async fn handle_transaction_stream(
-    transaction_stream: impl futures::Stream<
-        Item = Result<PeerData<TransactionBlockData>, anyhow::Error>,
-    >,
+    transaction_stream: impl futures::Stream<Item = anyhow::Result<PeerData<TransactionBlockData>>>,
     storage: Storage,
     chain_id: ChainId,
 ) -> Result<(), SyncError> {
@@ -261,8 +252,26 @@ async fn handle_transaction_stream(
     Ok(())
 }
 
+async fn handle_state_diff_stream(
+    stream: impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
+    storage: Storage,
+) -> Result<(), SyncError> {
+    stream
+        .map_err(Into::into)
+        .and_then(|x| state_updates::verify_commitment(x, storage.clone()))
+        .try_chunks(100)
+        .map_err(|e| e.1)
+        // Persist state updates (without: state commitments and declared classes)
+        .and_then(|x| state_updates::persist(storage.clone(), x))
+        .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
+        // Drive stream to completion.
+        .try_fold((), |_, _| std::future::ready(Ok(())))
+        .await?;
+    Ok(())
+}
+
 async fn handle_class_stream(
-    class_stream: impl futures::Stream<Item = Result<PeerData<Class>, anyhow::Error>>,
+    class_stream: impl futures::Stream<Item = anyhow::Result<PeerData<Class>>>,
     storage: Storage,
     declared_classes_at_block_stream: impl futures::Stream<
         Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>,
@@ -695,6 +704,162 @@ mod tests {
                     stream::iter(streamed_transactions),
                     StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+    }
+
+    mod handle_state_diff_stream {
+        use fake::{Dummy, Fake, Faker};
+        use futures::stream;
+        use p2p::libp2p::PeerId;
+        use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
+        use pathfinder_common::transaction::DeployTransaction;
+        use pathfinder_common::TransactionHash;
+        use pathfinder_crypto::Felt;
+        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::StorageBuilder;
+
+        use super::super::handle_state_diff_stream;
+        use super::*;
+
+        struct Setup {
+            pub streamed_state_diffs: Vec<anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
+            pub expected_state_diffs: Vec<StateUpdateData>,
+            pub storage: Storage,
+        }
+
+        async fn setup(num_blocks: usize) -> Setup {
+            tokio::task::spawn_blocking(move || {
+                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let streamed_state_diffs = blocks
+                    .iter()
+                    .map(|block| {
+                        anyhow::Ok(PeerData::for_tests((
+                            block.header.header.number,
+                            block.state_update.clone().into(),
+                        )))
+                    })
+                    .collect::<Vec<_>>();
+                let expected_state_diffs = blocks
+                    .iter()
+                    .map(|block| {
+                        // Cairo0 Deploy should also count as implicit declaration
+                        let mut state_diff: StateUpdateData = block.state_update.clone().into();
+                        block
+                            .state_update
+                            .contract_updates
+                            .iter()
+                            .for_each(|(_, v)| {
+                                v.class.as_ref().inspect(|class_update| {
+                                    if let ContractClassUpdate::Deploy(class_hash) = class_update {
+                                        state_diff.declared_cairo_classes.insert(*class_hash);
+                                    }
+                                });
+                            });
+                        state_diff
+                    })
+                    .collect::<Vec<_>>();
+                blocks.iter_mut().for_each(|block| {
+                    // Purge state diff data and class definitions.
+                    block.state_update = Default::default();
+                    block.sierra_defs = Default::default();
+                    block.cairo_defs = Default::default();
+                });
+
+                let storage = StorageBuilder::in_memory().unwrap();
+                fake_storage::fill(&storage, &blocks);
+                Setup {
+                    streamed_state_diffs,
+                    expected_state_diffs,
+                    storage,
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        #[tokio::test]
+        async fn happy_path() {
+            const NUM_BLOCKS: usize = 10;
+            let Setup {
+                streamed_state_diffs,
+                expected_state_diffs,
+                storage,
+            } = setup(NUM_BLOCKS).await;
+
+            handle_state_diff_stream(stream::iter(streamed_state_diffs), storage.clone())
+                .await
+                .unwrap();
+
+            let actual_state_diffs = tokio::task::spawn_blocking(move || {
+                let mut db = storage.connection().unwrap();
+                let db = db.transaction().unwrap();
+                (0..NUM_BLOCKS)
+                    .map(|n| {
+                        db.state_update(BlockNumber::new_or_panic(n as u64).into())
+                            .unwrap()
+                            .unwrap()
+                            .into()
+                    })
+                    .collect::<Vec<StateUpdateData>>()
+            })
+            .await
+            .unwrap();
+
+            pretty_assertions_sorted::assert_eq!(expected_state_diffs, actual_state_diffs);
+        }
+
+        #[tokio::test]
+        async fn commitment_mismatch() {
+            let Setup {
+                mut streamed_state_diffs,
+                storage,
+                ..
+            } = setup(1).await;
+
+            streamed_state_diffs[0]
+                .as_mut()
+                .unwrap()
+                .data
+                .1
+                .declared_cairo_classes
+                .insert(Faker.fake());
+
+            assert_matches::assert_matches!(
+                handle_state_diff_stream(stream::iter(streamed_state_diffs), storage)
+                    .await
+                    .unwrap_err(),
+                SyncError::StateDiffCommitmentMismatch(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn stream_failure() {
+            assert_matches::assert_matches!(
+                handle_state_diff_stream(
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
+                    StorageBuilder::in_memory().unwrap(),
+                )
+                .await
+                .unwrap_err(),
+                SyncError::Other(_)
+            );
+        }
+
+        #[tokio::test]
+        async fn header_missing() {
+            let Setup {
+                streamed_state_diffs,
+                ..
+            } = setup(1).await;
+            assert_matches::assert_matches!(
+                handle_state_diff_stream(
+                    stream::iter(streamed_state_diffs),
+                    StorageBuilder::in_memory().unwrap(),
                 )
                 .await
                 .unwrap_err(),
