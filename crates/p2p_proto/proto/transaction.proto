@@ -18,6 +18,8 @@ message AccountSignature {
     repeated starknet.common.Felt252 parts = 1;
 }
 
+// This is a transaction that is already accepted in a block. Once we have a mempool, we will define
+// a separate message for BroadcastedTransaction.
 message Transaction
 {
     message DeclareV0 {
@@ -85,8 +87,8 @@ message Transaction
         ResourceBounds                   resource_bounds              = 6;
         uint64                           tip                          = 7;
         repeated starknet.common.Felt252 paymaster_data               = 8;
-        starknet.common.VolitionDomain   nonce_data_availability_mode = 10;
-        starknet.common.VolitionDomain   fee_data_availability_mode   = 11;
+        starknet.common.VolitionDomain   nonce_data_availability_mode = 9;
+        starknet.common.VolitionDomain   fee_data_availability_mode   = 10;
     }
 
     message InvokeV0 {

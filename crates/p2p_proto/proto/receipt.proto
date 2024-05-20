@@ -4,9 +4,9 @@ import "common.proto";
 package starknet.receipt;
 
 message MessageToL1 {
-  starknet.common.Felt252          from_address = 1;
-  repeated starknet.common.Felt252 payload      = 2;
-  EthereumAddress                  to_address   = 3;
+  starknet.common.Felt252          from_address = 2;
+  repeated starknet.common.Felt252 payload      = 3;
+  EthereumAddress                  to_address   = 4;
 }
 
 enum PriceUnit {

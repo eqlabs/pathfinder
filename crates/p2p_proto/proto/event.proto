@@ -5,9 +5,9 @@ package starknet.event;
 
 message Event {
     starknet.common.Hash transaction_hash = 1;
-    starknet.common.Felt252  from_address = 2;
-    repeated starknet.common.Felt252 keys = 3;
-    repeated starknet.common.Felt252 data = 4;
+    starknet.common.Felt252  from_address = 3;
+    repeated starknet.common.Felt252 keys = 4;
+    repeated starknet.common.Felt252 data = 5;
 }
 
 message EventsRequest {
