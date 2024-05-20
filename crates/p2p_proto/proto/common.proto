@@ -53,7 +53,7 @@ enum L1DataAvailabilityMode {
     Blob = 1;
 }
 
-enum DataAvailabilityMode {
+enum VolitionDomain {
     L1 = 0;
     L2 = 1;
 }

@@ -1,7 +1,7 @@
 use fake::Dummy;
 use pathfinder_crypto::Felt;
 
-use crate::common::{Address, DataAvailabilityMode, Hash, Iteration};
+use crate::common::{Address, Hash, Iteration, VolitionDomain};
 use crate::receipt::Receipt;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
@@ -68,8 +68,8 @@ pub struct DeclareV3 {
     pub tip: u64,
     pub paymaster_data: Vec<Felt>,
     pub account_deployment_data: Vec<Felt>,
-    pub nonce_data_availability_mode: DataAvailabilityMode,
-    pub fee_data_availability_mode: DataAvailabilityMode,
+    pub nonce_data_availability_mode: VolitionDomain,
+    pub fee_data_availability_mode: VolitionDomain,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -103,8 +103,8 @@ pub struct DeployAccountV3 {
     pub resource_bounds: ResourceBounds,
     pub tip: u64,
     pub paymaster_data: Vec<Felt>,
-    pub nonce_data_availability_mode: DataAvailabilityMode,
-    pub fee_data_availability_mode: DataAvailabilityMode,
+    pub nonce_data_availability_mode: VolitionDomain,
+    pub fee_data_availability_mode: VolitionDomain,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -145,8 +145,8 @@ pub struct InvokeV3 {
     pub tip: u64,
     pub paymaster_data: Vec<Felt>,
     pub account_deployment_data: Vec<Felt>,
-    pub nonce_data_availability_mode: DataAvailabilityMode,
-    pub fee_data_availability_mode: DataAvailabilityMode,
+    pub nonce_data_availability_mode: VolitionDomain,
+    pub fee_data_availability_mode: VolitionDomain,
     pub nonce: Felt,
 }
 

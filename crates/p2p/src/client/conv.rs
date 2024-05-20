@@ -419,14 +419,14 @@ impl TryFromDto<p2p_proto::transaction::ResourceBounds> for ResourceBounds {
     }
 }
 
-impl TryFromDto<p2p_proto::common::DataAvailabilityMode> for DataAvailabilityMode {
-    fn try_from_dto(dto: p2p_proto::common::DataAvailabilityMode) -> anyhow::Result<Self>
+impl TryFromDto<p2p_proto::common::VolitionDomain> for DataAvailabilityMode {
+    fn try_from_dto(dto: p2p_proto::common::VolitionDomain) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
         Ok(match dto {
-            p2p_proto::common::DataAvailabilityMode::L1 => Self::L1,
-            p2p_proto::common::DataAvailabilityMode::L2 => Self::L2,
+            p2p_proto::common::VolitionDomain::L1 => Self::L1,
+            p2p_proto::common::VolitionDomain::L2 => Self::L2,
         })
     }
 }

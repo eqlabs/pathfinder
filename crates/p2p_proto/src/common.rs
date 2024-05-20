@@ -58,7 +58,7 @@ pub enum L1DataAvailabilityMode {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
-pub enum DataAvailabilityMode {
+pub enum VolitionDomain {
     L1,
     L2,
 }
@@ -190,22 +190,22 @@ impl TryFromProtobuf<i32> for L1DataAvailabilityMode {
     }
 }
 
-impl ToProtobuf<i32> for DataAvailabilityMode {
+impl ToProtobuf<i32> for VolitionDomain {
     fn to_protobuf(self) -> i32 {
-        use proto::common::DataAvailabilityMode::{L1, L2};
+        use proto::common::VolitionDomain::{L1, L2};
         match self {
-            DataAvailabilityMode::L1 => L1 as i32,
-            DataAvailabilityMode::L2 => L2 as i32,
+            VolitionDomain::L1 => L1 as i32,
+            VolitionDomain::L2 => L2 as i32,
         }
     }
 }
 
-impl TryFromProtobuf<i32> for DataAvailabilityMode {
+impl TryFromProtobuf<i32> for VolitionDomain {
     fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
-        use proto::common::DataAvailabilityMode::{L1, L2};
+        use proto::common::VolitionDomain::{L1, L2};
         Ok(match TryFrom::try_from(input)? {
-            L1 => DataAvailabilityMode::L1,
-            L2 => DataAvailabilityMode::L2,
+            L1 => VolitionDomain::L1,
+            L2 => VolitionDomain::L2,
         })
     }
 }
