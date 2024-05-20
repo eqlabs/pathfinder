@@ -29,6 +29,7 @@ use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use serde_json::de;
+use starknet_gateway_client::{Client, GatewayApi};
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
@@ -47,6 +48,7 @@ pub struct Sync {
     // TODO: merge these two inside the client.
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
+    pub fgw_client: Client,
     pub chain_id: ChainId,
 }
 
@@ -55,6 +57,7 @@ impl Sync {
         storage: Storage,
         p2p: P2PClient,
         ethereum: (pathfinder_ethereum::EthereumClient, H160),
+        fgw_client: Client,
         chain_id: ChainId,
     ) -> Self {
         Self {
@@ -62,6 +65,7 @@ impl Sync {
             p2p,
             eth_client: ethereum.0,
             eth_address: ethereum.1,
+            fgw_client,
             chain_id,
         }
     }
@@ -207,7 +211,13 @@ impl Sync {
         let declared_classes_stream =
             class_definitions::declared_classes_at_block_stream(self.storage.clone(), start, stop);
 
-        handle_class_stream(class_stream, self.storage.clone(), declared_classes_stream).await?;
+        handle_class_stream(
+            class_stream,
+            self.storage.clone(),
+            self.fgw_client.clone(),
+            declared_classes_stream,
+        )
+        .await?;
 
         Ok(())
     }
@@ -269,9 +279,10 @@ async fn handle_state_diff_stream(
     Ok(())
 }
 
-async fn handle_class_stream(
+async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
     class_stream: impl futures::Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
     storage: Storage,
+    fgw: SequencerClient,
     declared_classes_at_block_stream: impl futures::Stream<
         Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>,
     >,
@@ -285,7 +296,7 @@ async fn handle_class_stream(
 
     let b = class_definitions::verify_declared_at(declared_classes_at_block_stream, a);
 
-    b.and_then(class_definitions::compile_sierra_to_casm_or_fetch)
+    b.and_then(|x| class_definitions::compile_sierra_to_casm_or_fetch(x, fgw.clone()))
         .try_chunks(10)
         .map_err(|e| e.1)
         .and_then(|x| class_definitions::persist(storage.clone(), x))
@@ -884,11 +895,26 @@ mod tests {
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_10_TUPLES_INTEGRATION,
             CAIRO_0_11_SIERRA,
+            CAIRO_2_0_0_STACK_OVERFLOW,
         };
+        use starknet_gateway_types::error::SequencerError;
 
         use super::super::handle_class_stream;
         use super::*;
         use crate::state::block_hash::calculate_event_commitment;
+
+        #[derive(Clone)]
+        struct FakeFgw;
+
+        #[async_trait::async_trait]
+        impl GatewayApi for FakeFgw {
+            async fn pending_casm_by_hash(
+                &self,
+                class_hash: ClassHash,
+            ) -> Result<bytes::Bytes, SequencerError> {
+                Ok(bytes::Bytes::from_static(b"I'm from the fgw!"))
+            }
+        }
 
         #[derive(Clone, Copy, Debug, Dummy)]
         struct DeclaredClass {
@@ -924,7 +950,8 @@ mod tests {
         struct Setup {
             pub streamed_classes: Vec<anyhow::Result<PeerData<ClassDefinition>>>,
             pub declared_classes: DeclaredClasses,
-            pub expected_defs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+            // pub expected_defs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+            pub expected_defs: Vec<Vec<u8>>,
             pub storage: Storage,
         }
 
@@ -940,7 +967,7 @@ mod tests {
                 blocks[0].cairo_defs = Default::default();
                 blocks[0].sierra_defs = Default::default();
 
-                let (cairo_hash, sierra_hash) = if expect_correct_class_hashes {
+                let (cairo_hash, sierra_hash, sierra_hash2) = if expect_correct_class_hashes {
                     (
                         ClassHash(felt!(
                             "0x542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
@@ -948,63 +975,72 @@ mod tests {
                         SierraHash(felt!(
                             "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
                         )),
+                        SierraHash(felt!(
+                            "0x03dd9347d22f1ea2d5fbc7bd1f0860c6c334973499f9f1989fcb81bfff5191da"
+                        )),
                     )
                 } else {
                     Default::default()
                 };
                 blocks[1].state_update.declared_cairo_classes = [cairo_hash].into();
-                blocks[1].state_update.declared_sierra_classes =
-                    [(sierra_hash, CasmHash::ZERO)].into();
+                blocks[1].state_update.declared_sierra_classes = [
+                    (sierra_hash, Default::default()),
+                    (sierra_hash2, Default::default()),
+                ]
+                .into();
                 blocks[1].cairo_defs = vec![(cairo_hash, CAIRO_0_10_TUPLES_INTEGRATION.to_vec())];
-                blocks[1].sierra_defs =
-                    vec![(sierra_hash, CAIRO_0_11_SIERRA.to_vec(), b"casm".to_vec())];
+                blocks[1].sierra_defs = vec![
+                    // Does not compile
+                    (sierra_hash, CAIRO_0_11_SIERRA.to_vec(), Default::default()),
+                    // Compiles just fine
+                    (
+                        sierra_hash2,
+                        CAIRO_2_0_0_STACK_OVERFLOW.to_vec(),
+                        Default::default(),
+                    ),
+                ];
 
                 let (declared_classes, streamed_classes) = blocks[1]
-                    .sierra_defs
+                    .cairo_defs
                     .iter()
                     .cloned()
-                    .map(|(sierra_hash, sierra_definition, casm_definition)| {
+                    .map(|(hash, definition)| {
                         let block_number = blocks[1].header.header.number;
                         (
                             DeclaredClass {
                                 block: block_number,
-                                class: ClassHash(sierra_hash.0),
+                                class: hash,
                             },
-                            anyhow::Result::Ok(PeerData::for_tests(ClassDefinition::Sierra {
+                            anyhow::Result::Ok(PeerData::for_tests(ClassDefinition::Cairo {
                                 block_number,
-                                sierra_definition,
+                                definition,
                             })),
                         )
                     })
-                    .chain(
-                        blocks[1]
-                            .cairo_defs
-                            .iter()
-                            .cloned()
-                            .map(|(hash, definition)| {
-                                let block_number = blocks[1].header.header.number;
-                                (
-                                    DeclaredClass {
-                                        block: block_number,
-                                        class: hash,
-                                    },
-                                    anyhow::Result::Ok(PeerData::for_tests(
-                                        ClassDefinition::Cairo {
-                                            block_number,
-                                            definition,
-                                        },
-                                    )),
-                                )
-                            }),
-                    )
+                    .chain(blocks[1].sierra_defs.iter().cloned().map(
+                        |(sierra_hash, sierra_definition, _)| {
+                            let block_number = blocks[1].header.header.number;
+                            (
+                                DeclaredClass {
+                                    block: block_number,
+                                    class: ClassHash(sierra_hash.0),
+                                },
+                                anyhow::Result::Ok(PeerData::for_tests(ClassDefinition::Sierra {
+                                    block_number,
+                                    sierra_definition,
+                                })),
+                            )
+                        },
+                    ))
                     .unzip::<_, _, Vec<_>, Vec<_>>();
                 let expected_defs = streamed_classes
                     .iter()
                     .map(|class| {
                         let class = &class.as_ref().unwrap().data;
-                        (class.class_definition(), Default::default()) // TODO casm
+                        class.class_definition()
                     })
-                    .collect::<Vec<(Vec<u8>, Option<Vec<u8>>)>>();
+                    .collect::<Vec<Vec<u8>>>();
+
                 let storage = StorageBuilder::in_memory().unwrap();
                 fake_storage::fill(&storage, &blocks);
                 Setup {
@@ -1030,6 +1066,7 @@ mod tests {
             handle_class_stream(
                 stream::iter(streamed_classes),
                 storage.clone(),
+                FakeFgw,
                 declared_classes.to_stream(),
             )
             .await
@@ -1047,7 +1084,7 @@ mod tests {
                                 .class_definition_at(x.block.into(), x.class)
                                 .unwrap()
                                 .unwrap(),
-                            Default::default(), // TODO casm
+                            db_tx.casm_definition_at(x.block.into(), x.class).unwrap(),
                         )
                     })
                     .collect::<Vec<_>>()
@@ -1055,7 +1092,21 @@ mod tests {
             .await
             .unwrap();
 
-            pretty_assertions_sorted::assert_eq!(expected_defs, actual_defs);
+            // Cairo0
+            assert_eq!(actual_defs[0].0, expected_defs[0]);
+            assert!(actual_defs[0].1.is_none());
+            // Cairo1
+            assert_eq!(actual_defs[1].0, expected_defs[1]);
+            // Compilation failed
+            assert_eq!(actual_defs[1].1, Some(b"I'm from the fgw!".to_vec()));
+            // Cairo1
+            assert_eq!(actual_defs[2].0, expected_defs[2]);
+            // Compilation succeeded, poor man's sanity check
+            assert!(serde_json::from_slice::<serde_json::Value>(
+                actual_defs[2].1.as_ref().unwrap()
+            )
+            .unwrap()["compiler_version"]
+                .is_string());
         }
 
         #[rstest::rstest]
@@ -1066,7 +1117,6 @@ mod tests {
         #[case::sierra(ClassDefinition::Sierra {
             block_number: ONE,
             sierra_definition: Default::default(),
-            // TODO casm
         })]
         #[tokio::test]
         async fn bad_layout(#[case] class: ClassDefinition) {
@@ -1075,7 +1125,7 @@ mod tests {
             let expected_peer_id = data.peer;
 
             assert_matches::assert_matches!(
-                handle_class_stream(stream::once(std::future::ready(Ok(data))), storage, Faker.fake::<DeclaredClasses>().to_stream())
+                handle_class_stream(stream::once(std::future::ready(Ok(data))), storage, FakeFgw, Faker.fake::<DeclaredClasses>().to_stream())
                     .await
                     .unwrap_err(),
                 SyncError::BadClassLayout(x) => assert_eq!(x, expected_peer_id)
@@ -1095,7 +1145,7 @@ mod tests {
             let expected_peer_id = streamed_classes.last().unwrap().as_ref().unwrap().peer;
 
             assert_matches::assert_matches!(
-                handle_class_stream(stream::iter(streamed_classes), storage, declared_classes.to_stream())
+                handle_class_stream(stream::iter(streamed_classes), storage, FakeFgw, declared_classes.to_stream())
                     .await
                     .unwrap_err(),
                 SyncError::UnexpectedClass(x) => assert_eq!(x, expected_peer_id)
@@ -1108,6 +1158,7 @@ mod tests {
                 handle_class_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
+                    FakeFgw,
                     Faker.fake::<DeclaredClasses>().to_stream()
                 )
                 .await

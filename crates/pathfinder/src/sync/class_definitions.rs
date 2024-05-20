@@ -11,6 +11,7 @@ use p2p_proto::transaction;
 use pathfinder_common::{BlockNumber, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use serde_json::de;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::class_definition::{
     Cairo,
     ClassDefinition as GwClassDefinition,
@@ -288,8 +289,9 @@ pub(super) fn verify_declared_at(
     }
 }
 
-pub(super) async fn compile_sierra_to_casm_or_fetch(
+pub(super) async fn compile_sierra_to_casm_or_fetch<SequencerClient: GatewayApi + Clone + Send>(
     peer_data: PeerData<Class>,
+    fgw: SequencerClient,
 ) -> Result<PeerData<CompiledClass>, SyncError> {
     let PeerData {
         peer,
@@ -314,8 +316,13 @@ pub(super) async fn compile_sierra_to_casm_or_fetch(
                 .await
                 .context("Joining blocking task")?;
 
-            let Ok(casm_definition) = casm_definition else {
-                todo!()
+            let casm_definition = match casm_definition {
+                Ok(x) => x,
+                Err(_) => fgw
+                    .pending_casm_by_hash(hash)
+                    .await
+                    .context("Fetching casm definition from gateway")?
+                    .to_vec(),
             };
 
             CompiledClassDefinition::Sierra {
