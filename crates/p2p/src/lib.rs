@@ -30,7 +30,7 @@ mod test_utils;
 mod tests;
 mod transport;
 
-pub use behaviour::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
+pub use behaviour::kademlia_protocol_name;
 pub use client::peer_agnostic::PeerData;
 use client::peer_aware::Client;
 pub use libp2p;

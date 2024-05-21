@@ -4,7 +4,7 @@ use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{self};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{autonat, dcutr, identify, identity, ping, relay, StreamProtocol};
-use p2p::{kademlia_protocol_name, IDENTIFY_PROTOCOL_NAME};
+use p2p::kademlia_protocol_name;
 use pathfinder_common::ChainId;
 
 #[derive(NetworkBehaviour)]
@@ -47,7 +47,7 @@ impl BootstrapBehaviour {
             dcutr: dcutr::Behaviour::new(peer_id),
             ping: ping::Behaviour::new(ping::Config::new()),
             identify: identify::Behaviour::new(
-                identify::Config::new(IDENTIFY_PROTOCOL_NAME.to_string(), pub_key)
+                identify::Config::new(identify::PROTOCOL_NAME.to_string(), pub_key)
                     .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
             ),
             kademlia,

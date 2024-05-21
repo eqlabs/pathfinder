@@ -413,8 +413,17 @@ impl ChainId {
         })
     }
 
+    /// A hex string representation, eg.: `"0x534e5f4d41494e"` stands for
+    /// Mainnet (`SN_MAIN`)
     pub fn to_hex_str(&self) -> std::borrow::Cow<'static, str> {
         self.0.to_hex_str()
+    }
+
+    /// A human readable representation, eg.: `"SN_MAIN"` stands for Mainnet
+    pub fn as_str(&self) -> &str {
+        std::str::from_utf8(self.0.as_be_bytes())
+            .expect("valid utf8")
+            .trim_start_matches(|c| c == '\0')
     }
 
     pub const MAINNET: Self = Self::from_slice_unwrap(b"SN_MAIN");
