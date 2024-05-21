@@ -950,7 +950,6 @@ mod tests {
         struct Setup {
             pub streamed_classes: Vec<anyhow::Result<PeerData<ClassDefinition>>>,
             pub declared_classes: DeclaredClasses,
-            // pub expected_defs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
             pub expected_defs: Vec<Vec<u8>>,
             pub storage: Storage,
         }
