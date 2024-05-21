@@ -14,7 +14,7 @@ message ContractDiff {
     optional starknet.common.Felt252 nonce       = 2;  // Present only if the nonce was updated
     optional starknet.common.Hash    class_hash  = 3;  // Present only if the contract was deployed or replaced in this block.
     repeated ContractStoredValue     values      = 4;
-    uint32                           domain      = 5;  // volition state domain
+    starknet.common.VolitionDomain   domain      = 5;
 }
 
 message DeclaredClass {

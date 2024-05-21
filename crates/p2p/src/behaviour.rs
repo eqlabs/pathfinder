@@ -36,8 +36,10 @@ use crate::secret::Secret;
 use crate::sync::codec;
 use crate::Config;
 
+// TODO
 pub const IDENTIFY_PROTOCOL_NAME: &str = "/starknet/id/1.0.0";
 
+// TODO
 pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
     format!("/starknet/kad/{}/1.0.0", chain_id.to_hex_str())
 }

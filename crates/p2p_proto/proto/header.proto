@@ -1,6 +1,5 @@
 syntax = "proto3";
 import "common.proto";
-import "state.proto";
 
 package starknet.header;
 

@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use fake::Dummy;
 use pathfinder_crypto::Felt;
 
-use crate::common::{Address, Hash, Iteration};
+use crate::common::{Address, Hash, Iteration, VolitionDomain};
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -22,7 +22,7 @@ pub struct ContractDiff {
     #[optional]
     pub class_hash: Option<Hash>,
     pub values: Vec<ContractStoredValue>,
-    pub domain: u32,
+    pub domain: VolitionDomain,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

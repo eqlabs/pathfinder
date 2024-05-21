@@ -265,11 +265,11 @@ impl ToDto<p2p_proto::transaction::ResourceLimits> for ResourceBound {
     }
 }
 
-impl ToDto<p2p_proto::common::DataAvailabilityMode> for DataAvailabilityMode {
-    fn to_dto(self) -> p2p_proto::common::DataAvailabilityMode {
+impl ToDto<p2p_proto::common::VolitionDomain> for DataAvailabilityMode {
+    fn to_dto(self) -> p2p_proto::common::VolitionDomain {
         match self {
-            Self::L1 => p2p_proto::common::DataAvailabilityMode::L1,
-            Self::L2 => p2p_proto::common::DataAvailabilityMode::L2,
+            Self::L1 => p2p_proto::common::VolitionDomain::L1,
+            Self::L2 => p2p_proto::common::VolitionDomain::L2,
         }
     }
 }

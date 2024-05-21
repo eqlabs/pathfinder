@@ -86,12 +86,10 @@ impl<T, U: Dummy<T>> Dummy<T> for PeerData<U> {
 pub enum Class {
     Cairo {
         block_number: BlockNumber,
-        hash: ClassHash,
         definition: Vec<u8>,
     },
     Sierra {
         block_number: BlockNumber,
-        sierra_hash: SierraHash,
         sierra_definition: Vec<u8>,
     },
 }
@@ -101,13 +99,6 @@ impl Class {
         match self {
             Self::Cairo { block_number, .. } => *block_number,
             Self::Sierra { block_number, .. } => *block_number,
-        }
-    }
-
-    pub fn hash(&self) -> ClassHash {
-        match self {
-            Self::Cairo { hash, .. } => *hash,
-            Self::Sierra { sierra_hash, .. } => ClassHash(sierra_hash.0),
         }
     }
 
@@ -186,11 +177,6 @@ impl Client {
 
     pub async fn get_update_peers_with_transaction_sync_capability(&self) -> Vec<PeerId> {
         self.get_update_peers_with_sync_capability(protocol::Transactions::NAME)
-            .await
-    }
-
-    pub async fn get_update_peers_with_receipt_sync_capability(&self) -> Vec<PeerId> {
-        self.get_update_peers_with_sync_capability(protocol::Receipts::NAME)
             .await
     }
 
@@ -641,7 +627,6 @@ impl Client {
                                 ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
                                     class,
                                     domain: _,
-                                    class_hash,
                                 }) => {
                                     let CairoDefinition(definition) =
                                         CairoDefinition::try_from_dto(class)?;
@@ -657,7 +642,6 @@ impl Client {
                                         peer,
                                         Class::Cairo {
                                             block_number: start,
-                                            hash: ClassHash(class_hash.0),
                                             definition,
                                         },
                                     );
@@ -665,7 +649,6 @@ impl Client {
                                 ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
                                     class,
                                     domain: _,
-                                    class_hash,
                                 }) => {
                                     let definition = SierraDefinition::try_from_dto(class)?;
                                     match current_count.checked_sub(1) {
@@ -680,7 +663,6 @@ impl Client {
                                         peer,
                                         Class::Sierra {
                                             block_number: start,
-                                            sierra_hash: SierraHash(class_hash.0),
                                             sierra_definition: definition.0,
                                         },
                                     );

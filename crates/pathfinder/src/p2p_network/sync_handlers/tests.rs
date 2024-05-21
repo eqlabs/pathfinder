@@ -128,7 +128,6 @@ mod prop {
         ClassHash,
         ContractAddress,
         ContractNonce,
-        SierraHash,
         SignedBlockHeader,
         StorageAddress,
         StorageCommitment,
@@ -315,10 +314,10 @@ mod prop {
                     (
                         // Block number
                         header.header.number,
-                        // List of tuples (Cairo class hash, Cairo definition bytes)
-                        cairo_defs,
-                        // List of tuples (Sierra class hash, Sierra definition bytes, Casm is ignored)
-                        sierra_defs.into_iter().map(|(h, s, _)| (h, s)).collect::<Vec<_>>()
+                        // A list of Cairo definitions
+                        cairo_defs.into_iter().map(|(_, def)| def).collect::<Vec<_>>(),
+                        // A list of Sierra definitions, Casm is ignored
+                        sierra_defs.into_iter().map(|(_, sierra_def, _)| sierra_def).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -338,12 +337,12 @@ mod prop {
             let mut actual_sierra = Vec::new();
 
             responses.into_iter().for_each(|response| match response {
-                ClassesResponse::Class(Class::Cairo0 { class, domain: _, class_hash }) => {
-                    actual_cairo.push((ClassHash(class_hash.0), CairoDefinition::try_from_dto(class).unwrap().0));
+                ClassesResponse::Class(Class::Cairo0 { class, domain: _ }) => {
+                    actual_cairo.push(CairoDefinition::try_from_dto(class).unwrap().0);
                 },
-                ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash }) => {
+                ClassesResponse::Class(Class::Cairo1 { class, domain: _ }) => {
                     let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
-                    actual_sierra.push((SierraHash(class_hash.0), sierra));
+                    actual_sierra.push(sierra);
                 },
                 _ => panic!("unexpected response"),
             });
