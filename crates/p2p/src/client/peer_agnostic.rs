@@ -95,13 +95,6 @@ pub enum ClassDefinition {
 }
 
 impl ClassDefinition {
-    pub fn block_number(&self) -> BlockNumber {
-        match self {
-            Self::Cairo { block_number, .. } => *block_number,
-            Self::Sierra { block_number, .. } => *block_number,
-        }
-    }
-
     /// Return Cairo or Sierra class definition depending on the variant.
     pub fn class_definition(&self) -> Vec<u8> {
         match self {
@@ -109,19 +102,6 @@ impl ClassDefinition {
             Self::Sierra {
                 sierra_definition, ..
             } => sierra_definition.clone(),
-        }
-    }
-
-    pub fn into_parts(self) -> (BlockNumber, Vec<u8>) {
-        match self {
-            Self::Cairo {
-                block_number,
-                definition,
-            } => (block_number, definition),
-            Self::Sierra {
-                block_number,
-                sierra_definition,
-            } => (block_number, sierra_definition),
         }
     }
 }
