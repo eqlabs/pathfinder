@@ -99,7 +99,7 @@ mod boundary_conditions {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use futures::channel::mpsc;
     use futures::StreamExt;
@@ -112,6 +112,7 @@ mod prop {
     use p2p_proto::state::{
         ContractDiff,
         ContractStoredValue,
+        DeclaredClass,
         StateDiffsRequest,
         StateDiffsResponse,
     };
@@ -124,10 +125,12 @@ mod prop {
     use pathfinder_common::state_update::SystemContractUpdate;
     use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::{
+        CasmHash,
         ClassCommitment,
         ClassHash,
         ContractAddress,
         ContractNonce,
+        SierraHash,
         SignedBlockHeader,
         StorageAddress,
         StorageCommitment,
@@ -247,6 +250,8 @@ mod prop {
                         header.header.number, // Block number
                         state_update.contract_updates.into_iter().map(|(k, v)| (k, v.into())).collect::<HashMap<_,_>>(),
                         state_update.system_contract_updates,
+                        state_update.declared_sierra_classes,
+                        state_update.declared_cairo_classes,
                     )
             ).collect::<Vec<_>>();
             // Run the handler
@@ -263,6 +268,8 @@ mod prop {
 
             let mut actual_contract_updates = Vec::new();
             let mut actual_system_contract_updates = Vec::new();
+            let mut actual_declared_cairo = HashSet::new();
+            let mut actual_declared_sierra = HashMap::new();
 
             // Check the rest
             responses.into_iter().for_each(|response| match response {
@@ -288,14 +295,29 @@ mod prop {
                     }
 
                 },
+                StateDiffsResponse::DeclaredClass(DeclaredClass { class_hash, compiled_class_hash: Some(compiled_class_hash)} ) => {
+                    actual_declared_sierra.insert(SierraHash(class_hash.0), CasmHash(compiled_class_hash.0));
+                }
+                StateDiffsResponse::DeclaredClass(DeclaredClass { class_hash, compiled_class_hash: None} ) => {
+                    actual_declared_cairo.insert(ClassHash(class_hash.0));
+                }
                 _ => panic!("unexpected response"),
             });
 
             for expected_for_block in expected {
+                let block_number = expected_for_block.0;
                 let actual_contract_updates_for_block = actual_contract_updates.drain(..expected_for_block.1.len()).collect::<HashMap<_,_>>();
                 let actual_system_contract_updates_for_block = actual_system_contract_updates.drain(..expected_for_block.2.len()).collect::<HashMap<_,_>>();
-                prop_assert_eq_sorted!(expected_for_block.1, actual_contract_updates_for_block, "block number: {}", expected_for_block.0);
-                prop_assert_eq_sorted!(expected_for_block.2, actual_system_contract_updates_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq_sorted!(expected_for_block.1, actual_contract_updates_for_block, "block number: {}", block_number);
+                prop_assert_eq_sorted!(expected_for_block.2, actual_system_contract_updates_for_block, "block number: {}", block_number);
+
+                for (sierra_hash, casm_hash) in expected_for_block.3 {
+                    prop_assert_eq!(actual_declared_sierra.remove(&sierra_hash).unwrap(), casm_hash, "block number: {}", block_number);
+                }
+
+                for cairo_hash in expected_for_block.4 {
+                    prop_assert!(actual_declared_cairo.remove(&cairo_hash), "block number: {}", block_number);
+                }
             }
         }
     }

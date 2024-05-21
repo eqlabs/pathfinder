@@ -15,7 +15,13 @@ use p2p_proto::common::{
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHeader};
-use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::state::{
+    ContractDiff,
+    ContractStoredValue,
+    DeclaredClass,
+    StateDiffsRequest,
+    StateDiffsResponse,
+};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_crypto::Felt;
@@ -249,7 +255,6 @@ fn get_classes_for_block(
     Ok(true)
 }
 
-/// FIXME emit StateDiffsResponse::DeclaredClass too
 fn get_state_diff(
     db_tx: &Transaction<'_>,
     block_number: BlockNumber,
@@ -274,7 +279,7 @@ fn get_state_diff(
                 .collect(),
             domain: VolitionDomain::L1, // TODO
         }))
-        .map_err(|_| anyhow::anyhow!("Sending state diff"))?;
+        .map_err(|_| anyhow::anyhow!("Sending contract diff"))?;
     }
 
     for (address, update) in state_diff.system_contract_updates {
@@ -292,7 +297,23 @@ fn get_state_diff(
                 .collect(),
             domain: VolitionDomain::L1, // TODO
         }))
-        .map_err(|_| anyhow::anyhow!("Sending state diff"))?;
+        .map_err(|_| anyhow::anyhow!("Sending system contract diff"))?;
+    }
+
+    for class_hash in state_diff.declared_cairo_classes {
+        tx.blocking_send(StateDiffsResponse::DeclaredClass(DeclaredClass {
+            class_hash: Hash(class_hash.0),
+            compiled_class_hash: None,
+        }))
+        .map_err(|_| anyhow::anyhow!("Sending declared cairo class"))?;
+    }
+
+    for (sierra_hash, casm_hash) in state_diff.declared_sierra_classes {
+        tx.blocking_send(StateDiffsResponse::DeclaredClass(DeclaredClass {
+            class_hash: Hash(sierra_hash.0),
+            compiled_class_hash: Some(Hash(casm_hash.0)),
+        }))
+        .map_err(|_| anyhow::anyhow!("Sending declared sierra class"))?;
     }
 
     Ok(true)
