@@ -36,12 +36,8 @@ use crate::secret::Secret;
 use crate::sync::codec;
 use crate::Config;
 
-// TODO
-pub const IDENTIFY_PROTOCOL_NAME: &str = "/starknet/id/1.0.0";
-
-// TODO
 pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
-    format!("/starknet/kad/{}/1.0.0", chain_id.to_hex_str())
+    format!("/starknet/kad/{}/1.0.0", chain_id.as_str())
 }
 
 pub struct Behaviour {
@@ -498,7 +494,7 @@ impl Behaviour {
                     ping: ping::Behaviour::new(ping::Config::new()),
                     identify: identify::Behaviour::new(
                         identify::Config::new(
-                            IDENTIFY_PROTOCOL_NAME.to_string(),
+                            identify::PROTOCOL_NAME.to_string(),
                             identity.public(),
                         )
                         .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
