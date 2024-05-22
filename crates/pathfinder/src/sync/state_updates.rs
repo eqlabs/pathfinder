@@ -137,3 +137,14 @@ pub(super) async fn persist(
     .await
     .context("Joining blocking task")?
 }
+
+pub struct VerifyDiff;
+
+impl crate::sync::stream::ProcessStage for VerifyDiff {
+    type Input = StateUpdate;
+    type Output = StateUpdate;
+
+    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+        todo!()
+    }
+}

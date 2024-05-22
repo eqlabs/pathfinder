@@ -284,6 +284,13 @@ impl StateUpdate {
         len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
         len.try_into().expect("ptr size is 64bits")
     }
+
+    pub fn declared_classes(&self) -> DeclaredClasses {
+        DeclaredClasses {
+            sierra: self.declared_sierra_classes.clone(),
+            cairo: self.declared_cairo_classes.clone(),
+        }
+    }
 }
 
 impl StateUpdateData {
@@ -531,6 +538,12 @@ impl ReverseContractUpdate {
             Self::Updated(update) => Some(update),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeclaredClasses {
+    pub sierra: HashMap<SierraHash, CasmHash>,
+    pub cairo: HashSet<ClassHash>,
 }
 
 #[cfg(test)]

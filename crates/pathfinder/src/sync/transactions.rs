@@ -4,15 +4,16 @@ use anyhow::Context;
 use p2p::client::peer_agnostic::TransactionBlockData;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::Transaction;
+use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
 use pathfinder_storage::Storage;
 
-use super::error::SyncError;
+use super::error::{SyncError, SyncError2};
 use crate::state::block_hash::{
     calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
+use crate::sync::stream::ProcessStage;
 
 pub type TransactionsWithHashesForBlock = (BlockNumber, Vec<(Transaction, Receipt)>);
 
@@ -190,4 +191,28 @@ pub(super) async fn persist(
     })
     .await
     .context("Joining blocking task")?
+}
+
+pub struct CalculateHashes;
+pub struct VerifyCommitment;
+
+impl ProcessStage for CalculateHashes {
+    type Input = (
+        BlockHeader,
+        Vec<(TransactionVariant, p2p_proto::receipt::Receipt)>,
+    );
+    type Output = (BlockHeader, Vec<(Transaction, Receipt)>);
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        todo!()
+    }
+}
+
+impl ProcessStage for VerifyCommitment {
+    type Input = (BlockHeader, Vec<(Transaction, Receipt)>);
+    type Output = Vec<(Transaction, Receipt)>;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        todo!()
+    }
 }
