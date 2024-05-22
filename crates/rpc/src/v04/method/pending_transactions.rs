@@ -43,7 +43,7 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::transaction::EntryPointType::External;
     use pathfinder_common::transaction::{
-        DeployTransaction,
+        DeployTransactionV0,
         InvokeTransactionV0,
         TransactionVariant,
     };
@@ -67,7 +67,7 @@ mod tests {
 
         let tx1 = TransactionWithHash {
             transaction_hash: transaction_hash_bytes!(b"pending tx hash 1"),
-            txn: Transaction(TransactionVariant::Deploy(DeployTransaction {
+            txn: Transaction(TransactionVariant::DeployV0(DeployTransactionV0 {
                 contract_address: contract_address!("0x1122355"),
                 class_hash: class_hash_bytes!(b"pending class hash 1"),
                 contract_address_salt: contract_address_salt_bytes!(b"salty"),

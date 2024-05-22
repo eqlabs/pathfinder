@@ -728,7 +728,7 @@ mod tests {
         use futures::stream;
         use p2p::libp2p::PeerId;
         use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
-        use pathfinder_common::transaction::DeployTransaction;
+        use pathfinder_common::transaction::DeployTransactionV0;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
         use pathfinder_storage::fake::{self as fake_storage, Block};

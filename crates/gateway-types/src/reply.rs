@@ -922,19 +922,31 @@ pub(crate) mod transaction {
                     compiled_class_hash,
                     account_deployment_data,
                 })),
-                Deploy(DeployTransaction {
+                DeployV0(DeployTransactionV0 {
                     contract_address,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
-                    version,
                 }) => Self::Deploy(self::DeployTransaction {
                     contract_address,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
                     transaction_hash,
-                    version,
+                    version: TransactionVersion::ZERO,
+                }),
+                DeployV1(DeployTransactionV1 {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                }) => Self::Deploy(self::DeployTransaction {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                    transaction_hash,
+                    version: TransactionVersion::ONE,
                 }),
                 DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address,
@@ -1147,14 +1159,35 @@ pub(crate) mod transaction {
                     constructor_calldata,
                     transaction_hash: _,
                     version,
-                }) => {
-                    TransactionVariant::Deploy(pathfinder_common::transaction::DeployTransaction {
+                }) if version == TransactionVersion::ZERO => TransactionVariant::DeployV0(
+                    pathfinder_common::transaction::DeployTransactionV0 {
                         contract_address,
                         contract_address_salt,
                         class_hash,
                         constructor_calldata,
-                        version,
-                    })
+                    },
+                ),
+                Transaction::Deploy(DeployTransaction {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                    transaction_hash: _,
+                    version,
+                }) if version == TransactionVersion::ONE => TransactionVariant::DeployV1(
+                    pathfinder_common::transaction::DeployTransactionV1 {
+                        contract_address,
+                        contract_address_salt,
+                        class_hash,
+                        constructor_calldata,
+                    },
+                ),
+                Transaction::Deploy(DeployTransaction { version, .. }) => {
+                    // This is technically data coming in from the gateway,
+                    // panic'ing would be bad -- however, since Deploy
+                    // transactions are deprecated the only existing instances
+                    // now reside on mainnet with known zero or one versions.
+                    panic!("unexpected deploy transaction version {version:?}")
                 }
                 Transaction::DeployAccount(DeployAccountTransaction::V0V1(
                     DeployAccountTransactionV0V1 {

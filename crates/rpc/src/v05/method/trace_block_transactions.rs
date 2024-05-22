@@ -104,7 +104,13 @@ pub(crate) fn map_gateway_trace(
             validate_invocation: trace.validate_invocation.map(Into::into),
             state_diff: None,
         }),
-        TransactionVariant::Deploy(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
+        TransactionVariant::DeployV0(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
+            constructor_invocation: trace.function_invocation.map(Into::into),
+            fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+            validate_invocation: trace.validate_invocation.map(Into::into),
+            state_diff: None,
+        }),
+        TransactionVariant::DeployV1(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
             constructor_invocation: trace.function_invocation.map(Into::into),
             fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             validate_invocation: trace.validate_invocation.map(Into::into),

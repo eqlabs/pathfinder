@@ -428,7 +428,8 @@ mod prop {
                             let mut tv = workaround::for_legacy_l1_handlers(t.variant);
                             // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
                             match &mut tv {
-                                TransactionVariant::Deploy(x) => x.contract_address = ContractAddress::ZERO,
+                                TransactionVariant::DeployV0(x) => x.contract_address = ContractAddress::ZERO,
+                                TransactionVariant::DeployV1(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV1(x) => x.contract_address = ContractAddress::ZERO,
                                 TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
                                 _ => {}
