@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
+use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
@@ -16,7 +17,7 @@ use pathfinder_common::{
 };
 use pathfinder_crypto::hash::{pedersen_hash, HashChain};
 use pathfinder_crypto::Felt;
-use pathfinder_merkle_tree::TransactionOrEventTree;
+use pathfinder_merkle_tree::{ReceiptTree, TransactionOrEventTree};
 use starknet_gateway_types::reply::Block;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -421,6 +422,37 @@ fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
         hash.update(s.0);
     }
     hash.finalize()
+}
+
+/// Calculate receipt commitment hash value.
+///
+/// The receipt commitment is the root of the Patricia Merkle tree with
+/// height 64 constructed by adding the (transaction_index, receipt_hash)
+/// key-value pairs to the tree and computing the root hash.
+pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<Felt> {
+    use rayon::prelude::*;
+
+    let mut receipt_hashes = Vec::new();
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            receipt_hashes = receipts.par_iter().map(|r| r.calculate_hash()).collect();
+        })
+    });
+
+    let mut tree = ReceiptTree::default();
+
+    receipt_hashes
+        .into_iter()
+        .enumerate()
+        .try_for_each(|(idx, receipt_hash)| {
+            let idx: u64 = idx
+                .try_into()
+                .expect("too many receipts while calculating commitment");
+            tree.set(idx, receipt_hash)
+        })
+        .context("Building receipt commitment tree")?;
+
+    Ok(tree.commit()?)
 }
 
 /// Calculate event commitment hash value.

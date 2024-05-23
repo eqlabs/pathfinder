@@ -1,4 +1,8 @@
+use pathfinder_crypto::hash::PoseidonHasher;
+use pathfinder_crypto::Felt;
+
 use crate::prelude::*;
+use crate::truncated_keccak;
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Receipt {
@@ -20,6 +24,60 @@ impl Receipt {
             ExecutionStatus::Succeeded => None,
             ExecutionStatus::Reverted { reason } => Some(reason.as_str()),
         }
+    }
+
+    // TODO: test vectors
+    // FIXME: l1, l2 consumed gas not taken into account as per
+    // https://docs.google.com/document/d/1EIlHskVJEyztS8eXRyPzd8cZwGuPcIKR5xUAIawzryk/view
+    /// ### Important
+    ///
+    /// Computing the hash requires the revert reason to be a valid ASCII
+    /// string, which we just assume the currently centralized sequencer will
+    /// always uphold.
+    pub fn calculate_hash(&self) -> Felt {
+        PoseidonHasher::default()
+            .chain(self.transaction_hash.0.into())
+            .chain(self.actual_fee.0.into())
+            .chain({
+                let msg_hasher = PoseidonHasher::default().chain(
+                    Felt::from_u64(
+                        self.l2_to_l1_messages
+                            .len()
+                            .try_into()
+                            .expect("ptr size is 64bits"),
+                    )
+                    .into(),
+                );
+                self.l2_to_l1_messages
+                    .iter()
+                    .fold(msg_hasher, |msg_hasher, m| {
+                        let msg_hasher = msg_hasher
+                            .chain(m.from_address.0.into())
+                            .chain(m.to_address.0.into())
+                            .chain(
+                                Felt::from_u64(
+                                    m.payload.len().try_into().expect("ptr size is 64bits"),
+                                )
+                                .into(),
+                            );
+                        m.payload
+                            .iter()
+                            .fold(msg_hasher, |msg_hasher, p| msg_hasher.chain(p.0.into()))
+                    })
+                    .finish()
+            })
+            .chain(match &self.execution_status {
+                ExecutionStatus::Succeeded => Felt::ZERO.into(),
+                // We trust the sequencer to always produce valid ASCII strings
+                ExecutionStatus::Reverted { reason } => {
+                    use sha3::{Digest, Keccak256};
+                    let mut hasher = Keccak256::default();
+                    hasher.update(reason.as_bytes());
+                    truncated_keccak(hasher.finalize().into()).into()
+                }
+            })
+            .finish()
+            .into()
     }
 }
 

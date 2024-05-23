@@ -1,0 +1,84 @@
+use bitvec::view::BitView;
+use pathfinder_common::hash::PoseidonHash;
+use pathfinder_crypto::Felt;
+use pathfinder_storage::StoredNode;
+
+use crate::tree::MerkleTree;
+
+/// A (Patricia Merkle tree)[MerkleTree] which can be used to calculate receipt
+/// commitment.
+///
+/// The tree has a height of 64 bits and is ephemeral -- it has no persistent
+/// storage. This is sensible as each event or transaction tree is confined to a
+/// single starknet block i.e. each block a new event / transaction
+/// tree is formed from an empty one.
+///
+/// More information about these commitments can be found in the Starknet [documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/header/).
+pub struct ReceiptTree {
+    tree: MerkleTree<PoseidonHash, 64>,
+}
+
+impl Default for ReceiptTree {
+    fn default() -> Self {
+        Self {
+            tree: MerkleTree::empty(),
+        }
+    }
+}
+
+/// [Storage](crate::storage::Storage) type which always returns [None].
+struct NullStorage;
+
+impl crate::storage::Storage for NullStorage {
+    fn get(&self, _: u64) -> anyhow::Result<Option<StoredNode>> {
+        Ok(None)
+    }
+
+    fn hash(&self, _: u64) -> anyhow::Result<Option<Felt>> {
+        Ok(None)
+    }
+
+    fn leaf(
+        &self,
+        _: &bitvec::slice::BitSlice<u8, bitvec::prelude::Msb0>,
+    ) -> anyhow::Result<Option<Felt>> {
+        Ok(None)
+    }
+}
+
+impl ReceiptTree {
+    pub fn set(&mut self, index: u64, value: Felt) -> anyhow::Result<()> {
+        let key = index.to_be_bytes().view_bits().to_owned();
+        self.tree.set(&NullStorage, key, value)
+    }
+
+    pub fn commit(self) -> anyhow::Result<Felt> {
+        self.tree
+            .commit(&NullStorage)
+            .map(|update| update.root_commitment)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::felt;
+
+    use super::*;
+
+    #[test]
+    fn test_commitment_merkle_tree() {
+        let mut tree = ReceiptTree::default();
+
+        for (idx, hash) in [1u64, 2, 3, 4].into_iter().enumerate() {
+            let hash = Felt::from(hash);
+            let idx: u64 = idx.try_into().unwrap();
+            tree.set(idx, hash).unwrap();
+        }
+
+        let expected_root_hash =
+            felt!("0x042111A29305A2C0BFCE86E32983987121D304BE815F86AF19FC69123E4D326D");
+        let computed_root_hash = tree.commit().unwrap();
+
+        assert_eq!(expected_root_hash, computed_root_hash);
+    }
+}
