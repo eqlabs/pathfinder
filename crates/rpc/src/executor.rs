@@ -262,7 +262,7 @@ fn map_transaction_variant(
                 starknet_api::transaction::DeclareTransaction::V3(tx),
             ))
         }
-        TransactionVariant::Deploy(_) => {
+        TransactionVariant::DeployV0(_) | TransactionVariant::DeployV1(_) => {
             anyhow::bail!("Deploy transactions are not yet supported in blockifier")
         }
         TransactionVariant::DeployAccountV1(tx) => {
@@ -506,7 +506,8 @@ pub fn compose_executor_transaction(
                 class_definition.abi.len(),
             )?)
         }
-        TransactionVariant::Deploy(_)
+        TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
         | TransactionVariant::DeployAccountV1(_)
         | TransactionVariant::DeployAccountV3(_)
         | TransactionVariant::InvokeV0(_)
@@ -536,7 +537,8 @@ pub fn compose_executor_transaction(
         | TransactionVariant::DeclareV1(_)
         | TransactionVariant::DeclareV2(_)
         | TransactionVariant::DeclareV3(_)
-        | TransactionVariant::Deploy(_)
+        | TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
         | TransactionVariant::InvokeV0(_)
         | TransactionVariant::InvokeV1(_)
         | TransactionVariant::InvokeV3(_)

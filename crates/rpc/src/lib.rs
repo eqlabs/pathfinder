@@ -633,7 +633,7 @@ pub mod test_utils {
             },
             Transaction {
                 hash: transaction_hash_bytes!(b"pending tx hash 1"),
-                variant: TransactionVariant::Deploy(DeployTransaction {
+                variant: TransactionVariant::DeployV0(DeployTransactionV0 {
                     contract_address: contract_address!("0x1122355"),
                     contract_address_salt: contract_address_salt_bytes!(b"salty"),
                     class_hash: class_hash_bytes!(b"pending class hash 1"),

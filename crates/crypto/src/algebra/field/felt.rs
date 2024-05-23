@@ -75,6 +75,7 @@ impl std::fmt::Display for OverflowError {
 
 impl Felt {
     pub const ZERO: Felt = Felt([0u8; 32]);
+    pub const ONE: Felt = Self::from_u64(1);
 
     /// Return true if the element is zero.
     pub fn is_zero(&self) -> bool {

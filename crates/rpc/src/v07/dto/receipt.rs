@@ -200,7 +200,11 @@ impl PendingTxnReceipt {
             TransactionVariant::DeclareV1(_) => Self::Declare { common },
             TransactionVariant::DeclareV2(_) => Self::Declare { common },
             TransactionVariant::DeclareV3(_) => Self::Declare { common },
-            TransactionVariant::Deploy(tx) => Self::Deploy {
+            TransactionVariant::DeployV0(tx) => Self::Deploy {
+                contract_address: tx.contract_address,
+                common,
+            },
+            TransactionVariant::DeployV1(tx) => Self::Deploy {
                 contract_address: tx.contract_address,
                 common,
             },

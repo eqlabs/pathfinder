@@ -373,7 +373,8 @@ fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Fel
         | TransactionVariant::DeclareV1(_)
         | TransactionVariant::DeclareV2(_)
         | TransactionVariant::DeclareV3(_)
-        | TransactionVariant::Deploy(_)
+        | TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
         | TransactionVariant::DeployAccountV1(_)
         | TransactionVariant::DeployAccountV3(_)
         | TransactionVariant::L1Handler(_) => *HASH_OF_EMPTY_LIST,
@@ -406,7 +407,9 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
         TransactionVariant::DeployAccountV3(tx) => calculate_signature_hash(&tx.signature),
         TransactionVariant::InvokeV1(tx) => calculate_signature_hash(&tx.signature),
         TransactionVariant::InvokeV3(tx) => calculate_signature_hash(&tx.signature),
-        TransactionVariant::Deploy(_) | TransactionVariant::L1Handler(_) => *HASH_OF_EMPTY_LIST,
+        TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
+        | TransactionVariant::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 
     pedersen_hash(tx.hash.0, signature_hash)

@@ -137,15 +137,18 @@ pub(crate) fn map_gateway_trace(
         }),
         TransactionVariant::DeployAccountV1(_)
         | TransactionVariant::DeployAccountV3(_)
-        | TransactionVariant::Deploy(_) => TransactionTrace::DeployAccount(DeployAccountTxnTrace {
-            constructor_invocation: function_invocation.ok_or(TraceConversionError(
-                "constructor_invocation is missing from trace response",
-            ))?,
-            fee_transfer_invocation,
-            validate_invocation,
-            state_diff,
-            execution_resources,
-        }),
+        | TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_) => {
+            TransactionTrace::DeployAccount(DeployAccountTxnTrace {
+                constructor_invocation: function_invocation.ok_or(TraceConversionError(
+                    "constructor_invocation is missing from trace response",
+                ))?,
+                fee_transfer_invocation,
+                validate_invocation,
+                state_diff,
+                execution_resources,
+            })
+        }
         TransactionVariant::InvokeV0(_)
         | TransactionVariant::InvokeV1(_)
         | TransactionVariant::InvokeV3(_) => TransactionTrace::Invoke(InvokeTxnTrace {

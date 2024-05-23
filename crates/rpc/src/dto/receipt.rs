@@ -166,7 +166,8 @@ impl SerializeForVersion for DeployTxnReceipt<'_> {
         let contract_address = match &self.0.transaction.variant {
             // Partial match here is safe since this variant is deprecated.
             // i.e. no risk of forgetting to handle a new variant.
-            TransactionVariant::Deploy(tx) => &tx.contract_address,
+            TransactionVariant::DeployV0(tx) => &tx.contract_address,
+            TransactionVariant::DeployV1(tx) => &tx.contract_address,
             _ => {
                 return Err(serde_json::error::Error::custom(
                     "expected Deploy transaction",
@@ -192,13 +193,14 @@ impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
             | TransactionVariant::DeclareV1(_)
             | TransactionVariant::DeclareV2(_)
             | TransactionVariant::DeclareV3(_)
-            | TransactionVariant::Deploy(_)
+            | TransactionVariant::DeployV0(_)
+            | TransactionVariant::DeployV1(_)
             | TransactionVariant::InvokeV0(_)
             | TransactionVariant::InvokeV1(_)
             | TransactionVariant::InvokeV3(_)
             | TransactionVariant::L1Handler(_) => {
                 return Err(serde_json::error::Error::custom(
-                    "expected Deploy transaction",
+                    "expected deploy account transaction",
                 ))
             }
         };
@@ -236,7 +238,8 @@ impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
             | TransactionVariant::DeclareV1(_)
             | TransactionVariant::DeclareV2(_)
             | TransactionVariant::DeclareV3(_)
-            | TransactionVariant::Deploy(_)
+            | TransactionVariant::DeployV0(_)
+            | TransactionVariant::DeployV1(_)
             | TransactionVariant::DeployAccountV1(_)
             | TransactionVariant::DeployAccountV3(_)
             | TransactionVariant::InvokeV0(_)

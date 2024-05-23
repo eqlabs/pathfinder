@@ -31,7 +31,8 @@ impl Transaction {
             TransactionVariant::DeclareV1(_) => TransactionVersion::ONE,
             TransactionVariant::DeclareV2(_) => TransactionVersion::TWO,
             TransactionVariant::DeclareV3(_) => TransactionVersion::THREE,
-            TransactionVariant::Deploy(tx) => tx.version,
+            TransactionVariant::DeployV0(_) => TransactionVersion::ZERO,
+            TransactionVariant::DeployV1(_) => TransactionVersion::ONE,
             TransactionVariant::DeployAccountV1(_) => TransactionVersion::ONE,
             TransactionVariant::DeployAccountV3(_) => TransactionVersion::THREE,
             TransactionVariant::InvokeV0(_) => TransactionVersion::ZERO,
@@ -48,7 +49,8 @@ pub enum TransactionVariant {
     DeclareV1(DeclareTransactionV0V1),
     DeclareV2(DeclareTransactionV2),
     DeclareV3(DeclareTransactionV3),
-    Deploy(DeployTransaction),
+    DeployV0(DeployTransactionV0),
+    DeployV1(DeployTransactionV1),
     DeployAccountV1(DeployAccountTransactionV1),
     DeployAccountV3(DeployAccountTransactionV3),
     InvokeV0(InvokeTransactionV0),
@@ -94,7 +96,8 @@ impl TransactionVariant {
             TransactionVariant::DeclareV1(tx) => tx.calculate_hash_v1(chain_id, query_only),
             TransactionVariant::DeclareV2(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::DeclareV3(tx) => tx.calculate_hash(chain_id, query_only),
-            TransactionVariant::Deploy(tx) => tx.calculate_hash(chain_id),
+            TransactionVariant::DeployV0(tx) => tx.calculate_hash(chain_id, query_only),
+            TransactionVariant::DeployV1(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::DeployAccountV1(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::DeployAccountV3(tx) => tx.calculate_hash(chain_id, query_only),
             TransactionVariant::InvokeV0(tx) => tx.calculate_hash(chain_id, query_only),
@@ -110,7 +113,8 @@ impl TransactionVariant {
             TransactionVariant::DeclareV1(_) => TransactionKind::Declare,
             TransactionVariant::DeclareV2(_) => TransactionKind::Declare,
             TransactionVariant::DeclareV3(_) => TransactionKind::Declare,
-            TransactionVariant::Deploy(_) => TransactionKind::Deploy,
+            TransactionVariant::DeployV0(_) => TransactionKind::Deploy,
+            TransactionVariant::DeployV1(_) => TransactionKind::Deploy,
             TransactionVariant::DeployAccountV1(_) => TransactionKind::DeployAccount,
             TransactionVariant::DeployAccountV3(_) => TransactionKind::DeployAccount,
             TransactionVariant::InvokeV0(_) => TransactionKind::Invoke,
@@ -125,7 +129,8 @@ impl TransactionVariant {
     /// and nonce.
     fn calculate_legacy_hash(&self, chain_id: ChainId) -> Option<TransactionHash> {
         let hash = match self {
-            TransactionVariant::Deploy(tx) => tx.calculate_legacy_hash(chain_id),
+            TransactionVariant::DeployV0(tx) => tx.calculate_legacy_hash(chain_id),
+            TransactionVariant::DeployV1(tx) => tx.calculate_legacy_hash(chain_id),
             TransactionVariant::InvokeV0(tx) => tx.calculate_legacy_hash(chain_id),
             TransactionVariant::L1Handler(tx) => tx.calculate_legacy_hash(chain_id),
             _ => return None,
@@ -145,9 +150,14 @@ impl From<DeclareTransactionV3> for TransactionVariant {
         Self::DeclareV3(value)
     }
 }
-impl From<DeployTransaction> for TransactionVariant {
-    fn from(value: DeployTransaction) -> Self {
-        Self::Deploy(value)
+impl From<DeployTransactionV0> for TransactionVariant {
+    fn from(value: DeployTransactionV0) -> Self {
+        Self::DeployV0(value)
+    }
+}
+impl From<DeployTransactionV1> for TransactionVariant {
+    fn from(value: DeployTransactionV1) -> Self {
+        Self::DeployV1(value)
     }
 }
 impl From<DeployAccountTransactionV1> for TransactionVariant {
@@ -216,10 +226,17 @@ pub struct DeclareTransactionV3 {
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
-pub struct DeployTransaction {
+pub struct DeployTransactionV0 {
     pub class_hash: ClassHash,
     pub contract_address: ContractAddress,
-    pub version: TransactionVersion,
+    pub contract_address_salt: ContractAddressSalt,
+    pub constructor_calldata: Vec<ConstructorParam>,
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct DeployTransactionV1 {
+    pub class_hash: ClassHash,
+    pub contract_address: ContractAddress,
     pub contract_address_salt: ContractAddressSalt,
     pub constructor_calldata: Vec<ConstructorParam>,
 }
@@ -368,11 +385,45 @@ impl DeclareTransactionV2 {
     }
 }
 
-impl DeployTransaction {
-    fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
+impl DeployTransactionV0 {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
         PreV3Hasher {
             prefix: felt_bytes!(b"deploy"),
-            version: self.version,
+            version: TransactionVersion::ZERO.with_query_only(query_only),
+            address: self.contract_address,
+            entry_point: EntryPoint::CONSTRUCTOR,
+            data_hash: self.constructor_calldata_hash(),
+            ..Default::default()
+        }
+        .hash(chain_id)
+    }
+
+    fn calculate_legacy_hash(&self, chain_id: ChainId) -> TransactionHash {
+        LegacyHasher {
+            prefix: felt_bytes!(b"deploy"),
+            address: self.contract_address,
+            entry_point: EntryPoint::CONSTRUCTOR,
+            data_hash: self.constructor_calldata_hash(),
+            nonce: None,
+        }
+        .hash(chain_id)
+    }
+
+    fn constructor_calldata_hash(&self) -> Felt {
+        self.constructor_calldata
+            .iter()
+            .fold(PedersenHasher::default(), |hasher, data| {
+                hasher.chain_update(data.0)
+            })
+            .finalize()
+    }
+}
+
+impl DeployTransactionV1 {
+    fn calculate_hash(&self, chain_id: ChainId, query_only: bool) -> TransactionHash {
+        PreV3Hasher {
+            prefix: felt_bytes!(b"deploy"),
+            version: TransactionVersion::ONE.with_query_only(query_only),
             address: self.contract_address,
             entry_point: EntryPoint::CONSTRUCTOR,
             data_hash: self.constructor_calldata_hash(),
@@ -949,11 +1000,10 @@ mod tests {
             hash: transaction_hash!(
                 "0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
             ),
-            variant: TransactionVariant::Deploy(DeployTransaction {
+            variant: TransactionVariant::DeployV0(DeployTransactionV0 {
                 contract_address: contract_address!(
                     "0x54c6883e459baeac4a9052ee109b86b9f81adbcdcb1f65a05dceec4c34d5cf9"
                 ),
-                version: TransactionVersion::ZERO,
                 contract_address_salt: contract_address_salt!(
                     "0x655a594122f68f5e821834e606e1243b249a88555fac2d548f7acbee7863f62"
                 ),
@@ -977,11 +1027,10 @@ mod tests {
             hash: transaction_hash!(
                 "0x45c61314be4da85f0e13df53d18062e002c04803218f08061e4b274d4b38537"
             ),
-            variant: TransactionVariant::Deploy(DeployTransaction {
+            variant: TransactionVariant::DeployV0(DeployTransactionV0 {
                 contract_address: contract_address!(
                     "0x2f40faa63fdd5871415b2dcfb1a5e3e1ca06435b3dda6e2ba9df3f726fd3251"
                 ),
-                version: TransactionVersion::ZERO,
                 contract_address_salt: contract_address_salt!(
                     "0x7284a0367fdd636434f76da25532785690d5f27db40ba38b0cfcbc89a472507"
                 ),

@@ -3,7 +3,7 @@ use pathfinder_common::macro_prelude::*;
 use pathfinder_common::receipt::{ExecutionDataAvailability, ExecutionResources, Receipt};
 use pathfinder_common::transaction::{
     DeclareTransactionV0V1,
-    DeployTransaction,
+    DeployTransactionV0,
     EntryPointType,
     InvokeTransactionV0,
     Transaction,
@@ -80,7 +80,7 @@ pub(crate) fn create_transactions_and_receipts(
         {
             Transaction {
                 hash: TransactionHash(Felt::from_hex_str(&"9".repeat(i + 3)).unwrap()),
-                variant: TransactionVariant::Deploy(DeployTransaction {
+                variant: TransactionVariant::DeployV0(DeployTransactionV0 {
                     contract_address: ContractAddress::new_or_panic(
                         Felt::from_hex_str(&"5".repeat(i + 3)).unwrap(),
                     ),
@@ -91,7 +91,6 @@ pub(crate) fn create_transactions_and_receipts(
                     constructor_calldata: vec![ConstructorParam(
                         Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
                     )],
-                    version: TransactionVersion::ZERO,
                 }),
             }
         }

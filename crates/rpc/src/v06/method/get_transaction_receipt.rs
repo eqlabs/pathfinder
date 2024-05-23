@@ -513,7 +513,11 @@ pub mod types {
                 TransactionVariant::DeclareV3(_) => {
                     Self::Declare(DeclareTransactionReceipt { common })
                 }
-                TransactionVariant::Deploy(tx) => Self::Deploy(DeployTransactionReceipt {
+                TransactionVariant::DeployV0(tx) => Self::Deploy(DeployTransactionReceipt {
+                    common,
+                    contract_address: tx.contract_address,
+                }),
+                TransactionVariant::DeployV1(tx) => Self::Deploy(DeployTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
                 }),
@@ -654,7 +658,11 @@ pub mod types {
                 TransactionVariant::DeclareV3(_) => {
                     Self::Declare(PendingDeclareTransactionReceipt { common })
                 }
-                TransactionVariant::Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
+                TransactionVariant::DeployV0(tx) => Self::Deploy(PendingDeployTransactionReceipt {
+                    common,
+                    contract_address: tx.contract_address,
+                }),
+                TransactionVariant::DeployV1(tx) => Self::Deploy(PendingDeployTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
                 }),

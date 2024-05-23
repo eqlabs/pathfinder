@@ -839,12 +839,11 @@ mod dto {
                             .collect(),
                     }),
                 },
-                Deploy(DeployTransaction {
+                DeployV0(DeployTransactionV0 {
                     contract_address,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
-                    version,
                 }) => Self::V0 {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::Deploy(self::DeployTransaction {
@@ -855,7 +854,25 @@ mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        version: version.0.into(),
+                        version: TransactionVersion::ZERO.0.into(),
+                    }),
+                },
+                DeployV1(DeployTransactionV1 {
+                    class_hash,
+                    contract_address,
+                    contract_address_salt,
+                    constructor_calldata,
+                }) => Self::V0 {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::Deploy(self::DeployTransaction {
+                        contract_address: contract_address.as_inner().to_owned().into(),
+                        contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
+                        class_hash: class_hash.as_inner().to_owned().into(),
+                        constructor_calldata: constructor_calldata
+                            .into_iter()
+                            .map(|x| x.as_inner().to_owned().into())
+                            .collect(),
+                        version: TransactionVersion::ONE.0.into(),
                     }),
                 },
                 DeployAccountV1(DeployAccountTransactionV1 {
@@ -1160,8 +1177,8 @@ mod dto {
                             constructor_calldata,
                             version,
                         }),
-                } => {
-                    TransactionVariant::Deploy(pathfinder_common::transaction::DeployTransaction {
+                } if version.0 == Felt::ZERO => TransactionVariant::DeployV0(
+                    pathfinder_common::transaction::DeployTransactionV0 {
                         contract_address: ContractAddress::new_or_panic(contract_address.into()),
                         contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
                         class_hash: ClassHash(class_hash.into()),
@@ -1169,9 +1186,33 @@ mod dto {
                             .into_iter()
                             .map(|x| ConstructorParam(x.into()))
                             .collect(),
-                        version: TransactionVersion(version.into()),
-                    })
-                }
+                    },
+                ),
+                Transaction::V0 {
+                    hash: _,
+                    variant:
+                        TransactionVariantV0::Deploy(DeployTransaction {
+                            contract_address,
+                            contract_address_salt,
+                            class_hash,
+                            constructor_calldata,
+                            version,
+                        }),
+                } if version.0 == Felt::ONE => TransactionVariant::DeployV1(
+                    pathfinder_common::transaction::DeployTransactionV1 {
+                        contract_address: ContractAddress::new_or_panic(contract_address.into()),
+                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
+                        class_hash: ClassHash(class_hash.into()),
+                        constructor_calldata: constructor_calldata
+                            .into_iter()
+                            .map(|x| ConstructorParam(x.into()))
+                            .collect(),
+                    },
+                ),
+                Transaction::V0 {
+                    hash: _,
+                    variant: TransactionVariantV0::Deploy(DeployTransaction { version, .. }),
+                } => panic!("Invalid deploy transaction version {}", version.0),
                 Transaction::V0 {
                     hash: _,
                     variant:
@@ -2251,19 +2292,31 @@ pub(crate) mod old_dto {
                     compiled_class_hash,
                     account_deployment_data,
                 })),
-                Deploy(DeployTransaction {
+                DeployV0(DeployTransactionV0 {
                     contract_address,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
-                    version,
                 }) => Self::Deploy(self::DeployTransaction {
                     contract_address,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
                     transaction_hash,
-                    version,
+                    version: TransactionVersion::ZERO,
+                }),
+                DeployV1(DeployTransactionV1 {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                }) => Self::Deploy(self::DeployTransaction {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                    transaction_hash,
+                    version: TransactionVersion::ONE,
                 }),
                 DeployAccountV1(DeployAccountTransactionV1 {
                     contract_address,
@@ -2477,14 +2530,31 @@ pub(crate) mod old_dto {
                     constructor_calldata,
                     transaction_hash: _,
                     version,
-                }) => {
-                    TransactionVariant::Deploy(pathfinder_common::transaction::DeployTransaction {
+                }) if version == TransactionVersion::ZERO => TransactionVariant::DeployV0(
+                    pathfinder_common::transaction::DeployTransactionV0 {
                         contract_address,
                         contract_address_salt,
                         class_hash,
                         constructor_calldata,
-                        version,
-                    })
+                    },
+                ),
+                Transaction::Deploy(DeployTransaction {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                    transaction_hash: _,
+                    version,
+                }) if version == TransactionVersion::ONE => TransactionVariant::DeployV1(
+                    pathfinder_common::transaction::DeployTransactionV1 {
+                        contract_address,
+                        contract_address_salt,
+                        class_hash,
+                        constructor_calldata,
+                    },
+                ),
+                Transaction::Deploy(DeployTransaction { version, .. }) => {
+                    panic!("Invalid deploy transaction version {}", version.0)
                 }
                 Transaction::DeployAccount(DeployAccountTransaction::V0V1(
                     DeployAccountTransactionV0V1 {

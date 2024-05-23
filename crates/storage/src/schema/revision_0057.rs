@@ -918,12 +918,11 @@ pub(crate) mod dto {
                             .collect(),
                     }),
                 },
-                Deploy(DeployTransaction {
+                DeployV0(DeployTransactionV0 {
                     contract_address,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
-                    version,
                 }) => Self {
                     hash: transaction_hash.as_inner().to_owned().into(),
                     variant: TransactionVariantV0::Deploy(self::DeployTransaction {
@@ -934,7 +933,25 @@ pub(crate) mod dto {
                             .into_iter()
                             .map(|x| x.as_inner().to_owned().into())
                             .collect(),
-                        version: version.0.into(),
+                        version: TransactionVersion::ZERO.0.into(),
+                    }),
+                },
+                DeployV1(DeployTransactionV1 {
+                    contract_address,
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                }) => Self {
+                    hash: transaction_hash.as_inner().to_owned().into(),
+                    variant: TransactionVariantV0::Deploy(self::DeployTransaction {
+                        contract_address: contract_address.as_inner().to_owned().into(),
+                        contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
+                        class_hash: class_hash.as_inner().to_owned().into(),
+                        constructor_calldata: constructor_calldata
+                            .into_iter()
+                            .map(|x| x.as_inner().to_owned().into())
+                            .collect(),
+                        version: TransactionVersion::ONE.0.into(),
                     }),
                 },
                 DeployAccountV1(DeployAccountTransactionV1 {
@@ -1115,324 +1132,332 @@ pub(crate) mod dto {
         }
     }
 
-    impl From<Transaction> for pathfinder_common::transaction::Transaction {
-        fn from(value: Transaction) -> Self {
-            use pathfinder_common::transaction::TransactionVariant;
+    // impl From<Transaction> for pathfinder_common::transaction::Transaction {
+    //     fn from(value: Transaction) -> Self {
+    //         use pathfinder_common::transaction::TransactionVariant;
 
-            let hash = value.hash();
-            let variant = match value {
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::DeclareV0(DeclareTransactionV0V1 {
-                            class_hash,
-                            max_fee,
-                            nonce,
-                            sender_address,
-                            signature,
-                        }),
-                } => TransactionVariant::DeclareV0(
-                    pathfinder_common::transaction::DeclareTransactionV0V1 {
-                        class_hash: ClassHash(class_hash.into()),
-                        max_fee: Fee(max_fee.into()),
-                        nonce: TransactionNonce(nonce.into()),
-                        sender_address: ContractAddress::new_or_panic(sender_address.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::DeclareV1(DeclareTransactionV0V1 {
-                            class_hash,
-                            max_fee,
-                            nonce,
-                            sender_address,
-                            signature,
-                        }),
-                } => TransactionVariant::DeclareV1(
-                    pathfinder_common::transaction::DeclareTransactionV0V1 {
-                        class_hash: ClassHash(class_hash.into()),
-                        max_fee: Fee(max_fee.into()),
-                        nonce: TransactionNonce(nonce.into()),
-                        sender_address: ContractAddress(sender_address.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::DeclareV2(DeclareTransactionV2 {
-                            class_hash,
-                            max_fee,
-                            nonce,
-                            sender_address,
-                            signature,
-                            compiled_class_hash,
-                        }),
-                } => TransactionVariant::DeclareV2(
-                    pathfinder_common::transaction::DeclareTransactionV2 {
-                        class_hash: ClassHash(class_hash.into()),
-                        max_fee: Fee(max_fee.into()),
-                        nonce: TransactionNonce(nonce.into()),
-                        sender_address: ContractAddress(sender_address.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                        compiled_class_hash: CasmHash::new_or_panic(compiled_class_hash.into()),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::DeclareV3(DeclareTransactionV3 {
-                            class_hash,
-                            nonce,
-                            nonce_data_availability_mode,
-                            fee_data_availability_mode,
-                            resource_bounds,
-                            tip,
-                            paymaster_data,
-                            sender_address,
-                            signature,
-                            compiled_class_hash,
-                            account_deployment_data,
-                        }),
-                } => TransactionVariant::DeclareV3(
-                    pathfinder_common::transaction::DeclareTransactionV3 {
-                        class_hash: ClassHash(class_hash.into()),
-                        nonce: TransactionNonce(nonce.into()),
-                        nonce_data_availability_mode: nonce_data_availability_mode.into(),
-                        fee_data_availability_mode: fee_data_availability_mode.into(),
-                        resource_bounds: resource_bounds.into(),
-                        tip,
-                        paymaster_data: paymaster_data
-                            .into_iter()
-                            .map(|x| PaymasterDataElem(x.into()))
-                            .collect(),
-                        sender_address: ContractAddress::new_or_panic(sender_address.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                        compiled_class_hash: CasmHash::new_or_panic(compiled_class_hash.into()),
-                        account_deployment_data: account_deployment_data
-                            .into_iter()
-                            .map(|x| AccountDeploymentDataElem(x.into()))
-                            .collect(),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::Deploy(DeployTransaction {
-                            contract_address,
-                            contract_address_salt,
-                            class_hash,
-                            constructor_calldata,
-                            version,
-                        }),
-                } => {
-                    TransactionVariant::Deploy(pathfinder_common::transaction::DeployTransaction {
-                        contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
-                        class_hash: ClassHash(class_hash.into()),
-                        constructor_calldata: constructor_calldata
-                            .into_iter()
-                            .map(|x| ConstructorParam(x.into()))
-                            .collect(),
-                        version: TransactionVersion(version.into()),
-                    })
-                }
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::DeployAccountV1(DeployAccountTransactionV1 {
-                            contract_address,
-                            max_fee,
-                            signature,
-                            nonce,
-                            contract_address_salt,
-                            constructor_calldata,
-                            class_hash,
-                        }),
-                } => TransactionVariant::DeployAccountV1(
-                    pathfinder_common::transaction::DeployAccountTransactionV1 {
-                        contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        max_fee: Fee(max_fee.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                        nonce: TransactionNonce(nonce.into()),
-                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
-                        constructor_calldata: constructor_calldata
-                            .into_iter()
-                            .map(|x| CallParam(x.into()))
-                            .collect(),
-                        class_hash: ClassHash(class_hash.into()),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::DeployAccountV3(DeployAccountTransactionV3 {
-                            nonce,
-                            nonce_data_availability_mode,
-                            fee_data_availability_mode,
-                            resource_bounds,
-                            tip,
-                            paymaster_data,
-                            sender_address,
-                            signature,
-                            contract_address_salt,
-                            constructor_calldata,
-                            class_hash,
-                        }),
-                } => TransactionVariant::DeployAccountV3(
-                    pathfinder_common::transaction::DeployAccountTransactionV3 {
-                        contract_address: ContractAddress::new_or_panic(sender_address.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                        nonce: TransactionNonce(nonce.into()),
-                        nonce_data_availability_mode: nonce_data_availability_mode.into(),
-                        fee_data_availability_mode: fee_data_availability_mode.into(),
-                        resource_bounds: resource_bounds.into(),
-                        tip,
-                        paymaster_data: paymaster_data
-                            .into_iter()
-                            .map(|x| PaymasterDataElem(x.into()))
-                            .collect(),
-                        contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
-                        constructor_calldata: constructor_calldata
-                            .into_iter()
-                            .map(|x| CallParam(x.into()))
-                            .collect(),
-                        class_hash: ClassHash(class_hash.into()),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::InvokeV0(InvokeTransactionV0 {
-                            calldata,
-                            sender_address,
-                            entry_point_selector,
-                            entry_point_type,
-                            max_fee,
-                            signature,
-                        }),
-                } => TransactionVariant::InvokeV0(
-                    pathfinder_common::transaction::InvokeTransactionV0 {
-                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
-                        sender_address: ContractAddress::new_or_panic(sender_address.into()),
-                        entry_point_selector: EntryPoint(entry_point_selector.into()),
-                        entry_point_type: entry_point_type.map(Into::into),
-                        max_fee: Fee(max_fee.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::InvokeV1(InvokeTransactionV1 {
-                            calldata,
-                            sender_address,
-                            max_fee,
-                            signature,
-                            nonce,
-                        }),
-                } => TransactionVariant::InvokeV1(
-                    pathfinder_common::transaction::InvokeTransactionV1 {
-                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
-                        sender_address: ContractAddress::new_or_panic(sender_address.into()),
-                        max_fee: Fee(max_fee.into()),
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                        nonce: TransactionNonce(nonce.into()),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::InvokeV3(InvokeTransactionV3 {
-                            nonce,
-                            nonce_data_availability_mode,
-                            fee_data_availability_mode,
-                            resource_bounds,
-                            tip,
-                            paymaster_data,
-                            sender_address,
-                            signature,
-                            calldata,
-                            account_deployment_data,
-                        }),
-                } => TransactionVariant::InvokeV3(
-                    pathfinder_common::transaction::InvokeTransactionV3 {
-                        signature: signature
-                            .into_iter()
-                            .map(|x| TransactionSignatureElem(x.into()))
-                            .collect(),
-                        nonce: TransactionNonce(nonce.into()),
-                        nonce_data_availability_mode: nonce_data_availability_mode.into(),
-                        fee_data_availability_mode: fee_data_availability_mode.into(),
-                        resource_bounds: resource_bounds.into(),
-                        tip,
-                        paymaster_data: paymaster_data
-                            .into_iter()
-                            .map(|x| PaymasterDataElem(x.into()))
-                            .collect(),
-                        account_deployment_data: account_deployment_data
-                            .into_iter()
-                            .map(|x| AccountDeploymentDataElem(x.into()))
-                            .collect(),
-                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
-                        sender_address: ContractAddress::new_or_panic(sender_address.into()),
-                    },
-                ),
-                Transaction {
-                    hash: _,
-                    variant:
-                        TransactionVariantV0::L1HandlerV0(L1HandlerTransactionV0 {
-                            contract_address,
-                            entry_point_selector,
-                            nonce,
-                            calldata,
-                        }),
-                } => TransactionVariant::L1Handler(
-                    pathfinder_common::transaction::L1HandlerTransaction {
-                        contract_address: ContractAddress::new_or_panic(contract_address.into()),
-                        entry_point_selector: EntryPoint(entry_point_selector.into()),
-                        nonce: TransactionNonce(nonce.into()),
-                        calldata: calldata.into_iter().map(|x| CallParam(x.into())).collect(),
-                    },
-                ),
-            };
+    //         let hash = value.hash();
+    //         let variant = match value {
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::DeclareV0(DeclareTransactionV0V1 {
+    //                         class_hash,
+    //                         max_fee,
+    //                         nonce,
+    //                         sender_address,
+    //                         signature,
+    //                     }),
+    //             } => TransactionVariant::DeclareV0(
+    //                 pathfinder_common::transaction::DeclareTransactionV0V1 {
+    //                     class_hash: ClassHash(class_hash.into()),
+    //                     max_fee: Fee(max_fee.into()),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     sender_address:
+    // ContractAddress::new_or_panic(sender_address.into()),
+    // signature: signature                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::DeclareV1(DeclareTransactionV0V1 {
+    //                         class_hash,
+    //                         max_fee,
+    //                         nonce,
+    //                         sender_address,
+    //                         signature,
+    //                     }),
+    //             } => TransactionVariant::DeclareV1(
+    //                 pathfinder_common::transaction::DeclareTransactionV0V1 {
+    //                     class_hash: ClassHash(class_hash.into()),
+    //                     max_fee: Fee(max_fee.into()),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     sender_address: ContractAddress(sender_address.into()),
+    //                     signature: signature
+    //                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::DeclareV2(DeclareTransactionV2 {
+    //                         class_hash,
+    //                         max_fee,
+    //                         nonce,
+    //                         sender_address,
+    //                         signature,
+    //                         compiled_class_hash,
+    //                     }),
+    //             } => TransactionVariant::DeclareV2(
+    //                 pathfinder_common::transaction::DeclareTransactionV2 {
+    //                     class_hash: ClassHash(class_hash.into()),
+    //                     max_fee: Fee(max_fee.into()),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     sender_address: ContractAddress(sender_address.into()),
+    //                     signature: signature
+    //                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                     compiled_class_hash:
+    // CasmHash::new_or_panic(compiled_class_hash.into()),                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::DeclareV3(DeclareTransactionV3 {
+    //                         class_hash,
+    //                         nonce,
+    //                         nonce_data_availability_mode,
+    //                         fee_data_availability_mode,
+    //                         resource_bounds,
+    //                         tip,
+    //                         paymaster_data,
+    //                         sender_address,
+    //                         signature,
+    //                         compiled_class_hash,
+    //                         account_deployment_data,
+    //                     }),
+    //             } => TransactionVariant::DeclareV3(
+    //                 pathfinder_common::transaction::DeclareTransactionV3 {
+    //                     class_hash: ClassHash(class_hash.into()),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     nonce_data_availability_mode:
+    // nonce_data_availability_mode.into(),
+    // fee_data_availability_mode: fee_data_availability_mode.into(),
+    //                     resource_bounds: resource_bounds.into(),
+    //                     tip,
+    //                     paymaster_data: paymaster_data
+    //                         .into_iter()
+    //                         .map(|x| PaymasterDataElem(x.into()))
+    //                         .collect(),
+    //                     sender_address:
+    // ContractAddress::new_or_panic(sender_address.into()),
+    // signature: signature                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                     compiled_class_hash:
+    // CasmHash::new_or_panic(compiled_class_hash.into()),
+    // account_deployment_data: account_deployment_data
+    // .into_iter()                         .map(|x|
+    // AccountDeploymentDataElem(x.into()))                         .collect(),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::Deploy(DeployTransaction {
+    //                         contract_address,
+    //                         contract_address_salt,
+    //                         class_hash,
+    //                         constructor_calldata,
+    //                         version,
+    //                     }),
+    //             } => TransactionVariant::Deploy(
+    //                 pathfinder_common::transaction::DeployTransactionV0 {
+    //                     contract_address:
+    // ContractAddress::new_or_panic(contract_address.into()),
+    // contract_address_salt: ContractAddressSalt(contract_address_salt.into()),
+    //                     class_hash: ClassHash(class_hash.into()),
+    //                     constructor_calldata: constructor_calldata
+    //                         .into_iter()
+    //                         .map(|x| ConstructorParam(x.into()))
+    //                         .collect(),
+    //                     version: TransactionVersion(version.into()),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //
+    // TransactionVariantV0::DeployAccountV1(DeployAccountTransactionV1 {
+    //                         contract_address,
+    //                         max_fee,
+    //                         signature,
+    //                         nonce,
+    //                         contract_address_salt,
+    //                         constructor_calldata,
+    //                         class_hash,
+    //                     }),
+    //             } => TransactionVariant::DeployAccountV1(
+    //                 pathfinder_common::transaction::DeployAccountTransactionV1 {
+    //                     contract_address:
+    // ContractAddress::new_or_panic(contract_address.into()),
+    // max_fee: Fee(max_fee.into()),                     signature: signature
+    //                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     contract_address_salt:
+    // ContractAddressSalt(contract_address_salt.into()),
+    // constructor_calldata: constructor_calldata
+    // .into_iter()                         .map(|x| CallParam(x.into()))
+    //                         .collect(),
+    //                     class_hash: ClassHash(class_hash.into()),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //
+    // TransactionVariantV0::DeployAccountV3(DeployAccountTransactionV3 {
+    //                         nonce,
+    //                         nonce_data_availability_mode,
+    //                         fee_data_availability_mode,
+    //                         resource_bounds,
+    //                         tip,
+    //                         paymaster_data,
+    //                         sender_address,
+    //                         signature,
+    //                         contract_address_salt,
+    //                         constructor_calldata,
+    //                         class_hash,
+    //                     }),
+    //             } => TransactionVariant::DeployAccountV3(
+    //                 pathfinder_common::transaction::DeployAccountTransactionV3 {
+    //                     contract_address:
+    // ContractAddress::new_or_panic(sender_address.into()),
+    // signature: signature                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     nonce_data_availability_mode:
+    // nonce_data_availability_mode.into(),
+    // fee_data_availability_mode: fee_data_availability_mode.into(),
+    //                     resource_bounds: resource_bounds.into(),
+    //                     tip,
+    //                     paymaster_data: paymaster_data
+    //                         .into_iter()
+    //                         .map(|x| PaymasterDataElem(x.into()))
+    //                         .collect(),
+    //                     contract_address_salt:
+    // ContractAddressSalt(contract_address_salt.into()),
+    // constructor_calldata: constructor_calldata
+    // .into_iter()                         .map(|x| CallParam(x.into()))
+    //                         .collect(),
+    //                     class_hash: ClassHash(class_hash.into()),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::InvokeV0(InvokeTransactionV0 {
+    //                         calldata,
+    //                         sender_address,
+    //                         entry_point_selector,
+    //                         entry_point_type,
+    //                         max_fee,
+    //                         signature,
+    //                     }),
+    //             } => TransactionVariant::InvokeV0(
+    //                 pathfinder_common::transaction::InvokeTransactionV0 {
+    //                     calldata: calldata.into_iter().map(|x|
+    // CallParam(x.into())).collect(),                     sender_address:
+    // ContractAddress::new_or_panic(sender_address.into()),
+    // entry_point_selector: EntryPoint(entry_point_selector.into()),
+    //                     entry_point_type: entry_point_type.map(Into::into),
+    //                     max_fee: Fee(max_fee.into()),
+    //                     signature: signature
+    //                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::InvokeV1(InvokeTransactionV1 {
+    //                         calldata,
+    //                         sender_address,
+    //                         max_fee,
+    //                         signature,
+    //                         nonce,
+    //                     }),
+    //             } => TransactionVariant::InvokeV1(
+    //                 pathfinder_common::transaction::InvokeTransactionV1 {
+    //                     calldata: calldata.into_iter().map(|x|
+    // CallParam(x.into())).collect(),                     sender_address:
+    // ContractAddress::new_or_panic(sender_address.into()),
+    // max_fee: Fee(max_fee.into()),                     signature: signature
+    //                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::InvokeV3(InvokeTransactionV3 {
+    //                         nonce,
+    //                         nonce_data_availability_mode,
+    //                         fee_data_availability_mode,
+    //                         resource_bounds,
+    //                         tip,
+    //                         paymaster_data,
+    //                         sender_address,
+    //                         signature,
+    //                         calldata,
+    //                         account_deployment_data,
+    //                     }),
+    //             } => TransactionVariant::InvokeV3(
+    //                 pathfinder_common::transaction::InvokeTransactionV3 {
+    //                     signature: signature
+    //                         .into_iter()
+    //                         .map(|x| TransactionSignatureElem(x.into()))
+    //                         .collect(),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     nonce_data_availability_mode:
+    // nonce_data_availability_mode.into(),
+    // fee_data_availability_mode: fee_data_availability_mode.into(),
+    //                     resource_bounds: resource_bounds.into(),
+    //                     tip,
+    //                     paymaster_data: paymaster_data
+    //                         .into_iter()
+    //                         .map(|x| PaymasterDataElem(x.into()))
+    //                         .collect(),
+    //                     account_deployment_data: account_deployment_data
+    //                         .into_iter()
+    //                         .map(|x| AccountDeploymentDataElem(x.into()))
+    //                         .collect(),
+    //                     calldata: calldata.into_iter().map(|x|
+    // CallParam(x.into())).collect(),                     sender_address:
+    // ContractAddress::new_or_panic(sender_address.into()),                 },
+    //             ),
+    //             Transaction {
+    //                 hash: _,
+    //                 variant:
+    //                     TransactionVariantV0::L1HandlerV0(L1HandlerTransactionV0
+    // {                         contract_address,
+    //                         entry_point_selector,
+    //                         nonce,
+    //                         calldata,
+    //                     }),
+    //             } => TransactionVariant::L1Handler(
+    //                 pathfinder_common::transaction::L1HandlerTransaction {
+    //                     contract_address:
+    // ContractAddress::new_or_panic(contract_address.into()),
+    // entry_point_selector: EntryPoint(entry_point_selector.into()),
+    //                     nonce: TransactionNonce(nonce.into()),
+    //                     calldata: calldata.into_iter().map(|x|
+    // CallParam(x.into())).collect(),                 },
+    //             ),
+    //         };
 
-            pathfinder_common::transaction::Transaction { hash, variant }
-        }
-    }
+    //         pathfinder_common::transaction::Transaction { hash, variant }
+    //     }
+    // }
 
-    impl Transaction {
-        /// Returns hash of the transaction
-        pub fn hash(&self) -> TransactionHash {
-            TransactionHash(self.hash.to_owned().into())
-        }
-    }
+    // impl Transaction {
+    //     /// Returns hash of the transaction
+    //     pub fn hash(&self) -> TransactionHash {
+    //         TransactionHash(self.hash.to_owned().into())
+    //     }
+    // }
 
     /// A version 0 or 1 declare transaction.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

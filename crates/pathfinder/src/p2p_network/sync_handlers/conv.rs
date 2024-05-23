@@ -83,13 +83,17 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
                 nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
                 fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
             }),
-            Deploy(x) => proto::Transaction::Deploy(proto::Deploy {
+            DeployV0(x) => proto::Transaction::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
-                // address: Address(x.contract_address.0), FIXME
-                // Only these two values are allowed in storage
-                version: if x.version.is_zero() { 0 } else { 1 },
+                version: 0,
+            }),
+            DeployV1(x) => proto::Transaction::Deploy(proto::Deploy {
+                class_hash: Hash(x.class_hash.0),
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                version: 1,
             }),
             DeployAccountV1(x) => proto::Transaction::DeployAccountV1(proto::DeployAccountV1 {
                 max_fee: x.max_fee.0,
@@ -218,7 +222,11 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
             | TransactionVariant::DeclareV1(_)
             | TransactionVariant::DeclareV2(_)
             | TransactionVariant::DeclareV3(_) => Declare(DeclareTransactionReceipt { common }),
-            TransactionVariant::Deploy(x) => Deploy(DeployTransactionReceipt {
+            TransactionVariant::DeployV0(x) => Deploy(DeployTransactionReceipt {
+                common,
+                contract_address: x.contract_address.0,
+            }),
+            TransactionVariant::DeployV1(x) => Deploy(DeployTransactionReceipt {
                 common,
                 contract_address: x.contract_address.0,
             }),

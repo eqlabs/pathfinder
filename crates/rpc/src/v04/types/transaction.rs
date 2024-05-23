@@ -4,7 +4,8 @@ use pathfinder_common::transaction::{
     DeclareTransactionV3,
     DeployAccountTransactionV1,
     DeployAccountTransactionV3,
-    DeployTransaction,
+    DeployTransactionV0,
+    DeployTransactionV1,
     InvokeTransactionV0,
     InvokeTransactionV1,
     InvokeTransactionV3,
@@ -48,7 +49,8 @@ impl Serialize for Transaction {
             TransactionVariant::DeclareV1(x) => DeclareV1Helper(x).serialize(serializer),
             TransactionVariant::DeclareV2(x) => DeclareV2Helper(x).serialize(serializer),
             TransactionVariant::DeclareV3(x) => DeclareV3MapToV2Helper(x).serialize(serializer),
-            TransactionVariant::Deploy(x) => DeployHelper(x).serialize(serializer),
+            TransactionVariant::DeployV0(x) => DeployV0Helper(x).serialize(serializer),
+            TransactionVariant::DeployV1(x) => DeployV1Helper(x).serialize(serializer),
             TransactionVariant::DeployAccountV1(x) => {
                 DeployAccountV1Helper(x).serialize(serializer)
             }
@@ -67,7 +69,8 @@ struct DeclareV0Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV1Helper<'a>(&'a DeclareTransactionV0V1);
 struct DeclareV2Helper<'a>(&'a DeclareTransactionV2);
 struct DeclareV3MapToV2Helper<'a>(&'a DeclareTransactionV3);
-struct DeployHelper<'a>(&'a DeployTransaction);
+struct DeployV0Helper<'a>(&'a DeployTransactionV0);
+struct DeployV1Helper<'a>(&'a DeployTransactionV1);
 struct DeployAccountV1Helper<'a>(&'a DeployAccountTransactionV1);
 struct DeployAccountV3MapToV1Helper<'a>(&'a DeployAccountTransactionV3);
 struct InvokeV0Helper<'a>(&'a InvokeTransactionV0);
@@ -147,13 +150,34 @@ impl Serialize for DeclareV3MapToV2Helper<'_> {
     }
 }
 
-impl Serialize for DeployHelper<'_> {
+impl Serialize for DeployV0Helper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         let mut s = serializer.serialize_struct("Deploy", 5)?;
-        s.serialize_field("version", &TransactionVersionHelper(&self.0.version))?;
+        s.serialize_field(
+            "version",
+            &TransactionVersionHelper(&TransactionVersion::ZERO),
+        )?;
+        s.serialize_field("type", "DEPLOY")?;
+        s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
+        s.serialize_field("constructor_calldata", &self.0.constructor_calldata)?;
+        s.serialize_field("class_hash", &self.0.class_hash)?;
+        s.end()
+    }
+}
+
+impl Serialize for DeployV1Helper<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut s = serializer.serialize_struct("Deploy", 5)?;
+        s.serialize_field(
+            "version",
+            &TransactionVersionHelper(&TransactionVersion::ONE),
+        )?;
         s.serialize_field("type", "DEPLOY")?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
         s.serialize_field("constructor_calldata", &self.0.constructor_calldata)?;
@@ -300,7 +324,7 @@ mod tests {
 
     mod serialization {
         use pathfinder_common::transaction::*;
-        use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
+        use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip};
         use pretty_assertions_sorted::assert_eq;
         use serde_json::json;
 
@@ -436,7 +460,7 @@ mod tests {
 
         #[test]
         fn deploy() {
-            let original: TransactionVariant = DeployTransaction {
+            let original: TransactionVariant = DeployTransactionV0 {
                 contract_address: contract_address!("0xabc"),
                 contract_address_salt: contract_address_salt!("0xeeee"),
                 class_hash: class_hash!("0x123"),
@@ -444,7 +468,6 @@ mod tests {
                     constructor_param!("0xbbb0"),
                     constructor_param!("0xbbb1"),
                 ],
-                version: TransactionVersion::TWO,
             }
             .into();
 
@@ -453,7 +476,7 @@ mod tests {
                 "contract_address_salt": "0xeeee",
                 "class_hash": "0x123",
                 "constructor_calldata": ["0xbbb0","0xbbb1"],
-                "version": "0x2",
+                "version": "0x0",
             });
             let uut = Transaction(original);
             let result = serde_json::to_value(uut).unwrap();

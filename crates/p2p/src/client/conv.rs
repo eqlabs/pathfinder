@@ -15,7 +15,8 @@ use pathfinder_common::transaction::{
     DeclareTransactionV3,
     DeployAccountTransactionV1,
     DeployAccountTransactionV3,
-    DeployTransaction,
+    DeployTransactionV0,
+    DeployTransactionV1,
     InvokeTransactionV0,
     InvokeTransactionV1,
     InvokeTransactionV3,
@@ -57,7 +58,6 @@ use pathfinder_common::{
     TransactionIndex,
     TransactionNonce,
     TransactionSignatureElem,
-    TransactionVersion,
 };
 use pathfinder_crypto::Felt;
 use serde::{Deserialize, Serialize};
@@ -216,17 +216,19 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 sender_address: ContractAddress(x.sender.0),
                 compiled_class_hash: CasmHash(x.compiled_class_hash.0),
             }),
-            Deploy(x) => Self::Deploy(DeployTransaction {
+            Deploy(x) if x.version == 0 => Self::DeployV0(DeployTransactionV0 {
                 contract_address: ContractAddress::ZERO,
                 contract_address_salt: ContractAddressSalt(x.address_salt),
                 class_hash: ClassHash(x.class_hash.0),
                 constructor_calldata: x.calldata.into_iter().map(ConstructorParam).collect(),
-                version: match x.version {
-                    0 => TransactionVersion::ZERO,
-                    1 => TransactionVersion::ONE,
-                    _ => anyhow::bail!("Invalid deploy transaction version"),
-                },
             }),
+            Deploy(x) if x.version == 1 => Self::DeployV1(DeployTransactionV1 {
+                contract_address: ContractAddress::ZERO,
+                contract_address_salt: ContractAddressSalt(x.address_salt),
+                class_hash: ClassHash(x.class_hash.0),
+                constructor_calldata: x.calldata.into_iter().map(ConstructorParam).collect(),
+            }),
+            Deploy(_) => anyhow::bail!("Invalid deploy transaction version"),
             DeployAccountV1(x) => Self::DeployAccountV1(DeployAccountTransactionV1 {
                 contract_address: ContractAddress::ZERO,
                 max_fee: Fee(x.max_fee),
