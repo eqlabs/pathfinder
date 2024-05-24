@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::io::Read;
 
 use anyhow::Context;
 use pathfinder_common::receipt::{
@@ -511,7 +512,15 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
         };
 
         let abi = dto.abi;
-        let program = dto.program;
+
+        let compressed_program = base64::decode(dto.program)?;
+        let mut gzip_decoder =
+            flate2::read::GzDecoder::new(std::io::Cursor::new(compressed_program));
+        let mut program = Vec::new();
+        gzip_decoder
+            .read_to_end(&mut program)
+            .context("Decompressing program JSON")?;
+
         let external = from_dto(dto.externals);
         let l1_handler = from_dto(dto.l1_handlers);
         let constructor = from_dto(dto.constructors);
@@ -521,7 +530,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
 
         let class_def = Cairo {
             abi: Cow::Borrowed(serde_json::from_str::<Abi<'_>>(&abi).unwrap().0),
-            program: serde_json::from_str(&program)
+            program: serde_json::from_slice(&program)
                 .context("verify that cairo class program is UTF-8")?,
             entry_points_by_type: CairoEntryPoints {
                 external,
