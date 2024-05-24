@@ -88,6 +88,7 @@ pub async fn get_events(
 pub(crate) mod blocking {
     use super::*;
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_headers(
         db_tx: Transaction<'_>,
         request: BlockHeadersRequest,
@@ -96,6 +97,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_header, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_classes(
         db_tx: Transaction<'_>,
         request: ClassesRequest,
@@ -104,6 +106,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_classes_for_block, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_state_diffs(
         db_tx: Transaction<'_>,
         request: StateDiffsRequest,
@@ -112,6 +115,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_state_diff, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_transactions(
         db_tx: Transaction<'_>,
         request: TransactionsRequest,
@@ -120,6 +124,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_transactions_for_block, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_events(
         db_tx: Transaction<'_>,
         request: EventsRequest,
