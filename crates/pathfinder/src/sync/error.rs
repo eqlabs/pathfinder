@@ -37,12 +37,46 @@ impl PartialEq for SyncError {
 impl SyncError {
     /// Temporary cast to allow refactoring towards SyncError2.
     pub fn into_v2(self) -> PeerData<SyncError2> {
-        todo!()
+        match self {
+            SyncError::Other(e) => PeerData::new(PeerId::random(), SyncError2::Other(Arc::new(e))),
+            SyncError::BadHeaderSignature(x) => PeerData::new(x, SyncError2::BadHeaderSignature),
+            SyncError::BadBlockHash(x) => PeerData::new(x, SyncError2::BadBlockHash),
+            SyncError::Discontinuity(x) => PeerData::new(x, SyncError2::Discontinuity),
+            SyncError::BadStateDiffSignature(x) => {
+                PeerData::new(x, SyncError2::BadStateDiffSignature)
+            }
+            SyncError::StateDiffCommitmentMismatch(x) => {
+                PeerData::new(x, SyncError2::StateDiffCommitmentMismatch)
+            }
+            SyncError::BadClassLayout(x) => PeerData::new(x, SyncError2::BadClassLayout),
+            SyncError::UnexpectedClass(x) => PeerData::new(x, SyncError2::UnexpectedClass),
+            SyncError::EventCommitmentMismatch(x) => {
+                PeerData::new(x, SyncError2::EventCommitmentMismatch)
+            }
+            SyncError::TransactionCommitmentMismatch(x) => {
+                PeerData::new(x, SyncError2::TransactionCommitmentMismatch)
+            }
+        }
     }
 
     /// Temporary cast to allow refactoring towards SyncError2.
     pub fn from_v2(v2: PeerData<SyncError2>) -> Self {
-        todo!()
+        let PeerData { peer, data } = v2;
+
+        match data {
+            SyncError2::BadHeaderSignature => SyncError::BadHeaderSignature(peer),
+            SyncError2::BadBlockHash => SyncError::BadBlockHash(peer),
+            SyncError2::Discontinuity => SyncError::Discontinuity(peer),
+            SyncError2::BadStateDiffSignature => SyncError::BadStateDiffSignature(peer),
+            SyncError2::StateDiffCommitmentMismatch => SyncError::StateDiffCommitmentMismatch(peer),
+            SyncError2::BadClassLayout => SyncError::BadClassLayout(peer),
+            SyncError2::UnexpectedClass => SyncError::UnexpectedClass(peer),
+            SyncError2::EventCommitmentMismatch => SyncError::EventCommitmentMismatch(peer),
+            SyncError2::TransactionCommitmentMismatch => {
+                SyncError::TransactionCommitmentMismatch(peer)
+            }
+            other => SyncError::Other(other.into()),
+        }
     }
 }
 
@@ -70,6 +104,8 @@ pub(super) enum SyncError2 {
     TooManyEvents,
     #[error("Too few events")]
     TooFewEvents,
+    #[error("Transaction commitment mismatch")]
+    TransactionCommitmentMismatch,
 }
 
 impl PartialEq for SyncError2 {
