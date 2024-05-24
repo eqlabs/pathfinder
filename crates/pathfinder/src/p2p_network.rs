@@ -109,7 +109,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
                         Some(event) = p2p_events.recv() => {
                             match handle_p2p_event(event, storage.clone(), &mut tx).await {
                                 Ok(()) => {},
-                                Err(e) => { tracing::error!("Failed to handle P2P event: {}", e) },
+                                Err(e) => { tracing::error!("Failed to handle P2P event: {:#}", e) },
                             }
                         }
                     }
