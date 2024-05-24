@@ -88,6 +88,7 @@ pub async fn get_events(
 pub(crate) mod blocking {
     use super::*;
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_headers(
         db_tx: Transaction<'_>,
         request: BlockHeadersRequest,
@@ -96,6 +97,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_header, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_classes(
         db_tx: Transaction<'_>,
         request: ClassesRequest,
@@ -104,6 +106,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_classes_for_block, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_state_diffs(
         db_tx: Transaction<'_>,
         request: StateDiffsRequest,
@@ -112,6 +115,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_state_diff, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_transactions(
         db_tx: Transaction<'_>,
         request: TransactionsRequest,
@@ -120,6 +124,7 @@ pub(crate) mod blocking {
         iterate(db_tx, request.iteration, get_transactions_for_block, tx)
     }
 
+    #[tracing::instrument(skip(db_tx, tx))]
     pub(crate) fn get_events(
         db_tx: Transaction<'_>,
         request: EventsRequest,
@@ -138,6 +143,8 @@ fn get_header(
         if let Some(signature) = db_tx.signature(block_number.into())? {
             let state_diff_cl = db_tx.state_diff_commitment_and_length(block_number)?;
             if let Some((state_diff_commitment, state_diff_len)) = state_diff_cl {
+                tracing::trace!(?header, "Sending block header");
+
                 let txn_count = header
                     .transaction_count
                     .try_into()
@@ -225,6 +232,8 @@ fn get_classes_for_block(
 
     for class_hash in declared_classes {
         let class_definition = get_definition(block_number, class_hash)?;
+
+        tracing::trace!(?class_hash, "Sending class definition");
 
         let class: Class = match class_definition {
             ClassDefinition::Cairo(definition) => {
@@ -329,6 +338,8 @@ fn get_transactions_for_block(
     };
 
     for (txn, receipt, _) in txn_data {
+        tracing::trace!(transaction_hash=%txn.hash, "Sending transaction");
+
         let receipt = (&txn, receipt).to_dto();
         tx.blocking_send(TransactionsResponse::TransactionWithReceipt(
             TransactionWithReceipt {
@@ -410,6 +421,8 @@ fn iterate<T: Default + std::fmt::Debug>(
             }
         }
     }
+
+    tracing::trace!("Sending FIN");
 
     tx.blocking_send(T::default())
         .map_err(|_| anyhow::anyhow!("Sending Fin"))?;

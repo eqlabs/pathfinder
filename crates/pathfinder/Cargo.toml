@@ -27,6 +27,7 @@ bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { workspace = true, optional = true }
 fake = { workspace = true }
+flate2 = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 ipnet = { workspace = true }

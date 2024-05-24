@@ -337,6 +337,11 @@ pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
         ),
     };
 
+    let mut gzip_encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    serde_json::to_writer(&mut gzip_encoder, &cairo.program).unwrap();
+    let program = gzip_encoder.finish().unwrap();
+    let program = base64::encode(program);
+
     Cairo0Class {
         abi: cairo.abi.to_string(),
         externals: cairo
@@ -357,6 +362,6 @@ pub fn cairo_def_into_dto(cairo: Cairo<'_>) -> Cairo0Class {
             .into_iter()
             .map(into_dto)
             .collect(),
-        program: cairo.program.to_string(),
+        program,
     }
 }
