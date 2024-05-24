@@ -139,6 +139,7 @@ impl Sync {
                 10,
             )
             .pipe(headers::VerifyHash, 10)
+            .try_chunks(1024, 10)
             .pipe(
                 headers::Persist {
                     connection: self.storage.connection()?,

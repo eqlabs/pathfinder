@@ -232,7 +232,7 @@ pub struct Persist {
 }
 
 impl ProcessStage for Persist {
-    type Input = SignedBlockHeader;
+    type Input = Vec<SignedBlockHeader>;
     type Output = ();
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
@@ -241,42 +241,43 @@ impl ProcessStage for Persist {
             .transaction()
             .context("Creating database transaction")?;
 
-        let SignedBlockHeader {
+        for SignedBlockHeader {
             header,
             signature,
             state_diff_commitment,
             state_diff_length,
-        } = input;
-
-        tx.insert_block_header(&pathfinder_common::BlockHeader {
-            hash: header.hash,
-            parent_hash: header.parent_hash,
-            number: header.number,
-            timestamp: header.timestamp,
-            eth_l1_gas_price: header.eth_l1_gas_price,
-            strk_l1_gas_price: header.strk_l1_gas_price,
-            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-            sequencer_address: header.sequencer_address,
-            starknet_version: header.starknet_version,
-            class_commitment: ClassCommitment::ZERO,
-            event_commitment: header.event_commitment,
-            state_commitment: header.state_commitment,
-            storage_commitment: StorageCommitment::ZERO,
-            transaction_commitment: header.transaction_commitment,
-            transaction_count: header.transaction_count,
-            event_count: header.event_count,
-            l1_da_mode: header.l1_da_mode,
-        })
-        .context("Persisting block header")?;
-        tx.insert_signature(header.number, &signature)
-            .context("Persisting block signature")?;
-        tx.update_state_diff_commitment_and_length(
-            header.number,
-            state_diff_commitment,
-            state_diff_length,
-        )
-        .context("Persisting state diff length")?;
+        } in input
+        {
+            tx.insert_block_header(&pathfinder_common::BlockHeader {
+                hash: header.hash,
+                parent_hash: header.parent_hash,
+                number: header.number,
+                timestamp: header.timestamp,
+                eth_l1_gas_price: header.eth_l1_gas_price,
+                strk_l1_gas_price: header.strk_l1_gas_price,
+                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+                sequencer_address: header.sequencer_address,
+                starknet_version: header.starknet_version,
+                class_commitment: ClassCommitment::ZERO,
+                event_commitment: header.event_commitment,
+                state_commitment: header.state_commitment,
+                storage_commitment: StorageCommitment::ZERO,
+                transaction_commitment: header.transaction_commitment,
+                transaction_count: header.transaction_count,
+                event_count: header.event_count,
+                l1_da_mode: header.l1_da_mode,
+            })
+            .context("Persisting block header")?;
+            tx.insert_signature(header.number, &signature)
+                .context("Persisting block signature")?;
+            tx.update_state_diff_commitment_and_length(
+                header.number,
+                state_diff_commitment,
+                state_diff_length,
+            )
+            .context("Persisting state diff length")?;
+        }
 
         tx.commit().context("Committing database transaction")?;
         Ok(())
