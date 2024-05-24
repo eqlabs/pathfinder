@@ -34,6 +34,18 @@ impl PartialEq for SyncError {
     }
 }
 
+impl SyncError {
+    /// Temporary cast to allow refactoring towards SyncError2.
+    pub fn into_v2(self) -> PeerData<SyncError2> {
+        todo!()
+    }
+
+    /// Temporary cast to allow refactoring towards SyncError2.
+    pub fn from_v2(v2: PeerData<SyncError2>) -> Self {
+        todo!()
+    }
+}
+
 #[derive(Debug, thiserror::Error, Clone)]
 pub(super) enum SyncError2 {
     #[error(transparent)]

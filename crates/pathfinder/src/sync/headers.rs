@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
+use futures::StreamExt;
 use p2p::PeerData;
 use pathfinder_common::{
     BlockHash,
@@ -13,7 +14,7 @@ use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
 use crate::sync::error::{SyncError, SyncError2};
-use crate::sync::stream::ProcessStage;
+use crate::sync::stream::{ProcessStage, SyncReceiver};
 
 type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 
@@ -85,112 +86,6 @@ pub(super) async fn next_gap(
     .context("Joining blocking task")?
 }
 
-/// Ensures the header block ID matches expectations.
-///
-/// Intended for use with [scan](futures::StreamExt::scan) which is why
-/// its function signature is a bit strange.
-pub(super) fn check_continuity(
-    expected: &mut (BlockNumber, BlockHash, bool),
-    input: PeerData<SignedBlockHeader>,
-) -> impl futures::Future<Output = Option<SignedHeaderResult>> {
-    if expected.2 {
-        return std::future::ready(None);
-    }
-
-    let header = &input.data.header;
-    let is_correct = header.number == expected.0 && header.hash == expected.1;
-
-    // Update expectation.
-    expected.0 = header.number;
-    expected.1 = header.hash;
-
-    let result = if is_correct {
-        Some(Ok(input))
-    } else {
-        expected.2 = true;
-        Some(Err(SyncError::Discontinuity(input.peer)))
-    };
-
-    std::future::ready(result)
-}
-
-/// Verifies the block hash and signature.
-pub(super) async fn verify(signed_header: PeerData<SignedBlockHeader>) -> SignedHeaderResult {
-    tokio::task::spawn_blocking(move || {
-        if !signed_header.data.verify_signature() {
-            return Err(SyncError::BadHeaderSignature(signed_header.peer));
-        }
-
-        if !signed_header.data.header.verify_hash() {
-            return Err(SyncError::BadBlockHash(signed_header.peer));
-        }
-
-        Ok(signed_header)
-    })
-    .await
-    .expect("Task should not crash")
-}
-
-/// # FIXME
-/// class and storage commitments are 0 here
-///
-/// Writes the headers to storage.
-pub(super) async fn persist(
-    mut signed_headers: Vec<PeerData<SignedBlockHeader>>,
-    storage: Storage,
-) -> SignedHeaderResult {
-    tokio::task::spawn_blocking(move || {
-        let mut db = storage
-            .connection()
-            .context("Creating database connection")?;
-        let tx = db.transaction().context("Creating database transaction")?;
-
-        for SignedBlockHeader {
-            header,
-            signature,
-            state_diff_commitment,
-            state_diff_length,
-        } in signed_headers.iter().map(|x| &x.data)
-        {
-            tx.insert_block_header(&pathfinder_common::BlockHeader {
-                hash: header.hash,
-                parent_hash: header.parent_hash,
-                number: header.number,
-                timestamp: header.timestamp,
-                eth_l1_gas_price: header.eth_l1_gas_price,
-                strk_l1_gas_price: header.strk_l1_gas_price,
-                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-                sequencer_address: header.sequencer_address,
-                starknet_version: header.starknet_version,
-                class_commitment: ClassCommitment::ZERO,
-                event_commitment: header.event_commitment,
-                state_commitment: header.state_commitment,
-                storage_commitment: StorageCommitment::ZERO,
-                transaction_commitment: header.transaction_commitment,
-                transaction_count: header.transaction_count,
-                event_count: header.event_count,
-                l1_da_mode: header.l1_da_mode,
-            })
-            .context("Persisting block header")?;
-            tx.insert_signature(header.number, signature)
-                .context("Persisting block signature")?;
-            tx.update_state_diff_commitment_and_length(
-                header.number,
-                *state_diff_commitment,
-                *state_diff_length,
-            )
-            .context("Persisting state diff length")?;
-        }
-
-        tx.commit().context("Committing database transaction")?;
-
-        Ok(signed_headers.pop().expect("Headers should not be empty"))
-    })
-    .await
-    .expect("Task should not crash")
-}
-
 pub(super) async fn query(
     storage: Storage,
     block_number: BlockNumber,
@@ -214,6 +109,18 @@ pub(super) async fn query(
 pub struct ForwardContinuity {
     next: BlockNumber,
     parent_hash: BlockHash,
+}
+
+/// Ensures that the header chain is continuous (backwards).
+///
+/// The backwards variant of [ForwardContinuity].
+pub struct BackwardContinuity {
+    /// Expected next block number.
+    ///
+    /// Is an option to represent having reached genesis.
+    pub number: Option<BlockNumber>,
+    /// Expected block hash.
+    pub hash: BlockHash,
 }
 
 /// Ensures that the block hash and signature are correct.
@@ -243,6 +150,35 @@ impl ProcessStage for ForwardContinuity {
     }
 }
 
+impl BackwardContinuity {
+    /// Creates a new [BackwardContinuity] from the next block's expected number
+    /// and hash.
+    pub fn new(number: BlockNumber, hash: BlockHash) -> Self {
+        Self {
+            number: Some(number),
+            hash,
+        }
+    }
+}
+
+impl ProcessStage for BackwardContinuity {
+    type Input = SignedBlockHeader;
+    type Output = SignedBlockHeader;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let number = self.number.ok_or(SyncError2::Discontinuity)?;
+
+        if input.header.number != number || input.header.hash != self.hash {
+            return Err(SyncError2::Discontinuity);
+        }
+
+        self.number = number.parent();
+        self.hash = input.header.parent_hash;
+
+        Ok(input)
+    }
+}
+
 impl ProcessStage for VerifyHash {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
@@ -257,5 +193,92 @@ impl ProcessStage for VerifyHash {
         }
 
         Ok(input)
+    }
+}
+
+pub struct HeaderSource {
+    pub start: BlockNumber,
+    pub stop: BlockNumber,
+    pub reverse: bool,
+    pub p2p: p2p::client::peer_agnostic::Client,
+}
+
+impl HeaderSource {
+    pub fn spawn(self) -> SyncReceiver<SignedBlockHeader> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let Self {
+            start,
+            stop,
+            reverse,
+            p2p,
+        } = self;
+
+        tokio::spawn(async move {
+            let mut headers = Box::pin(p2p.header_stream(start, stop, reverse));
+
+            while let Some(header) = headers.next().await {
+                if tx.send(Ok(header)).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+}
+
+pub struct Persist {
+    pub connection: pathfinder_storage::Connection,
+}
+
+impl ProcessStage for Persist {
+    type Input = SignedBlockHeader;
+    type Output = ();
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let tx = self
+            .connection
+            .transaction()
+            .context("Creating database transaction")?;
+
+        let SignedBlockHeader {
+            header,
+            signature,
+            state_diff_commitment,
+            state_diff_length,
+        } = input;
+
+        tx.insert_block_header(&pathfinder_common::BlockHeader {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            sequencer_address: header.sequencer_address,
+            starknet_version: header.starknet_version,
+            class_commitment: ClassCommitment::ZERO,
+            event_commitment: header.event_commitment,
+            state_commitment: header.state_commitment,
+            storage_commitment: StorageCommitment::ZERO,
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header.transaction_count,
+            event_count: header.event_count,
+            l1_da_mode: header.l1_da_mode,
+        })
+        .context("Persisting block header")?;
+        tx.insert_signature(header.number, &signature)
+            .context("Persisting block signature")?;
+        tx.update_state_diff_commitment_and_length(
+            header.number,
+            state_diff_commitment,
+            state_diff_length,
+        )
+        .context("Persisting state diff length")?;
+
+        tx.commit().context("Committing database transaction")?;
+        Ok(())
     }
 }

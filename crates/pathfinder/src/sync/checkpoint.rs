@@ -127,26 +127,28 @@ impl Sync {
 
             tracing::info!("Syncing headers");
 
-            // TODO: consider .inspect_ok(tracing::trace!) for each stage.
-            self.p2p
-                .clone()
-                // TODO: consider buffering in the client to reduce request latency.
-                .header_stream(gap.head, gap.tail, true)
-                .scan((gap.head, gap.head_hash, false), headers::check_continuity)
-                // TODO: rayon scope this.
-                .and_then(headers::verify)
-                // chunk so that persisting to storage can be batched.
-                .try_chunks(1024)
-                // TODO: Pull out remaining data from try_chunks error.
-                //       try_chunks::Error is a tuple of Err(data, error) so we
-                //       should re-stream that as Ok(data), Err(error). Right now
-                //       we just map to Err(error).
-                .map_err(|e| e.1)
-                .and_then(|x| headers::persist(x, self.storage.clone()))
-                .inspect_ok(|x| tracing::info!(tail=%x.data.header.number, "Header chunk synced"))
-                // Drive stream to completion.
-                .try_fold((), |_state, _x| std::future::ready(Ok(())))
-                .await?;
+            headers::HeaderSource {
+                start: gap.head,
+                stop: gap.tail,
+                reverse: true,
+                p2p: self.p2p.clone(),
+            }
+            .spawn()
+            .pipe(
+                headers::BackwardContinuity::new(gap.head, gap.head_hash),
+                10,
+            )
+            .pipe(headers::VerifyHash, 10)
+            .pipe(
+                headers::Persist {
+                    connection: self.storage.connection()?,
+                },
+                10,
+            )
+            .into_stream()
+            .try_fold((), |_state, _x| std::future::ready(Ok(())))
+            .await
+            .map_err(SyncError::from_v2)?;
         }
 
         Ok(())
