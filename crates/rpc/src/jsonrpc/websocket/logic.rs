@@ -543,7 +543,6 @@ async fn transaction_status_subscription(
     // Channel used to notify if the transaction could not be found on the gateway,
     // after some reasonable time.
     let (transaction_not_found_tx, mut transaction_not_found_rx) = tokio::sync::mpsc::channel(1);
-    let mut gateway_poller = None;
     // Ensure that the channels stay open for the duration of the loop below.
     let _loop_guard_1 = gateway_transaction_tx.clone();
     let _loop_guard_2 = transaction_not_found_tx.clone();
@@ -555,7 +554,7 @@ async fn transaction_status_subscription(
         _ => {
             // We don't know anything about this transaction. Poll for transaction status
             // from the gateway.
-            gateway_poller = Some(tokio::spawn(async move {
+            tokio::spawn(async move {
                 let start = Instant::now();
                 let timeout = if cfg!(test) {
                     Duration::from_secs(5)
@@ -570,7 +569,16 @@ async fn transaction_status_subscription(
                                 // Notify the consumer that the transaction is invalid.
                                 transaction_not_found_tx.send(()).await.ok();
                                 break;
-                            } else {
+                            }
+                            if matches!(
+                                tx.status,
+                                Status::Received
+                                    | Status::AcceptedOnL2
+                                    | Status::AcceptedOnL1
+                                    | Status::Rejected
+                            ) {
+                                // Polling is only needed to get the initial status. As soon as any
+                                // progress can be made, polling is no longer necessary.
                                 gateway_transaction_tx.send(tx.status).await.ok();
                                 break;
                             }
@@ -581,7 +589,7 @@ async fn transaction_status_subscription(
                     }
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }
-            }));
+            });
             LastStatus::None
         }
     };
@@ -631,12 +639,6 @@ async fn transaction_status_subscription(
                 // Only make progress if new status is more advanced than the previous status.
                 if LastStatus::from(tx_status) <= last_status {
                     continue;
-                }
-
-                // Polling is only needed to get the initial status. As soon as any progress
-                // can be made, polling is no longer necessary.
-                if let Some(task) = gateway_poller.take() {
-                    task.abort();
                 }
 
                 // Send the status update.
@@ -1247,11 +1249,11 @@ mod tests {
 
         client
             .expect_response(&serde_json::json!({
-                "id": "Null",
+                "id": null,
                 "jsonrpc": "2.0",
                 "result": {
                     "subscription_id": 0,
-                    "transaction_hash": "0x032bfcf2a36fbfe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0",
+                    "transaction_hash": "0x32bfcf2a36fbfe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0",
                     "error": "TransactionNotFound"
                 }
             }))
