@@ -802,11 +802,7 @@ async fn l1_update(
             }
         }
 
-        transaction
-            .commit()
-            .context("Commit database transaction")?;
-
-        Ok(())
+        transaction.commit().context("Commit database transaction")
     })
 }
 
