@@ -23,7 +23,6 @@ use starknet_gateway_types::reply::Block;
 pub enum VerifyResult {
     Match((TransactionCommitment, EventCommitment)),
     Mismatch,
-    NotVerifiable,
 }
 
 /// Verify the block hash value.
@@ -45,9 +44,6 @@ pub fn verify_block_hash(
     expected_block_hash: BlockHash,
 ) -> Result<VerifyResult> {
     let meta_info = meta::for_chain(chain);
-    if !meta_info.can_verify(block.block_number) {
-        return Ok(VerifyResult::NotVerifiable);
-    }
 
     let num_transactions: u64 = block
         .transactions
@@ -115,8 +111,6 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use std::ops::Range;
-
     use pathfinder_common::{sequencer_address, BlockNumber, Chain, SequencerAddress};
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -144,22 +138,12 @@ mod meta {
         /// The number of the first block that was hashed with the Starknet 0.7
         /// hash algorithm.
         pub first_0_7_block: BlockNumber,
-        /// The range of block numbers that can't be verified because of an
-        /// unknown sequencer address.
-        pub not_verifiable_range: Option<Range<BlockNumber>>,
         /// Fallback sequencer address to use for blocks that don't include the
         /// address.
         pub fallback_sequencer_address: Option<SequencerAddress>,
     }
 
     impl BlockHashMetaInfo {
-        pub fn can_verify(&self, block_number: BlockNumber) -> bool {
-            match &self.not_verifiable_range {
-                Some(range) => !range.contains(&block_number),
-                None => true,
-            }
-        }
-
         pub fn uses_pre_0_7_hash_algorithm(&self, block_number: BlockNumber) -> bool {
             block_number < self.first_0_7_block
         }
@@ -167,7 +151,6 @@ mod meta {
 
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(833),
-        not_verifiable_range: None,
         fallback_sequencer_address: Some(sequencer_address!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
         )),
@@ -175,19 +158,16 @@ mod meta {
 
     const SEPOLIA_TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(0),
-        not_verifiable_range: None,
         fallback_sequencer_address: None,
     };
 
     const SEPOLIA_INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(0),
-        not_verifiable_range: None,
         fallback_sequencer_address: None,
     };
 
     const CUSTOM_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(0),
-        not_verifiable_range: None,
         fallback_sequencer_address: None,
     };
 

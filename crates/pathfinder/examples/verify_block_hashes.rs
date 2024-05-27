@@ -88,9 +88,6 @@ fn main() -> anyhow::Result<()> {
         let result = verify_block_hash(&block, chain, chain_id, block_hash)?;
         match result {
             VerifyResult::Match(_) => {}
-            VerifyResult::NotVerifiable => println!(
-                "Block hash cannot be verified for block number {block_number} hash {block_hash:?}"
-            ),
             VerifyResult::Mismatch => {
                 println!("Block hash mismatch at block number {block_number} hash {block_hash:?}")
             }

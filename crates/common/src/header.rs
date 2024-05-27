@@ -1,7 +1,7 @@
 use fake::Dummy;
 
 use crate::prelude::*;
-use crate::{BlockCommitmentSignature, StateDiffCommitment};
+use crate::{BlockCommitmentSignature, Chain, StateDiffCommitment};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {
