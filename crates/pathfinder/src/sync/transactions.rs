@@ -1,19 +1,20 @@
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
-use anyhow::Context;
-use p2p::client::peer_agnostic::TransactionBlockData;
+use anyhow::{anyhow, Context};
+use p2p::client::peer_agnostic::{self, TransactionBlockData};
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
-use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
+use pathfinder_common::{BlockHeader, BlockNumber, ChainId, TransactionHash};
 use pathfinder_storage::Storage;
 
 use super::error::{SyncError, SyncError2};
+use super::stream::ProcessStage;
 use crate::state::block_hash::{
     calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
-use crate::sync::stream::ProcessStage;
 
 pub type TransactionsWithHashesForBlock = (BlockNumber, Vec<(Transaction, Receipt)>);
 
@@ -90,7 +91,6 @@ pub(super) fn counts_stream(
 
 pub(super) async fn compute_hashes(
     mut transactions: PeerData<TransactionBlockData>,
-    storage: Storage,
     chain_id: ChainId,
 ) -> Result<PeerData<TransactionsWithHashesForBlock>, SyncError> {
     Ok(tokio::task::spawn_blocking(move || {
@@ -193,26 +193,45 @@ pub(super) async fn persist(
     .context("Joining blocking task")?
 }
 
-pub struct CalculateHashes;
-pub struct VerifyCommitment;
+pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
-    type Input = (
-        BlockHeader,
-        Vec<(TransactionVariant, p2p_proto::receipt::Receipt)>,
-    );
-    type Output = (BlockHeader, Vec<(Transaction, Receipt)>);
-
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        todo!()
-    }
-}
-
-impl ProcessStage for VerifyCommitment {
-    type Input = (BlockHeader, Vec<(Transaction, Receipt)>);
+    type Input = Vec<(TransactionVariant, peer_agnostic::Receipt)>;
     type Output = Vec<(Transaction, Receipt)>;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        use rayon::prelude::*;
+        let transactions = input;
+        let transactions = transactions
+            .into_par_iter()
+            .map(|(tv, r)| {
+                let transaction_hash = tv.calculate_hash(self.0, false);
+                let transaction = Transaction {
+                    hash: transaction_hash,
+                    variant: tv,
+                };
+                let receipt = Receipt {
+                    actual_fee: r.actual_fee,
+                    execution_resources: r.execution_resources,
+                    l2_to_l1_messages: r.l2_to_l1_messages,
+                    execution_status: r.execution_status,
+                    transaction_hash,
+                    transaction_index: r.transaction_index,
+                };
+                (transaction, receipt)
+            })
+            .collect::<Vec<_>>();
+        Ok(transactions)
+    }
+}
+
+pub struct VerifyCommitment;
+
+impl ProcessStage for VerifyCommitment {
+    type Input = Vec<(Transaction, Receipt)>;
+    type Output = Vec<(Transaction, Receipt)>;
+
+    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
         todo!()
     }
 }

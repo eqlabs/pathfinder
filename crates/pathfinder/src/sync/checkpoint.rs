@@ -252,7 +252,7 @@ async fn handle_transaction_stream(
 ) -> Result<(), SyncError> {
     transaction_stream
         .map_err(Into::into)
-        .and_then(|x| transactions::compute_hashes(x, storage.clone(), chain_id))
+        .and_then(|x| transactions::compute_hashes(x, chain_id))
         .and_then(|x| transactions::verify_commitment(x, storage.clone()))
         .try_chunks(100)
         .map_err(|e| e.1)
