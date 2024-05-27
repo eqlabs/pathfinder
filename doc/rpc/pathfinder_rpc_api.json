@@ -295,6 +295,24 @@
             "PROOF_MISSING": {
                 "code": 10000,
                 "message": "Merkle trie proof is not available"
+            },
+            "SUBSCRIPTION_TXN_HASH_NOT_FOUND": {
+                "code": 10029,
+                "message": "Transaction hash not found",
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "subscription_id": {
+                            "description": "The subscription id",
+                            "type": "integer"
+                        },
+                        "transaction_hash": {
+                            "title": "transaction hash",
+                            "$ref": "#/components/schemas/TXN_HASH"
+                        }
+                    },
+                    "required": ["subscription_id", "transaction_hash"]
+                }
             }
         }
     }

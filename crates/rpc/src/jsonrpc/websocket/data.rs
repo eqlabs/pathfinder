@@ -90,7 +90,7 @@ pub(super) enum ResponseEvent {
     Responses(RpcResponses),
     Event(SubscriptionItem<Arc<EmittedEvent>>),
     TransactionStatus(SubscriptionItem<Arc<Status>>),
-    TransactionNotFound(serde_json::Value),
+    RpcError(RpcError),
 }
 
 impl ResponseEvent {
@@ -106,7 +106,7 @@ impl ResponseEvent {
             ResponseEvent::Event(_) => "Event",
             ResponseEvent::TransactionStatus(_) => "TransactionStatus",
             ResponseEvent::InternalError(_, _) => "InternalError",
-            ResponseEvent::TransactionNotFound(_) => "TransactionNotFound",
+            ResponseEvent::RpcError(_) => "RpcError",
         }
     }
 }
@@ -153,11 +153,7 @@ impl Serialize for ResponseEvent {
             .serialize(serializer),
             ResponseEvent::Responses(responses) => responses.serialize(serializer),
             ResponseEvent::TransactionStatus(status) => status.serialize(serializer),
-            ResponseEvent::TransactionNotFound(value) => RpcResponse {
-                output: Ok(value.clone()),
-                id: RequestId::Null,
-            }
-            .serialize(serializer),
+            ResponseEvent::RpcError(error) => error.serialize(serializer),
         }
     }
 }

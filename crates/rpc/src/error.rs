@@ -5,6 +5,7 @@
 //! be used by each JSON-RPC method to trivially create its subset of
 //! [ApplicationError] along with the boilerplate involved.
 #![macro_use]
+use pathfinder_common::TransactionHash;
 use serde_json::json;
 
 #[derive(serde::Serialize, Clone, Copy, Debug)]
@@ -85,6 +86,11 @@ pub enum ApplicationError {
         transaction_index: usize,
         error: String,
     },
+    #[error("Transaction hash not found in websocket subscription")]
+    SubscriptionTransactionHashNotFound {
+        subscription_id: u32,
+        transaction_hash: TransactionHash,
+    },
     #[error("Proof is missing")]
     ProofMissing,
     /// Internal errors are errors whose details we don't want to show to the
@@ -137,6 +143,7 @@ impl ApplicationError {
             // doc/rpc/pathfinder_rpc_api.json
             ApplicationError::ProofLimitExceeded { .. } => 10000,
             ApplicationError::ProofMissing => 10001,
+            ApplicationError::SubscriptionTransactionHashNotFound { .. } => 10029,
             // https://www.jsonrpc.org/specification#error_object
             ApplicationError::GatewayError(_)
             | ApplicationError::Internal(_)
@@ -211,6 +218,13 @@ impl ApplicationError {
                 "requested": requested,
             })),
             ApplicationError::ProofMissing => None,
+            ApplicationError::SubscriptionTransactionHashNotFound {
+                subscription_id,
+                transaction_hash,
+            } => Some(json!({
+                "subscription_id": subscription_id,
+                "transaction_hash": transaction_hash,
+            })),
             ApplicationError::ValidationFailureV06(error) => Some(json!(error)),
         }
     }

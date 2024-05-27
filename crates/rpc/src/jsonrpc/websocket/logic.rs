@@ -26,6 +26,7 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
 use super::TransactionStatusParams;
+use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
 use crate::jsonrpc::websocket::data::{
@@ -35,7 +36,7 @@ use crate::jsonrpc::websocket::data::{
     SubscriptionId,
     SubscriptionItem,
 };
-use crate::jsonrpc::{RequestId, RpcRequest, RpcRouter};
+use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcRouter};
 use crate::method::get_events::types::EmittedEvent;
 use crate::BlockHeader;
 
@@ -612,13 +613,12 @@ async fn transaction_status_subscription(
         let tx_status = tokio::select! {
             tx_status = gateway_transaction_rx.recv() => Ok(tx_status),
             _ = transaction_not_found_rx.recv() => {
-                let response = ResponseEvent::TransactionNotFound(
-                    serde_json::json!({
-                        "error": "TransactionNotFound",
-                        "subscription_id": subscription_id,
-                        "transaction_hash": transaction_hash,
-                    }),
-                );
+                let response = ResponseEvent::RpcError(RpcError::ApplicationError(
+                    ApplicationError::SubscriptionTransactionHashNotFound {
+                        transaction_hash,
+                        subscription_id,
+                    },
+                ));
                 msg_sender.send(response).await.ok();
                 break;
             },
@@ -1253,13 +1253,12 @@ mod tests {
 
         client
             .expect_response(&serde_json::json!({
-                "id": null,
-                "jsonrpc": "2.0",
-                "result": {
+                "code": 10029,
+                "data": {
                     "subscription_id": 0,
                     "transaction_hash": "0x32bfcf2a36fbfe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0",
-                    "error": "TransactionNotFound"
-                }
+                },
+                "message": "Transaction hash not found in websocket subscription"
             }))
             .await;
 
