@@ -466,7 +466,7 @@ async fn consumer(
         use SyncEvent::*;
         match event {
             L1Update(update) => {
-                l1_update(&mut db_conn, &update, &mut websocket_txs).await?;
+                l1_update(&mut db_conn, &update).await?;
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
             Block(
@@ -774,7 +774,6 @@ async fn propagate_head(gossiper: &Gossiper, last_propagated: &mut Instant, head
 async fn l1_update(
     connection: &mut Connection,
     update: &EthereumStateUpdate,
-    websocket_txs: &mut Option<TopicBroadcasters>,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -806,24 +805,6 @@ async fn l1_update(
         transaction
             .commit()
             .context("Commit database transaction")?;
-
-        if let Some(sender) = websocket_txs {
-            if sender.l1_blocks.receiver_count() > 0 {
-                let transaction = connection
-                    .transaction()
-                    .context("Create database transaction")?;
-                let Some(transactions) = transaction
-                    .transactions_with_receipts_for_block(update.block_number.into())
-                    .context("Fetching transaction hashes")?
-                else {
-                    return Ok(());
-                };
-                if let Err(e) = sender.l1_blocks.send(transactions.into()) {
-                    tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
-                    *websocket_txs = None;
-                }
-            }
-        }
 
         Ok(())
     })
