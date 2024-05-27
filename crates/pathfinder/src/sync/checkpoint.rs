@@ -23,6 +23,7 @@ use pathfinder_common::{
     BlockNumber,
     ChainId,
     ClassHash,
+    SignedBlockHeader,
     TransactionIndex,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
@@ -38,6 +39,7 @@ use crate::state::block_hash::{
     TransactionCommitmentFinalHashType,
 };
 use crate::sync::error::SyncError;
+use crate::sync::headers::spawn_header_source;
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
@@ -125,31 +127,12 @@ impl Sync {
         {
             // TODO: create a tracing scope for this gap start, stop.
 
-            tracing::info!("Syncing headers");
-
-            headers::HeaderSource {
-                start: gap.head,
-                stop: gap.tail,
-                reverse: true,
-                p2p: self.p2p.clone(),
-            }
-            .spawn()
-            .pipe(
-                headers::BackwardContinuity::new(gap.head, gap.head_hash),
-                10,
+            handle_header_stream(
+                self.p2p.clone().header_stream(gap.head, gap.tail, true),
+                gap.head(),
+                self.storage.clone(),
             )
-            .pipe(headers::VerifyHash, 10)
-            .try_chunks(1024, 10)
-            .pipe(
-                headers::Persist {
-                    connection: self.storage.connection()?,
-                },
-                10,
-            )
-            .into_stream()
-            .try_fold((), |_state, _x| std::future::ready(Ok(())))
-            .await
-            .map_err(SyncError::from_v2)?;
+            .await?;
         }
 
         Ok(())
@@ -243,6 +226,29 @@ impl Sync {
 
         Ok(())
     }
+}
+
+async fn handle_header_stream(
+    header_stream: impl futures::Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
+    head: (BlockNumber, BlockHash),
+    storage: Storage,
+) -> Result<(), SyncError> {
+    tracing::info!("Syncing headers");
+    spawn_header_source(header_stream)
+        .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
+        .pipe(headers::VerifyHash, 10)
+        .try_chunks(1024, 10)
+        .pipe(
+            headers::Persist {
+                connection: storage.connection()?,
+            },
+            10,
+        )
+        .into_stream()
+        .try_fold((), |_state, _x| std::future::ready(Ok(())))
+        .await
+        .map_err(SyncError::from_v2)?;
+    Ok(())
 }
 
 async fn handle_transaction_stream(

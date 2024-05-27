@@ -34,6 +34,12 @@ pub(super) struct HeaderGap {
     pub tail_parent_hash: BlockHash,
 }
 
+impl HeaderGap {
+    pub fn head(&self) -> (BlockNumber, BlockHash) {
+        (self.head, self.head_hash)
+    }
+}
+
 /// Returns the first [HeaderGap] in headers, searching from the given block
 /// backwards.
 pub(super) async fn next_gap(
@@ -196,35 +202,22 @@ impl ProcessStage for VerifyHash {
     }
 }
 
-pub struct HeaderSource {
-    pub start: BlockNumber,
-    pub stop: BlockNumber,
-    pub reverse: bool,
-    pub p2p: p2p::client::peer_agnostic::Client,
-}
+pub fn spawn_header_source(
+    header_stream: impl futures::Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
+) -> SyncReceiver<SignedBlockHeader> {
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-impl HeaderSource {
-    pub fn spawn(self) -> SyncReceiver<SignedBlockHeader> {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
-        let Self {
-            start,
-            stop,
-            reverse,
-            p2p,
-        } = self;
+    tokio::spawn(async move {
+        let mut headers = Box::pin(header_stream);
 
-        tokio::spawn(async move {
-            let mut headers = Box::pin(p2p.header_stream(start, stop, reverse));
-
-            while let Some(header) = headers.next().await {
-                if tx.send(Ok(header)).await.is_err() {
-                    return;
-                }
+        while let Some(header) = headers.next().await {
+            if tx.send(Ok(header)).await.is_err() {
+                return;
             }
-        });
+        }
+    });
 
-        SyncReceiver::from_receiver(rx)
-    }
+    SyncReceiver::from_receiver(rx)
 }
 
 pub struct Persist {
