@@ -153,6 +153,7 @@ pub struct BlockEvents {
     pub header: BlockHeader,
     pub events: HashMap<TransactionHash, Vec<Event>>,
 }
+
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {

@@ -106,6 +106,12 @@ pub(super) enum SyncError2 {
     TooFewEvents,
     #[error("Transaction commitment mismatch")]
     TransactionCommitmentMismatch,
+    #[error("Too many transactions")]
+    TooManyTransactions,
+    #[error("Too few transactions")]
+    TooFewTransactions,
+    #[error("Invalid data in DTO")]
+    InvalidDto,
 }
 
 impl PartialEq for SyncError2 {

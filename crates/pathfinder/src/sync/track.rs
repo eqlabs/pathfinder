@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt, TryStreamExt};
-use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::client::peer_agnostic::{self, Client as P2PClient};
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -13,6 +13,7 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    ChainId,
     ClassHash,
     SignedBlockHeader,
     StateUpdate,
@@ -22,11 +23,12 @@ use pathfinder_storage::Storage;
 use starknet_gateway_types::class_definition::ClassDefinition;
 use tokio_stream::wrappers::ReceiverStream;
 
+use super::transactions::{self, compute_hashes};
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
 use crate::sync::events::{self, BlockEvents};
+use crate::sync::headers;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
-use crate::sync::{headers, transactions};
 
 pub struct Sync<L> {
     latest: L,
@@ -42,6 +44,7 @@ where
         self,
         next: BlockNumber,
         parent_hash: BlockHash,
+        chain_id: ChainId,
     ) -> Result<(), PeerData<SyncError2>> {
         let storage_connection = self
             .storage
@@ -69,6 +72,15 @@ where
             transactions,
         } = HeaderFanout::from_source(headers, 10);
 
+        let transactions = TransactionSource {
+            p2p: self.p2p.clone(),
+            headers: transactions,
+            chain_id,
+        }
+        .spawn()
+        .pipe(transactions::CalculateHashes(chain_id), 10)
+        .pipe(transactions::VerifyCommitment, 10);
+
         let events = EventSource {
             p2p: self.p2p.clone(),
             headers: events,
@@ -87,14 +99,6 @@ where
             state_diff,
             declarations,
         } = StateDiffFanout::from_source(state_diff, 10);
-
-        let transactions = TransactionSource {
-            p2p: self.p2p.clone(),
-            headers: transactions,
-        }
-        .spawn()
-        .pipe(transactions::CalculateHashes, 10)
-        .pipe(transactions::VerifyCommitment, 10);
 
         let classes = ClassSource {
             p2p: self.p2p.clone(),
@@ -246,6 +250,66 @@ impl HeaderFanout {
     }
 }
 
+struct TransactionSource {
+    p2p: P2PClient,
+    headers: BoxStream<'static, BlockHeader>,
+    chain_id: ChainId,
+}
+
+impl TransactionSource {
+    fn spawn(self) -> SyncReceiver<Vec<(TransactionVariant, peer_agnostic::Receipt)>> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            let Self {
+                p2p,
+                mut headers,
+                chain_id,
+            } = self;
+
+            while let Some(header) = headers.next().await {
+                let (peer, mut transactions) = loop {
+                    if let Some(stream) = p2p.clone().transactions_for_block(header.number).await {
+                        break stream;
+                    }
+                };
+
+                let transaction_count = header.transaction_count;
+                let mut transactions_vec = Vec::new();
+
+                // Receive the exact amount of expected events for this block.
+                for _ in 0..transaction_count {
+                    let (transaction, receipt) = match transactions.next().await {
+                        Some(Ok((transaction, receipt))) => (transaction, receipt),
+                        Some(Err(_)) => {
+                            let err = PeerData::new(peer, SyncError2::InvalidDto);
+                            let _ = tx.send(Err(err)).await;
+                            return;
+                        }
+                        None => {
+                            let err = PeerData::new(peer, SyncError2::TooFewTransactions);
+                            let _ = tx.send(Err(err)).await;
+                            return;
+                        }
+                    };
+
+                    transactions_vec.push((transaction, receipt));
+                }
+
+                // Ensure that the stream is exhausted.
+                if transactions.next().await.is_some() {
+                    let err = PeerData::new(peer, SyncError2::TooManyTransactions);
+                    let _ = tx.send(Err(err)).await;
+                    return;
+                }
+
+                let _ = tx.send(Ok(PeerData::new(peer, transactions_vec))).await;
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+}
+
 struct EventSource {
     p2p: P2PClient,
     headers: BoxStream<'static, BlockHeader>,
@@ -306,22 +370,6 @@ struct StateDiffSource {
 
 impl StateDiffSource {
     fn spawn(self) -> SyncReceiver<StateUpdate> {
-        todo!()
-    }
-}
-
-struct TransactionSource {
-    p2p: P2PClient,
-    headers: BoxStream<'static, BlockHeader>,
-}
-
-impl TransactionSource {
-    fn spawn(
-        self,
-    ) -> SyncReceiver<(
-        BlockHeader,
-        Vec<(TransactionVariant, p2p_proto::receipt::Receipt)>,
-    )> {
         todo!()
     }
 }

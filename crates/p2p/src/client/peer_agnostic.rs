@@ -735,6 +735,59 @@ impl Client {
         None
     }
 
+    pub async fn transactions_for_block(
+        self,
+        block: BlockNumber,
+    ) -> Option<(
+        PeerId,
+        impl futures::Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>>,
+    )> {
+        let request = TransactionsRequest {
+            iteration: Iteration {
+                start: block.get().into(),
+                direction: Direction::Forward,
+                limit: 1,
+                step: 1.into(),
+            },
+        };
+
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
+            .await;
+
+        for peer in peers {
+            let Ok(stream) = self
+                .inner
+                .send_transactions_sync_request(peer, request)
+                .await
+                .inspect_err(|error| tracing::debug!(%peer, %error, "Transactions request failed"))
+            else {
+                continue;
+            };
+
+            let stream = stream
+                .take_while(|x| std::future::ready(!matches!(x, &TransactionsResponse::Fin)))
+                .enumerate()
+                .map(|(i, x)| -> anyhow::Result<_> {
+                    match x {
+                        TransactionsResponse::Fin => unreachable!("Already handled Fin above"),
+                        TransactionsResponse::TransactionWithReceipt(tx_with_receipt) => Ok((
+                            TransactionVariant::try_from_dto(tx_with_receipt.transaction)?,
+                            Receipt::try_from((
+                                tx_with_receipt.receipt,
+                                TransactionIndex::new(i.try_into().unwrap())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid transaction index"))?,
+                            ))?,
+                        )),
+                    }
+                });
+
+            return Some((peer, stream));
+        }
+
+        None
+    }
+
     /// ### Important
     ///
     /// Events are grouped by block and by transaction. The order of flattened
