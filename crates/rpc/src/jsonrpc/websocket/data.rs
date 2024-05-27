@@ -3,10 +3,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use pathfinder_common::EventKey;
+use pathfinder_common::{EventKey, TransactionHash};
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use starknet_gateway_types::reply::Status;
 
 use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
@@ -25,6 +26,12 @@ pub(super) struct EventFilterParams {
     pub(super) address: Option<pathfinder_common::ContractAddress>,
     #[serde(default)]
     pub(super) keys: Vec<Vec<EventKey>>,
+}
+
+#[derive(Debug, serde::Deserialize, Serialize)]
+pub(super) struct TransactionStatusParams {
+    pub(super) kind: String,
+    pub(super) transaction_hash: TransactionHash,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -81,6 +88,7 @@ pub(super) enum ResponseEvent {
     Header(SubscriptionItem<Arc<Value>>),
     Responses(RpcResponses),
     Event(SubscriptionItem<Arc<EmittedEvent>>),
+    TransactionStatus(SubscriptionItem<Arc<Status>>),
 }
 
 impl ResponseEvent {
@@ -88,12 +96,13 @@ impl ResponseEvent {
         match self {
             ResponseEvent::InvalidRequest(_) => "InvalidRequest",
             ResponseEvent::Header(_) => "BlockHeader",
-            ResponseEvent::Event(_) => "Event",
             ResponseEvent::Subscribed { .. } => "Subscribed",
             ResponseEvent::Unsubscribed { .. } => "Unsubscribed",
             ResponseEvent::SubscriptionClosed { .. } => "SubscriptionClosed",
             ResponseEvent::InvalidParams(..) => "InvalidParams",
             ResponseEvent::Responses(_) => "Responses",
+            ResponseEvent::Event(_) => "Event",
+            ResponseEvent::TransactionStatus(_) => "TransactionStatus",
         }
     }
 }
@@ -136,6 +145,7 @@ impl Serialize for ResponseEvent {
             }
             .serialize(serializer),
             ResponseEvent::Responses(responses) => responses.serialize(serializer),
+            ResponseEvent::TransactionStatus(status) => status.serialize(serializer),
         }
     }
 }
