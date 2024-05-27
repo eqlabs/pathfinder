@@ -365,7 +365,7 @@ impl SubscriptionManager {
                                     .context("Transaction not found")?;
                                 match receipt.execution_status {
                                     ExecutionStatus::Succeeded => Some(Status::AcceptedOnL2),
-                                    ExecutionStatus::Reverted { .. } => Some(Status::Rejected),
+                                    ExecutionStatus::Reverted { .. } => Some(Status::Reverted),
                                 }
                             }
                         }
@@ -522,8 +522,9 @@ async fn transaction_status_subscription(
         None = 0,
         Received = 1,
         AcceptedOnL2 = 2,
-        AcceptedOnL1 = 3,
-        Rejected = 4,
+        Reverted = 3,
+        AcceptedOnL1 = 4,
+        Rejected = 5,
     }
 
     impl From<Status> for LastStatus {
@@ -533,6 +534,7 @@ async fn transaction_status_subscription(
                 Status::Rejected => Self::Rejected,
                 Status::AcceptedOnL1 => Self::AcceptedOnL1,
                 Status::AcceptedOnL2 => Self::AcceptedOnL2,
+                Status::Reverted => Self::Reverted,
                 _ => Self::None,
             }
         }
@@ -551,6 +553,7 @@ async fn transaction_status_subscription(
         Some(Status::AcceptedOnL1) => LastStatus::AcceptedOnL1,
         Some(Status::AcceptedOnL2) => LastStatus::AcceptedOnL2,
         Some(Status::Rejected) => LastStatus::Rejected,
+        Some(Status::Reverted) => LastStatus::Reverted,
         _ => {
             // We don't know anything about this transaction. Poll for transaction status
             // from the gateway.
@@ -576,6 +579,7 @@ async fn transaction_status_subscription(
                                     | Status::AcceptedOnL2
                                     | Status::AcceptedOnL1
                                     | Status::Rejected
+                                    | Status::Reverted
                             ) {
                                 // Polling is only needed to get the initial status. As soon as any
                                 // progress can be made, polling is no longer necessary.
