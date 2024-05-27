@@ -85,10 +85,12 @@ pub(super) enum ResponseEvent {
     },
     InvalidRequest(String),
     InvalidParams(RequestId, String),
+    InternalError(RequestId, anyhow::Error),
     Header(SubscriptionItem<Arc<Value>>),
     Responses(RpcResponses),
     Event(SubscriptionItem<Arc<EmittedEvent>>),
     TransactionStatus(SubscriptionItem<Arc<Status>>),
+    TransactionNotFound(serde_json::Value),
 }
 
 impl ResponseEvent {
@@ -103,6 +105,8 @@ impl ResponseEvent {
             ResponseEvent::Responses(_) => "Responses",
             ResponseEvent::Event(_) => "Event",
             ResponseEvent::TransactionStatus(_) => "TransactionStatus",
+            ResponseEvent::InternalError(_, _) => "InternalError",
+            ResponseEvent::TransactionNotFound(_) => "TransactionNotFound",
         }
     }
 }
@@ -118,6 +122,9 @@ impl Serialize for ResponseEvent {
             }
             ResponseEvent::InvalidParams(request_id, e) => {
                 RpcResponse::invalid_params(request_id.clone(), e.clone()).serialize(serializer)
+            }
+            ResponseEvent::InternalError(request_id, e) => {
+                RpcResponse::internal_error(request_id.clone(), e.to_string()).serialize(serializer)
             }
             ResponseEvent::Header(header) => header.serialize(serializer),
             ResponseEvent::Event(event) => event.serialize(serializer),
@@ -146,6 +153,11 @@ impl Serialize for ResponseEvent {
             .serialize(serializer),
             ResponseEvent::Responses(responses) => responses.serialize(serializer),
             ResponseEvent::TransactionStatus(status) => status.serialize(serializer),
+            ResponseEvent::TransactionNotFound(value) => RpcResponse {
+                output: Ok(value.clone()),
+                id: RequestId::Null,
+            }
+            .serialize(serializer),
         }
     }
 }

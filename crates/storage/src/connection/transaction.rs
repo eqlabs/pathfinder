@@ -339,6 +339,22 @@ impl Transaction<'_> {
         Ok(Some(transactions))
     }
 
+    pub fn transaction_block_number(
+        &self,
+        hash: TransactionHash,
+    ) -> anyhow::Result<Option<BlockNumber>> {
+        let mut stmt = self.inner().prepare_cached(
+            r"
+            SELECT block_number
+            FROM transaction_hashes
+            WHERE hash = ?
+            ",
+        )?;
+        stmt.query_row(params![&hash], |row| row.get_block_number(0))
+            .optional()
+            .context("Querying block number for transaction")
+    }
+
     pub fn transaction_block_hash(
         &self,
         hash: TransactionHash,

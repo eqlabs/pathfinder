@@ -5,15 +5,18 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use anyhow::Context;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{State, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures::sink::Buffer;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
+use pathfinder_common::receipt::ExecutionStatus;
 use pathfinder_common::TransactionHash;
+use pathfinder_storage::Storage;
 use serde::Serialize;
 use serde_json::Value;
 use starknet_gateway_client::GatewayApi;
@@ -190,13 +193,20 @@ async fn read(
 
         // Handle request.
         let response = match parsed_request.method.as_ref() {
-            SUBSCRIBE_METHOD => subscription_manager.subscribe(
-                parsed_request.id,
+            SUBSCRIBE_METHOD => match subscription_manager.subscribe(
+                parsed_request.id.clone(),
                 parsed_request.params,
                 response_sender.clone(),
                 source.clone(),
                 router.context.sequencer.clone(),
-            ),
+                router.context.storage.clone(),
+            ) {
+                Ok(resp) => resp,
+                Err(e) => {
+                    tracing::warn!(error=%e, "Failed to subscribe");
+                    ResponseEvent::InternalError(parsed_request.id, e)
+                }
+            },
             UNSUBSCRIBE_METHOD => {
                 subscription_manager
                     .unsubscribe(parsed_request.id, parsed_request.params)
@@ -271,17 +281,18 @@ impl SubscriptionManager {
         response_sender: mpsc::Sender<ResponseEvent>,
         websocket_source: TopicBroadcasters,
         gateway: impl GatewayApi + Send + 'static,
-    ) -> ResponseEvent {
+        storage: Storage,
+    ) -> anyhow::Result<ResponseEvent> {
         let kind = match request_params.deserialize::<Kind<'_>>() {
             Ok(x) => x,
             Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                return ResponseEvent::InvalidParams(request_id, e)
+                return Ok(ResponseEvent::InvalidParams(request_id, e))
             }
             Err(_) => {
-                return ResponseEvent::InvalidParams(
+                return Ok(ResponseEvent::InvalidParams(
                     request_id,
                     "Unexpected parsing error".to_owned(),
-                )
+                ))
             }
         };
 
@@ -300,13 +311,13 @@ impl SubscriptionManager {
                 let filter = match request_params.deserialize::<EventFilterParams>() {
                     Ok(x) => x,
                     Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                        return ResponseEvent::InvalidParams(request_id, e)
+                        return Ok(ResponseEvent::InvalidParams(request_id, e))
                     }
                     Err(_) => {
-                        return ResponseEvent::InvalidParams(
+                        return Ok(ResponseEvent::InvalidParams(
                             request_id,
                             "Unexpected parsing error".to_owned(),
-                        )
+                        ))
                     }
                 };
                 let receiver = websocket_source.l2_blocks.subscribe();
@@ -321,17 +332,46 @@ impl SubscriptionManager {
                 let params = match request_params.deserialize::<TransactionStatusParams>() {
                     Ok(x) => x,
                     Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                        return ResponseEvent::InvalidParams(request_id, e)
+                        return Ok(ResponseEvent::InvalidParams(request_id, e))
                     }
                     Err(_) => {
-                        return ResponseEvent::InvalidParams(
+                        return Ok(ResponseEvent::InvalidParams(
                             request_id,
                             "Unexpected parsing error".to_owned(),
-                        )
+                        ))
                     }
                 };
                 let l2_blocks = websocket_source.l2_blocks.subscribe();
                 let l1_blocks = websocket_source.l1_blocks.subscribe();
+                let mut connection = storage
+                    .connection()
+                    .context("Failed to get storage connection")?;
+                let db = connection
+                    .transaction()
+                    .context("Failed to start db transaction")?;
+                let initial_status = match db
+                    .transaction_block_number(params.transaction_hash)
+                    .context("Failed to get block hash")?
+                {
+                    Some(block_number) => {
+                        match db.l1_l2_pointer().context("Failed to get l1 l2 pointer")? {
+                            Some(l1_l2_pointer) if l1_l2_pointer >= block_number => {
+                                Some(Status::AcceptedOnL1)
+                            }
+                            _ => {
+                                let (_, receipt, ..) = db
+                                    .transaction_with_receipt(params.transaction_hash)
+                                    .context("Failed to get transaction with receipt")?
+                                    .context("Transaction not found")?;
+                                match receipt.execution_status {
+                                    ExecutionStatus::Succeeded => Some(Status::AcceptedOnL2),
+                                    ExecutionStatus::Reverted { .. } => Some(Status::Rejected),
+                                }
+                            }
+                        }
+                    }
+                    None => None,
+                };
                 tokio::spawn(transaction_status_subscription(
                     response_sender,
                     l2_blocks,
@@ -339,22 +379,23 @@ impl SubscriptionManager {
                     subscription_id,
                     params.transaction_hash,
                     gateway,
+                    initial_status,
                 ))
             }
             _ => {
-                return ResponseEvent::InvalidParams(
+                return Ok(ResponseEvent::InvalidParams(
                     request_id,
                     "Unknown subscription type".to_owned(),
-                )
+                ))
             }
         };
 
         self.subscriptions.insert(subscription_id, handle);
 
-        ResponseEvent::Subscribed {
+        Ok(ResponseEvent::Subscribed {
             subscription_id,
             request_id,
-        }
+        })
     }
 
     fn abort_all(self) {
@@ -474,6 +515,7 @@ async fn transaction_status_subscription(
     subscription_id: u32,
     transaction_hash: TransactionHash,
     gateway: impl GatewayApi + Send + 'static,
+    initial_status: Option<Status>,
 ) {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     enum LastStatus {
@@ -484,31 +526,78 @@ async fn transaction_status_subscription(
         Rejected = 4,
     }
 
-    let mut last_status = LastStatus::None;
-
+    // Channel used to send transaction status when polling the gateway.
     let (gateway_transaction_tx, mut gateway_transaction_rx) = tokio::sync::mpsc::channel(1);
+    // Channel used to notify if the transaction could not be found on the gateway,
+    // after some reasonable time.
+    let (transaction_not_found_tx, mut transaction_not_found_rx) = tokio::sync::mpsc::channel(1);
+    let mut gateway_poller = None;
+    // Ensure that the channels stay open for the duration of the loop below.
+    let _loop_guard_1 = gateway_transaction_tx.clone();
+    let _loop_guard_2 = transaction_not_found_tx.clone();
 
-    // Ensure that the channel stays open for the duration of the loop.
-    let _loop_guard = gateway_transaction_tx.clone();
-
-    let gateway_poller = tokio::spawn(async move {
-        loop {
-            match gateway.transaction(transaction_hash).await {
-                Ok(tx) => {
-                    gateway_transaction_tx.send(tx.status).await.ok();
-                    break;
+    let mut last_status = match initial_status {
+        Some(Status::AcceptedOnL1) => LastStatus::L1Accepted,
+        Some(Status::AcceptedOnL2) => LastStatus::L2Accepted,
+        Some(Status::Rejected) => LastStatus::Rejected,
+        _ => {
+            // We don't know anything about this transaction. Poll for transaction status
+            // from the gateway.
+            gateway_poller = Some(tokio::spawn(async move {
+                let start = Instant::now();
+                let timeout = if cfg!(test) {
+                    Duration::from_secs(5)
+                } else {
+                    Duration::from_secs(30)
+                };
+                loop {
+                    match gateway.transaction(transaction_hash).await {
+                        Ok(tx) => {
+                            if tx.status == Status::NotReceived && start.elapsed() > timeout {
+                                // The transaction was not found on the gateway after some time.
+                                // Notify the consumer that the transaction is invalid.
+                                transaction_not_found_tx.send(()).await.ok();
+                                break;
+                            } else {
+                                gateway_transaction_tx.send(tx.status).await.ok();
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(%transaction_hash, %e, "Failed to poll transaction status");
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
-                Err(e) => {
-                    tracing::warn!(%transaction_hash, %e, "Failed to poll transaction status");
-                }
-            }
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            }));
+            LastStatus::None
         }
-    });
+    };
+
+    if last_status != LastStatus::None {
+        let response = ResponseEvent::TransactionStatus(SubscriptionItem {
+            subscription_id,
+            item: Arc::new(initial_status.unwrap()),
+        });
+        if msg_sender.send(response).await.is_err() {
+            return;
+        }
+    }
 
     loop {
         let tx_status = tokio::select! {
             tx_status = gateway_transaction_rx.recv() => Ok(tx_status),
+            _ = transaction_not_found_rx.recv() => {
+                let response = ResponseEvent::TransactionNotFound(
+                    serde_json::json!({
+                        "error": "TransactionNotFound",
+                        "subscription_id": subscription_id,
+                        "transaction_hash": transaction_hash,
+                    }),
+                );
+                msg_sender.send(response).await.ok();
+                break;
+            },
             block = l2_blocks.recv() => {
                 block.map(|block| {
                     block
@@ -555,7 +644,9 @@ async fn transaction_status_subscription(
                 if should_send {
                     // Polling is only needed to get the initial status. As soon as any progress
                     // can be made, polling is no longer necessary.
-                    gateway_poller.abort();
+                    if let Some(task) = gateway_poller.take() {
+                        task.abort();
+                    }
                     let result = msg_sender
                         .send(ResponseEvent::TransactionStatus(SubscriptionItem {
                             subscription_id,
@@ -1057,6 +1148,125 @@ mod tests {
         client.destroy().await;
     }
 
+    #[tokio::test]
+    async fn subscribe_transaction_status_exists_in_db() {
+        let mut client = Client::new().await;
+        let block = block_sample();
+
+        let mut conn = client.context.storage.connection().unwrap();
+        let db = conn.transaction().unwrap();
+
+        let header = pathfinder_common::BlockHeader {
+            hash: block.block_hash,
+            parent_hash: block.parent_block_hash,
+            number: block.block_number,
+            timestamp: block.timestamp,
+            // Default value for cairo <0.8.2 is 0
+            eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+            // Default value for Starknet <0.13.0 is zero
+            strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+            // Default value for Starknet <0.13.1 is zero
+            eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+            // Default value for Starknet <0.13.1 is zero
+            strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            starknet_version: block.starknet_version,
+            l1_da_mode: block.l1_da_mode.into(),
+            ..Default::default()
+        };
+        db.insert_block_header(&header).unwrap();
+        let (transactions_data, events_data): (Vec<_>, Vec<_>) = block
+            .transactions
+            .iter()
+            .cloned()
+            .zip(block.transaction_receipts.iter().cloned())
+            .map(|(tx, (receipt, events))| ((tx, receipt), events))
+            .unzip();
+        db.insert_transaction_data(block.block_number, &transactions_data, Some(&events_data))
+            .unwrap();
+        db.commit().unwrap();
+
+        let req_id = RequestId::Number(38);
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(SUBSCRIBE_METHOD),
+                params: RawParams(Some(
+                    &RawValue::from_string(
+                        r#"{"kind": "transactionStatus", "transaction_hash": "0x1"}"#.to_owned(),
+                    )
+                    .unwrap(),
+                )),
+                id: req_id.clone(),
+            })
+            .await;
+        client
+            .expect_response(&successful_response(&0, req_id).unwrap())
+            .await;
+
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 0,
+                item: Status::AcceptedOnL2,
+            })
+            .await;
+
+        client.expect_no_response().await;
+
+        client
+            .l1_blocks
+            .send(HashSet::from_iter([transaction_hash!("0x1"), transaction_hash!("0x2")]).into())
+            .unwrap();
+
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 0,
+                item: Status::AcceptedOnL1,
+            })
+            .await;
+
+        client.destroy().await;
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_does_not_exist() {
+        let mut client = Client::new().await;
+
+        let req_id = RequestId::Number(37);
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(SUBSCRIBE_METHOD),
+                params: RawParams(Some(
+                    &RawValue::from_string(
+                        r#"{"kind": "transactionStatus", "transaction_hash": "0x032bfcf2a36fbfe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0"}"#.to_owned(),
+                    )
+                    .unwrap(),
+                )),
+                id: req_id.clone(),
+            })
+            .await;
+
+        client
+            .expect_response(&successful_response(&0, req_id).unwrap())
+            .await;
+
+        tokio::time::sleep(Duration::from_secs(15)).await;
+
+        client
+            .expect_response(&serde_json::json!({
+                "id": "Null",
+                "jsonrpc": "2.0",
+                "result": {
+                    "subscription_id": 0,
+                    "transaction_hash": "0x032bfcf2a36fbfe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0",
+                    "error": "TransactionNotFound"
+                }
+            }))
+            .await;
+
+        client.expect_no_response().await;
+
+        client.destroy().await;
+    }
+
     // TODO Prevent duplicate subscriptions?
     // This is actually tolerated by Alchemy, you can subscribe multiple times
     // to the same topic and receive duplicated messages as a result.
@@ -1160,6 +1370,7 @@ mod tests {
         head_sender: JsonBroadcaster<BlockHeader>,
         l2_blocks: broadcast::Sender<Arc<Block>>,
         l1_blocks: broadcast::Sender<Arc<HashSet<TransactionHash>>>,
+        pub context: RpcContext,
     }
 
     impl Client {
@@ -1204,6 +1415,7 @@ mod tests {
                 sender,
                 receiver,
                 server_handle,
+                context,
             }
         }
 
