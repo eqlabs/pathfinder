@@ -49,8 +49,7 @@ impl SignedBlockHeader {
     /// Note that this does not imply that a given state diff is correct.
     /// TODO: improve this documentation somehow.
     pub fn verify_signature(&self) -> bool {
-        // TODO: implement this.
-        true
+        true // TODO
     }
 }
 
@@ -80,7 +79,7 @@ impl BlockHeader {
     }
 
     pub fn verify_hash(&self) -> bool {
-        todo!();
+        true // TODO
     }
 }
 

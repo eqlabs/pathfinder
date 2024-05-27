@@ -148,10 +148,8 @@ pub(super) async fn verify_layout(
             definition,
         } => {
             let layout = GwClassDefinition::Cairo(
-                serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|e| {
-                    eprintln!("cairo: {e}");
-                    SyncError::BadClassLayout(peer)
-                })?,
+                serde_json::from_slice::<Cairo<'_>>(&definition)
+                    .map_err(|e| SyncError::BadClassLayout(peer))?,
             );
             Ok(PeerData::new(
                 peer,
@@ -167,10 +165,8 @@ pub(super) async fn verify_layout(
             sierra_definition,
         } => {
             let layout = GwClassDefinition::Sierra(
-                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
-                    eprintln!("sierra: {e}");
-                    SyncError::BadClassLayout(peer)
-                })?,
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition)
+                    .map_err(|e| SyncError::BadClassLayout(peer))?,
             );
             Ok(PeerData::new(
                 peer,

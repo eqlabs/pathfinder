@@ -173,6 +173,10 @@ impl Client {
             .await
     }
 
+    /// ## Important
+    ///
+    /// `class_commitment` and `storage_commitment` is not propagated via P2P.
+    /// The caller must make sure to fill these fields with the correct values.
     pub fn header_stream(
         self,
         start: BlockNumber,

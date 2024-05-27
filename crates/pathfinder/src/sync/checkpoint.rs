@@ -563,6 +563,100 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 mod tests {
     use super::*;
 
+    mod handle_header_stream {
+        use fake::{Dummy, Faker};
+        use futures::stream;
+        use p2p::libp2p::PeerId;
+        use p2p_proto::header;
+        use pathfinder_common::{BlockHash, StateDiffCommitment};
+        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::StorageBuilder;
+
+        use super::super::handle_header_stream;
+        use super::*;
+
+        struct Setup {
+            pub streamed_headers: Vec<PeerData<SignedBlockHeader>>,
+            pub expected_headers: Vec<SignedBlockHeader>,
+            pub storage: Storage,
+            pub head_hash: BlockHash,
+        }
+
+        async fn setup(num_blocks: usize) -> Setup {
+            tokio::task::spawn_blocking(move || {
+                let blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let headers = blocks
+                    .into_iter()
+                    .map(|mut b| {
+                        let mut header = b.header;
+                        // These fields are not propagated via P2P
+                        header.header.class_commitment = Default::default();
+                        header.header.storage_commitment = Default::default();
+                        header
+                    })
+                    .collect::<Vec<_>>();
+                let storage = StorageBuilder::in_memory().unwrap();
+                Setup {
+                    head_hash: headers.last().unwrap().header.hash,
+                    streamed_headers: headers
+                        .iter()
+                        .rev()
+                        .cloned()
+                        .map(|header| PeerData::for_tests(header))
+                        .collect::<Vec<_>>(),
+                    expected_headers: headers,
+                    storage,
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        #[tokio::test]
+        async fn happy_path() {
+            const NUM_BLOCKS: usize = 10;
+            let Setup {
+                streamed_headers,
+                expected_headers,
+                storage,
+                head_hash,
+            } = setup(NUM_BLOCKS).await;
+
+            handle_header_stream(
+                stream::iter(streamed_headers),
+                (BlockNumber::new_or_panic(NUM_BLOCKS as u64 - 1), head_hash),
+                storage.clone(),
+            )
+            .await
+            .unwrap();
+
+            let actual_headers = tokio::task::spawn_blocking(move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                (0..NUM_BLOCKS)
+                    .map(|n| {
+                        let block_number = BlockNumber::new_or_panic(n as u64);
+                        let block_id = block_number.into();
+                        let (state_diff_commitment, state_diff_length) = db
+                            .state_diff_commitment_and_length(block_number)
+                            .unwrap()
+                            .unwrap();
+                        SignedBlockHeader {
+                            header: db.block_header(block_id).unwrap().unwrap(),
+                            signature: db.signature(block_id).unwrap().unwrap(),
+                            state_diff_commitment,
+                            state_diff_length: state_diff_length as u64,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap();
+
+            pretty_assertions_sorted::assert_eq!(expected_headers, actual_headers);
+        }
+    }
+
     mod handle_transaction_stream {
         use fake::{Dummy, Faker};
         use futures::stream;
