@@ -215,7 +215,7 @@ impl Client {
 
                 // Attempt each peer.
                 'next_peer: for peer in peers {
-                    let limit = start.get().max(stop.get()) - start.get().min(stop.get());
+                    let limit = start.get().max(stop.get()) - start.get().min(stop.get()) + 1;
 
                     let request = BlockHeadersRequest {
                         iteration: Iteration {
