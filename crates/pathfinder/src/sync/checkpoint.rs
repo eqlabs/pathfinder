@@ -138,7 +138,7 @@ impl Sync {
             // TODO: create a tracing scope for this gap start, stop.
 
             handle_header_stream(
-                self.p2p.clone().header_stream(gap.head, gap.tail, true),
+                self.p2p.clone().header_stream(gap.tail, gap.head, true),
                 gap.head(),
                 self.chain,
                 self.chain_id,
