@@ -38,7 +38,11 @@ impl Sync {
     }
 
     async fn handle_error(&self, err: error::SyncError) {
-        todo!("Log and punish as appropriate");
+        // TODO
+        tracing::debug!(
+            error = format!("{:#}", err),
+            "Log and punish as appropriate"
+        );
     }
 
     async fn get_checkpoint(&self) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
