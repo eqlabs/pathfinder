@@ -13,7 +13,7 @@ path = "src/lib.rs"
 
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
-p2p = ["dep:base64", "dep:p2p", "dep:p2p_proto", "dep:zeroize"]
+p2p = []
 rpc-full-serde = []
 
 [dependencies]
@@ -21,7 +21,7 @@ anyhow = { workspace = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
-base64 = { workspace = true, optional = true }
+base64 = { workspace = true }
 bitvec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
@@ -35,8 +35,8 @@ jemallocator = { workspace = true }
 lazy_static = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
-p2p = { path = "../p2p", optional = true }
-p2p_proto = { path = "../p2p_proto", optional = true }
+p2p = { path = "../p2p" }
+p2p_proto = { path = "../p2p_proto" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }
@@ -70,7 +70,7 @@ tracing-subscriber = { workspace = true, features = [
     "ansi",
 ] }
 url = { workspace = true }
-zeroize = { workspace = true, optional = true }
+zeroize = { workspace = true }
 zstd = { workspace = true }
 
 [dev-dependencies]

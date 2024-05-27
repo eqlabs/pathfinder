@@ -361,7 +361,7 @@ pub(super) async fn persist(
             .context("No class definitions to persist")?;
 
         for CompiledClass {
-            block_number,
+            block_number: _,
             definition,
             hash,
         } in classes.into_iter().map(|x| x.data)

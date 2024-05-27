@@ -96,7 +96,7 @@ pub(super) fn counts_stream(
 }
 
 pub(super) async fn compute_hashes(
-    mut transactions: PeerData<TransactionBlockData>,
+    transactions: PeerData<TransactionBlockData>,
     chain_id: ChainId,
 ) -> Result<PeerData<TransactionsWithHashesForBlock>, SyncError> {
     Ok(tokio::task::spawn_blocking(move || {

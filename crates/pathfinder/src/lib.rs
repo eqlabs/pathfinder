@@ -2,7 +2,6 @@
 
 pub mod monitoring;
 pub mod state;
-mod sync;
+pub mod sync;
 
-#[cfg(feature = "p2p")]
 pub mod p2p_network;

@@ -73,13 +73,13 @@ async fn async_main() -> anyhow::Result<()> {
 
     let sync_state = Arc::new(SyncState::default());
 
-    let ethereum = EthereumContext::setup(config.ethereum.url, config.ethereum.password)
+    let ethereum = EthereumContext::setup(config.ethereum.url.clone(), &config.ethereum.password)
         .await
         .context("Creating Ethereum context")?;
 
     // Use the default starknet network if none was configured.
     let network = match config.network {
-        Some(network) => network,
+        Some(ref network) => network.clone(),
         None => ethereum
             .default_network()
             .context("Using default Starknet network based on Ethereum configuration")?,
@@ -105,8 +105,8 @@ async fn async_main() -> anyhow::Result<()> {
 
     let pathfinder_context = PathfinderContext::configure_and_proxy_check(
         network,
-        config.data_directory,
-        config.gateway_api_key,
+        &config.data_directory,
+        config.gateway_api_key.clone(),
         config.gateway_timeout,
     )
     .await
@@ -233,39 +233,29 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
     let rpc_server = match config.rpc_cors_domains {
-        Some(allowed_origins) => rpc_server.with_cors(allowed_origins),
+        Some(ref allowed_origins) => rpc_server.with_cors(allowed_origins.clone()),
         None => rpc_server,
     };
 
-    let (p2p_handle, gossiper) =
-        start_p2p(pathfinder_context.network_id, p2p_storage, config.p2p).await?;
+    let (p2p_handle, gossiper, p2p_client) = start_p2p(
+        pathfinder_context.network_id,
+        p2p_storage,
+        config.p2p.clone(),
+    )
+    .await?;
 
-    let sync_context = SyncContext {
-        storage: sync_storage,
-        ethereum: ethereum.client,
-        chain: pathfinder_context.network,
-        chain_id: pathfinder_context.network_id,
-        core_address: pathfinder_context.l1_core_address,
-        sequencer: pathfinder_context.gateway,
-        state: sync_state.clone(),
-        head_poll_interval: config.poll_interval,
-        pending_data: tx_pending,
-        // Currently p2p does not perform block hash and state commitment verification if p2p header
-        // lacks state commitment
-        block_validation_mode: state::l2::BlockValidationMode::Strict,
-        websocket_txs: rpc_server.get_topic_broadcasters().cloned(),
-        block_cache_size: 1_000,
-        restart_delay: config.debug.restart_delay,
-        verify_tree_hashes: config.verify_tree_hashes,
+    let sync_handle = start_sync(
+        sync_storage,
+        pathfinder_context,
+        ethereum.client,
+        sync_state.clone(),
+        &config,
+        tx_pending,
+        rpc_server.get_topic_broadcasters().cloned(),
         gossiper,
-        sequencer_public_key: gateway_public_key,
-    };
-
-    let sync_handle = if config.is_sync_enabled {
-        tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
-    } else {
-        tokio::spawn(std::future::pending())
-    };
+        gateway_public_key,
+        p2p_client,
+    );
 
     let rpc_handle = if config.is_rpc_enabled {
         let (rpc_handle, local_addr) = rpc_server
@@ -385,7 +375,11 @@ async fn start_p2p(
     chain_id: ChainId,
     storage: Storage,
     config: config::P2PConfig,
-) -> anyhow::Result<(tokio::task::JoinHandle<()>, state::Gossiper)> {
+) -> anyhow::Result<(
+    tokio::task::JoinHandle<()>,
+    state::Gossiper,
+    Option<p2p::client::peer_agnostic::Client>,
+)> {
     use std::path::Path;
     use std::time::Duration;
 
@@ -451,7 +445,11 @@ async fn start_p2p(
     let (p2p_client, _head_receiver, p2p_handle) =
         pathfinder_lib::p2p_network::start(context).await?;
 
-    Ok((p2p_handle, state::Gossiper::new(p2p_client)))
+    Ok((
+        p2p_handle,
+        state::Gossiper::new(p2p_client.clone()),
+        Some(p2p_client),
+    ))
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -459,10 +457,127 @@ async fn start_p2p(
     _: ChainId,
     _: Storage,
     _: config::P2PConfig,
-) -> anyhow::Result<(tokio::task::JoinHandle<()>, state::Gossiper)> {
+) -> anyhow::Result<(
+    tokio::task::JoinHandle<()>,
+    state::Gossiper,
+    Option<p2p::client::peer_agnostic::Client>,
+)> {
     let join_handle = tokio::task::spawn(futures::future::pending());
 
-    Ok((join_handle, Default::default()))
+    Ok((join_handle, Default::default(), None))
+}
+
+#[cfg(feature = "p2p")]
+#[allow(clippy::too_many_arguments)]
+fn start_sync(
+    storage: Storage,
+    pathfinder_context: PathfinderContext,
+    ethereum_client: EthereumClient,
+    sync_state: Arc<SyncState>,
+    config: &config::Config,
+    tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
+    websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    gossiper: state::Gossiper,
+    gateway_public_key: pathfinder_common::PublicKey,
+    p2p_client: Option<p2p::client::peer_agnostic::Client>,
+) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    if config.p2p.proxy {
+        start_feeder_gateway_sync(
+            storage,
+            pathfinder_context,
+            ethereum_client,
+            sync_state,
+            config,
+            tx_pending,
+            websocket_txs,
+            gossiper,
+            gateway_public_key,
+        )
+    } else {
+        let p2p_client = p2p_client.expect("P2P client is expected with the p2p feature enabled");
+        start_p2p_sync(storage, pathfinder_context, ethereum_client, p2p_client)
+    }
+}
+
+#[cfg(not(feature = "p2p"))]
+#[allow(clippy::too_many_arguments)]
+fn start_sync(
+    storage: Storage,
+    pathfinder_context: PathfinderContext,
+    ethereum_client: EthereumClient,
+    sync_state: Arc<SyncState>,
+    config: &config::Config,
+    tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
+    websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    gossiper: state::Gossiper,
+    gateway_public_key: pathfinder_common::PublicKey,
+    _p2p_client: Option<p2p::client::peer_agnostic::Client>,
+) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    start_feeder_gateway_sync(
+        storage,
+        pathfinder_context,
+        ethereum_client,
+        sync_state,
+        config,
+        tx_pending,
+        websocket_txs,
+        gossiper,
+        gateway_public_key,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_feeder_gateway_sync(
+    storage: Storage,
+    pathfinder_context: PathfinderContext,
+    ethereum_client: EthereumClient,
+    sync_state: Arc<SyncState>,
+    config: &config::Config,
+    tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
+    websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    gossiper: state::Gossiper,
+    gateway_public_key: pathfinder_common::PublicKey,
+) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    let sync_context = SyncContext {
+        storage,
+        ethereum: ethereum_client,
+        chain: pathfinder_context.network,
+        chain_id: pathfinder_context.network_id,
+        core_address: pathfinder_context.l1_core_address,
+        sequencer: pathfinder_context.gateway,
+        state: sync_state.clone(),
+        head_poll_interval: config.poll_interval,
+        pending_data: tx_pending,
+        // Currently p2p does not perform block hash and state commitment verification if
+        // p2p header lacks state commitment
+        block_validation_mode: state::l2::BlockValidationMode::Strict,
+        websocket_txs,
+        block_cache_size: 1_000,
+        restart_delay: config.debug.restart_delay,
+        verify_tree_hashes: config.verify_tree_hashes,
+        gossiper,
+        sequencer_public_key: gateway_public_key,
+    };
+
+    tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
+}
+
+#[cfg(feature = "p2p")]
+fn start_p2p_sync(
+    storage: Storage,
+    pathfinder_context: PathfinderContext,
+    ethereum_client: EthereumClient,
+    p2p_client: p2p::client::peer_agnostic::Client,
+) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    let sync = pathfinder_lib::sync::Sync {
+        storage,
+        p2p: p2p_client,
+        eth_client: ethereum_client,
+        eth_address: pathfinder_context.l1_core_address,
+        fgw_client: pathfinder_context.gateway,
+        chain_id: pathfinder_context.network_id,
+    };
+    tokio::spawn(sync.run())
 }
 
 /// Spawns the monitoring task at the given address.
@@ -493,7 +608,7 @@ struct EthereumContext {
 impl EthereumContext {
     /// Configure an [EthereumContext]'s transport and read the chain ID using
     /// it.
-    async fn setup(url: reqwest::Url, password: Option<String>) -> anyhow::Result<Self> {
+    async fn setup(url: reqwest::Url, password: &Option<String>) -> anyhow::Result<Self> {
         let client = if let Some(password) = password.as_ref() {
             EthereumClient::with_password(url, password).context("Creating Ethereum client")?
         } else {
@@ -537,7 +652,7 @@ struct PathfinderContext {
 
 /// Used to hide private fn's for [PathfinderContext].
 mod pathfinder_context {
-    use std::path::PathBuf;
+    use std::path::Path;
     use std::time::Duration;
 
     use anyhow::Context;
@@ -553,7 +668,7 @@ mod pathfinder_context {
     impl PathfinderContext {
         pub async fn configure_and_proxy_check(
             cfg: NetworkConfig,
-            data_directory: PathBuf,
+            data_directory: &Path,
             api_key: Option<String>,
             gateway_timeout: Duration,
         ) -> anyhow::Result<Self> {
@@ -607,7 +722,7 @@ mod pathfinder_context {
             gateway: Url,
             feeder: Url,
             chain_id: String,
-            data_directory: PathBuf,
+            data_directory: &Path,
             api_key: Option<String>,
             gateway_timeout: Duration,
         ) -> anyhow::Result<Self> {
