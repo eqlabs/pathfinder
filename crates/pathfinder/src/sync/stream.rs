@@ -49,6 +49,56 @@ impl<T: Send + 'static> SyncReceiver<T> {
         SyncReceiver::from_receiver(rx)
     }
 
+    /// Adds a stage which chunks the incoming elements into a vector before
+    /// passing it on.
+    ///
+    /// `capacity` specifies the number of elements, `buffer` specifies the
+    /// output buffering.
+    pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> SyncReceiver<Vec<T>> {
+        let (tx, rx) = tokio::sync::mpsc::channel(buffer);
+
+        std::thread::spawn(move || {
+            let mut chunk = Vec::with_capacity(capacity);
+            let mut peer = PeerId::random();
+            let mut err = None;
+
+            while let Some(input) = self.inner.blocking_recv() {
+                let input = match input {
+                    Ok(x) => x,
+                    Err(e) => {
+                        err = Some(e);
+                        break;
+                    }
+                };
+
+                // 1st element, assign peer ID.
+                if chunk.is_empty() {
+                    peer = input.peer;
+                }
+
+                chunk.push(input.data);
+
+                if chunk.len() == capacity {
+                    let data = std::mem::replace(&mut chunk, Vec::with_capacity(capacity));
+                    if tx.blocking_send(Ok(PeerData::new(peer, data))).is_err() {
+                        break;
+                    };
+                }
+            }
+
+            // Send any remaining elements.
+            if !chunk.is_empty() {
+                _ = tx.blocking_send(Ok(PeerData::new(peer, chunk)));
+            }
+
+            if let Some(err) = err {
+                _ = tx.blocking_send(Err(err));
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+
     pub fn from_receiver(receiver: Receiver<SyncResult<T>>) -> Self
     where
         T: Send,
@@ -81,6 +131,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
         self.inner.recv().await
     }
 }
+
+/// A [ProcessStage] which buffers `N` elements into a vector before passing it
+/// on.
+pub struct Buffer(pub usize);
 
 #[cfg(test)]
 mod tests {
