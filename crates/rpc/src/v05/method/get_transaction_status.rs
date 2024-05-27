@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use pathfinder_common::TransactionHash;
 use serde_with::skip_serializing_none;
 
@@ -142,38 +142,20 @@ pub async fn get_transaction_status(
                 (GatewayFinalityStatus::NotReceived, _) => {
                     Err(GetTransactionStatusError::TxnHashNotFound)
                 }
-                (_, Some(GatewayExecutionStatus::Rejected)) => {
-                    Ok(GetTransactionStatusOutput::Rejected)
-                }
+                (_, GatewayExecutionStatus::Rejected) => Ok(GetTransactionStatusOutput::Rejected),
                 (GatewayFinalityStatus::Received, _) => Ok(GetTransactionStatusOutput::Received),
-                (GatewayFinalityStatus::AcceptedOnL1, Some(GatewayExecutionStatus::Reverted)) => {
-                    Ok(GetTransactionStatusOutput::AcceptedOnL1(
-                        ExecutionStatus::Reverted,
-                    ))
-                }
-                (GatewayFinalityStatus::AcceptedOnL1, Some(GatewayExecutionStatus::Succeeded)) => {
-                    Ok(GetTransactionStatusOutput::AcceptedOnL1(
-                        ExecutionStatus::Succeeded,
-                    ))
-                }
-                (GatewayFinalityStatus::AcceptedOnL1, None) => Err(anyhow!(
-                    "Gateway returned no execution status for L1 accepted transaction"
-                )
-                .into()),
-                (GatewayFinalityStatus::AcceptedOnL2, Some(GatewayExecutionStatus::Reverted)) => {
-                    Ok(GetTransactionStatusOutput::AcceptedOnL2(
-                        ExecutionStatus::Reverted,
-                    ))
-                }
-                (GatewayFinalityStatus::AcceptedOnL2, Some(GatewayExecutionStatus::Succeeded)) => {
-                    Ok(GetTransactionStatusOutput::AcceptedOnL2(
-                        ExecutionStatus::Succeeded,
-                    ))
-                }
-                (GatewayFinalityStatus::AcceptedOnL2, None) => Err(anyhow!(
-                    "Gateway returned no execution status for L2 accepted transaction"
-                )
-                .into()),
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Reverted),
+                ),
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL1(ExecutionStatus::Succeeded),
+                ),
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Reverted),
+                ),
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => Ok(
+                    GetTransactionStatusOutput::AcceptedOnL2(ExecutionStatus::Succeeded),
+                ),
             }
         })
 }

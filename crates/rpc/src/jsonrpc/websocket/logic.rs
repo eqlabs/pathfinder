@@ -17,7 +17,8 @@ use pathfinder_common::TransactionHash;
 use serde::Serialize;
 use serde_json::Value;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::{Block, Status, TransactionStatus};
+use starknet_gateway_types::reply::transaction_status::{ExecutionStatus, FinalityStatus};
+use starknet_gateway_types::reply::{Block, TransactionStatus as GatewayTransactionStatus};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
 use tracing::error;
@@ -476,7 +477,8 @@ async fn transaction_status_subscription(
     transaction_hash: TransactionHash,
     gateway: impl GatewayApi + Send + 'static,
 ) {
-    let mut last_status = None;
+    let mut last_finality_status = None;
+    let mut last_execution_status = None;
     let start = Instant::now();
     let timeout = if cfg!(test) {
         Duration::from_secs(5)
@@ -485,8 +487,8 @@ async fn transaction_status_subscription(
     };
     loop {
         match gateway.transaction(transaction_hash).await {
-            Ok(TransactionStatus {
-                status: Status::NotReceived,
+            Ok(GatewayTransactionStatus {
+                finality_status: FinalityStatus::NotReceived,
                 ..
             }) => {
                 // "NOT_RECEIVED" status is never sent to the client.
@@ -505,23 +507,26 @@ async fn transaction_status_subscription(
                     break;
                 }
             }
-            Ok(tx_status) if last_status != Some(tx_status.status) => {
+            Ok(tx_status)
+                if last_execution_status != Some(tx_status.execution_status)
+                    || last_finality_status != Some(tx_status.finality_status) =>
+            {
                 // Status changed, send an update to the client.
-                last_status = Some(tx_status.status);
+                last_execution_status = Some(tx_status.execution_status);
+                last_finality_status = Some(tx_status.finality_status);
                 if msg_sender
                     .send(ResponseEvent::TransactionStatus(SubscriptionItem {
                         subscription_id,
-                        item: Arc::new(tx_status.clone()),
+                        item: Arc::new(tx_status.into()),
                     }))
                     .await
                     .is_err()
                 {
                     break;
                 }
-                if matches!(
-                    tx_status.status,
-                    Status::AcceptedOnL2 | Status::Rejected | Status::Aborted
-                ) {
+                if tx_status.execution_status == ExecutionStatus::Rejected
+                    || tx_status.finality_status == FinalityStatus::AcceptedOnL2
+                {
                     // Final status reached, close the subscription.
                     break;
                 }
@@ -629,10 +634,6 @@ mod tests {
     use serde::Serialize;
     use serde_json::value::RawValue;
     use serde_json::{json, Number, Value};
-    use starknet_gateway_types::reply::transaction_status::{
-        ExecutionStatus as GatewayExecutionStatus,
-        FinalityStatus,
-    };
     use starknet_gateway_types::reply::GasPrices;
     use tokio::net::TcpStream;
     use tokio::task::JoinHandle;
@@ -643,6 +644,11 @@ mod tests {
     use super::*;
     use crate::context::RpcContext;
     use crate::jsonrpc::websocket::data::successful_response;
+    use crate::jsonrpc::websocket::{
+        TransactionExecutionStatus,
+        TransactionFinalityStatus,
+        TransactionStatus,
+    };
     use crate::jsonrpc::{RpcError, RpcResponse};
 
     #[tokio::test]
@@ -954,9 +960,8 @@ mod tests {
             .expect_response(&SubscriptionItem {
                 subscription_id: 0,
                 item: TransactionStatus {
-                    status: Status::AcceptedOnL1,
-                    finality_status: FinalityStatus::AcceptedOnL1,
-                    execution_status: Some(GatewayExecutionStatus::Succeeded),
+                    finality_status: TransactionFinalityStatus::AcceptedOnL1,
+                    execution_status: TransactionExecutionStatus::Succeeded,
                 },
             })
             .await;
