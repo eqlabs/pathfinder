@@ -562,7 +562,7 @@ async fn transaction_status_subscription(
                 let timeout = if cfg!(test) {
                     Duration::from_secs(5)
                 } else {
-                    Duration::from_secs(30)
+                    Duration::from_secs(10)
                 };
                 loop {
                     match gateway.transaction(transaction_hash).await {
