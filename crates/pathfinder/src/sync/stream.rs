@@ -60,22 +60,13 @@ impl<T: Send + 'static> SyncReceiver<T> {
         std::thread::spawn(move || {
             let mut chunk = Vec::with_capacity(capacity);
             let mut peer = PeerId::random();
+            let mut err = None;
 
             while let Some(input) = self.inner.blocking_recv() {
-                // Have a single point of checking this instead of requiring a check at multiple
-                // send points.
-                if tx.is_closed() {
-                    break;
-                }
-
                 let input = match input {
                     Ok(x) => x,
                     Err(e) => {
-                        if !chunk.is_empty() {
-                            _ = tx.blocking_send(Ok(PeerData::new(peer, chunk)));
-                        }
-
-                        _ = tx.blocking_send(Err(e));
+                        err = Some(e);
                         break;
                     }
                 };
@@ -88,9 +79,20 @@ impl<T: Send + 'static> SyncReceiver<T> {
                 chunk.push(input.data);
 
                 if chunk.len() == capacity {
-                    _ = tx.blocking_send(Ok(PeerData::new(peer, chunk)));
-                    chunk = Vec::with_capacity(capacity);
+                    let data = std::mem::replace(&mut chunk, Vec::with_capacity(capacity));
+                    if tx.blocking_send(Ok(PeerData::new(peer, data))).is_err() {
+                        break;
+                    };
                 }
+            }
+
+            // Send any remaining elements.
+            if !chunk.is_empty() {
+                _ = tx.blocking_send(Ok(PeerData::new(peer, chunk)));
+            }
+
+            if let Some(err) = err {
+                _ = tx.blocking_send(Err(err));
             }
         });
 
