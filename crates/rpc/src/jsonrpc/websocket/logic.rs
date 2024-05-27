@@ -521,9 +521,21 @@ async fn transaction_status_subscription(
     enum LastStatus {
         None = 0,
         Received = 1,
-        L2Accepted = 2,
-        L1Accepted = 3,
+        AcceptedOnL2 = 2,
+        AcceptedOnL1 = 3,
         Rejected = 4,
+    }
+
+    impl From<Status> for LastStatus {
+        fn from(value: Status) -> Self {
+            match value {
+                Status::Received => Self::Received,
+                Status::Rejected => Self::Rejected,
+                Status::AcceptedOnL1 => Self::AcceptedOnL1,
+                Status::AcceptedOnL2 => Self::AcceptedOnL2,
+                _ => Self::None,
+            }
+        }
     }
 
     // Channel used to send transaction status when polling the gateway.
@@ -537,8 +549,8 @@ async fn transaction_status_subscription(
     let _loop_guard_2 = transaction_not_found_tx.clone();
 
     let mut last_status = match initial_status {
-        Some(Status::AcceptedOnL1) => LastStatus::L1Accepted,
-        Some(Status::AcceptedOnL2) => LastStatus::L2Accepted,
+        Some(Status::AcceptedOnL1) => LastStatus::AcceptedOnL1,
+        Some(Status::AcceptedOnL2) => LastStatus::AcceptedOnL2,
         Some(Status::Rejected) => LastStatus::Rejected,
         _ => {
             // We don't know anything about this transaction. Poll for transaction status
@@ -616,48 +628,31 @@ async fn transaction_status_subscription(
         };
         match tx_status {
             Ok(Some(tx_status)) => {
-                let mut should_send = false;
-                let mut should_close = false;
-                match tx_status {
-                    Status::Received if last_status < LastStatus::Received => {
-                        last_status = LastStatus::Received;
-                        should_send = true;
-                    }
-                    Status::AcceptedOnL2 if last_status < LastStatus::L2Accepted => {
-                        last_status = LastStatus::L2Accepted;
-                        should_send = true;
-                    }
-                    Status::AcceptedOnL1 if last_status < LastStatus::L1Accepted => {
-                        last_status = LastStatus::L1Accepted;
-                        should_send = true;
-                        should_close = true;
-                    }
-                    Status::Rejected if last_status < LastStatus::Rejected => {
-                        last_status = LastStatus::Rejected;
-                        should_send = true;
-                        should_close = true;
-                    }
-                    _ => {
-                        // Stream already up to date.
-                    }
-                };
-                if should_send {
-                    // Polling is only needed to get the initial status. As soon as any progress
-                    // can be made, polling is no longer necessary.
-                    if let Some(task) = gateway_poller.take() {
-                        task.abort();
-                    }
-                    let result = msg_sender
-                        .send(ResponseEvent::TransactionStatus(SubscriptionItem {
-                            subscription_id,
-                            item: Arc::new(tx_status),
-                        }))
-                        .await;
-                    if result.is_err() {
-                        break;
-                    }
+                // Only make progress if new status is more advanced than the previous status.
+                if LastStatus::from(tx_status) <= last_status {
+                    continue;
                 }
-                if should_close {
+
+                // Polling is only needed to get the initial status. As soon as any progress
+                // can be made, polling is no longer necessary.
+                if let Some(task) = gateway_poller.take() {
+                    task.abort();
+                }
+
+                // Send the status update.
+                let result = msg_sender
+                    .send(ResponseEvent::TransactionStatus(SubscriptionItem {
+                        subscription_id,
+                        item: Arc::new(tx_status),
+                    }))
+                    .await;
+                if result.is_err() {
+                    break;
+                }
+                last_status = tx_status.into();
+
+                if tx_status == Status::Rejected || tx_status == Status::AcceptedOnL1 {
+                    // Last status reached, close the subscription.
                     break;
                 }
             }
