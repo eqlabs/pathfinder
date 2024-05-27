@@ -4,7 +4,6 @@ pub mod l2;
 mod pending;
 pub mod revert;
 
-use std::collections::HashSet;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -813,14 +812,13 @@ async fn l1_update(
                 let transaction = connection
                     .transaction()
                     .context("Create database transaction")?;
-                let Some(hashes) = transaction
-                    .transaction_hashes_for_block(update.block_number.into())
+                let Some(transactions) = transaction
+                    .transactions_with_receipts_for_block(update.block_number.into())
                     .context("Fetching transaction hashes")?
                 else {
                     return Ok(());
                 };
-                let hashes = HashSet::from_iter(hashes);
-                if let Err(e) = sender.l1_blocks.send(hashes.into()) {
+                if let Err(e) = sender.l1_blocks.send(transactions.into()) {
                     tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
                     *websocket_txs = None;
                 }

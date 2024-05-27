@@ -7,7 +7,7 @@ use pathfinder_common::{EventKey, TransactionHash};
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use starknet_gateway_types::reply::Status;
+use starknet_gateway_types::reply::TransactionStatus;
 
 use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
@@ -89,7 +89,7 @@ pub(super) enum ResponseEvent {
     Header(SubscriptionItem<Arc<Value>>),
     Responses(RpcResponses),
     Event(SubscriptionItem<Arc<EmittedEvent>>),
-    TransactionStatus(SubscriptionItem<Arc<Status>>),
+    TransactionStatus(SubscriptionItem<Arc<TransactionStatus>>),
     RpcError(RpcError),
 }
 

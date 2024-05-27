@@ -12,7 +12,7 @@ use crate::{
     Tip,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Transaction {
     pub hash: TransactionHash,
     pub variant: TransactionVariant,
@@ -57,6 +57,12 @@ pub enum TransactionVariant {
     InvokeV1(InvokeTransactionV1),
     InvokeV3(InvokeTransactionV3),
     L1Handler(L1HandlerTransaction),
+}
+
+impl Default for TransactionVariant {
+    fn default() -> Self {
+        Self::DeclareV0(Default::default())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use pathfinder_common::TransactionHash;
 
 use crate::context::RpcContext;
@@ -86,20 +86,28 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
 
             match (tx.finality_status, tx.execution_status) {
                 (GatewayFinalityStatus::NotReceived, _) => Err(Error::TxnHashNotFound),
-                (_, GatewayExecutionStatus::Rejected) => Ok(Output::Rejected),
+                (_, Some(GatewayExecutionStatus::Rejected)) => Ok(Output::Rejected),
                 (GatewayFinalityStatus::Received, _) => Ok(Output::Received),
-                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => {
+                (GatewayFinalityStatus::AcceptedOnL1, Some(GatewayExecutionStatus::Reverted)) => {
                     Ok(Output::AcceptedOnL1(TxnExecutionStatus::Reverted))
                 }
-                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => {
+                (GatewayFinalityStatus::AcceptedOnL1, Some(GatewayExecutionStatus::Succeeded)) => {
                     Ok(Output::AcceptedOnL1(TxnExecutionStatus::Succeeded))
                 }
-                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => {
+                (GatewayFinalityStatus::AcceptedOnL1, None) => Err(anyhow!(
+                    "Gateway returned no execution status for L1 accepted transaction"
+                )
+                .into()),
+                (GatewayFinalityStatus::AcceptedOnL2, Some(GatewayExecutionStatus::Reverted)) => {
                     Ok(Output::AcceptedOnL2(TxnExecutionStatus::Reverted))
                 }
-                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => {
+                (GatewayFinalityStatus::AcceptedOnL2, Some(GatewayExecutionStatus::Succeeded)) => {
                     Ok(Output::AcceptedOnL2(TxnExecutionStatus::Succeeded))
                 }
+                (GatewayFinalityStatus::AcceptedOnL2, None) => Err(anyhow!(
+                    "Gateway returned no execution status for L2 accepted transaction"
+                )
+                .into()),
             }
         })
 }

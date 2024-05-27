@@ -182,19 +182,18 @@ pub mod call {
 /// since we only ever use it to deserialize replies from the Starknet
 /// feeder gateway.
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TransactionStatus {
     pub status: Status,
     pub finality_status: transaction_status::FinalityStatus,
-    #[serde(default)]
-    pub execution_status: transaction_status::ExecutionStatus,
+    pub execution_status: Option<transaction_status::ExecutionStatus>,
 }
 
 /// Types used when deserializing get_transaction replies.
 pub mod transaction_status {
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     pub enum FinalityStatus {
         #[serde(rename = "NOT_RECEIVED")]
         NotReceived,
@@ -206,7 +205,7 @@ pub mod transaction_status {
         AcceptedOnL2,
     }
 
-    #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
+    #[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum ExecutionStatus {
         #[default]

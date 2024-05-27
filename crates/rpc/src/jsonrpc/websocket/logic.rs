@@ -1,6 +1,6 @@
 //! See [the parent module documentation](super)
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
@@ -14,13 +14,18 @@ use axum::response::IntoResponse;
 use futures::sink::Buffer;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use pathfinder_common::receipt::ExecutionStatus;
+use pathfinder_common::receipt::{ExecutionStatus, Receipt};
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::TransactionHash;
 use pathfinder_storage::Storage;
 use serde::Serialize;
 use serde_json::Value;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::{Block, Status};
+use starknet_gateway_types::reply::transaction_status::{
+    ExecutionStatus as GatewayExecutionStatus,
+    FinalityStatus,
+};
+use starknet_gateway_types::reply::{Block, Status, TransactionStatus};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
 use tracing::error;
@@ -355,20 +360,37 @@ impl SubscriptionManager {
                     .context("Failed to get block hash")?
                 {
                     Some(block_number) => {
+                        let (_, receipt, ..) = db
+                            .transaction_with_receipt(params.transaction_hash)
+                            .context("Failed to get transaction with receipt")?
+                            .context("Transaction not found")?;
                         match db.l1_l2_pointer().context("Failed to get l1 l2 pointer")? {
                             Some(l1_l2_pointer) if l1_l2_pointer >= block_number => {
-                                Some(Status::AcceptedOnL1)
+                                Some(TransactionStatus {
+                                    status: Status::AcceptedOnL1,
+                                    finality_status: FinalityStatus::AcceptedOnL1,
+                                    execution_status: Some(match receipt.execution_status {
+                                        ExecutionStatus::Succeeded => {
+                                            GatewayExecutionStatus::Succeeded
+                                        }
+                                        ExecutionStatus::Reverted { .. } => {
+                                            GatewayExecutionStatus::Reverted
+                                        }
+                                    }),
+                                })
                             }
-                            _ => {
-                                let (_, receipt, ..) = db
-                                    .transaction_with_receipt(params.transaction_hash)
-                                    .context("Failed to get transaction with receipt")?
-                                    .context("Transaction not found")?;
-                                match receipt.execution_status {
-                                    ExecutionStatus::Succeeded => Some(Status::AcceptedOnL2),
-                                    ExecutionStatus::Reverted { .. } => Some(Status::Reverted),
-                                }
-                            }
+                            _ => match receipt.execution_status {
+                                ExecutionStatus::Succeeded => Some(TransactionStatus {
+                                    status: Status::AcceptedOnL2,
+                                    finality_status: FinalityStatus::AcceptedOnL2,
+                                    execution_status: Some(GatewayExecutionStatus::Succeeded),
+                                }),
+                                ExecutionStatus::Reverted { .. } => Some(TransactionStatus {
+                                    status: Status::AcceptedOnL2,
+                                    finality_status: FinalityStatus::AcceptedOnL2,
+                                    execution_status: Some(GatewayExecutionStatus::Reverted),
+                                }),
+                            },
                         }
                     }
                     None => None,
@@ -512,20 +534,19 @@ async fn event_subscription(
 async fn transaction_status_subscription(
     msg_sender: mpsc::Sender<ResponseEvent>,
     mut l2_blocks: broadcast::Receiver<Arc<Block>>,
-    mut l1_blocks: broadcast::Receiver<Arc<HashSet<TransactionHash>>>,
+    mut l1_blocks: broadcast::Receiver<Arc<Vec<(Transaction, Receipt)>>>,
     subscription_id: u32,
     transaction_hash: TransactionHash,
     gateway: impl GatewayApi + Send + 'static,
-    initial_status: Option<Status>,
+    initial_status: Option<TransactionStatus>,
 ) {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     enum LastStatus {
         None = 0,
         Received = 1,
         AcceptedOnL2 = 2,
-        Reverted = 3,
-        AcceptedOnL1 = 4,
-        Rejected = 5,
+        AcceptedOnL1 = 3,
+        Rejected = 4,
     }
 
     impl From<Status> for LastStatus {
@@ -535,7 +556,6 @@ async fn transaction_status_subscription(
                 Status::Rejected => Self::Rejected,
                 Status::AcceptedOnL1 => Self::AcceptedOnL1,
                 Status::AcceptedOnL2 => Self::AcceptedOnL2,
-                Status::Reverted => Self::Reverted,
                 _ => Self::None,
             }
         }
@@ -551,10 +571,18 @@ async fn transaction_status_subscription(
     let _loop_guard_2 = transaction_not_found_tx.clone();
 
     let mut last_status = match initial_status {
-        Some(Status::AcceptedOnL1) => LastStatus::AcceptedOnL1,
-        Some(Status::AcceptedOnL2) => LastStatus::AcceptedOnL2,
-        Some(Status::Rejected) => LastStatus::Rejected,
-        Some(Status::Reverted) => LastStatus::Reverted,
+        Some(TransactionStatus {
+            status: Status::AcceptedOnL1,
+            ..
+        }) => LastStatus::AcceptedOnL1,
+        Some(TransactionStatus {
+            status: Status::AcceptedOnL2,
+            ..
+        }) => LastStatus::AcceptedOnL2,
+        Some(TransactionStatus {
+            status: Status::Rejected,
+            ..
+        }) => LastStatus::Rejected,
         _ => {
             // We don't know anything about this transaction. Poll for transaction status
             // from the gateway.
@@ -567,24 +595,17 @@ async fn transaction_status_subscription(
                 };
                 loop {
                     match gateway.transaction(transaction_hash).await {
-                        Ok(tx) => {
-                            if tx.status == Status::NotReceived && start.elapsed() > timeout {
+                        Ok(status) => {
+                            if status.status == Status::NotReceived && start.elapsed() > timeout {
                                 // The transaction was not found on the gateway after some time.
                                 // Notify the consumer that the transaction is invalid.
                                 transaction_not_found_tx.send(()).await.ok();
                                 break;
                             }
-                            if matches!(
-                                tx.status,
-                                Status::Received
-                                    | Status::AcceptedOnL2
-                                    | Status::AcceptedOnL1
-                                    | Status::Rejected
-                                    | Status::Reverted
-                            ) {
+                            if status.status != Status::NotReceived {
                                 // Polling is only needed to get the initial status. As soon as any
                                 // progress can be made, polling is no longer necessary.
-                                gateway_transaction_tx.send(tx.status).await.ok();
+                                gateway_transaction_tx.send(status).await.ok();
                                 break;
                             }
                         }
@@ -625,23 +646,40 @@ async fn transaction_status_subscription(
             block = l2_blocks.recv() => {
                 block.map(|block| {
                     block
-                        .transactions
+                        .transaction_receipts
                         .iter()
-                        .any(|tx| tx.hash == transaction_hash)
-                        .then_some(block.status)
+                        .find(|(receipt, _)| receipt.transaction_hash == transaction_hash)
+                        .map(|(receipt, _)| TransactionStatus {
+                            status: Status::AcceptedOnL2,
+                            finality_status: FinalityStatus::AcceptedOnL2,
+                            execution_status: Some(match receipt.execution_status {
+                                ExecutionStatus::Succeeded => GatewayExecutionStatus::Succeeded,
+                                ExecutionStatus::Reverted { .. } => GatewayExecutionStatus::Reverted,
+                            }),
+                        })
                 })
             }
-            transaction_hashes = l1_blocks.recv() => {
-                transaction_hashes.map(|hashes| {
-                    hashes.contains(&transaction_hash)
-                        .then_some(Status::AcceptedOnL1)
-                })
+            transactions = l1_blocks.recv() => {
+                transactions.map(|transactions| {
+                    transactions
+                        .iter()
+                        .find(|(_, receipt)| receipt.transaction_hash == transaction_hash)
+                        .map(|(_, receipt)| TransactionStatus {
+                            status: Status::AcceptedOnL1,
+                            finality_status: FinalityStatus::AcceptedOnL1,
+                            execution_status: Some(match receipt.execution_status {
+                                ExecutionStatus::Succeeded => GatewayExecutionStatus::Succeeded,
+                                ExecutionStatus::Reverted { .. } => GatewayExecutionStatus::Reverted,
+                            }),
+                        })
+                    }
+                )
             }
         };
         match tx_status {
             Ok(Some(tx_status)) => {
                 // Only make progress if new status is more advanced than the previous status.
-                if LastStatus::from(tx_status) <= last_status {
+                if LastStatus::from(tx_status.status) <= last_status {
                     continue;
                 }
 
@@ -649,15 +687,16 @@ async fn transaction_status_subscription(
                 let result = msg_sender
                     .send(ResponseEvent::TransactionStatus(SubscriptionItem {
                         subscription_id,
-                        item: Arc::new(tx_status),
+                        item: Arc::new(tx_status.clone()),
                     }))
                     .await;
                 if result.is_err() {
                     break;
                 }
-                last_status = tx_status.into();
+                last_status = tx_status.status.into();
 
-                if tx_status == Status::Rejected || tx_status == Status::AcceptedOnL1 {
+                if tx_status.status == Status::Rejected || tx_status.status == Status::AcceptedOnL1
+                {
                     // Last status reached, close the subscription.
                     break;
                 }
@@ -723,7 +762,7 @@ where
 pub struct TopicBroadcasters {
     pub new_head: JsonBroadcaster<BlockHeader>,
     pub l2_blocks: broadcast::Sender<Arc<Block>>,
-    pub l1_blocks: broadcast::Sender<Arc<HashSet<TransactionHash>>>,
+    pub l1_blocks: broadcast::Sender<Arc<Vec<(Transaction, Receipt)>>>,
 }
 
 impl TopicBroadcasters {
@@ -755,7 +794,7 @@ mod tests {
     use axum::routing::get;
     use futures::{SinkExt, StreamExt};
     use pathfinder_common::event::Event;
-    use pathfinder_common::transaction::{Transaction, TransactionVariant};
+    use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
         block_hash,
         event_commitment,
@@ -1097,7 +1136,11 @@ mod tests {
         client
             .expect_response(&SubscriptionItem {
                 subscription_id: 0,
-                item: Status::AcceptedOnL1,
+                item: TransactionStatus {
+                    status: Status::AcceptedOnL1,
+                    finality_status: FinalityStatus::AcceptedOnL1,
+                    execution_status: Some(GatewayExecutionStatus::Succeeded),
+                },
             })
             .await;
 
@@ -1128,7 +1171,11 @@ mod tests {
         client
             .expect_response(&SubscriptionItem {
                 subscription_id: 1,
-                item: Status::AcceptedOnL2,
+                item: TransactionStatus {
+                    status: Status::AcceptedOnL2,
+                    finality_status: FinalityStatus::AcceptedOnL2,
+                    execution_status: Some(GatewayExecutionStatus::Succeeded),
+                },
             })
             .await;
 
@@ -1136,13 +1183,44 @@ mod tests {
 
         client
             .l1_blocks
-            .send(HashSet::from_iter([transaction_hash!("0x1"), transaction_hash!("0x2")]).into())
+            .send(
+                vec![
+                    (
+                        Transaction {
+                            hash: transaction_hash!("0x1"),
+                            ..Default::default()
+                        },
+                        Receipt {
+                            transaction_hash: transaction_hash!("0x1"),
+                            execution_status: ExecutionStatus::Reverted {
+                                reason: "".to_owned(),
+                            },
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        Transaction {
+                            hash: transaction_hash!("0x2"),
+                            ..Default::default()
+                        },
+                        Receipt {
+                            transaction_hash: transaction_hash!("0x2"),
+                            ..Default::default()
+                        },
+                    ),
+                ]
+                .into(),
+            )
             .unwrap();
 
         client
             .expect_response(&SubscriptionItem {
                 subscription_id: 1,
-                item: Status::AcceptedOnL1,
+                item: TransactionStatus {
+                    status: Status::AcceptedOnL1,
+                    finality_status: FinalityStatus::AcceptedOnL1,
+                    execution_status: Some(GatewayExecutionStatus::Reverted),
+                },
             })
             .await;
 
@@ -1206,7 +1284,11 @@ mod tests {
         client
             .expect_response(&SubscriptionItem {
                 subscription_id: 0,
-                item: Status::AcceptedOnL2,
+                item: TransactionStatus {
+                    status: Status::AcceptedOnL2,
+                    finality_status: FinalityStatus::AcceptedOnL2,
+                    execution_status: Some(GatewayExecutionStatus::Succeeded),
+                },
             })
             .await;
 
@@ -1214,13 +1296,41 @@ mod tests {
 
         client
             .l1_blocks
-            .send(HashSet::from_iter([transaction_hash!("0x1"), transaction_hash!("0x2")]).into())
+            .send(
+                vec![
+                    (
+                        Transaction {
+                            hash: transaction_hash!("0x1"),
+                            ..Default::default()
+                        },
+                        Receipt {
+                            transaction_hash: transaction_hash!("0x1"),
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        Transaction {
+                            hash: transaction_hash!("0x2"),
+                            ..Default::default()
+                        },
+                        Receipt {
+                            transaction_hash: transaction_hash!("0x2"),
+                            ..Default::default()
+                        },
+                    ),
+                ]
+                .into(),
+            )
             .unwrap();
 
         client
             .expect_response(&SubscriptionItem {
                 subscription_id: 0,
-                item: Status::AcceptedOnL1,
+                item: TransactionStatus {
+                    status: Status::AcceptedOnL1,
+                    finality_status: FinalityStatus::AcceptedOnL1,
+                    execution_status: Some(GatewayExecutionStatus::Succeeded),
+                },
             })
             .await;
 
@@ -1349,11 +1459,11 @@ mod tests {
             transactions: vec![
                 Transaction {
                     hash: transaction_hash!("0x1"),
-                    variant: TransactionVariant::Deploy(Default::default()),
+                    variant: Default::default(),
                 },
                 Transaction {
                     hash: transaction_hash!("0x2"),
-                    variant: TransactionVariant::Deploy(Default::default()),
+                    variant: Default::default(),
                 },
             ],
             starknet_version: StarknetVersion::new(1, 1, 1, 1),
@@ -1369,7 +1479,7 @@ mod tests {
         server_handle: JoinHandle<()>,
         head_sender: JsonBroadcaster<BlockHeader>,
         l2_blocks: broadcast::Sender<Arc<Block>>,
-        l1_blocks: broadcast::Sender<Arc<HashSet<TransactionHash>>>,
+        l1_blocks: broadcast::Sender<Arc<Vec<(Transaction, Receipt)>>>,
         pub context: RpcContext,
     }
 
