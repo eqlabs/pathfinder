@@ -2,7 +2,7 @@
 
 use anyhow::Context;
 use p2p::client::peer_agnostic::Client as P2PClient;
-use pathfinder_common::ChainId;
+use pathfinder_common::{Chain, ChainId};
 use primitive_types::H160;
 use starknet_gateway_client::Client as GatewayClient;
 
@@ -24,6 +24,7 @@ pub struct Sync {
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
     pub fgw_client: GatewayClient,
+    pub chain: Chain,
     pub chain_id: ChainId,
 }
 
@@ -58,6 +59,7 @@ impl Sync {
                 eth_client: self.eth_client.clone(),
                 eth_address: self.eth_address,
                 fgw_client: self.fgw_client.clone(),
+                chain: self.chain,
                 chain_id: self.chain_id,
             }
             .run(checkpoint.clone())

@@ -21,6 +21,7 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    Chain,
     ChainId,
     ClassHash,
     SignedBlockHeader,
@@ -51,6 +52,7 @@ pub struct Sync {
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
     pub fgw_client: Client,
+    pub chain: Chain,
     pub chain_id: ChainId,
 }
 
@@ -60,6 +62,7 @@ impl Sync {
         p2p: P2PClient,
         ethereum: (pathfinder_ethereum::EthereumClient, H160),
         fgw_client: Client,
+        chain: Chain,
         chain_id: ChainId,
     ) -> Self {
         Self {
@@ -68,6 +71,7 @@ impl Sync {
             eth_client: ethereum.0,
             eth_address: ethereum.1,
             fgw_client,
+            chain,
             chain_id,
         }
     }
@@ -130,6 +134,8 @@ impl Sync {
             handle_header_stream(
                 self.p2p.clone().header_stream(gap.head, gap.tail, true),
                 gap.head(),
+                self.chain,
+                self.chain_id,
                 self.storage.clone(),
             )
             .await?;
@@ -231,12 +237,14 @@ impl Sync {
 async fn handle_header_stream(
     header_stream: impl futures::Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
     head: (BlockNumber, BlockHash),
+    chain: Chain,
+    chain_id: ChainId,
     storage: Storage,
 ) -> Result<(), SyncError> {
     tracing::info!("Syncing headers");
     spawn_header_source(header_stream)
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
-        .pipe(headers::VerifyHash, 10)
+        .pipe(headers::VerifyHash::new(chain, chain_id), 10)
         .try_chunks(1024, 10)
         .pipe(
             headers::Persist {
@@ -568,9 +576,22 @@ mod tests {
         use futures::stream;
         use p2p::libp2p::PeerId;
         use p2p_proto::header;
-        use pathfinder_common::{BlockHash, StateDiffCommitment};
+        use pathfinder_common::{
+            BlockCommitmentSignature,
+            BlockCommitmentSignatureElem,
+            BlockHash,
+            BlockTimestamp,
+            EventCommitment,
+            SequencerAddress,
+            StarknetVersion,
+            StateCommitment,
+            StateDiffCommitment,
+            TransactionCommitment,
+        };
         use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
+        use serde::Deserialize;
+        use serde_with::{serde_as, DisplayFromStr};
 
         use super::super::handle_header_stream;
         use super::*;
@@ -579,52 +600,88 @@ mod tests {
             pub streamed_headers: Vec<PeerData<SignedBlockHeader>>,
             pub expected_headers: Vec<SignedBlockHeader>,
             pub storage: Storage,
-            pub head_hash: BlockHash,
+            pub head: (BlockNumber, BlockHash),
         }
 
-        async fn setup(num_blocks: usize) -> Setup {
-            tokio::task::spawn_blocking(move || {
-                let blocks = fake_storage::init::with_n_blocks(num_blocks);
-                let headers = blocks
-                    .into_iter()
-                    .map(|mut b| {
-                        let mut header = b.header;
-                        // These fields are not propagated via P2P
-                        header.header.class_commitment = Default::default();
-                        header.header.storage_commitment = Default::default();
-                        header
-                    })
-                    .collect::<Vec<_>>();
-                let storage = StorageBuilder::in_memory().unwrap();
-                Setup {
-                    head_hash: headers.last().unwrap().header.hash,
-                    streamed_headers: headers
-                        .iter()
-                        .rev()
-                        .cloned()
-                        .map(|header| PeerData::for_tests(header))
-                        .collect::<Vec<_>>(),
-                    expected_headers: headers,
-                    storage,
+        #[serde_as]
+        #[derive(Clone, Copy, Debug, Deserialize)]
+        pub struct Fixture {
+            pub block_hash: BlockHash,
+            pub block_number: BlockNumber,
+            pub parent_block_hash: BlockHash,
+            pub sequencer_address: SequencerAddress,
+            pub state_root: StateCommitment,
+            pub timestamp: BlockTimestamp,
+            pub transaction_commitment: TransactionCommitment,
+            pub transaction_count: usize,
+            pub event_commitment: EventCommitment,
+            pub event_count: usize,
+            pub signature: [BlockCommitmentSignatureElem; 2],
+            pub state_diff_commitment: StateDiffCommitment,
+        }
+
+        impl From<Fixture> for SignedBlockHeader {
+            fn from(dto: Fixture) -> Self {
+                Self {
+                    header: BlockHeader {
+                        hash: dto.block_hash,
+                        number: dto.block_number,
+                        parent_hash: dto.parent_block_hash,
+                        sequencer_address: dto.sequencer_address,
+                        state_commitment: dto.state_root,
+                        timestamp: dto.timestamp,
+                        transaction_commitment: dto.transaction_commitment,
+                        transaction_count: dto.transaction_count,
+                        event_commitment: dto.event_commitment,
+                        event_count: dto.event_count,
+                        ..Default::default()
+                    },
+                    signature: BlockCommitmentSignature {
+                        r: dto.signature[0],
+                        s: dto.signature[1],
+                    },
+                    state_diff_commitment: dto.state_diff_commitment,
+                    ..Default::default()
                 }
-            })
-            .await
-            .unwrap()
+            }
+        }
+
+        async fn setup() -> Setup {
+            let expected_headers =
+                serde_json::from_str::<Vec<Fixture>>(include_str!("fixtures/sepolia_headers.json"))
+                    .unwrap()
+                    .into_iter()
+                    .map(Into::into)
+                    .collect::<Vec<SignedBlockHeader>>();
+
+            let hdr = &expected_headers.last().unwrap().header;
+            Setup {
+                head: (hdr.number, hdr.hash),
+                streamed_headers: expected_headers
+                    .iter()
+                    .rev()
+                    .cloned()
+                    .map(|header| PeerData::for_tests(header))
+                    .collect::<Vec<_>>(),
+                expected_headers,
+                storage: StorageBuilder::in_memory().unwrap(),
+            }
         }
 
         #[tokio::test]
         async fn happy_path() {
-            const NUM_BLOCKS: usize = 10;
             let Setup {
                 streamed_headers,
                 expected_headers,
                 storage,
-                head_hash,
-            } = setup(NUM_BLOCKS).await;
+                head,
+            } = setup().await;
 
             handle_header_stream(
                 stream::iter(streamed_headers),
-                (BlockNumber::new_or_panic(NUM_BLOCKS as u64 - 1), head_hash),
+                head,
+                Chain::SepoliaTestnet,
+                ChainId::SEPOLIA_TESTNET,
                 storage.clone(),
             )
             .await
@@ -633,9 +690,9 @@ mod tests {
             let actual_headers = tokio::task::spawn_blocking(move || {
                 let mut conn = storage.connection().unwrap();
                 let db = conn.transaction().unwrap();
-                (0..NUM_BLOCKS)
+                (0..=head.0.get())
                     .map(|n| {
-                        let block_number = BlockNumber::new_or_panic(n as u64);
+                        let block_number = BlockNumber::new_or_panic(n);
                         let block_id = block_number.into();
                         let (state_diff_commitment, state_diff_length) = db
                             .state_diff_commitment_and_length(block_number)

@@ -23,7 +23,7 @@ use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{Block, Status};
 use tokio::sync::mpsc;
 
-use crate::state::block_hash::{verify_block_hash, VerifyResult};
+use crate::state::block_hash::{verify_gateway_block_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
 
@@ -494,7 +494,7 @@ async fn download_block(
             // Check if block hash is correct.
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
-                let verify_result = verify_block_hash(&block, chain, chain_id, block.block_hash)
+                let verify_result = verify_gateway_block_hash(&block, chain, chain_id)
                     .with_context(move || format!("Verify block {block_number}"))?;
                 Ok((block, verify_result))
             });

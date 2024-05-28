@@ -1,7 +1,7 @@
 use fake::Dummy;
 
 use crate::prelude::*;
-use crate::{BlockCommitmentSignature, Chain, StateDiffCommitment};
+use crate::{BlockCommitmentSignature, StateDiffCommitment};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {
@@ -43,16 +43,6 @@ pub struct SignedBlockHeader {
     pub state_diff_length: u64,
 }
 
-impl SignedBlockHeader {
-    /// Returns true if the signature is correct for the block header.
-    ///
-    /// Note that this does not imply that a given state diff is correct.
-    /// TODO: improve this documentation somehow.
-    pub fn verify_signature(&self) -> bool {
-        true // TODO
-    }
-}
-
 pub struct BlockHeaderBuilder(BlockHeader);
 
 impl BlockHeader {
@@ -76,10 +66,6 @@ impl BlockHeader {
         StateUpdate::default()
             .with_block_hash(self.hash)
             .with_state_commitment(self.state_commitment)
-    }
-
-    pub fn verify_hash(&self) -> bool {
-        true // TODO
     }
 }
 

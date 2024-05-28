@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId};
 use pathfinder_crypto::Felt;
-use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
+use pathfinder_lib::state::block_hash::{verify_gateway_block_hash, VerifyResult};
 use starknet_gateway_types::reply::{Block, GasPrices, Status};
 
 /// Verify block hashes in a pathfinder database.
@@ -85,7 +85,7 @@ fn main() -> anyhow::Result<()> {
         };
         parent_block_hash = block_hash;
 
-        let result = verify_block_hash(&block, chain, chain_id, block_hash)?;
+        let result = verify_gateway_block_hash(&block, chain, chain_id)?;
         match result {
             VerifyResult::Match(_) => {}
             VerifyResult::Mismatch => {

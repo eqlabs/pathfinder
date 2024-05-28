@@ -13,6 +13,7 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    Chain,
     ChainId,
     ClassHash,
     EventCommitment,
@@ -35,6 +36,8 @@ pub struct Sync<L> {
     latest: L,
     p2p: P2PClient,
     storage: Storage,
+    chain: Chain,
+    chain_id: ChainId,
 }
 
 impl<L> Sync<L>
@@ -64,7 +67,7 @@ where
         }
         .spawn()
         .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
-        .pipe(headers::VerifyHash, 100);
+        .pipe(headers::VerifyHash::new(self.chain, self.chain_id), 100);
 
         let HeaderFanout {
             headers,

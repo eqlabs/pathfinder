@@ -6,6 +6,8 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    Chain,
+    ChainId,
     ClassCommitment,
     SignedBlockHeader,
     StorageCommitment,
@@ -13,6 +15,8 @@ use pathfinder_common::{
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
+use crate::state::block_hash::meta::BlockHashMetaInfo;
+use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
@@ -130,7 +134,10 @@ pub struct BackwardContinuity {
 }
 
 /// Ensures that the block hash and signature are correct.
-pub struct VerifyHash;
+pub struct VerifyHash {
+    chain: Chain,
+    chain_id: ChainId,
+}
 
 impl ForwardContinuity {
     pub fn new(next: BlockNumber, parent_hash: BlockHash) -> Self {
@@ -190,15 +197,33 @@ impl ProcessStage for VerifyHash {
     type Output = SignedBlockHeader;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        if !input.header.verify_hash() {
+        if !self.verify_hash(&input) {
             return Err(SyncError2::BadBlockHash);
         }
 
-        if !input.verify_signature() {
+        if !self.verify_signature() {
             return Err(SyncError2::BadHeaderSignature);
         }
 
         Ok(input)
+    }
+}
+
+impl VerifyHash {
+    pub fn new(chain: Chain, chain_id: ChainId) -> Self {
+        Self { chain, chain_id }
+    }
+
+    fn verify_hash(&self, header: &SignedBlockHeader) -> bool {
+        matches!(
+            verify_block_hash(&header.header, self.chain, self.chain_id),
+            Ok(VerifyResult::Match(_))
+        )
+    }
+
+    fn verify_signature(&self) -> bool {
+        // FIXME NOW!
+        true
     }
 }
 
