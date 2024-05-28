@@ -186,6 +186,7 @@ pub mod call {
 pub struct TransactionStatus {
     pub status: Status,
     pub finality_status: transaction_status::FinalityStatus,
+    #[serde(default)]
     pub execution_status: transaction_status::ExecutionStatus,
 }
 

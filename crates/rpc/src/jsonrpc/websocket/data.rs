@@ -7,8 +7,6 @@ use pathfinder_common::{EventKey, TransactionHash};
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serde_with::serde_as;
-use starknet_gateway_types::reply::transaction_status::{ExecutionStatus, FinalityStatus};
 
 use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
@@ -43,52 +41,6 @@ pub(super) struct SubscriptionId {
 pub(super) struct SubscriptionItem<T> {
     pub(super) subscription_id: u32,
     pub(super) item: T,
-}
-
-#[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub(super) struct TransactionStatus {
-    pub(super) finality_status: TransactionFinalityStatus,
-    pub(super) execution_status: TransactionExecutionStatus,
-}
-
-impl From<starknet_gateway_types::reply::TransactionStatus> for TransactionStatus {
-    fn from(value: starknet_gateway_types::reply::TransactionStatus) -> Self {
-        Self {
-            finality_status: match value.finality_status {
-                FinalityStatus::NotReceived => TransactionFinalityStatus::NotReceived,
-                FinalityStatus::Received => TransactionFinalityStatus::Received,
-                FinalityStatus::AcceptedOnL1 => TransactionFinalityStatus::AcceptedOnL1,
-                FinalityStatus::AcceptedOnL2 => TransactionFinalityStatus::AcceptedOnL2,
-            },
-            execution_status: match value.execution_status {
-                ExecutionStatus::Succeeded => TransactionExecutionStatus::Succeeded,
-                ExecutionStatus::Reverted => TransactionExecutionStatus::Reverted,
-                ExecutionStatus::Rejected => TransactionExecutionStatus::Rejected,
-            },
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum TransactionFinalityStatus {
-    #[serde(rename = "NOT_RECEIVED")]
-    NotReceived,
-    #[serde(rename = "RECEIVED")]
-    Received,
-    #[serde(rename = "ACCEPTED_ON_L1")]
-    AcceptedOnL1,
-    #[serde(rename = "ACCEPTED_ON_L2")]
-    AcceptedOnL2,
-}
-
-#[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum TransactionExecutionStatus {
-    #[default]
-    Succeeded,
-    Reverted,
-    Rejected,
 }
 
 impl<T: Serialize> Serialize for SubscriptionItem<T> {
@@ -136,8 +88,17 @@ pub(super) enum ResponseEvent {
     Header(SubscriptionItem<Arc<Value>>),
     Responses(RpcResponses),
     Event(SubscriptionItem<Arc<EmittedEvent>>),
-    TransactionStatus(SubscriptionItem<Arc<TransactionStatus>>),
+    TransactionStatus(SubscriptionItem<Arc<TransactionStatusUpdate>>),
     RpcError(RpcError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TransactionStatusUpdate {
+    Received = 0,
+    Rejected = 1,
+    Succeeded = 2,
+    Reverted = 3,
 }
 
 impl ResponseEvent {

@@ -18,12 +18,12 @@ use serde::Serialize;
 use serde_json::Value;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::transaction_status::{ExecutionStatus, FinalityStatus};
-use starknet_gateway_types::reply::{Block, TransactionStatus as GatewayTransactionStatus};
+use starknet_gateway_types::reply::Block;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
-use super::TransactionStatusParams;
+use super::{TransactionStatusParams, TransactionStatusUpdate};
 use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
@@ -477,66 +477,80 @@ async fn transaction_status_subscription(
     transaction_hash: TransactionHash,
     gateway: impl GatewayApi + Send + 'static,
 ) {
-    let mut last_finality_status = None;
-    let mut last_execution_status = None;
+    let mut last_status = None;
     let start = Instant::now();
     let timeout = if cfg!(test) {
         Duration::from_secs(5)
     } else {
         Duration::from_secs(10)
     };
+    let mut poll_interval = tokio::time::interval(Duration::from_millis(500));
     loop {
         match gateway.transaction(transaction_hash).await {
-            Ok(GatewayTransactionStatus {
-                finality_status: FinalityStatus::NotReceived,
-                ..
-            }) => {
-                // "NOT_RECEIVED" status is never sent to the client.
-                if start.elapsed() > timeout {
-                    // The transaction was not found on the gateway after some time.
-                    // This means the transaction is probably not valid.
-                    msg_sender
-                        .send(ResponseEvent::RpcError(RpcError::ApplicationError(
-                            ApplicationError::SubscriptionTransactionHashNotFound {
-                                transaction_hash,
-                                subscription_id,
-                            },
-                        )))
+            Ok(tx_status) => {
+                let update = match (tx_status.finality_status, tx_status.execution_status) {
+                    (FinalityStatus::NotReceived, _) => {
+                        // "NOT_RECEIVED" status is never sent to the client.
+                        if start.elapsed() > timeout {
+                            // The transaction was not found on the gateway after some time.
+                            // This means the transaction is probably not valid.
+                            msg_sender
+                                .send(ResponseEvent::RpcError(RpcError::ApplicationError(
+                                    ApplicationError::SubscriptionTransactionHashNotFound {
+                                        transaction_hash,
+                                        subscription_id,
+                                    },
+                                )))
+                                .await
+                                .ok();
+                            break;
+                        }
+                        None
+                    }
+                    (FinalityStatus::Received, _) => Some(TransactionStatusUpdate::Received),
+                    (
+                        FinalityStatus::AcceptedOnL1 | FinalityStatus::AcceptedOnL2,
+                        ExecutionStatus::Succeeded,
+                    ) => Some(TransactionStatusUpdate::Succeeded),
+                    (
+                        FinalityStatus::AcceptedOnL1 | FinalityStatus::AcceptedOnL2,
+                        ExecutionStatus::Reverted,
+                    ) => Some(TransactionStatusUpdate::Reverted),
+                    (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
+                };
+                let status_changed = match (last_status, update) {
+                    (Some(last), Some(update)) => last < update,
+                    (None, Some(_)) => true,
+                    (Some(_), None) => false,
+                    (None, None) => false,
+                };
+                if status_changed {
+                    // Status changed, send an update to the client.
+                    last_status = update;
+                    if msg_sender
+                        .send(ResponseEvent::TransactionStatus(SubscriptionItem {
+                            subscription_id,
+                            item: Arc::new(update.unwrap()),
+                        }))
                         .await
-                        .ok();
-                    break;
-                }
-            }
-            Ok(tx_status)
-                if last_execution_status != Some(tx_status.execution_status)
-                    || last_finality_status != Some(tx_status.finality_status) =>
-            {
-                // Status changed, send an update to the client.
-                last_execution_status = Some(tx_status.execution_status);
-                last_finality_status = Some(tx_status.finality_status);
-                if msg_sender
-                    .send(ResponseEvent::TransactionStatus(SubscriptionItem {
-                        subscription_id,
-                        item: Arc::new(tx_status.into()),
-                    }))
-                    .await
-                    .is_err()
-                {
-                    break;
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
                 if tx_status.execution_status == ExecutionStatus::Rejected
+                    || tx_status.finality_status == FinalityStatus::AcceptedOnL1
                     || tx_status.finality_status == FinalityStatus::AcceptedOnL2
                 {
                     // Final status reached, close the subscription.
                     break;
                 }
             }
-            Ok(_) => {}
             Err(e) => {
                 tracing::warn!(%transaction_hash, %e, "Failed to poll transaction status");
             }
         }
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        poll_interval.tick().await;
     }
 }
 
@@ -644,11 +658,6 @@ mod tests {
     use super::*;
     use crate::context::RpcContext;
     use crate::jsonrpc::websocket::data::successful_response;
-    use crate::jsonrpc::websocket::{
-        TransactionExecutionStatus,
-        TransactionFinalityStatus,
-        TransactionStatus,
-    };
     use crate::jsonrpc::{RpcError, RpcResponse};
 
     #[tokio::test]
@@ -959,10 +968,7 @@ mod tests {
         client
             .expect_response(&SubscriptionItem {
                 subscription_id: 0,
-                item: TransactionStatus {
-                    finality_status: TransactionFinalityStatus::AcceptedOnL1,
-                    execution_status: TransactionExecutionStatus::Succeeded,
-                },
+                item: TransactionStatusUpdate::Succeeded,
             })
             .await;
 
