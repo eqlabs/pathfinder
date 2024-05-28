@@ -12,7 +12,7 @@ use crate::{
     Tip,
 };
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Transaction {
     pub hash: TransactionHash,
     pub variant: TransactionVariant,

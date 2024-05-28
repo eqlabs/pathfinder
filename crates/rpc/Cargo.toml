@@ -9,6 +9,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 axum = { workspace = true, features = ["ws", "headers", "macros"] }
 base64 = { workspace = true }
 flate2 = { workspace = true }

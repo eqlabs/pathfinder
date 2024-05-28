@@ -489,6 +489,7 @@ async fn transaction_status_subscription(
         match gateway.transaction(transaction_hash).await {
             Ok(tx_status) => {
                 let update = match (tx_status.finality_status, tx_status.execution_status) {
+                    (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
                     (FinalityStatus::NotReceived, _) => {
                         // "NOT_RECEIVED" status is never sent to the client.
                         if start.elapsed() > timeout {
@@ -516,7 +517,6 @@ async fn transaction_status_subscription(
                         FinalityStatus::AcceptedOnL1 | FinalityStatus::AcceptedOnL2,
                         ExecutionStatus::Reverted,
                     ) => Some(TransactionStatusUpdate::Reverted),
-                    (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
                 };
                 let status_changed = match (last_status, update) {
                     (Some(last), Some(update)) => last < update,
@@ -622,6 +622,8 @@ impl Default for TopicBroadcasters {
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use axum::routing::get;
@@ -648,7 +650,8 @@ mod tests {
     use serde::Serialize;
     use serde_json::value::RawValue;
     use serde_json::{json, Number, Value};
-    use starknet_gateway_types::reply::GasPrices;
+    use starknet_gateway_types::error::SequencerError;
+    use starknet_gateway_types::reply::{GasPrices, Status, TransactionStatus};
     use tokio::net::TcpStream;
     use tokio::task::JoinHandle;
     use tokio::time::timeout;
@@ -975,6 +978,261 @@ mod tests {
         client.expect_no_response().await;
 
         client.destroy().await;
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_mocked_succeeded() {
+        struct Mock(Mutex<VecDeque<TransactionStatus>>);
+
+        #[async_trait::async_trait]
+        impl GatewayApi for Mock {
+            async fn transaction(
+                &self,
+                transaction_hash: TransactionHash,
+            ) -> Result<TransactionStatus, SequencerError> {
+                assert_eq!(transaction_hash, transaction_hash!("0x1"));
+                Ok(self.0.lock().unwrap().pop_front().unwrap())
+            }
+        }
+
+        let (msg_sender, mut msg_receiver) = mpsc::channel(10);
+        tokio::spawn(transaction_status_subscription(
+            msg_sender,
+            0,
+            transaction_hash!("0x1"),
+            Mock(Mutex::new(
+                [
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::AcceptedOnL1,
+                        finality_status: FinalityStatus::AcceptedOnL1,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+            )),
+        ));
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Succeeded => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap();
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_mocked_reverted() {
+        struct Mock(Mutex<VecDeque<TransactionStatus>>);
+
+        #[async_trait::async_trait]
+        impl GatewayApi for Mock {
+            async fn transaction(
+                &self,
+                transaction_hash: TransactionHash,
+            ) -> Result<TransactionStatus, SequencerError> {
+                assert_eq!(transaction_hash, transaction_hash!("0x1"));
+                Ok(self.0.lock().unwrap().pop_front().unwrap())
+            }
+        }
+
+        let (msg_sender, mut msg_receiver) = mpsc::channel(10);
+        tokio::spawn(transaction_status_subscription(
+            msg_sender,
+            0,
+            transaction_hash!("0x1"),
+            Mock(Mutex::new(
+                [
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::AcceptedOnL1,
+                        finality_status: FinalityStatus::AcceptedOnL1,
+                        execution_status: ExecutionStatus::Reverted,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+            )),
+        ));
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Reverted => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap();
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_mocked_rejected() {
+        struct Mock(Mutex<VecDeque<TransactionStatus>>);
+
+        #[async_trait::async_trait]
+        impl GatewayApi for Mock {
+            async fn transaction(
+                &self,
+                transaction_hash: TransactionHash,
+            ) -> Result<TransactionStatus, SequencerError> {
+                assert_eq!(transaction_hash, transaction_hash!("0x1"));
+                Ok(self.0.lock().unwrap().pop_front().unwrap())
+            }
+        }
+
+        let (msg_sender, mut msg_receiver) = mpsc::channel(10);
+        tokio::spawn(transaction_status_subscription(
+            msg_sender,
+            0,
+            transaction_hash!("0x1"),
+            Mock(Mutex::new(
+                [
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Rejected,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Rejected,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+            )),
+        ));
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Rejected => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap();
+        assert!(msg.is_none());
     }
 
     #[tokio::test]

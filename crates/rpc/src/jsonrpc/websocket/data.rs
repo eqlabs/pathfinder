@@ -38,6 +38,7 @@ pub(super) struct SubscriptionId {
     pub(super) id: u32,
 }
 
+#[derive(Debug)]
 pub(super) struct SubscriptionItem<T> {
     pub(super) subscription_id: u32,
     pub(super) item: T,
@@ -69,6 +70,7 @@ impl<T: Serialize> Serialize for SubscriptionItem<T> {
     }
 }
 
+#[derive(Debug)]
 pub(super) enum ResponseEvent {
     Subscribed {
         subscription_id: u32,
