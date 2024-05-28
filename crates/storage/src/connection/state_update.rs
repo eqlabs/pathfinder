@@ -120,8 +120,9 @@ impl Transaction<'_> {
             .inner()
             .prepare_cached(
                 r"INSERT INTO class_definitions (block_number, hash) VALUES (?1, ?2)
-                ON CONFLICT(hash) WHERE block_number IS NULL
-                DO UPDATE SET block_number=excluded.block_number",
+                ON CONFLICT(hash)
+                    DO UPDATE SET block_number=excluded.block_number
+                    WHERE block_number IS NULL",
             )
             .context("Preparing class hash and block number upsert statement")?;
         // OR IGNORE is required to handle legacy syncing logic, where the casm
