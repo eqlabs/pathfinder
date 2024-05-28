@@ -1011,6 +1011,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn class_definition_block_number_is_kept() {
+        //! A regression test which ensures that the block number is not
+        //! overwritten by subsequent declares. Declare V1s are not checked for
+        //! duplicates as these do not form part of the class trie.
+        //!
+        //! We insert the same class twice in consecutive blocks and ensure the
+        //! first sticks.
+        let mut db = crate::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+        let tx = db.transaction().unwrap();
+
+        let target_class = class_hash_bytes!(b"target");
+
+        let header_0 = BlockHeader::builder().finalize_with_hash(block_hash!("0xabc"));
+        let header_1 = header_0
+            .child_builder()
+            .finalize_with_hash(block_hash!("0x123"));
+
+        let state_update = StateUpdate::default().with_declared_cairo_class(target_class);
+
+        tx.insert_cairo_class(target_class, &[]).unwrap();
+        tx.insert_block_header(&header_0).unwrap();
+        tx.insert_block_header(&header_1).unwrap();
+        tx.insert_state_update(header_0.number, &state_update)
+            .unwrap();
+        tx.insert_state_update(header_1.number, &state_update)
+            .unwrap();
+
+        // We expect the first state update to contain the class, and not the second.
+        let declared_at = tx
+            .class_definition_with_block_number(target_class)
+            .unwrap()
+            .unwrap()
+            .0
+            .unwrap();
+
+        assert_eq!(declared_at, header_0.number);
+    }
+
+    #[test]
     fn contract_class_hash() {
         let mut db = crate::StorageBuilder::in_memory()
             .unwrap()
