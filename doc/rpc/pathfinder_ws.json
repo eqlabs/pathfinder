@@ -242,29 +242,12 @@
                 "$ref": "./v07/starknet_api_openrpc.json#/components/schemas/EMITTED_EVENT"
             },
             "TRANSACTION_STATUS": {
-                "type": "object",
-                "properties": {
-                    "finality_status": {
-                        "type": "string",
-                        "enum": [
-                            "NOT_RECEIVED",
-                            "RECEIVED",
-                            "ACCEPTED_ON_L1",
-                            "ACCEPTED_ON_L2"
-                        ]
-                    },
-                    "execution_status": {
-                        "type": "string",
-                        "enum": [
-                            "SUCCEEDED",
-                            "REVERTED",
-                            "REJECTED"
-                        ]
-                    }
-                },
-                "required": [
-                    "finality_status",
-                    "execution_status"
+                "type": "string",
+                "enum": [
+                    "RECEIVED",
+                    "REJECTED",
+                    "SUCCEEDED",
+                    "REVERTED"
                 ]
             },
             "FELT": {

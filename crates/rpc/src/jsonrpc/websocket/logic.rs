@@ -969,10 +969,14 @@ mod tests {
             .await;
 
         client
-            .expect_response(&SubscriptionItem {
-                subscription_id: 0,
-                item: TransactionStatusUpdate::Succeeded,
-            })
+            .expect_response(&json!({
+                "jsonrpc": "2.0",
+                "method": "pathfinder_subscription",
+                "result": {
+                    "subscription": 0,
+                    "result": "SUCCEEDED",
+                }
+            }))
             .await;
 
         client.expect_no_response().await;
