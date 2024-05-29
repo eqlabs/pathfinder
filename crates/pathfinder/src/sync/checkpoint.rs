@@ -572,7 +572,8 @@ mod tests {
     use super::*;
 
     mod handle_header_stream {
-        use fake::{Dummy, Faker};
+        use assert_matches::assert_matches;
+        use fake::{Dummy, Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;
         use p2p_proto::header;
@@ -661,7 +662,7 @@ mod tests {
                     .iter()
                     .rev()
                     .cloned()
-                    .map(|header| PeerData::for_tests(header))
+                    .map(PeerData::for_tests)
                     .collect::<Vec<_>>(),
                 expected_headers,
                 storage: StorageBuilder::in_memory().unwrap(),
@@ -712,9 +713,92 @@ mod tests {
 
             pretty_assertions_sorted::assert_eq!(expected_headers, actual_headers);
         }
+
+        #[tokio::test]
+        async fn discontinuity() {
+            let Setup {
+                mut streamed_headers,
+                storage,
+                head,
+                ..
+            } = setup().await;
+
+            streamed_headers.last_mut().unwrap().data.header.number = BlockNumber::new_or_panic(3);
+
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    Chain::SepoliaTestnet,
+                    ChainId::SEPOLIA_TESTNET,
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::Discontinuity(_))
+            );
+        }
+
+        #[tokio::test]
+        async fn bad_hash() {
+            let Setup {
+                mut streamed_headers,
+                storage,
+                head,
+                ..
+            } = setup().await;
+
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    Chain::Mainnet,
+                    ChainId::MAINNET,
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::BadBlockHash(_))
+            );
+        }
+
+        #[tokio::test]
+        async fn bad_signature() {
+            // TODO
+        }
+
+        #[tokio::test]
+        async fn db_failure() {
+            let Setup {
+                mut streamed_headers,
+                storage,
+                head,
+                ..
+            } = setup().await;
+
+            let mut db = storage.connection().unwrap();
+            let db = db.transaction().unwrap();
+            let genesis = BlockHeader {
+                number: BlockNumber::GENESIS,
+                ..Default::default()
+            };
+            db.insert_block_header(&genesis).unwrap();
+            db.commit().unwrap();
+
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    Chain::SepoliaTestnet,
+                    ChainId::SEPOLIA_TESTNET,
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::Other(_))
+            );
+        }
     }
 
     mod handle_transaction_stream {
+        use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
         use p2p::client::peer_agnostic::TransactionBlockData;
@@ -836,7 +920,7 @@ mod tests {
                 storage,
                 ..
             } = setup(1).await;
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
                     storage,
@@ -844,23 +928,21 @@ mod tests {
                     // ChainId::SEPOLIA_TESTNET
                     ChainId::MAINNET
                 )
-                .await
-                .unwrap_err(),
-                SyncError::TransactionCommitmentMismatch(_)
+                .await,
+                Err(SyncError::TransactionCommitmentMismatch(_))
             );
         }
 
         #[tokio::test]
         async fn stream_failure() {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_transaction_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
 
@@ -870,20 +952,20 @@ mod tests {
                 streamed_transactions,
                 ..
             } = setup(1).await;
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
                     StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
     }
 
     mod handle_state_diff_stream {
+        use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;
@@ -1000,24 +1082,21 @@ mod tests {
                 .declared_cairo_classes
                 .insert(Faker.fake());
 
-            assert_matches::assert_matches!(
-                handle_state_diff_stream(stream::iter(streamed_state_diffs), storage)
-                    .await
-                    .unwrap_err(),
-                SyncError::StateDiffCommitmentMismatch(_)
+            assert_matches!(
+                handle_state_diff_stream(stream::iter(streamed_state_diffs), storage).await,
+                Err(SyncError::StateDiffCommitmentMismatch(_))
             );
         }
 
         #[tokio::test]
         async fn stream_failure() {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_state_diff_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
 
@@ -1027,14 +1106,13 @@ mod tests {
                 streamed_state_diffs,
                 ..
             } = setup(1).await;
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_state_diff_stream(
                     stream::iter(streamed_state_diffs),
                     StorageBuilder::in_memory().unwrap(),
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
     }
@@ -1043,6 +1121,7 @@ mod tests {
         use std::collections::HashMap;
         use std::future;
 
+        use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::{stream, SinkExt};
         use p2p::libp2p::PeerId;
@@ -1283,11 +1362,10 @@ mod tests {
             let data = PeerData::for_tests(class);
             let expected_peer_id = data.peer;
 
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_class_stream(stream::once(std::future::ready(Ok(data))), storage, FakeFgw, Faker.fake::<DeclaredClasses>().to_stream())
-                    .await
-                    .unwrap_err(),
-                SyncError::BadClassLayout(x) => assert_eq!(x, expected_peer_id)
+                    .await,
+                Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id)
             );
         }
 
@@ -1303,31 +1381,30 @@ mod tests {
             declared_classes.0.last_mut().unwrap().class = Faker.fake();
             let expected_peer_id = streamed_classes.last().unwrap().as_ref().unwrap().peer;
 
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_class_stream(stream::iter(streamed_classes), storage, FakeFgw, declared_classes.to_stream())
-                    .await
-                    .unwrap_err(),
-                SyncError::UnexpectedClass(x) => assert_eq!(x, expected_peer_id)
+                    .await,
+                Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id)
             );
         }
 
         #[tokio::test]
         async fn stream_failure() {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_class_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
                     Faker.fake::<DeclaredClasses>().to_stream()
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
     }
 
     mod handle_event_stream {
+        use assert_matches::assert_matches;
         use fake::{Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;
