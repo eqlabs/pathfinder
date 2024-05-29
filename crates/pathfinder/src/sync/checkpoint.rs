@@ -24,6 +24,7 @@ use pathfinder_common::{
     Chain,
     ChainId,
     ClassHash,
+    PublicKey,
     SignedBlockHeader,
     TransactionIndex,
 };
@@ -54,6 +55,7 @@ pub struct Sync {
     pub fgw_client: Client,
     pub chain: Chain,
     pub chain_id: ChainId,
+    pub public_key: PublicKey,
 }
 
 impl Sync {
@@ -64,6 +66,7 @@ impl Sync {
         fgw_client: Client,
         chain: Chain,
         chain_id: ChainId,
+        public_key: PublicKey,
     ) -> Self {
         Self {
             storage,
@@ -73,6 +76,7 @@ impl Sync {
             fgw_client,
             chain,
             chain_id,
+            public_key,
         }
     }
 
@@ -136,6 +140,7 @@ impl Sync {
                 gap.head(),
                 self.chain,
                 self.chain_id,
+                self.public_key,
                 self.storage.clone(),
             )
             .await?;
@@ -239,12 +244,16 @@ async fn handle_header_stream(
     head: (BlockNumber, BlockHash),
     chain: Chain,
     chain_id: ChainId,
+    public_key: PublicKey,
     storage: Storage,
 ) -> Result<(), SyncError> {
     tracing::info!("Syncing headers");
     spawn_header_source(header_stream)
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
-        .pipe(headers::VerifyHash::new(chain, chain_id), 10)
+        .pipe(
+            headers::VerifyHashAndSignature::new(chain, chain_id, public_key),
+            10,
+        )
         .try_chunks(1024, 10)
         .pipe(
             headers::Persist {
@@ -578,6 +587,7 @@ mod tests {
         use p2p::libp2p::PeerId;
         use p2p_proto::header;
         use pathfinder_common::{
+            public_key,
             BlockCommitmentSignature,
             BlockCommitmentSignatureElem,
             BlockHash,
@@ -602,6 +612,7 @@ mod tests {
             pub expected_headers: Vec<SignedBlockHeader>,
             pub storage: Storage,
             pub head: (BlockNumber, BlockHash),
+            pub public_key: PublicKey,
         }
 
         #[serde_as]
@@ -666,6 +677,9 @@ mod tests {
                     .collect::<Vec<_>>(),
                 expected_headers,
                 storage: StorageBuilder::in_memory().unwrap(),
+                public_key: public_key!(
+                    "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
+                ),
             }
         }
 
@@ -676,6 +690,7 @@ mod tests {
                 expected_headers,
                 storage,
                 head,
+                public_key,
             } = setup().await;
 
             handle_header_stream(
@@ -683,6 +698,7 @@ mod tests {
                 head,
                 Chain::SepoliaTestnet,
                 ChainId::SEPOLIA_TESTNET,
+                public_key,
                 storage.clone(),
             )
             .await
@@ -720,6 +736,7 @@ mod tests {
                 mut streamed_headers,
                 storage,
                 head,
+                public_key,
                 ..
             } = setup().await;
 
@@ -731,6 +748,7 @@ mod tests {
                     head,
                     Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
+                    public_key,
                     storage.clone(),
                 )
                 .await,
@@ -744,6 +762,7 @@ mod tests {
                 mut streamed_headers,
                 storage,
                 head,
+                public_key,
                 ..
             } = setup().await;
 
@@ -751,8 +770,10 @@ mod tests {
                 handle_header_stream(
                     stream::iter(streamed_headers),
                     head,
+                    // Causes mismatches for all block hashes because setup assumes Sepolia
                     Chain::Mainnet,
                     ChainId::MAINNET,
+                    public_key,
                     storage.clone(),
                 )
                 .await,
@@ -771,6 +792,7 @@ mod tests {
                 mut streamed_headers,
                 storage,
                 head,
+                public_key,
                 ..
             } = setup().await;
 
@@ -789,6 +811,7 @@ mod tests {
                     head,
                     Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
+                    public_key,
                     storage.clone(),
                 )
                 .await,

@@ -2,7 +2,7 @@
 
 use anyhow::Context;
 use p2p::client::peer_agnostic::Client as P2PClient;
-use pathfinder_common::{Chain, ChainId};
+use pathfinder_common::{Chain, ChainId, PublicKey};
 use primitive_types::H160;
 use starknet_gateway_client::Client as GatewayClient;
 
@@ -26,6 +26,7 @@ pub struct Sync {
     pub fgw_client: GatewayClient,
     pub chain: Chain,
     pub chain_id: ChainId,
+    pub public_key: PublicKey,
 }
 
 impl Sync {
@@ -61,6 +62,7 @@ impl Sync {
                 fgw_client: self.fgw_client.clone(),
                 chain: self.chain,
                 chain_id: self.chain_id,
+                public_key: self.public_key,
             }
             .run(checkpoint.clone())
             .await;

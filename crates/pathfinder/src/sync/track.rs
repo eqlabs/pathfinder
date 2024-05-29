@@ -17,6 +17,7 @@ use pathfinder_common::{
     ChainId,
     ClassHash,
     EventCommitment,
+    PublicKey,
     SignedBlockHeader,
     StateUpdate,
     TransactionCommitment,
@@ -38,6 +39,7 @@ pub struct Sync<L> {
     storage: Storage,
     chain: Chain,
     chain_id: ChainId,
+    public_key: PublicKey,
 }
 
 impl<L> Sync<L>
@@ -67,7 +69,10 @@ where
         }
         .spawn()
         .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
-        .pipe(headers::VerifyHash::new(self.chain, self.chain_id), 100);
+        .pipe(
+            headers::VerifyHashAndSignature::new(self.chain, self.chain_id, self.public_key),
+            100,
+        );
 
         let HeaderFanout {
             headers,

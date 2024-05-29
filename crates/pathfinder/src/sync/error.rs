@@ -14,8 +14,6 @@ pub(super) enum SyncError {
     BadBlockHash(PeerId),
     #[error("Discontinuity in header chain")]
     Discontinuity(PeerId),
-    #[error("State diff signature verification failed")]
-    BadStateDiffSignature(PeerId),
     #[error("State diff commitment mismatch")]
     StateDiffCommitmentMismatch(PeerId),
     #[error("Invalid class definition layout")]
@@ -42,9 +40,6 @@ impl SyncError {
             SyncError::BadHeaderSignature(x) => PeerData::new(x, SyncError2::BadHeaderSignature),
             SyncError::BadBlockHash(x) => PeerData::new(x, SyncError2::BadBlockHash),
             SyncError::Discontinuity(x) => PeerData::new(x, SyncError2::Discontinuity),
-            SyncError::BadStateDiffSignature(x) => {
-                PeerData::new(x, SyncError2::BadStateDiffSignature)
-            }
             SyncError::StateDiffCommitmentMismatch(x) => {
                 PeerData::new(x, SyncError2::StateDiffCommitmentMismatch)
             }
@@ -67,7 +62,6 @@ impl SyncError {
             SyncError2::BadHeaderSignature => SyncError::BadHeaderSignature(peer),
             SyncError2::BadBlockHash => SyncError::BadBlockHash(peer),
             SyncError2::Discontinuity => SyncError::Discontinuity(peer),
-            SyncError2::BadStateDiffSignature => SyncError::BadStateDiffSignature(peer),
             SyncError2::StateDiffCommitmentMismatch => SyncError::StateDiffCommitmentMismatch(peer),
             SyncError2::BadClassLayout => SyncError::BadClassLayout(peer),
             SyncError2::UnexpectedClass => SyncError::UnexpectedClass(peer),
@@ -90,8 +84,6 @@ pub(super) enum SyncError2 {
     BadBlockHash,
     #[error("Discontinuity in header chain")]
     Discontinuity,
-    #[error("State diff signature verification failed")]
-    BadStateDiffSignature,
     #[error("State diff commitment mismatch")]
     StateDiffCommitmentMismatch,
     #[error("Invalid class definition layout")]
@@ -123,7 +115,6 @@ impl PartialEq for SyncError2 {
             (SyncError2::BadHeaderSignature, SyncError2::BadHeaderSignature) => true,
             (SyncError2::BadBlockHash, SyncError2::BadBlockHash) => true,
             (SyncError2::Discontinuity, SyncError2::Discontinuity) => true,
-            (SyncError2::BadStateDiffSignature, SyncError2::BadStateDiffSignature) => true,
             (SyncError2::StateDiffCommitmentMismatch, SyncError2::StateDiffCommitmentMismatch) => {
                 true
             }

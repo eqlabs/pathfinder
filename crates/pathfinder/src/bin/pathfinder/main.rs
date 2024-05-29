@@ -495,7 +495,13 @@ fn start_sync(
         )
     } else {
         let p2p_client = p2p_client.expect("P2P client is expected with the p2p feature enabled");
-        start_p2p_sync(storage, pathfinder_context, ethereum_client, p2p_client)
+        start_p2p_sync(
+            storage,
+            pathfinder_context,
+            ethereum_client,
+            p2p_client,
+            gateway_public_key,
+        )
     }
 }
 
@@ -568,6 +574,7 @@ fn start_p2p_sync(
     pathfinder_context: PathfinderContext,
     ethereum_client: EthereumClient,
     p2p_client: p2p::client::peer_agnostic::Client,
+    gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let sync = pathfinder_lib::sync::Sync {
         storage,
@@ -576,6 +583,8 @@ fn start_p2p_sync(
         eth_address: pathfinder_context.l1_core_address,
         fgw_client: pathfinder_context.gateway,
         chain_id: pathfinder_context.network_id,
+        chain: pathfinder_context.network,
+        public_key: gateway_public_key,
     };
     tokio::spawn(sync.run())
 }

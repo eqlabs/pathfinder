@@ -9,6 +9,7 @@ use pathfinder_common::{
     Chain,
     ChainId,
     ClassCommitment,
+    PublicKey,
     SignedBlockHeader,
     StorageCommitment,
 };
@@ -134,9 +135,10 @@ pub struct BackwardContinuity {
 }
 
 /// Ensures that the block hash and signature are correct.
-pub struct VerifyHash {
+pub struct VerifyHashAndSignature {
     chain: Chain,
     chain_id: ChainId,
+    public_key: PublicKey,
 }
 
 impl ForwardContinuity {
@@ -192,7 +194,7 @@ impl ProcessStage for BackwardContinuity {
     }
 }
 
-impl ProcessStage for VerifyHash {
+impl ProcessStage for VerifyHashAndSignature {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
@@ -201,7 +203,7 @@ impl ProcessStage for VerifyHash {
             return Err(SyncError2::BadBlockHash);
         }
 
-        if !self.verify_signature() {
+        if !self.verify_signature(&input) {
             return Err(SyncError2::BadHeaderSignature);
         }
 
@@ -209,9 +211,13 @@ impl ProcessStage for VerifyHash {
     }
 }
 
-impl VerifyHash {
-    pub fn new(chain: Chain, chain_id: ChainId) -> Self {
-        Self { chain, chain_id }
+impl VerifyHashAndSignature {
+    pub fn new(chain: Chain, chain_id: ChainId, public_key: PublicKey) -> Self {
+        Self {
+            chain,
+            chain_id,
+            public_key,
+        }
     }
 
     fn verify_hash(&self, header: &SignedBlockHeader) -> bool {
@@ -221,9 +227,15 @@ impl VerifyHash {
         )
     }
 
-    fn verify_signature(&self) -> bool {
-        // FIXME NOW!
-        true
+    fn verify_signature(&self, header: &SignedBlockHeader) -> bool {
+        header
+            .signature
+            .verify(
+                self.public_key,
+                header.header.hash,
+                header.state_diff_commitment,
+            )
+            .is_ok()
     }
 }
 
