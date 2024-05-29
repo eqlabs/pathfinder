@@ -677,6 +677,7 @@ mod tests {
                     .collect::<Vec<_>>(),
                 expected_headers,
                 storage: StorageBuilder::in_memory().unwrap(),
+                // https://alpha-sepolia.starknet.io/feeder_gateway/get_public_key
                 public_key: public_key!(
                     "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
                 ),

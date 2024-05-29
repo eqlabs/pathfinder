@@ -16,7 +16,6 @@ use pathfinder_common::{
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
-use crate::state::block_hash::meta::BlockHashMetaInfo;
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::{ProcessStage, SyncReceiver};

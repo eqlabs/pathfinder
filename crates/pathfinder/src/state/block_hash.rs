@@ -91,8 +91,7 @@ pub fn verify_block_hash(
     verify_block_hash0(block_header.into(), chain, chain_id)
 }
 
-// Deserialize is used only to make testing easier
-#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[derive(Clone, Copy, Debug)]
 struct BlockHeaderVerificationData {
     expected_hash: BlockHash,
     parent_hash: BlockHash,
@@ -215,7 +214,7 @@ fn verify_block_hash0(
     })
 }
 
-pub(crate) mod meta {
+mod meta {
     use pathfinder_common::{sequencer_address, BlockNumber, Chain, SequencerAddress};
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -336,7 +335,7 @@ fn compute_final_hash_pre_0_7(
 
 /// This implements the final hashing step for post-0.7 blocks.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compute_final_hash(
+fn compute_final_hash(
     block_number: BlockNumber,
     state_root: StateCommitment,
     sequencer_address: &SequencerAddress,
