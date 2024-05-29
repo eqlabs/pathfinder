@@ -425,15 +425,7 @@ mod prop {
                         header.header.number,
                         // List of tuples (TransactionVariant, Receipt)
                         transaction_data.into_iter().map(|(t, mut r, _)| {
-                            let mut tv = workaround::for_legacy_l1_handlers(t.variant);
-                            // P2P transactions don't carry contract address, so zero them just like `try_from_dto` does
-                            match &mut tv {
-                                TransactionVariant::DeployV0(x) => x.contract_address = ContractAddress::ZERO,
-                                TransactionVariant::DeployV1(x) => x.contract_address = ContractAddress::ZERO,
-                                TransactionVariant::DeployAccountV1(x) => x.contract_address = ContractAddress::ZERO,
-                                TransactionVariant::DeployAccountV3(x) => x.contract_address = ContractAddress::ZERO,
-                                _ => {}
-                            };
+                            let tv = workaround::for_legacy_l1_handlers(t.variant);
                             // P2P receipts don't carry transaction index
                             r.transaction_index = TransactionIndex::new_or_panic(0);
                             (tv, r.into())

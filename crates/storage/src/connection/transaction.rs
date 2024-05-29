@@ -2063,12 +2063,25 @@ pub(crate) mod dto {
 
     impl<T> Dummy<T> for DeployTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let class_hash: MinimalFelt = Faker.fake_with_rng(rng);
+            let constructor_calldata: Vec<MinimalFelt> = Faker.fake_with_rng(rng);
+            let contract_address_salt: MinimalFelt = Faker.fake_with_rng(rng);
+
+            let contract_address = ContractAddress::deployed_contract_address(
+                constructor_calldata.iter().map(|f| CallParam(f.0)),
+                &ContractAddressSalt(contract_address_salt.0),
+                &ClassHash(class_hash.0),
+            )
+            .as_inner()
+            .to_owned()
+            .into();
+
             Self {
                 version: Felt::from_u64(rng.gen_range(0..=1)).into(),
-                contract_address: Faker.fake_with_rng(rng),
-                contract_address_salt: Faker.fake_with_rng(rng),
-                class_hash: Faker.fake_with_rng(rng),
-                constructor_calldata: Faker.fake_with_rng(rng),
+                contract_address,
+                contract_address_salt,
+                class_hash,
+                constructor_calldata,
             }
         }
     }
@@ -2084,11 +2097,24 @@ pub(crate) mod dto {
 
     impl<T> Dummy<T> for DeployTransactionV0 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let class_hash: MinimalFelt = Faker.fake_with_rng(rng);
+            let constructor_calldata: Vec<MinimalFelt> = Faker.fake_with_rng(rng);
+            let contract_address_salt: MinimalFelt = Faker.fake_with_rng(rng);
+
+            let contract_address = ContractAddress::deployed_contract_address(
+                constructor_calldata.iter().map(|f| CallParam(f.0)),
+                &ContractAddressSalt(contract_address_salt.0),
+                &ClassHash(class_hash.0),
+            )
+            .as_inner()
+            .to_owned()
+            .into();
+
             Self {
-                contract_address: Faker.fake_with_rng(rng),
-                contract_address_salt: Faker.fake_with_rng(rng),
-                class_hash: Faker.fake_with_rng(rng),
-                constructor_calldata: Faker.fake_with_rng(rng),
+                contract_address,
+                contract_address_salt,
+                class_hash,
+                constructor_calldata,
             }
         }
     }
@@ -2104,11 +2130,24 @@ pub(crate) mod dto {
 
     impl<T> Dummy<T> for DeployTransactionV1 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let class_hash: MinimalFelt = Faker.fake_with_rng(rng);
+            let constructor_calldata: Vec<MinimalFelt> = Faker.fake_with_rng(rng);
+            let contract_address_salt: MinimalFelt = Faker.fake_with_rng(rng);
+
+            let contract_address = ContractAddress::deployed_contract_address(
+                constructor_calldata.iter().map(|f| CallParam(f.0)),
+                &ContractAddressSalt(contract_address_salt.0),
+                &ClassHash(class_hash.0),
+            )
+            .as_inner()
+            .to_owned()
+            .into();
+
             Self {
-                contract_address: Faker.fake_with_rng(rng),
-                contract_address_salt: Faker.fake_with_rng(rng),
-                class_hash: Faker.fake_with_rng(rng),
-                constructor_calldata: Faker.fake_with_rng(rng),
+                contract_address,
+                contract_address_salt,
+                class_hash,
+                constructor_calldata,
             }
         }
     }

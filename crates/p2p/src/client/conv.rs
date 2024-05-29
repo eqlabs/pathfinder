@@ -217,59 +217,103 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 sender_address: ContractAddress(x.sender.0),
                 compiled_class_hash: CasmHash(x.compiled_class_hash.0),
             }),
-            Deploy(x) if x.version == 0 => Self::DeployV0(DeployTransactionV0 {
-                contract_address: ContractAddress::ZERO,
-                contract_address_salt: ContractAddressSalt(x.address_salt),
-                class_hash: ClassHash(x.class_hash.0),
-                constructor_calldata: x.calldata.into_iter().map(ConstructorParam).collect(),
-            }),
-            Deploy(x) if x.version == 1 => Self::DeployV1(DeployTransactionV1 {
-                contract_address: ContractAddress::ZERO,
-                contract_address_salt: ContractAddressSalt(x.address_salt),
-                class_hash: ClassHash(x.class_hash.0),
-                constructor_calldata: x.calldata.into_iter().map(ConstructorParam).collect(),
-            }),
+            Deploy(x) if x.version == 0 => {
+                let constructor_calldata: Vec<ConstructorParam> =
+                    x.calldata.into_iter().map(ConstructorParam).collect();
+                let contract_address_salt = ContractAddressSalt(x.address_salt);
+                let class_hash = ClassHash(x.class_hash.0);
+
+                Self::DeployV0(DeployTransactionV0 {
+                    contract_address: ContractAddress::deployed_contract_address(
+                        constructor_calldata.iter().map(|d| CallParam(d.0)),
+                        &contract_address_salt,
+                        &class_hash,
+                    ),
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                })
+            }
+            Deploy(x) if x.version == 1 => {
+                let constructor_calldata: Vec<ConstructorParam> =
+                    x.calldata.into_iter().map(ConstructorParam).collect();
+                let contract_address_salt = ContractAddressSalt(x.address_salt);
+                let class_hash = ClassHash(x.class_hash.0);
+
+                Self::DeployV1(DeployTransactionV1 {
+                    contract_address: ContractAddress::deployed_contract_address(
+                        constructor_calldata.iter().map(|d| CallParam(d.0)),
+                        &contract_address_salt,
+                        &class_hash,
+                    ),
+                    contract_address_salt,
+                    class_hash,
+                    constructor_calldata,
+                })
+            }
             Deploy(_) => anyhow::bail!("Invalid deploy transaction version"),
-            DeployAccountV1(x) => Self::DeployAccountV1(DeployAccountTransactionV1 {
-                contract_address: ContractAddress::ZERO,
-                max_fee: Fee(x.max_fee),
-                signature: x
-                    .signature
-                    .parts
-                    .into_iter()
-                    .map(TransactionSignatureElem)
-                    .collect(),
-                nonce: TransactionNonce(x.nonce),
-                contract_address_salt: ContractAddressSalt(x.address_salt),
-                constructor_calldata: x.calldata.into_iter().map(CallParam).collect(),
-                class_hash: ClassHash(x.class_hash.0),
-            }),
-            DeployAccountV3(x) => Self::DeployAccountV3(DeployAccountTransactionV3 {
-                contract_address: ContractAddress::ZERO,
-                signature: x
-                    .signature
-                    .parts
-                    .into_iter()
-                    .map(TransactionSignatureElem)
-                    .collect(),
-                nonce: TransactionNonce(x.nonce),
-                nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(
-                    x.nonce_data_availability_mode,
-                )?,
-                fee_data_availability_mode: DataAvailabilityMode::try_from_dto(
-                    x.fee_data_availability_mode,
-                )?,
-                resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
-                tip: pathfinder_common::Tip(x.tip),
-                paymaster_data: x
-                    .paymaster_data
-                    .into_iter()
-                    .map(pathfinder_common::PaymasterDataElem)
-                    .collect(),
-                contract_address_salt: ContractAddressSalt(x.address_salt),
-                constructor_calldata: x.calldata.into_iter().map(CallParam).collect(),
-                class_hash: ClassHash(x.class_hash.0),
-            }),
+            DeployAccountV1(x) => {
+                let constructor_calldata: Vec<CallParam> =
+                    x.calldata.into_iter().map(CallParam).collect();
+                let contract_address_salt = ContractAddressSalt(x.address_salt);
+                let class_hash = ClassHash(x.class_hash.0);
+
+                Self::DeployAccountV1(DeployAccountTransactionV1 {
+                    contract_address: ContractAddress::deployed_contract_address(
+                        constructor_calldata.iter().map(|d| CallParam(d.0)),
+                        &contract_address_salt,
+                        &class_hash,
+                    ),
+                    max_fee: Fee(x.max_fee),
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                    nonce: TransactionNonce(x.nonce),
+                    contract_address_salt,
+                    constructor_calldata,
+                    class_hash,
+                })
+            }
+            DeployAccountV3(x) => {
+                let constructor_calldata: Vec<CallParam> =
+                    x.calldata.into_iter().map(CallParam).collect();
+                let contract_address_salt = ContractAddressSalt(x.address_salt);
+                let class_hash = ClassHash(x.class_hash.0);
+
+                Self::DeployAccountV3(DeployAccountTransactionV3 {
+                    contract_address: ContractAddress::deployed_contract_address(
+                        constructor_calldata.iter().map(|d| CallParam(d.0)),
+                        &contract_address_salt,
+                        &class_hash,
+                    ),
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                    nonce: TransactionNonce(x.nonce),
+                    nonce_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                        x.nonce_data_availability_mode,
+                    )?,
+                    fee_data_availability_mode: DataAvailabilityMode::try_from_dto(
+                        x.fee_data_availability_mode,
+                    )?,
+                    resource_bounds: ResourceBounds::try_from_dto(x.resource_bounds)?,
+                    tip: pathfinder_common::Tip(x.tip),
+                    paymaster_data: x
+                        .paymaster_data
+                        .into_iter()
+                        .map(pathfinder_common::PaymasterDataElem)
+                        .collect(),
+                    contract_address_salt,
+                    constructor_calldata,
+                    class_hash,
+                })
+            }
             InvokeV0(x) => Self::InvokeV0(InvokeTransactionV0 {
                 calldata: x.calldata.into_iter().map(CallParam).collect(),
                 sender_address: ContractAddress(x.address.0),
