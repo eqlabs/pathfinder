@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, StarknetVersion};
+use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId};
 use pathfinder_crypto::Felt;
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use starknet_gateway_types::reply::{Block, GasPrices, Status};
@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
             timestamp: header.timestamp,
             transaction_receipts: receipts,
             transactions,
-            starknet_version: StarknetVersion::default(),
+            starknet_version: header.starknet_version,
             l1_da_mode: Default::default(),
             transaction_commitment: header.transaction_commitment,
             event_commitment: header.event_commitment,
