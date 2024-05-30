@@ -590,6 +590,7 @@ pub struct Ethereum {
     pub password: Option<String>,
 }
 
+#[derive(Clone)]
 pub enum NetworkConfig {
     Mainnet,
     SepoliaTestnet,
@@ -602,6 +603,7 @@ pub enum NetworkConfig {
 }
 
 #[cfg(feature = "p2p")]
+#[derive(Clone)]
 pub struct P2PConfig {
     pub proxy: bool,
     pub identity_config_file: Option<std::path::PathBuf>,
@@ -616,6 +618,7 @@ pub struct P2PConfig {
 }
 
 #[cfg(not(feature = "p2p"))]
+#[derive(Clone)]
 pub struct P2PConfig;
 
 pub struct DebugConfig {

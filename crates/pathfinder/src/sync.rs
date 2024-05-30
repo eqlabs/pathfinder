@@ -1,7 +1,6 @@
-#![cfg(feature = "p2p")]
 #![allow(dead_code, unused)]
 
-use anyhow::{Chain, Context};
+use anyhow::Context;
 use p2p::client::peer_agnostic::Client as P2PClient;
 use pathfinder_common::ChainId;
 use primitive_types::H160;
