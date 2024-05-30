@@ -6,7 +6,13 @@ use p2p::client::peer_agnostic::{self, TransactionBlockData};
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
-use pathfinder_common::{BlockHeader, BlockNumber, ChainId, TransactionHash};
+use pathfinder_common::{
+    BlockHeader,
+    BlockNumber,
+    ChainId,
+    TransactionCommitment,
+    TransactionHash,
+};
 use pathfinder_storage::Storage;
 
 use super::error::{SyncError, SyncError2};
@@ -196,12 +202,14 @@ pub(super) async fn persist(
 pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
-    type Input = Vec<(TransactionVariant, peer_agnostic::Receipt)>;
-    type Output = Vec<(Transaction, Receipt)>;
+    type Input = (
+        TransactionCommitment,
+        Vec<(TransactionVariant, peer_agnostic::Receipt)>,
+    );
+    type Output = (TransactionCommitment, Vec<(Transaction, Receipt)>);
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, (commitment, transactions): Self::Input) -> Result<Self::Output, SyncError2> {
         use rayon::prelude::*;
-        let transactions = input;
         let transactions = transactions
             .into_par_iter()
             .map(|(tv, r)| {
@@ -221,17 +229,26 @@ impl ProcessStage for CalculateHashes {
                 (transaction, receipt)
             })
             .collect::<Vec<_>>();
-        Ok(transactions)
+        Ok((commitment, transactions))
     }
 }
 
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
-    type Input = Vec<(Transaction, Receipt)>;
+    type Input = (TransactionCommitment, Vec<(Transaction, Receipt)>);
     type Output = Vec<(Transaction, Receipt)>;
 
-    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
-        todo!()
+    fn map(
+        &mut self,
+        (commitment, transactions): Self::Input,
+    ) -> Result<Self::Output, super::error::SyncError2> {
+        let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
+        let actual =
+            calculate_transaction_commitment(&txs, TransactionCommitmentFinalHashType::Normal)?;
+        if actual != commitment {
+            return Err(SyncError2::TransactionCommitmentMismatch);
+        }
+        Ok(transactions)
     }
 }

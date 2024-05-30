@@ -17,6 +17,7 @@ use pathfinder_common::{
     ClassHash,
     SignedBlockHeader,
     StateUpdate,
+    TransactionCommitment,
     TransactionHash,
 };
 use pathfinder_storage::Storage;
@@ -257,7 +258,12 @@ struct TransactionSource {
 }
 
 impl TransactionSource {
-    fn spawn(self) -> SyncReceiver<Vec<(TransactionVariant, peer_agnostic::Receipt)>> {
+    fn spawn(
+        self,
+    ) -> SyncReceiver<(
+        TransactionCommitment,
+        Vec<(TransactionVariant, peer_agnostic::Receipt)>,
+    )> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self {
@@ -302,7 +308,12 @@ impl TransactionSource {
                     return;
                 }
 
-                let _ = tx.send(Ok(PeerData::new(peer, transactions_vec))).await;
+                let _ = tx
+                    .send(Ok(PeerData::new(
+                        peer,
+                        (header.transaction_commitment, transactions_vec),
+                    )))
+                    .await;
             }
         });
 
