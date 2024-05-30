@@ -313,6 +313,20 @@
                     },
                     "required": ["subscription_id", "transaction_hash"]
                 }
+            },
+            "SUBSCRIPTION_GATEWAY_DOWN": {
+                "code": 10030,
+                "message": "Gateway is down",
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "subscription_id": {
+                            "description": "The subscription id",
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["subscription_id"]
+                }
             }
         }
     }

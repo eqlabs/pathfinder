@@ -91,6 +91,8 @@ pub enum ApplicationError {
         subscription_id: u32,
         transaction_hash: TransactionHash,
     },
+    #[error("Gateway is down")]
+    SubscriptionGatewayDown { subscription_id: u32 },
     #[error("Proof is missing")]
     ProofMissing,
     /// Internal errors are errors whose details we don't want to show to the
@@ -144,6 +146,7 @@ impl ApplicationError {
             ApplicationError::ProofLimitExceeded { .. } => 10000,
             ApplicationError::ProofMissing => 10001,
             ApplicationError::SubscriptionTransactionHashNotFound { .. } => 10029,
+            ApplicationError::SubscriptionGatewayDown { .. } => 10030,
             // https://www.jsonrpc.org/specification#error_object
             ApplicationError::GatewayError(_)
             | ApplicationError::Internal(_)
@@ -224,6 +227,9 @@ impl ApplicationError {
             } => Some(json!({
                 "subscription_id": subscription_id,
                 "transaction_hash": transaction_hash,
+            })),
+            ApplicationError::SubscriptionGatewayDown { subscription_id } => Some(json!({
+                "subscription_id": subscription_id,
             })),
             ApplicationError::ValidationFailureV06(error) => Some(json!(error)),
         }

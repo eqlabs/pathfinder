@@ -485,9 +485,11 @@ async fn transaction_status_subscription(
         Duration::from_secs(10)
     };
     let mut poll_interval = tokio::time::interval(Duration::from_millis(500));
+    let mut num_consecutive_errors = 0;
     loop {
         match gateway.transaction(transaction_hash).await {
             Ok(tx_status) => {
+                num_consecutive_errors = 0;
                 let update = match (tx_status.finality_status, tx_status.execution_status) {
                     (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
                     (FinalityStatus::NotReceived, _) => {
@@ -548,6 +550,16 @@ async fn transaction_status_subscription(
             }
             Err(e) => {
                 tracing::warn!(%transaction_hash, %e, "Failed to poll transaction status");
+                num_consecutive_errors += 1;
+                if num_consecutive_errors == 5 {
+                    msg_sender
+                        .send(ResponseEvent::RpcError(RpcError::ApplicationError(
+                            ApplicationError::SubscriptionGatewayDown { subscription_id },
+                        )))
+                        .await
+                        .ok();
+                    break;
+                }
             }
         }
         poll_interval.tick().await;
