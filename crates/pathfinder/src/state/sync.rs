@@ -964,8 +964,8 @@ async fn l2_update(
                 *websocket_txs = None;
                 return Ok(());
             }
-            if sender.blocks.receiver_count() > 0 {
-                if let Err(e) = sender.blocks.send(block.into()) {
+            if sender.l2_blocks.receiver_count() > 0 {
+                if let Err(e) = sender.l2_blocks.send(block.into()) {
                     tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
                     *websocket_txs = None;
                     return Ok(());

@@ -56,6 +56,27 @@
                                 }
                             }
                         }
+                    ],
+                    [
+                        {
+                            "name": "kind",
+                            "summary": "The type of subscription",
+                            "required": true,
+                            "schema": {
+                                "type": "string",
+                                "enum": [
+                                    "transactionStatus"
+                                ]
+                            }
+                        },
+                        {
+                            "name": "transaction_hash",
+                            "summary": "The transaction hash to fetch status updates for",
+                            "required": true,
+                            "schema": {
+                                "$ref": "#/components/schemas/FELT"
+                            }
+                        }
                     ]
                 ]
             },
@@ -131,6 +152,9 @@
                     },
                     {
                         "$ref": "#/components/schemas/EMITTED_EVENT"
+                    },
+                    {
+                        "$ref": "#/components/schemas/TRANSACTION_STATUS"
                     }
                 ]
             },
@@ -216,6 +240,15 @@
             },
             "EMITTED_EVENT": {
                 "$ref": "./v07/starknet_api_openrpc.json#/components/schemas/EMITTED_EVENT"
+            },
+            "TRANSACTION_STATUS": {
+                "type": "string",
+                "enum": [
+                    "RECEIVED",
+                    "REJECTED",
+                    "SUCCEEDED",
+                    "REVERTED"
+                ]
             },
             "FELT": {
                 "$ref": "./pathfinder_rpc_api.json#/components/schemas/FELT"

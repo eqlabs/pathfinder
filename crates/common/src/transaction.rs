@@ -59,6 +59,12 @@ pub enum TransactionVariant {
     L1Handler(L1HandlerTransaction),
 }
 
+impl Default for TransactionVariant {
+    fn default() -> Self {
+        Self::DeclareV0(Default::default())
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransactionKind {
     Declare,

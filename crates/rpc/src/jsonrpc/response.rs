@@ -40,6 +40,13 @@ impl RpcResponse {
             id,
         }
     }
+
+    pub fn internal_error(id: RequestId, error: String) -> RpcResponse {
+        Self {
+            output: Err(RpcError::InternalError(anyhow::Error::msg(error))),
+            id,
+        }
+    }
 }
 
 pub type RpcResult = Result<Value, RpcError>;

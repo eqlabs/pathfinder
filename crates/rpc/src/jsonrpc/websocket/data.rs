@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use pathfinder_common::EventKey;
+use pathfinder_common::{EventKey, TransactionHash};
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -27,11 +27,18 @@ pub(super) struct EventFilterParams {
     pub(super) keys: Vec<Vec<EventKey>>,
 }
 
+#[derive(Debug, serde::Deserialize, Serialize)]
+pub(super) struct TransactionStatusParams {
+    pub(super) kind: String,
+    pub(super) transaction_hash: TransactionHash,
+}
+
 #[derive(Deserialize, Serialize)]
 pub(super) struct SubscriptionId {
     pub(super) id: u32,
 }
 
+#[derive(Debug)]
 pub(super) struct SubscriptionItem<T> {
     pub(super) subscription_id: u32,
     pub(super) item: T,
@@ -63,6 +70,7 @@ impl<T: Serialize> Serialize for SubscriptionItem<T> {
     }
 }
 
+#[derive(Debug)]
 pub(super) enum ResponseEvent {
     Subscribed {
         subscription_id: u32,
@@ -78,9 +86,21 @@ pub(super) enum ResponseEvent {
     },
     InvalidRequest(String),
     InvalidParams(RequestId, String),
+    InternalError(RequestId, anyhow::Error),
     Header(SubscriptionItem<Arc<Value>>),
     Responses(RpcResponses),
     Event(SubscriptionItem<Arc<EmittedEvent>>),
+    TransactionStatus(SubscriptionItem<Arc<TransactionStatusUpdate>>),
+    RpcError(RpcError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TransactionStatusUpdate {
+    Received = 0,
+    Rejected = 1,
+    Succeeded = 2,
+    Reverted = 3,
 }
 
 impl ResponseEvent {
@@ -88,12 +108,15 @@ impl ResponseEvent {
         match self {
             ResponseEvent::InvalidRequest(_) => "InvalidRequest",
             ResponseEvent::Header(_) => "BlockHeader",
-            ResponseEvent::Event(_) => "Event",
             ResponseEvent::Subscribed { .. } => "Subscribed",
             ResponseEvent::Unsubscribed { .. } => "Unsubscribed",
             ResponseEvent::SubscriptionClosed { .. } => "SubscriptionClosed",
             ResponseEvent::InvalidParams(..) => "InvalidParams",
             ResponseEvent::Responses(_) => "Responses",
+            ResponseEvent::Event(_) => "Event",
+            ResponseEvent::TransactionStatus(_) => "TransactionStatus",
+            ResponseEvent::InternalError(_, _) => "InternalError",
+            ResponseEvent::RpcError(_) => "RpcError",
         }
     }
 }
@@ -109,6 +132,9 @@ impl Serialize for ResponseEvent {
             }
             ResponseEvent::InvalidParams(request_id, e) => {
                 RpcResponse::invalid_params(request_id.clone(), e.clone()).serialize(serializer)
+            }
+            ResponseEvent::InternalError(request_id, e) => {
+                RpcResponse::internal_error(request_id.clone(), e.to_string()).serialize(serializer)
             }
             ResponseEvent::Header(header) => header.serialize(serializer),
             ResponseEvent::Event(event) => event.serialize(serializer),
@@ -136,6 +162,8 @@ impl Serialize for ResponseEvent {
             }
             .serialize(serializer),
             ResponseEvent::Responses(responses) => responses.serialize(serializer),
+            ResponseEvent::TransactionStatus(status) => status.serialize(serializer),
+            ResponseEvent::RpcError(error) => error.serialize(serializer),
         }
     }
 }

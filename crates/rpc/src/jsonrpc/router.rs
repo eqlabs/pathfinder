@@ -189,6 +189,7 @@ pub(super) enum RpcRequestError {
     InvalidRequest(String),
 }
 
+#[derive(Debug)]
 pub(super) enum RpcResponses {
     Empty,
     Single(RpcResponse),

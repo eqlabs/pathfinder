@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{State, WebSocketUpgrade};
@@ -12,12 +13,18 @@ use axum::response::IntoResponse;
 use futures::sink::Buffer;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
+use pathfinder_common::TransactionHash;
 use serde::Serialize;
 use serde_json::Value;
+use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::reply::transaction_status::{ExecutionStatus, FinalityStatus};
 use starknet_gateway_types::reply::Block;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
+use super::{TransactionStatusParams, TransactionStatusUpdate};
+use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
 use crate::jsonrpc::websocket::data::{
@@ -27,7 +34,7 @@ use crate::jsonrpc::websocket::data::{
     SubscriptionId,
     SubscriptionItem,
 };
-use crate::jsonrpc::{RequestId, RpcRequest, RpcRouter};
+use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcRouter};
 use crate::method::get_events::types::EmittedEvent;
 use crate::BlockHeader;
 
@@ -35,6 +42,7 @@ const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
 const UNSUBSCRIBE_METHOD: &str = "pathfinder_unsubscribe";
 const NEW_HEADS_TOPIC: &str = "newHeads";
 const EVENTS_TOPIC: &str = "events";
+const TRANSACTION_STATUS_TOPIC: &str = "transactionStatus";
 
 #[derive(Clone)]
 pub struct WebsocketContext {
@@ -184,12 +192,19 @@ async fn read(
 
         // Handle request.
         let response = match parsed_request.method.as_ref() {
-            SUBSCRIBE_METHOD => subscription_manager.subscribe(
-                parsed_request.id,
+            SUBSCRIBE_METHOD => match subscription_manager.subscribe(
+                parsed_request.id.clone(),
                 parsed_request.params,
                 response_sender.clone(),
                 source.clone(),
-            ),
+                router.context.sequencer.clone(),
+            ) {
+                Ok(resp) => resp,
+                Err(e) => {
+                    tracing::warn!(error=%e, "Failed to subscribe");
+                    ResponseEvent::InternalError(parsed_request.id, e)
+                }
+            },
             UNSUBSCRIBE_METHOD => {
                 subscription_manager
                     .unsubscribe(parsed_request.id, parsed_request.params)
@@ -263,17 +278,18 @@ impl SubscriptionManager {
         request_params: RawParams<'_>,
         response_sender: mpsc::Sender<ResponseEvent>,
         websocket_source: TopicBroadcasters,
-    ) -> ResponseEvent {
+        gateway: impl GatewayApi + Send + 'static,
+    ) -> anyhow::Result<ResponseEvent> {
         let kind = match request_params.deserialize::<Kind<'_>>() {
             Ok(x) => x,
             Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                return ResponseEvent::InvalidParams(request_id, e)
+                return Ok(ResponseEvent::InvalidParams(request_id, e))
             }
             Err(_) => {
-                return ResponseEvent::InvalidParams(
+                return Ok(ResponseEvent::InvalidParams(
                     request_id,
                     "Unexpected parsing error".to_owned(),
-                )
+                ))
             }
         };
 
@@ -292,16 +308,16 @@ impl SubscriptionManager {
                 let filter = match request_params.deserialize::<EventFilterParams>() {
                     Ok(x) => x,
                     Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                        return ResponseEvent::InvalidParams(request_id, e)
+                        return Ok(ResponseEvent::InvalidParams(request_id, e))
                     }
                     Err(_) => {
-                        return ResponseEvent::InvalidParams(
+                        return Ok(ResponseEvent::InvalidParams(
                             request_id,
                             "Unexpected parsing error".to_owned(),
-                        )
+                        ))
                     }
                 };
-                let receiver = websocket_source.blocks.subscribe();
+                let receiver = websocket_source.l2_blocks.subscribe();
                 tokio::spawn(event_subscription(
                     response_sender,
                     receiver,
@@ -309,20 +325,40 @@ impl SubscriptionManager {
                     filter,
                 ))
             }
+            TRANSACTION_STATUS_TOPIC => {
+                let params = match request_params.deserialize::<TransactionStatusParams>() {
+                    Ok(x) => x,
+                    Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
+                        return Ok(ResponseEvent::InvalidParams(request_id, e))
+                    }
+                    Err(_) => {
+                        return Ok(ResponseEvent::InvalidParams(
+                            request_id,
+                            "Unexpected parsing error".to_owned(),
+                        ))
+                    }
+                };
+                tokio::spawn(transaction_status_subscription(
+                    response_sender,
+                    subscription_id,
+                    params.transaction_hash,
+                    gateway,
+                ))
+            }
             _ => {
-                return ResponseEvent::InvalidParams(
+                return Ok(ResponseEvent::InvalidParams(
                     request_id,
                     "Unknown subscription type".to_owned(),
-                )
+                ))
             }
         };
 
         self.subscriptions.insert(subscription_id, handle);
 
-        ResponseEvent::Subscribed {
+        Ok(ResponseEvent::Subscribed {
             subscription_id,
             request_id,
-        }
+        })
     }
 
     fn abort_all(self) {
@@ -337,7 +373,6 @@ async fn header_subscription(
     mut headers: broadcast::Receiver<Arc<Value>>,
     subscription_id: u32,
 ) {
-    use broadcast::error::RecvError;
     loop {
         let response = match headers.recv().await {
             Ok(header) => ResponseEvent::Header(SubscriptionItem {
@@ -369,7 +404,6 @@ async fn event_subscription(
     subscription_id: u32,
     filter: EventFilterParams,
 ) {
-    use broadcast::error::RecvError;
     let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
     let keys: Vec<std::collections::HashSet<_>> = filter
         .keys
@@ -437,6 +471,101 @@ async fn event_subscription(
     }
 }
 
+async fn transaction_status_subscription(
+    msg_sender: mpsc::Sender<ResponseEvent>,
+    subscription_id: u32,
+    transaction_hash: TransactionHash,
+    gateway: impl GatewayApi + Send + 'static,
+) {
+    let mut last_status = None;
+    let start = Instant::now();
+    let timeout = if cfg!(test) {
+        Duration::from_secs(5)
+    } else {
+        Duration::from_secs(10)
+    };
+    let mut poll_interval = tokio::time::interval(Duration::from_millis(500));
+    let mut num_consecutive_errors = 0;
+    loop {
+        match gateway.transaction(transaction_hash).await {
+            Ok(tx_status) => {
+                num_consecutive_errors = 0;
+                let update = match (tx_status.finality_status, tx_status.execution_status) {
+                    (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
+                    (FinalityStatus::NotReceived, _) => {
+                        // "NOT_RECEIVED" status is never sent to the client.
+                        if start.elapsed() > timeout {
+                            // The transaction was not found on the gateway after some time.
+                            // This means the transaction is probably not valid.
+                            msg_sender
+                                .send(ResponseEvent::RpcError(RpcError::ApplicationError(
+                                    ApplicationError::SubscriptionTransactionHashNotFound {
+                                        transaction_hash,
+                                        subscription_id,
+                                    },
+                                )))
+                                .await
+                                .ok();
+                            break;
+                        }
+                        None
+                    }
+                    (FinalityStatus::Received, _) => Some(TransactionStatusUpdate::Received),
+                    (
+                        FinalityStatus::AcceptedOnL1 | FinalityStatus::AcceptedOnL2,
+                        ExecutionStatus::Succeeded,
+                    ) => Some(TransactionStatusUpdate::Succeeded),
+                    (
+                        FinalityStatus::AcceptedOnL1 | FinalityStatus::AcceptedOnL2,
+                        ExecutionStatus::Reverted,
+                    ) => Some(TransactionStatusUpdate::Reverted),
+                };
+                let status_changed = match (last_status, update) {
+                    (Some(last), Some(update)) => last < update,
+                    (None, Some(_)) => true,
+                    (Some(_), None) => false,
+                    (None, None) => false,
+                };
+                if status_changed {
+                    // Status changed, send an update to the client.
+                    last_status = update;
+                    if msg_sender
+                        .send(ResponseEvent::TransactionStatus(SubscriptionItem {
+                            subscription_id,
+                            item: Arc::new(update.unwrap()),
+                        }))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                if tx_status.execution_status == ExecutionStatus::Rejected
+                    || tx_status.finality_status == FinalityStatus::AcceptedOnL1
+                    || tx_status.finality_status == FinalityStatus::AcceptedOnL2
+                {
+                    // Final status reached, close the subscription.
+                    break;
+                }
+            }
+            Err(e) => {
+                tracing::warn!(%transaction_hash, %e, "Failed to poll transaction status");
+                num_consecutive_errors += 1;
+                if num_consecutive_errors == 5 {
+                    msg_sender
+                        .send(ResponseEvent::RpcError(RpcError::ApplicationError(
+                            ApplicationError::SubscriptionGatewayDown { subscription_id },
+                        )))
+                        .await
+                        .ok();
+                    break;
+                }
+            }
+        }
+        poll_interval.tick().await;
+    }
+}
+
 /// A Tokio broadcast sender pre-serializing the value once for all subscribers.
 /// Relies on `Arc`s to flatten the cloning costs inherent to Tokio broadcast
 /// channels.
@@ -479,7 +608,7 @@ where
 #[derive(Debug, Clone)]
 pub struct TopicBroadcasters {
     pub new_head: JsonBroadcaster<BlockHeader>,
-    pub blocks: broadcast::Sender<Arc<Block>>,
+    pub l2_blocks: broadcast::Sender<Arc<Block>>,
 }
 
 impl TopicBroadcasters {
@@ -489,7 +618,7 @@ impl TopicBroadcasters {
                 sender: broadcast::channel(capacity.get()).0,
                 item_type: PhantomData {},
             },
-            blocks: broadcast::channel(capacity.get()).0,
+            l2_blocks: broadcast::channel(capacity.get()).0,
         }
     }
 }
@@ -505,11 +634,14 @@ impl Default for TopicBroadcasters {
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use axum::routing::get;
     use futures::{SinkExt, StreamExt};
     use pathfinder_common::event::Event;
+    use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
         block_hash,
         event_commitment,
@@ -530,7 +662,8 @@ mod tests {
     use serde::Serialize;
     use serde_json::value::RawValue;
     use serde_json::{json, Number, Value};
-    use starknet_gateway_types::reply::GasPrices;
+    use starknet_gateway_types::error::SequencerError;
+    use starknet_gateway_types::reply::{GasPrices, Status, TransactionStatus};
     use tokio::net::TcpStream;
     use tokio::task::JoinHandle;
     use tokio::time::timeout;
@@ -669,7 +802,7 @@ mod tests {
             .expect_response(&successful_response(&0, req_id).unwrap())
             .await;
 
-        client.blocks_sender.send(block.clone().into()).unwrap();
+        client.l2_blocks.send(block.clone().into()).unwrap();
 
         client
             .expect_response(&SubscriptionItem {
@@ -682,7 +815,7 @@ mod tests {
                         event_key!("0xdeadbeef"),
                     ],
                     block_hash: Some(block_hash!("0x1")),
-                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x1"),
                 },
             })
@@ -698,7 +831,7 @@ mod tests {
                         event_key!("0xcafebabe"),
                     ],
                     block_hash: Some(block_hash!("0x1")),
-                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x2"),
                 },
             })
@@ -714,7 +847,7 @@ mod tests {
                         event_key!("0x1234"),
                     ],
                     block_hash: Some(block_hash!("0x1")),
-                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x2"),
                 },
             })
@@ -752,7 +885,7 @@ mod tests {
             .expect_response(&successful_response(&1, req_id).unwrap())
             .await;
 
-        client.blocks_sender.send(block.clone().into()).unwrap();
+        client.l2_blocks.send(block.clone().into()).unwrap();
 
         client
             .expect_response(&SubscriptionItem {
@@ -765,7 +898,7 @@ mod tests {
                         event_key!("0xdeadbeef"),
                     ],
                     block_hash: Some(block_hash!("0x1")),
-                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x1"),
                 },
             })
@@ -801,7 +934,7 @@ mod tests {
             .expect_response(&successful_response(&2, req_id).unwrap())
             .await;
 
-        client.blocks_sender.send(block.into()).unwrap();
+        client.l2_blocks.send(block.into()).unwrap();
 
         client
             .expect_response(&SubscriptionItem {
@@ -814,10 +947,343 @@ mod tests {
                         event_key!("0xcafebabe"),
                     ],
                     block_hash: Some(block_hash!("0x1")),
-                    block_number: Some(BlockNumber::new_or_panic(1)),
+                    block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x2"),
                 },
             })
+            .await;
+
+        client.expect_no_response().await;
+
+        client.destroy().await;
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status() {
+        let mut client = Client::new().await;
+
+        let req_id = RequestId::Number(37);
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(SUBSCRIBE_METHOD),
+                params: RawParams(Some(
+                    &RawValue::from_string(
+                        r#"{"kind": "transactionStatus", "transaction_hash": "0x032bfcf2a36fafe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0"}"#.to_owned(),
+                    )
+                    .unwrap(),
+                )),
+                id: req_id.clone(),
+            })
+            .await;
+
+        client
+            .expect_response(&successful_response(&0, req_id).unwrap())
+            .await;
+
+        client
+            .expect_response(&json!({
+                "jsonrpc": "2.0",
+                "method": "pathfinder_subscription",
+                "result": {
+                    "subscription": 0,
+                    "result": "SUCCEEDED",
+                }
+            }))
+            .await;
+
+        client.expect_no_response().await;
+
+        client.destroy().await;
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_mocked_succeeded() {
+        struct Mock(Mutex<VecDeque<TransactionStatus>>);
+
+        #[async_trait::async_trait]
+        impl GatewayApi for Mock {
+            async fn transaction(
+                &self,
+                transaction_hash: TransactionHash,
+            ) -> Result<TransactionStatus, SequencerError> {
+                assert_eq!(transaction_hash, transaction_hash!("0x1"));
+                Ok(self.0.lock().unwrap().pop_front().unwrap())
+            }
+        }
+
+        let (msg_sender, mut msg_receiver) = mpsc::channel(10);
+        tokio::spawn(transaction_status_subscription(
+            msg_sender,
+            0,
+            transaction_hash!("0x1"),
+            Mock(Mutex::new(
+                [
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::AcceptedOnL1,
+                        finality_status: FinalityStatus::AcceptedOnL1,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+            )),
+        ));
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Succeeded => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap();
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_mocked_reverted() {
+        struct Mock(Mutex<VecDeque<TransactionStatus>>);
+
+        #[async_trait::async_trait]
+        impl GatewayApi for Mock {
+            async fn transaction(
+                &self,
+                transaction_hash: TransactionHash,
+            ) -> Result<TransactionStatus, SequencerError> {
+                assert_eq!(transaction_hash, transaction_hash!("0x1"));
+                Ok(self.0.lock().unwrap().pop_front().unwrap())
+            }
+        }
+
+        let (msg_sender, mut msg_receiver) = mpsc::channel(10);
+        tokio::spawn(transaction_status_subscription(
+            msg_sender,
+            0,
+            transaction_hash!("0x1"),
+            Mock(Mutex::new(
+                [
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::AcceptedOnL1,
+                        finality_status: FinalityStatus::AcceptedOnL1,
+                        execution_status: ExecutionStatus::Reverted,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+            )),
+        ));
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Reverted => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap();
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_mocked_rejected() {
+        struct Mock(Mutex<VecDeque<TransactionStatus>>);
+
+        #[async_trait::async_trait]
+        impl GatewayApi for Mock {
+            async fn transaction(
+                &self,
+                transaction_hash: TransactionHash,
+            ) -> Result<TransactionStatus, SequencerError> {
+                assert_eq!(transaction_hash, transaction_hash!("0x1"));
+                Ok(self.0.lock().unwrap().pop_front().unwrap())
+            }
+        }
+
+        let (msg_sender, mut msg_receiver) = mpsc::channel(10);
+        tokio::spawn(transaction_status_subscription(
+            msg_sender,
+            0,
+            transaction_hash!("0x1"),
+            Mock(Mutex::new(
+                [
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::NotReceived,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Received,
+                        finality_status: FinalityStatus::Received,
+                        execution_status: ExecutionStatus::Succeeded,
+                    },
+                    TransactionStatus {
+                        status: Status::Rejected,
+                        finality_status: FinalityStatus::NotReceived,
+                        execution_status: ExecutionStatus::Rejected,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+            )),
+        ));
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match msg {
+            ResponseEvent::TransactionStatus(SubscriptionItem {
+                subscription_id: 0,
+                item,
+            }) if item.as_ref() == &TransactionStatusUpdate::Rejected => {}
+            _ => panic!("Unexpected message: {:?}", msg),
+        }
+
+        let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
+            .await
+            .unwrap();
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn subscribe_transaction_status_does_not_exist() {
+        let mut client = Client::new().await;
+
+        let req_id = RequestId::Number(37);
+        client
+            .send_request(&RpcRequest {
+                method: Cow::from(SUBSCRIBE_METHOD),
+                params: RawParams(Some(
+                    &RawValue::from_string(
+                        r#"{"kind": "transactionStatus", "transaction_hash": "0x032bfcf2a36fbfe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0"}"#.to_owned(),
+                    )
+                    .unwrap(),
+                )),
+                id: req_id.clone(),
+            })
+            .await;
+
+        client
+            .expect_response(&successful_response(&0, req_id).unwrap())
+            .await;
+
+        tokio::time::sleep(Duration::from_secs(15)).await;
+
+        client
+            .expect_response(&serde_json::json!({
+                "code": 10029,
+                "data": {
+                    "subscription_id": 0,
+                    "transaction_hash": "0x32bfcf2a36fbfe6030c619d9245b37f0717449e7e5f4a0875e14a674c831ba0",
+                },
+                "message": "Transaction hash not found in websocket subscription"
+            }))
             .await;
 
         client.expect_no_response().await;
@@ -844,7 +1310,7 @@ mod tests {
     fn block_sample() -> Block {
         Block {
             block_hash: block_hash!("0x1"),
-            block_number: BlockNumber::new_or_panic(1),
+            block_number: BlockNumber::new_or_panic(1000),
             l1_gas_price: GasPrices {
                 price_in_wei: GasPrice(0),
                 price_in_fri: GasPrice(0),
@@ -904,7 +1370,16 @@ mod tests {
                     ],
                 ),
             ],
-            transactions: vec![],
+            transactions: vec![
+                Transaction {
+                    hash: transaction_hash!("0x1"),
+                    variant: Default::default(),
+                },
+                Transaction {
+                    hash: transaction_hash!("0x2"),
+                    variant: Default::default(),
+                },
+            ],
             starknet_version: StarknetVersion::new(1, 1, 1, 1),
             transaction_commitment: transaction_commitment!("0x4"),
             event_commitment: event_commitment!("0x5"),
@@ -917,7 +1392,7 @@ mod tests {
         receiver: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
         server_handle: JoinHandle<()>,
         head_sender: JsonBroadcaster<BlockHeader>,
-        blocks_sender: broadcast::Sender<Arc<Block>>,
+        l2_blocks: broadcast::Sender<Arc<Block>>,
     }
 
     impl Client {
@@ -926,9 +1401,9 @@ mod tests {
             let router = RpcRouter::builder(crate::RpcVersion::V07)
                 .register("pathfinder_test", rpc_test_method)
                 .build(context.clone());
-            let websocket_context = context.websocket.unwrap_or_default();
+            let websocket_context = context.websocket.clone().unwrap_or_default();
             let head_sender = websocket_context.broadcasters.new_head.clone();
-            let blocks_sender = websocket_context.broadcasters.blocks.clone();
+            let l2_blocks = websocket_context.broadcasters.l2_blocks.clone();
 
             let router = axum::Router::new()
                 .route("/ws", get(websocket_handler))
@@ -956,10 +1431,10 @@ mod tests {
 
             Client {
                 head_sender,
-                blocks_sender,
                 sender,
                 receiver,
                 server_handle,
+                l2_blocks,
             }
         }
 
@@ -984,7 +1459,7 @@ mod tests {
         where
             R: Serialize,
         {
-            let message = timeout(Duration::from_millis(100), self.receiver.next())
+            let message = timeout(Duration::from_secs(2), self.receiver.next())
                 .await
                 .unwrap()
                 .unwrap()
