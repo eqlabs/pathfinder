@@ -9,6 +9,7 @@ use p2p::client::peer_agnostic::{
     ClassDefinition,
     Client as P2PClient,
     EventsForBlockByTransaction,
+    SignedBlockHeader as P2PSignedBlockHeader,
     TransactionBlockData,
 };
 use p2p::PeerData;
@@ -19,10 +20,11 @@ use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
-    BlockHeader,
     BlockNumber,
+    Chain,
     ChainId,
     ClassHash,
+    PublicKey,
     TransactionIndex,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
@@ -38,6 +40,7 @@ use crate::state::block_hash::{
     TransactionCommitmentFinalHashType,
 };
 use crate::sync::error::SyncError;
+use crate::sync::headers::spawn_header_source;
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
@@ -49,7 +52,9 @@ pub struct Sync {
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
     pub fgw_client: Client,
+    pub chain: Chain,
     pub chain_id: ChainId,
+    pub public_key: PublicKey,
 }
 
 impl Sync {
@@ -58,7 +63,9 @@ impl Sync {
         p2p: P2PClient,
         ethereum: (pathfinder_ethereum::EthereumClient, H160),
         fgw_client: Client,
+        chain: Chain,
         chain_id: ChainId,
+        public_key: PublicKey,
     ) -> Self {
         Self {
             storage,
@@ -66,7 +73,9 @@ impl Sync {
             eth_client: ethereum.0,
             eth_address: ethereum.1,
             fgw_client,
+            chain,
             chain_id,
+            public_key,
         }
     }
 
@@ -125,31 +134,15 @@ impl Sync {
         {
             // TODO: create a tracing scope for this gap start, stop.
 
-            tracing::info!("Syncing headers");
-
-            headers::HeaderSource {
-                start: gap.head,
-                stop: gap.tail,
-                reverse: true,
-                p2p: self.p2p.clone(),
-            }
-            .spawn()
-            .pipe(
-                headers::BackwardContinuity::new(gap.head, gap.head_hash),
-                10,
+            handle_header_stream(
+                self.p2p.clone().header_stream(gap.head, gap.tail, true),
+                gap.head(),
+                self.chain,
+                self.chain_id,
+                self.public_key,
+                self.storage.clone(),
             )
-            .pipe(headers::VerifyHash, 10)
-            .try_chunks(1024, 10)
-            .pipe(
-                headers::Persist {
-                    connection: self.storage.connection()?,
-                },
-                10,
-            )
-            .into_stream()
-            .try_fold((), |_state, _x| std::future::ready(Ok(())))
-            .await
-            .map_err(SyncError::from_v2)?;
+            .await?;
         }
 
         Ok(())
@@ -243,6 +236,35 @@ impl Sync {
 
         Ok(())
     }
+}
+
+async fn handle_header_stream(
+    header_stream: impl futures::Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
+    head: (BlockNumber, BlockHash),
+    chain: Chain,
+    chain_id: ChainId,
+    public_key: PublicKey,
+    storage: Storage,
+) -> Result<(), SyncError> {
+    tracing::info!("Syncing headers");
+    spawn_header_source(header_stream)
+        .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
+        .pipe(
+            headers::VerifyHashAndSignature::new(chain, chain_id, public_key),
+            10,
+        )
+        .try_chunks(1024, 10)
+        .pipe(
+            headers::Persist {
+                connection: storage.connection()?,
+            },
+            10,
+        )
+        .into_stream()
+        .try_fold((), |_state, _x| std::future::ready(Ok(())))
+        .await
+        .map_err(SyncError::from_v2)?;
+    Ok(())
 }
 
 async fn handle_transaction_stream(
@@ -557,7 +579,269 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 mod tests {
     use super::*;
 
+    mod handle_header_stream {
+        use assert_matches::assert_matches;
+        use fake::{Dummy, Fake, Faker};
+        use futures::stream;
+        use p2p::client::peer_agnostic::BlockHeader as P2PBlockHeader;
+        use p2p::libp2p::PeerId;
+        use p2p_proto::header;
+        use pathfinder_common::{
+            public_key,
+            BlockCommitmentSignature,
+            BlockCommitmentSignatureElem,
+            BlockHash,
+            BlockHeader,
+            BlockTimestamp,
+            EventCommitment,
+            SequencerAddress,
+            StarknetVersion,
+            StateCommitment,
+            StateDiffCommitment,
+            TransactionCommitment,
+        };
+        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::StorageBuilder;
+        use serde::Deserialize;
+        use serde_with::{serde_as, DisplayFromStr};
+
+        use super::super::handle_header_stream;
+        use super::*;
+
+        struct Setup {
+            pub streamed_headers: Vec<PeerData<P2PSignedBlockHeader>>,
+            pub expected_headers: Vec<P2PSignedBlockHeader>,
+            pub storage: Storage,
+            pub head: (BlockNumber, BlockHash),
+            pub public_key: PublicKey,
+        }
+
+        #[serde_as]
+        #[derive(Clone, Copy, Debug, Deserialize)]
+        pub struct Fixture {
+            pub block_hash: BlockHash,
+            pub block_number: BlockNumber,
+            pub parent_block_hash: BlockHash,
+            pub sequencer_address: SequencerAddress,
+            pub state_root: StateCommitment,
+            pub timestamp: BlockTimestamp,
+            pub transaction_commitment: TransactionCommitment,
+            pub transaction_count: usize,
+            pub event_commitment: EventCommitment,
+            pub event_count: usize,
+            pub signature: [BlockCommitmentSignatureElem; 2],
+            pub state_diff_commitment: StateDiffCommitment,
+        }
+
+        impl From<Fixture> for P2PSignedBlockHeader {
+            fn from(dto: Fixture) -> Self {
+                Self {
+                    header: P2PBlockHeader {
+                        hash: dto.block_hash,
+                        number: dto.block_number,
+                        parent_hash: dto.parent_block_hash,
+                        sequencer_address: dto.sequencer_address,
+                        state_commitment: dto.state_root,
+                        timestamp: dto.timestamp,
+                        transaction_commitment: dto.transaction_commitment,
+                        transaction_count: dto.transaction_count,
+                        event_commitment: dto.event_commitment,
+                        event_count: dto.event_count,
+                        ..Default::default()
+                    },
+                    signature: BlockCommitmentSignature {
+                        r: dto.signature[0],
+                        s: dto.signature[1],
+                    },
+                    state_diff_commitment: dto.state_diff_commitment,
+                    ..Default::default()
+                }
+            }
+        }
+
+        async fn setup() -> Setup {
+            let expected_headers =
+                serde_json::from_str::<Vec<Fixture>>(include_str!("fixtures/sepolia_headers.json"))
+                    .unwrap()
+                    .into_iter()
+                    .map(Into::into)
+                    .collect::<Vec<P2PSignedBlockHeader>>();
+
+            let hdr = &expected_headers.last().unwrap().header;
+            Setup {
+                head: (hdr.number, hdr.hash),
+                streamed_headers: expected_headers
+                    .iter()
+                    .rev()
+                    .cloned()
+                    .map(PeerData::for_tests)
+                    .collect::<Vec<_>>(),
+                expected_headers,
+                storage: StorageBuilder::in_memory().unwrap(),
+                // https://alpha-sepolia.starknet.io/feeder_gateway/get_public_key
+                public_key: public_key!(
+                    "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
+                ),
+            }
+        }
+
+        #[tokio::test]
+        async fn happy_path() {
+            let Setup {
+                streamed_headers,
+                expected_headers,
+                storage,
+                head,
+                public_key,
+            } = setup().await;
+
+            handle_header_stream(
+                stream::iter(streamed_headers),
+                head,
+                Chain::SepoliaTestnet,
+                ChainId::SEPOLIA_TESTNET,
+                public_key,
+                storage.clone(),
+            )
+            .await
+            .unwrap();
+
+            let actual_headers = tokio::task::spawn_blocking(move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                (0..=head.0.get())
+                    .map(|n| {
+                        let block_number = BlockNumber::new_or_panic(n);
+                        let block_id = block_number.into();
+                        let (state_diff_commitment, state_diff_length) = db
+                            .state_diff_commitment_and_length(block_number)
+                            .unwrap()
+                            .unwrap();
+                        P2PSignedBlockHeader {
+                            header: db.block_header(block_id).unwrap().unwrap().into(),
+                            signature: db.signature(block_id).unwrap().unwrap(),
+                            state_diff_commitment,
+                            state_diff_length: state_diff_length as u64,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap();
+
+            pretty_assertions_sorted::assert_eq!(expected_headers, actual_headers);
+        }
+
+        #[tokio::test]
+        async fn discontinuity() {
+            let Setup {
+                mut streamed_headers,
+                storage,
+                head,
+                public_key,
+                ..
+            } = setup().await;
+
+            streamed_headers.last_mut().unwrap().data.header.number = BlockNumber::new_or_panic(3);
+
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    Chain::SepoliaTestnet,
+                    ChainId::SEPOLIA_TESTNET,
+                    public_key,
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::Discontinuity(_))
+            );
+        }
+
+        #[tokio::test]
+        async fn bad_hash() {
+            let Setup {
+                streamed_headers,
+                storage,
+                head,
+                public_key,
+                ..
+            } = setup().await;
+
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    // Causes mismatches for all block hashes because setup assumes Sepolia
+                    Chain::Mainnet,
+                    ChainId::MAINNET,
+                    public_key,
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::BadBlockHash(_))
+            );
+        }
+
+        #[tokio::test]
+        async fn bad_signature() {
+            let Setup {
+                streamed_headers,
+                storage,
+                head,
+                ..
+            } = setup().await;
+
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    Chain::SepoliaTestnet,
+                    ChainId::SEPOLIA_TESTNET,
+                    PublicKey::ZERO, // Invalid public key
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::BadHeaderSignature(_))
+            );
+        }
+
+        #[tokio::test]
+        async fn db_failure() {
+            let Setup {
+                mut streamed_headers,
+                storage,
+                head,
+                public_key,
+                ..
+            } = setup().await;
+
+            let mut db = storage.connection().unwrap();
+            let db = db.transaction().unwrap();
+            let genesis = BlockHeader {
+                number: BlockNumber::GENESIS,
+                ..Default::default()
+            };
+            db.insert_block_header(&genesis).unwrap();
+            db.commit().unwrap();
+
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    Chain::SepoliaTestnet,
+                    ChainId::SEPOLIA_TESTNET,
+                    public_key,
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::Other(_))
+            );
+        }
+    }
+
     mod handle_transaction_stream {
+        use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
         use p2p::client::peer_agnostic::TransactionBlockData;
@@ -679,7 +963,7 @@ mod tests {
                 storage,
                 ..
             } = setup(1).await;
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
                     storage,
@@ -687,23 +971,21 @@ mod tests {
                     // ChainId::SEPOLIA_TESTNET
                     ChainId::MAINNET
                 )
-                .await
-                .unwrap_err(),
-                SyncError::TransactionCommitmentMismatch(_)
+                .await,
+                Err(SyncError::TransactionCommitmentMismatch(_))
             );
         }
 
         #[tokio::test]
         async fn stream_failure() {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_transaction_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
 
@@ -713,20 +995,20 @@ mod tests {
                 streamed_transactions,
                 ..
             } = setup(1).await;
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
                     StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
     }
 
     mod handle_state_diff_stream {
+        use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;
@@ -843,24 +1125,21 @@ mod tests {
                 .declared_cairo_classes
                 .insert(Faker.fake());
 
-            assert_matches::assert_matches!(
-                handle_state_diff_stream(stream::iter(streamed_state_diffs), storage)
-                    .await
-                    .unwrap_err(),
-                SyncError::StateDiffCommitmentMismatch(_)
+            assert_matches!(
+                handle_state_diff_stream(stream::iter(streamed_state_diffs), storage).await,
+                Err(SyncError::StateDiffCommitmentMismatch(_))
             );
         }
 
         #[tokio::test]
         async fn stream_failure() {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_state_diff_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
 
@@ -870,14 +1149,13 @@ mod tests {
                 streamed_state_diffs,
                 ..
             } = setup(1).await;
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_state_diff_stream(
                     stream::iter(streamed_state_diffs),
                     StorageBuilder::in_memory().unwrap(),
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
     }
@@ -886,6 +1164,7 @@ mod tests {
         use std::collections::HashMap;
         use std::future;
 
+        use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::{stream, SinkExt};
         use p2p::libp2p::PeerId;
@@ -1126,11 +1405,10 @@ mod tests {
             let data = PeerData::for_tests(class);
             let expected_peer_id = data.peer;
 
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_class_stream(stream::once(std::future::ready(Ok(data))), storage, FakeFgw, Faker.fake::<DeclaredClasses>().to_stream())
-                    .await
-                    .unwrap_err(),
-                SyncError::BadClassLayout(x) => assert_eq!(x, expected_peer_id)
+                    .await,
+                Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id)
             );
         }
 
@@ -1146,31 +1424,30 @@ mod tests {
             declared_classes.0.last_mut().unwrap().class = Faker.fake();
             let expected_peer_id = streamed_classes.last().unwrap().as_ref().unwrap().peer;
 
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_class_stream(stream::iter(streamed_classes), storage, FakeFgw, declared_classes.to_stream())
-                    .await
-                    .unwrap_err(),
-                SyncError::UnexpectedClass(x) => assert_eq!(x, expected_peer_id)
+                    .await,
+                Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id)
             );
         }
 
         #[tokio::test]
         async fn stream_failure() {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 handle_class_stream(
                     stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
                     Faker.fake::<DeclaredClasses>().to_stream()
                 )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
+                .await,
+                Err(SyncError::Other(_))
             );
         }
     }
 
     mod handle_event_stream {
+        use assert_matches::assert_matches;
         use fake::{Fake, Faker};
         use futures::stream;
         use p2p::libp2p::PeerId;

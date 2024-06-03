@@ -3,6 +3,7 @@ use pathfinder_common::event::Event;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
+    BlockHeader,
     BlockNumber,
     BlockTimestamp,
     Chain,
@@ -23,7 +24,12 @@ use starknet_gateway_types::reply::Block;
 pub enum VerifyResult {
     Match((TransactionCommitment, EventCommitment)),
     Mismatch,
-    NotVerifiable,
+}
+
+impl VerifyResult {
+    pub fn is_match(&self) -> bool {
+        matches!(self, Self::Match(_))
+    }
 }
 
 /// Verify the block hash value.
@@ -38,27 +44,26 @@ pub enum VerifyResult {
 ///
 /// See the `compute_block_hash.py` helper script that uses the cairo-lang
 /// Python implementation to compute the block hash for details.
-pub fn verify_block_hash(
+pub fn verify_gateway_block_hash(
     block: &Block,
     chain: Chain,
     chain_id: ChainId,
-    expected_block_hash: BlockHash,
 ) -> Result<VerifyResult> {
-    let meta_info = meta::for_chain(chain);
-    if !meta_info.can_verify(block.block_number) {
-        return Ok(VerifyResult::NotVerifiable);
-    }
-
-    let num_transactions: u64 = block
-        .transactions
-        .len()
-        .try_into()
-        .expect("too many transactions in block");
-
     let transaction_final_hash_type =
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let transaction_commitment =
         calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
+
+    let mut block_header_data = BlockHeaderData::from(block);
+
+    // Older blocks on mainnet don't carry a precalculated transaction
+    // commitment.
+    if block.transaction_commitment == TransactionCommitment::ZERO {
+        block_header_data.transaction_commitment = transaction_commitment;
+    } else if transaction_commitment != block.transaction_commitment {
+        return Ok(VerifyResult::Mismatch);
+    }
+
     let event_commitment = calculate_event_commitment(
         &block
             .transaction_receipts
@@ -67,44 +72,131 @@ pub fn verify_block_hash(
             .collect::<Vec<_>>(),
     )?;
 
-    let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
+    // Older blocks on mainnet don't carry a precalculated event
+    // commitment.
+    if block.event_commitment == EventCommitment::ZERO {
+        block_header_data.event_commitment = event_commitment;
+    } else if event_commitment != block.event_commitment {
+        return Ok(VerifyResult::Mismatch);
+    }
+
+    verify_block_hash(block_header_data, chain, chain_id)
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BlockHeaderData {
+    pub hash: BlockHash,
+    pub parent_hash: BlockHash,
+    pub number: BlockNumber,
+    pub timestamp: BlockTimestamp,
+    pub sequencer_address: SequencerAddress,
+    pub state_commitment: StateCommitment,
+    pub transaction_commitment: TransactionCommitment,
+    pub transaction_count: u64,
+    pub event_commitment: EventCommitment,
+    pub event_count: u64,
+}
+
+impl From<&Block> for BlockHeaderData {
+    fn from(block: &Block) -> Self {
+        Self {
+            hash: block.block_hash,
+            parent_hash: block.parent_block_hash,
+            number: block.block_number,
+            timestamp: block.timestamp,
+            sequencer_address: block
+                .sequencer_address
+                .unwrap_or(SequencerAddress(Felt::ZERO)),
+            state_commitment: block.state_commitment,
+            transaction_commitment: block.transaction_commitment,
+            transaction_count: block
+                .transactions
+                .len()
+                .try_into()
+                .expect("ptr size is 64bits"),
+            event_commitment: block.event_commitment,
+            event_count: block
+                .transaction_receipts
+                .iter()
+                .flat_map(|(_, events)| events)
+                .count()
+                .try_into()
+                .expect("ptr size is 64bits"),
+        }
+    }
+}
+
+impl From<&BlockHeader> for BlockHeaderData {
+    fn from(header: &BlockHeader) -> Self {
+        Self {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            sequencer_address: header.sequencer_address,
+            state_commitment: header.state_commitment,
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header
+                .transaction_count
+                .try_into()
+                .expect("ptr size is 64bits"),
+            event_commitment: header.event_commitment,
+            event_count: header.event_count.try_into().expect("ptr size is 64bits"),
+        }
+    }
+}
+
+pub fn verify_block_hash(
+    block_header_data: BlockHeaderData,
+    chain: Chain,
+    chain_id: ChainId,
+) -> Result<VerifyResult> {
+    let BlockHeaderData {
+        hash: expected_hash,
+        parent_hash,
+        number,
+        timestamp,
+        sequencer_address,
+        state_commitment,
+        transaction_commitment,
+        transaction_count,
+        event_commitment,
+        event_count,
+    } = block_header_data;
+
+    let meta_info = meta::for_chain(chain);
+
+    let verified = if meta_info.uses_pre_0_7_hash_algorithm(number) {
         anyhow::ensure!(
             chain != Chain::Custom,
             "Chain::Custom should not have any pre 0.7 block hashes"
         );
 
-        let block_hash = compute_final_hash_pre_0_7(
-            block.block_number,
-            block.state_commitment,
-            num_transactions,
+        let computed_hash = compute_final_hash_pre_0_7(
+            number,
+            state_commitment,
+            transaction_count,
             transaction_commitment.0,
-            block.parent_block_hash,
+            parent_hash,
             chain_id,
         );
-        block_hash == expected_block_hash
+        computed_hash == expected_hash
     } else {
-        let num_events = number_of_events_in_block(block);
-        let num_events: u64 = num_events.try_into().expect("too many events in block");
-
-        let block_sequencer_address = block
-            .sequencer_address
-            .unwrap_or(SequencerAddress(Felt::ZERO));
-
-        std::iter::once(&block_sequencer_address)
+        std::iter::once(&sequencer_address)
             .chain(meta_info.fallback_sequencer_address.iter())
             .any(|address| {
-                let block_hash = compute_final_hash(
-                    block.block_number,
-                    block.state_commitment,
+                let computed_hash = compute_final_hash(
+                    number,
+                    state_commitment,
                     address,
-                    block.timestamp,
-                    num_transactions,
+                    timestamp,
+                    transaction_count,
                     transaction_commitment.0,
-                    num_events,
+                    event_count,
                     event_commitment.0,
-                    block.parent_block_hash,
+                    parent_hash,
                 );
-                block_hash == expected_block_hash
+                computed_hash == expected_hash
             })
     };
 
@@ -115,8 +207,6 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use std::ops::Range;
-
     use pathfinder_common::{sequencer_address, BlockNumber, Chain, SequencerAddress};
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -144,22 +234,12 @@ mod meta {
         /// The number of the first block that was hashed with the Starknet 0.7
         /// hash algorithm.
         pub first_0_7_block: BlockNumber,
-        /// The range of block numbers that can't be verified because of an
-        /// unknown sequencer address.
-        pub not_verifiable_range: Option<Range<BlockNumber>>,
         /// Fallback sequencer address to use for blocks that don't include the
         /// address.
         pub fallback_sequencer_address: Option<SequencerAddress>,
     }
 
     impl BlockHashMetaInfo {
-        pub fn can_verify(&self, block_number: BlockNumber) -> bool {
-            match &self.not_verifiable_range {
-                Some(range) => !range.contains(&block_number),
-                None => true,
-            }
-        }
-
         pub fn uses_pre_0_7_hash_algorithm(&self, block_number: BlockNumber) -> bool {
             block_number < self.first_0_7_block
         }
@@ -167,7 +247,6 @@ mod meta {
 
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(833),
-        not_verifiable_range: None,
         fallback_sequencer_address: Some(sequencer_address!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
         )),
@@ -175,19 +254,16 @@ mod meta {
 
     const SEPOLIA_TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(0),
-        not_verifiable_range: None,
         fallback_sequencer_address: None,
     };
 
     const SEPOLIA_INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(0),
-        not_verifiable_range: None,
         fallback_sequencer_address: None,
     };
 
     const CUSTOM_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(0),
-        not_verifiable_range: None,
         fallback_sequencer_address: None,
     };
 
@@ -482,15 +558,6 @@ fn calculate_event_hash(event: &Event) -> Felt {
     event_hash.finalize()
 }
 
-/// Return the number of events in the block.
-fn number_of_events_in_block(block: &Block) -> usize {
-    block
-        .transaction_receipts
-        .iter()
-        .flat_map(|(_, events)| events.iter())
-        .count()
-}
-
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
@@ -555,17 +622,6 @@ mod tests {
     }
 
     #[test]
-    fn test_number_of_events_in_block() {
-        let json = starknet_gateway_test_fixtures::v0_8_0::block::MAINNET_2500;
-        let block: Block = serde_json::from_str(json).unwrap();
-
-        // this expected value comes from processing the raw JSON and counting the
-        // number of events
-        const EXPECTED_NUMBER_OF_EVENTS: usize = 26;
-        assert_eq!(number_of_events_in_block(&block), EXPECTED_NUMBER_OF_EVENTS);
-    }
-
-    #[test]
     fn test_block_hash_without_sequencer_address() {
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the
         // sequencer address.
@@ -573,7 +629,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash).unwrap(),
+            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -586,7 +642,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash).unwrap(),
+            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -600,7 +656,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash,).unwrap(),
+            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -611,7 +667,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash,).unwrap(),
+            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -624,7 +680,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Mainnet, ChainId::MAINNET, block.block_hash).unwrap(),
+            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
             VerifyResult::Match(_)
         );
     }

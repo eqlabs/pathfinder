@@ -136,8 +136,6 @@ impl Codec for TestCodec {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteRequest"))
             }
             Action::TimeoutOnWriteRequest => loop {
-                eprintln!("write_request 1 sleep ==");
-
                 tokio::time::sleep(Duration::MAX).await;
             },
             action => {

@@ -104,7 +104,11 @@ mod prop {
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p::client::peer_agnostic::{Receipt, TransactionBlockData};
+    use p2p::client::peer_agnostic::{
+        Receipt,
+        SignedBlockHeader as P2PSignedBlockHeader,
+        TransactionBlockData,
+    };
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -126,14 +130,11 @@ mod prop {
     use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::{
         CasmHash,
-        ClassCommitment,
         ClassHash,
         ContractAddress,
         ContractNonce,
         SierraHash,
-        SignedBlockHeader,
         StorageAddress,
-        StorageCommitment,
         StorageValue,
         TransactionHash,
         TransactionIndex,
@@ -184,12 +185,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|Block { mut header, .. }| {
-                    // P2P headers don't carry class commitment and storage commitment, so zero them just like `try_from_dto` does
-                    header.header.class_commitment = ClassCommitment::ZERO;
-                    header.header.storage_commitment = StorageCommitment::ZERO;
-                    header
-                }).collect::<Vec<_>>();
+                .into_iter().map(|Block { header, .. }| P2PSignedBlockHeader::from(header)).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -208,7 +204,7 @@ mod prop {
 
             // Check the rest
             let actual = responses.into_iter().map(|response| match response {
-                BlockHeadersResponse::Header(hdr) => SignedBlockHeader::try_from_dto(*hdr).unwrap(),
+                BlockHeadersResponse::Header(hdr) => P2PSignedBlockHeader::try_from(*hdr).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 

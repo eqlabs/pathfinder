@@ -1,18 +1,22 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
+use p2p::client::peer_agnostic::SignedBlockHeader;
 use p2p::PeerData;
 use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    Chain,
+    ChainId,
     ClassCommitment,
-    SignedBlockHeader,
+    PublicKey,
     StorageCommitment,
 };
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
+use crate::state::block_hash::{verify_block_hash, BlockHeaderData, VerifyResult};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
@@ -32,6 +36,12 @@ pub(super) struct HeaderGap {
     /// Oldest block's parent's hash. Used to link any received data to the
     /// existing local chain data.
     pub tail_parent_hash: BlockHash,
+}
+
+impl HeaderGap {
+    pub fn head(&self) -> (BlockNumber, BlockHash) {
+        (self.head, self.head_hash)
+    }
 }
 
 /// Returns the first [HeaderGap] in headers, searching from the given block
@@ -124,7 +134,11 @@ pub struct BackwardContinuity {
 }
 
 /// Ensures that the block hash and signature are correct.
-pub struct VerifyHash;
+pub struct VerifyHashAndSignature {
+    chain: Chain,
+    chain_id: ChainId,
+    public_key: PublicKey,
+}
 
 impl ForwardContinuity {
     pub fn new(next: BlockNumber, parent_hash: BlockHash) -> Self {
@@ -179,16 +193,16 @@ impl ProcessStage for BackwardContinuity {
     }
 }
 
-impl ProcessStage for VerifyHash {
+impl ProcessStage for VerifyHashAndSignature {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        if !input.header.verify_hash() {
+        if !self.verify_hash(&input) {
             return Err(SyncError2::BadBlockHash);
         }
 
-        if !input.verify_signature() {
+        if !self.verify_signature(&input) {
             return Err(SyncError2::BadHeaderSignature);
         }
 
@@ -196,35 +210,66 @@ impl ProcessStage for VerifyHash {
     }
 }
 
-pub struct HeaderSource {
-    pub start: BlockNumber,
-    pub stop: BlockNumber,
-    pub reverse: bool,
-    pub p2p: p2p::client::peer_agnostic::Client,
+impl VerifyHashAndSignature {
+    pub fn new(chain: Chain, chain_id: ChainId, public_key: PublicKey) -> Self {
+        Self {
+            chain,
+            chain_id,
+            public_key,
+        }
+    }
+
+    fn verify_hash(&self, header: &SignedBlockHeader) -> bool {
+        let h = &header.header;
+        matches!(
+            verify_block_hash(
+                BlockHeaderData {
+                    hash: h.hash,
+                    parent_hash: h.parent_hash,
+                    number: h.number,
+                    timestamp: h.timestamp,
+                    sequencer_address: h.sequencer_address,
+                    state_commitment: h.state_commitment,
+                    transaction_commitment: h.transaction_commitment,
+                    transaction_count: h.transaction_count.try_into().expect("ptr size is 64 bits"),
+                    event_commitment: h.event_commitment,
+                    event_count: h.event_count.try_into().expect("ptr size is 64 bits"),
+                },
+                self.chain,
+                self.chain_id
+            ),
+            Ok(VerifyResult::Match(_))
+        )
+    }
+
+    fn verify_signature(&self, header: &SignedBlockHeader) -> bool {
+        header
+            .signature
+            .verify(
+                self.public_key,
+                header.header.hash,
+                header.state_diff_commitment,
+            )
+            .is_ok()
+    }
 }
 
-impl HeaderSource {
-    pub fn spawn(self) -> SyncReceiver<SignedBlockHeader> {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
-        let Self {
-            start,
-            stop,
-            reverse,
-            p2p,
-        } = self;
+pub fn spawn_header_source(
+    header_stream: impl futures::Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
+) -> SyncReceiver<SignedBlockHeader> {
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
-            let mut headers = Box::pin(p2p.header_stream(start, stop, reverse));
+    tokio::spawn(async move {
+        let mut headers = Box::pin(header_stream);
 
-            while let Some(header) = headers.next().await {
-                if tx.send(Ok(header)).await.is_err() {
-                    return;
-                }
+        while let Some(header) = headers.next().await {
+            if tx.send(Ok(header)).await.is_err() {
+                return;
             }
-        });
+        }
+    });
 
-        SyncReceiver::from_receiver(rx)
-    }
+    SyncReceiver::from_receiver(rx)
 }
 
 pub struct Persist {
