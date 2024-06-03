@@ -15,6 +15,7 @@ use pathfinder_common::{
     BlockNumber,
     ChainId,
     ClassHash,
+    EventCommitment,
     SignedBlockHeader,
     StateUpdate,
     TransactionCommitment,
@@ -27,9 +28,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use super::transactions::{self, compute_hashes};
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
-use crate::sync::events::{self, BlockEvents};
-use crate::sync::headers;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
+use crate::sync::{events, headers};
 
 pub struct Sync<L> {
     latest: L,
@@ -82,9 +82,15 @@ where
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10);
 
+        let TransactionsFanout {
+            transactions,
+            events: transactions_for_events,
+        } = TransactionsFanout::from_source(transactions, 10);
+
         let events = EventSource {
             p2p: self.p2p.clone(),
             headers: events,
+            transactions: transactions_for_events,
         }
         .spawn()
         .pipe(events::VerifyCommitment, 10);
@@ -197,6 +203,43 @@ impl StateDiffFanout {
         Self {
             state_diff: SyncReceiver::from_receiver(s_rx),
             declarations: ReceiverStream::new(c_rx).boxed(),
+        }
+    }
+}
+
+struct TransactionsFanout {
+    transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
+    events: BoxStream<'static, Vec<TransactionHash>>,
+}
+
+impl TransactionsFanout {
+    fn from_source(mut source: SyncReceiver<Vec<(Transaction, Receipt)>>, buffer: usize) -> Self {
+        let (t_tx, t_rx) = tokio::sync::mpsc::channel(buffer);
+        let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
+
+        tokio::spawn(async move {
+            while let Some(transactions) = source.recv().await {
+                let is_err = transactions.is_err();
+
+                if t_tx.send(transactions.clone()).await.is_err() || is_err {
+                    return;
+                }
+
+                let transactions = transactions.expect("Error case already handled").data;
+
+                if e_tx
+                    .send(transactions.iter().map(|(tx, _)| tx.hash).collect())
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+
+        Self {
+            transactions: SyncReceiver::from_receiver(t_rx),
+            events: ReceiverStream::new(e_rx).boxed(),
         }
     }
 }
@@ -324,13 +367,24 @@ impl TransactionSource {
 struct EventSource {
     p2p: P2PClient,
     headers: BoxStream<'static, BlockHeader>,
+    transactions: BoxStream<'static, Vec<TransactionHash>>,
 }
 
+type EventsWithCommitment = (
+    EventCommitment,
+    Vec<TransactionHash>,
+    HashMap<TransactionHash, Vec<Event>>,
+);
+
 impl EventSource {
-    fn spawn(self) -> SyncReceiver<BlockEvents> {
+    fn spawn(self) -> SyncReceiver<EventsWithCommitment> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
-            let Self { p2p, mut headers } = self;
+            let Self {
+                p2p,
+                mut transactions,
+                mut headers,
+            } = self;
 
             while let Some(header) = headers.next().await {
                 let (peer, mut events) = loop {
@@ -338,12 +392,15 @@ impl EventSource {
                         break stream;
                     }
                 };
-
-                let event_count = header.event_count;
-                let mut block_events = BlockEvents {
-                    header,
-                    events: Default::default(),
+                let Some(block_transactions) = transactions.next().await else {
+                    let err =
+                        PeerData::new(peer, SyncError2::Other(anyhow!("No transactions").into()));
+                    let _ = tx.send(Err(err)).await;
+                    return;
                 };
+
+                let mut block_events: HashMap<_, Vec<Event>> = HashMap::new();
+                let event_count = header.event_count;
 
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..event_count {
@@ -353,7 +410,7 @@ impl EventSource {
                         return;
                     };
 
-                    block_events.events.entry(tx_hash).or_default().push(event);
+                    block_events.entry(tx_hash).or_default().push(event);
                 }
 
                 // Ensure that the stream is exhausted.
@@ -363,8 +420,14 @@ impl EventSource {
                     return;
                 }
 
-                let block_events = PeerData::new(peer, block_events);
-                if tx.send(Ok(block_events)).await.is_err() {
+                if tx
+                    .send(Ok(PeerData::new(
+                        peer,
+                        (header.event_commitment, block_transactions, block_events),
+                    )))
+                    .await
+                    .is_err()
+                {
                     return;
                 }
             }
@@ -399,7 +462,7 @@ impl ClassSource {
 
 struct BlockStream {
     pub header: SyncReceiver<SignedBlockHeader>,
-    pub events: SyncReceiver<BlockEvents>,
+    pub events: SyncReceiver<HashMap<TransactionHash, Vec<Event>>>,
     pub state_diff: SyncReceiver<StateUpdate>,
     pub transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
     pub classes: SyncReceiver<Vec<ClassDefinition<'static>>>,
@@ -459,7 +522,7 @@ impl BlockStream {
 
         let data = BlockData {
             header: header.data,
-            events: events.data.events,
+            events: events.data,
             state_diff: state_diff.data,
             transactions: transactions.data,
             classes: classes.data,

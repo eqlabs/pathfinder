@@ -5,12 +5,15 @@ use anyhow::Context;
 use p2p::client::peer_agnostic::EventsForBlockByTransaction;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
-use pathfinder_common::{BlockHeader, BlockNumber, TransactionHash};
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::transaction::Transaction;
+use pathfinder_common::{BlockHeader, BlockNumber, EventCommitment, TransactionHash};
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
 use super::error::SyncError;
 use crate::state::block_hash::calculate_event_commitment;
+use crate::sync::error::SyncError2;
 use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose events are missing in storage, counting
@@ -149,18 +152,35 @@ pub(super) async fn persist(
     .context("Joining blocking task")?
 }
 
-pub struct BlockEvents {
-    pub header: BlockHeader,
-    pub events: HashMap<TransactionHash, Vec<Event>>,
-}
-
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
-    type Input = BlockEvents;
-    type Output = BlockEvents;
+    type Input = (
+        EventCommitment,
+        Vec<TransactionHash>,
+        HashMap<TransactionHash, Vec<Event>>,
+    );
+    type Output = HashMap<TransactionHash, Vec<Event>>;
 
-    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
-        todo!()
+    fn map(
+        &mut self,
+        (event_commitment, transactions, mut events): Self::Input,
+    ) -> Result<Self::Output, super::error::SyncError2> {
+        let mut ordered_events = Vec::new();
+        for tx_hash in &transactions {
+            ordered_events.extend(
+                events
+                    .get(tx_hash)
+                    .ok_or(SyncError2::EventsTransactionsMismatch)?,
+            );
+        }
+        if ordered_events.len() != events.len() {
+            return Err(SyncError2::EventsTransactionsMismatch);
+        }
+        let actual = calculate_event_commitment(&ordered_events)?;
+        if actual != event_commitment {
+            return Err(SyncError2::EventCommitmentMismatch);
+        }
+        Ok(events)
     }
 }
