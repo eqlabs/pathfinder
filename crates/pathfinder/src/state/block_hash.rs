@@ -54,7 +54,7 @@ pub fn verify_gateway_block_hash(
     let transaction_commitment =
         calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
 
-    let mut block_header_data = BlockHeaderVerificationData::from(block);
+    let mut block_header_data = BlockHeaderData::from(block);
 
     // Older blocks on mainnet don't carry a precalculated transaction
     // commitment.
@@ -80,35 +80,27 @@ pub fn verify_gateway_block_hash(
         return Ok(VerifyResult::Mismatch);
     }
 
-    verify_block_hash0(block_header_data, chain, chain_id)
-}
-
-pub fn verify_block_hash(
-    block_header: &BlockHeader,
-    chain: Chain,
-    chain_id: ChainId,
-) -> Result<VerifyResult> {
-    verify_block_hash0(block_header.into(), chain, chain_id)
+    verify_block_hash(block_header_data, chain, chain_id)
 }
 
 #[derive(Clone, Copy, Debug)]
-struct BlockHeaderVerificationData {
-    expected_hash: BlockHash,
-    parent_hash: BlockHash,
-    number: BlockNumber,
-    timestamp: BlockTimestamp,
-    sequencer_address: SequencerAddress,
-    state_commitment: StateCommitment,
-    transaction_commitment: TransactionCommitment,
-    transaction_count: u64,
-    event_commitment: EventCommitment,
-    event_count: u64,
+pub struct BlockHeaderData {
+    pub hash: BlockHash,
+    pub parent_hash: BlockHash,
+    pub number: BlockNumber,
+    pub timestamp: BlockTimestamp,
+    pub sequencer_address: SequencerAddress,
+    pub state_commitment: StateCommitment,
+    pub transaction_commitment: TransactionCommitment,
+    pub transaction_count: u64,
+    pub event_commitment: EventCommitment,
+    pub event_count: u64,
 }
 
-impl From<&Block> for BlockHeaderVerificationData {
+impl From<&Block> for BlockHeaderData {
     fn from(block: &Block) -> Self {
         Self {
-            expected_hash: block.block_hash,
+            hash: block.block_hash,
             parent_hash: block.parent_block_hash,
             number: block.block_number,
             timestamp: block.timestamp,
@@ -134,10 +126,10 @@ impl From<&Block> for BlockHeaderVerificationData {
     }
 }
 
-impl From<&BlockHeader> for BlockHeaderVerificationData {
+impl From<&BlockHeader> for BlockHeaderData {
     fn from(header: &BlockHeader) -> Self {
         Self {
-            expected_hash: header.hash,
+            hash: header.hash,
             parent_hash: header.parent_hash,
             number: header.number,
             timestamp: header.timestamp,
@@ -154,13 +146,13 @@ impl From<&BlockHeader> for BlockHeaderVerificationData {
     }
 }
 
-fn verify_block_hash0(
-    block_header_data: BlockHeaderVerificationData,
+pub fn verify_block_hash(
+    block_header_data: BlockHeaderData,
     chain: Chain,
     chain_id: ChainId,
 ) -> Result<VerifyResult> {
-    let BlockHeaderVerificationData {
-        expected_hash,
+    let BlockHeaderData {
+        hash: expected_hash,
         parent_hash,
         number,
         timestamp,

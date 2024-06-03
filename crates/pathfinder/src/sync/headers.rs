@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
+use p2p::client::peer_agnostic::SignedBlockHeader;
 use p2p::PeerData;
 use pathfinder_common::{
     BlockHash,
@@ -10,13 +11,12 @@ use pathfinder_common::{
     ChainId,
     ClassCommitment,
     PublicKey,
-    SignedBlockHeader,
     StorageCommitment,
 };
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
-use crate::state::block_hash::{verify_block_hash, VerifyResult};
+use crate::state::block_hash::{verify_block_hash, BlockHeaderData, VerifyResult};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
@@ -220,8 +220,24 @@ impl VerifyHashAndSignature {
     }
 
     fn verify_hash(&self, header: &SignedBlockHeader) -> bool {
+        let h = &header.header;
         matches!(
-            verify_block_hash(&header.header, self.chain, self.chain_id),
+            verify_block_hash(
+                BlockHeaderData {
+                    hash: h.hash,
+                    parent_hash: h.parent_hash,
+                    number: h.number,
+                    timestamp: h.timestamp,
+                    sequencer_address: h.sequencer_address,
+                    state_commitment: h.state_commitment,
+                    transaction_commitment: h.transaction_commitment,
+                    transaction_count: h.transaction_count.try_into().expect("ptr size is 64 bits"),
+                    event_commitment: h.event_commitment,
+                    event_count: h.event_count.try_into().expect("ptr size is 64 bits"),
+                },
+                self.chain,
+                self.chain_id
+            ),
             Ok(VerifyResult::Match(_))
         )
     }

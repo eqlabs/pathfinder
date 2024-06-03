@@ -3,7 +3,12 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{anyhow, Context};
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt, TryStreamExt};
-use p2p::client::peer_agnostic::{self, Client as P2PClient};
+use p2p::client::peer_agnostic::{
+    self,
+    BlockHeader as P2PBlockHeader,
+    Client as P2PClient,
+    SignedBlockHeader as P2PSignedBlockHeader,
+};
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -11,14 +16,12 @@ use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
-    BlockHeader,
     BlockNumber,
     Chain,
     ChainId,
     ClassHash,
     EventCommitment,
     PublicKey,
-    SignedBlockHeader,
     StateUpdate,
     TransactionCommitment,
     TransactionHash,
@@ -148,7 +151,7 @@ impl<L> HeaderSource<L>
 where
     L: Stream<Item = (BlockNumber, BlockHash)> + Send + 'static,
 {
-    fn spawn(self) -> SyncReceiver<SignedBlockHeader> {
+    fn spawn(self) -> SyncReceiver<P2PSignedBlockHeader> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         let Self {
             p2p,
@@ -253,14 +256,14 @@ impl TransactionsFanout {
 }
 
 struct HeaderFanout {
-    headers: SyncReceiver<SignedBlockHeader>,
-    events: BoxStream<'static, BlockHeader>,
-    state_diff: BoxStream<'static, BlockHeader>,
-    transactions: BoxStream<'static, BlockHeader>,
+    headers: SyncReceiver<P2PSignedBlockHeader>,
+    events: BoxStream<'static, P2PBlockHeader>,
+    state_diff: BoxStream<'static, P2PBlockHeader>,
+    transactions: BoxStream<'static, P2PBlockHeader>,
 }
 
 impl HeaderFanout {
-    fn from_source(mut source: SyncReceiver<SignedBlockHeader>, buffer: usize) -> Self {
+    fn from_source(mut source: SyncReceiver<P2PSignedBlockHeader>, buffer: usize) -> Self {
         let (h_tx, h_rx) = tokio::sync::mpsc::channel(buffer);
         let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
@@ -304,7 +307,7 @@ impl HeaderFanout {
 
 struct TransactionSource {
     p2p: P2PClient,
-    headers: BoxStream<'static, BlockHeader>,
+    headers: BoxStream<'static, P2PBlockHeader>,
     chain_id: ChainId,
 }
 
@@ -374,7 +377,7 @@ impl TransactionSource {
 
 struct EventSource {
     p2p: P2PClient,
-    headers: BoxStream<'static, BlockHeader>,
+    headers: BoxStream<'static, P2PBlockHeader>,
     transactions: BoxStream<'static, Vec<TransactionHash>>,
 }
 
@@ -447,7 +450,7 @@ impl EventSource {
 
 struct StateDiffSource {
     p2p: P2PClient,
-    headers: BoxStream<'static, BlockHeader>,
+    headers: BoxStream<'static, P2PBlockHeader>,
 }
 
 impl StateDiffSource {
@@ -469,7 +472,7 @@ impl ClassSource {
 }
 
 struct BlockStream {
-    pub header: SyncReceiver<SignedBlockHeader>,
+    pub header: SyncReceiver<P2PSignedBlockHeader>,
     pub events: SyncReceiver<HashMap<TransactionHash, Vec<Event>>>,
     pub state_diff: SyncReceiver<StateUpdate>,
     pub transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
@@ -541,7 +544,7 @@ impl BlockStream {
 }
 
 struct BlockData {
-    pub header: SignedBlockHeader,
+    pub header: P2PSignedBlockHeader,
     pub events: HashMap<TransactionHash, Vec<Event>>,
     pub state_diff: StateUpdate,
     pub transactions: Vec<(Transaction, Receipt)>,

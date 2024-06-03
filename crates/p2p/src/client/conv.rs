@@ -28,34 +28,20 @@ use pathfinder_common::transaction::{
 };
 use pathfinder_common::{
     AccountDeploymentDataElem,
-    BlockCommitmentSignature,
-    BlockCommitmentSignatureElem,
-    BlockHash,
-    BlockHeader,
-    BlockNumber,
-    BlockTimestamp,
     ByteCodeOffset,
     CallParam,
     CasmHash,
-    ClassCommitment,
     ClassHash,
     ConstructorParam,
     ContractAddress,
     ContractAddressSalt,
     EntryPoint,
-    EventCommitment,
     EventData,
     EventKey,
     Fee,
     GasPrice,
     L1DataAvailabilityMode,
     L2ToL1MessagePayloadElem,
-    SequencerAddress,
-    SignedBlockHeader,
-    StateCommitment,
-    StateDiffCommitment,
-    StorageCommitment,
-    TransactionCommitment,
     TransactionIndex,
     TransactionNonce,
     TransactionSignatureElem,
@@ -77,51 +63,6 @@ pub trait TryFromDto<T> {
 
 pub trait FromDto<T> {
     fn from_dto(dto: T) -> Self;
-}
-
-impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
-    /// ## Important
-    ///
-    /// This conversion leaves `class_commitment` and `storage_commitment`
-    /// fields zeroed. The caller must make sure to fill them with the
-    /// correct values after the conversion succeeds.
-    fn try_from_dto(dto: p2p_proto::header::SignedBlockHeader) -> anyhow::Result<Self> {
-        anyhow::ensure!(dto.signatures.len() == 1, "expected exactly one signature");
-        let signature = dto
-            .signatures
-            .into_iter()
-            .map(|sig| BlockCommitmentSignature {
-                r: BlockCommitmentSignatureElem(sig.r),
-                s: BlockCommitmentSignatureElem(sig.s),
-            })
-            .next()
-            .expect("exactly one element");
-        Ok(SignedBlockHeader {
-            header: BlockHeader {
-                hash: BlockHash(dto.block_hash.0),
-                parent_hash: BlockHash(dto.parent_hash.0),
-                number: BlockNumber::new(dto.number).context("block number > i64::MAX")?,
-                timestamp: BlockTimestamp::new(dto.time).context("block timestamp > i64::MAX")?,
-                eth_l1_gas_price: GasPrice(dto.gas_price_wei),
-                strk_l1_gas_price: GasPrice(dto.gas_price_fri),
-                eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
-                strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
-                sequencer_address: SequencerAddress(dto.sequencer_address.0),
-                starknet_version: dto.protocol_version.parse()?,
-                class_commitment: ClassCommitment::ZERO,
-                event_commitment: EventCommitment(dto.events.root.0),
-                state_commitment: StateCommitment(dto.state_root.0),
-                storage_commitment: StorageCommitment::ZERO,
-                transaction_commitment: TransactionCommitment(dto.transactions.root.0),
-                transaction_count: dto.transactions.n_leaves.try_into()?,
-                event_count: dto.events.n_leaves.try_into()?,
-                l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
-            },
-            signature,
-            state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
-            state_diff_length: dto.state_diff_commitment.state_diff_length,
-        })
-    }
 }
 
 impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {

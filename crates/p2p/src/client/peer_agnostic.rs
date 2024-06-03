@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use fake::Dummy;
 use futures::{pin_mut, StreamExt};
 use libp2p::PeerId;
@@ -24,16 +25,27 @@ use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Mess
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
+    BlockCommitmentSignature,
+    BlockCommitmentSignatureElem,
+    BlockHash,
     BlockNumber,
+    BlockTimestamp,
     CasmHash,
     ClassHash,
     ContractAddress,
     ContractNonce,
+    EventCommitment,
     Fee,
+    GasPrice,
+    L1DataAvailabilityMode,
+    SequencerAddress,
     SierraHash,
-    SignedBlockHeader,
+    StarknetVersion,
+    StateCommitment,
+    StateDiffCommitment,
     StorageAddress,
     StorageValue,
+    TransactionCommitment,
     TransactionHash,
     TransactionIndex,
 };
@@ -173,10 +185,6 @@ impl Client {
             .await
     }
 
-    /// ## Important
-    ///
-    /// `class_commitment` and `storage_commitment` is not propagated via P2P.
-    /// The caller must make sure to fill these fields with the correct values.
     pub fn header_stream(
         self,
         start: BlockNumber,
@@ -221,7 +229,7 @@ impl Client {
                     while let Some(signed_header) = responses.next().await {
                         let signed_header = match signed_header {
                             BlockHeadersResponse::Header(hdr) => {
-                                match SignedBlockHeader::try_from_dto(*hdr) {
+                                match SignedBlockHeader::try_from(*hdr) {
                                     Ok(hdr) => hdr,
                                     Err(error) => {
                                         tracing::debug!(%peer, %error, "Header stream failed");
@@ -981,3 +989,105 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
 pub type TransactionBlockData = (BlockNumber, Vec<(TransactionVariant, Receipt)>);
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
+pub struct BlockHeader {
+    pub hash: BlockHash,
+    pub parent_hash: BlockHash,
+    pub number: BlockNumber,
+    pub timestamp: BlockTimestamp,
+    pub eth_l1_gas_price: GasPrice,
+    pub strk_l1_gas_price: GasPrice,
+    pub eth_l1_data_gas_price: GasPrice,
+    pub strk_l1_data_gas_price: GasPrice,
+    pub sequencer_address: SequencerAddress,
+    pub starknet_version: StarknetVersion,
+    pub event_commitment: EventCommitment,
+    pub state_commitment: StateCommitment,
+    pub transaction_commitment: TransactionCommitment,
+    pub transaction_count: usize,
+    pub event_count: usize,
+    pub l1_da_mode: L1DataAvailabilityMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SignedBlockHeader {
+    pub header: BlockHeader,
+    pub signature: BlockCommitmentSignature,
+    pub state_diff_commitment: StateDiffCommitment,
+    pub state_diff_length: u64,
+}
+
+impl From<pathfinder_common::SignedBlockHeader> for SignedBlockHeader {
+    fn from(h: pathfinder_common::SignedBlockHeader) -> Self {
+        Self {
+            header: h.header.into(),
+            signature: h.signature,
+            state_diff_commitment: h.state_diff_commitment,
+            state_diff_length: h.state_diff_length,
+        }
+    }
+}
+
+impl From<pathfinder_common::BlockHeader> for BlockHeader {
+    fn from(h: pathfinder_common::BlockHeader) -> Self {
+        Self {
+            hash: h.hash,
+            parent_hash: h.parent_hash,
+            number: h.number,
+            timestamp: h.timestamp,
+            eth_l1_gas_price: h.eth_l1_gas_price,
+            strk_l1_gas_price: h.strk_l1_gas_price,
+            eth_l1_data_gas_price: h.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: h.strk_l1_data_gas_price,
+            sequencer_address: h.sequencer_address,
+            starknet_version: h.starknet_version,
+            event_commitment: h.event_commitment,
+            state_commitment: h.state_commitment,
+            transaction_commitment: h.transaction_commitment,
+            transaction_count: h.transaction_count,
+            event_count: h.event_count,
+            l1_da_mode: h.l1_da_mode,
+        }
+    }
+}
+
+impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
+    type Error = anyhow::Error;
+
+    fn try_from(dto: p2p_proto::header::SignedBlockHeader) -> anyhow::Result<Self> {
+        anyhow::ensure!(dto.signatures.len() == 1, "expected exactly one signature");
+        let signature = dto
+            .signatures
+            .into_iter()
+            .map(|sig| BlockCommitmentSignature {
+                r: BlockCommitmentSignatureElem(sig.r),
+                s: BlockCommitmentSignatureElem(sig.s),
+            })
+            .next()
+            .expect("exactly one element");
+        Ok(SignedBlockHeader {
+            header: BlockHeader {
+                hash: BlockHash(dto.block_hash.0),
+                parent_hash: BlockHash(dto.parent_hash.0),
+                number: BlockNumber::new(dto.number).context("block number > i64::MAX")?,
+                timestamp: BlockTimestamp::new(dto.time).context("block timestamp > i64::MAX")?,
+                eth_l1_gas_price: GasPrice(dto.gas_price_wei),
+                strk_l1_gas_price: GasPrice(dto.gas_price_fri),
+                eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
+                strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
+                sequencer_address: SequencerAddress(dto.sequencer_address.0),
+                starknet_version: dto.protocol_version.parse()?,
+                event_commitment: EventCommitment(dto.events.root.0),
+                state_commitment: StateCommitment(dto.state_root.0),
+                transaction_commitment: TransactionCommitment(dto.transactions.root.0),
+                transaction_count: dto.transactions.n_leaves.try_into()?,
+                event_count: dto.events.n_leaves.try_into()?,
+                l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
+            },
+            signature,
+            state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
+            state_diff_length: dto.state_diff_commitment.state_diff_length,
+        })
+    }
+}

@@ -9,6 +9,7 @@ use p2p::client::peer_agnostic::{
     ClassDefinition,
     Client as P2PClient,
     EventsForBlockByTransaction,
+    SignedBlockHeader as P2PSignedBlockHeader,
     TransactionBlockData,
 };
 use p2p::PeerData;
@@ -19,13 +20,11 @@ use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
-    BlockHeader,
     BlockNumber,
     Chain,
     ChainId,
     ClassHash,
     PublicKey,
-    SignedBlockHeader,
     TransactionIndex,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
@@ -240,7 +239,7 @@ impl Sync {
 }
 
 async fn handle_header_stream(
-    header_stream: impl futures::Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
+    header_stream: impl futures::Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
     head: (BlockNumber, BlockHash),
     chain: Chain,
     chain_id: ChainId,
@@ -584,6 +583,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
+        use p2p::client::peer_agnostic::BlockHeader as P2PBlockHeader;
         use p2p::libp2p::PeerId;
         use p2p_proto::header;
         use pathfinder_common::{
@@ -591,6 +591,7 @@ mod tests {
             BlockCommitmentSignature,
             BlockCommitmentSignatureElem,
             BlockHash,
+            BlockHeader,
             BlockTimestamp,
             EventCommitment,
             SequencerAddress,
@@ -608,8 +609,8 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_headers: Vec<PeerData<SignedBlockHeader>>,
-            pub expected_headers: Vec<SignedBlockHeader>,
+            pub streamed_headers: Vec<PeerData<P2PSignedBlockHeader>>,
+            pub expected_headers: Vec<P2PSignedBlockHeader>,
             pub storage: Storage,
             pub head: (BlockNumber, BlockHash),
             pub public_key: PublicKey,
@@ -632,10 +633,10 @@ mod tests {
             pub state_diff_commitment: StateDiffCommitment,
         }
 
-        impl From<Fixture> for SignedBlockHeader {
+        impl From<Fixture> for P2PSignedBlockHeader {
             fn from(dto: Fixture) -> Self {
                 Self {
-                    header: BlockHeader {
+                    header: P2PBlockHeader {
                         hash: dto.block_hash,
                         number: dto.block_number,
                         parent_hash: dto.parent_block_hash,
@@ -664,7 +665,7 @@ mod tests {
                     .unwrap()
                     .into_iter()
                     .map(Into::into)
-                    .collect::<Vec<SignedBlockHeader>>();
+                    .collect::<Vec<P2PSignedBlockHeader>>();
 
             let hdr = &expected_headers.last().unwrap().header;
             Setup {
@@ -716,8 +717,8 @@ mod tests {
                             .state_diff_commitment_and_length(block_number)
                             .unwrap()
                             .unwrap();
-                        SignedBlockHeader {
-                            header: db.block_header(block_id).unwrap().unwrap(),
+                        P2PSignedBlockHeader {
+                            header: db.block_header(block_id).unwrap().unwrap().into(),
                             signature: db.signature(block_id).unwrap().unwrap(),
                             state_diff_commitment,
                             state_diff_length: state_diff_length as u64,
