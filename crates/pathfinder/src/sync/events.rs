@@ -157,7 +157,7 @@ pub struct VerifyCommitment;
 impl ProcessStage for VerifyCommitment {
     type Input = (
         EventCommitment,
-        Vec<(Transaction, Receipt)>,
+        Vec<TransactionHash>,
         HashMap<TransactionHash, Vec<Event>>,
     );
     type Output = HashMap<TransactionHash, Vec<Event>>;
@@ -167,10 +167,10 @@ impl ProcessStage for VerifyCommitment {
         (event_commitment, transactions, mut events): Self::Input,
     ) -> Result<Self::Output, super::error::SyncError2> {
         let mut ordered_events = Vec::new();
-        for (tx, _) in &transactions {
+        for tx_hash in &transactions {
             ordered_events.extend(
                 events
-                    .get(&tx.hash)
+                    .get(tx_hash)
                     .ok_or(SyncError2::EventsTransactionsMismatch)?,
             );
         }

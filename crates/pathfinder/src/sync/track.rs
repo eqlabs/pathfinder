@@ -209,7 +209,7 @@ impl StateDiffFanout {
 
 struct TransactionsFanout {
     transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
-    events: BoxStream<'static, Vec<(Transaction, Receipt)>>,
+    events: BoxStream<'static, Vec<TransactionHash>>,
 }
 
 impl TransactionsFanout {
@@ -227,7 +227,11 @@ impl TransactionsFanout {
 
                 let transactions = transactions.expect("Error case already handled").data;
 
-                if e_tx.send(transactions).await.is_err() {
+                if e_tx
+                    .send(transactions.iter().map(|(tx, _)| tx.hash).collect())
+                    .await
+                    .is_err()
+                {
                     return;
                 }
             }
@@ -363,12 +367,12 @@ impl TransactionSource {
 struct EventSource {
     p2p: P2PClient,
     headers: BoxStream<'static, BlockHeader>,
-    transactions: BoxStream<'static, Vec<(Transaction, Receipt)>>,
+    transactions: BoxStream<'static, Vec<TransactionHash>>,
 }
 
 type EventsWithCommitment = (
     EventCommitment,
-    Vec<(Transaction, Receipt)>,
+    Vec<TransactionHash>,
     HashMap<TransactionHash, Vec<Event>>,
 );
 
