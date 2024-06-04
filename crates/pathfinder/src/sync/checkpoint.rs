@@ -41,7 +41,7 @@ use crate::state::block_hash::{
     TransactionCommitmentFinalHashType,
 };
 use crate::sync::error::SyncError;
-use crate::sync::headers::spawn_header_source;
+use crate::sync::stream::SyncReceiver;
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
@@ -254,7 +254,8 @@ async fn handle_header_stream(
     storage: Storage,
 ) -> Result<(), SyncError> {
     tracing::info!("Syncing headers");
-    spawn_header_source(header_stream)
+    HeaderSource(header_stream)
+        .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
         .pipe(
             headers::VerifyHashAndSignature::new(chain, chain_id, public_key),
@@ -272,6 +273,29 @@ async fn handle_header_stream(
         .await
         .map_err(SyncError::from_v2)?;
     Ok(())
+}
+
+struct HeaderSource<S>(S);
+
+impl<S> HeaderSource<S>
+where
+    S: futures::Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
+{
+    pub fn spawn(self) -> SyncReceiver<P2PSignedBlockHeader> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        tokio::spawn(async move {
+            let mut headers = Box::pin(self.0);
+
+            while let Some(header) = headers.next().await {
+                if tx.send(Ok(header)).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
 }
 
 async fn handle_transaction_stream(
