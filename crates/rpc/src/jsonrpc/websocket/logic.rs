@@ -23,13 +23,12 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
 use tracing::error;
 
-use super::{TransactionStatusParams, TransactionStatusUpdate};
+use super::{Params, TransactionStatusUpdate};
 use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
 use crate::jsonrpc::websocket::data::{
     EventFilterParams,
-    Kind,
     ResponseEvent,
     SubscriptionId,
     SubscriptionItem,
@@ -40,9 +39,6 @@ use crate::BlockHeader;
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
 const UNSUBSCRIBE_METHOD: &str = "pathfinder_unsubscribe";
-const NEW_HEADS_TOPIC: &str = "newHeads";
-const EVENTS_TOPIC: &str = "events";
-const TRANSACTION_STATUS_TOPIC: &str = "transactionStatus";
 
 #[derive(Clone)]
 pub struct WebsocketContext {
@@ -280,7 +276,7 @@ impl SubscriptionManager {
         websocket_source: TopicBroadcasters,
         gateway: impl GatewayApi + Send + 'static,
     ) -> anyhow::Result<ResponseEvent> {
-        let kind = match request_params.deserialize::<Kind<'_>>() {
+        let params = match request_params.deserialize::<Params>() {
             Ok(x) => x,
             Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
                 return Ok(ResponseEvent::InvalidParams(request_id, e))
@@ -295,8 +291,8 @@ impl SubscriptionManager {
 
         let subscription_id = self.next_id;
         self.next_id += 1;
-        let handle = match kind.kind.as_ref() {
-            NEW_HEADS_TOPIC => {
+        let handle = match params {
+            Params::NewHeads => {
                 let receiver = websocket_source.new_head.subscribe();
                 tokio::spawn(header_subscription(
                     response_sender,
@@ -304,19 +300,7 @@ impl SubscriptionManager {
                     subscription_id,
                 ))
             }
-            EVENTS_TOPIC => {
-                let filter = match request_params.deserialize::<EventFilterParams>() {
-                    Ok(x) => x,
-                    Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                        return Ok(ResponseEvent::InvalidParams(request_id, e))
-                    }
-                    Err(_) => {
-                        return Ok(ResponseEvent::InvalidParams(
-                            request_id,
-                            "Unexpected parsing error".to_owned(),
-                        ))
-                    }
-                };
+            Params::Events(filter) => {
                 let receiver = websocket_source.l2_blocks.subscribe();
                 tokio::spawn(event_subscription(
                     response_sender,
@@ -325,32 +309,12 @@ impl SubscriptionManager {
                     filter,
                 ))
             }
-            TRANSACTION_STATUS_TOPIC => {
-                let params = match request_params.deserialize::<TransactionStatusParams>() {
-                    Ok(x) => x,
-                    Err(crate::jsonrpc::RpcError::InvalidParams(e)) => {
-                        return Ok(ResponseEvent::InvalidParams(request_id, e))
-                    }
-                    Err(_) => {
-                        return Ok(ResponseEvent::InvalidParams(
-                            request_id,
-                            "Unexpected parsing error".to_owned(),
-                        ))
-                    }
-                };
-                tokio::spawn(transaction_status_subscription(
-                    response_sender,
-                    subscription_id,
-                    params.transaction_hash,
-                    gateway,
-                ))
-            }
-            _ => {
-                return Ok(ResponseEvent::InvalidParams(
-                    request_id,
-                    "Unknown subscription type".to_owned(),
-                ))
-            }
+            Params::TransactionStatus(params) => tokio::spawn(transaction_status_subscription(
+                response_sender,
+                subscription_id,
+                params.transaction_hash,
+                gateway,
+            )),
         };
 
         self.subscriptions.insert(subscription_id, handle);

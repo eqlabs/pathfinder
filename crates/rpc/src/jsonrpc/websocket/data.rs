@@ -1,6 +1,5 @@
 //! See [the parent module documentation](super)
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use pathfinder_common::{EventKey, TransactionHash};
@@ -12,15 +11,19 @@ use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
 use crate::method::get_events::types::EmittedEvent;
 
-#[derive(serde::Deserialize, Serialize)]
-pub(super) struct Kind<'a> {
-    #[serde(borrow)]
-    pub(super) kind: Cow<'a, str>,
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub(super) enum Params {
+    #[serde(rename = "newHeads")]
+    NewHeads,
+    #[serde(rename = "events")]
+    Events(EventFilterParams),
+    #[serde(rename = "transactionStatus")]
+    TransactionStatus(TransactionStatusParams),
 }
 
-#[derive(Debug, serde::Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(super) struct EventFilterParams {
-    pub(super) kind: String,
     #[serde(default)]
     pub(super) address: Option<pathfinder_common::ContractAddress>,
     #[serde(default)]
@@ -29,7 +32,6 @@ pub(super) struct EventFilterParams {
 
 #[derive(Debug, serde::Deserialize, Serialize)]
 pub(super) struct TransactionStatusParams {
-    pub(super) kind: String,
     pub(super) transaction_hash: TransactionHash,
 }
 
