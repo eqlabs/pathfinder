@@ -519,7 +519,7 @@ impl Transaction<'_> {
             .inner()
             .prepare_cached(
                 r"
-                SELECT COUNT(definition)
+                SELECT COUNT(block_number)
                 FROM canonical_blocks
                 LEFT JOIN class_definitions ON canonical_blocks.number = class_definitions.block_number
                 WHERE number >= ?
