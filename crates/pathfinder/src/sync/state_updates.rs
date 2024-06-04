@@ -111,6 +111,7 @@ pub(super) async fn verify_commitment(
         let actual = state_diff.data.1.compute_state_diff_commitment();
 
         if actual != expected {
+            tracing::trace!(%block_number, %expected, %actual, state_diff=?state_diff.data.1, "State diff commitment mismatch");
             return Err(SyncError::StateDiffCommitmentMismatch(state_diff.peer));
         }
 
@@ -135,6 +136,7 @@ pub(super) async fn persist(
             .context("Verification results are empty, no block to persist")?;
 
         for (block_number, state_diff) in state_diff.into_iter().map(|x| x.data) {
+            tracing::trace!(%block_number, "Inserting state update");
             db.insert_state_update_data(block_number, &state_diff)
                 .context("Inserting state update")?;
         }
