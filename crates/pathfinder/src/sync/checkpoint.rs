@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
-use futures::{pin_mut, StreamExt, TryStreamExt};
+use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::{
     ClassDefinition,
@@ -246,7 +246,7 @@ impl Sync {
 }
 
 async fn handle_header_stream(
-    header_stream: impl futures::Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
+    header_stream: impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
     head: (BlockNumber, BlockHash),
     chain: Chain,
     chain_id: ChainId,
@@ -279,7 +279,7 @@ struct HeaderSource<S>(S);
 
 impl<S> HeaderSource<S>
 where
-    S: futures::Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
+    S: Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
 {
     pub fn spawn(self) -> SyncReceiver<P2PSignedBlockHeader> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
@@ -299,7 +299,7 @@ where
 }
 
 async fn handle_transaction_stream(
-    transaction_stream: impl futures::Stream<Item = anyhow::Result<PeerData<TransactionBlockData>>>,
+    transaction_stream: impl Stream<Item = anyhow::Result<PeerData<TransactionBlockData>>>,
     storage: Storage,
     chain_id: ChainId,
 ) -> Result<(), SyncError> {
@@ -318,7 +318,7 @@ async fn handle_transaction_stream(
 }
 
 async fn handle_state_diff_stream(
-    stream: impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
+    stream: impl Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     stream
@@ -336,10 +336,10 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
-    class_stream: impl futures::Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
+    class_stream: impl Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
     storage: Storage,
     fgw: SequencerClient,
-    declared_classes_at_block_stream: impl futures::Stream<
+    declared_classes_at_block_stream: impl Stream<
         Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>,
     >,
 ) -> Result<(), SyncError> {
@@ -364,7 +364,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
 }
 
 async fn handle_event_stream(
-    event_stream: impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
+    event_stream: impl Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     event_stream
@@ -1241,7 +1241,7 @@ mod tests {
         impl DeclaredClasses {
             pub fn to_stream(
                 &self,
-            ) -> impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
+            ) -> impl Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
             {
                 let mut all = HashMap::<_, HashSet<ClassHash>>::new();
                 self.0
