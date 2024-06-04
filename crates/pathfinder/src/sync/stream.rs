@@ -201,6 +201,35 @@ impl<T: Send + 'static> SyncReceiver<T> {
 /// on.
 pub struct Buffer(pub usize);
 
+/// A source that can be spawned from any [PeerData] stream.
+pub struct Source<T>(T);
+
+impl<S, I> Source<S>
+where
+    S: Stream<Item = PeerData<I>> + Send + 'static,
+    I: Send + 'static,
+{
+    pub fn from_stream(stream: S) -> Self {
+        Self(stream)
+    }
+
+    pub fn spawn(self) -> SyncReceiver<I> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        tokio::spawn(async move {
+            let mut inner_stream = Box::pin(self.0);
+
+            while let Some(item) = inner_stream.next().await {
+                if tx.send(Ok(item)).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
