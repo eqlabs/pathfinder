@@ -9,6 +9,10 @@ use crate::sync::error::SyncError2;
 pub struct SyncReceiver<T> {
     inner: Receiver<SyncResult<T>>,
 }
+/// Receives a chunk of `[Vec<T>]` items, created via
+/// [SyncReceiver::try_chunks].
+pub struct ChunkSyncReceiver<T>(SyncReceiver<Vec<T>>);
+
 pub type SyncResult<T> = Result<PeerData<T>, PeerData<SyncError2>>;
 
 pub trait ProcessStage {
@@ -16,6 +20,16 @@ pub trait ProcessStage {
     type Output;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
+}
+
+impl<T: Send + 'static> ChunkSyncReceiver<T> {
+    pub fn pipe<S>(self, stage: S, buffer: usize) -> SyncReceiver<S::Output>
+    where
+        S: ProcessStage<Input = Vec<T>> + Send + 'static,
+        S::Output: Send,
+    {
+        self.0.pipe(stage, buffer)
+    }
 }
 
 impl<T: Send + 'static> SyncReceiver<T> {
@@ -54,7 +68,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
     ///
     /// `capacity` specifies the number of elements, `buffer` specifies the
     /// output buffering.
-    pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> SyncReceiver<Vec<T>> {
+    pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> ChunkSyncReceiver<T> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
         std::thread::spawn(move || {
@@ -96,7 +110,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
             }
         });
 
-        SyncReceiver::from_receiver(rx)
+        ChunkSyncReceiver(SyncReceiver::from_receiver(rx))
     }
 
     pub fn from_receiver(receiver: Receiver<SyncResult<T>>) -> Self
