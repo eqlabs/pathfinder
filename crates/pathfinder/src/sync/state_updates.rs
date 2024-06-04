@@ -26,10 +26,14 @@ pub(super) async fn next_missing(
 
         let highest = db
             .highest_block_with_state_update()
-            .context("Querying highest block with state update")?
-            .unwrap_or_default();
+            .context("Querying highest block with state update")?;
 
-        Ok((highest < head).then_some(highest + 1))
+        match highest {
+            // No state updates at all, start from genesis
+            None => Ok((head != BlockNumber::GENESIS).then_some(BlockNumber::GENESIS)),
+            // Otherwise start from the next block
+            Some(highest) => Ok((highest < head).then_some(highest + 1)),
+        }
     })
     .await
     .context("Joining blocking task")?
