@@ -291,6 +291,10 @@ pub(super) fn verify_declared_at(
                     tracing::info!(hash=%class.data.hash, block_number=%class.data.block_number, "Class was not expected in this block");
                     Err(SyncError::UnexpectedClass(class.peer))?;
                 }
+
+                if declared.is_empty() {
+                    break;
+                }
             }
 
         }
