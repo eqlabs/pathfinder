@@ -87,7 +87,6 @@ where
         let transactions = TransactionSource {
             p2p: self.p2p.clone(),
             headers: transactions,
-            chain_id,
         }
         .spawn()
         .pipe(transactions::CalculateHashes(chain_id), 10)
@@ -307,7 +306,6 @@ impl HeaderFanout {
 struct TransactionSource {
     p2p: P2PClient,
     headers: BoxStream<'static, P2PBlockHeader>,
-    chain_id: ChainId,
 }
 
 impl TransactionSource {
@@ -319,11 +317,7 @@ impl TransactionSource {
     )> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
-            let Self {
-                p2p,
-                mut headers,
-                chain_id,
-            } = self;
+            let Self { p2p, mut headers } = self;
 
             while let Some(header) = headers.next().await {
                 let (peer, mut transactions) = loop {
