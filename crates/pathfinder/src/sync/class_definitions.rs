@@ -152,8 +152,10 @@ pub(super) async fn verify_layout(
             definition,
         } => {
             let layout = GwClassDefinition::Cairo(
-                serde_json::from_slice::<Cairo<'_>>(&definition)
-                    .map_err(|e| SyncError::BadClassLayout(peer))?,
+                serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|e| {
+                    tracing::debug!(error=%e, "Bad Cairo class layout");
+                    SyncError::BadClassLayout(peer)
+                })?,
             );
             Ok(PeerData::new(
                 peer,
@@ -169,8 +171,10 @@ pub(super) async fn verify_layout(
             sierra_definition,
         } => {
             let layout = GwClassDefinition::Sierra(
-                serde_json::from_slice::<Sierra<'_>>(&sierra_definition)
-                    .map_err(|e| SyncError::BadClassLayout(peer))?,
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
+                    tracing::debug!(error=%e, "Bad Sierra class layout");
+                    SyncError::BadClassLayout(peer)
+                })?,
             );
             Ok(PeerData::new(
                 peer,
@@ -277,12 +281,14 @@ pub(super) fn verify_declared_at(
                 let class = class?;
 
                 if declared_at != class.data.block_number {
+                    tracing::info!(hash=%class.data.hash, %declared_at, block_number=%class.data.block_number, "Unexpected class");
                     Err(SyncError::UnexpectedClass(class.peer))?;
                 }
 
                 if declared.remove(&class.data.hash) {
                     yield class;
                 } else {
+                    tracing::info!(hash=%class.data.hash, block_number=%class.data.block_number, "Class was not expected in this block");
                     Err(SyncError::UnexpectedClass(class.peer))?;
                 }
             }
