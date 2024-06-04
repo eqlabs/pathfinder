@@ -78,12 +78,12 @@ pub(super) async fn next_missing(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
-        let highest = db
-            .highest_block_with_all_class_definitions_downloaded()
-            .context("Querying highest block with any class definitions")?
+        let next_missing = db
+            .first_block_with_missing_class_definitions()
+            .context("Querying first block number with missing class definitions")?
             .unwrap_or_default();
 
-        Ok((highest < head).then_some(highest + 1))
+        Ok((next_missing <= head).then_some(next_missing))
     })
     .await
     .context("Joining blocking task")?
