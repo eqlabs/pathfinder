@@ -58,39 +58,57 @@ pub(super) async fn next_gap(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
+        tracing::trace!(%head, "Searching for next gap");
+
         // It's possible for the head block to be the head of the gap. This can occur
         // when called with the L1 anchor which has not been synced yet.
         let head_exists = db
             .block_exists(head.into())
             .context("Checking if search head exists locally")?;
-        let gap_head = if head_exists {
+        let (head, head_hash) = if head_exists {
             // Find the next header that exists, but whose parent does not.
             let Some(gap_head) = db
                 .next_ancestor_without_parent(head)
                 .context("Querying head of gap")?
             else {
                 // No headers are missing so no gap found.
+                tracing::trace!("No gap found in headers");
                 return Ok(None);
             };
 
-            gap_head
+            let gap_head_header = db
+                .block_header(gap_head.0.into())
+                .context("Fetching gap head block header")?
+                .context("Gap head should exist")?;
+            let gap_head_parent_number = gap_head
+                .0
+                .parent()
+                .expect("next_ancestor_without_parent() cannot return genesis");
+            let gap_head_parent_hash = gap_head_header.parent_hash;
+            (gap_head_parent_number, gap_head_parent_hash)
         } else {
             // Start of search is already missing so it becomes the head of the gap.
+            tracing::trace!(%head, "Start of search was missing");
             (head, head_hash)
         };
 
-        let gap_tail = db
-            .next_ancestor(gap_head.0)
-            .context("Querying tail of gap")?
-            // By this point we are certain there is a gap, so the tail automatically becomes
-            // genesis if no actual tail block is found.
-            .unwrap_or_default();
+        let (tail, tail_parent_hash) =
+            match db.next_ancestor(head).context("Querying tail of gap")? {
+                Some((tail, tail_hash)) => (tail + 1, tail_hash),
+                None => {
+                    // By this point we are certain there is a gap, so the tail automatically
+                    // becomes genesis if no actual tail block is found.
+                    (BlockNumber::GENESIS, BlockHash::ZERO)
+                }
+            };
+
+        tracing::trace!(%head, %tail, "Found gap");
 
         Ok(Some(HeaderGap {
-            head: gap_head.0,
-            head_hash: gap_head.1,
-            tail: gap_tail.0 + 1,
-            tail_parent_hash: gap_tail.1,
+            head,
+            head_hash,
+            tail,
+            tail_parent_hash,
         }))
     })
     .await
