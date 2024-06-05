@@ -305,6 +305,9 @@ pub(super) async fn compile_sierra_to_casm_or_fetch<SequencerClient: GatewayApi 
         ClassDefinition::Sierra(sierra_definition) => {
             let (casm_definition, sierra_definition) =
                 tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
+                    let _span =
+                        tracing::trace_span!("compile_sierra_to_casm_or_fetch", class_hash=%hash)
+                            .entered();
                     (
                         pathfinder_compiler::compile_to_casm(&sierra_definition)
                             .context("Compiling Sierra class"),

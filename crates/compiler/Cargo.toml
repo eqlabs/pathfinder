@@ -23,6 +23,7 @@ serde_json = { workspace = true, features = [
     "arbitrary_precision",
     "raw_value",
 ] }
+tracing = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
