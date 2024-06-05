@@ -135,7 +135,7 @@ impl Sync {
                 .await
                 .context("Finding next gap in header chain")?
         {
-            // TODO: create a tracing scope for this gap start, stop.
+            tracing::info!(?gap, "Syncing headers");
 
             handle_header_stream(
                 self.p2p.clone().header_stream(gap.tail, gap.head, true),
