@@ -21,6 +21,9 @@ pub trait ProcessStage {
     type Input;
     type Output;
 
+    /// Used to identify this stage in metrics and traces.
+    const NAME: &'static str;
+
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
 }
 
@@ -37,7 +40,7 @@ impl<T: Send + 'static> ChunkSyncReceiver<T> {
     }
 }
 
-/// A [Display] helper struct for logging queue fullness.
+/// A [std::fmt::Display] helper struct for logging queue fullness.
 struct Fullness(usize, usize);
 
 impl std::fmt::Display for Fullness {
@@ -94,7 +97,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let throughput = count as f32 / t.elapsed().as_secs_f32();
                         let queue_fullness = queue_capacity - self.inner.capacity();
                         let input_queue = Fullness(queue_fullness, queue_capacity);
-                        tracing::debug!(%input_queue, %throughput, "Item processed");
+                        tracing::debug!(stage=S::NAME, %input_queue, %throughput, "Item processed");
 
                         output
                     }
@@ -218,6 +221,7 @@ mod tests {
     ) {
         struct NoOp;
         impl ProcessStage for NoOp {
+            const NAME: &'static str = "No-op";
             type Input = u8;
             type Output = u8;
 
@@ -250,6 +254,7 @@ mod tests {
         struct OnlyOnce(u8);
 
         impl ProcessStage for OnlyOnce {
+            const NAME: &'static str = "Once-once";
             type Input = u8;
             type Output = u8;
 

@@ -105,7 +105,6 @@ where
         }
         .spawn()
         .pipe(events::VerifyCommitment, 10);
-
         let state_diff = StateDiffSource {
             p2p: self.p2p.clone(),
             headers: state_diff,
@@ -562,6 +561,7 @@ impl StoreBlock {
 }
 
 impl ProcessStage for StoreBlock {
+    const NAME: &'static str = "Blocks::Persist";
     type Input = BlockData;
     type Output = ();
 

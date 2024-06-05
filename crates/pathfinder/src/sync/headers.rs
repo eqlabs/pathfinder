@@ -147,6 +147,8 @@ impl ForwardContinuity {
 }
 
 impl ProcessStage for ForwardContinuity {
+    const NAME: &'static str = "Headers::Continuity";
+
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
@@ -176,6 +178,8 @@ impl BackwardContinuity {
 }
 
 impl ProcessStage for BackwardContinuity {
+    const NAME: &'static str = "Headers::Continuity";
+
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
@@ -194,6 +198,7 @@ impl ProcessStage for BackwardContinuity {
 }
 
 impl ProcessStage for VerifyHashAndSignature {
+    const NAME: &'static str = "Headers::Verify";
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
@@ -277,6 +282,7 @@ pub struct Persist {
 }
 
 impl ProcessStage for Persist {
+    const NAME: &'static str = "Headers::Persist";
     type Input = Vec<SignedBlockHeader>;
     type Output = ();
 
