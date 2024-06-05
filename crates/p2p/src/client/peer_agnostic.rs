@@ -460,6 +460,8 @@ impl Client {
         state_diff_lengths_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>> {
         async_stream::try_stream! {
+            tracing::trace!(?start, ?stop_inclusive, "Streaming state diffs");
+
             pin_mut!(state_diff_lengths_stream);
 
             let mut current_count_outer = None;
@@ -509,9 +511,13 @@ impl Client {
                             }
                         };
 
+                        tracing::trace!(block_number=%start, expected_responses=%current_count, "Expecting state diff responses");
+
                         let mut state_diff = StateUpdateData::default();
 
                         while let Some(state_diff_response) = responses.next().await {
+                            tracing::trace!(?state_diff_response, "Received response");
+
                             match state_diff_response {
                                 StateDiffsResponse::ContractDiff(ContractDiff {
                                     address,
@@ -521,10 +527,11 @@ impl Client {
                                     domain: _,
                                 }) => {
                                     let address = ContractAddress(address.0);
+
                                     match current_count.checked_sub(values.len()) {
                                         Some(x) => current_count = x,
                                         None => {
-                                            tracing::debug!(%peer, "Too many storage diffs: {} > {}", values.len(), current_count);
+                                            tracing::debug!(%peer, %start, "Too many storage diffs: {} > {}", values.len(), current_count);
                                             // TODO punish the peer
                                             continue 'next_peer;
                                         }
@@ -562,7 +569,7 @@ impl Client {
                                             match current_count.checked_sub(1) {
                                                 Some(x) => current_count = x,
                                                 None => {
-                                                    tracing::debug!(%peer, "Too many nonce updates");
+                                                    tracing::debug!(%peer, %start, "Too many nonce updates");
                                                     // TODO punish the peer
                                                     continue 'next_peer;
                                                 }
@@ -575,7 +582,7 @@ impl Client {
                                             match current_count.checked_sub(1) {
                                                 Some(x) => current_count = x,
                                                 None => {
-                                                    tracing::debug!(%peer, "Too many deployed contracts");
+                                                    tracing::debug!(%peer, %start, "Too many deployed contracts");
                                                     // TODO punish the peer
                                                     continue 'next_peer;
                                                 }
@@ -595,30 +602,15 @@ impl Client {
                                     match current_count.checked_sub(1) {
                                         Some(x) => current_count = x,
                                         None => {
-                                            tracing::debug!(%peer, "Too many declared classes");
+                                            tracing::debug!(%peer, %start, "Too many declared classes");
                                             // TODO punish the peer
                                             continue 'next_peer;
                                         }
                                     }
                                 }
                                 StateDiffsResponse::Fin => {
-                                    if current_count == 0
-                                    {
-                                        // All the counters for this block have been exhausted which means
-                                        // that the state update for this block is complete.
-                                        yield PeerData::new(
-                                            peer,
-                                            (start, std::mem::take(&mut state_diff)),
-                                        );
-
-                                        if start < stop_inclusive {
-                                            // Move to the next block
-                                            start += 1;
-                                            current_count = state_diff_lengths_stream.next().await
-                                                    .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
-                                            current_count_outer = Some(current_count);
-                                            tracing::debug!(%peer, "State diff stream Fin");
-                                        } else {
+                                    if state_diff.is_empty() {
+                                        if start == stop_inclusive {
                                             // We're done, terminate the stream
                                             break 'outer;
                                         }
@@ -629,6 +621,28 @@ impl Client {
                                     }
                                 }
                             };
+
+                            if current_count == 0 {
+                                // All the counters for this block have been exhausted which means
+                                // that the state update for this block is complete.
+                                tracing::trace!(block_number=%start, "State diff received for block");
+
+                                yield PeerData::new(
+                                    peer,
+                                    (start, std::mem::take(&mut state_diff)),
+                                );
+
+                                if start < stop_inclusive {
+                                    // Move to the next block
+                                    start += 1;
+                                    tracing::trace!(next_block=%start, "Moving to next block");
+                                    current_count = state_diff_lengths_stream.next().await
+                                        .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
+                                    current_count_outer = Some(current_count);
+
+                                    tracing::trace!(number=%current_count, "Expecting state diff responses");
+                                }
+                            }
                         }
                     }
                 }
@@ -643,6 +657,8 @@ impl Client {
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<ClassDefinition>>> {
         async_stream::try_stream! {
+            tracing::trace!(?start, ?stop_inclusive, "Streaming classes");
+
             pin_mut!(declared_class_counts_stream);
 
             let mut current_count_outer = None;
