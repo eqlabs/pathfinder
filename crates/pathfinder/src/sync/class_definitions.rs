@@ -135,6 +135,10 @@ pub(super) fn declared_class_counts_stream(
 
             start += batch.len().try_into().expect("ptr size is 64bits");
         }
+
+        while let Some(counts) = batch.pop() {
+            yield counts;
+        }
     }
 }
 
