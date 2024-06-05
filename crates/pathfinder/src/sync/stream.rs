@@ -94,10 +94,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
                             .map_err(|e| PeerData::new(peer, e));
 
                         // Log trace and metrics.
-                        let throughput = count as f32 / t.elapsed().as_secs_f32();
+                        let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
                         let queue_fullness = queue_capacity - self.inner.capacity();
                         let input_queue = Fullness(queue_fullness, queue_capacity);
-                        tracing::debug!(stage=S::NAME, %input_queue, %throughput, "Item processed");
+                        tracing::debug!(stage=S::NAME, %input_queue, %elements_per_sec, "Item processed");
 
                         output
                     }
