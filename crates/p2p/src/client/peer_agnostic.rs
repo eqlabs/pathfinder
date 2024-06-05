@@ -358,7 +358,6 @@ impl Client {
                                         yield PeerData::new(
                                             peer,
                                             TransactionData {
-                                                block_number: start,
                                                 expected_commitment: std::mem::take(&mut current_commitment),
                                                 transactions: std::mem::take(&mut transactions),
                                             },
@@ -995,7 +994,6 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
 /// For a single block
 #[derive(Clone, Debug)]
 pub struct TransactionData {
-    pub block_number: BlockNumber,
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(TransactionVariant, Receipt)>,
 }

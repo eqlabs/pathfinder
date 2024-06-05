@@ -201,15 +201,18 @@ impl<T: Send + 'static> SyncReceiver<T> {
 /// on.
 pub struct Buffer(pub usize);
 
-/// A source that can be spawned from any [PeerData] stream.
-pub struct Source<T>(T);
-
-impl<S, I> Source<S>
+/// A source that can be spawned from an infallible [PeerData] stream.
+pub struct InfallibleSource<T, I>(T)
 where
-    S: Stream<Item = PeerData<I>> + Send + 'static,
+    T: Stream<Item = PeerData<I>> + Send + 'static,
+    I: Send + 'static;
+
+impl<T, I> InfallibleSource<T, I>
+where
+    T: Stream<Item = PeerData<I>> + Send + 'static,
     I: Send + 'static,
 {
-    pub fn from_stream(stream: S) -> Self {
+    pub fn from_stream(stream: T) -> Self {
         Self(stream)
     }
 
@@ -221,6 +224,40 @@ where
 
             while let Some(item) = inner_stream.next().await {
                 if tx.send(Ok(item)).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+}
+
+/// A source that can be spawned from a fallible [PeerData] stream.
+pub struct Source<T, I>(T)
+where
+    T: Stream<Item = SyncResult<I>> + Send + 'static,
+    I: Send + 'static;
+
+impl<T, I> Source<T, I>
+where
+    T: Stream<Item = SyncResult<I>> + Send + 'static,
+    I: Send + 'static,
+{
+    pub fn from_stream(stream: T) -> Self {
+        Self(stream)
+    }
+
+    /// Short circuits on the first error.    
+    pub fn spawn(self) -> SyncReceiver<I> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        tokio::spawn(async move {
+            let mut inner_stream = Box::pin(self.0);
+
+            while let Some(item) = inner_stream.next().await {
+                let item_is_err = item.is_err();
+                if tx.send(item).await.is_err() || item_is_err {
                     return;
                 }
             }

@@ -24,16 +24,8 @@ use crate::state::block_hash::{
 
 /// For a single block
 #[derive(Clone, Debug)]
-pub struct Transactions {
-    pub block_number: BlockNumber,
+pub struct UnverifiedTransactions {
     pub expected_commitment: TransactionCommitment,
-    pub transactions: Vec<(Transaction, Receipt)>,
-}
-
-/// For a single block
-#[derive(Clone, Debug)]
-pub struct VerifiedTransactions {
-    pub block_number: BlockNumber,
     pub transactions: Vec<(Transaction, Receipt)>,
 }
 
@@ -108,132 +100,48 @@ pub(super) fn counts_and_commitments_stream(
     }
 }
 
-pub(super) async fn compute_hashes(
-    transactions: PeerData<TransactionData>,
-    chain_id: ChainId,
-) -> Result<PeerData<Transactions>, SyncError> {
-    Ok(tokio::task::spawn_blocking(move || {
-        use rayon::prelude::*;
-        let PeerData {
-            peer,
-            data:
-                TransactionData {
-                    block_number,
-                    expected_commitment,
-                    transactions,
-                },
-        } = transactions;
+// pub(super) async fn persist(
+//     storage: Storage,
+//     transactions: Vec<PeerData<VerifiedTransactions>>,
+// ) -> Result<BlockNumber, SyncError> {
+//     tokio::task::spawn_blocking(move || {
+//         let mut db = storage
+//             .connection()
+//             .context("Creating database connection")?;
+//         let db = db.transaction().context("Creating database transaction")?;
+//         let tail = transactions
+//             .last()
+//             .map(|x| x.data.block_number)
+//             .context("Verification results are empty, no block to persist")?;
 
-        let transactions = transactions
-            .into_par_iter()
-            .map(|(tv, r)| {
-                let transaction_hash = tv.calculate_hash(chain_id, false);
-                let transaction = Transaction {
-                    hash: transaction_hash,
-                    variant: tv,
-                };
-                let receipt = Receipt {
-                    actual_fee: r.actual_fee,
-                    execution_resources: r.execution_resources,
-                    l2_to_l1_messages: r.l2_to_l1_messages,
-                    execution_status: r.execution_status,
-                    transaction_hash,
-                    transaction_index: r.transaction_index,
-                };
-                (transaction, receipt)
-            })
-            .collect::<Vec<_>>();
-
-        PeerData::new(
-            peer,
-            Transactions {
-                block_number,
-                expected_commitment,
-                transactions,
-            },
-        )
-    })
-    .await
-    .context("Joining blocking task")?)
-}
-
-// TODO verify receipt commitments
-pub(super) async fn verify_commitment(
-    transactions: PeerData<Transactions>,
-) -> Result<PeerData<VerifiedTransactions>, SyncError> {
-    tokio::task::spawn_blocking(move || {
-        let PeerData {
-            peer,
-            data:
-                Transactions {
-                    block_number,
-                    expected_commitment,
-                    transactions,
-                },
-        } = transactions;
-
-        let (transactions, receipts): (Vec<_>, Vec<_>) = transactions.into_iter().unzip();
-        let actual_commitment = calculate_transaction_commitment(
-            &transactions,
-            TransactionCommitmentFinalHashType::Normal,
-        )?;
-        if actual_commitment == expected_commitment {
-            Ok(PeerData {
-                peer,
-                data: VerifiedTransactions {
-                    block_number,
-                    transactions: transactions.into_iter().zip(receipts).collect::<Vec<_>>(),
-                },
-            })
-        } else {
-            Err(SyncError::TransactionCommitmentMismatch(peer))
-        }
-    })
-    .await
-    .context("Joining blocking task")?
-}
-
-pub(super) async fn persist(
-    storage: Storage,
-    transactions: Vec<PeerData<VerifiedTransactions>>,
-) -> Result<BlockNumber, SyncError> {
-    tokio::task::spawn_blocking(move || {
-        let mut db = storage
-            .connection()
-            .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
-        let tail = transactions
-            .last()
-            .map(|x| x.data.block_number)
-            .context("Verification results are empty, no block to persist")?;
-
-        for VerifiedTransactions {
-            block_number,
-            transactions,
-        } in transactions.into_iter().map(|x| x.data)
-        {
-            db.insert_transaction_data(block_number, &transactions, None)
-                .context("Inserting transactions")?;
-        }
-        db.commit().context("Committing db transaction")?;
-        Ok(tail)
-    })
-    .await
-    .context("Joining blocking task")?
-}
+//         for VerifiedTransactions {
+//             block_number,
+//             transactions,
+//         } in transactions.into_iter().map(|x| x.data)
+//         {
+//             db.insert_transaction_data(block_number, &transactions, None)
+//                 .context("Inserting transactions")?;
+//         }
+//         db.commit().context("Committing db transaction")?;
+//         Ok(tail)
+//     })
+//     .await
+//     .context("Joining blocking task")?
+// }
 
 pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
     const NAME: &'static str = "Transactions::Hashes";
-    type Input = (
-        TransactionCommitment,
-        Vec<(TransactionVariant, peer_agnostic::Receipt)>,
-    );
-    type Output = (TransactionCommitment, Vec<(Transaction, Receipt)>);
+    type Input = TransactionData;
+    type Output = UnverifiedTransactions;
 
-    fn map(&mut self, (commitment, transactions): Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, td: Self::Input) -> Result<Self::Output, SyncError2> {
         use rayon::prelude::*;
+        let TransactionData {
+            expected_commitment,
+            transactions,
+        } = td;
         let transactions = transactions
             .into_par_iter()
             .map(|(tv, r)| {
@@ -253,7 +161,10 @@ impl ProcessStage for CalculateHashes {
                 (transaction, receipt)
             })
             .collect::<Vec<_>>();
-        Ok((commitment, transactions))
+        Ok(UnverifiedTransactions {
+            expected_commitment,
+            transactions,
+        })
     }
 }
 
@@ -261,19 +172,51 @@ pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
     const NAME: &'static str = "Transactions::Verify";
-    type Input = (TransactionCommitment, Vec<(Transaction, Receipt)>);
+    type Input = UnverifiedTransactions;
     type Output = Vec<(Transaction, Receipt)>;
 
-    fn map(
-        &mut self,
-        (commitment, transactions): Self::Input,
-    ) -> Result<Self::Output, super::error::SyncError2> {
+    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+        let UnverifiedTransactions {
+            expected_commitment,
+            transactions,
+        } = transactions;
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
         let actual =
             calculate_transaction_commitment(&txs, TransactionCommitmentFinalHashType::Normal)?;
-        if actual != commitment {
+        if actual != expected_commitment {
             return Err(SyncError2::TransactionCommitmentMismatch);
         }
         Ok(transactions)
+    }
+}
+
+pub struct StoreTransactions {
+    pub db: pathfinder_storage::Connection,
+    pub start: BlockNumber,
+}
+
+impl ProcessStage for StoreTransactions {
+    const NAME: &'static str = "Transactions::Store";
+    type Input = Vec<Vec<(Transaction, Receipt)>>;
+    type Output = BlockNumber;
+
+    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
+        let mut db = self
+            .db
+            .transaction()
+            .context("Creating database transaction")?;
+
+        // SAFETY:
+        // - pointer size is 64bits
+        // - addition yields a valid BlockNumber because we're requesting a range based
+        //   on already received headers
+        let tail = self.start + transactions.len().try_into().unwrap();
+
+        for (i, t) in transactions.into_iter().enumerate() {
+            db.insert_transaction_data(self.start + i.try_into().unwrap(), &t, None)
+                .context("Inserting transactions")?;
+        }
+        db.commit().context("Committing db transaction")?;
+        Ok(tail)
     }
 }

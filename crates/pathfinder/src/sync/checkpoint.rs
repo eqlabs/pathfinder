@@ -36,12 +36,13 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
+use super::stream::SyncResult;
 use crate::state::block_hash::{
     calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
 use crate::sync::error::SyncError;
-use crate::sync::stream::{Source, SyncReceiver};
+use crate::sync::stream::{InfallibleSource, Source, SyncReceiver};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
@@ -254,7 +255,7 @@ async fn handle_header_stream(
     storage: Storage,
 ) -> Result<(), SyncError> {
     tracing::info!("Syncing headers");
-    Source::from_stream(header_stream)
+    InfallibleSource::from_stream(header_stream)
         .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
         .pipe(
@@ -276,21 +277,27 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    transaction_stream: impl Stream<Item = anyhow::Result<PeerData<TransactionData>>>,
+    transaction_stream: impl Stream<Item = SyncResult<TransactionData>> + Send + 'static,
     storage: Storage,
     chain_id: ChainId,
 ) -> Result<(), SyncError> {
-    transaction_stream
-        .map_err(Into::into)
-        .and_then(|x| transactions::compute_hashes(x, chain_id))
-        .and_then(transactions::verify_commitment)
-        .try_chunks(100)
-        .map_err(|e| e.1)
-        .and_then(|x| transactions::persist(storage.clone(), x))
-        .inspect_ok(|x| tracing::info!(tail=%x, "Transactions chunk synced"))
-        // Drive stream to completion.
+    Source::from_stream(transaction_stream)
+        .spawn()
+        .pipe(transactions::CalculateHashes(chain_id), 10)
+        .pipe(transactions::VerifyCommitment, 10)
+        .try_chunks(10, 10)
+        .pipe(
+            transactions::StoreTransactions {
+                db: todo!(),
+                start: todo!(),
+            },
+            10,
+        )
+        .into_stream()
+        .inspect_ok(|x| tracing::info!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await?;
+        .await
+        .map_err(SyncError::from_v2)?;
     Ok(())
 }
 
