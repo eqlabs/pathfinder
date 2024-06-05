@@ -705,6 +705,8 @@ impl Client {
                             }
                         };
 
+                        tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
+
                         while let Some(contract_diff) = responses.next().await {
                             match contract_diff {
                                 ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
@@ -751,27 +753,33 @@ impl Client {
                                     );
                                 }
                                 ClassesResponse::Fin => {
-                                    if current_count == 0 {
-                                        // The counter for this block has been exhausted which means
-                                        // that this block is complete.
-                                        if start < stop_inclusive {
-                                            // Move to the next block
-                                            start += 1;
-                                            current_count = declared_class_counts_stream.next().await
-                                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
-                                            current_count_outer = Some(current_count);
-                                            tracing::debug!(%peer, "Class definition stream Fin");
-                                        } else {
-                                            // We're done, terminate the stream
-                                            break 'outer;
-                                        }
-                                    } else {
+                                    if current_count != 0 {
                                         tracing::debug!(%peer, "Premature class definition stream Fin");
                                         // TODO punish the peer
                                         continue 'next_peer;
                                     }
                                 }
                             };
+
+                            if current_count == 0 {
+                                // The counter for this block has been exhausted which means
+                                // that this block is complete.
+
+                                tracing::trace!(block_number=%start, "All classes received for block");
+
+                                if start < stop_inclusive {
+                                    // Move to the next block
+                                    start += 1;
+                                    current_count = declared_class_counts_stream.next().await
+                                        .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                                    current_count_outer = Some(current_count);
+
+                                    tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
+                                } else {
+                                    // We're done, terminate the stream
+                                    break 'outer;
+                                }
+                            }
                         }
                     }
                 }
