@@ -155,6 +155,8 @@ pub(super) async fn persist(
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
+    const NAME: &'static str = "Events::Verify";
+
     type Input = (
         EventCommitment,
         Vec<TransactionHash>,

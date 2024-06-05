@@ -202,6 +202,7 @@ pub(super) async fn persist(
 pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
+    const NAME: &'static str = "Transactions::Hashes";
     type Input = (
         TransactionCommitment,
         Vec<(TransactionVariant, peer_agnostic::Receipt)>,
@@ -236,6 +237,7 @@ impl ProcessStage for CalculateHashes {
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
+    const NAME: &'static str = "Transactions::Verify";
     type Input = (TransactionCommitment, Vec<(Transaction, Receipt)>);
     type Output = Vec<(Transaction, Receipt)>;
 

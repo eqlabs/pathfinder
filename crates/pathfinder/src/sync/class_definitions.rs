@@ -399,6 +399,8 @@ pub(super) async fn persist(
 pub struct VerifyClassHashes;
 
 impl ProcessStage for VerifyClassHashes {
+    const NAME: &'static str = "Classes::Verify";
+
     type Input = (DeclaredClasses, Vec<ClassWithLayout>);
     type Output = Vec<GwClassDefinition<'static>>;
 

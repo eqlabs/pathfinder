@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use futures::{Future, Stream, StreamExt, TryFutureExt, TryStream, TryStreamExt};
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
@@ -9,33 +11,96 @@ use crate::sync::error::SyncError2;
 pub struct SyncReceiver<T> {
     inner: Receiver<SyncResult<T>>,
 }
+/// Receives a chunk of `[Vec<T>]` items, created via
+/// [SyncReceiver::try_chunks].
+pub struct ChunkSyncReceiver<T>(SyncReceiver<Vec<T>>);
+
 pub type SyncResult<T> = Result<PeerData<T>, PeerData<SyncError2>>;
 
 pub trait ProcessStage {
     type Input;
     type Output;
 
+    /// Used to identify this stage in metrics and traces.
+    const NAME: &'static str;
+
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
+}
+
+impl<T: Send + 'static> ChunkSyncReceiver<T> {
+    /// Adds a [ProcessStage] to the stream pipeline spawned as a separate task.
+    ///
+    /// `buffer` specifies the amount of buffering applied to the output stream.
+    pub fn pipe<S>(self, stage: S, buffer: usize) -> SyncReceiver<S::Output>
+    where
+        S: ProcessStage<Input = Vec<T>> + Send + 'static,
+        S::Output: Send,
+    {
+        self.0.pipe_impl(stage, buffer, |x| x.len())
+    }
+}
+
+/// A [std::fmt::Display] helper struct for logging queue fullness.
+struct Fullness(usize, usize);
+
+impl std::fmt::Display for Fullness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}% ({}/{})", self.0 / self.1, self.0, self.1))
+    }
 }
 
 impl<T: Send + 'static> SyncReceiver<T> {
     /// Adds a [ProcessStage] to the stream pipeline spawned as a separate task.
     ///
     /// `buffer` specifies the amount of buffering applied to the output stream.
-    pub fn pipe<S>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<S::Output>
+    pub fn pipe<S>(self, stage: S, buffer: usize) -> SyncReceiver<S::Output>
     where
         S: ProcessStage<Input = T> + Send + 'static,
         S::Output: Send,
     {
+        self.pipe_impl(stage, buffer, |_| 1)
+    }
+
+    /// A private impl which hides the ugly `count_fn` used to differentiate
+    /// between processing a single element from [SyncReceiver] and multiple
+    /// elements from [ChunkSyncReceiver].
+    fn pipe_impl<S, C>(
+        mut self,
+        mut stage: S,
+        buffer: usize,
+        count_fn: C,
+    ) -> SyncReceiver<S::Output>
+    where
+        S: ProcessStage<Input = T> + Send + 'static,
+        S::Output: Send,
+        C: Fn(&T) -> usize + Send + 'static,
+    {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
         std::thread::spawn(move || {
+            let queue_capacity = self.inner.max_capacity();
+
             while let Some(input) = self.inner.blocking_recv() {
                 let result = match input {
-                    Ok(PeerData { peer, data }) => stage
-                        .map(data)
-                        .map(|x| PeerData::new(peer, x))
-                        .map_err(|e| PeerData::new(peer, e)),
+                    Ok(PeerData { peer, data }) => {
+                        // Stats for tracing and metrics.
+                        let count = count_fn(&data);
+                        let t = std::time::Instant::now();
+
+                        // Process the data.
+                        let output = stage
+                            .map(data)
+                            .map(|x| PeerData::new(peer, x))
+                            .map_err(|e| PeerData::new(peer, e));
+
+                        // Log trace and metrics.
+                        let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
+                        let queue_fullness = queue_capacity - self.inner.capacity();
+                        let input_queue = Fullness(queue_fullness, queue_capacity);
+                        tracing::debug!(stage=S::NAME, %input_queue, %elements_per_sec, "Item processed");
+
+                        output
+                    }
                     Err(e) => Err(e),
                 };
 
@@ -54,7 +119,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
     ///
     /// `capacity` specifies the number of elements, `buffer` specifies the
     /// output buffering.
-    pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> SyncReceiver<Vec<T>> {
+    pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> ChunkSyncReceiver<T> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
         std::thread::spawn(move || {
@@ -96,7 +161,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
             }
         });
 
-        SyncReceiver::from_receiver(rx)
+        ChunkSyncReceiver(SyncReceiver::from_receiver(rx))
     }
 
     pub fn from_receiver(receiver: Receiver<SyncResult<T>>) -> Self
@@ -156,6 +221,7 @@ mod tests {
     ) {
         struct NoOp;
         impl ProcessStage for NoOp {
+            const NAME: &'static str = "No-op";
             type Input = u8;
             type Output = u8;
 
@@ -188,6 +254,7 @@ mod tests {
         struct OnlyOnce(u8);
 
         impl ProcessStage for OnlyOnce {
+            const NAME: &'static str = "Once-once";
             type Input = u8;
             type Output = u8;
 

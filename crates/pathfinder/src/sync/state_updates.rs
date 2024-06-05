@@ -141,6 +141,7 @@ pub(super) async fn persist(
 pub struct VerifyDiff;
 
 impl crate::sync::stream::ProcessStage for VerifyDiff {
+    const NAME: &'static str = "StateDiff::Continuity";
     type Input = StateUpdate;
     type Output = StateUpdate;
 
