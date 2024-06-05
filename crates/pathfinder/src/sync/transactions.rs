@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
@@ -59,10 +59,10 @@ pub(super) fn counts_and_commitments_stream(
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
-        let mut batch = Vec::new();
+        let mut batch = VecDeque::new();
 
         while start <= stop_inclusive {
-            if let Some(counts) = batch.pop() {
+            if let Some(counts) = batch.pop_front() {
                 yield counts;
                 continue;
             }

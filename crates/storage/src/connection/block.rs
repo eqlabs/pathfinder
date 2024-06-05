@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
@@ -444,7 +445,7 @@ impl Transaction<'_> {
         &self,
         block: BlockId,
         max_len: NonZeroUsize,
-    ) -> anyhow::Result<Vec<(usize, TransactionCommitment)>> {
+    ) -> anyhow::Result<VecDeque<(usize, TransactionCommitment)>> {
         let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
             return Ok(Default::default());
         };
@@ -466,15 +467,17 @@ impl Transaction<'_> {
             })
             .context("Querying event counts")?;
 
-        let mut ret = Vec::new();
+        let mut ret = VecDeque::new();
 
         while let Some(cc) = rows
             .next()
             .transpose()
             .context("Iterating over rows of transaction counts & commitments")?
         {
-            ret.push(cc);
+            ret.push_back(cc);
         }
+
+        tracing::trace!(?ret, "Transaction counts");
 
         Ok(ret)
     }
