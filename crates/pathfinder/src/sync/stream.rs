@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use futures::{Future, Stream, StreamExt, TryFutureExt, TryStream, TryStreamExt};
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
@@ -31,7 +33,16 @@ impl<T: Send + 'static> ChunkSyncReceiver<T> {
         S: ProcessStage<Input = Vec<T>> + Send + 'static,
         S::Output: Send,
     {
-        self.0.pipe_impl(stage, buffer)
+        self.0.pipe_impl(stage, buffer, |x| x.len())
+    }
+}
+
+/// A [Display] helper struct for logging queue fullness.
+struct Fullness(usize, usize);
+
+impl std::fmt::Display for Fullness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}% ({}/{})", self.0 / self.1, self.0, self.1))
     }
 }
 
@@ -44,23 +55,49 @@ impl<T: Send + 'static> SyncReceiver<T> {
         S: ProcessStage<Input = T> + Send + 'static,
         S::Output: Send,
     {
-        self.pipe_impl(stage, buffer)
+        self.pipe_impl(stage, buffer, |_| 1)
     }
 
-    fn pipe_impl<S>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<S::Output>
+    /// A private impl which hides the ugly `count_fn` used to differentiate
+    /// between processing a single element from [SyncReceiver] and multiple
+    /// elements from [ChunkSyncReceiver].
+    fn pipe_impl<S, C>(
+        mut self,
+        mut stage: S,
+        buffer: usize,
+        count_fn: C,
+    ) -> SyncReceiver<S::Output>
     where
         S: ProcessStage<Input = T> + Send + 'static,
         S::Output: Send,
+        C: Fn(&T) -> usize + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
         std::thread::spawn(move || {
+            let queue_capacity = self.inner.max_capacity();
+
             while let Some(input) = self.inner.blocking_recv() {
                 let result = match input {
-                    Ok(PeerData { peer, data }) => stage
-                        .map(data)
-                        .map(|x| PeerData::new(peer, x))
-                        .map_err(|e| PeerData::new(peer, e)),
+                    Ok(PeerData { peer, data }) => {
+                        // Stats for tracing and metrics.
+                        let count = count_fn(&data);
+                        let t = std::time::Instant::now();
+
+                        // Process the data.
+                        let output = stage
+                            .map(data)
+                            .map(|x| PeerData::new(peer, x))
+                            .map_err(|e| PeerData::new(peer, e));
+
+                        // Log trace and metrics.
+                        let throughput = count as f32 / t.elapsed().as_secs_f32();
+                        let queue_fullness = queue_capacity - self.inner.capacity();
+                        let input_queue = Fullness(queue_fullness, queue_capacity);
+                        tracing::debug!(%input_queue, %throughput, "Item processed");
+
+                        output
+                    }
                     Err(e) => Err(e),
                 };
 
