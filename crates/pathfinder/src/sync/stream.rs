@@ -23,12 +23,15 @@ pub trait ProcessStage {
 }
 
 impl<T: Send + 'static> ChunkSyncReceiver<T> {
+    /// Adds a [ProcessStage] to the stream pipeline spawned as a separate task.
+    ///
+    /// `buffer` specifies the amount of buffering applied to the output stream.
     pub fn pipe<S>(self, stage: S, buffer: usize) -> SyncReceiver<S::Output>
     where
         S: ProcessStage<Input = Vec<T>> + Send + 'static,
         S::Output: Send,
     {
-        self.0.pipe(stage, buffer)
+        self.0.pipe_impl(stage, buffer)
     }
 }
 
@@ -36,7 +39,15 @@ impl<T: Send + 'static> SyncReceiver<T> {
     /// Adds a [ProcessStage] to the stream pipeline spawned as a separate task.
     ///
     /// `buffer` specifies the amount of buffering applied to the output stream.
-    pub fn pipe<S>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<S::Output>
+    pub fn pipe<S>(self, stage: S, buffer: usize) -> SyncReceiver<S::Output>
+    where
+        S: ProcessStage<Input = T> + Send + 'static,
+        S::Output: Send,
+    {
+        self.pipe_impl(stage, buffer)
+    }
+
+    fn pipe_impl<S>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<S::Output>
     where
         S: ProcessStage<Input = T> + Send + 'static,
         S::Output: Send,
