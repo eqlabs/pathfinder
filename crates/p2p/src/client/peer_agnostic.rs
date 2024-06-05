@@ -269,21 +269,19 @@ impl Client {
             .await
     }
 
-    /// ### Important
-    ///
-    /// Transaction hashes in the stream are filled with a placeholder value of
-    /// `TransactionHash::ZERO`. The consumer of the stream is responsible
-    /// for computing the correct transaction hashes.
     pub fn transactions_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        transaction_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<TransactionBlockData>>> {
+        transaction_counts_and_commitments_stream: impl futures::Stream<
+            Item = anyhow::Result<(usize, TransactionCommitment)>,
+        >,
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<TransactionData>>> {
         async_stream::try_stream! {
-            pin_mut!(transaction_counts_stream);
+            pin_mut!(transaction_counts_and_commitments_stream);
 
             let mut current_count_outer = None;
+            let mut current_commitment = Default::default();
 
             if start <= stop_inclusive {
                 // Loop which refreshes peer set once we exhaust it.
@@ -320,10 +318,11 @@ impl Client {
                             Some(backup) => backup,
                             // Move to the next block
                             None => {
-                                let x = transaction_counts_stream.next().await
-                                    .ok_or_else(|| anyhow::anyhow!("Transaction counts stream terminated prematurely at block {start}"))??;
-                                current_count_outer = Some(x);
-                                x
+                                let (count, commitment) = transaction_counts_and_commitments_stream.next().await
+                                    .with_context(|| format!("Transaction counts and commitments stream terminated prematurely at block {}", start))??;
+                                current_count_outer = Some(count);
+                                current_commitment = commitment;
+                                count
                             }
                         };
 
@@ -358,14 +357,21 @@ impl Client {
                                         // that this block is complete.
                                         yield PeerData::new(
                                             peer,
-                                            (start, std::mem::take(&mut transactions)),
+                                            TransactionData {
+                                                block_number: start,
+                                                expected_commitment: std::mem::take(&mut current_commitment),
+                                                transactions: std::mem::take(&mut transactions),
+                                            },
                                         );
 
                                         if start < stop_inclusive {
                                             // Move to the next block
                                             start += 1;
-                                            current_count = transaction_counts_stream.next().await
-                                                .ok_or_else(|| anyhow::anyhow!("Transaction counts stream terminated prematurely at block {start}"))??;
+                                            let (count, commitment) = transaction_counts_and_commitments_stream.next().await
+                                                .with_context(|| format!("Transaction counts and commtiments stream terminated prematurely at block {start}"))??;
+
+                                            current_count = count;
+                                            current_commitment = commitment;
                                             current_count_outer = Some(current_count);
                                             tracing::debug!(%peer, "Transaction stream Fin");
                                         } else {
@@ -986,7 +992,13 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
     }
 }
 
-pub type TransactionBlockData = (BlockNumber, Vec<(TransactionVariant, Receipt)>);
+/// For a single block
+#[derive(Clone, Debug)]
+pub struct TransactionData {
+    pub block_number: BlockNumber,
+    pub expected_commitment: TransactionCommitment,
+    pub transactions: Vec<(TransactionVariant, Receipt)>,
+}
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
 

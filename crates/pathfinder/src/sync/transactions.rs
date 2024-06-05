@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
-use p2p::client::peer_agnostic::{self, TransactionBlockData};
+use p2p::client::peer_agnostic::{self, TransactionData};
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -22,7 +22,20 @@ use crate::state::block_hash::{
     TransactionCommitmentFinalHashType,
 };
 
-pub type TransactionsWithHashesForBlock = (BlockNumber, Vec<(Transaction, Receipt)>);
+/// For a single block
+#[derive(Clone, Debug)]
+pub struct Transactions {
+    pub block_number: BlockNumber,
+    pub expected_commitment: TransactionCommitment,
+    pub transactions: Vec<(Transaction, Receipt)>,
+}
+
+/// For a single block
+#[derive(Clone, Debug)]
+pub struct VerifiedTransactions {
+    pub block_number: BlockNumber,
+    pub transactions: Vec<(Transaction, Receipt)>,
+}
 
 pub(super) async fn next_missing(
     storage: Storage,
@@ -46,11 +59,11 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
-pub(super) fn counts_stream(
+pub(super) fn counts_and_commitments_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop_inclusive: BlockNumber,
-) -> impl futures::Stream<Item = anyhow::Result<usize>> {
+) -> impl futures::Stream<Item = anyhow::Result<(usize, TransactionCommitment)>> {
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
@@ -77,7 +90,7 @@ pub(super) fn counts_stream(
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.transaction_counts(start.into(), batch_size)
+                db.transaction_counts_and_commitments(start.into(), batch_size)
                     .context("Querying transaction counts")
             })
             .await
@@ -96,14 +109,19 @@ pub(super) fn counts_stream(
 }
 
 pub(super) async fn compute_hashes(
-    transactions: PeerData<TransactionBlockData>,
+    transactions: PeerData<TransactionData>,
     chain_id: ChainId,
-) -> Result<PeerData<TransactionsWithHashesForBlock>, SyncError> {
+) -> Result<PeerData<Transactions>, SyncError> {
     Ok(tokio::task::spawn_blocking(move || {
         use rayon::prelude::*;
         let PeerData {
             peer,
-            data: (block_number, transactions),
+            data:
+                TransactionData {
+                    block_number,
+                    expected_commitment,
+                    transactions,
+                },
         } = transactions;
 
         let transactions = transactions
@@ -126,7 +144,14 @@ pub(super) async fn compute_hashes(
             })
             .collect::<Vec<_>>();
 
-        PeerData::new(peer, (block_number, transactions))
+        PeerData::new(
+            peer,
+            Transactions {
+                block_number,
+                expected_commitment,
+                transactions,
+            },
+        )
     })
     .await
     .context("Joining blocking task")?)
@@ -134,37 +159,31 @@ pub(super) async fn compute_hashes(
 
 // TODO verify receipt commitments
 pub(super) async fn verify_commitment(
-    transactions: PeerData<TransactionsWithHashesForBlock>,
-    storage: Storage,
-) -> Result<PeerData<TransactionsWithHashesForBlock>, SyncError> {
+    transactions: PeerData<Transactions>,
+) -> Result<PeerData<VerifiedTransactions>, SyncError> {
     tokio::task::spawn_blocking(move || {
         let PeerData {
             peer,
-            data: (block_number, transactions_with_receipts),
+            data:
+                Transactions {
+                    block_number,
+                    expected_commitment,
+                    transactions,
+                },
         } = transactions;
-        let mut db = storage
-            .connection()
-            .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
-        let expected = db
-            .block_header(block_number.into())
-            .context("Querying block header")?
-            .context("Block header not found")?
-            .transaction_commitment;
 
-        let (transactions, receipts): (Vec<_>, Vec<_>) =
-            transactions_with_receipts.into_iter().unzip();
-        let actual = calculate_transaction_commitment(
+        let (transactions, receipts): (Vec<_>, Vec<_>) = transactions.into_iter().unzip();
+        let actual_commitment = calculate_transaction_commitment(
             &transactions,
             TransactionCommitmentFinalHashType::Normal,
         )?;
-        if actual == expected {
+        if actual_commitment == expected_commitment {
             Ok(PeerData {
                 peer,
-                data: (
+                data: VerifiedTransactions {
                     block_number,
-                    transactions.into_iter().zip(receipts).collect::<Vec<_>>(),
-                ),
+                    transactions: transactions.into_iter().zip(receipts).collect::<Vec<_>>(),
+                },
             })
         } else {
             Err(SyncError::TransactionCommitmentMismatch(peer))
@@ -176,7 +195,7 @@ pub(super) async fn verify_commitment(
 
 pub(super) async fn persist(
     storage: Storage,
-    transactions: Vec<PeerData<TransactionsWithHashesForBlock>>,
+    transactions: Vec<PeerData<VerifiedTransactions>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
         let mut db = storage
@@ -185,10 +204,14 @@ pub(super) async fn persist(
         let db = db.transaction().context("Creating database transaction")?;
         let tail = transactions
             .last()
-            .map(|x| x.data.0)
+            .map(|x| x.data.block_number)
             .context("Verification results are empty, no block to persist")?;
 
-        for (block_number, transactions) in transactions.into_iter().map(|x| x.data) {
+        for VerifiedTransactions {
+            block_number,
+            transactions,
+        } in transactions.into_iter().map(|x| x.data)
+        {
             db.insert_transaction_data(block_number, &transactions, None)
                 .context("Inserting transactions")?;
         }
