@@ -162,13 +162,22 @@ impl ProcessStage for VerifyCommitment {
 }
 
 pub struct StoreTransactions {
-    pub db: pathfinder_storage::Connection,
-    pub start: BlockNumber,
+    db: pathfinder_storage::Connection,
+    current_block: BlockNumber,
+}
+
+impl StoreTransactions {
+    pub fn new(db: pathfinder_storage::Connection, start: BlockNumber) -> Self {
+        Self {
+            db,
+            current_block: start,
+        }
+    }
 }
 
 impl ProcessStage for StoreTransactions {
     const NAME: &'static str = "Transactions::Persist";
-    type Input = Vec<Vec<(Transaction, Receipt)>>;
+    type Input = Vec<(Transaction, Receipt)>;
     type Output = BlockNumber;
 
     fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
@@ -177,17 +186,14 @@ impl ProcessStage for StoreTransactions {
             .transaction()
             .context("Creating database transaction")?;
 
-        // SAFETY:
-        // - pointer size is 64bits
-        // - addition yields a valid BlockNumber because we're requesting a range based
-        //   on already received headers
-        let tail = self.start + transactions.len().try_into().unwrap();
+        let tail = self.current_block;
 
-        for (i, t) in transactions.into_iter().enumerate() {
-            db.insert_transaction_data(self.start + i.try_into().unwrap(), &t, None)
-                .context("Inserting transactions")?;
-        }
+        db.insert_transaction_data(self.current_block, &transactions, None)
+            .context("Inserting transactions and receipts")?;
         db.commit().context("Committing db transaction")?;
+
+        self.current_block += 1;
+
         Ok(tail)
     }
 }

@@ -289,12 +289,8 @@ async fn handle_transaction_stream(
         .spawn()
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10)
-        .try_chunks(10, 10)
         .pipe(
-            transactions::StoreTransactions {
-                db: storage.connection()?,
-                start,
-            },
+            transactions::StoreTransactions::new(storage.connection()?, start),
             10,
         )
         .into_stream()
