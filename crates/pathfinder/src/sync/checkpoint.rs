@@ -3,14 +3,14 @@ use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
-use futures::{pin_mut, StreamExt, TryStreamExt};
+use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::{
     ClassDefinition,
     Client as P2PClient,
     EventsForBlockByTransaction,
     SignedBlockHeader as P2PSignedBlockHeader,
-    TransactionBlockData,
+    TransactionData,
 };
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
@@ -36,12 +36,13 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
+use super::stream::SyncResult;
 use crate::state::block_hash::{
     calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
 use crate::sync::error::SyncError;
-use crate::sync::headers::spawn_header_source;
+use crate::sync::stream::{InfallibleSource, Source, SyncReceiver};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
@@ -167,10 +168,11 @@ impl Sync {
         let transaction_stream = self.p2p.clone().transactions_stream(
             start,
             stop,
-            transactions::counts_stream(self.storage.clone(), start, stop),
+            transactions::counts_and_commitments_stream(self.storage.clone(), start, stop),
         );
 
-        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id).await?;
+        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id, start)
+            .await?;
 
         Ok(())
     }
@@ -246,7 +248,7 @@ impl Sync {
 }
 
 async fn handle_header_stream(
-    header_stream: impl futures::Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
+    header_stream: impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
     head: (BlockNumber, BlockHash),
     chain: Chain,
     chain_id: ChainId,
@@ -254,7 +256,8 @@ async fn handle_header_stream(
     storage: Storage,
 ) -> Result<(), SyncError> {
     tracing::info!("Syncing headers");
-    spawn_header_source(header_stream)
+    InfallibleSource::from_stream(header_stream)
+        .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
         .pipe(
             headers::VerifyHashAndSignature::new(chain, chain_id, public_key),
@@ -275,26 +278,28 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    transaction_stream: impl futures::Stream<Item = anyhow::Result<PeerData<TransactionBlockData>>>,
+    transaction_stream: impl Stream<Item = Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>
+        + Send
+        + 'static,
     storage: Storage,
     chain_id: ChainId,
+    start: BlockNumber,
 ) -> Result<(), SyncError> {
-    transaction_stream
-        .map_err(Into::into)
-        .and_then(|x| transactions::compute_hashes(x, chain_id))
-        .and_then(|x| transactions::verify_commitment(x, storage.clone()))
-        .try_chunks(100)
-        .map_err(|e| e.1)
-        .and_then(|x| transactions::persist(storage.clone(), x))
-        .inspect_ok(|x| tracing::info!(tail=%x, "Transactions chunk synced"))
-        // Drive stream to completion.
+    Source::from_stream(transaction_stream.map_err(|e| e.map(Into::into)))
+        .spawn()
+        .pipe(transactions::CalculateHashes(chain_id), 10)
+        .pipe(transactions::VerifyCommitment, 10)
+        .pipe(transactions::Store::new(storage.connection()?, start), 10)
+        .into_stream()
+        .inspect_ok(|x| tracing::info!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await?;
+        .await
+        .map_err(SyncError::from_v2)?;
     Ok(())
 }
 
 async fn handle_state_diff_stream(
-    stream: impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
+    stream: impl Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     stream
@@ -312,10 +317,10 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
-    class_stream: impl futures::Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
+    class_stream: impl Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
     storage: Storage,
     fgw: SequencerClient,
-    declared_classes_at_block_stream: impl futures::Stream<
+    declared_classes_at_block_stream: impl Stream<
         Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>,
     >,
 ) -> Result<(), SyncError> {
@@ -340,7 +345,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
 }
 
 async fn handle_event_stream(
-    event_stream: impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
+    event_stream: impl Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     event_stream
@@ -851,7 +856,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::TransactionBlockData;
+        use p2p::client::peer_agnostic::TransactionData;
         use p2p::libp2p::PeerId;
         use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
@@ -864,7 +869,8 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_transactions: Vec<anyhow::Result<PeerData<TransactionBlockData>>>,
+            pub streamed_transactions:
+                Vec<Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
@@ -873,16 +879,28 @@ mod tests {
             tokio::task::spawn_blocking(move || {
                 let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
                 let streamed_transactions = blocks
-                    .iter()
+                    .iter_mut()
                     .map(|block| {
-                        anyhow::Result::Ok(PeerData::for_tests((
-                            block.header.header.number,
+                        let transaction_commitment = calculate_transaction_commitment(
                             block
+                                .transaction_data
+                                .iter()
+                                .map(|(t, _, _)| t.clone())
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                            TransactionCommitmentFinalHashType::Normal,
+                        )
+                        .unwrap();
+                        block.header.header.transaction_commitment = transaction_commitment;
+
+                        anyhow::Result::Ok(PeerData::for_tests(TransactionData {
+                            expected_commitment: transaction_commitment,
+                            transactions: block
                                 .transaction_data
                                 .iter()
                                 .map(|x| (x.0.variant.clone(), x.1.clone().into()))
                                 .collect::<Vec<_>>(),
-                        )))
+                        }))
                     })
                     .collect::<Vec<_>>();
                 let expected_transactions = blocks
@@ -896,16 +914,6 @@ mod tests {
                     })
                     .collect::<Vec<_>>();
                 blocks.iter_mut().for_each(|b| {
-                    let transaction_commitment = calculate_transaction_commitment(
-                        b.transaction_data
-                            .iter()
-                            .map(|(t, _, _)| t.clone())
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                        TransactionCommitmentFinalHashType::Normal,
-                    )
-                    .unwrap();
-                    b.header.header.transaction_commitment = transaction_commitment;
                     // Purge transaction data.
                     b.transaction_data = Default::default();
                 });
@@ -940,6 +948,7 @@ mod tests {
                 stream::iter(streamed_transactions),
                 storage.clone(),
                 ChainId::SEPOLIA_TESTNET,
+                BlockNumber::GENESIS,
             )
             .await
             .unwrap();
@@ -976,7 +985,8 @@ mod tests {
                     storage,
                     // Causes mismatches for all transaction hashes because setup assumes
                     // ChainId::SEPOLIA_TESTNET
-                    ChainId::MAINNET
+                    ChainId::MAINNET,
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::TransactionCommitmentMismatch(_))
@@ -987,9 +997,12 @@ mod tests {
         async fn stream_failure() {
             assert_matches!(
                 handle_transaction_stream(
-                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
+                    stream::once(std::future::ready(Err(PeerData::for_tests(
+                        anyhow::anyhow!("")
+                    )))),
                     StorageBuilder::in_memory().unwrap(),
-                    ChainId::SEPOLIA_TESTNET
+                    ChainId::SEPOLIA_TESTNET,
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::Other(_))
@@ -1006,7 +1019,8 @@ mod tests {
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
                     StorageBuilder::in_memory().unwrap(),
-                    ChainId::SEPOLIA_TESTNET
+                    ChainId::SEPOLIA_TESTNET,
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::Other(_))
@@ -1217,7 +1231,7 @@ mod tests {
         impl DeclaredClasses {
             pub fn to_stream(
                 &self,
-            ) -> impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
+            ) -> impl Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
             {
                 let mut all = HashMap::<_, HashSet<ClassHash>>::new();
                 self.0

@@ -201,6 +201,72 @@ impl<T: Send + 'static> SyncReceiver<T> {
 /// on.
 pub struct Buffer(pub usize);
 
+/// A source that can be spawned from an infallible [PeerData] stream.
+pub struct InfallibleSource<T, I>(T)
+where
+    T: Stream<Item = PeerData<I>> + Send + 'static,
+    I: Send + 'static;
+
+impl<T, I> InfallibleSource<T, I>
+where
+    T: Stream<Item = PeerData<I>> + Send + 'static,
+    I: Send + 'static,
+{
+    pub fn from_stream(stream: T) -> Self {
+        Self(stream)
+    }
+
+    pub fn spawn(self) -> SyncReceiver<I> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        tokio::spawn(async move {
+            let mut inner_stream = Box::pin(self.0);
+
+            while let Some(item) = inner_stream.next().await {
+                if tx.send(Ok(item)).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+}
+
+/// A source that can be spawned from a fallible [PeerData] stream.
+pub struct Source<T, I>(T)
+where
+    T: Stream<Item = SyncResult<I>> + Send + 'static,
+    I: Send + 'static;
+
+impl<T, I> Source<T, I>
+where
+    T: Stream<Item = SyncResult<I>> + Send + 'static,
+    I: Send + 'static,
+{
+    pub fn from_stream(stream: T) -> Self {
+        Self(stream)
+    }
+
+    /// Short circuits on the first error.
+    pub fn spawn(self) -> SyncReceiver<I> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        tokio::spawn(async move {
+            let mut inner_stream = Box::pin(self.0);
+
+            while let Some(item) = inner_stream.next().await {
+                let item_is_err = item.is_err();
+                if tx.send(item).await.is_err() || item_is_err {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,5 +349,20 @@ mod tests {
             .await;
 
         assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn short_circuit_on_source_error() {
+        let ok = Ok(PeerData::for_tests(0));
+        let err = Err(PeerData::for_tests(SyncError2::BadBlockHash));
+        let ok_unprocessed = Ok(PeerData::for_tests(1));
+
+        let input = vec![ok.clone(), err.clone(), ok_unprocessed];
+        let expected = vec![ok, err];
+
+        let source = Source::from_stream(futures::stream::iter(input));
+        let actual = source.spawn().into_stream().collect::<Vec<_>>().await;
+
+        assert_eq!(actual, expected);
     }
 }

@@ -260,24 +260,6 @@ impl VerifyHashAndSignature {
     }
 }
 
-pub fn spawn_header_source(
-    header_stream: impl futures::Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
-) -> SyncReceiver<SignedBlockHeader> {
-    let (tx, rx) = tokio::sync::mpsc::channel(1);
-
-    tokio::spawn(async move {
-        let mut headers = Box::pin(header_stream);
-
-        while let Some(header) = headers.next().await {
-            if tx.send(Ok(header)).await.is_err() {
-                return;
-            }
-        }
-    });
-
-    SyncReceiver::from_receiver(rx)
-}
-
 pub struct Persist {
     pub connection: pathfinder_storage::Connection,
 }

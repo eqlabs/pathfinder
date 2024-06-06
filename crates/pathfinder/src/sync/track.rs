@@ -8,6 +8,7 @@ use p2p::client::peer_agnostic::{
     BlockHeader as P2PBlockHeader,
     Client as P2PClient,
     SignedBlockHeader as P2PSignedBlockHeader,
+    TransactionData,
 };
 use p2p::PeerData;
 use pathfinder_common::event::Event;
@@ -30,7 +31,7 @@ use pathfinder_storage::Storage;
 use starknet_gateway_types::class_definition::ClassDefinition;
 use tokio_stream::wrappers::ReceiverStream;
 
-use super::transactions::{self, compute_hashes};
+use super::transactions;
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
@@ -87,7 +88,6 @@ where
         let transactions = TransactionSource {
             p2p: self.p2p.clone(),
             headers: transactions,
-            chain_id,
         }
         .spawn()
         .pipe(transactions::CalculateHashes(chain_id), 10)
@@ -307,23 +307,13 @@ impl HeaderFanout {
 struct TransactionSource {
     p2p: P2PClient,
     headers: BoxStream<'static, P2PBlockHeader>,
-    chain_id: ChainId,
 }
 
 impl TransactionSource {
-    fn spawn(
-        self,
-    ) -> SyncReceiver<(
-        TransactionCommitment,
-        Vec<(TransactionVariant, peer_agnostic::Receipt)>,
-    )> {
+    fn spawn(self) -> SyncReceiver<TransactionData> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
-            let Self {
-                p2p,
-                mut headers,
-                chain_id,
-            } = self;
+            let Self { p2p, mut headers } = self;
 
             while let Some(header) = headers.next().await {
                 let (peer, mut transactions) = loop {
@@ -364,7 +354,10 @@ impl TransactionSource {
                 let _ = tx
                     .send(Ok(PeerData::new(
                         peer,
-                        (header.transaction_commitment, transactions_vec),
+                        TransactionData {
+                            expected_commitment: header.transaction_commitment,
+                            transactions: transactions_vec,
+                        },
                     )))
                     .await;
             }
