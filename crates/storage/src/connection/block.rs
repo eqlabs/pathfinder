@@ -11,11 +11,12 @@ impl Transaction<'_> {
         // Insert the header
         self.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode)
-            VALUES (:number, :hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode)",
+                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode)
+            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
+            ":parent_hash": &header.parent_hash,
             ":storage_commitment": &header.storage_commitment,
             ":timestamp": &header.timestamp,
             ":eth_l1_gas_price": &header.eth_l1_gas_price.to_be_bytes().as_slice(),
@@ -497,6 +498,7 @@ impl Transaction<'_> {
 fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader> {
     let number = row.get_block_number("number")?;
     let hash = row.get_block_hash("hash")?;
+    let parent_hash = row.get_block_hash("parent_hash")?;
     let storage_commitment = row.get_storage_commitment("storage_commitment")?;
     let timestamp = row.get_timestamp("timestamp")?;
     let eth_l1_gas_price = row.get_gas_price("eth_l1_gas_price")?;
@@ -521,6 +523,7 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
 
     let header = BlockHeader {
         hash,
+        parent_hash,
         number,
         timestamp,
         eth_l1_gas_price,
@@ -537,10 +540,6 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
         transaction_count,
         event_count,
         l1_da_mode,
-        // TODO: store block hash in-line.
-        // This gets filled in by a separate query, but really should get stored as a column in
-        // order to support truncated history.
-        parent_hash: BlockHash::default(),
     };
 
     Ok(header)
