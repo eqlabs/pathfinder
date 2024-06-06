@@ -171,7 +171,8 @@ impl Sync {
             transactions::counts_and_commitments_stream(self.storage.clone(), start, stop),
         );
 
-        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id).await?;
+        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id, start)
+            .await?;
 
         Ok(())
     }
@@ -282,6 +283,7 @@ async fn handle_transaction_stream(
         + 'static,
     storage: Storage,
     chain_id: ChainId,
+    start: BlockNumber,
 ) -> Result<(), SyncError> {
     Source::from_stream(transaction_stream.map_err(|e| e.map(Into::into)))
         .spawn()
@@ -290,8 +292,8 @@ async fn handle_transaction_stream(
         .try_chunks(10, 10)
         .pipe(
             transactions::StoreTransactions {
-                db: todo!(),
-                start: todo!(),
+                db: storage.connection()?,
+                start,
             },
             10,
         )
