@@ -100,7 +100,6 @@ pub(super) fn counts_and_commitments_stream(
     }
 }
 
-
 pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
