@@ -100,34 +100,6 @@ pub(super) fn counts_and_commitments_stream(
     }
 }
 
-// pub(super) async fn persist(
-//     storage: Storage,
-//     transactions: Vec<PeerData<VerifiedTransactions>>,
-// ) -> Result<BlockNumber, SyncError> {
-//     tokio::task::spawn_blocking(move || {
-//         let mut db = storage
-//             .connection()
-//             .context("Creating database connection")?;
-//         let db = db.transaction().context("Creating database transaction")?;
-//         let tail = transactions
-//             .last()
-//             .map(|x| x.data.block_number)
-//             .context("Verification results are empty, no block to persist")?;
-
-//         for VerifiedTransactions {
-//             block_number,
-//             transactions,
-//         } in transactions.into_iter().map(|x| x.data)
-//         {
-//             db.insert_transaction_data(block_number, &transactions, None)
-//                 .context("Inserting transactions")?;
-//         }
-//         db.commit().context("Committing db transaction")?;
-//         Ok(tail)
-//     })
-//     .await
-//     .context("Joining blocking task")?
-// }
 
 pub struct CalculateHashes(pub ChainId);
 
