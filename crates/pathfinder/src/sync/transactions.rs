@@ -161,12 +161,12 @@ impl ProcessStage for VerifyCommitment {
     }
 }
 
-pub struct StoreTransactions {
+pub struct Store {
     db: pathfinder_storage::Connection,
     current_block: BlockNumber,
 }
 
-impl StoreTransactions {
+impl Store {
     pub fn new(db: pathfinder_storage::Connection, start: BlockNumber) -> Self {
         Self {
             db,
@@ -175,7 +175,7 @@ impl StoreTransactions {
     }
 }
 
-impl ProcessStage for StoreTransactions {
+impl ProcessStage for Store {
     const NAME: &'static str = "Transactions::Persist";
     type Input = Vec<(Transaction, Receipt)>;
     type Output = BlockNumber;

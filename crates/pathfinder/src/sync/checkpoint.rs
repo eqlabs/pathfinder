@@ -289,10 +289,7 @@ async fn handle_transaction_stream(
         .spawn()
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10)
-        .pipe(
-            transactions::StoreTransactions::new(storage.connection()?, start),
-            10,
-        )
+        .pipe(transactions::Store::new(storage.connection()?, start), 10)
         .into_stream()
         .inspect_ok(|x| tracing::info!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
