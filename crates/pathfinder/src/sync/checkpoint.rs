@@ -277,11 +277,13 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    transaction_stream: impl Stream<Item = SyncResult<TransactionData>> + Send + 'static,
+    transaction_stream: impl Stream<Item = Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>
+        + Send
+        + 'static,
     storage: Storage,
     chain_id: ChainId,
 ) -> Result<(), SyncError> {
-    Source::from_stream(transaction_stream)
+    Source::from_stream(transaction_stream.map_err(|e| e.map(Into::into)))
         .spawn()
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10)

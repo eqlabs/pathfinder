@@ -79,6 +79,16 @@ impl<T> PeerData<T> {
             data,
         }
     }
+
+    pub fn map<U, F>(self, f: F) -> PeerData<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        PeerData {
+            peer: self.peer,
+            data: f(self.data),
+        }
+    }
 }
 
 impl<T, U: Dummy<T>> Dummy<T> for PeerData<U> {
@@ -276,7 +286,8 @@ impl Client {
         transaction_counts_and_commitments_stream: impl futures::Stream<
             Item = anyhow::Result<(usize, TransactionCommitment)>,
         >,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<TransactionData>>> {
+    ) -> impl futures::Stream<Item = Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>
+    {
         async_stream::try_stream! {
             pin_mut!(transaction_counts_and_commitments_stream);
 
@@ -303,23 +314,36 @@ impl Client {
                             },
                         };
 
-                        let mut responses =
-                            match self.inner.send_transactions_sync_request(peer, request).await {
-                                Ok(x) => x,
-                                Err(error) => {
-                                    // Failed to establish connection, try next peer.
-                                    tracing::debug!(%peer, reason=%error, "Transactions request failed");
-                                    continue 'next_peer;
-                                }
-                            };
+                        let mut responses = match self
+                            .inner
+                            .send_transactions_sync_request(peer, request)
+                            .await
+                        {
+                            Ok(x) => x,
+                            Err(error) => {
+                                // Failed to establish connection, try next peer.
+                                tracing::debug!(%peer, reason=%error, "Transactions request failed");
+                                continue 'next_peer;
+                            }
+                        };
 
                         let mut current_count = match current_count_outer {
                             // Still the same block
                             Some(backup) => backup,
                             // Move to the next block
                             None => {
-                                let (count, commitment) = transaction_counts_and_commitments_stream.next().await
-                                    .with_context(|| format!("Transaction counts and commitments stream terminated prematurely at block {}", start))??;
+                                let (count, commitment) = transaction_counts_and_commitments_stream
+                                    .next()
+                                    .await
+                                    .with_context(|| {
+                                        format!(
+                                            "Transaction counts and commitments stream terminated \
+                                            prematurely at block {}",
+                                            start
+                                        )
+                                    })
+                                    .map_err(|e| PeerData::new(peer, e))?
+                                    .map_err(|e| PeerData::new(peer, e))?;
                                 current_count_outer = Some(count);
                                 current_commitment = commitment;
                                 count
@@ -330,17 +354,21 @@ impl Client {
 
                         while let Some(response) = responses.next().await {
                             match response {
-                                TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
-                                    transaction,
-                                    receipt,
-                                }) => {
-                                    let t = TransactionVariant::try_from_dto(transaction)?;
+                                TransactionsResponse::TransactionWithReceipt(
+                                    TransactionWithReceipt {
+                                        transaction,
+                                        receipt,
+                                    },
+                                ) => {
+                                    let t = TransactionVariant::try_from_dto(transaction)
+                                        .map_err(|e| PeerData::new(peer, e))?;
                                     let r = Receipt::try_from((
                                         receipt,
                                         TransactionIndex::new_or_panic(
                                             transactions.len().try_into().expect("ptr size is 64bits"),
                                         ),
-                                    ))?;
+                                    ))
+                                    .map_err(|e| PeerData::new(peer, e))?;
                                     match current_count.checked_sub(1) {
                                         Some(x) => current_count = x,
                                         None => {
@@ -358,7 +386,9 @@ impl Client {
                                         yield PeerData::new(
                                             peer,
                                             TransactionData {
-                                                expected_commitment: std::mem::take(&mut current_commitment),
+                                                expected_commitment: std::mem::take(
+                                                    &mut current_commitment,
+                                                ),
                                                 transactions: std::mem::take(&mut transactions),
                                             },
                                         );
@@ -366,8 +396,19 @@ impl Client {
                                         if start < stop_inclusive {
                                             // Move to the next block
                                             start += 1;
-                                            let (count, commitment) = transaction_counts_and_commitments_stream.next().await
-                                                .with_context(|| format!("Transaction counts and commtiments stream terminated prematurely at block {start}"))??;
+                                            let (count, commitment) =
+                                                transaction_counts_and_commitments_stream
+                                                    .next()
+                                                    .await
+                                                    .with_context(|| {
+                                                        format!(
+                                                            "Transaction counts and commtiments \
+                                                            stream terminated prematurely at block \
+                                                            {start}"
+                                                        )
+                                                    })
+                                                    .map_err(|e| PeerData::new(peer, e))?
+                                                    .map_err(|e| PeerData::new(peer, e))?;
 
                                             current_count = count;
                                             current_commitment = commitment;
