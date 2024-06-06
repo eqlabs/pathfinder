@@ -331,26 +331,7 @@ impl Transaction<'_> {
         .optional()
         .context("Querying for block header")?;
 
-        let Some(mut header) = header else {
-            return Ok(None);
-        };
-
-        // Fill in parent hash (unless we are at genesis in which case the current ZERO
-        // is correct).
-        if header.number != BlockNumber::GENESIS {
-            let parent_hash = self
-                .inner()
-                .query_row(
-                    "SELECT hash FROM block_headers WHERE number = ?",
-                    params![&(header.number - 1)],
-                    |row| row.get_block_hash(0),
-                )
-                .context("Querying parent hash")?;
-
-            header.parent_hash = parent_hash;
-        }
-
-        Ok(Some(header))
+        Ok(header)
     }
 
     pub fn block_is_l1_accepted(&self, block: BlockId) -> anyhow::Result<bool> {
