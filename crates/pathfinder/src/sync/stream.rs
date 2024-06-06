@@ -350,4 +350,19 @@ mod tests {
 
         assert_eq!(result, expected);
     }
+
+    #[tokio::test]
+    async fn short_circuit_on_source_error() {
+        let ok = Ok(PeerData::for_tests(0));
+        let err = Err(PeerData::for_tests(SyncError2::BadBlockHash));
+        let ok_unprocessed = Ok(PeerData::for_tests(1));
+
+        let input = vec![ok.clone(), err.clone(), ok_unprocessed];
+        let expected = vec![ok, err];
+
+        let source = Source::from_stream(futures::stream::iter(input));
+        let actual = source.spawn().into_stream().collect::<Vec<_>>().await;
+
+        assert_eq!(actual, expected);
+    }
 }
