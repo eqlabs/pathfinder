@@ -6305,6 +6305,7 @@ dependencies = [
  "serde",
  "serde_json",
  "starknet-gateway-test-fixtures",
+ "tracing",
 ]
 
 [[package]]

@@ -17,12 +17,16 @@ pub fn compile_to_casm(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
     let sierra_version =
         parse_sierra_version(definition.sierra_program).context("Parsing Sierra version")?;
 
+    let started_at = std::time::Instant::now();
+
     let result = std::panic::catch_unwind(|| match sierra_version {
         SierraVersion(0, 1, 0) => v1_0_0_alpha6::compile(definition),
         SierraVersion(1, 0, 0) => v1_0_0_rc0::compile(definition),
         SierraVersion(1, 1, 0) => v1_1_1::compile(definition),
         _ => v2::compile(definition),
     });
+
+    tracing::trace!(elapsed=?started_at.elapsed(), "Sierra class compilation finished");
 
     result.unwrap_or_else(|e| Err(panic_error(e)))
 }

@@ -34,6 +34,7 @@ use serde_json::de;
 use starknet_gateway_client::{Client, GatewayApi};
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
+use tracing::Instrument;
 
 use crate::state::block_hash::{
     calculate_transaction_commitment,
@@ -126,6 +127,7 @@ impl Sync {
     /// guarantee that all sync'd headers are secured by L1.
     ///
     /// No guarantees are made about any headers newer than the anchor.
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn sync_headers(&self, anchor: EthereumStateUpdate) -> Result<(), SyncError> {
         while let Some(gap) =
             headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
@@ -142,12 +144,14 @@ impl Sync {
                 self.public_key,
                 self.storage.clone(),
             )
+            .instrument(tracing::debug_span!("sync_headers", ?gap))
             .await?;
         }
 
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn sync_transactions(
         &self,
         stop: BlockNumber,
@@ -171,6 +175,7 @@ impl Sync {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {
         let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
@@ -190,6 +195,7 @@ impl Sync {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn sync_class_definitions(&self, stop: BlockNumber) -> Result<(), SyncError> {
         let Some(start) = class_definitions::next_missing(self.storage.clone(), stop)
             .await
@@ -218,6 +224,7 @@ impl Sync {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn sync_events(&self, stop: BlockNumber) -> Result<(), SyncError> {
         let Some(start) = events::next_missing(self.storage.clone(), stop)
             .await

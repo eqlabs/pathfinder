@@ -25,6 +25,7 @@ type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
 /// Describes a gap in the stored headers.
 ///
 /// Both head and tail form part of the gap i.e. it is an inclusive range.
+#[derive(Debug)]
 pub(super) struct HeaderGap {
     /// Freshest block height of the gap.
     pub head: BlockNumber,

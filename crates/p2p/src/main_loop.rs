@@ -228,12 +228,26 @@ impl MainLoop {
                 )
                 .await;
             }
-            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+            SwarmEvent::OutgoingConnectionError {
+                connection_id,
+                peer_id,
+                error,
+            } => {
+                tracing::debug!(%connection_id, ?peer_id, %error, "Failed to establish outgoing connection");
+
                 if let Some(peer_id) = peer_id {
                     if let Some(sender) = self.pending_dials.remove(&peer_id) {
                         let _ = sender.send(Err(error.into()));
                     }
                 }
+            }
+            SwarmEvent::IncomingConnectionError {
+                connection_id,
+                local_addr,
+                send_back_addr,
+                error,
+            } => {
+                tracing::debug!(%connection_id, %local_addr, %send_back_addr, %error, "Failed to establish incoming connection");
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
