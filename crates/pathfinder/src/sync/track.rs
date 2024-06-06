@@ -8,7 +8,7 @@ use p2p::client::peer_agnostic::{
     BlockHeader as P2PBlockHeader,
     Client as P2PClient,
     SignedBlockHeader as P2PSignedBlockHeader,
-    TransactionData,
+    UnverifiedTransactionData,
 };
 use p2p::PeerData;
 use pathfinder_common::event::Event;
@@ -310,7 +310,7 @@ struct TransactionSource {
 }
 
 impl TransactionSource {
-    fn spawn(self) -> SyncReceiver<TransactionData> {
+    fn spawn(self) -> SyncReceiver<UnverifiedTransactionData> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
@@ -354,7 +354,7 @@ impl TransactionSource {
                 let _ = tx
                     .send(Ok(PeerData::new(
                         peer,
-                        TransactionData {
+                        UnverifiedTransactionData {
                             expected_commitment: header.transaction_commitment,
                             transactions: transactions_vec,
                         },

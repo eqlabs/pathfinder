@@ -434,6 +434,7 @@ impl Transaction<'_> {
         Ok(ret)
     }
 
+    /// Items are sorted in descending order.
     pub fn transaction_counts_and_commitments(
         &self,
         block: BlockId,
@@ -470,7 +471,7 @@ impl Transaction<'_> {
             ret.push_back(cc);
         }
 
-        tracing::trace!(?ret, "Transaction counts");
+        tracing::trace!(?ret, "Transaction counts and commitments");
 
         Ok(ret)
     }

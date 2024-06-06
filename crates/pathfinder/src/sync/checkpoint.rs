@@ -10,7 +10,8 @@ use p2p::client::peer_agnostic::{
     Client as P2PClient,
     EventsForBlockByTransaction,
     SignedBlockHeader as P2PSignedBlockHeader,
-    TransactionData,
+    UnverifiedStateUpdateData,
+    UnverifiedTransactionData,
 };
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
@@ -36,13 +37,12 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
-use super::stream::SyncResult;
 use crate::state::block_hash::{
     calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
 use crate::sync::error::SyncError;
-use crate::sync::stream::{InfallibleSource, Source, SyncReceiver};
+use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
 /// Provides P2P sync capability for blocks secured by L1.
@@ -171,8 +171,13 @@ impl Sync {
             transactions::counts_and_commitments_stream(self.storage.clone(), start, stop),
         );
 
-        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id, start)
-            .await?;
+        handle_transaction_stream(
+            transaction_stream,
+            self.storage.connection()?,
+            chain_id,
+            start,
+        )
+        .await?;
 
         Ok(())
     }
@@ -189,10 +194,10 @@ impl Sync {
         let stream = self.p2p.clone().state_diff_stream(
             start,
             stop,
-            state_updates::state_diff_lengths_stream(self.storage.clone(), start, stop),
+            state_updates::length_and_commitment_stream(self.storage.clone(), start, stop),
         );
 
-        handle_state_diff_stream(stream, self.storage.clone()).await?;
+        handle_state_diff_stream(stream, self.storage.connection()?, start).await?;
 
         Ok(())
     }
@@ -278,10 +283,10 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    transaction_stream: impl Stream<Item = Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>
+    transaction_stream: impl Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
         + Send
         + 'static,
-    storage: Storage,
+    db_connection: pathfinder_storage::Connection,
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
@@ -289,7 +294,7 @@ async fn handle_transaction_stream(
         .spawn()
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10)
-        .pipe(transactions::Store::new(storage.connection()?, start), 10)
+        .pipe(transactions::Store::new(db_connection, start), 10)
         .into_stream()
         .inspect_ok(|x| tracing::info!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
@@ -299,20 +304,21 @@ async fn handle_transaction_stream(
 }
 
 async fn handle_state_diff_stream(
-    stream: impl Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
-    storage: Storage,
+    stream: impl Stream<Item = Result<PeerData<UnverifiedStateUpdateData>, PeerData<anyhow::Error>>>
+        + Send
+        + 'static,
+    db_connection: pathfinder_storage::Connection,
+    start: BlockNumber,
 ) -> Result<(), SyncError> {
-    stream
-        .map_err(Into::into)
-        .and_then(|x| state_updates::verify_commitment(x, storage.clone()))
-        .try_chunks(100)
-        .map_err(|e| e.1)
-        // Persist state updates (without: state commitments and declared classes)
-        .and_then(|x| state_updates::persist(storage.clone(), x))
-        .inspect_ok(|x| tracing::info!(tail=%x, "State update chunk synced"))
-        // Drive stream to completion.
+    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+        .spawn()
+        .pipe(state_updates::VerifyCommitment, 10)
+        .pipe(state_updates::Store::new(db_connection, start), 10)
+        .into_stream()
+        .inspect_ok(|x| tracing::info!(tail=%x.data, "State diff synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await?;
+        .await
+        .map_err(SyncError::from_v2)?;
     Ok(())
 }
 
@@ -857,7 +863,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::TransactionData;
+        use p2p::client::peer_agnostic::UnverifiedTransactionData;
         use p2p::libp2p::PeerId;
         use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
@@ -871,7 +877,7 @@ mod tests {
 
         struct Setup {
             pub streamed_transactions:
-                Vec<Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>,
+                Vec<Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
@@ -894,7 +900,7 @@ mod tests {
                         .unwrap();
                         block.header.header.transaction_commitment = transaction_commitment;
 
-                        anyhow::Result::Ok(PeerData::for_tests(TransactionData {
+                        anyhow::Result::Ok(PeerData::for_tests(UnverifiedTransactionData {
                             expected_commitment: transaction_commitment,
                             transactions: block
                                 .transaction_data
@@ -947,7 +953,7 @@ mod tests {
 
             handle_transaction_stream(
                 stream::iter(streamed_transactions),
-                storage.clone(),
+                storage.connection().unwrap(),
                 ChainId::SEPOLIA_TESTNET,
                 BlockNumber::GENESIS,
             )
@@ -983,7 +989,7 @@ mod tests {
             assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
-                    storage,
+                    storage.connection().unwrap(),
                     // Causes mismatches for all transaction hashes because setup assumes
                     // ChainId::SEPOLIA_TESTNET
                     ChainId::MAINNET,
@@ -1001,7 +1007,7 @@ mod tests {
                     stream::once(std::future::ready(Err(PeerData::for_tests(
                         anyhow::anyhow!("")
                     )))),
-                    StorageBuilder::in_memory().unwrap(),
+                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
                     ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
                 )
@@ -1019,7 +1025,7 @@ mod tests {
             assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
-                    StorageBuilder::in_memory().unwrap(),
+                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
                     ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
                 )
