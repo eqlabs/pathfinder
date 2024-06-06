@@ -248,7 +248,7 @@ where
         Self(stream)
     }
 
-    /// Short circuits on the first error.    
+    /// Short circuits on the first error.
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
