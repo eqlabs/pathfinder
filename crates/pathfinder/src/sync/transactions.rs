@@ -167,7 +167,7 @@ pub struct StoreTransactions {
 }
 
 impl ProcessStage for StoreTransactions {
-    const NAME: &'static str = "Transactions::Store";
+    const NAME: &'static str = "Transactions::Persist";
     type Input = Vec<Vec<(Transaction, Receipt)>>;
     type Output = BlockNumber;
 
