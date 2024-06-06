@@ -876,7 +876,8 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_transactions: Vec<anyhow::Result<PeerData<TransactionData>>>,
+            pub streamed_transactions:
+                Vec<Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
@@ -900,7 +901,6 @@ mod tests {
                         block.header.header.transaction_commitment = transaction_commitment;
 
                         anyhow::Result::Ok(PeerData::for_tests(TransactionData {
-                            block_number: block.header.header.number,
                             expected_commitment: transaction_commitment,
                             transactions: block
                                 .transaction_data
@@ -955,6 +955,7 @@ mod tests {
                 stream::iter(streamed_transactions),
                 storage.clone(),
                 ChainId::SEPOLIA_TESTNET,
+                BlockNumber::GENESIS,
             )
             .await
             .unwrap();
@@ -991,7 +992,8 @@ mod tests {
                     storage,
                     // Causes mismatches for all transaction hashes because setup assumes
                     // ChainId::SEPOLIA_TESTNET
-                    ChainId::MAINNET
+                    ChainId::MAINNET,
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::TransactionCommitmentMismatch(_))
@@ -1002,9 +1004,12 @@ mod tests {
         async fn stream_failure() {
             assert_matches!(
                 handle_transaction_stream(
-                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
+                    stream::once(std::future::ready(Err(PeerData::for_tests(
+                        anyhow::anyhow!("")
+                    )))),
                     StorageBuilder::in_memory().unwrap(),
-                    ChainId::SEPOLIA_TESTNET
+                    ChainId::SEPOLIA_TESTNET,
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::Other(_))
@@ -1021,7 +1026,8 @@ mod tests {
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
                     StorageBuilder::in_memory().unwrap(),
-                    ChainId::SEPOLIA_TESTNET
+                    ChainId::SEPOLIA_TESTNET,
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::Other(_))
