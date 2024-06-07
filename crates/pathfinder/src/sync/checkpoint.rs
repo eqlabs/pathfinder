@@ -165,7 +165,7 @@ impl Sync {
             return Ok(());
         };
 
-        let transaction_stream = self.p2p.clone().transactions_stream(
+        let transaction_stream = self.p2p.clone().transaction_stream(
             start,
             stop,
             transactions::counts_and_commitments_stream(self.storage.clone(), start, stop),
@@ -211,7 +211,7 @@ impl Sync {
             return Ok(());
         };
 
-        let class_stream = self.p2p.clone().class_definitions_stream(
+        let class_stream = self.p2p.clone().class_definition_stream(
             start,
             stop,
             class_definitions::declared_class_counts_stream(self.storage.clone(), start, stop),
@@ -240,7 +240,7 @@ impl Sync {
             return Ok(());
         };
 
-        let event_stream = self.p2p.clone().events_stream(
+        let event_stream = self.p2p.clone().event_stream(
             start,
             stop,
             events::counts_stream(self.storage.clone(), start, stop),

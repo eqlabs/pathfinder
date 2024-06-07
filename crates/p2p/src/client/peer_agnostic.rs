@@ -295,7 +295,7 @@ impl Client {
             .await
     }
 
-    pub fn transactions_stream(
+    pub fn transaction_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
@@ -683,7 +683,7 @@ impl Client {
         }
     }
 
-    pub fn class_definitions_stream(
+    pub fn class_definition_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
@@ -1049,7 +1049,7 @@ impl Client {
     /// commitment is part of block hash. However the number of events per
     /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
     /// because neither signature nor block hash contain this information.
-    pub fn events_stream(
+    pub fn event_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
