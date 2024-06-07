@@ -253,7 +253,7 @@ impl Sync {
 }
 
 async fn handle_header_stream(
-    header_stream: impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
+    stream: impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
     head: (BlockNumber, BlockHash),
     chain: Chain,
     chain_id: ChainId,
@@ -261,7 +261,7 @@ async fn handle_header_stream(
     storage: Storage,
 ) -> Result<(), SyncError> {
     tracing::info!("Syncing headers");
-    InfallibleSource::from_stream(header_stream)
+    InfallibleSource::from_stream(stream)
         .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
         .pipe(
@@ -283,14 +283,14 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    transaction_stream: impl Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
+    stream: impl Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
         + Send
         + 'static,
     db_connection: pathfinder_storage::Connection,
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
-    Source::from_stream(transaction_stream.map_err(|e| e.map(Into::into)))
+    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
         .spawn()
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10)
@@ -323,14 +323,14 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
-    class_stream: impl Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
+    stream: impl Stream<Item = anyhow::Result<PeerData<ClassDefinition>>>,
     storage: Storage,
     fgw: SequencerClient,
     declared_classes_at_block_stream: impl Stream<
         Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>,
     >,
 ) -> Result<(), SyncError> {
-    let a = class_stream
+    let a = stream
         .map_err(Into::into)
         .and_then(class_definitions::verify_layout)
         .and_then(class_definitions::compute_hash);
@@ -351,10 +351,10 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
 }
 
 async fn handle_event_stream(
-    event_stream: impl Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
+    stream: impl Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
-    event_stream
+    stream
         .map_err(Into::into)
         .and_then(|x| events::verify_commitment(x, storage.clone()))
         .try_chunks(100)
