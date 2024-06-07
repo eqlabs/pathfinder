@@ -91,7 +91,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let output = stage
                             .map(data)
                             .map(|x| PeerData::new(peer, x))
-                            .map_err(|e| PeerData::new(peer, e));
+                            .map_err(|e| {
+                                tracing::debug!(error=%e, "Processing item failed");
+                                PeerData::new(peer, e)
+                            });
 
                         // Log trace and metrics.
                         let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
