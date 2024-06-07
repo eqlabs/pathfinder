@@ -43,7 +43,7 @@ pub(super) enum ClassDefinition {
 }
 
 #[derive(Debug)]
-pub(super) struct Class {
+pub struct Class {
     pub block_number: BlockNumber,
     pub hash: ClassHash,
     pub definition: ClassDefinition,
@@ -187,6 +187,43 @@ impl ProcessStage for VerifyLayout {
 }
 
 pub struct ComputeHash;
+
+impl ProcessStage for ComputeHash {
+    const NAME: &'static str = "Class::ComputeHash";
+
+    type Input = ClassWithLayout;
+    type Output = Class;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let ClassWithLayout {
+            block_number,
+            definition,
+            layout,
+        } = input;
+
+        let hash = match layout {
+            GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
+                c.abi.as_ref().get().as_bytes(),
+                c.program.as_ref().get().as_bytes(),
+                c.entry_points_by_type.external,
+                c.entry_points_by_type.l1_handler,
+                c.entry_points_by_type.constructor,
+            ),
+            GwClassDefinition::Sierra(c) => compute_sierra_class_hash(
+                c.abi.as_ref(),
+                c.sierra_program,
+                c.contract_class_version.as_ref(),
+                c.entry_points_by_type,
+            ),
+        }?;
+
+        Ok(Class {
+            block_number,
+            definition,
+            hash,
+        })
+    }
+}
 
 pub struct VerifyDeclaredAt;
 pub struct CompileSierraToCasm<T: GatewayApi + Clone + Send>(T);
