@@ -101,63 +101,6 @@ pub(super) fn length_and_commitment_stream(
     }
 }
 
-pub(super) async fn verify_commitment(
-    state_diff: PeerData<(BlockNumber, StateUpdateData)>,
-    storage: Storage,
-) -> Result<PeerData<(BlockNumber, StateUpdateData)>, SyncError> {
-    tokio::task::spawn_blocking(move || {
-        let mut db = storage
-            .connection()
-            .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
-
-        let block_number = state_diff.data.0;
-        let (expected, _) = db
-            .state_diff_commitment_and_length(block_number)
-            .context("Querying state diff commitment and length")?
-            .context("State diff commitment not found")?;
-
-        let actual = state_diff.data.1.compute_state_diff_commitment();
-
-        if actual != expected {
-            tracing::trace!(%block_number, %expected, %actual, state_diff=?state_diff.data.1, "State diff commitment mismatch");
-            return Err(SyncError::StateDiffCommitmentMismatch(state_diff.peer));
-        }
-
-        Ok(state_diff)
-    })
-    .await
-    .context("Joining blocking task")?
-}
-
-pub(super) async fn persist(
-    storage: Storage,
-    state_diff: Vec<PeerData<(BlockNumber, StateUpdateData)>>,
-) -> Result<BlockNumber, SyncError> {
-    tokio::task::spawn_blocking(move || {
-        let mut db = storage
-            .connection()
-            .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
-        let tail = state_diff
-            .last()
-            .map(|x| x.data.0)
-            .context("Verification results are empty, no block to persist")?;
-
-        for (block_number, state_diff) in state_diff.into_iter().map(|x| x.data) {
-            tracing::trace!(%block_number, "Inserting state update");
-            db.insert_state_update_data(block_number, &state_diff)
-                .context("Inserting state update")?;
-        }
-
-        db.commit().context("Committing database transaction")?;
-
-        Ok(tail)
-    })
-    .await
-    .context("Joining blocking task")?
-}
-
 pub struct VerifyCommitment;
 
 impl crate::sync::stream::ProcessStage for VerifyCommitment {
