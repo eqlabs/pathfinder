@@ -26,7 +26,7 @@ use starknet_gateway_types::reply::call;
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
-use crate::sync::error::SyncError;
+use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
 
 #[derive(Debug)]
@@ -145,7 +145,49 @@ pub(super) fn declared_class_counts_stream(
 }
 
 pub struct VerifyLayout;
+
+impl ProcessStage for VerifyLayout {
+    const NAME: &'static str = "Class::VerifyLayout";
+
+    type Input = P2PClassDefinition;
+    type Output = ClassWithLayout;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        match input {
+            P2PClassDefinition::Cairo {
+                block_number,
+                definition,
+            } => {
+                let layout = GwClassDefinition::Cairo(
+                    serde_json::from_slice::<Cairo<'_>>(&definition)
+                        .map_err(|_| SyncError2::BadClassLayout)?,
+                );
+                Ok(ClassWithLayout {
+                    block_number,
+                    definition: ClassDefinition::Cairo(definition),
+                    layout,
+                })
+            }
+            P2PClassDefinition::Sierra {
+                block_number,
+                sierra_definition,
+            } => {
+                let layout = GwClassDefinition::Sierra(
+                    serde_json::from_slice::<Sierra<'_>>(&sierra_definition)
+                        .map_err(|_| SyncError2::BadClassLayout)?,
+                );
+                Ok(ClassWithLayout {
+                    block_number,
+                    definition: ClassDefinition::Sierra(sierra_definition),
+                    layout,
+                })
+            }
+        }
+    }
+}
+
 pub struct ComputeHash;
+
 pub struct VerifyDeclaredAt;
 pub struct CompileSierraToCasm<T: GatewayApi + Clone + Send>(T);
 pub struct Store {

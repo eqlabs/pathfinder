@@ -323,7 +323,9 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
-    stream: impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>,
+    stream: impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
+        + Send
+        + 'static,
     storage: Storage,
     fgw: SequencerClient,
     declared_classes_at_block_stream: impl Stream<
