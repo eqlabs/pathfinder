@@ -51,14 +51,14 @@ pub struct Class {
 }
 
 #[derive(Debug)]
-pub(super) struct CompiledClass {
+pub struct CompiledClass {
     pub block_number: BlockNumber,
     pub hash: ClassHash,
     pub definition: CompiledClassDefinition,
 }
 
 #[derive(Debug)]
-pub(super) enum CompiledClassDefinition {
+pub enum CompiledClassDefinition {
     Cairo(Vec<u8>),
     Sierra {
         sierra_definition: Vec<u8>,
@@ -335,7 +335,64 @@ impl ExpectedDeclarationsSource {
     }
 }
 
-pub struct CompileSierraToCasm<T: GatewayApi + Clone + Send>(T);
+pub struct CompileSierraToCasm<T> {
+    fgw: T,
+    tokio_handle: tokio::runtime::Handle,
+}
+
+impl<T> CompileSierraToCasm<T> {
+    pub fn new(fgw: T, tokio_handle: tokio::runtime::Handle) -> Self {
+        Self { fgw, tokio_handle }
+    }
+}
+
+impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCasm<T> {
+    const NAME: &'static str = "Class::CompileSierraToCasm";
+
+    type Input = Class;
+    type Output = CompiledClass;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let Class {
+            block_number,
+            hash,
+            definition,
+        } = input;
+
+        let definition = match definition {
+            ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
+            ClassDefinition::Sierra(sierra_definition) => {
+                let casm_definition = pathfinder_compiler::compile_to_casm(&sierra_definition)
+                    .context("Compiling Sierra class");
+
+                let casm_definition = match casm_definition {
+                    Ok(x) => x,
+                    Err(_) => self
+                        .tokio_handle
+                        .block_on(async {
+                            self.fgw
+                                .pending_casm_by_hash(hash)
+                                .await
+                                .context("Fetching casm definition from gateway")
+                        })?
+                        .to_vec(),
+                };
+
+                CompiledClassDefinition::Sierra {
+                    sierra_definition,
+                    casm_definition,
+                }
+            }
+        };
+
+        Ok(CompiledClass {
+            block_number,
+            hash,
+            definition,
+        })
+    }
+}
+
 pub struct Store {
     db: pathfinder_storage::Connection,
     current_block: BlockNumber,

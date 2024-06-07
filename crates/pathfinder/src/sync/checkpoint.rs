@@ -320,7 +320,7 @@ async fn handle_state_diff_stream(
     Ok(())
 }
 
-async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
+async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'static>(
     stream: impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
         + Send
         + 'static,
@@ -339,6 +339,10 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
         .pipe(class_definitions::ComputeHash, 10)
         .pipe(
             class_definitions::VerifyDeclaredAt::new(expectation_source),
+            10,
+        )
+        .pipe(
+            class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
             10,
         );
     todo!();
