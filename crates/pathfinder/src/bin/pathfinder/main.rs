@@ -211,7 +211,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
-        rx_pending,
+        rx_pending.clone(),
         rpc_config,
     );
 
@@ -219,6 +219,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         context.with_websockets(WebsocketContext::new(
             config.websocket.socket_buffer_capacity,
             config.websocket.topic_sender_capacity,
+            rx_pending,
         ))
     } else {
         context

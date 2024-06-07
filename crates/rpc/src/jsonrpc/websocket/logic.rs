@@ -13,14 +13,14 @@ use axum::response::IntoResponse;
 use futures::sink::Buffer;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use pathfinder_common::TransactionHash;
+use pathfinder_common::{BlockNumber, TransactionHash};
 use serde::Serialize;
 use serde_json::Value;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::transaction_status::{ExecutionStatus, FinalityStatus};
 use starknet_gateway_types::reply::Block;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 use tracing::error;
 
 use super::{Params, TransactionStatusUpdate};
@@ -35,7 +35,7 @@ use crate::jsonrpc::websocket::data::{
 };
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcRouter};
 use crate::method::get_events::types::EmittedEvent;
-use crate::BlockHeader;
+use crate::{BlockHeader, PendingData};
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
 const UNSUBSCRIBE_METHOD: &str = "pathfinder_unsubscribe";
@@ -47,22 +47,14 @@ pub struct WebsocketContext {
 }
 
 impl WebsocketContext {
-    pub fn new(socket_buffer_capacity: NonZeroUsize, topic_sender_capacity: NonZeroUsize) -> Self {
-        let senders = TopicBroadcasters::with_capacity(topic_sender_capacity);
-
+    pub fn new(
+        socket_buffer_capacity: NonZeroUsize,
+        topic_sender_capacity: NonZeroUsize,
+        pending_data: watch::Receiver<PendingData>,
+    ) -> Self {
         Self {
             socket_buffer_capacity,
-            broadcasters: senders,
-        }
-    }
-}
-
-impl Default for WebsocketContext {
-    fn default() -> Self {
-        Self {
-            socket_buffer_capacity: NonZeroUsize::new(100)
-                .expect("Invalid socket buffer capacity default value"),
-            broadcasters: TopicBroadcasters::default(),
+            broadcasters: TopicBroadcasters::new(topic_sender_capacity, pending_data),
         }
     }
 }
@@ -301,10 +293,12 @@ impl SubscriptionManager {
                 ))
             }
             Params::Events(filter) => {
-                let receiver = websocket_source.l2_blocks.subscribe();
+                let l2_blocks = websocket_source.l2_blocks.subscribe();
+                let pending_data = websocket_source.pending_data.clone();
                 tokio::spawn(event_subscription(
                     response_sender,
-                    receiver,
+                    l2_blocks,
+                    pending_data,
                     subscription_id,
                     filter,
                 ))
@@ -364,7 +358,8 @@ async fn header_subscription(
 
 async fn event_subscription(
     msg_sender: mpsc::Sender<ResponseEvent>,
-    mut blocks: broadcast::Receiver<Arc<Block>>,
+    mut l2_blocks: broadcast::Receiver<Arc<Block>>,
+    mut pending_data: watch::Receiver<PendingData>,
     subscription_id: u32,
     filter: EventFilterParams,
 ) {
@@ -374,64 +369,99 @@ async fn event_subscription(
         .iter()
         .map(|keys| keys.iter().collect())
         .collect();
+    let mut last_block: Option<BlockNumber> = None;
     'outer: loop {
-        match blocks.recv().await {
-            Ok(block) => {
-                for (receipt, events) in block.transaction_receipts.iter() {
-                    for event in events {
-                        // Check if the event matches the filter.
-                        if let Some(address) = filter.address {
-                            if event.from_address != address {
+        let (receipts, block_number, block_hash) = loop {
+            tokio::select! {
+                result = l2_blocks.recv() => {
+                    match result {
+                        Ok(block) => {
+                            if let Some(last_block) = last_block {
+                                if block.block_number.get() <= last_block.get() {
+                                    // This block was already received, ignore it.
+                                    continue;
+                                }
+                            }
+                            break (block.transaction_receipts.clone(), block.block_number, Some(block.block_hash))
+                        },
+                        Err(RecvError::Closed) => break 'outer,
+                        Err(RecvError::Lagged(amount)) => {
+                            tracing::debug!(%subscription_id, %amount, kind="event", "Subscription consumer too slow, closing.");
+                            let response = ResponseEvent::SubscriptionClosed {
+                                subscription_id,
+                                reason: "Lagging stream, some events were skipped. Closing subscription."
+                                    .to_owned(),
+                            };
+                            msg_sender.send(response).await.ok();
+                            break 'outer;
+                        }
+                    }
+                },
+                result = pending_data.changed() => {
+                    match result {
+                        Ok(()) => {
+                            let data = pending_data.borrow();
+                            if data.number.get() == 0 || last_block.map(|b| b.get()) != Some(data.number.get() - 1) {
+                                // This pending update comes too early, ignore it for now. The
+                                // same block will be received from the l2_blocks stream.
                                 continue;
                             }
+                            break (data.block.transaction_receipts.clone(), data.number, None);
                         }
-                        let matches_keys = if key_filter_is_empty {
-                            true
-                        } else if event.keys.len() < keys.len() {
-                            false
-                        } else {
-                            event
-                                .keys
-                                .iter()
-                                .zip(keys.iter())
-                                .all(|(key, filter)| filter.is_empty() || filter.contains(key))
-                        };
-                        if !matches_keys {
-                            continue;
-                        }
-
-                        let response = ResponseEvent::Event(SubscriptionItem {
-                            subscription_id,
-                            item: Arc::new(EmittedEvent {
-                                data: event.data.clone(),
-                                keys: event.keys.clone(),
-                                from_address: event.from_address,
-                                block_hash: Some(block.block_hash),
-                                block_number: Some(block.block_number),
-                                transaction_hash: receipt.transaction_hash,
-                            }),
-                        });
-                        if msg_sender.send(response).await.is_err() {
+                        Err(_) => {
+                            tracing::debug!(%subscription_id, kind="event", "Unable to fetch pending data, closing.");
+                            let response = ResponseEvent::SubscriptionClosed {
+                                subscription_id,
+                                reason: "Unable to fetch pending data. Closing subscription."
+                                    .to_owned(),
+                            };
+                            msg_sender.send(response).await.ok();
                             break 'outer;
                         }
                     }
                 }
             }
-            Err(RecvError::Closed) => break,
-            Err(RecvError::Lagged(amount)) => {
-                tracing::debug!(%subscription_id, %amount, kind="event", "Subscription consumer too slow, closing.");
-
-                // No explicit break here, the loop will be broken by the dropped receiver.
-                let response = ResponseEvent::SubscriptionClosed {
-                    subscription_id,
-                    reason: "Lagging stream, some events were skipped. Closing subscription."
-                        .to_owned(),
+        };
+        last_block = Some(block_number);
+        for (receipt, events) in receipts {
+            for event in events {
+                // Check if the event matches the filter.
+                if let Some(address) = filter.address {
+                    if event.from_address != address {
+                        continue;
+                    }
+                }
+                let matches_keys = if key_filter_is_empty {
+                    true
+                } else if event.keys.len() < keys.len() {
+                    false
+                } else {
+                    event
+                        .keys
+                        .iter()
+                        .zip(keys.iter())
+                        .all(|(key, filter)| filter.is_empty() || filter.contains(key))
                 };
+                if !matches_keys {
+                    continue;
+                }
+
+                let response = ResponseEvent::Event(SubscriptionItem {
+                    subscription_id,
+                    item: Arc::new(EmittedEvent {
+                        data: event.data,
+                        keys: event.keys,
+                        from_address: event.from_address,
+                        block_hash,
+                        block_number: Some(block_number),
+                        transaction_hash: receipt.transaction_hash,
+                    }),
+                });
                 if msg_sender.send(response).await.is_err() {
-                    break;
+                    break 'outer;
                 }
             }
-        };
+        }
     }
 }
 
@@ -573,25 +603,22 @@ where
 pub struct TopicBroadcasters {
     pub new_head: JsonBroadcaster<BlockHeader>,
     pub l2_blocks: broadcast::Sender<Arc<Block>>,
+    pub pending_data: watch::Receiver<PendingData>,
 }
 
 impl TopicBroadcasters {
-    fn with_capacity(capacity: NonZeroUsize) -> TopicBroadcasters {
+    fn new(
+        capacity: NonZeroUsize,
+        pending_data: watch::Receiver<PendingData>,
+    ) -> TopicBroadcasters {
         TopicBroadcasters {
             new_head: JsonBroadcaster {
                 sender: broadcast::channel(capacity.get()).0,
                 item_type: PhantomData {},
             },
             l2_blocks: broadcast::channel(capacity.get()).0,
+            pending_data,
         }
-    }
-}
-
-impl Default for TopicBroadcasters {
-    fn default() -> Self {
-        TopicBroadcasters::with_capacity(
-            NonZeroUsize::new(100).expect("Invalid default broadcaster capacity"),
-        )
     }
 }
 
@@ -619,6 +646,7 @@ mod tests {
         EventData,
         EventKey,
         GasPrice,
+        SequencerAddress,
         StarknetVersion,
     };
     use pathfinder_crypto::Felt;
@@ -627,7 +655,7 @@ mod tests {
     use serde_json::value::RawValue;
     use serde_json::{json, Number, Value};
     use starknet_gateway_types::error::SequencerError;
-    use starknet_gateway_types::reply::{GasPrices, Status, TransactionStatus};
+    use starknet_gateway_types::reply::{GasPrices, PendingBlock, Status, TransactionStatus};
     use tokio::net::TcpStream;
     use tokio::task::JoinHandle;
     use tokio::time::timeout;
@@ -898,7 +926,7 @@ mod tests {
             .expect_response(&successful_response(&2, req_id).unwrap())
             .await;
 
-        client.l2_blocks.send(block.into()).unwrap();
+        client.l2_blocks.send(block.clone().into()).unwrap();
 
         client
             .expect_response(&SubscriptionItem {
@@ -917,6 +945,122 @@ mod tests {
             })
             .await;
 
+        // Receive next pending block.
+        client.pending_data_sender.send_replace(PendingData {
+            block: PendingBlock {
+                l1_gas_price: block.l1_gas_price,
+                l1_data_gas_price: block.l1_data_gas_price,
+                parent_hash: block.block_hash,
+                sequencer_address: SequencerAddress::ZERO,
+                status: Status::Pending,
+                timestamp: Default::default(),
+                transaction_receipts: block.transaction_receipts.clone(),
+                transactions: block.transactions.clone(),
+                starknet_version: block.starknet_version,
+                l1_da_mode: block.l1_da_mode,
+            }
+            .into(),
+            number: BlockNumber::new_or_panic(block.block_number.get() + 1),
+            state_update: Default::default(),
+        });
+
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 2,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("3").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("c").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("d").unwrap()),
+                        event_key!("0xcafebabe"),
+                    ],
+                    block_hash: None,
+                    block_number: Some(BlockNumber::new_or_panic(1001)),
+                    transaction_hash: transaction_hash!("0x2"),
+                },
+            })
+            .await;
+
+        // Receive same block after confirmation. Nothing happens.
+        client
+            .l2_blocks
+            .send(
+                Block {
+                    block_number: BlockNumber::new_or_panic(block.block_number.get() + 1),
+                    ..block.clone()
+                }
+                .into(),
+            )
+            .unwrap();
+
+        client.expect_no_response().await;
+
+        // Pending data comes too early.
+        client.pending_data_sender.send_replace(PendingData {
+            block: PendingBlock {
+                l1_gas_price: block.l1_gas_price,
+                l1_data_gas_price: block.l1_data_gas_price,
+                parent_hash: block.block_hash,
+                sequencer_address: SequencerAddress::ZERO,
+                status: Status::Pending,
+                timestamp: Default::default(),
+                transaction_receipts: block.transaction_receipts.clone(),
+                transactions: block.transactions.clone(),
+                starknet_version: block.starknet_version,
+                l1_da_mode: block.l1_da_mode,
+            }
+            .into(),
+            number: BlockNumber::new_or_panic(block.block_number.get() + 3),
+            state_update: Default::default(),
+        });
+
+        client.expect_no_response().await;
+
+        // Pending data comes after the confirmed block. Nothing should happen when the
+        // pending data is received.
+        client
+            .l2_blocks
+            .send(
+                Block {
+                    block_number: BlockNumber::new_or_panic(block.block_number.get() + 2),
+                    ..block.clone()
+                }
+                .into(),
+            )
+            .unwrap();
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 2,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("3").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("c").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("d").unwrap()),
+                        event_key!("0xcafebabe"),
+                    ],
+                    block_hash: Some(block.block_hash),
+                    block_number: Some(BlockNumber::new_or_panic(1002)),
+                    transaction_hash: transaction_hash!("0x2"),
+                },
+            })
+            .await;
+        client.pending_data_sender.send_replace(PendingData {
+            block: PendingBlock {
+                l1_gas_price: block.l1_gas_price,
+                l1_data_gas_price: block.l1_data_gas_price,
+                parent_hash: block.block_hash,
+                sequencer_address: SequencerAddress::ZERO,
+                status: Status::Pending,
+                timestamp: Default::default(),
+                transaction_receipts: block.transaction_receipts.clone(),
+                transactions: block.transactions.clone(),
+                starknet_version: block.starknet_version,
+                l1_da_mode: block.l1_da_mode,
+            }
+            .into(),
+            number: BlockNumber::new_or_panic(block.block_number.get() + 2),
+            state_update: Default::default(),
+        });
         client.expect_no_response().await;
 
         client.destroy().await;
@@ -1357,15 +1501,25 @@ mod tests {
         server_handle: JoinHandle<()>,
         head_sender: JsonBroadcaster<BlockHeader>,
         l2_blocks: broadcast::Sender<Arc<Block>>,
+        pending_data_sender: watch::Sender<PendingData>,
     }
 
     impl Client {
         async fn new() -> Client {
-            let context = RpcContext::for_tests().with_websockets(WebsocketContext::default());
+            let (pending_data_tx, pending_data_rx) = watch::channel(PendingData {
+                block: Default::default(),
+                number: BlockNumber::new_or_panic(0),
+                state_update: Default::default(),
+            });
+            let context = RpcContext::for_tests().with_websockets(WebsocketContext::new(
+                100.try_into().unwrap(),
+                100.try_into().unwrap(),
+                pending_data_rx.clone(),
+            ));
             let router = RpcRouter::builder(crate::RpcVersion::V07)
                 .register("pathfinder_test", rpc_test_method)
                 .build(context.clone());
-            let websocket_context = context.websocket.clone().unwrap_or_default();
+            let websocket_context = context.websocket.clone().unwrap();
             let head_sender = websocket_context.broadcasters.new_head.clone();
             let l2_blocks = websocket_context.broadcasters.l2_blocks.clone();
 
@@ -1399,6 +1553,7 @@ mod tests {
                 receiver,
                 server_handle,
                 l2_blocks,
+                pending_data_sender: pending_data_tx,
             }
         }
 
