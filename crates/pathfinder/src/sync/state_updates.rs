@@ -165,8 +165,18 @@ impl crate::sync::stream::ProcessStage for VerifyCommitment {
     type Input = UnverifiedStateUpdateData;
     type Output = StateUpdateData;
 
-    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
-        todo!()
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+        let UnverifiedStateUpdateData {
+            expected_commitment,
+            state_diff,
+        } = input;
+        let actual = state_diff.compute_state_diff_commitment();
+
+        if actual != expected_commitment {
+            return Err(SyncError2::StateDiffCommitmentMismatch);
+        }
+
+        Ok(state_diff)
     }
 }
 
