@@ -144,6 +144,24 @@ pub(super) fn declared_class_counts_stream(
     }
 }
 
+pub struct VerifyLayout;
+pub struct ComputeHash;
+pub struct VerifyDeclaredAt;
+pub struct CompileSierraToCasm<T: GatewayApi + Clone + Send>(T);
+pub struct Store {
+    db: pathfinder_storage::Connection,
+    current_block: BlockNumber,
+}
+
+impl Store {
+    pub fn new(db: pathfinder_storage::Connection, start: BlockNumber) -> Self {
+        Self {
+            db,
+            current_block: start,
+        }
+    }
+}
+
 pub(super) async fn verify_layout(
     peer_data: PeerData<P2PClassDefinition>,
 ) -> Result<PeerData<ClassWithLayout>, SyncError> {
