@@ -795,28 +795,29 @@ mod tests {
             );
         }
 
-        #[tokio::test]
-        async fn bad_signature() {
-            let Setup {
-                streamed_headers,
-                storage,
-                head,
-                ..
-            } = setup().await;
+        // TODO readd once the signature verification is enabled
+        // #[tokio::test]
+        // async fn bad_signature() {
+        //     let Setup {
+        //         streamed_headers,
+        //         storage,
+        //         head,
+        //         ..
+        //     } = setup().await;
 
-            assert_matches!(
-                handle_header_stream(
-                    stream::iter(streamed_headers),
-                    head,
-                    Chain::SepoliaTestnet,
-                    ChainId::SEPOLIA_TESTNET,
-                    PublicKey::ZERO, // Invalid public key
-                    storage.clone(),
-                )
-                .await,
-                Err(SyncError::BadHeaderSignature(_))
-            );
-        }
+        //     assert_matches!(
+        //         handle_header_stream(
+        //             stream::iter(streamed_headers),
+        //             head,
+        //             Chain::SepoliaTestnet,
+        //             ChainId::SEPOLIA_TESTNET,
+        //             PublicKey::ZERO, // Invalid public key
+        //             storage.clone(),
+        //         )
+        //         .await,
+        //         Err(SyncError::BadHeaderSignature(_))
+        //     );
+        // }
 
         #[tokio::test]
         async fn db_failure() {
