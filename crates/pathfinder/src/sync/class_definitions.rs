@@ -253,8 +253,8 @@ impl ProcessStage for VerifyDeclaredAt {
                     .expectation_source
                     .blocking_recv()
                     .context("Receiving expected declarations")?;
-                // Some blocks may have no declared classes.
-                // Try the next one
+
+                // Some blocks may have no declared classes. Try the next one.
                 if expected.classes.is_empty() {
                     continue;
                 }
@@ -307,6 +307,7 @@ impl ExpectedDeclarationsSource {
             mut start,
             stop,
         } = self;
+
         tokio::task::spawn_blocking(move || {
             let db = db_connection
                 .transaction()
@@ -318,15 +319,18 @@ impl ExpectedDeclarationsSource {
                     .context("Querying declared classes at block")?
                     .context("Block header not found")?
                     .into_iter()
-                    .collect();
-                tx.blocking_send(ExpectedDeclarations {
-                    block_number: start,
-                    classes: declared,
-                })
-                .context("Sending expected declarations")?;
-            }
+                    .collect::<HashSet<_>>();
 
-            start += 1;
+                if !declared.is_empty() {
+                    tx.blocking_send(ExpectedDeclarations {
+                        block_number: start,
+                        classes: declared,
+                    })
+                    .context("Sending expected declarations")?;
+                }
+
+                start += 1;
+            }
 
             anyhow::Ok(())
         });
@@ -369,12 +373,8 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
                     Ok(x) => x,
                     Err(_) => self
                         .tokio_handle
-                        .block_on(async {
-                            self.fgw
-                                .pending_casm_by_hash(hash)
-                                .await
-                                .context("Fetching casm definition from gateway")
-                        })?
+                        .block_on(self.fgw.pending_casm_by_hash(hash))
+                        .context("Fetching casm definition from gateway")?
                         .to_vec(),
                 };
 
@@ -437,7 +437,8 @@ impl ProcessStage for Store {
             }
         }
 
-        // FIXME we cannot log the block number for each class :facepalm:
+        db.commit().context("Committing db transaction")?;
+
         Ok(block_number)
     }
 }
