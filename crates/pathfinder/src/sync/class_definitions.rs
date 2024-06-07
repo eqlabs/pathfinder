@@ -393,17 +393,52 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
     }
 }
 
-pub struct Store {
-    db: pathfinder_storage::Connection,
-    current_block: BlockNumber,
-}
+pub struct Store(pub pathfinder_storage::Connection);
 
-impl Store {
-    pub fn new(db: pathfinder_storage::Connection, start: BlockNumber) -> Self {
-        Self {
-            db,
-            current_block: start,
+impl ProcessStage for Store {
+    const NAME: &'static str = "Class::Persist";
+
+    type Input = CompiledClass;
+    type Output = BlockNumber;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let CompiledClass {
+            block_number,
+            hash,
+            definition,
+        } = input;
+
+        let db = self
+            .0
+            .transaction()
+            .context("Creating database transaction")?;
+
+        match definition {
+            CompiledClassDefinition::Cairo(definition) => {
+                db.update_cairo_class(hash, &definition)
+                    .context("Updating cairo class definition")?;
+            }
+            CompiledClassDefinition::Sierra {
+                sierra_definition,
+                casm_definition,
+            } => {
+                let casm_hash = db
+                    .casm_hash(hash)
+                    .context("Getting casm hash for sierra class")?
+                    .context("Casm hash not found")?;
+
+                db.update_sierra_class(
+                    &SierraHash(hash.0),
+                    &sierra_definition,
+                    &casm_hash,
+                    &casm_definition,
+                )
+                .context("Updating sierra class definition")?;
+            }
         }
+
+        // FIXME we cannot log the block number for each class :facepalm:
+        Ok(block_number)
     }
 }
 

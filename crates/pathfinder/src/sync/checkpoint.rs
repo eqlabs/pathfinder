@@ -344,8 +344,16 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         .pipe(
             class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
             10,
-        );
-    todo!();
+        )
+        .pipe(class_definitions::Store(storage.connection()?), 10)
+        .into_stream()
+        // FIXME
+        //.inspect_ok(|x| tracing::info!(tail=%x.data, "Class definitions chunk synced"))
+        // Drive stream to completion.
+        .try_fold((), |_, _| std::future::ready(Ok(())))
+        .await
+        .map_err(SyncError::from_v2)?;
+
     Ok(())
 }
 
