@@ -23,6 +23,7 @@ use starknet_gateway_types::class_hash::from_parts::{
     compute_sierra_class_hash,
 };
 use starknet_gateway_types::reply::call;
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
@@ -225,7 +226,115 @@ impl ProcessStage for ComputeHash {
     }
 }
 
-pub struct VerifyDeclaredAt;
+pub struct VerifyDeclaredAt {
+    expectation_source: Receiver<ExpectedDeclarations>,
+    current: ExpectedDeclarations,
+}
+
+impl VerifyDeclaredAt {
+    pub fn new(expectation_source: Receiver<ExpectedDeclarations>) -> Self {
+        Self {
+            expectation_source,
+            current: Default::default(),
+        }
+    }
+}
+
+impl ProcessStage for VerifyDeclaredAt {
+    const NAME: &'static str = "Class::VerifyDeclarationBlock";
+
+    type Input = Class;
+    type Output = Class;
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        if self.current.classes.is_empty() {
+            self.current = loop {
+                let expected = self
+                    .expectation_source
+                    .blocking_recv()
+                    .context("Receiving expected declarations")?;
+                // Some blocks may have no declared classes.
+                // Try the next one
+                if expected.classes.is_empty() {
+                    continue;
+                }
+
+                break expected;
+            };
+        }
+
+        if self.current.block_number != input.block_number {
+            return Err(SyncError2::UnexpectedClass);
+        }
+
+        if self.current.classes.remove(&input.hash) {
+            Ok(input)
+        } else {
+            Err(SyncError2::UnexpectedClass)
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ExpectedDeclarations {
+    pub block_number: BlockNumber,
+    pub classes: HashSet<ClassHash>,
+}
+
+pub struct ExpectedDeclarationsSource {
+    db_connection: pathfinder_storage::Connection,
+    start: BlockNumber,
+    stop: BlockNumber,
+}
+
+impl ExpectedDeclarationsSource {
+    pub fn new(
+        db_connection: pathfinder_storage::Connection,
+        start: BlockNumber,
+        stop: BlockNumber,
+    ) -> Self {
+        Self {
+            db_connection,
+            start,
+            stop,
+        }
+    }
+
+    pub fn spawn(self) -> anyhow::Result<Receiver<ExpectedDeclarations>> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let Self {
+            mut db_connection,
+            mut start,
+            stop,
+        } = self;
+        tokio::task::spawn_blocking(move || {
+            let db = db_connection
+                .transaction()
+                .context("Creating database transaction")?;
+
+            while start <= stop {
+                let declared = db
+                    .declared_classes_at(start.into())
+                    .context("Querying declared classes at block")?
+                    .context("Block header not found")?
+                    .into_iter()
+                    .collect();
+                tx.blocking_send(ExpectedDeclarations {
+                    block_number: start,
+                    classes: declared,
+                })
+                .context("Sending expected declarations")?;
+            }
+
+            start += 1;
+
+            anyhow::Ok(())
+        });
+
+        Ok(rx)
+    }
+}
+
 pub struct CompileSierraToCasm<T: GatewayApi + Clone + Send>(T);
 pub struct Store {
     db: pathfinder_storage::Connection,
@@ -332,12 +441,12 @@ pub(super) fn declared_classes_at_block_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop_inclusive: BlockNumber,
-) -> impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>> {
+) -> impl futures::Stream<Item = anyhow::Result<ExpectedDeclarations>> {
     async_stream::try_stream! {
         while start <= stop_inclusive {
             let storage = storage.clone();
 
-            let declared_at_this_block = tokio::task::spawn_blocking(move || -> anyhow::Result<(BlockNumber, HashSet<ClassHash>)> {
+            let declared_at_this_block = tokio::task::spawn_blocking(move || -> anyhow::Result<ExpectedDeclarations> {
                 let mut db = storage
                     .connection()
                     .context("Creating database connection")?;
@@ -348,7 +457,10 @@ pub(super) fn declared_classes_at_block_stream(
                     .context("Block header not found")?
                     .into_iter()
                     .collect();
-                Ok((start, declared))
+                Ok(ExpectedDeclarations {
+                    block_number: start,
+                    classes: declared,
+                })
             })
             .await
             .context("Joining blocking task")??;
@@ -363,13 +475,16 @@ pub(super) fn declared_classes_at_block_stream(
 /// This function relies on the guarantee that the block numbers in the stream
 /// are correct.
 pub(super) fn verify_declared_at(
-    mut declared_classes_at_block: impl futures::Stream<Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>>
+    mut declared_classes_at_block: impl futures::Stream<Item = Result<ExpectedDeclarations, SyncError>>
         + Unpin,
     mut classes: impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> + Unpin,
 ) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
     async_stream::try_stream! {
         while let Some(declared) = declared_classes_at_block.next().await {
-            let (declared_at, mut declared) = declared?;
+            let ExpectedDeclarations {
+                block_number: declared_at,
+                classes: mut declared,
+            } = declared?;
 
             // Some blocks may have no declared classes.
             if declared.is_empty() {

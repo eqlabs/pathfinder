@@ -217,14 +217,12 @@ impl Sync {
             class_definitions::declared_class_counts_stream(self.storage.clone(), start, stop),
         );
 
-        let declared_classes_stream =
-            class_definitions::declared_classes_at_block_stream(self.storage.clone(), start, stop);
-
         handle_class_stream(
             class_stream,
             self.storage.clone(),
             self.fgw_client.clone(),
-            declared_classes_stream,
+            start,
+            stop,
         )
         .await?;
 
@@ -328,29 +326,22 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
         + 'static,
     storage: Storage,
     fgw: SequencerClient,
-    declared_classes_at_block_stream: impl Stream<
-        Item = Result<(BlockNumber, HashSet<ClassHash>), SyncError>,
-    >,
+    start: BlockNumber,
+    stop: BlockNumber,
 ) -> Result<(), SyncError> {
-    Source::from_stream(stream.map_err(|e| e.map(Into::into))).spawn();
+    let expectation_source =
+        class_definitions::ExpectedDeclarationsSource::new(storage.connection()?, start, stop)
+            .spawn()?;
+
+    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+        .spawn()
+        .pipe(class_definitions::VerifyLayout, 10)
+        .pipe(class_definitions::ComputeHash, 10)
+        .pipe(
+            class_definitions::VerifyDeclaredAt::new(expectation_source),
+            10,
+        );
     todo!();
-    // let a = stream
-    //     .map_err(Into::into)
-    //     .and_then(class_definitions::verify_layout)
-    //     .and_then(class_definitions::compute_hash);
-
-    // pin_mut!(a, declared_classes_at_block_stream);
-
-    // let b = class_definitions::verify_declared_at(declared_classes_at_block_stream, a);
-
-    // b.and_then(|x| class_definitions::compile_sierra_to_casm_or_fetch(x,
-    // fgw.clone()))     .try_chunks(10)
-    //     .map_err(|e| e.1)
-    //     .and_then(|x| class_definitions::persist(storage.clone(), x))
-    //     .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk
-    // synced"))     // Drive stream to completion.
-    //     .try_fold((), |_, _| std::future::ready(Ok(())))
-    //     .await?;
     Ok(())
 }
 
