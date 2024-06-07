@@ -453,8 +453,8 @@ impl Transaction<'_> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                "SELECT (transaction_count, transaction_commitment) FROM block_headers WHERE \
-                 number >= ? ORDER BY number ASC LIMIT ?",
+                "SELECT transaction_count, transaction_commitment FROM block_headers WHERE number \
+                 >= ? ORDER BY number ASC LIMIT ?",
             )
             .context("Preparing get transaction counts statement")?;
 
