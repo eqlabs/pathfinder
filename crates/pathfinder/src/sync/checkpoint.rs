@@ -1051,7 +1051,8 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_state_diffs: Vec<anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>>,
+            pub streamed_state_diffs:
+                Vec<Result<PeerData<UnverifiedStateUpdateData>, PeerData<anyhow::Error>>>,
             pub expected_state_diffs: Vec<StateUpdateData>,
             pub storage: Storage,
         }
@@ -1062,10 +1063,12 @@ mod tests {
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
-                        anyhow::Ok(PeerData::for_tests((
-                            block.header.header.number,
-                            block.state_update.clone().into(),
-                        )))
+                        Result::<PeerData<_>, PeerData<_>>::Ok(PeerData::for_tests(
+                            UnverifiedStateUpdateData {
+                                expected_commitment: block.header.state_diff_commitment,
+                                state_diff: block.state_update.clone().into(),
+                            },
+                        ))
                     })
                     .collect::<Vec<_>>();
                 let expected_state_diffs = blocks
@@ -1115,9 +1118,13 @@ mod tests {
                 storage,
             } = setup(NUM_BLOCKS).await;
 
-            handle_state_diff_stream(stream::iter(streamed_state_diffs), storage.clone())
-                .await
-                .unwrap();
+            handle_state_diff_stream(
+                stream::iter(streamed_state_diffs),
+                storage.connection().unwrap(),
+                BlockNumber::GENESIS,
+            )
+            .await
+            .unwrap();
 
             let actual_state_diffs = tokio::task::spawn_blocking(move || {
                 let mut db = storage.connection().unwrap();
@@ -1149,12 +1156,17 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .data
-                .1
+                .state_diff
                 .declared_cairo_classes
                 .insert(Faker.fake());
 
             assert_matches!(
-                handle_state_diff_stream(stream::iter(streamed_state_diffs), storage).await,
+                handle_state_diff_stream(
+                    stream::iter(streamed_state_diffs),
+                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    BlockNumber::GENESIS,
+                )
+                .await,
                 Err(SyncError::StateDiffCommitmentMismatch(_))
             );
         }
@@ -1163,8 +1175,11 @@ mod tests {
         async fn stream_failure() {
             assert_matches!(
                 handle_state_diff_stream(
-                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
-                    StorageBuilder::in_memory().unwrap(),
+                    stream::once(std::future::ready(Err(PeerData::for_tests(
+                        anyhow::anyhow!("")
+                    )))),
+                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::Other(_))
@@ -1180,7 +1195,8 @@ mod tests {
             assert_matches!(
                 handle_state_diff_stream(
                     stream::iter(streamed_state_diffs),
-                    StorageBuilder::in_memory().unwrap(),
+                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::Other(_))
