@@ -26,10 +26,14 @@ pub(super) async fn next_missing(
 
         let highest = db
             .highest_block_with_state_update()
-            .context("Querying highest block with state update")?
-            .unwrap_or_default();
+            .context("Querying highest block with state update")?;
 
-        Ok((highest < head).then_some(highest + 1))
+        match highest {
+            // No state updates at all, start from genesis
+            None => Ok((head != BlockNumber::GENESIS).then_some(BlockNumber::GENESIS)),
+            // Otherwise start from the next block
+            Some(highest) => Ok((highest < head).then_some(highest + 1)),
+        }
     })
     .await
     .context("Joining blocking task")?
@@ -107,6 +111,7 @@ pub(super) async fn verify_commitment(
         let actual = state_diff.data.1.compute_state_diff_commitment();
 
         if actual != expected {
+            tracing::trace!(%block_number, %expected, %actual, state_diff=?state_diff.data.1, "State diff commitment mismatch");
             return Err(SyncError::StateDiffCommitmentMismatch(state_diff.peer));
         }
 
@@ -131,6 +136,7 @@ pub(super) async fn persist(
             .context("Verification results are empty, no block to persist")?;
 
         for (block_number, state_diff) in state_diff.into_iter().map(|x| x.data) {
+            tracing::trace!(%block_number, "Inserting state update");
             db.insert_state_update_data(block_number, &state_diff)
                 .context("Inserting state update")?;
         }

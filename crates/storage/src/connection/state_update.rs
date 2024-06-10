@@ -456,10 +456,14 @@ impl Transaction<'_> {
 
     pub fn highest_block_with_state_update(&self) -> anyhow::Result<Option<BlockNumber>> {
         let mut stmt = self.inner().prepare_cached(
-            r"SELECT block_number FROM storage_updates ORDER BY block_number DESC LIMIT 1",
+            r"
+            SELECT max(storage_update.last_block, nonce_update.last_block, class_definition.last_block) 
+            FROM
+                (SELECT max(block_number) last_block FROM storage_updates) storage_update,
+                (SELECT max(block_number) last_block FROM nonce_updates) nonce_update,
+                (SELECT max(block_number) last_block FROM class_definitions) class_definition",
         )?;
-        stmt.query_row([], |row| row.get_block_number(0))
-            .optional()
+        stmt.query_row([], |row| row.get_optional_block_number(0))
             .context("Querying highest storage update")
     }
 
@@ -515,7 +519,7 @@ impl Transaction<'_> {
             .inner()
             .prepare_cached(
                 r"
-                SELECT COUNT(definition)
+                SELECT COUNT(block_number)
                 FROM canonical_blocks
                 LEFT JOIN class_definitions ON canonical_blocks.number = class_definitions.block_number
                 WHERE number >= ?

@@ -302,6 +302,13 @@ impl StateUpdateData {
             &self.declared_sierra_classes,
         )
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.contract_updates.is_empty()
+            && self.system_contract_updates.is_empty()
+            && self.declared_cairo_classes.is_empty()
+            && self.declared_sierra_classes.is_empty()
+    }
 }
 
 impl From<StateUpdate> for StateUpdateData {
