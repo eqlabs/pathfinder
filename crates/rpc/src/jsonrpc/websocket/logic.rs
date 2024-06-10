@@ -370,9 +370,39 @@ async fn event_subscription(
         .map(|keys| keys.iter().collect())
         .collect();
     let mut last_block: Option<BlockNumber> = None;
+    let mut next_receipt_idx = 0;
     'outer: loop {
         let (receipts, block_number, block_hash) = loop {
             tokio::select! {
+                result = pending_data.changed() => {
+                    match result {
+                        Ok(()) => {
+                            let data = pending_data.borrow();
+                            if data.number.get() == 0 || last_block.map(|b| b.get()) != Some(data.number.get() - 1) {
+                                // This pending update comes too early, ignore it for now. The
+                                // same block will be received from the l2_blocks stream.
+                                continue;
+                            }
+                            if data.block.transaction_receipts.len() <= next_receipt_idx {
+                                // No new receipts in this update, ignore it.
+                                continue;
+                            }
+                            let receipts = data.block.transaction_receipts[next_receipt_idx..].to_vec();
+                            next_receipt_idx = data.block.transaction_receipts.len();
+                            break (receipts, data.number, None);
+                        }
+                        Err(_) => {
+                            tracing::debug!(%subscription_id, kind="event", "Unable to fetch pending data, closing.");
+                            let response = ResponseEvent::SubscriptionClosed {
+                                subscription_id,
+                                reason: "Unable to fetch pending data. Closing subscription."
+                                    .to_owned(),
+                            };
+                            msg_sender.send(response).await.ok();
+                            break 'outer;
+                        }
+                    }
+                }
                 result = l2_blocks.recv() => {
                     match result {
                         Ok(block) => {
@@ -382,7 +412,16 @@ async fn event_subscription(
                                     continue;
                                 }
                             }
-                            break (block.transaction_receipts.clone(), block.block_number, Some(block.block_hash))
+                            if block.transaction_receipts.len() <= next_receipt_idx {
+                                // No new receipts in this update, ignore it.
+                                next_receipt_idx = 0;
+                                last_block = Some(block.block_number);
+                                continue;
+                            }
+                            let receipts = block.transaction_receipts[next_receipt_idx..].to_vec();
+                            next_receipt_idx = 0;
+                            last_block = Some(block.block_number);
+                            break (receipts, block.block_number, Some(block.block_hash))
                         },
                         Err(RecvError::Closed) => break 'outer,
                         Err(RecvError::Lagged(amount)) => {
@@ -397,32 +436,8 @@ async fn event_subscription(
                         }
                     }
                 },
-                result = pending_data.changed() => {
-                    match result {
-                        Ok(()) => {
-                            let data = pending_data.borrow();
-                            if data.number.get() == 0 || last_block.map(|b| b.get()) != Some(data.number.get() - 1) {
-                                // This pending update comes too early, ignore it for now. The
-                                // same block will be received from the l2_blocks stream.
-                                continue;
-                            }
-                            break (data.block.transaction_receipts.clone(), data.number, None);
-                        }
-                        Err(_) => {
-                            tracing::debug!(%subscription_id, kind="event", "Unable to fetch pending data, closing.");
-                            let response = ResponseEvent::SubscriptionClosed {
-                                subscription_id,
-                                reason: "Unable to fetch pending data. Closing subscription."
-                                    .to_owned(),
-                            };
-                            msg_sender.send(response).await.ok();
-                            break 'outer;
-                        }
-                    }
-                }
             }
         };
-        last_block = Some(block_number);
         for (receipt, events) in receipts {
             for event in events {
                 // Check if the event matches the filter.
@@ -980,6 +995,59 @@ mod tests {
                 },
             })
             .await;
+
+        // Receive additional events in pending block.
+        let mut receipts = block.transaction_receipts.clone();
+        receipts.push((
+            pathfinder_common::receipt::Receipt {
+                transaction_hash: transaction_hash!("0x12"),
+                ..Default::default()
+            },
+            vec![Event {
+                from_address: ContractAddress::new_or_panic(Felt::from_hex_str("3").unwrap()),
+                data: vec![EventData(Felt::from_hex_str("cc").unwrap())],
+                keys: vec![
+                    EventKey(Felt::from_hex_str("ff").unwrap()),
+                    event_key!("0xbeef"),
+                ],
+            }],
+        ));
+        client.pending_data_sender.send_replace(PendingData {
+            block: PendingBlock {
+                l1_gas_price: block.l1_gas_price,
+                l1_data_gas_price: block.l1_data_gas_price,
+                parent_hash: block.block_hash,
+                sequencer_address: SequencerAddress::ZERO,
+                status: Status::Pending,
+                timestamp: Default::default(),
+                transaction_receipts: receipts,
+                transactions: block.transactions.clone(),
+                starknet_version: block.starknet_version,
+                l1_da_mode: block.l1_da_mode,
+            }
+            .into(),
+            number: BlockNumber::new_or_panic(block.block_number.get() + 1),
+            state_update: Default::default(),
+        });
+
+        client
+            .expect_response(&SubscriptionItem {
+                subscription_id: 2,
+                item: EmittedEvent {
+                    from_address: ContractAddress::new_or_panic(Felt::from_hex_str("3").unwrap()),
+                    data: vec![EventData(Felt::from_hex_str("cc").unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str("ff").unwrap()),
+                        event_key!("0xbeef"),
+                    ],
+                    block_hash: None,
+                    block_number: Some(BlockNumber::new_or_panic(1001)),
+                    transaction_hash: transaction_hash!("0x12"),
+                },
+            })
+            .await;
+
+        client.expect_no_response().await;
 
         // Receive same block after confirmation. Nothing happens.
         client
