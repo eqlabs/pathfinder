@@ -80,10 +80,12 @@ pub(super) async fn next_missing(
 
         let next_missing = db
             .first_block_with_missing_class_definitions()
-            .context("Querying first block number with missing class definitions")?
-            .unwrap_or_default();
+            .context("Querying first block number with missing class definitions")?;
 
-        Ok((next_missing <= head).then_some(next_missing))
+        match next_missing {
+            Some(next_missing) if next_missing <= head => Ok(Some(next_missing)),
+            Some(_) | None => Ok(None),
+        }
     })
     .await
     .context("Joining blocking task")?
