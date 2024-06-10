@@ -179,20 +179,29 @@ impl Transaction<'_> {
                 ",
             )
             .context("Preparing update events statement")?;
-        let events = dto::EventsForBlock::V0 {
+
+        let encoded_events = dto::EventsForBlock::V0 {
             events: events
-                .into_iter()
+                .iter()
+                .cloned()
                 .map(|events| events.into_iter().map(Into::into).collect())
                 .collect(),
         };
-        let events = bincode::serde::encode_to_vec(events, bincode::config::standard())
-            .context("Serializing events")?;
-        let events = compression::compress_events(&events).context("Compressing events")?;
+        let encoded_events =
+            bincode::serde::encode_to_vec(encoded_events, bincode::config::standard())
+                .context("Serializing events")?;
+        let encoded_events =
+            compression::compress_events(&encoded_events).context("Compressing events")?;
+
         stmt.execute(named_params![
             ":block_number": &block_number,
-            ":events": &events,
+            ":events": &encoded_events,
         ])
         .context("Updating events")?;
+
+        self.insert_block_events(block_number, events.iter().flatten())
+            .context("Inserting events into Bloom filter")?;
+
         Ok(())
     }
 
