@@ -230,7 +230,7 @@ impl BufferStage for DatabaseBlockBuffer {
                 tracing::warn!(%error, block=%self.block, "Failed to read transaction count and commitment");
             })
             .ok()?
-            .pop();
+            .pop_front();
 
         if amount.is_none() {
             tracing::warn!(block=%self.block, "No transaction count and commitment found in database.");
