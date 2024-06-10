@@ -21,6 +21,7 @@ use crate::state::block_hash::{
     calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
+use crate::sync::stream::{BufferStage, SyncReceiver};
 
 /// For a single block
 #[derive(Clone, Debug)]
@@ -185,7 +186,7 @@ impl ProcessStage for Store {
     type Output = BlockNumber;
 
     fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
-        let mut db = self
+        let db = self
             .db
             .transaction()
             .context("Creating database transaction")?;
@@ -199,5 +200,43 @@ impl ProcessStage for Store {
         self.current_block += 1;
 
         Ok(tail)
+    }
+}
+
+pub struct DatabaseBlockBuffer {
+    connection: pathfinder_storage::Connection,
+    block: BlockNumber,
+    end: BlockNumber,
+}
+
+impl BufferStage for DatabaseBlockBuffer {
+    type T = TransactionData;
+    type Meta = TransactionCommitment;
+    const TOO_FEW_ERROR: SyncError2 = SyncError2::TooFewTransactions;
+
+    fn next_amount(&mut self) -> Option<(usize, Self::Meta)> {
+        if self.block > self.end {
+            return None;
+        }
+
+        let amount = self
+            .connection
+            .transaction()
+            .inspect_err(|error| {
+                tracing::warn!(%error, "Failed to open database transaction");
+            })
+            .ok()?
+            .transaction_counts_and_commitments(self.block.into(), NonZeroUsize::new(1).unwrap())
+            .inspect_err(|error| {
+                tracing::warn!(%error, block=%self.block, "Failed to read transaction count and commitment");
+            })
+            .ok()?
+            .pop();
+
+        if amount.is_none() {
+            tracing::warn!(block=%self.block, "No transaction count and commitment found in database.");
+        }
+
+        amount
     }
 }
