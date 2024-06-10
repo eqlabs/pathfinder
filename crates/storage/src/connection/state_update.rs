@@ -467,21 +467,25 @@ impl Transaction<'_> {
             .context("Querying highest storage update")
     }
 
-    pub fn state_diff_lengths(
+    pub fn state_diff_lengths_and_commitments(
         &self,
         start: BlockNumber,
         max_num_blocks: NonZeroUsize,
-    ) -> anyhow::Result<VecDeque<usize>> {
+    ) -> anyhow::Result<VecDeque<(usize, StateDiffCommitment)>> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                r"SELECT state_diff_length FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
+                r"SELECT state_diff_length, state_diff_commitment FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
             )
             .context("Preparing statement")?;
 
         let max_len = u64::try_from(max_num_blocks.get()).expect("ptr size is 64 bits");
         let mut counts = stmt
-            .query_map(params![&start, &max_len], |row| row.get(0))
+            .query_map(params![&start, &max_len], |row| {
+                let length = row.get(0)?;
+                let commitment = row.get_state_diff_commitment(1)?;
+                Ok((length, commitment))
+            })
             .context("Querying state diff lengths")?;
 
         let mut ret = VecDeque::new();

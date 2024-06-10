@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
-use p2p::client::peer_agnostic::{self, TransactionData};
+use p2p::client::peer_agnostic::{self, UnverifiedTransactionData};
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -108,12 +108,12 @@ pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
     const NAME: &'static str = "Transactions::Hashes";
-    type Input = TransactionData;
+    type Input = UnverifiedTransactionData;
     type Output = UnverifiedTransactions;
 
     fn map(&mut self, td: Self::Input) -> Result<Self::Output, SyncError2> {
         use rayon::prelude::*;
-        let TransactionData {
+        let UnverifiedTransactionData {
             expected_commitment,
             transactions,
         } = td;
@@ -150,7 +150,7 @@ impl ProcessStage for VerifyCommitment {
     type Input = UnverifiedTransactions;
     type Output = Vec<(Transaction, Receipt)>;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
         let UnverifiedTransactions {
             expected_commitment,
             transactions,

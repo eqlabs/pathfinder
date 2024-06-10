@@ -293,7 +293,7 @@ impl Client {
         transaction_counts_and_commitments_stream: impl futures::Stream<
             Item = anyhow::Result<(usize, TransactionCommitment)>,
         >,
-    ) -> impl futures::Stream<Item = Result<PeerData<TransactionData>, PeerData<anyhow::Error>>>
+    ) -> impl futures::Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
     {
         async_stream::try_stream! {
             pin_mut!(transaction_counts_and_commitments_stream);
@@ -411,7 +411,7 @@ impl Client {
 
                                 yield PeerData::new(
                                     peer,
-                                    TransactionData {
+                                    UnverifiedTransactionData {
                                         expected_commitment: std::mem::take(
                                             &mut current_commitment
                                         ),
@@ -457,14 +457,18 @@ impl Client {
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        state_diff_lengths_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<(BlockNumber, StateUpdateData)>>> {
+        state_diff_length_and_commitment_stream: impl futures::Stream<
+            Item = anyhow::Result<(usize, StateDiffCommitment)>,
+        >,
+    ) -> impl futures::Stream<Item = Result<PeerData<UnverifiedStateUpdateData>, PeerData<anyhow::Error>>>
+    {
         async_stream::try_stream! {
             tracing::trace!(?start, ?stop_inclusive, "Streaming state diffs");
 
-            pin_mut!(state_diff_lengths_stream);
+            pin_mut!(state_diff_length_and_commitment_stream);
 
             let mut current_count_outer = None;
+            let mut current_commitment = Default::default();
 
             if start <= stop_inclusive {
                 // Loop which refreshes peer set once we exhaust it.
@@ -504,10 +508,17 @@ impl Client {
                             Some(backup) => backup,
                             // Move to the next block
                             None => {
-                                let x = state_diff_lengths_stream.next().await
-                                        .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
-                                current_count_outer = Some(x);
-                                x
+                                let (count, commitment) = state_diff_length_and_commitment_stream
+                                    .next()
+                                    .await
+                                    .with_context(|| {
+                                        format!("Stream terminated prematurely at block {start}")
+                                    })
+                                    .map_err(|e| PeerData::new(peer, e))?
+                                    .map_err(|e| PeerData::new(peer, e))?;
+                                current_count_outer = Some(count);
+                                current_commitment = commitment;
+                                count
                             }
                         };
 
@@ -545,10 +556,8 @@ impl Client {
                                             .storage;
                                         values.into_iter().for_each(
                                             |ContractStoredValue { key, value }| {
-                                                storage.insert(
-                                                    StorageAddress(key),
-                                                    StorageValue(value),
-                                                );
+                                                storage
+                                                    .insert(StorageAddress(key), StorageValue(value));
                                             },
                                         );
                                     } else {
@@ -558,10 +567,9 @@ impl Client {
                                             .or_default();
                                         values.into_iter().for_each(
                                             |ContractStoredValue { key, value }| {
-                                                update.storage.insert(
-                                                    StorageAddress(key),
-                                                    StorageValue(value),
-                                                );
+                                                update
+                                                    .storage
+                                                    .insert(StorageAddress(key), StorageValue(value));
                                             },
                                         );
 
@@ -588,15 +596,24 @@ impl Client {
                                                 }
                                             }
 
-                                            update.class = Some(ContractClassUpdate::Deploy(class_hash));
+                                            update.class =
+                                                Some(ContractClassUpdate::Deploy(class_hash));
                                         }
                                     }
                                 }
-                                StateDiffsResponse::DeclaredClass(DeclaredClass { class_hash, compiled_class_hash }) => {
+                                StateDiffsResponse::DeclaredClass(DeclaredClass {
+                                    class_hash,
+                                    compiled_class_hash,
+                                }) => {
                                     if let Some(compiled_class_hash) = compiled_class_hash {
-                                        state_diff.declared_sierra_classes.insert(SierraHash(class_hash.0), CasmHash(compiled_class_hash.0));
+                                        state_diff.declared_sierra_classes.insert(
+                                            SierraHash(class_hash.0),
+                                            CasmHash(compiled_class_hash.0),
+                                        );
                                     } else {
-                                        state_diff.declared_cairo_classes.insert(ClassHash(class_hash.0));
+                                        state_diff
+                                            .declared_cairo_classes
+                                            .insert(ClassHash(class_hash.0));
                                     }
 
                                     match current_count.checked_sub(1) {
@@ -629,16 +646,23 @@ impl Client {
 
                                 yield PeerData::new(
                                     peer,
-                                    (start, std::mem::take(&mut state_diff)),
+                                    UnverifiedStateUpdateData {
+                                        expected_commitment: std::mem::take(&mut current_commitment),
+                                        state_diff: std::mem::take(&mut state_diff),
+                                    },
                                 );
 
                                 if start < stop_inclusive {
                                     // Move to the next block
                                     start += 1;
                                     tracing::trace!(next_block=%start, "Moving to next block");
-                                    current_count = state_diff_lengths_stream.next().await
-                                        .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))??;
+                                    let (count, commitment) = state_diff_length_and_commitment_stream.next().await
+                                        .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))
+                                        .map_err(|e| PeerData::new(peer, e))?
+                                        .map_err(|e| PeerData::new(peer, e))?;
+                                    current_count = count;
                                     current_count_outer = Some(current_count);
+                                    current_commitment = commitment;
 
                                     tracing::trace!(number=%current_count, "Expecting state diff responses");
                                 }
@@ -1060,9 +1084,16 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
 
 /// For a single block
 #[derive(Clone, Debug)]
-pub struct TransactionData {
+pub struct UnverifiedTransactionData {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(TransactionVariant, Receipt)>,
+}
+
+/// For a single block
+#[derive(Clone, Debug)]
+pub struct UnverifiedStateUpdateData {
+    pub expected_commitment: StateDiffCommitment,
+    pub state_diff: StateUpdateData,
 }
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
