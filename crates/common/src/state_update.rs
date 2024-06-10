@@ -309,6 +309,13 @@ impl StateUpdateData {
             && self.declared_cairo_classes.is_empty()
             && self.declared_sierra_classes.is_empty()
     }
+
+    pub fn declared_classes(&self) -> DeclaredClasses {
+        DeclaredClasses {
+            sierra: self.declared_sierra_classes.clone(),
+            cairo: self.declared_cairo_classes.clone(),
+        }
+    }
 }
 
 impl From<StateUpdate> for StateUpdateData {

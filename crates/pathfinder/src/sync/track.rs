@@ -8,12 +8,13 @@ use p2p::client::peer_agnostic::{
     BlockHeader as P2PBlockHeader,
     Client as P2PClient,
     SignedBlockHeader as P2PSignedBlockHeader,
+    UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::DeclaredClasses;
+use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
@@ -23,6 +24,7 @@ use pathfinder_common::{
     ClassHash,
     EventCommitment,
     PublicKey,
+    StateDiffCommitment,
     StateUpdate,
     TransactionCommitment,
     TransactionHash,
@@ -31,7 +33,7 @@ use pathfinder_storage::Storage;
 use starknet_gateway_types::class_definition::ClassDefinition;
 use tokio_stream::wrappers::ReceiverStream;
 
-use super::transactions;
+use super::{state_updates, transactions};
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
@@ -110,7 +112,7 @@ where
             headers: state_diff,
         }
         .spawn()
-        .pipe(crate::sync::state_updates::VerifyDiff, 10);
+        .pipe(state_updates::VerifyCommitment, 10);
 
         let StateDiffFanout {
             state_diff,
@@ -182,12 +184,12 @@ where
 }
 
 struct StateDiffFanout {
-    state_diff: SyncReceiver<StateUpdate>,
+    state_diff: SyncReceiver<StateUpdateData>,
     declarations: BoxStream<'static, DeclaredClasses>,
 }
 
 impl StateDiffFanout {
-    fn from_source(mut source: SyncReceiver<StateUpdate>, buffer: usize) -> Self {
+    fn from_source(mut source: SyncReceiver<StateUpdateData>, buffer: usize) -> Self {
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
         let (c_tx, c_rx) = tokio::sync::mpsc::channel(buffer);
 
@@ -257,7 +259,7 @@ impl TransactionsFanout {
 struct HeaderFanout {
     headers: SyncReceiver<P2PSignedBlockHeader>,
     events: BoxStream<'static, P2PBlockHeader>,
-    state_diff: BoxStream<'static, P2PBlockHeader>,
+    state_diff: BoxStream<'static, P2PSignedBlockHeader>,
     transactions: BoxStream<'static, P2PBlockHeader>,
 }
 
@@ -276,16 +278,14 @@ impl HeaderFanout {
                     return;
                 }
 
-                let header = signed_header
-                    .expect("Error case already handled")
-                    .data
-                    .header;
+                let signed_header = signed_header.expect("Error case already handled").data;
+                let header = signed_header.header.clone();
 
                 if e_tx.send(header.clone()).await.is_err() {
                     return;
                 }
 
-                if s_tx.send(header.clone()).await.is_err() {
+                if s_tx.send(signed_header).await.is_err() {
                     return;
                 }
 
@@ -442,12 +442,43 @@ impl EventSource {
 
 struct StateDiffSource {
     p2p: P2PClient,
-    headers: BoxStream<'static, P2PBlockHeader>,
+    headers: BoxStream<'static, P2PSignedBlockHeader>,
 }
 
 impl StateDiffSource {
-    fn spawn(self) -> SyncReceiver<StateUpdate> {
-        todo!()
+    fn spawn(self) -> SyncReceiver<UnverifiedStateUpdateData> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            let Self { p2p, mut headers } = self;
+
+            while let Some(header) = headers.next().await {
+                let (peer, state_diff) = loop {
+                    if let Some(state_diff) = p2p
+                        .clone()
+                        .state_diff_for_block(header.header.number, header.state_diff_length)
+                        .await
+                    {
+                        break state_diff;
+                    }
+                };
+
+                if tx
+                    .send(Ok(PeerData::new(
+                        peer,
+                        UnverifiedStateUpdateData {
+                            expected_commitment: header.state_diff_commitment,
+                            state_diff,
+                        },
+                    )))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
     }
 }
 
@@ -466,7 +497,7 @@ impl ClassSource {
 struct BlockStream {
     pub header: SyncReceiver<P2PSignedBlockHeader>,
     pub events: SyncReceiver<HashMap<TransactionHash, Vec<Event>>>,
-    pub state_diff: SyncReceiver<StateUpdate>,
+    pub state_diff: SyncReceiver<StateUpdateData>,
     pub transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
     pub classes: SyncReceiver<Vec<ClassDefinition<'static>>>,
 }
@@ -538,7 +569,7 @@ impl BlockStream {
 struct BlockData {
     pub header: P2PSignedBlockHeader,
     pub events: HashMap<TransactionHash, Vec<Event>>,
-    pub state_diff: StateUpdate,
+    pub state_diff: StateUpdateData,
     pub transactions: Vec<(Transaction, Receipt)>,
     pub classes: Vec<ClassDefinition<'static>>,
 }

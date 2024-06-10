@@ -896,6 +896,139 @@ impl Client {
         None
     }
 
+    pub async fn state_diff_for_block(
+        self,
+        block: BlockNumber,
+        state_diff_length: u64,
+    ) -> Option<(PeerId, StateUpdateData)> {
+        let request = StateDiffsRequest {
+            iteration: Iteration {
+                start: block.get().into(),
+                direction: Direction::Forward,
+                limit: 1,
+                step: 1.into(),
+            },
+        };
+
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::StateDiffs::NAME)
+            .await;
+
+        'next_peer: for peer in peers {
+            let Ok(mut stream) = self
+                .inner
+                .send_state_diffs_sync_request(peer, request)
+                .await
+                .inspect_err(|error| tracing::debug!(%peer, %error, "State diffs request failed"))
+            else {
+                continue;
+            };
+
+            let mut current_count = state_diff_length;
+            let mut state_diff = StateUpdateData::default();
+
+            while let Some(resp) = stream.next().await {
+                match resp {
+                    StateDiffsResponse::ContractDiff(ContractDiff {
+                        address,
+                        nonce,
+                        class_hash,
+                        values,
+                        domain: _,
+                    }) => {
+                        match current_count.checked_sub(values.len().try_into().unwrap()) {
+                            Some(x) => current_count = x,
+                            None => {
+                                tracing::debug!(%peer, "Too many storage diffs: {} > {}", values.len(), current_count);
+                                // TODO punish the peer
+                                continue 'next_peer;
+                            }
+                        }
+                        let address = ContractAddress(address.0);
+                        if address == ContractAddress::ONE {
+                            let storage = &mut state_diff
+                                .system_contract_updates
+                                .entry(address)
+                                .or_default()
+                                .storage;
+                            values
+                                .into_iter()
+                                .for_each(|ContractStoredValue { key, value }| {
+                                    storage.insert(StorageAddress(key), StorageValue(value));
+                                });
+                        } else {
+                            let update =
+                                &mut state_diff.contract_updates.entry(address).or_default();
+                            values
+                                .into_iter()
+                                .for_each(|ContractStoredValue { key, value }| {
+                                    update
+                                        .storage
+                                        .insert(StorageAddress(key), StorageValue(value));
+                                });
+
+                            if let Some(nonce) = nonce {
+                                match current_count.checked_sub(1) {
+                                    Some(x) => current_count = x,
+                                    None => {
+                                        tracing::debug!(%peer, "Too many nonce updates");
+                                        // TODO punish the peer
+                                        continue 'next_peer;
+                                    }
+                                }
+                                update.nonce = Some(ContractNonce(nonce));
+                            }
+
+                            if let Some(class_hash) = class_hash.map(|x| ClassHash(x.0)) {
+                                match current_count.checked_sub(1) {
+                                    Some(x) => current_count = x,
+                                    None => {
+                                        tracing::debug!(%peer, "Too many deployed contracts");
+                                        // TODO punish the peer
+                                        continue 'next_peer;
+                                    }
+                                }
+                                update.class = Some(ContractClassUpdate::Deploy(class_hash));
+                            }
+                        }
+                    }
+                    StateDiffsResponse::DeclaredClass(DeclaredClass {
+                        class_hash,
+                        compiled_class_hash,
+                    }) => {
+                        match current_count.checked_sub(1) {
+                            Some(x) => current_count = x,
+                            None => {
+                                tracing::debug!(%peer, "Too many declared classes");
+                                // TODO punish the peer
+                                continue 'next_peer;
+                            }
+                        }
+                        if let Some(compiled_class_hash) = compiled_class_hash {
+                            state_diff
+                                .declared_sierra_classes
+                                .insert(SierraHash(class_hash.0), CasmHash(compiled_class_hash.0));
+                        } else {
+                            state_diff
+                                .declared_cairo_classes
+                                .insert(ClassHash(class_hash.0));
+                        }
+                    }
+                    StateDiffsResponse::Fin => {
+                        if current_count != 0 {
+                            tracing::debug!(%peer, "Too few storage diffs");
+                            // TODO punish the peer
+                            continue 'next_peer;
+                        }
+                        return Some((peer, state_diff));
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     /// ### Important
     ///
     /// Events are grouped by block and by transaction. The order of flattened
