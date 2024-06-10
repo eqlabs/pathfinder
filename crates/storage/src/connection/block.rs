@@ -373,25 +373,18 @@ impl Transaction<'_> {
         }
     }
 
-    pub fn highest_block_with_all_class_definitions_downloaded(
+    pub fn first_block_with_missing_class_definitions(
         &self,
     ) -> anyhow::Result<Option<BlockNumber>> {
         let mut stmt = self.inner().prepare_cached(
-            r"SELECT block_headers.number
-        FROM block_headers
-        JOIN (
-            SELECT COUNT(1) as count, block_number
+            r"
+            SELECT min(block_number)
             FROM class_definitions
-            GROUP BY block_number
-            ORDER BY block_number DESC
-        )
-        ON block_headers.number = block_number
-        WHERE block_headers.declared_classes_count = count
-        ORDER BY block_headers.number DESC LIMIT 1",
+            WHERE definition IS NULL",
         )?;
         stmt.query_row([], |row| row.get_block_number(0))
             .optional()
-            .context("Querying highest block with all class definitions downloaded")
+            .context("Querying first block with missing class definitions")
     }
 
     pub fn highest_block_with_all_events_downloaded(&self) -> anyhow::Result<Option<BlockNumber>> {

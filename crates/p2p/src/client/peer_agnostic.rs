@@ -705,74 +705,68 @@ impl Client {
                             }
                         };
 
-                        while let Some(contract_diff) = responses.next().await {
-                            match contract_diff {
-                                ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
-                                    class,
-                                    domain: _,
-                                }) => {
-                                    let CairoDefinition(definition) =
-                                        CairoDefinition::try_from_dto(class)?;
-                                    match current_count.checked_sub(1) {
-                                        Some(x) => current_count = x,
-                                        None => {
-                                            tracing::debug!(%peer, "Too many classes");
-                                            // TODO punish the peer
+                        while start <= stop_inclusive {
+                            tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
+
+                            let mut class_definitions = Vec::new();
+
+                            while current_count > 0 {
+                                if let Some(contract_diff) = responses.next().await {
+                                    match contract_diff {
+                                        ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                                            class,
+                                            domain: _,
+                                        }) => {
+                                            let CairoDefinition(definition) =
+                                                CairoDefinition::try_from_dto(class)?;
+                                            class_definitions.push(ClassDefinition::Cairo {
+                                                block_number: start,
+                                                definition,
+                                            });
+                                        }
+                                        ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                                            class,
+                                            domain: _,
+                                        }) => {
+                                            let definition = SierraDefinition::try_from_dto(class)?;
+                                            class_definitions.push(ClassDefinition::Sierra {
+                                                block_number: start,
+                                                sierra_definition: definition.0,
+                                            });
+                                        }
+                                        ClassesResponse::Fin => {
+                                            tracing::debug!(%peer, "Received FIN, continuing with next peer");
                                             continue 'next_peer;
                                         }
-                                    }
-                                    yield PeerData::new(
-                                        peer,
-                                        ClassDefinition::Cairo {
-                                            block_number: start,
-                                            definition,
-                                        },
-                                    );
+                                    };
+
+                                    current_count -= 1;
+                                } else {
+                                    // Stream closed before receiving all expected classes
+                                    tracing::debug!(%peer, "Premature class definition stream termination");
+                                    // TODO punish the peer
+                                    continue 'next_peer;
                                 }
-                                ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
-                                    class,
-                                    domain: _,
-                                }) => {
-                                    let definition = SierraDefinition::try_from_dto(class)?;
-                                    match current_count.checked_sub(1) {
-                                        Some(x) => current_count = x,
-                                        None => {
-                                            tracing::debug!(%peer, "Too many classes");
-                                            // TODO punish the peer
-                                            continue 'next_peer;
-                                        }
-                                    }
-                                    yield PeerData::new(
-                                        peer,
-                                        ClassDefinition::Sierra {
-                                            block_number: start,
-                                            sierra_definition: definition.0,
-                                        },
-                                    );
-                                }
-                                ClassesResponse::Fin => {
-                                    if current_count == 0 {
-                                        // The counter for this block has been exhausted which means
-                                        // that this block is complete.
-                                        if start < stop_inclusive {
-                                            // Move to the next block
-                                            start += 1;
-                                            current_count = declared_class_counts_stream.next().await
-                                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
-                                            current_count_outer = Some(current_count);
-                                            tracing::debug!(%peer, "Class definition stream Fin");
-                                        } else {
-                                            // We're done, terminate the stream
-                                            break 'outer;
-                                        }
-                                    } else {
-                                        tracing::debug!(%peer, "Premature class definition stream Fin");
-                                        // TODO punish the peer
-                                        continue 'next_peer;
-                                    }
-                                }
-                            };
+                            }
+
+                            tracing::trace!(block_number=%start, "All classes received for block");
+
+                            for class_definition in class_definitions {
+                                yield PeerData::new(
+                                    peer,
+                                    class_definition,
+                                );
+                            }
+
+                            start += 1;
+                            current_count = declared_class_counts_stream.next().await
+                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                            current_count_outer = Some(current_count);
+
+                            tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
                         }
+
+                        break 'outer;
                     }
                 }
             }

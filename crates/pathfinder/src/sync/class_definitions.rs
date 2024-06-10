@@ -78,12 +78,12 @@ pub(super) async fn next_missing(
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
 
-        let highest = db
-            .highest_block_with_all_class_definitions_downloaded()
-            .context("Querying highest block with any class definitions")?
+        let next_missing = db
+            .first_block_with_missing_class_definitions()
+            .context("Querying first block number with missing class definitions")?
             .unwrap_or_default();
 
-        Ok((highest < head).then_some(highest + 1))
+        Ok((next_missing <= head).then_some(next_missing))
     })
     .await
     .context("Joining blocking task")?
@@ -152,8 +152,10 @@ pub(super) async fn verify_layout(
             definition,
         } => {
             let layout = GwClassDefinition::Cairo(
-                serde_json::from_slice::<Cairo<'_>>(&definition)
-                    .map_err(|e| SyncError::BadClassLayout(peer))?,
+                serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|e| {
+                    tracing::debug!(error=%e, "Bad Cairo class layout");
+                    SyncError::BadClassLayout(peer)
+                })?,
             );
             Ok(PeerData::new(
                 peer,
@@ -169,8 +171,10 @@ pub(super) async fn verify_layout(
             sierra_definition,
         } => {
             let layout = GwClassDefinition::Sierra(
-                serde_json::from_slice::<Sierra<'_>>(&sierra_definition)
-                    .map_err(|e| SyncError::BadClassLayout(peer))?,
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
+                    tracing::debug!(error=%e, "Bad Sierra class layout");
+                    SyncError::BadClassLayout(peer)
+                })?,
             );
             Ok(PeerData::new(
                 peer,
@@ -277,13 +281,19 @@ pub(super) fn verify_declared_at(
                 let class = class?;
 
                 if declared_at != class.data.block_number {
+                    tracing::info!(hash=%class.data.hash, %declared_at, block_number=%class.data.block_number, "Unexpected class");
                     Err(SyncError::UnexpectedClass(class.peer))?;
                 }
 
                 if declared.remove(&class.data.hash) {
                     yield class;
                 } else {
+                    tracing::info!(hash=%class.data.hash, block_number=%class.data.block_number, "Class was not expected in this block");
                     Err(SyncError::UnexpectedClass(class.peer))?;
+                }
+
+                if declared.is_empty() {
+                    break;
                 }
             }
 
