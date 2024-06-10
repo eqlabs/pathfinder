@@ -9,6 +9,7 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    StateCommitment,
     StateDiffCommitment,
     StateUpdate,
     StorageCommitment,
@@ -103,12 +104,12 @@ pub(super) fn length_and_commitment_stream(
 
 pub struct VerifyCommitment;
 
-impl crate::sync::stream::ProcessStage for VerifyCommitment {
+impl ProcessStage for VerifyCommitment {
     const NAME: &'static str = "StateDiff::Verify";
     type Input = UnverifiedStateUpdateData;
     type Output = StateUpdateData;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let UnverifiedStateUpdateData {
             expected_commitment,
             state_diff,
@@ -157,17 +158,5 @@ impl ProcessStage for Store {
         self.current_block += 1;
 
         Ok(tail)
-    }
-}
-
-pub struct VerifyDiff;
-
-impl crate::sync::stream::ProcessStage for VerifyDiff {
-    const NAME: &'static str = "StateDiff::Continuity";
-    type Input = StateUpdate;
-    type Output = StateUpdate;
-
-    fn map(&mut self, _input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
-        todo!()
     }
 }
