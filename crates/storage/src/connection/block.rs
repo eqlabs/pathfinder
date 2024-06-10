@@ -81,7 +81,7 @@ impl Transaction<'_> {
         self.inner()
             .query_row(
                 "SELECT number,hash FROM block_headers t1 
-                WHERE number <= ? AND 
+                WHERE number <= ? AND number > 0 AND
                 NOT EXISTS (SELECT * FROM block_headers t2 WHERE t1.number - 1 = t2.number) 
                 ORDER BY number DESC LIMIT 1;",
                 params![&target],
@@ -816,12 +816,8 @@ mod tests {
             db.insert_block_header(&genesis).unwrap();
             db.insert_block_header(&header_after_gap).unwrap();
 
-            let expected = (genesis.number, genesis.hash);
-            let result = db
-                .next_ancestor_without_parent(genesis.number)
-                .unwrap()
-                .unwrap();
-            assert_eq!(result, expected);
+            let result = db.next_ancestor_without_parent(genesis.number).unwrap();
+            assert_eq!(result, None);
 
             let expected = (header_after_gap.number, header_after_gap.hash);
             let result = db
@@ -842,25 +838,19 @@ mod tests {
                 .child_builder()
                 .finalize_with_hash(block_hash_bytes!(b"target"));
 
-            let expected = (headers[0].number, headers[0].hash);
-            let result = tx
-                .next_ancestor_without_parent(target.number)
-                .unwrap()
-                .unwrap();
-            assert_eq!(result, expected);
+            let result = tx.next_ancestor_without_parent(target.number).unwrap();
+            assert_eq!(result, None);
         }
 
         #[test]
-        fn complete_chain_returns_genesis() {
-            let (mut connection, headers) = setup();
+        fn complete_chain_returns_none() {
+            let (mut connection, _) = setup();
             let tx = connection.transaction().unwrap();
 
             let result = tx
                 .next_ancestor_without_parent(BlockNumber::GENESIS)
-                .unwrap()
                 .unwrap();
-            let expected = (headers[0].number, headers[0].hash);
-            assert_eq!(result, expected);
+            assert_eq!(result, None);
         }
 
         #[test]

@@ -206,16 +206,23 @@ impl Client {
             false => (start, stop, Direction::Forward),
         };
 
+        tracing::trace!(?start, ?stop, ?direction, "Streaming headers");
+
         async_stream::stream! {
             // Loop which refreshes peer set once we exhaust it.
-            loop {
+            'outer: loop {
                 let peers = self
                     .get_update_peers_with_sync_capability(protocol::Headers::NAME)
                     .await;
 
                 // Attempt each peer.
                 'next_peer: for peer in peers {
-                    let limit = start.get().max(stop.get()) - start.get().min(stop.get());
+
+                    if start == stop {
+                        break 'outer;
+                    }
+
+                    let limit = start.get().max(stop.get()) - start.get().min(stop.get()) + 1;
 
                     let request = BlockHeadersRequest {
                         iteration: Iteration {
