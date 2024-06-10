@@ -27,6 +27,15 @@ pub trait ProcessStage {
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
 }
 
+pub trait BufferStage {
+    type T;
+    type Meta;
+
+    const TOO_FEW_ERROR: SyncError2;
+
+    fn next_amount(&mut self) -> Option<(usize, Self::Meta)>;
+}
+
 impl<T: Send + 'static> ChunkSyncReceiver<T> {
     /// Adds a [ProcessStage] to the stream pipeline spawned as a separate task.
     ///
@@ -80,7 +89,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
         std::thread::spawn(move || {
             let queue_capacity = self.inner.max_capacity();
 
-            while let Some(input) = self.inner.blocking_recv() {
+            while let Some(input) = self.blocking_recv() {
                 let result = match input {
                     Ok(PeerData { peer, data }) => {
                         // Stats for tracing and metrics.
@@ -117,6 +126,64 @@ impl<T: Send + 'static> SyncReceiver<T> {
         SyncReceiver::from_receiver(rx)
     }
 
+    fn buffer<S>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<(Vec<T>, S::Meta)>
+    where
+        S: BufferStage<T = T> + Send + 'static,
+        S::T: Send,
+        S::Meta: Send,
+    {
+        let (tx, rx) = tokio::sync::mpsc::channel(buffer);
+
+        std::thread::spawn(move || loop {
+            let Some((amount, meta)) = stage.next_amount() else {
+                return;
+            };
+
+            let mut peer = PeerId::random();
+            let mut data = Vec::with_capacity(amount);
+
+            for _ in 0..amount {
+                let Some(result) = self.blocking_recv() else {
+                    break;
+                };
+
+                match result {
+                    Ok(item) => {
+                        data.push(item.data);
+                        peer = item.peer;
+                    }
+                    Err(err) => {
+                        _ = tx.blocking_send(Err(err));
+                        return;
+                    }
+                }
+            }
+
+            // Distinguish between an early stream end and too few data items.
+            match data.len() {
+                // This branch must come 1st to allow for `amount == 0` cases.
+                complete if complete == amount => {
+                    if tx
+                        .blocking_send(Ok(PeerData::new(peer, (data, meta))))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                // Peer data ended at a block boundary which is legal. The question of what to do
+                // with this knowledge should be handled elsewhere.
+                0 => return,
+                // Stream ended without completing the block.
+                _ => {
+                    _ = tx.blocking_send(Err(PeerData::new(peer, S::TOO_FEW_ERROR)));
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+
     /// Adds a stage which chunks the incoming elements into a vector before
     /// passing it on.
     ///
@@ -130,7 +197,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
             let mut peer = PeerId::random();
             let mut err = None;
 
-            while let Some(input) = self.inner.blocking_recv() {
+            while let Some(input) = self.blocking_recv() {
                 let input = match input {
                     Ok(x) => x,
                     Err(e) => {
@@ -197,6 +264,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
     pub async fn recv(&mut self) -> Option<SyncResult<T>> {
         self.inner.recv().await
+    }
+
+    pub fn blocking_recv(&mut self) -> Option<SyncResult<T>> {
+        self.inner.blocking_recv()
     }
 }
 
