@@ -402,7 +402,7 @@ impl Transaction<'_> {
         &self,
         block: BlockId,
         max_len: NonZeroUsize,
-    ) -> anyhow::Result<Vec<usize>> {
+    ) -> anyhow::Result<VecDeque<usize>> {
         let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
             return Ok(Default::default());
         };
@@ -420,14 +420,14 @@ impl Transaction<'_> {
             .query_map(params![&block_number, &max_len], |row| row.get(0))
             .context("Querying event counts")?;
 
-        let mut ret = Vec::new();
+        let mut ret = VecDeque::new();
 
         while let Some(stat) = counts
             .next()
             .transpose()
             .context("Iterating over event counts rows")?
         {
-            ret.push(stat);
+            ret.push_back(stat);
         }
 
         Ok(ret)
