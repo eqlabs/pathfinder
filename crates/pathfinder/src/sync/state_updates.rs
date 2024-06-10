@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
@@ -42,10 +43,10 @@ pub(super) fn state_diff_lengths_stream(
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
-        let mut batch = Vec::new();
+        let mut batch = VecDeque::new();
 
         while start <= stop_inclusive {
-            if let Some(counts) = batch.pop() {
+            if let Some(counts) = batch.pop_front() {
                 yield counts;
                 continue;
             }
@@ -79,6 +80,10 @@ pub(super) fn state_diff_lengths_stream(
             }
 
             start += batch.len().try_into().expect("ptr size is 64bits");
+        }
+
+        while let Some(counts) = batch.pop_front() {
+            yield counts;
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
@@ -463,12 +463,11 @@ impl Transaction<'_> {
             .context("Querying highest storage update")
     }
 
-    /// Items are sorted in descending order.
     pub fn state_diff_lengths(
         &self,
         start: BlockNumber,
         max_num_blocks: NonZeroUsize,
-    ) -> anyhow::Result<Vec<usize>> {
+    ) -> anyhow::Result<VecDeque<usize>> {
         let mut stmt = self
             .inner()
             .prepare_cached(
@@ -481,13 +480,11 @@ impl Transaction<'_> {
             .query_map(params![&start, &max_len], |row| row.get(0))
             .context("Querying state diff lengths")?;
 
-        let mut ret = Vec::new();
+        let mut ret = VecDeque::new();
 
         while let Some(stat) = counts.next().transpose().context("Iterating over rows")? {
-            ret.push(stat);
+            ret.push_back(stat);
         }
-
-        ret.reverse();
 
         Ok(ret)
     }

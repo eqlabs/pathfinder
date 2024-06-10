@@ -357,6 +357,8 @@ impl Client {
                             }
                         };
 
+                        tracing::trace!(number=%current_count, "Expecting transaction responses");
+
                         let mut transactions = Vec::new();
 
                         while let Some(response) = responses.next().await {
@@ -376,52 +378,21 @@ impl Client {
                                         ),
                                     ))
                                     .map_err(|e| PeerData::new(peer, e))?;
+
                                     match current_count.checked_sub(1) {
                                         Some(x) => current_count = x,
                                         None => {
-                                            tracing::debug!(%peer, "Too many transactions");
+                                            tracing::debug!(%peer, %start, "Too many transactions");
                                             // TODO punish the peer
                                             continue 'next_peer;
                                         }
                                     }
+
                                     transactions.push((t, r));
                                 }
                                 TransactionsResponse::Fin => {
-                                    if current_count == 0 {
-                                        // The counter for this block has been exhausted which means
-                                        // that this block is complete.
-                                        yield PeerData::new(
-                                            peer,
-                                            TransactionData {
-                                                expected_commitment: std::mem::take(
-                                                    &mut current_commitment,
-                                                ),
-                                                transactions: std::mem::take(&mut transactions),
-                                            },
-                                        );
-
-                                        if start < stop_inclusive {
-                                            // Move to the next block
-                                            start += 1;
-                                            let (count, commitment) =
-                                                transaction_counts_and_commitments_stream
-                                                    .next()
-                                                    .await
-                                                    .with_context(|| {
-                                                        format!(
-                                                            "Transaction counts and commtiments \
-                                                            stream terminated prematurely at block \
-                                                            {start}"
-                                                        )
-                                                    })
-                                                    .map_err(|e| PeerData::new(peer, e))?
-                                                    .map_err(|e| PeerData::new(peer, e))?;
-
-                                            current_count = count;
-                                            current_commitment = commitment;
-                                            current_count_outer = Some(current_count);
-                                            tracing::debug!(%peer, "Transaction stream Fin");
-                                        } else {
+                                    if transactions.is_empty() {
+                                        if start == stop_inclusive {
                                             // We're done, terminate the stream
                                             break 'outer;
                                         }
@@ -432,6 +403,44 @@ impl Client {
                                     }
                                 }
                             };
+
+                            if current_count == 0 {
+                                // The counter for this block has been exhausted which means
+                                // that this block is complete.
+                                tracing::trace!(block_number=%start, "All transactions received for block");
+
+                                yield PeerData::new(
+                                    peer,
+                                    TransactionData {
+                                        expected_commitment: std::mem::take(
+                                            &mut current_commitment
+                                        ),
+                                        transactions: std::mem::take(&mut transactions),
+                                    },
+                                );
+
+                                if start < stop_inclusive {
+                                    // Move to the next block
+                                    start += 1;
+                                    tracing::trace!(next_block=%start, "Moving to next block");
+                                    let (count, commitment) = transaction_counts_and_commitments_stream
+                                    .next()
+                                    .await
+                                    .with_context(|| {
+                                        format!(
+                                            "Transaction counts and commitments stream terminated \
+                                            prematurely at block {}",
+                                            start
+                                        )
+                                    })
+                                    .map_err(|e| PeerData::new(peer, e))?
+                                    .map_err(|e| PeerData::new(peer, e))?;
+
+                                    current_count = count;
+                                    current_count_outer = Some(current_count);
+                                    current_commitment = commitment;
+                                }
+                            }
                         }
                     }
                 }
