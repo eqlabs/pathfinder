@@ -28,12 +28,11 @@ pub trait ProcessStage {
 }
 
 pub trait BufferStage {
-    type T;
-    type Meta;
+    type AdditionalData;
 
     const TOO_FEW_ERROR: SyncError2;
 
-    fn next_amount(&mut self) -> Option<(usize, Self::Meta)>;
+    fn next_amount(&mut self) -> Option<(usize, Self::AdditionalData)>;
 }
 
 impl<T: Send + 'static> ChunkSyncReceiver<T> {
@@ -126,11 +125,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
         SyncReceiver::from_receiver(rx)
     }
 
-    fn buffer<S>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<(Vec<T>, S::Meta)>
+    fn buffer<S>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<(Vec<T>, S::AdditionalData)>
     where
-        S: BufferStage<T = T> + Send + 'static,
-        S::T: Send,
-        S::Meta: Send,
+        S: BufferStage + Send + 'static,
+        S::AdditionalData: Send,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 

@@ -210,11 +210,10 @@ pub struct DatabaseBlockBuffer {
 }
 
 impl BufferStage for DatabaseBlockBuffer {
-    type T = TransactionData;
-    type Meta = TransactionCommitment;
+    type AdditionalData = TransactionCommitment;
     const TOO_FEW_ERROR: SyncError2 = SyncError2::TooFewTransactions;
 
-    fn next_amount(&mut self) -> Option<(usize, Self::Meta)> {
+    fn next_amount(&mut self) -> Option<(usize, Self::AdditionalData)> {
         if self.block > self.end {
             return None;
         }
