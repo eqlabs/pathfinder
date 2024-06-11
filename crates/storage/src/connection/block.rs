@@ -382,8 +382,7 @@ impl Transaction<'_> {
             FROM class_definitions
             WHERE definition IS NULL",
         )?;
-        stmt.query_row([], |row| row.get_block_number(0))
-            .optional()
+        stmt.query_row([], |row| row.get_optional_block_number(0))
             .context("Querying first block with missing class definitions")
     }
 

@@ -218,8 +218,17 @@ impl Client {
                 // Attempt each peer.
                 'next_peer: for peer in peers {
 
-                    if start == stop {
-                        break 'outer;
+                    match direction {
+                        Direction::Forward => {
+                            if start >= stop {
+                                break 'outer;
+                            }
+                        }
+                        Direction::Backward => {
+                            if start <= stop {
+                                break 'outer;
+                            }
+                        }
                     }
 
                     let limit = start.get().max(stop.get()) - start.get().min(stop.get()) + 1;
@@ -780,6 +789,10 @@ impl Client {
                                     peer,
                                     class_definition,
                                 );
+                            }
+
+                            if start == stop_inclusive {
+                                break 'outer;
                             }
 
                             start += 1;
