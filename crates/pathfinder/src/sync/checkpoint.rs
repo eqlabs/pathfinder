@@ -503,9 +503,11 @@ impl CheckpointAnalysis {
                     %local, anchor=%anchor.unwrap_or_default(), %checkpoint,
                     "Rolling back local chain to latest anchor point. Local data is potentially invalid as the Ethereum checkpoint is newer the local chain."
                 );
-                rollback_to_anchor(storage, anchor)
-                    .await
-                    .context("Rolling back chain state to L1 anchor")?;
+                if Some(local) != anchor {
+                    rollback_to_anchor(storage, anchor)
+                        .await
+                        .context("Rolling back chain state to L1 anchor")?;
+                }
             }
             CheckpointAnalysis::HashMismatchWithLocalChain {
                 block,
@@ -517,9 +519,11 @@ impl CheckpointAnalysis {
                     %block, %local, %checkpoint, ?anchor,
                     "Rolling back local chain to latest anchor point. Local data is invalid as it did not match the Ethereum checkpoint's hash."
                 );
-                rollback_to_anchor(storage, anchor)
-                    .await
-                    .context("Rolling back chain state to L1 anchor")?;
+                if Some(block) != anchor {
+                    rollback_to_anchor(storage, anchor)
+                        .await
+                        .context("Rolling back chain state to L1 anchor")?;
+                }
             }
             CheckpointAnalysis::Consistent => {
                 tracing::info!("Ethereum checkpoint is consistent with local data");
@@ -570,6 +574,7 @@ impl LocalState {
 /// of the local chain. If this is ['None'] then all data will be rolled back.
 async fn rollback_to_anchor(storage: Storage, anchor: Option<BlockNumber>) -> anyhow::Result<()> {
     spawn_blocking(move || {
+        tracing::info!(?anchor, "Rolling back storage to anchor point");
         todo!("Rollback storage to anchor point");
     })
     .await
