@@ -1061,7 +1061,9 @@ impl Client {
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>> {
+    ) -> impl futures::Stream<
+        Item = anyhow::Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>,
+    > {
         async_stream::try_stream! {
             pin_mut!(event_counts_stream);
 
@@ -1076,6 +1078,7 @@ impl Client {
 
                     // Attempt each peer.
                     'next_peer: for peer in peers {
+                        let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
                         let limit = stop_inclusive.get() - start.get() + 1;
 
                         let request = EventsRequest {
@@ -1106,7 +1109,9 @@ impl Client {
                             // Move to the next block
                             None => {
                                 let x = event_counts_stream.next().await
-                                    .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
+                                    .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
+                                    .map_err(peer_err)?
+                                    .map_err(peer_err)?;
                                 current_count_outer = Some(x);
                                 x
                             }
@@ -1118,7 +1123,7 @@ impl Client {
                             match contract_diff {
                                 EventsResponse::Event(event) => {
                                     let txn_hash = TransactionHash(event.transaction_hash.0);
-                                    let event = Event::try_from_dto(event)?;
+                                    let event = Event::try_from_dto(event).map_err(peer_err)?;
 
                                     match current_txn_hash {
                                         Some(x) if x != txn_hash => {
@@ -1154,7 +1159,9 @@ impl Client {
                                             // Move to the next block
                                             start += 1;
                                             current_count = event_counts_stream.next().await
-                                                .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
+                                                .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
+                                                .map_err(peer_err)?
+                                                .map_err(peer_err)?;
                                             current_count_outer = Some(current_count);
                                             tracing::debug!(%peer, "Event stream Fin");
                                         } else {
