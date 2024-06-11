@@ -157,7 +157,7 @@ impl Transaction<'_> {
 
         if let Some(events) = events {
             let events = events.iter().flatten();
-            self.insert_block_events(block_number, events)
+            self.upsert_block_events(block_number, events)
                 .context("Inserting events into Bloom filter")?;
         }
 
@@ -199,7 +199,7 @@ impl Transaction<'_> {
         ])
         .context("Updating events")?;
 
-        self.insert_block_events(block_number, events.iter().flatten())
+        self.upsert_block_events(block_number, events.iter().flatten())
             .context("Inserting events into Bloom filter")?;
 
         Ok(())
