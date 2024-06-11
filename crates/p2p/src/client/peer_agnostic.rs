@@ -295,7 +295,7 @@ impl Client {
             .await
     }
 
-    pub fn transactions_stream(
+    pub fn transaction_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
@@ -319,6 +319,7 @@ impl Client {
 
                     // Attempt each peer.
                     'next_peer: for peer in peers {
+                        let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
                         let limit = stop_inclusive.get() - start.get() + 1;
 
                         let request = TransactionsRequest {
@@ -358,8 +359,8 @@ impl Client {
                                             start
                                         )
                                     })
-                                    .map_err(|e| PeerData::new(peer, e))?
-                                    .map_err(|e| PeerData::new(peer, e))?;
+                                    .map_err(peer_err)?
+                                    .map_err(peer_err)?;
                                 current_count_outer = Some(count);
                                 current_commitment = commitment;
                                 count
@@ -379,15 +380,14 @@ impl Client {
                                     },
                                 ) => {
                                     let t = TransactionVariant::try_from_dto(transaction)
-                                        .map_err(|e| PeerData::new(peer, e))?;
+                                        .map_err(peer_err)?;
                                     let r = Receipt::try_from((
                                         receipt,
                                         TransactionIndex::new_or_panic(
                                             transactions.len().try_into().expect("ptr size is 64bits"),
                                         ),
                                     ))
-                                    .map_err(|e| PeerData::new(peer, e))?;
-
+                                    .map_err(peer_err)?;
                                     match current_count.checked_sub(1) {
                                         Some(x) => current_count = x,
                                         None => {
@@ -442,8 +442,8 @@ impl Client {
                                             start
                                         )
                                     })
-                                    .map_err(|e| PeerData::new(peer, e))?
-                                    .map_err(|e| PeerData::new(peer, e))?;
+                                    .map_err(peer_err)?
+                                    .map_err(peer_err)?;
 
                                     current_count = count;
                                     current_count_outer = Some(current_count);
@@ -488,6 +488,7 @@ impl Client {
 
                     // Attempt each peer.
                     'next_peer: for peer in peers {
+                        let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
                         let limit = stop_inclusive.get() - start.get() + 1;
 
                         let request = StateDiffsRequest {
@@ -523,8 +524,8 @@ impl Client {
                                     .with_context(|| {
                                         format!("Stream terminated prematurely at block {start}")
                                     })
-                                    .map_err(|e| PeerData::new(peer, e))?
-                                    .map_err(|e| PeerData::new(peer, e))?;
+                                    .map_err(peer_err)?
+                                    .map_err(peer_err)?;
                                 current_count_outer = Some(count);
                                 current_commitment = commitment;
                                 count
@@ -667,8 +668,8 @@ impl Client {
                                     tracing::trace!(next_block=%start, "Moving to next block");
                                     let (count, commitment) = state_diff_length_and_commitment_stream.next().await
                                         .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))
-                                        .map_err(|e| PeerData::new(peer, e))?
-                                        .map_err(|e| PeerData::new(peer, e))?;
+                                        .map_err(peer_err)?
+                                        .map_err(peer_err)?;
                                     current_count = count;
                                     current_count_outer = Some(current_count);
                                     current_commitment = commitment;
@@ -683,12 +684,13 @@ impl Client {
         }
     }
 
-    pub fn class_definitions_stream(
+    pub fn class_definition_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<ClassDefinition>>> {
+    ) -> impl futures::Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
+    {
         async_stream::try_stream! {
             tracing::trace!(?start, ?stop_inclusive, "Streaming classes");
 
@@ -705,6 +707,7 @@ impl Client {
 
                     // Attempt each peer.
                     'next_peer: for peer in peers {
+                        let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
                         let limit = stop_inclusive.get() - start.get() + 1;
 
                         let request = ClassesRequest {
@@ -732,7 +735,9 @@ impl Client {
                             // Move to the next block
                             None => {
                                 let x = declared_class_counts_stream.next().await
-                                    .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                                    .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
+                                    .map_err(peer_err)?
+                                    .map_err(peer_err)?;
                                 current_count_outer = Some(x);
                                 x
                             }
@@ -751,7 +756,7 @@ impl Client {
                                             domain: _,
                                         }) => {
                                             let CairoDefinition(definition) =
-                                                CairoDefinition::try_from_dto(class)?;
+                                                CairoDefinition::try_from_dto(class).map_err(peer_err)?;
                                             class_definitions.push(ClassDefinition::Cairo {
                                                 block_number: start,
                                                 definition,
@@ -761,7 +766,7 @@ impl Client {
                                             class,
                                             domain: _,
                                         }) => {
-                                            let definition = SierraDefinition::try_from_dto(class)?;
+                                            let definition = SierraDefinition::try_from_dto(class).map_err(peer_err)?;
                                             class_definitions.push(ClassDefinition::Sierra {
                                                 block_number: start,
                                                 sierra_definition: definition.0,
@@ -797,7 +802,9 @@ impl Client {
 
                             start += 1;
                             current_count = declared_class_counts_stream.next().await
-                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
+                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
+                                .map_err(peer_err)?
+                                .map_err(peer_err)?;
                             current_count_outer = Some(current_count);
 
                             tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
@@ -1049,7 +1056,7 @@ impl Client {
     /// commitment is part of block hash. However the number of events per
     /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
     /// because neither signature nor block hash contain this information.
-    pub fn events_stream(
+    pub fn event_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
