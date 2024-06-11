@@ -782,6 +782,10 @@ impl Client {
                                 );
                             }
 
+                            if start == stop_inclusive {
+                                break 'outer;
+                            }
+
                             start += 1;
                             current_count = declared_class_counts_stream.next().await
                                 .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))??;
