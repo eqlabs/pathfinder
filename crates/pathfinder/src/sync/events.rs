@@ -87,6 +87,10 @@ pub(super) fn counts_stream(
 
             start += batch.len().try_into().expect("ptr size is 64bits");
         }
+
+        while let Some(counts) = batch.pop_front() {
+            yield counts;
+        }
     }
 }
 
