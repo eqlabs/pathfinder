@@ -959,8 +959,8 @@ async fn l2_update(
             if let Err(e) = sender.new_head.send_if_receiving(header.into()) {
                 tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
                 // Disable websocket entirely so that the closed channel doesn't spam this
-                // error. It is unlikely that any error here wouldn't simply
-                // repeat indefinitely.
+                // error. It is unlikely that any error here wouldn't simply repeat
+                // indefinitely.
                 *websocket_txs = None;
                 return Ok(());
             }

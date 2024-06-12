@@ -239,7 +239,36 @@
                 ]
             },
             "EMITTED_EVENT": {
-                "$ref": "./v07/starknet_api_openrpc.json#/components/schemas/EMITTED_EVENT"
+                "title": "Emitted event",
+                "description": "Event information decorated with metadata on where it was emitted / An event emitted as a result of transaction execution",
+                "allOf": [
+                    {
+                        "title": "Event",
+                        "description": "The event information",
+                        "$ref": "./v07/starknet_api_openrpc.json#/components/schemas/EVENT"
+                    },
+                    {
+                        "title": "Event context",
+                        "description": "The event emission information, without block hash",
+                        "type": "object",
+                        "properties": {
+                            "block_number": {
+                                "title": "Block number",
+                                "description": "The number of the block in which the event was emitted",
+                                "$ref": "#/components/schemas/BLOCK_NUMBER"
+                            },
+                            "transaction_hash": {
+                                "title": "Transaction hash",
+                                "description": "The transaction that emitted the event",
+                                "$ref": "#/components/schemas/TXN_HASH"
+                            }
+                        },
+                        "required": [
+                            "block_number",
+                            "transaction_hash"
+                        ]
+                    }
+                ]
             },
             "TRANSACTION_STATUS": {
                 "type": "string",
