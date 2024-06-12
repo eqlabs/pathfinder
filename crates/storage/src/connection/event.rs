@@ -68,13 +68,14 @@ pub struct PageOfEvents {
 }
 
 impl Transaction<'_> {
-    pub(super) fn insert_block_events<'a>(
+    pub(super) fn upsert_block_events<'a>(
         &self,
         block_number: BlockNumber,
         events: impl Iterator<Item = &'a Event>,
     ) -> anyhow::Result<()> {
         let mut stmt = self.inner().prepare_cached(
-            "INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?)",
+            "INSERT INTO starknet_events_filters (block_number, bloom) VALUES (?, ?) ON CONFLICT \
+             DO UPDATE SET bloom=excluded.bloom",
         )?;
 
         let mut bloom = BloomFilter::new();
