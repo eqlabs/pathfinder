@@ -408,8 +408,15 @@ async fn event_subscription(
                         Ok(block) => {
                             if let Some(last_block) = last_block {
                                 if block.block_number.get() <= last_block.get() {
-                                    // This block was already received, ignore it.
-                                    continue;
+                                    // Should not be possible.
+                                    tracing::warn!(
+                                        %subscription_id,
+                                        %block.block_number,
+                                        %last_block,
+                                        kind="event",
+                                        "Received block out of order, closing.",
+                                    );
+                                    break 'outer;
                                 }
                             }
                             if block.transaction_receipts.len() <= next_receipt_idx {
