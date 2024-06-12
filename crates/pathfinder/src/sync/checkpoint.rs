@@ -356,9 +356,13 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
 }
 
 async fn handle_event_stream(
-    stream: impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+    stream: impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
+        + Send
+        + 'static,
     storage: Storage,
 ) -> Result<(), SyncError> {
+    Source::from_stream(stream.map_err(|e| e.map(Into::into))).spawn();
+
     todo!();
 
     // stream

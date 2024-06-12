@@ -49,6 +49,7 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 
 use crate::client::conv::{CairoDefinition, FromDto, SierraDefinition, TryFromDto};
@@ -1058,17 +1059,16 @@ impl Client {
     /// because neither signature nor block hash contain this information.
     pub fn event_stream(
         self,
+        
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+        mut event_count_source: Receiver<usize>,
     ) -> impl futures::Stream<
-        Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>,
+        Item = Result<PeerData<HashMap<TransactionHash, Vec<Event>>>, PeerData<anyhow::Error>>,
     > {
         tracing::trace!(?start, ?stop_inclusive, "Streaming events");
 
         async_stream::try_stream! {
-            pin_mut!(event_counts_stream);
-
             let mut current_count_outer = None;
 
             if start <= stop_inclusive {
@@ -1110,9 +1110,8 @@ impl Client {
                             Some(backup) => backup,
                             // Move to the next block
                             None => {
-                                let x = event_counts_stream.next().await
-                                    .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
-                                    .map_err(peer_err)?
+                                let x = event_count_source.recv().await
+                                    .ok_or_else(|| anyhow::anyhow!("Event count stream terminated prematurely at block {start}"))
                                     .map_err(peer_err)?;
                                 current_count_outer = Some(x);
                                 x
@@ -1170,9 +1169,8 @@ impl Client {
                             }
 
                             start += 1;
-                            current_count = event_counts_stream.next().await
-                                .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
-                                .map_err(peer_err)?
+                            current_count = event_count_source.recv().await
+                                .ok_or_else(|| anyhow::anyhow!("Event count stream terminated prematurely at block {start}"))
                                 .map_err(peer_err)?;
                             current_count_outer = Some(current_count);
 
@@ -1259,8 +1257,6 @@ pub struct UnverifiedStateUpdateData {
     pub expected_commitment: StateDiffCommitment,
     pub state_diff: StateUpdateData,
 }
-
-pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {

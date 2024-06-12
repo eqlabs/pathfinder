@@ -1,7 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
+use std::ops::RangeInclusive;
 
 use anyhow::Context;
+use axum::extract::path;
 use p2p::client::peer_agnostic::{BlockHeader as P2PBlockHeader, EventsForBlockByTransaction};
 use p2p::PeerData;
 use pathfinder_common::event::Event;
@@ -9,6 +11,7 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockNumber, EventCommitment, TransactionHash};
 use pathfinder_storage::Storage;
+use tokio::sync::mpsc::Receiver;
 use tokio::task::spawn_blocking;
 
 use super::error::SyncError;
@@ -39,6 +42,48 @@ pub(super) async fn next_missing(
     })
     .await
     .context("Joining blocking task")?
+}
+
+struct EventCountSource {
+    db_connection: pathfinder_storage::Connection,
+    blocks: RangeInclusive<BlockNumber>,
+}
+
+impl EventCountSource {
+    pub fn new(
+        db_connection: pathfinder_storage::Connection,
+        blocks: RangeInclusive<BlockNumber>,
+    ) -> Self {
+        Self {
+            db_connection,
+            blocks,
+        }
+    }
+
+    pub fn spawn(self) -> anyhow::Result<Receiver<usize>> {
+        todo!()
+    }
+}
+
+struct EventVerificationDataSource {
+    db_connection: pathfinder_storage::Connection,
+    blocks: RangeInclusive<BlockNumber>,
+}
+
+impl EventVerificationDataSource {
+    pub fn new(
+        db_connection: pathfinder_storage::Connection,
+        blocks: RangeInclusive<BlockNumber>,
+    ) -> Self {
+        Self {
+            db_connection,
+            blocks,
+        }
+    }
+
+    pub fn spawn(self) -> anyhow::Result<Receiver<(EventCommitment, Vec<TransactionHash>)>> {
+        todo!()
+    }
 }
 
 pub(super) fn counts_stream(
