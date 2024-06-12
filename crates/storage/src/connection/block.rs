@@ -2,7 +2,14 @@ use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice, TransactionCommitment};
+use pathfinder_common::{
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    EventCommitment,
+    GasPrice,
+    TransactionCommitment,
+};
 
 use crate::prelude::*;
 use crate::BlockId;
@@ -398,11 +405,11 @@ impl Transaction<'_> {
             .context("Querying highest block with events")
     }
 
-    pub fn event_counts(
+    pub fn event_counts_and_commitments(
         &self,
         block: BlockId,
         max_len: NonZeroUsize,
-    ) -> anyhow::Result<Vec<usize>> {
+    ) -> anyhow::Result<VecDeque<(usize, EventCommitment)>> {
         let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
             return Ok(Default::default());
         };
@@ -410,30 +417,33 @@ impl Transaction<'_> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                "SELECT event_count FROM block_headers WHERE number >= ? ORDER BY number ASC \
-                 LIMIT ?",
+                r"SELECT event_count, event_commitment FROM block_headers
+                WHERE number >= ? ORDER BY number ASC LIMIT ?",
             )
             .context("Preparing get event counts statement")?;
 
         let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
-        let mut counts = stmt
-            .query_map(params![&block_number, &max_len], |row| row.get(0))
+        let mut rows = stmt
+            .query_map(params![&block_number, &max_len], |row| {
+                let count = row.get(0)?;
+                let commitment = row.get_event_commitment(1)?;
+                Ok((count, commitment))
+            })
             .context("Querying event counts")?;
 
-        let mut ret = Vec::new();
+        let mut ret = VecDeque::new();
 
-        while let Some(stat) = counts
+        while let Some(cc) = rows
             .next()
             .transpose()
             .context("Iterating over event counts rows")?
         {
-            ret.push(stat);
+            ret.push_back(cc);
         }
 
         Ok(ret)
     }
 
-    /// Items are sorted in descending order.
     pub fn transaction_counts_and_commitments(
         &self,
         block: BlockId,
@@ -877,31 +887,40 @@ mod tests {
     }
 
     #[rstest]
-    #[case::all_missing("UPDATE block_headers SET event_count = 0", 10)]
-    #[case::partially_present("UPDATE block_headers SET event_count = 0 WHERE number > 4", 5)]
-    #[case::all_present("", 0)]
-    fn event_counts(#[case] sql: &str, #[case] num_of_missing_counts: usize) {
+    #[case::all_missing(10)]
+    #[case::partially_present(5)]
+    #[case::all_present(0)]
+    fn event_counts_and_commitments(#[case] num_of_missing_counts: usize) {
         use crate::fake;
 
         let storage = StorageBuilder::in_memory().unwrap();
-        let faked = fake::with_n_blocks(&storage, 10);
+        let mut blocks = fake::init::with_n_blocks(10);
+        blocks
+            .iter_mut()
+            .take(num_of_missing_counts)
+            .for_each(|block| {
+                block.header.header.event_count = 0;
+            });
+        fake::fill(&storage, &blocks);
+
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        if !sql.is_empty() {
-            tx.inner().execute_batch(sql).unwrap();
-        }
 
         let result = tx
-            .event_counts(BlockNumber::GENESIS.into(), NonZeroUsize::new(10).unwrap())
+            .event_counts_and_commitments(
+                BlockNumber::GENESIS.into(),
+                NonZeroUsize::new(10).unwrap(),
+            )
             .unwrap();
 
         assert_eq!(
             result,
-            faked
+            blocks
                 .into_iter()
-                .take(10 - num_of_missing_counts)
-                .map(|block| block.header.header.event_count)
-                .chain(std::iter::repeat(0).take(num_of_missing_counts))
+                .map(|block| (
+                    block.header.header.event_count,
+                    block.header.header.event_commitment
+                ))
                 .collect::<Vec<_>>()
         );
     }

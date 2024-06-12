@@ -1060,14 +1060,14 @@ impl Client {
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
-        event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<
-        Item = anyhow::Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>,
-    > {
+        event_expectation_stream: impl futures::Stream<Item = anyhow::Result<(usize, EventCommitment)>>,
+    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<UnverifiedEvents>, PeerData<anyhow::Error>>>
+    {
         async_stream::try_stream! {
-            pin_mut!(event_counts_stream);
+            pin_mut!(event_expectation_stream);
 
             let mut current_count_outer = None;
+            let mut current_commitment = Default::default();
 
             if start <= stop_inclusive {
                 // Loop which refreshes peer set once we exhaust it.
@@ -1108,16 +1108,17 @@ impl Client {
                             Some(backup) => backup,
                             // Move to the next block
                             None => {
-                                let x = event_counts_stream.next().await
+                                let (count, commitment) = event_expectation_stream.next().await
                                     .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
                                     .map_err(peer_err)?
                                     .map_err(peer_err)?;
-                                current_count_outer = Some(x);
-                                x
+                                current_count_outer = Some(count);
+                                current_commitment = commitment;
+                                count
                             }
                         };
 
-                        let mut events = Vec::new();
+                        let mut events = HashMap::new();
 
                         while let Some(contract_diff) = responses.next().await {
                             match contract_diff {
@@ -1128,12 +1129,12 @@ impl Client {
                                     match current_txn_hash {
                                         Some(x) if x != txn_hash => {
                                             // New transaction
-                                            events.push(vec![event]);
+                                            events.insert(txn_hash, vec![event]);
                                             current_txn_hash = Some(txn_hash);
                                         }
                                         _ => {
                                             // Same transaction
-                                            events.last_mut().expect("not empty").push(event);
+                                            events.get_mut(&txn_hash).expect("not empty").push(event);
                                         }
                                     }
 
@@ -1152,17 +1153,22 @@ impl Client {
                                         // that this block is complete.
                                         yield PeerData::new(
                                             peer,
-                                            (start, std::mem::take(&mut events)),
+                                            UnverifiedEvents {
+                                                expected_commitment: std::mem::take(&mut current_commitment),
+                                                events: std::mem::take(&mut events),
+                                            },
                                         );
 
                                         if start < stop_inclusive {
                                             // Move to the next block
                                             start += 1;
-                                            current_count = event_counts_stream.next().await
+                                            let (count, commitment) = event_expectation_stream.next().await
                                                 .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
                                                 .map_err(peer_err)?
                                                 .map_err(peer_err)?;
+                                            current_count = count;
                                             current_count_outer = Some(current_count);
+                                            current_commitment = commitment;
                                             tracing::debug!(%peer, "Event stream Fin");
                                         } else {
                                             // We're done, terminate the stream
@@ -1256,7 +1262,11 @@ pub struct UnverifiedStateUpdateData {
     pub state_diff: StateUpdateData,
 }
 
-pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
+#[derive(Clone, Debug, Dummy)]
+pub struct UnverifiedEvents {
+    pub expected_commitment: EventCommitment,
+    pub events: HashMap<TransactionHash, Vec<Event>>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {

@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::peer_agnostic::{BlockHeader as P2PBlockHeader, EventsForBlockByTransaction};
+use p2p::client::peer_agnostic::BlockHeader as P2PBlockHeader;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -41,19 +41,19 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
-pub(super) fn counts_stream(
+pub(super) fn count_and_commitment_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop_inclusive: BlockNumber,
-) -> impl futures::Stream<Item = anyhow::Result<usize>> {
+) -> impl futures::Stream<Item = anyhow::Result<(usize, EventCommitment)>> {
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
-        let mut batch = Vec::new();
+        let mut batch = VecDeque::new();
 
         while start <= stop_inclusive {
-            if let Some(counts) = batch.pop() {
-                yield counts;
+            if let Some(x) = batch.pop_front() {
+                yield x;
                 continue;
             }
 
@@ -72,7 +72,7 @@ pub(super) fn counts_stream(
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.event_counts(start.into(), batch_size)
+                db.event_counts_and_commitments(start.into(), batch_size)
                     .context("Querying event counts")
             })
             .await
@@ -90,6 +90,7 @@ pub(super) fn counts_stream(
     }
 }
 
+/*
 pub(super) async fn verify_commitment(
     events: PeerData<EventsForBlockByTransaction>,
     storage: Storage,
@@ -151,7 +152,7 @@ pub(super) async fn persist(
     .await
     .context("Joining blocking task")?
 }
-
+ */
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {

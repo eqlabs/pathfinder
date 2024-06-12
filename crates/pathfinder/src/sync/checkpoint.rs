@@ -8,8 +8,8 @@ use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::{
     ClassDefinition,
     Client as P2PClient,
-    EventsForBlockByTransaction,
     SignedBlockHeader as P2PSignedBlockHeader,
+    UnverifiedEvents,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };
@@ -241,7 +241,7 @@ impl Sync {
         let event_stream = self.p2p.clone().event_stream(
             start,
             stop,
-            events::counts_stream(self.storage.clone(), start, stop),
+            events::count_and_commitment_stream(self.storage.clone(), start, stop),
         );
 
         handle_event_stream(event_stream, self.storage.clone()).await?;
@@ -356,9 +356,13 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
 }
 
 async fn handle_event_stream(
-    stream: impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+    stream: impl Stream<Item = Result<PeerData<UnverifiedEvents>, PeerData<anyhow::Error>>>
+        + Send
+        + 'static,
     storage: Storage,
 ) -> Result<(), SyncError> {
+    Source::from_stream(stream.map_err(|e| e.map(Into::into))).spawn();
+
     todo!();
 
     // stream
@@ -1467,6 +1471,8 @@ mod tests {
     }
 
     mod handle_event_stream {
+        use std::collections::HashMap;
+
         use assert_matches::assert_matches;
         use fake::{Fake, Faker};
         use futures::stream;
@@ -1482,8 +1488,7 @@ mod tests {
         use crate::state::block_hash::calculate_event_commitment;
 
         struct Setup {
-            pub streamed_events:
-                Vec<Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+            pub streamed_events: Vec<Result<PeerData<UnverifiedEvents>, PeerData<anyhow::Error>>>,
             pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
             pub storage: Storage,
         }
@@ -1494,14 +1499,14 @@ mod tests {
                 let streamed_events = blocks
                     .iter()
                     .map(|block| {
-                        anyhow::Result::Ok(PeerData::for_tests((
-                            block.header.header.number,
-                            block
+                        anyhow::Result::Ok(PeerData::for_tests(UnverifiedEvents {
+                            expected_commitment: Default::default(),
+                            events: block
                                 .transaction_data
                                 .iter()
-                                .map(|x| x.2.clone())
-                                .collect::<Vec<_>>(),
-                        )))
+                                .map(|x| (x.0.hash, x.2.clone()))
+                                .collect::<HashMap<_, _>>(),
+                        }))
                     })
                     .collect::<Vec<_>>();
                 let expected_events = blocks
