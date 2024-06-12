@@ -372,7 +372,7 @@ async fn event_subscription(
     let mut last_block: Option<BlockNumber> = None;
     let mut next_receipt_idx = 0;
     'outer: loop {
-        let (receipts, block_number, block_hash) = loop {
+        let (receipts, block_number) = loop {
             tokio::select! {
                 result = pending_data.changed() => {
                     match result {
@@ -389,7 +389,7 @@ async fn event_subscription(
                             }
                             let receipts = data.block.transaction_receipts[next_receipt_idx..].to_vec();
                             next_receipt_idx = data.block.transaction_receipts.len();
-                            break (receipts, data.number, None);
+                            break (receipts, data.number);
                         }
                         Err(_) => {
                             tracing::debug!(%subscription_id, kind="event", "Unable to fetch pending data, closing.");
@@ -421,7 +421,7 @@ async fn event_subscription(
                             let receipts = block.transaction_receipts[next_receipt_idx..].to_vec();
                             next_receipt_idx = 0;
                             last_block = Some(block.block_number);
-                            break (receipts, block.block_number, Some(block.block_hash))
+                            break (receipts, block.block_number)
                         },
                         Err(RecvError::Closed) => break 'outer,
                         Err(RecvError::Lagged(amount)) => {
@@ -467,7 +467,7 @@ async fn event_subscription(
                         data: event.data,
                         keys: event.keys,
                         from_address: event.from_address,
-                        block_hash,
+                        block_hash: None,
                         block_number: Some(block_number),
                         transaction_hash: receipt.transaction_hash,
                     }),
@@ -821,7 +821,7 @@ mod tests {
                         EventKey(Felt::from_hex_str("b").unwrap()),
                         event_key!("0xdeadbeef"),
                     ],
-                    block_hash: Some(block_hash!("0x1")),
+                    block_hash: None,
                     block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x1"),
                 },
@@ -837,7 +837,7 @@ mod tests {
                         EventKey(Felt::from_hex_str("d").unwrap()),
                         event_key!("0xcafebabe"),
                     ],
-                    block_hash: Some(block_hash!("0x1")),
+                    block_hash: None,
                     block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x2"),
                 },
@@ -853,7 +853,7 @@ mod tests {
                         EventKey(Felt::from_hex_str("f").unwrap()),
                         event_key!("0x1234"),
                     ],
-                    block_hash: Some(block_hash!("0x1")),
+                    block_hash: None,
                     block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x2"),
                 },
@@ -904,7 +904,7 @@ mod tests {
                         EventKey(Felt::from_hex_str("b").unwrap()),
                         event_key!("0xdeadbeef"),
                     ],
-                    block_hash: Some(block_hash!("0x1")),
+                    block_hash: None,
                     block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x1"),
                 },
@@ -953,7 +953,7 @@ mod tests {
                         EventKey(Felt::from_hex_str("d").unwrap()),
                         event_key!("0xcafebabe"),
                     ],
-                    block_hash: Some(block_hash!("0x1")),
+                    block_hash: None,
                     block_number: Some(BlockNumber::new_or_panic(1000)),
                     transaction_hash: transaction_hash!("0x2"),
                 },
@@ -1106,7 +1106,7 @@ mod tests {
                         EventKey(Felt::from_hex_str("d").unwrap()),
                         event_key!("0xcafebabe"),
                     ],
-                    block_hash: Some(block.block_hash),
+                    block_hash: None,
                     block_number: Some(BlockNumber::new_or_panic(1002)),
                     transaction_hash: transaction_hash!("0x2"),
                 },
