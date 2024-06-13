@@ -39,6 +39,7 @@ p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
+primitive-types = { workspace = true }
 prost = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }

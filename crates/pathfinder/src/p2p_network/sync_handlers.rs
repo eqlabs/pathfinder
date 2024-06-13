@@ -1,5 +1,6 @@
 use anyhow::Context;
 use futures::SinkExt;
+use p2p::client::conv::ToDto;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
     Address,
@@ -32,8 +33,6 @@ use tokio::sync::mpsc;
 pub mod conv;
 #[cfg(test)]
 mod tests;
-
-use conv::ToDto;
 
 use self::conv::{cairo_def_into_dto, sierra_def_into_dto};
 

@@ -6037,6 +6037,7 @@ dependencies = [
  "p2p_stream",
  "pathfinder-common",
  "pathfinder-crypto",
+ "primitive-types",
  "prost 0.12.3",
  "rand",
  "rayon",

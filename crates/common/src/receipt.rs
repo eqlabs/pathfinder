@@ -1,6 +1,8 @@
+use fake::Dummy;
+
 use crate::prelude::*;
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub struct Receipt {
     pub actual_fee: Fee,
     pub execution_resources: ExecutionResources,
@@ -23,7 +25,7 @@ impl Receipt {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Dummy)]
 pub struct L2ToL1Message {
     pub from_address: ContractAddress,
     pub payload: Vec<L2ToL1MessagePayloadElem>,
@@ -34,7 +36,7 @@ pub struct L2ToL1Message {
     pub to_address: ContractAddress,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
 pub struct ExecutionResources {
     pub builtins: BuiltinCounters,
     pub n_steps: u64,
@@ -42,13 +44,13 @@ pub struct ExecutionResources {
     pub data_availability: ExecutionDataAvailability,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
 pub struct ExecutionDataAvailability {
     pub l1_gas: u128,
     pub l1_data_gas: u128,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
 pub struct BuiltinCounters {
     pub output: u64,
     pub pedersen: u64,
@@ -61,7 +63,7 @@ pub struct BuiltinCounters {
     pub segment_arena: u64,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub enum ExecutionStatus {
     // This must be the default as pre v0.12.1 receipts did not contain this value and
     // were always success as reverted did not exist.
