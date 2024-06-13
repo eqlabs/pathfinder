@@ -61,6 +61,58 @@ impl<T: Send + 'static> SyncReceiver<T> {
         self.pipe_impl(stage, buffer, |_| 1)
     }
 
+    /// Similar to [SyncReceiver::pipe], but processes each element in the
+    /// input individually.
+    pub fn pipe_each<S, U>(mut self, mut stage: S, buffer: usize) -> SyncReceiver<Vec<S::Output>>
+    where
+        T: IntoIterator<Item = U> + Send + 'static,
+        S: ProcessStage<Input = U> + Send + 'static,
+        S::Output: Send,
+    {
+        let (tx, rx) = tokio::sync::mpsc::channel(buffer);
+
+        std::thread::spawn(move || {
+            let queue_capacity = self.inner.max_capacity();
+
+            while let Some(input) = self.inner.blocking_recv() {
+                let result = match input {
+                    Ok(PeerData { peer, data }) => {
+                        // Stats for tracing and metrics.
+                        let t = std::time::Instant::now();
+
+                        // Process the data.
+                        let output: Result<Vec<_>, _> = data
+                            .into_iter()
+                            .map(|data| {
+                                stage.map(data).map_err(|e| {
+                                    tracing::debug!(error=%e, "Processing item failed");
+                                    PeerData::new(peer, e)
+                                })
+                            })
+                            .collect();
+                        let output = output.map(|x| PeerData::new(peer, x));
+
+                        // Log trace and metrics.
+                        let elements_per_sec = 1.0 / t.elapsed().as_secs_f32();
+                        let queue_fullness = queue_capacity - self.inner.capacity();
+                        let input_queue = Fullness(queue_fullness, queue_capacity);
+                        tracing::debug!(stage=S::NAME, %input_queue, %elements_per_sec, "Item processed");
+
+                        output
+                    }
+                    Err(e) => Err(e),
+                };
+
+                let is_err = result.is_err();
+                if tx.blocking_send(result).is_err() || is_err {
+                    return;
+                }
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
+    }
+
     /// A private impl which hides the ugly `count_fn` used to differentiate
     /// between processing a single element from [SyncReceiver] and multiple
     /// elements from [ChunkSyncReceiver].

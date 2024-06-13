@@ -749,8 +749,8 @@ impl Client {
                             let mut class_definitions = Vec::new();
 
                             while current_count > 0 {
-                                if let Some(contract_diff) = responses.next().await {
-                                    match contract_diff {
+                                if let Some(class_definition) = responses.next().await {
+                                    match class_definition {
                                         ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
                                             class,
                                             domain: _,
@@ -776,7 +776,7 @@ impl Client {
                                             tracing::debug!(%peer, "Received FIN, continuing with next peer");
                                             continue 'next_peer;
                                         }
-                                    };
+                                    }
 
                                     current_count -= 1;
                                 } else {
@@ -920,7 +920,7 @@ impl Client {
         self,
         block: BlockNumber,
         state_diff_length: u64,
-    ) -> Option<(PeerId, StateUpdateData)> {
+    ) -> Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount> {
         let request = StateDiffsRequest {
             iteration: Iteration {
                 start: block.get().into(),
@@ -934,7 +934,7 @@ impl Client {
             .get_update_peers_with_sync_capability(protocol::StateDiffs::NAME)
             .await;
 
-        'next_peer: for peer in peers {
+        for peer in peers {
             let Ok(mut stream) = self
                 .inner
                 .send_state_diffs_sync_request(peer, request)
@@ -960,8 +960,7 @@ impl Client {
                             Some(x) => current_count = x,
                             None => {
                                 tracing::debug!(%peer, "Too many storage diffs: {} > {}", values.len(), current_count);
-                                // TODO punish the peer
-                                continue 'next_peer;
+                                return Err(IncorrectStateDiffCount(peer));
                             }
                         }
                         let address = ContractAddress(address.0);
@@ -992,8 +991,7 @@ impl Client {
                                     Some(x) => current_count = x,
                                     None => {
                                         tracing::debug!(%peer, "Too many nonce updates");
-                                        // TODO punish the peer
-                                        continue 'next_peer;
+                                        return Err(IncorrectStateDiffCount(peer));
                                     }
                                 }
                                 update.nonce = Some(ContractNonce(nonce));
@@ -1004,8 +1002,7 @@ impl Client {
                                     Some(x) => current_count = x,
                                     None => {
                                         tracing::debug!(%peer, "Too many deployed contracts");
-                                        // TODO punish the peer
-                                        continue 'next_peer;
+                                        return Err(IncorrectStateDiffCount(peer));
                                     }
                                 }
                                 update.class = Some(ContractClassUpdate::Deploy(class_hash));
@@ -1020,8 +1017,7 @@ impl Client {
                             Some(x) => current_count = x,
                             None => {
                                 tracing::debug!(%peer, "Too many declared classes");
-                                // TODO punish the peer
-                                continue 'next_peer;
+                                return Err(IncorrectStateDiffCount(peer));
                             }
                         }
                         if let Some(compiled_class_hash) = compiled_class_hash {
@@ -1037,16 +1033,96 @@ impl Client {
                     StateDiffsResponse::Fin => {
                         if current_count != 0 {
                             tracing::debug!(%peer, "Too few storage diffs");
-                            // TODO punish the peer
-                            continue 'next_peer;
+                            return Err(IncorrectStateDiffCount(peer));
                         }
-                        return Some((peer, state_diff));
+                        return Ok(Some((peer, state_diff)));
                     }
                 }
             }
         }
 
-        None
+        Ok(None)
+    }
+
+    pub async fn class_definitions_for_block(
+        self,
+        block: BlockNumber,
+        declared_classes_count: u64,
+    ) -> Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError> {
+        let request = ClassesRequest {
+            iteration: Iteration {
+                start: block.get().into(),
+                direction: Direction::Forward,
+                limit: 1,
+                step: 1.into(),
+            },
+        };
+
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Classes::NAME)
+            .await;
+
+        for peer in peers {
+            let Ok(mut stream) = self
+                .inner
+                .send_classes_sync_request(peer, request)
+                .await
+                .inspect_err(|error| tracing::debug!(%peer, %error, "State diffs request failed"))
+            else {
+                continue;
+            };
+
+            let mut current_count = declared_classes_count;
+            let mut class_definitions = Vec::new();
+
+            while let Some(resp) = stream.next().await {
+                match resp {
+                    ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                        class,
+                        domain: _,
+                    }) => {
+                        let definition = CairoDefinition::try_from_dto(class)
+                            .map_err(|_| ClassDefinitionsError::CairoDefinitionError(peer))?;
+                        class_definitions.push(ClassDefinition::Cairo {
+                            block_number: block,
+                            definition: definition.0,
+                        });
+                    }
+                    ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                        class,
+                        domain: _,
+                    }) => {
+                        let definition = SierraDefinition::try_from_dto(class)
+                            .map_err(|_| ClassDefinitionsError::SierraDefinitionError(peer))?;
+                        class_definitions.push(ClassDefinition::Sierra {
+                            block_number: block,
+                            sierra_definition: definition.0,
+                        });
+                    }
+                    ClassesResponse::Fin => {
+                        tracing::debug!(%peer, "Received FIN in class definitions source");
+                        break;
+                    }
+                }
+
+                current_count = match current_count.checked_sub(1) {
+                    Some(x) => x,
+                    None => {
+                        tracing::debug!(%peer, "Too many class definitions");
+                        return Err(ClassDefinitionsError::IncorrectClassDefinitionCount(peer));
+                    }
+                };
+            }
+
+            if current_count != 0 {
+                tracing::debug!(%peer, "Too few class definitions");
+                return Err(ClassDefinitionsError::IncorrectClassDefinitionCount(peer));
+            }
+
+            return Ok(Some((peer, class_definitions)));
+        }
+
+        Ok(None)
     }
 
     /// ### Important
@@ -1354,5 +1430,37 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
             state_diff_length: dto.state_diff_commitment.state_diff_length,
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct IncorrectStateDiffCount(pub PeerId);
+
+impl std::fmt::Display for IncorrectStateDiffCount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Incorrect state diff count from peer {}", self.0)
+    }
+}
+
+#[derive(Debug)]
+pub enum ClassDefinitionsError {
+    IncorrectClassDefinitionCount(PeerId),
+    CairoDefinitionError(PeerId),
+    SierraDefinitionError(PeerId),
+}
+
+impl std::fmt::Display for ClassDefinitionsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClassDefinitionsError::IncorrectClassDefinitionCount(peer) => {
+                write!(f, "Incorrect class definition count from peer {}", peer)
+            }
+            ClassDefinitionsError::CairoDefinitionError(peer) => {
+                write!(f, "Cairo class definition error from peer {}", peer)
+            }
+            ClassDefinitionsError::SierraDefinitionError(peer) => {
+                write!(f, "Sierra class definition error from peer {}", peer)
+            }
+        }
     }
 }
