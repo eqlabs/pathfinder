@@ -1502,45 +1502,153 @@ impl std::fmt::Display for ClassDefinitionsError {
 
 #[cfg(test)]
 mod tests {
+    use std::any::{Any, TypeId};
+    use std::collections::VecDeque;
+    use std::fmt::Debug;
+    use std::hash::Hash;
+    use std::marker::PhantomData;
+    use std::sync::{Mutex, MutexGuard, Once};
+
     use fake::{Fake, Faker};
-    use futures::SinkExt;
+    use futures::channel::mpsc;
+    use futures::{stream, SinkExt};
+    use lazy_static::lazy_static;
+    use p2p_proto::proto::receipt::receipt::Type;
+    use pathfinder_common::receipt::Receipt as CommonReceipt;
+    use rstest::rstest;
 
     use super::*;
     use crate::client::conv::ToDto;
 
-    #[tokio::test]
-    async fn make_transaction_stream() {
-        let start = BlockNumber::GENESIS;
-        let stop = start + 1;
+    type Txn = (TransactionVariant, CommonReceipt);
 
-        let p0 = PeerId::random();
-        let p1 = PeerId::random();
+    /// As much as faking random(-ish) data for tests is pretty convenient,
+    /// deciphering assertion failures is not so much.
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct TaggedFake<T> {
+        tag: String,
+        data: T,
+    }
 
-        let t0: (
-            pathfinder_common::transaction::TransactionVariant,
-            pathfinder_common::receipt::Receipt,
-        ) = Faker.fake();
-        let t1 = Faker.fake();
+    static INIT: Once = Once::new();
+    static mut LUTS: Option<Arc<Mutex<HashMap<TypeId, HashMap<String, Box<dyn Any>>>>>> = None;
 
-        let mut txns = vec![t0, t1];
-        txns.iter_mut().enumerate().for_each(|(_i, (_, r))| {
-            r.transaction_index = TransactionIndex::new_or_panic(0 as u64)
+    pub fn lut() -> MutexGuard<'static, HashMap<TypeId, HashMap<String, Box<dyn Any>>>> {
+        INIT.call_once(|| {
+            unsafe {
+                LUTS = Some(Default::default());
+            };
         });
 
-        let counts_stream = futures::stream::iter(vec![
-            Ok((1, TransactionCommitment::default())),
-            Ok((1, TransactionCommitment::default())),
-        ]);
+        unsafe { LUTS.as_ref().unwrap().lock().unwrap() }
+    }
 
-        let get_peers = || async { vec![p0, p1] };
+    impl<T: Clone + 'static> TaggedFake<T> {
+        pub fn get_with<U: ToString, C: FnOnce() -> T>(tag: U, ctor: C) -> Self {
+            let mut luts = lut();
+            let lut = luts.entry(TypeId::of::<T>()).or_default();
+            let tag = tag.to_string();
+            let data = lut
+                .entry(tag.clone())
+                .or_insert_with(|| Box::new(ctor()))
+                .downcast_ref::<T>()
+                .unwrap()
+                .clone();
+
+            Self { tag, data }
+        }
+    }
+
+    impl<T: Clone + Dummy<Faker> + 'static> TaggedFake<T> {
+        pub fn get<U: ToString>(tag: U) -> Self {
+            Self::get_with(tag, || Faker.fake())
+        }
+    }
+
+    impl<T: PartialEq + 'static> From<T> for TaggedFake<T> {
+        fn from(data: T) -> Self {
+            let luts = lut();
+            let lut = luts.get(&TypeId::of::<T>());
+
+            match lut {
+                Some(lut) => {
+                    let tag = lut
+                        .iter()
+                        .find_map(|(k, v)| {
+                            v.downcast_ref::<T>()
+                                .and_then(|u| (u == &data).then_some(k.clone()))
+                        })
+                        .unwrap_or("value not found".into());
+
+                    Self { tag, data }
+                }
+                None => Self {
+                    tag: format!("type not found: {}", std::any::type_name::<T>()),
+                    data,
+                },
+            }
+        }
+    }
+
+    #[test]
+    fn tagged_fake() {
+        let a = TaggedFake::<u64>::get("a");
+        let aa = TaggedFake::from(a.data);
+        assert_eq!(a, aa);
+    }
+
+    fn peer(tag: i32) -> PeerId {
+        TaggedFake::<PeerId>::get_with(format!("peer {tag}"), || PeerId::random()).data
+    }
+
+    fn txn(tag: i32, transaction_index: u64) -> Txn {
+        let x = TaggedFake::get_with(format!("txn {tag}"), || {
+            let mut x = Faker.fake::<Txn>();
+            x.1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
+            x.1.transaction_hash = Default::default();
+            x
+        });
+        eprintln!("txn: {:#?}", x);
+        x.data
+    }
+
+    #[rstest]
+    #[case::happy_path(
+        // Served by peers
+        vec![(peer(0), vec![txn(0, 0)])],
+        // Number of transactions per block
+        vec![1],
+        // Expected stream (Peer, Txn, Txn index)
+        vec![(peer(0), vec![txn(0, 0)]), (peer(1), vec![])]
+    )]
+    #[tokio::test]
+    async fn make_transaction_stream(
+        #[case] responses: Vec<(PeerId, Vec<Txn>)>,
+        #[case] num_txns_per_block: Vec<usize>,
+        #[case] expected_stream: Vec<(PeerId, Vec<Txn>)>,
+    ) {
+        eprintln!("lut: {:#?}", lut());
+
+        let peers = responses.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
+        let blocks = Arc::new(Mutex::new(
+            responses.into_iter().map(|(_, t)| t).collect::<Vec<_>>(),
+        ));
+
+        let get_peers = || async { peers.clone() };
 
         let send_request = |_: PeerId, _: TransactionsRequest| async {
-            let (mut tx, rx) = futures::channel::mpsc::channel(txns.len() + 1);
-            for (t, r) in &txns {
+            let mut guard = blocks.lock().unwrap();
+            let mut txns = guard.pop().unwrap();
+            txns.iter_mut().enumerate().for_each(|(i, (_, r))| {
+                r.transaction_index = TransactionIndex::new_or_panic(i as u64);
+            });
+
+            let (mut tx, rx) = mpsc::channel(txns.len() + 1);
+            for (t, r) in txns {
                 tx.send(TransactionsResponse::TransactionWithReceipt(
                     TransactionWithReceipt {
-                        receipt: (t, r.clone()).to_dto(),
-                        transaction: t.clone().to_dto(),
+                        receipt: (&t, r).to_dto(),
+                        transaction: t.to_dto(),
                     },
                 ))
                 .await
@@ -1550,24 +1658,73 @@ mod tests {
             Ok(rx)
         };
 
-        let stream =
-            super::make_transaction_stream(start, stop, counts_stream, get_peers, send_request);
+        let start = BlockNumber::GENESIS;
+        let stop = start + (num_txns_per_block.len() - 1) as u64;
+
+        let stream = super::make_transaction_stream(
+            start,
+            stop,
+            stream::iter(
+                num_txns_per_block
+                    .into_iter()
+                    .map(|x| Ok((x, Default::default()))),
+            ),
+            get_peers,
+            send_request,
+        )
+        .map(|x| x.unwrap());
 
         let actual = stream.collect::<Vec<_>>().await;
 
-        let expected = txns
+        let actual = actual
             .into_iter()
-            .map(|(t, r)| UnverifiedTransactionData {
-                expected_commitment: TransactionCommitment::default(),
-                transactions: vec![(t, r.into())],
+            .map(|x| {
+                (
+                    TaggedFake::from(x.peer),
+                    x.data
+                        .transactions
+                        .into_iter()
+                        .map(|(t, r)| {
+                            (
+                                t,
+                                CommonReceipt {
+                                    transaction_hash: Default::default(),
+                                    actual_fee: r.actual_fee,
+                                    execution_resources: r.execution_resources,
+                                    l2_to_l1_messages: r.l2_to_l1_messages,
+                                    execution_status: r.execution_status,
+                                    transaction_index: r.transaction_index,
+                                },
+                            )
+                        })
+                        .map(TaggedFake::from)
+                        .collect::<Vec<_>>(),
+                )
             })
             .collect::<Vec<_>>();
 
-        let actual = actual
+        eprintln!("actual: {:#?}", actual);
+
+        let expected = expected_stream
             .into_iter()
-            .map(|x| x.unwrap().data)
+            .map(|(peer, data)| {
+                (
+                    TaggedFake::from(peer),
+                    data.into_iter()
+                        .enumerate()
+                        .map(|(i, (t, mut r))| {
+                            r.transaction_index = TransactionIndex::new_or_panic(i as u64);
+                            // (t, r.into())
+                            (t, r)
+                        })
+                        .map(TaggedFake::from)
+                        .collect::<Vec<_>>(),
+                )
+            })
             .collect::<Vec<_>>();
 
-        pretty_assertions_sorted::assert_eq!(expected, actual);
+        eprintln!("expected: {:#?}", expected);
+
+        pretty_assertions_sorted::assert_eq!(actual, expected);
     }
 }
