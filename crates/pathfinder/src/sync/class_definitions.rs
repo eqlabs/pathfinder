@@ -95,14 +95,14 @@ pub(super) async fn next_missing(
 pub(super) fn declared_class_counts_stream(
     storage: Storage,
     mut start: BlockNumber,
-    stop_inclusive: BlockNumber,
+    stop: BlockNumber,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
     const BATCH_SIZE: usize = 1000;
 
     async_stream::try_stream! {
         let mut batch = Vec::<usize>::new();
 
-        while start <= stop_inclusive {
+        while start <= stop {
             if let Some(counts) = batch.pop() {
                 yield counts;
                 continue;
@@ -110,7 +110,7 @@ pub(super) fn declared_class_counts_stream(
 
             let batch_size = NonZeroUsize::new(
                 BATCH_SIZE.min(
-                    (stop_inclusive.get() - start.get() + 1)
+                    (stop.get() - start.get() + 1)
                         .try_into()
                         .expect("ptr size is 64bits"),
                 ),

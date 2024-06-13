@@ -298,7 +298,7 @@ impl Client {
     pub fn transaction_stream(
         self,
         start: BlockNumber,
-        stop_inclusive: BlockNumber,
+        stop: BlockNumber,
         transaction_counts_and_commitments_stream: impl futures::Stream<
             Item = anyhow::Result<(usize, TransactionCommitment)>,
         >,
@@ -306,9 +306,9 @@ impl Client {
     {
         let inner = self.inner.clone();
         let outer = self;
-        handle_transaction_stream(
+        make_transaction_stream(
             start,
-            stop_inclusive,
+            stop,
             transaction_counts_and_commitments_stream,
             move || {
                 let outer = outer.clone();
@@ -333,21 +333,21 @@ impl Client {
     pub fn state_diff_stream(
         self,
         mut start: BlockNumber,
-        stop_inclusive: BlockNumber,
+        stop: BlockNumber,
         state_diff_length_and_commitment_stream: impl futures::Stream<
             Item = anyhow::Result<(usize, StateDiffCommitment)>,
         >,
     ) -> impl futures::Stream<Item = Result<PeerData<UnverifiedStateUpdateData>, PeerData<anyhow::Error>>>
     {
-        async_stream::try_stream! {
-            tracing::trace!(?start, ?stop_inclusive, "Streaming state diffs");
+        tracing::trace!(?start, ?stop, "Streaming state diffs");
 
+        async_stream::try_stream! {
             pin_mut!(state_diff_length_and_commitment_stream);
 
             let mut current_count_outer = None;
             let mut current_commitment = Default::default();
 
-            if start <= stop_inclusive {
+            if start <= stop {
                 // Loop which refreshes peer set once we exhaust it.
                 'outer: loop {
                     let peers = self
@@ -357,7 +357,7 @@ impl Client {
                     // Attempt each peer.
                     'next_peer: for peer in peers {
                         let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                        let limit = stop_inclusive.get() - start.get() + 1;
+                        let limit = stop.get() - start.get() + 1;
 
                         let request = StateDiffsRequest {
                             iteration: Iteration {
@@ -505,7 +505,7 @@ impl Client {
                                 }
                                 StateDiffsResponse::Fin => {
                                     if state_diff.is_empty() {
-                                        if start == stop_inclusive {
+                                        if start == stop {
                                             // We're done, terminate the stream
                                             break 'outer;
                                         }
@@ -530,7 +530,7 @@ impl Client {
                                     },
                                 );
 
-                                if start < stop_inclusive {
+                                if start < stop {
                                     // Move to the next block
                                     start += 1;
                                     tracing::trace!(next_block=%start, "Moving to next block");
@@ -555,18 +555,18 @@ impl Client {
     pub fn class_definition_stream(
         self,
         mut start: BlockNumber,
-        stop_inclusive: BlockNumber,
+        stop: BlockNumber,
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
     ) -> impl futures::Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
     {
-        async_stream::try_stream! {
-            tracing::trace!(?start, ?stop_inclusive, "Streaming classes");
+        tracing::trace!(?start, ?stop, "Streaming classes");
 
+        async_stream::try_stream! {
             pin_mut!(declared_class_counts_stream);
 
             let mut current_count_outer = None;
 
-            if start <= stop_inclusive {
+            if start <= stop {
                 // Loop which refreshes peer set once we exhaust it.
                 'outer: loop {
                     let peers = self
@@ -576,7 +576,7 @@ impl Client {
                     // Attempt each peer.
                     'next_peer: for peer in peers {
                         let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                        let limit = stop_inclusive.get() - start.get() + 1;
+                        let limit = stop.get() - start.get() + 1;
 
                         let request = ClassesRequest {
                             iteration: Iteration {
@@ -611,7 +611,7 @@ impl Client {
                             }
                         };
 
-                        while start <= stop_inclusive {
+                        while start <= stop {
                             tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
 
                             let mut class_definitions = Vec::new();
@@ -664,7 +664,7 @@ impl Client {
                                 );
                             }
 
-                            if start == stop_inclusive {
+                            if start == stop {
                                 break 'outer;
                             }
 
@@ -1003,17 +1003,17 @@ impl Client {
     pub fn event_stream(
         self,
         mut start: BlockNumber,
-        stop_inclusive: BlockNumber,
+        stop: BlockNumber,
         event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
     ) -> impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>> {
-        tracing::trace!(?start, ?stop_inclusive, "Streaming events");
+        tracing::trace!(?start, ?stop, "Streaming events");
 
         async_stream::try_stream! {
             pin_mut!(event_counts_stream);
 
             let mut current_count_outer = None;
 
-            if start <= stop_inclusive {
+            if start <= stop {
                 // Loop which refreshes peer set once we exhaust it.
                 'outer: loop {
                     let peers = self
@@ -1022,7 +1022,7 @@ impl Client {
 
                     // Attempt each peer.
                     'next_peer: for peer in peers {
-                        let limit = stop_inclusive.get() - start.get() + 1;
+                        let limit = stop.get() - start.get() + 1;
 
                         let request = EventsRequest {
                             iteration: Iteration {
@@ -1058,7 +1058,7 @@ impl Client {
                             }
                         };
 
-                        while start <= stop_inclusive {
+                        while start <= stop {
                             tracing::trace!(block_number=%start, expected_responses=%current_count, "Expecting event responses");
 
                             let mut events: Vec<Vec<Event>> = Vec::new();
@@ -1104,7 +1104,7 @@ impl Client {
                                 (start, std::mem::take(&mut events)),
                             );
 
-                            if start == stop_inclusive {
+                            if start == stop {
                                 break 'outer;
                             }
 
@@ -1124,9 +1124,9 @@ impl Client {
     }
 }
 
-pub fn handle_transaction_stream<PF, RF>(
+pub fn make_transaction_stream<PF, RF>(
     mut start: BlockNumber,
-    stop_inclusive: BlockNumber,
+    stop: BlockNumber,
     transaction_counts_and_commitments_stream: impl futures::Stream<
         Item = anyhow::Result<(usize, TransactionCommitment)>,
     >,
@@ -1139,13 +1139,15 @@ where
         Output = anyhow::Result<futures::channel::mpsc::Receiver<TransactionsResponse>>,
     >,
 {
+    tracing::trace!(?start, ?stop, "Streaming Transactions");
+
     async_stream::try_stream! {
         pin_mut!(transaction_counts_and_commitments_stream);
 
         let mut current_count_outer = None;
         let mut current_commitment = Default::default();
 
-        if start <= stop_inclusive {
+        if start <= stop {
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
                 let peers = get_peers().await;
@@ -1153,7 +1155,7 @@ where
                 // Attempt each peer.
                 'next_peer: for peer in peers {
                     let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                    let limit = stop_inclusive.get() - start.get() + 1;
+                    let limit = stop.get() - start.get() + 1;
 
                     let request = TransactionsRequest {
                         iteration: Iteration {
@@ -1231,7 +1233,7 @@ where
                             }
                             TransactionsResponse::Fin => {
                                 if transactions.is_empty() {
-                                    if start == stop_inclusive {
+                                    if start == stop {
                                         // We're done, terminate the stream
                                         break 'outer;
                                     }
@@ -1259,7 +1261,7 @@ where
                                 },
                             );
 
-                            if start < stop_inclusive {
+                            if start < stop {
                                 // Move to the next block
                                 start += 1;
                                 tracing::trace!(next_block=%start, "Moving to next block");
