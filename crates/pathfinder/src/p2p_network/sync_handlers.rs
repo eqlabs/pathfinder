@@ -339,10 +339,10 @@ fn get_transactions_for_block(
     for (txn, receipt, _) in txn_data {
         tracing::trace!(transaction_hash=%txn.hash, "Sending transaction");
 
-        let receipt = (&txn, receipt).to_dto();
+        let receipt = (&txn.variant, receipt).to_dto();
         tx.blocking_send(TransactionsResponse::TransactionWithReceipt(
             TransactionWithReceipt {
-                transaction: txn.to_dto(),
+                transaction: txn.variant.to_dto(),
                 receipt,
             },
         ))

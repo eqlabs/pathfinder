@@ -1,4 +1,5 @@
-use fake::Dummy;
+use fake::{Dummy, Fake, Faker};
+use pathfinder_crypto::Felt;
 
 use crate::prelude::*;
 
@@ -25,7 +26,7 @@ impl Receipt {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Dummy)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct L2ToL1Message {
     pub from_address: ContractAddress,
     pub payload: Vec<L2ToL1MessagePayloadElem>,
@@ -36,7 +37,7 @@ pub struct L2ToL1Message {
     pub to_address: ContractAddress,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExecutionResources {
     pub builtins: BuiltinCounters,
     pub n_steps: u64,
@@ -50,7 +51,7 @@ pub struct ExecutionDataAvailability {
     pub l1_data_gas: u128,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BuiltinCounters {
     pub output: u64,
     pub pedersen: u64,
@@ -72,4 +73,48 @@ pub enum ExecutionStatus {
     Reverted {
         reason: String,
     },
+}
+
+impl<T> Dummy<T> for L2ToL1Message {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            from_address: Faker.fake_with_rng(rng),
+            payload: Faker.fake_with_rng(rng),
+            // P2P treats this field as an EthereumAddress
+            to_address: ContractAddress(
+                Felt::from_be_slice(Faker.fake_with_rng::<EthereumAddress, R>(rng).0.as_bytes())
+                    .unwrap(),
+            ),
+        }
+    }
+}
+
+impl<T> Dummy<T> for ExecutionResources {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            builtins: Faker.fake_with_rng(rng),
+            // P2P values are capped at u32::MAX
+            n_steps: rng.next_u32() as u64,
+            n_memory_holes: rng.next_u32() as u64,
+            data_availability: Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl<T> Dummy<T> for BuiltinCounters {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            // P2P values are capped at u32::MAX
+            output: rng.next_u32() as u64,
+            pedersen: rng.next_u32() as u64,
+            range_check: rng.next_u32() as u64,
+            ecdsa: rng.next_u32() as u64,
+            bitwise: rng.next_u32() as u64,
+            ec_op: rng.next_u32() as u64,
+            keccak: rng.next_u32() as u64,
+            poseidon: rng.next_u32() as u64,
+            // This field is not used in p2p
+            segment_arena: 0,
+        }
+    }
 }

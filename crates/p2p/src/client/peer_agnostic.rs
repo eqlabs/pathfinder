@@ -1328,7 +1328,7 @@ impl Default for PeersWithCapability {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub struct Receipt {
     pub actual_fee: Fee,
     pub execution_resources: ExecutionResources,
@@ -1350,7 +1350,7 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
 }
 
 /// For a single block
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnverifiedTransactionData {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(TransactionVariant, Receipt)>,
@@ -1497,5 +1497,77 @@ impl std::fmt::Display for ClassDefinitionsError {
                 write!(f, "Sierra class definition error from peer {}", peer)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fake::{Fake, Faker};
+    use futures::SinkExt;
+
+    use super::*;
+    use crate::client::conv::ToDto;
+
+    #[tokio::test]
+    async fn make_transaction_stream() {
+        let start = BlockNumber::GENESIS;
+        let stop = start + 1;
+
+        let p0 = PeerId::random();
+        let p1 = PeerId::random();
+
+        let t0: (
+            pathfinder_common::transaction::TransactionVariant,
+            pathfinder_common::receipt::Receipt,
+        ) = Faker.fake();
+        let t1 = Faker.fake();
+
+        let mut txns = vec![t0, t1];
+        txns.iter_mut().enumerate().for_each(|(_i, (_, r))| {
+            r.transaction_index = TransactionIndex::new_or_panic(0 as u64)
+        });
+
+        let counts_stream = futures::stream::iter(vec![
+            Ok((1, TransactionCommitment::default())),
+            Ok((1, TransactionCommitment::default())),
+        ]);
+
+        let get_peers = || async { vec![p0, p1] };
+
+        let send_request = |_: PeerId, _: TransactionsRequest| async {
+            let (mut tx, rx) = futures::channel::mpsc::channel(txns.len() + 1);
+            for (t, r) in &txns {
+                tx.send(TransactionsResponse::TransactionWithReceipt(
+                    TransactionWithReceipt {
+                        receipt: (t, r.clone()).to_dto(),
+                        transaction: t.clone().to_dto(),
+                    },
+                ))
+                .await
+                .unwrap();
+            }
+            tx.send(TransactionsResponse::Fin).await.unwrap();
+            Ok(rx)
+        };
+
+        let stream =
+            super::make_transaction_stream(start, stop, counts_stream, get_peers, send_request);
+
+        let actual = stream.collect::<Vec<_>>().await;
+
+        let expected = txns
+            .into_iter()
+            .map(|(t, r)| UnverifiedTransactionData {
+                expected_commitment: TransactionCommitment::default(),
+                transactions: vec![(t, r.into())],
+            })
+            .collect::<Vec<_>>();
+
+        let actual = actual
+            .into_iter()
+            .map(|x| x.unwrap().data)
+            .collect::<Vec<_>>();
+
+        pretty_assertions_sorted::assert_eq!(expected, actual);
     }
 }

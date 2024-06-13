@@ -43,7 +43,6 @@ use pathfinder_common::transaction::{
     L1HandlerTransaction,
     ResourceBound,
     ResourceBounds,
-    Transaction,
     TransactionVariant,
 };
 use pathfinder_common::{
@@ -88,12 +87,12 @@ pub trait TryFromDto<T> {
         Self: Sized;
 }
 
-impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
+impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
     fn to_dto(self) -> p2p_proto::transaction::Transaction {
         use p2p_proto::transaction as proto;
         use pathfinder_common::transaction::TransactionVariant::*;
 
-        match self.variant {
+        match self {
             DeclareV0(x) => proto::Transaction::DeclareV0(proto::DeclareV0 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
@@ -231,7 +230,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for Transaction {
     }
 }
 
-impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
+impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
     fn to_dto(self) -> p2p_proto::receipt::Receipt {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         let revert_reason = self.1.revert_reason().map(ToOwned::to_owned);
@@ -277,7 +276,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&Transaction, Receipt) {
         };
 
         use pathfinder_common::transaction::TransactionVariant;
-        match &self.0.variant {
+        match &self.0 {
             TransactionVariant::DeclareV0(_)
             | TransactionVariant::DeclareV1(_)
             | TransactionVariant::DeclareV2(_)
@@ -353,13 +352,6 @@ impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode
 }
 
 impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
-    /// ## Important
-    ///
-    /// This conversion does not compute deployed contract address for deploy
-    /// account transactions ([`TransactionVariant::DeployAccountV1`] and
-    /// [`TransactionVariant::DeployAccountV3`]), filling it with a zero
-    /// address instead. The caller is responsible for performing the
-    /// computation after the conversion succeeds.
     fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
