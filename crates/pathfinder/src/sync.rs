@@ -11,6 +11,7 @@ mod class_definitions;
 mod error;
 mod events;
 mod headers;
+mod source;
 mod state_updates;
 mod stream;
 mod track;
