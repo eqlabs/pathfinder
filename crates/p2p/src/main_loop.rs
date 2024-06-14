@@ -500,13 +500,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Header sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .headers
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Header sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
@@ -535,13 +535,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Classes sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .classes
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Classes sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
@@ -570,13 +570,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "State diff sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .state_diffs
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("State diff sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
@@ -605,13 +605,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Transaction sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .transactions
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Transaction sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::EventsSync(
@@ -640,13 +640,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Event sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .events
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Event sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
@@ -654,12 +654,12 @@ impl MainLoop {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
+                tracing::warn!(?request_id, ?error, "Outbound header sync request failed");
                 let _ = self
                     .pending_sync_requests
                     .headers
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Header sync request still to be pending")
                     .send(Err(error.into()));
             }
             SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
@@ -667,12 +667,12 @@ impl MainLoop {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
+                tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
                 let _ = self
                     .pending_sync_requests
                     .classes
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Event sync request still to be pending")
                     .send(Err(error.into()));
             }
             SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
@@ -680,12 +680,16 @@ impl MainLoop {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
+                tracing::warn!(
+                    ?request_id,
+                    ?error,
+                    "Outbound state diff sync request failed"
+                );
                 let _ = self
                     .pending_sync_requests
                     .state_diffs
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("State diff sync request still to be pending")
                     .send(Err(error.into()));
             }
             SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
@@ -693,12 +697,16 @@ impl MainLoop {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
+                tracing::warn!(
+                    ?request_id,
+                    ?error,
+                    "Outbound transaction sync request failed"
+                );
                 let _ = self
                     .pending_sync_requests
                     .transactions
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Transaction sync request still to be pending")
                     .send(Err(error.into()));
             }
             SwarmEvent::Behaviour(behaviour::Event::EventsSync(
@@ -706,12 +714,12 @@ impl MainLoop {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
+                tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
                 let _ = self
                     .pending_sync_requests
                     .events
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Event sync request still to be pending")
                     .send(Err(error.into()));
             }
             // ===========================
