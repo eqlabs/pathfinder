@@ -384,7 +384,76 @@ impl Client {
             .await
     }
 
-    pub fn transaction_stream(
+    pub async fn transactions_stream2(
+        self,
+        start: BlockNumber,
+        stop_inclusive: BlockNumber,
+    ) -> (
+        PeerId,
+        impl futures::Stream<Item = anyhow::Result<(TransactionVariant, PartialReceipt)>>,
+    ) {
+        let stream_request = TransactionsRequest {
+            iteration: Iteration {
+                start: start.get().into(),
+                direction: Direction::Forward,
+                limit: stop_inclusive.get() - start.get() + 1,
+                step: 1.into(),
+            },
+        };
+
+        // Select a random peer stream. The API from the p2p client isn't quite
+        // ergonomic for this. It would be nice if the API was literally just
+        // give me a random peer and stream that works.
+        let (peer, stream) = 'stream_select: loop {
+            let peers = self
+                .get_update_peers_with_transaction_sync_capability()
+                .await;
+
+            for peer in peers {
+                match self
+                    .inner
+                    .send_transactions_sync_request(peer, stream_request)
+                    .await
+                {
+                    Ok(stream) => {
+                        break 'stream_select (peer, stream);
+                    }
+                    Err(error) => {
+                        tracing::debug!(%peer, reason=%error, "Transactions stream request failed");
+                    }
+                }
+            }
+        };
+
+        // Parse and transform stream into something useable by sync.
+        let stream = stream
+            // We're technically ignoring a stream error from the peer by assumming the stream
+            // ends after Fin is sent. We could in theory stream until Fin, and then ensure that
+            // the stream is complete, if not punish the peer. However this is quite cumbersome.
+            .take_while(|item| std::future::ready(!matches!(item, TransactionsResponse::Fin)))
+            .map(|x| {
+                let x = match x {
+                    TransactionsResponse::TransactionWithReceipt(x) => x,
+                    TransactionsResponse::Fin => unreachable!("Fin is skipped already"),
+                };
+
+                let TransactionWithReceipt {
+                    transaction,
+                    receipt,
+                } = x;
+
+                let transaction = TransactionVariant::try_from_dto(transaction)?;
+                // We could actually already fill in the transaction hash here if we wished,
+                // it just means the try_from_dto isn't quite as straight-forward.
+                let receipt = PartialReceipt::try_from_dto(receipt)?;
+
+                Ok((transaction, receipt))
+            });
+
+        (peer, stream)
+    }
+
+    pub fn transactions_stream(
         self,
         mut start: BlockNumber,
         stop_inclusive: BlockNumber,
@@ -1264,6 +1333,8 @@ impl Client {
                         break 'outer;
                     }
                 }
+
+
             }
         }
     }
