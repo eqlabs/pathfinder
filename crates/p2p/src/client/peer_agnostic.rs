@@ -104,6 +104,95 @@ impl<T, U: Dummy<T>> Dummy<T> for PeerData<U> {
     }
 }
 
+/// Receipt data as received via p2p which is missing some data in order
+/// to make it equivalent to a proper [receipt](pathfinder_common::Receipt).
+///
+/// Provide the missing data via [PartialReceipt::complete] to unlock the full
+/// receipt.
+#[derive(Default, Clone, PartialEq, Eq)]
+pub struct PartialReceipt(pathfinder_common::receipt::Receipt);
+
+impl PartialReceipt {
+    /// This transformation is probably only useful in test scenarios.
+    pub fn new(receipt: pathfinder_common::receipt::Receipt) -> Self {
+        Self(receipt)
+    }
+
+    /// Fill in the missing receipt data, unlocking the full receipt.
+    pub fn complete(
+        self,
+        hash: TransactionHash,
+        index: TransactionIndex,
+    ) -> pathfinder_common::receipt::Receipt {
+        pathfinder_common::receipt::Receipt {
+            transaction_hash: hash,
+            transaction_index: index,
+            ..self.0
+        }
+    }
+}
+
+impl TryFromDto<p2p_proto::receipt::Receipt> for PartialReceipt {
+    fn try_from_dto(dto: p2p_proto::receipt::Receipt) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        use p2p_proto::receipt::Receipt as ProtoReceipt;
+        let common = match dto {
+            ProtoReceipt::Invoke(x) => x.common,
+            ProtoReceipt::Declare(x) => x.common,
+            ProtoReceipt::Deploy(x) => x.common,
+            ProtoReceipt::DeployAccount(x) => x.common,
+            ProtoReceipt::L1Handler(x) => x.common,
+        };
+
+        Ok(Self(pathfinder_common::receipt::Receipt {
+            actual_fee: Fee(common.actual_fee),
+            execution_resources: ExecutionResources {
+                builtins: pathfinder_common::receipt::BuiltinCounters {
+                    output: common.execution_resources.builtins.output.into(),
+                    pedersen: common.execution_resources.builtins.pedersen.into(),
+                    range_check: common.execution_resources.builtins.range_check.into(),
+                    ecdsa: common.execution_resources.builtins.ecdsa.into(),
+                    bitwise: common.execution_resources.builtins.bitwise.into(),
+                    ec_op: common.execution_resources.builtins.ec_op.into(),
+                    keccak: common.execution_resources.builtins.keccak.into(),
+                    poseidon: common.execution_resources.builtins.poseidon.into(),
+                    segment_arena: 0,
+                },
+                n_steps: common.execution_resources.steps.into(),
+                n_memory_holes: common.execution_resources.memory_holes.into(),
+                data_availability: pathfinder_common::receipt::ExecutionDataAvailability {
+                    l1_gas: GasPrice::try_from(common.execution_resources.l1_gas)?.0,
+                    l1_data_gas: GasPrice::try_from(common.execution_resources.l1_data_gas)?.0,
+                },
+            },
+            l2_to_l1_messages: common
+                .messages_sent
+                .into_iter()
+                .map(|x| L2ToL1Message {
+                    from_address: ContractAddress(x.from_address),
+                    payload: x
+                        .payload
+                        .into_iter()
+                        .map(pathfinder_common::L2ToL1MessagePayloadElem)
+                        .collect(),
+                    to_address: ContractAddress::new_or_panic(
+                        pathfinder_crypto::Felt::from_be_slice(x.to_address.0.as_bytes())
+                            .expect("H160 should always fix in Felt"),
+                    ),
+                })
+                .collect(),
+            execution_status: match common.revert_reason {
+                Some(reason) => ExecutionStatus::Reverted { reason },
+                None => ExecutionStatus::Succeeded,
+            },
+            transaction_index: Default::default(),
+            transaction_hash: Default::default(),
+        }))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum ClassDefinition {
     Cairo {
