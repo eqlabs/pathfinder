@@ -106,6 +106,16 @@ pub(super) enum SyncError2 {
     InvalidDto,
     #[error("Mismatch between events and transactions")]
     EventsTransactionsMismatch,
+    #[error("Incorrect state diff count")]
+    IncorrectStateDiffCount,
+    #[error("Incorrect class definition count")]
+    IncorrectClassDefinitionCount,
+    #[error("Incorrect cairo definition")]
+    CairoDefinitionError,
+    #[error("Incorrect sierra definition")]
+    SierraDefinitionError,
+    #[error("Class definitions and declarations mismatch")]
+    ClassDefinitionsDeclarationsMismatch,
 }
 
 impl PartialEq for SyncError2 {

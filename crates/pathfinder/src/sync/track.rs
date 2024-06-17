@@ -6,7 +6,10 @@ use futures::{Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::{
     self,
     BlockHeader as P2PBlockHeader,
+    ClassDefinition as P2PClassDefinition,
+    ClassDefinitionsError,
     Client as P2PClient,
+    IncorrectStateDiffCount,
     SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
@@ -30,9 +33,11 @@ use pathfinder_common::{
     TransactionHash,
 };
 use pathfinder_storage::Storage;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::class_definition::ClassDefinition;
 use tokio_stream::wrappers::ReceiverStream;
 
+use super::class_definitions::CompiledClass;
 use super::{state_updates, transactions};
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
@@ -52,11 +57,12 @@ impl<L> Sync<L>
 where
     L: Stream<Item = (BlockNumber, BlockHash)> + Clone + Send + 'static,
 {
-    pub async fn run(
+    pub async fn run<SequencerClient: GatewayApi + Clone + Send + 'static>(
         self,
         next: BlockNumber,
         parent_hash: BlockHash,
         chain_id: ChainId,
+        fgw: SequencerClient,
     ) -> Result<(), PeerData<SyncError2>> {
         let storage_connection = self
             .storage
@@ -116,16 +122,29 @@ where
 
         let StateDiffFanout {
             state_diff,
-            declarations,
+            declarations_1,
+            declarations_2,
         } = StateDiffFanout::from_source(state_diff, 10);
 
         let classes = ClassSource {
             p2p: self.p2p.clone(),
-            declarations,
+            declarations: declarations_1,
             start: next,
         }
         .spawn()
-        .pipe(class_definitions::VerifyClassHashes, 10);
+        .pipe_each(class_definitions::VerifyLayout, 10)
+        .pipe_each(class_definitions::ComputeHash, 10)
+        .pipe_each(
+            class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
+            10,
+        )
+        .pipe(
+            class_definitions::VerifyClassHashes {
+                declarations: declarations_2,
+                tokio_handle: tokio::runtime::Handle::current(),
+            },
+            10,
+        );
 
         BlockStream {
             header: headers,
@@ -185,13 +204,15 @@ where
 
 struct StateDiffFanout {
     state_diff: SyncReceiver<StateUpdateData>,
-    declarations: BoxStream<'static, DeclaredClasses>,
+    declarations_1: BoxStream<'static, DeclaredClasses>,
+    declarations_2: BoxStream<'static, DeclaredClasses>,
 }
 
 impl StateDiffFanout {
     fn from_source(mut source: SyncReceiver<StateUpdateData>, buffer: usize) -> Self {
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
-        let (c_tx, c_rx) = tokio::sync::mpsc::channel(buffer);
+        let (d1_tx, d1_rx) = tokio::sync::mpsc::channel(buffer);
+        let (d2_tx, d2_rx) = tokio::sync::mpsc::channel(buffer);
 
         tokio::spawn(async move {
             while let Some(state_update) = source.recv().await {
@@ -206,7 +227,11 @@ impl StateDiffFanout {
                     .data
                     .declared_classes();
 
-                if c_tx.send(class_declarations).await.is_err() {
+                if d1_tx.send(class_declarations.clone()).await.is_err() {
+                    return;
+                }
+
+                if d2_tx.send(class_declarations).await.is_err() {
                     return;
                 }
             }
@@ -214,7 +239,8 @@ impl StateDiffFanout {
 
         Self {
             state_diff: SyncReceiver::from_receiver(s_rx),
-            declarations: ReceiverStream::new(c_rx).boxed(),
+            declarations_1: ReceiverStream::new(d1_rx).boxed(),
+            declarations_2: ReceiverStream::new(d2_rx).boxed(),
         }
     }
 }
@@ -453,12 +479,18 @@ impl StateDiffSource {
 
             while let Some(header) = headers.next().await {
                 let (peer, state_diff) = loop {
-                    if let Some(state_diff) = p2p
+                    let state_diff = p2p
                         .clone()
                         .state_diff_for_block(header.header.number, header.state_diff_length)
-                        .await
-                    {
-                        break state_diff;
+                        .await;
+                    match state_diff {
+                        Ok(Some(state_diff)) => break state_diff,
+                        Ok(None) => {}
+                        Err(IncorrectStateDiffCount(peer)) => {
+                            let err = PeerData::new(peer, SyncError2::IncorrectStateDiffCount);
+                            let _ = tx.send(Err(err)).await;
+                            return;
+                        }
                     }
                 };
 
@@ -489,8 +521,58 @@ struct ClassSource {
 }
 
 impl ClassSource {
-    fn spawn(self) -> SyncReceiver<(DeclaredClasses, Vec<ClassWithLayout>)> {
-        todo!()
+    fn spawn(self) -> SyncReceiver<Vec<P2PClassDefinition>> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            let Self {
+                p2p,
+                mut declarations,
+                start: mut block_number,
+            } = self;
+
+            while let Some(declared_classes) = declarations.next().await {
+                let (peer, class_definitions) = loop {
+                    let class_definitions = p2p
+                        .clone()
+                        .class_definitions_for_block(
+                            block_number,
+                            declared_classes.len().try_into().unwrap(),
+                        )
+                        .await;
+                    match class_definitions {
+                        Ok(Some(class_definitions)) => break class_definitions,
+                        Ok(None) => {}
+                        Err(err) => {
+                            let err = match err {
+                                ClassDefinitionsError::IncorrectClassDefinitionCount(peer) => {
+                                    PeerData::new(peer, SyncError2::IncorrectClassDefinitionCount)
+                                }
+                                ClassDefinitionsError::CairoDefinitionError(peer) => {
+                                    PeerData::new(peer, SyncError2::CairoDefinitionError)
+                                }
+                                ClassDefinitionsError::SierraDefinitionError(peer) => {
+                                    PeerData::new(peer, SyncError2::SierraDefinitionError)
+                                }
+                            };
+                            let _ = tx.send(Err(err)).await;
+                            return;
+                        }
+                    }
+                };
+
+                if tx
+                    .send(Ok(PeerData::new(peer, class_definitions)))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+
+                block_number += 1;
+            }
+        });
+
+        SyncReceiver::from_receiver(rx)
     }
 }
 
@@ -499,7 +581,7 @@ struct BlockStream {
     pub events: SyncReceiver<HashMap<TransactionHash, Vec<Event>>>,
     pub state_diff: SyncReceiver<StateUpdateData>,
     pub transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
-    pub classes: SyncReceiver<Vec<ClassDefinition<'static>>>,
+    pub classes: SyncReceiver<Vec<CompiledClass>>,
 }
 
 impl BlockStream {
@@ -571,7 +653,7 @@ struct BlockData {
     pub events: HashMap<TransactionHash, Vec<Event>>,
     pub state_diff: StateUpdateData,
     pub transactions: Vec<(Transaction, Receipt)>,
-    pub classes: Vec<ClassDefinition<'static>>,
+    pub classes: Vec<CompiledClass>,
 }
 
 struct StoreBlock {

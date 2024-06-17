@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use futures::pin_mut;
-use futures::stream::StreamExt;
+use futures::stream::{BoxStream, StreamExt};
 use p2p::client::peer_agnostic::ClassDefinition as P2PClassDefinition;
 use p2p::PeerData;
 use p2p_proto::transaction;
@@ -555,15 +555,42 @@ pub(super) async fn persist(
     .context("Joining blocking task")?
 }
 
-pub struct VerifyClassHashes;
+pub struct VerifyClassHashes {
+    pub declarations: BoxStream<'static, DeclaredClasses>,
+    pub tokio_handle: tokio::runtime::Handle,
+}
 
 impl ProcessStage for VerifyClassHashes {
-    const NAME: &'static str = "Classes::Verify";
+    const NAME: &'static str = "Classes::VerifyHashes";
 
-    type Input = (DeclaredClasses, Vec<ClassWithLayout>);
-    type Output = Vec<GwClassDefinition<'static>>;
+    type Input = Vec<CompiledClass>;
+    type Output = Vec<CompiledClass>;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, super::error::SyncError2> {
-        todo!()
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let mut declared_classes = self
+            .tokio_handle
+            .block_on(self.declarations.next())
+            .context("Getting declared classes")?;
+        for class in input.iter() {
+            match class.definition {
+                CompiledClassDefinition::Cairo(_) => {
+                    if !declared_classes.cairo.remove(&class.hash) {
+                        return Err(SyncError2::ClassDefinitionsDeclarationsMismatch);
+                    }
+                }
+                CompiledClassDefinition::Sierra { .. } => {
+                    let hash = SierraHash(class.hash.0);
+                    declared_classes
+                        .sierra
+                        .remove(&hash)
+                        .ok_or(SyncError2::ClassDefinitionsDeclarationsMismatch)?;
+                }
+            }
+        }
+        if declared_classes.cairo.is_empty() && declared_classes.sierra.is_empty() {
+            Ok(input)
+        } else {
+            Err(SyncError2::ClassDefinitionsDeclarationsMismatch)
+        }
     }
 }
