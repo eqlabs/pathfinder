@@ -846,6 +846,7 @@ where
     p2p_stream::Behaviour::new(std::iter::once(C::Protocol::default()), Default::default())
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Event {
     Relay(relay::client::Event),
