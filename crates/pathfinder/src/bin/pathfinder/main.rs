@@ -245,18 +245,22 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     )
     .await?;
 
-    let sync_handle = start_sync(
-        sync_storage,
-        pathfinder_context,
-        ethereum.client,
-        sync_state.clone(),
-        &config,
-        tx_pending,
-        rpc_server.get_topic_broadcasters().cloned(),
-        gossiper,
-        gateway_public_key,
-        p2p_client,
-    );
+    let sync_handle = if config.is_sync_enabled {
+        start_sync(
+            sync_storage,
+            pathfinder_context,
+            ethereum.client,
+            sync_state.clone(),
+            &config,
+            tx_pending,
+            rpc_server.get_topic_broadcasters().cloned(),
+            gossiper,
+            gateway_public_key,
+            p2p_client,
+        )
+    } else {
+        tokio::task::spawn(futures::future::pending())
+    };
 
     let rpc_handle = if config.is_rpc_enabled {
         let (rpc_handle, local_addr) = rpc_server

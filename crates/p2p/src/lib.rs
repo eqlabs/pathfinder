@@ -1,5 +1,4 @@
 #![deny(rust_2018_idioms)]
-
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 

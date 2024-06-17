@@ -1106,7 +1106,7 @@ mod tests {
         use super::*;
 
         pub enum TaskEvent {
-            Start(usize),
+            Start,
             End(usize),
         }
 
@@ -1187,10 +1187,7 @@ mod tests {
                         run_concurrently(concurrency_limit, task_states.into_iter(), |state| {
                             let event_sender = event_sender.clone();
                             async move {
-                                event_sender
-                                    .send(TaskEvent::Start(state.index))
-                                    .await
-                                    .unwrap();
+                                event_sender.send(TaskEvent::Start).await.unwrap();
                                 // Wait until allowed to continue.
                                 let _start = state.notify.notified().await;
                                 event_sender
@@ -1249,7 +1246,7 @@ mod tests {
 
             for event in events {
                 match event {
-                    TaskEvent::Start(_) => {
+                    TaskEvent::Start => {
                         started_task += 1;
                         max_simultaneous = max(max_simultaneous, started_task);
                     }
