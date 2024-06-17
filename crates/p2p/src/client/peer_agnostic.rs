@@ -1517,6 +1517,19 @@ mod tests {
     use pathfinder_common::receipt::Receipt as CommonReceipt;
     use rstest::rstest;
 
+    // use tagged_debug_derive::TaggedDebug;
+
+    // #[derive(Clone, TaggedDebug)]
+    // struct S {
+    //     a: u64,
+    //     b: u64,
+    // }
+
+    // #[test]
+    // fn tagged_debug() {
+    //     let s = S { a: 1, b: 2 };
+    //     eprintln!("{:?}", s);
+    // }
     use super::*;
     use crate::client::conv::ToDto;
 
@@ -1590,12 +1603,36 @@ mod tests {
         }
     }
 
-    #[test]
-    fn tagged_fake() {
-        let a = TaggedFake::<u64>::get("a");
-        let aa = TaggedFake::from(a.data);
-        assert_eq!(a, aa);
-    }
+    // impl<T: PartialEq + 'static> TryFrom<T> for TaggedFake<T> {
+    //     type Error = ();
+
+    //     fn try_from(data: T) -> Result<Self, Self::Error> {
+    //         let luts = lut();
+    //         let lut = luts.get(&TypeId::of::<T>());
+
+    //         match lut {
+    //             Some(lut) => {
+    //                 let tag = lut
+    //                     .iter()
+    //                     .find_map(|(k, v)| {
+    //                         v.downcast_ref::<T>()
+    //                             .and_then(|u| (u == &data).then_some(k.clone()))
+    //                     })
+    //                     .unwrap_or("value not found".into());
+
+    //                 Ok(Self { tag, data })
+    //             }
+    //             None => Err(()),
+    //         }
+    //     }
+    // }
+
+    // #[test]
+    // fn tagged_fake() {
+    //     let a = TaggedFake::<u64>::get("a");
+    //     let aa = TaggedFake::from(a.data);
+    //     assert_eq!(a, aa);
+    // }
 
     fn peer(tag: i32) -> PeerId {
         TaggedFake::<PeerId>::get_with(format!("peer {tag}"), || PeerId::random()).data

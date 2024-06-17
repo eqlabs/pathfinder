@@ -8302,6 +8302,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tagged"
+version = "0.12.0"
+dependencies = [
+ "fake",
+ "pretty_assertions_sorted",
+ "tagged_debug_derive",
+]
+
+[[package]]
+name = "tagged_debug_derive"
+version = "0.12.0"
+dependencies = [
+ "fake",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

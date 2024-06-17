@@ -19,6 +19,8 @@ members = [
     "crates/rpc",
     "crates/serde",
     "crates/storage",
+    "crates/tagged",
+    "crates/tagged_debug_derive",
 ]
 exclude = [
     "crates/load-test",
