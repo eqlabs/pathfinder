@@ -340,7 +340,7 @@ pub(crate) mod tests {
             pub use crate::v04::method::simulate_transactions::tests::fixtures::input::*;
         }
 
-        pub mod expected_output_0_13_1 {
+        pub mod expected_output_0_13_1_1 {
             use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
 
             use super::dto::*;
@@ -351,8 +351,8 @@ pub(crate) mod tests {
                 StorageEntry,
             };
 
-            const DECLARE_OVERALL_FEE: u64 = 24201;
-            const DECLARE_GAS_CONSUMED: u64 = 23817;
+            const DECLARE_OVERALL_FEE: u64 = 1262;
+            const DECLARE_GAS_CONSUMED: u64 = 878;
             const DECLARE_DATA_GAS_CONSUMED: u64 = 192;
 
             pub fn declare(
@@ -494,7 +494,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffa177")
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffffb12")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -750,7 +750,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9fa7")
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff942")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1102,7 +1102,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffff9e9b")
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff836")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1417,7 +1417,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1438,21 +1438,21 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result,
             SimulateTransactionOutput(vec![
-                fixtures::expected_output_0_13_1::declare(
+                fixtures::expected_output_0_13_1_1::declare(
                     account_contract_address,
                     &last_block_header
                 ),
-                fixtures::expected_output_0_13_1::universal_deployer(
+                fixtures::expected_output_0_13_1_1::universal_deployer(
                     account_contract_address,
                     &last_block_header,
                     universal_deployer_address,
                 ),
-                fixtures::expected_output_0_13_1::invoke(
+                fixtures::expected_output_0_13_1_1::invoke(
                     account_contract_address,
                     &last_block_header,
                     test_storage_value,
                 ),
-                fixtures::expected_output_0_13_1::invoke_v3(
+                fixtures::expected_output_0_13_1_1::invoke_v3(
                     account_contract_address,
                     &last_block_header,
                     test_storage_value,
@@ -1469,7 +1469,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1490,18 +1490,18 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result,
             SimulateTransactionOutput(vec![
-                fixtures::expected_output_0_13_1::declare_without_fee_transfer(
+                fixtures::expected_output_0_13_1_1::declare_without_fee_transfer(
                     account_contract_address
                 ),
-                fixtures::expected_output_0_13_1::universal_deployer_without_fee_transfer(
+                fixtures::expected_output_0_13_1_1::universal_deployer_without_fee_transfer(
                     account_contract_address,
                     universal_deployer_address,
                 ),
-                fixtures::expected_output_0_13_1::invoke_without_fee_transfer(
+                fixtures::expected_output_0_13_1_1::invoke_without_fee_transfer(
                     account_contract_address,
                     test_storage_value,
                 ),
-                fixtures::expected_output_0_13_1::invoke_v3_without_fee_transfer(
+                fixtures::expected_output_0_13_1_1::invoke_v3_without_fee_transfer(
                     account_contract_address,
                     test_storage_value,
                 ),
@@ -1517,7 +1517,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1538,21 +1538,21 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result,
             SimulateTransactionOutput(vec![
-                fixtures::expected_output_0_13_1::declare_without_validate(
+                fixtures::expected_output_0_13_1_1::declare_without_validate(
                     account_contract_address,
                     &last_block_header,
                 ),
-                fixtures::expected_output_0_13_1::universal_deployer_without_validate(
+                fixtures::expected_output_0_13_1_1::universal_deployer_without_validate(
                     account_contract_address,
                     &last_block_header,
                     universal_deployer_address,
                 ),
-                fixtures::expected_output_0_13_1::invoke_without_validate(
+                fixtures::expected_output_0_13_1_1::invoke_without_validate(
                     account_contract_address,
                     &last_block_header,
                     test_storage_value,
                 ),
-                fixtures::expected_output_0_13_1::invoke_v3_without_validate(
+                fixtures::expected_output_0_13_1_1::invoke_v3_without_validate(
                     account_contract_address,
                     &last_block_header,
                     test_storage_value,

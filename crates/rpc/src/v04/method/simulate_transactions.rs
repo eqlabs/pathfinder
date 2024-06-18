@@ -852,7 +852,7 @@ pub(crate) mod tests {
             use super::dto::*;
             use super::*;
 
-            const DECLARE_GAS_CONSUMED: u64 = 2768;
+            const DECLARE_GAS_CONSUMED: u64 = 3632;
 
             pub fn declare(
                 account_contract_address: ContractAddress,
@@ -963,7 +963,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3020;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3009;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -1210,7 +1210,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_GAS_CONSUMED: u64 = 1674;
+            const INVOKE_GAS_CONSUMED: u64 = 1664;
 
             pub fn invoke(
                 account_contract_address: ContractAddress,
@@ -1415,16 +1415,6 @@ pub(crate) mod tests {
         )
     }
 
-    pub(crate) async fn setup_storage() -> (
-        Storage,
-        BlockHeader,
-        ContractAddress,
-        ContractAddress,
-        StorageValue,
-    ) {
-        setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 0, 0)).await
-    }
-
     #[test_log::test(tokio::test)]
     async fn declare_deploy_and_invoke_sierra_class() {
         let (
@@ -1433,7 +1423,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1476,7 +1466,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1517,7 +1507,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
