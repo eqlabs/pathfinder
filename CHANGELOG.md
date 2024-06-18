@@ -7,7 +7,7 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.13.0] - 2024-06-18
 
 ### Fixed
 
@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `/ready/synced` endpoint to check if the JSON RPC API is ready _and_ also check if the node is synced. Useful for Docker nodes which only want to be available after syncing.
 - Websocket endpoints now serve all JSON-RPC methods, not just `pathfinder_subscribe` and `pathfinder_unsubscribe`. Version-specific endpoints have been added for the 0.6 and 0.7 JSON-RPC API and the Pathfinder extension API.
-- Websocket endpoint for subscribing to events.
+- Websocket endpoint for subscribing to events and transaction status changes.
+
+### Changed
+
+- Improved compactness of transaction and nonce data, resulting in noticeable storage savings.
 
 ## [0.12.0] - 2024-04-23
 

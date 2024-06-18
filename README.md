@@ -168,7 +168,7 @@ rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.11.0_
 We're storing database snapshots as SQLite database files compressed with [zstd](https://github.com/facebook/zstd). You can uncompress the files you've downloaded using the following command:
 
 ```shell
-zstd -T0 -d sepolia-testnet_0.11.0_47191.sqlite.zst -o testnet-sepolia.sqlite
+zstd -T0 -d sepolia-testnet_0.13.0_74494_pruned.sqlite.zst -o testnet-sepolia.sqlite
 ```
 
 This produces uncompressed database file `testnet-sepolia.sqlite` that can then be used by pathfinder.
@@ -177,12 +177,14 @@ This produces uncompressed database file `testnet-sepolia.sqlite` that can then 
 
 | Network         | Block  | Pathfinder version required | Mode    | Filename                                          | Download URL                                                                                                    | Compressed size | SHA2-256 checksum of compressed file                               |
 | --------------- | ------ | --------------------------- | ------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| Sepolia testnet | 47191  | >= 0.11.0                   | archive | `sepolia-testnet_0.11.0_47191.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.11.0_47191.sqlite.zst)         | 1.91 GB         | `82704d8382bac460550c3d31dd3c1f4397c4c43a90fb0e38110b0cd07cd94831` |
 | Sepolia testnet | 61322  | >= 0.12.0                   | archive | `sepolia-testnet_0.12.0_61322_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.12.0_61322_archive.sqlite.zst) | 3.56 GB         | `d25aa259ce62bb4b2e3ff49d243217799c99cd8b7e594a7bb24d4c091d980828` |
 | Sepolia testnet | 61322  | >= 0.12.0                   | pruned  | `sepolia-testnet_0.12.0_61322_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.12.0_61322_pruned.sqlite.zst)  | 1.26 GB         | `f2da766a8f8be93170997b3e5f268c0146aec1147c8ec569d0d6fdd5cd9bc3f1` |
-| Mainnet         | 595424 | >= 0.11.0                   | archive | `mainnet_0.11.0_595424.sqlite.zst`                | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0_595424.sqlite.zst)                | 469.63 GB       | `e42bae71c97c1a403116a7362f15f5180b19e8cc647efb1357f1ae8924dce654` |
+| Sepolia testnet | 74494  | >= 0.13.0                   | archive | `sepolia-testnet_0.13.0_74494_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.13.0_74494_archive.sqlite.zst) | 5.83 GB         | `03faf036e24e31cad0d5bd6c32fdeb2d52329c86cb90eb1b3b1fef91173ca63c` |
+| Sepolia testnet | 74494  | >= 0.13.0                   | pruned  | `sepolia-testnet_0.13.0_74494_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.13.0_74494_pruned.sqlite.zst)  | 2.22 GB         | `0a74d47739939b43090f44f852ef14c48a8d4b303b03186d2e5ef74b1093b3f7` |
 | Mainnet         | 635054 | >= 0.12.0                   | archive | `mainnet_0.12.0_635054_archive.sqlite.zst`        | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.12.0_635054_archive.sqlite.zst)        | 383.86 GB       | `d401902684cecaae4a88d6c0219498a0da1bbdb3334ea5b91e3a16212db9ee43` |
 | Mainnet         | 635054 | >= 0.12.0                   | pruned  | `mainnet_0.12.0_635054_pruned.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.12.0_635054_pruned.sqlite.zst)         | 59.89 GB        | `1d854423278611b414130ac05f486c66ef475f47a1c930c2af5296c9906f9ae0` |
+| Mainnet         | 649680 | >= 0.13.0                   | archive | `mainnet_0.13.0_649680_archive.sqlite.zst`        | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.13.0_649680_archive.sqlite.zst)        | 400.08 GB       | `d01766380fff47f3c08199d0e5c7039ea6fc412081bac026ca99d24f52e6a923` |
+| Mainnet         | 649680 | >= 0.13.0                   | pruned  | `mainnet_0.13.0_649680_pruned.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.13.0_649680_pruned.sqlite.zst)         | 64.85 GB        | `fd68a09672abcc37068ecf892ecd028e08456744a6e636027878f65bd801b991` |
 
 ## Configuration
 
