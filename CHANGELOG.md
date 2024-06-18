@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_getBlockWithTxHashes` and `starknet_getBlockWithTxs` returns the pending block with a `status` property that's not in the JSON-RPC specification. This has been fixed for the JSON-RPC 0.7 API endpoint.
+- `starknet_traceBlockTransactions` and `starknet_traceTransaction` now falls back to fetching the trace from the feeder gateway for all blocks before Starknet 0.13.1.1.
 
 ### Added
 
