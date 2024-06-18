@@ -23,7 +23,7 @@ impl From<anyhow::Error> for ExecutionStateError {
 }
 
 pub const VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY:
-    StarknetVersion = StarknetVersion::new(0, 13, 0, 0);
+    StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
 
 pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,

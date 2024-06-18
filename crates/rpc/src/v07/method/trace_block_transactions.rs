@@ -39,7 +39,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
@@ -53,15 +53,18 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output_0_13_1::declare(account_contract_address, &last_block_header)
-                .transaction_trace,
-            fixtures::expected_output_0_13_1::universal_deployer(
+            fixtures::expected_output_0_13_1_1::declare(
+                account_contract_address,
+                &last_block_header,
+            )
+            .transaction_trace,
+            fixtures::expected_output_0_13_1_1::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output_0_13_1::invoke(
+            fixtures::expected_output_0_13_1_1::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,
@@ -88,7 +91,7 @@ pub(crate) mod tests {
                 .with_starknet_version(last_block_header.starknet_version)
                 .with_sequencer_address(last_block_header.sequencer_address)
                 .with_timestamp(last_block_header.timestamp)
-                .with_starknet_version(StarknetVersion::new(0, 13, 1, 0))
+                .with_starknet_version(StarknetVersion::new(0, 13, 1, 1))
                 .with_l1_da_mode(L1DataAvailabilityMode::Blob)
                 .finalize_with_hash(block_hash!("0x1"));
             tx.insert_block_header(&next_block_header)?;
@@ -182,7 +185,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 0)).await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
@@ -196,15 +199,18 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output_0_13_1::declare(account_contract_address, &last_block_header)
-                .transaction_trace,
-            fixtures::expected_output_0_13_1::universal_deployer(
+            fixtures::expected_output_0_13_1_1::declare(
+                account_contract_address,
+                &last_block_header,
+            )
+            .transaction_trace,
+            fixtures::expected_output_0_13_1_1::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output_0_13_1::invoke(
+            fixtures::expected_output_0_13_1_1::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,

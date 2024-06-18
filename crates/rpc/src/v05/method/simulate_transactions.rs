@@ -549,7 +549,7 @@ pub mod dto {
 #[cfg(test)]
 pub(crate) mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt, ClassHash, StorageValue, TransactionVersion};
+    use pathfinder_common::{felt, ClassHash, StarknetVersion, StorageValue, TransactionVersion};
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT_CLASS_HASH,
         ERC20_CONTRACT_DEFINITION_CLASS_HASH,
@@ -562,7 +562,7 @@ pub(crate) mod tests {
     };
     use crate::v02::types::ContractClass;
     use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
-    pub(crate) use crate::v04::method::simulate_transactions::tests::setup_storage;
+    pub(crate) use crate::v04::method::simulate_transactions::tests::setup_storage_with_starknet_version;
     use crate::v05::method::call::FunctionCall;
 
     #[tokio::test]
@@ -681,7 +681,8 @@ pub(crate) mod tests {
 
         assert_eq!(contract_class.class_hash().unwrap().hash(), CAIRO0_HASH);
 
-        let (storage, last_block_header, account_contract_address, _, _) = setup_storage().await;
+        let (storage, last_block_header, account_contract_address, _, _) =
+            setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let declare = BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -703,7 +704,7 @@ pub(crate) mod tests {
 
         let result = simulate_transactions(context, input).await.unwrap();
 
-        const DECLARE_GAS_CONSUMED: u64 = 1666;
+        const DECLARE_GAS_CONSUMED: u64 = 2225;
         use super::dto::*;
         use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
 
@@ -771,7 +772,7 @@ pub(crate) mod tests {
                             storage_entries: vec![
                                 StorageEntry {
                                     key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff97e")
+                                    value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff74f")
                                 },
                                 StorageEntry {
                                     key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -824,7 +825,7 @@ pub(crate) mod tests {
                 StorageEntry,
             };
 
-            const DECLARE_GAS_CONSUMED: u64 = 2768;
+            const DECLARE_GAS_CONSUMED: u64 = 3632;
 
             pub fn declare(
                 account_contract_address: ContractAddress,
@@ -917,7 +918,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff530")
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff1d0")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -981,7 +982,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3020;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3009;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -1104,7 +1105,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe964")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe60f")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1278,7 +1279,7 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_GAS_CONSUMED: u64 = 1674;
+            const INVOKE_GAS_CONSUMED: u64 = 1664;
 
             pub fn invoke(
                 account_contract_address: ContractAddress,
@@ -1383,7 +1384,7 @@ pub(crate) mod tests {
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffe2da")
+                            value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffdf8f")
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
@@ -1502,7 +1503,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1545,7 +1546,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {
@@ -1586,7 +1587,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = SimulateTransactionInput {

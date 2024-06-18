@@ -329,6 +329,7 @@ pub(crate) mod tests {
         GasPrice,
         SequencerAddress,
         SierraHash,
+        StarknetVersion,
         TransactionIndex,
     };
     use pathfinder_crypto::Felt;
@@ -339,7 +340,10 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
 
         let (
             storage,
@@ -347,7 +351,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
@@ -361,15 +365,18 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output_0_13_0::declare(account_contract_address, &last_block_header)
-                .transaction_trace,
-            fixtures::expected_output_0_13_0::universal_deployer(
+            fixtures::expected_output_0_13_1_1::declare(
+                account_contract_address,
+                &last_block_header,
+            )
+            .transaction_trace,
+            fixtures::expected_output_0_13_1_1::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output_0_13_0::invoke(
+            fixtures::expected_output_0_13_1_1::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,
@@ -480,7 +487,10 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
 
         let (
             storage,
@@ -488,7 +498,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
@@ -502,15 +512,18 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output_0_13_0::declare(account_contract_address, &last_block_header)
-                .transaction_trace,
-            fixtures::expected_output_0_13_0::universal_deployer(
+            fixtures::expected_output_0_13_1_1::declare(
+                account_contract_address,
+                &last_block_header,
+            )
+            .transaction_trace,
+            fixtures::expected_output_0_13_1_1::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output_0_13_0::invoke(
+            fixtures::expected_output_0_13_1_1::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,
