@@ -11,4 +11,4 @@ fake = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 pretty_assertions_sorted = { workspace = true }
-tagged_debug_derive = { path = "../tagged_debug_derive" }
+tagged-debug-derive = { path = "../tagged-debug-derive" }

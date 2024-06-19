@@ -1502,150 +1502,34 @@ impl std::fmt::Display for ClassDefinitionsError {
 
 #[cfg(test)]
 mod tests {
-    use std::any::{Any, TypeId};
-    use std::collections::VecDeque;
-    use std::fmt::Debug;
-    use std::hash::Hash;
-    use std::marker::PhantomData;
-    use std::sync::{Mutex, MutexGuard, Once};
+    use std::sync::Mutex;
 
     use fake::{Fake, Faker};
     use futures::channel::mpsc;
     use futures::{stream, SinkExt};
-    use lazy_static::lazy_static;
-    use p2p_proto::proto::receipt::receipt::Type;
-    use pathfinder_common::receipt::Receipt as CommonReceipt;
     use rstest::rstest;
+    use tagged::Tagged;
+    use tagged_debug_derive::TaggedDebug;
 
-    // use tagged_debug_derive::TaggedDebug;
-
-    // #[derive(Clone, TaggedDebug)]
-    // struct S {
-    //     a: u64,
-    //     b: u64,
-    // }
-
-    // #[test]
-    // fn tagged_debug() {
-    //     let s = S { a: 1, b: 2 };
-    //     eprintln!("{:?}", s);
-    // }
     use super::*;
     use crate::client::conv::ToDto;
 
-    type Txn = (TransactionVariant, CommonReceipt);
+    #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
+    struct TestTxn((TransactionVariant, Receipt));
 
-    /// As much as faking random(-ish) data for tests is pretty convenient,
-    /// deciphering assertion failures is not so much.
-    #[derive(Clone, Debug, Eq, PartialEq)]
-    struct TaggedFake<T> {
-        tag: String,
-        data: T,
+    #[derive(Clone, PartialEq, TaggedDebug)]
+    struct TestPeer(PeerId);
+
+    fn peer(tag: i32) -> TestPeer {
+        Tagged::<TestPeer>::get(format!("peer {tag}"), || TestPeer(PeerId::random())).data
     }
 
-    static INIT: Once = Once::new();
-    static mut LUTS: Option<Arc<Mutex<HashMap<TypeId, HashMap<String, Box<dyn Any>>>>>> = None;
-
-    pub fn lut() -> MutexGuard<'static, HashMap<TypeId, HashMap<String, Box<dyn Any>>>> {
-        INIT.call_once(|| {
-            unsafe {
-                LUTS = Some(Default::default());
-            };
-        });
-
-        unsafe { LUTS.as_ref().unwrap().lock().unwrap() }
-    }
-
-    impl<T: Clone + 'static> TaggedFake<T> {
-        pub fn get_with<U: ToString, C: FnOnce() -> T>(tag: U, ctor: C) -> Self {
-            let mut luts = lut();
-            let lut = luts.entry(TypeId::of::<T>()).or_default();
-            let tag = tag.to_string();
-            let data = lut
-                .entry(tag.clone())
-                .or_insert_with(|| Box::new(ctor()))
-                .downcast_ref::<T>()
-                .unwrap()
-                .clone();
-
-            Self { tag, data }
-        }
-    }
-
-    impl<T: Clone + Dummy<Faker> + 'static> TaggedFake<T> {
-        pub fn get<U: ToString>(tag: U) -> Self {
-            Self::get_with(tag, || Faker.fake())
-        }
-    }
-
-    impl<T: PartialEq + 'static> From<T> for TaggedFake<T> {
-        fn from(data: T) -> Self {
-            let luts = lut();
-            let lut = luts.get(&TypeId::of::<T>());
-
-            match lut {
-                Some(lut) => {
-                    let tag = lut
-                        .iter()
-                        .find_map(|(k, v)| {
-                            v.downcast_ref::<T>()
-                                .and_then(|u| (u == &data).then_some(k.clone()))
-                        })
-                        .unwrap_or("value not found".into());
-
-                    Self { tag, data }
-                }
-                None => Self {
-                    tag: format!("type not found: {}", std::any::type_name::<T>()),
-                    data,
-                },
-            }
-        }
-    }
-
-    // impl<T: PartialEq + 'static> TryFrom<T> for TaggedFake<T> {
-    //     type Error = ();
-
-    //     fn try_from(data: T) -> Result<Self, Self::Error> {
-    //         let luts = lut();
-    //         let lut = luts.get(&TypeId::of::<T>());
-
-    //         match lut {
-    //             Some(lut) => {
-    //                 let tag = lut
-    //                     .iter()
-    //                     .find_map(|(k, v)| {
-    //                         v.downcast_ref::<T>()
-    //                             .and_then(|u| (u == &data).then_some(k.clone()))
-    //                     })
-    //                     .unwrap_or("value not found".into());
-
-    //                 Ok(Self { tag, data })
-    //             }
-    //             None => Err(()),
-    //         }
-    //     }
-    // }
-
-    // #[test]
-    // fn tagged_fake() {
-    //     let a = TaggedFake::<u64>::get("a");
-    //     let aa = TaggedFake::from(a.data);
-    //     assert_eq!(a, aa);
-    // }
-
-    fn peer(tag: i32) -> PeerId {
-        TaggedFake::<PeerId>::get_with(format!("peer {tag}"), || PeerId::random()).data
-    }
-
-    fn txn(tag: i32, transaction_index: u64) -> Txn {
-        let x = TaggedFake::get_with(format!("txn {tag}"), || {
-            let mut x = Faker.fake::<Txn>();
-            x.1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
-            x.1.transaction_hash = Default::default();
+    fn txn(tag: i32, transaction_index: u64) -> TestTxn {
+        let x = Tagged::get(format!("txn {tag}"), || {
+            let mut x = Faker.fake::<TestTxn>();
+            x.0 .1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
             x
         });
-        eprintln!("txn: {:#?}", x);
         x.data
     }
 
@@ -1660,13 +1544,14 @@ mod tests {
     )]
     #[tokio::test]
     async fn make_transaction_stream(
-        #[case] responses: Vec<(PeerId, Vec<Txn>)>,
+        #[case] responses: Vec<(TestPeer, Vec<TestTxn>)>,
         #[case] num_txns_per_block: Vec<usize>,
-        #[case] expected_stream: Vec<(PeerId, Vec<Txn>)>,
+        #[case] mut expected_stream: Vec<(TestPeer, Vec<TestTxn>)>,
     ) {
-        eprintln!("lut: {:#?}", lut());
-
-        let peers = responses.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
+        let peers = responses
+            .iter()
+            .map(|(p, _)| p.0.clone())
+            .collect::<Vec<_>>();
         let blocks = Arc::new(Mutex::new(
             responses.into_iter().map(|(_, t)| t).collect::<Vec<_>>(),
         ));
@@ -1676,12 +1561,14 @@ mod tests {
         let send_request = |_: PeerId, _: TransactionsRequest| async {
             let mut guard = blocks.lock().unwrap();
             let mut txns = guard.pop().unwrap();
-            txns.iter_mut().enumerate().for_each(|(i, (_, r))| {
-                r.transaction_index = TransactionIndex::new_or_panic(i as u64);
-            });
+            txns.iter_mut()
+                .enumerate()
+                .for_each(|(i, TestTxn((_, r)))| {
+                    r.transaction_index = TransactionIndex::new_or_panic(i as u64);
+                });
 
             let (mut tx, rx) = mpsc::channel(txns.len() + 1);
-            for (t, r) in txns {
+            for TestTxn((t, r)) in txns {
                 tx.send(TransactionsResponse::TransactionWithReceipt(
                     TransactionWithReceipt {
                         receipt: (&t, r).to_dto(),
@@ -1698,7 +1585,7 @@ mod tests {
         let start = BlockNumber::GENESIS;
         let stop = start + (num_txns_per_block.len() - 1) as u64;
 
-        let stream = super::make_transaction_stream(
+        let actual = super::make_transaction_stream(
             start,
             stop,
             stream::iter(
@@ -1709,59 +1596,22 @@ mod tests {
             get_peers,
             send_request,
         )
-        .map(|x| x.unwrap());
+        .map(|x| {
+            let x = x.unwrap();
+            (
+                TestPeer(x.peer),
+                x.data.transactions.into_iter().map(TestTxn).collect(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .await;
 
-        let actual = stream.collect::<Vec<_>>().await;
-
-        let actual = actual
-            .into_iter()
-            .map(|x| {
-                (
-                    TaggedFake::from(x.peer),
-                    x.data
-                        .transactions
-                        .into_iter()
-                        .map(|(t, r)| {
-                            (
-                                t,
-                                CommonReceipt {
-                                    transaction_hash: Default::default(),
-                                    actual_fee: r.actual_fee,
-                                    execution_resources: r.execution_resources,
-                                    l2_to_l1_messages: r.l2_to_l1_messages,
-                                    execution_status: r.execution_status,
-                                    transaction_index: r.transaction_index,
-                                },
-                            )
-                        })
-                        .map(TaggedFake::from)
-                        .collect::<Vec<_>>(),
-                )
+        expected_stream.iter_mut().for_each(|(_, t)| {
+            t.iter_mut().enumerate().for_each(|(i, t)| {
+                t.0 .1.transaction_index = TransactionIndex::new_or_panic(i as u64);
             })
-            .collect::<Vec<_>>();
+        });
 
-        eprintln!("actual: {:#?}", actual);
-
-        let expected = expected_stream
-            .into_iter()
-            .map(|(peer, data)| {
-                (
-                    TaggedFake::from(peer),
-                    data.into_iter()
-                        .enumerate()
-                        .map(|(i, (t, mut r))| {
-                            r.transaction_index = TransactionIndex::new_or_panic(i as u64);
-                            // (t, r.into())
-                            (t, r)
-                        })
-                        .map(TaggedFake::from)
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        eprintln!("expected: {:#?}", expected);
-
-        pretty_assertions_sorted::assert_eq!(actual, expected);
+        pretty_assertions_sorted::assert_eq!(actual, expected_stream);
     }
 }

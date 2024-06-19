@@ -1,5 +1,5 @@
 [package]
-name = "tagged_debug_derive"
+name = "tagged-debug-derive"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
@@ -10,7 +10,6 @@ rust-version = { workspace = true }
 proc-macro = true
 
 [dependencies]
-fake = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }

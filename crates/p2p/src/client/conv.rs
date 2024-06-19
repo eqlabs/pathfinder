@@ -312,6 +312,27 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
     }
 }
 
+#[cfg(test)]
+impl ToDto<p2p_proto::receipt::Receipt>
+    for (&TransactionVariant, crate::client::peer_agnostic::Receipt)
+{
+    fn to_dto(self) -> p2p_proto::receipt::Receipt {
+        let (t, r) = self;
+        (
+            t,
+            Receipt {
+                transaction_hash: Default::default(),
+                actual_fee: r.actual_fee,
+                execution_resources: r.execution_resources,
+                execution_status: r.execution_status,
+                l2_to_l1_messages: r.l2_to_l1_messages,
+                transaction_index: r.transaction_index,
+            },
+        )
+            .to_dto()
+    }
+}
+
 impl ToDto<p2p_proto::event::Event> for (TransactionHash, Event) {
     fn to_dto(self) -> p2p_proto::event::Event {
         p2p_proto::event::Event {

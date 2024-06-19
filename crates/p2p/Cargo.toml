@@ -62,6 +62,8 @@ hex = { workspace = true }
 lazy_static = { workspace = true }
 rand = { workspace = true }
 rstest = { workspace = true }
+tagged = { path = "../tagged" }
+tagged-debug-derive = { path = "../tagged-debug-derive" }
 test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

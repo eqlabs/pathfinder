@@ -9,8 +9,8 @@ use fake::{Dummy, Fake, Faker};
 /// deciphering assertion failures is not so much.
 #[derive(Clone, Eq, PartialEq)]
 pub struct Tagged<T> {
-    tag: String,
-    data: T,
+    pub tag: String,
+    pub data: T,
 }
 
 impl<T: Debug> Debug for Tagged<T> {
