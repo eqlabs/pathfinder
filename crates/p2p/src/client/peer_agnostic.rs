@@ -1166,6 +1166,8 @@ where
                         },
                     };
 
+                    tracing::trace!(%peer, ?request, "Sending request");
+
                     let mut responses = match send_request(peer, request).await
                     {
                         Ok(x) => x,
@@ -1193,8 +1195,12 @@ where
                                 })
                                 .map_err(peer_err)?
                                 .map_err(peer_err)?;
+
                             current_count_outer = Some(count);
                             current_commitment = commitment;
+
+                            tracing::trace!(%start, %count, ?current_count_outer, "1 Getting counts from stream");
+
                             count
                         }
                     };
@@ -1211,6 +1217,8 @@ where
                                     receipt,
                                 },
                             ) => {
+                                tracing::trace!(%peer, "Got response TransactionWithReceipt");
+
                                 let t = TransactionVariant::try_from_dto(transaction)
                                     .map_err(peer_err)?;
                                 let r = Receipt::try_from((
@@ -1232,8 +1240,12 @@ where
                                 transactions.push((t, r));
                             }
                             TransactionsResponse::Fin => {
+                                tracing::trace!(%peer, "Got response Fin");
+
                                 if transactions.is_empty() {
                                     if start == stop {
+                                        tracing::debug!(%peer, "Done! Terminating stream");
+
                                         // We're done, terminate the stream
                                         break 'outer;
                                     }
@@ -1281,9 +1293,13 @@ where
                                 current_count = count;
                                 current_count_outer = Some(current_count);
                                 current_commitment = commitment;
+
+                                tracing::trace!(%start, %current_count, ?current_count_outer, "1 Getting counts from stream");
                             }
                         }
                     }
+
+                    tracing::trace!(%peer, "Current peer done");
                 }
             }
         }
@@ -1502,6 +1518,7 @@ impl std::fmt::Display for ClassDefinitionsError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
     use std::sync::Mutex;
 
     use fake::{Fake, Faker};
@@ -1533,53 +1550,106 @@ mod tests {
         x.data
     }
 
+    use TransactionsResponse::Fin;
+
     #[rstest]
-    #[case::happy_path(
-        // Served by peers
-        vec![(peer(0), vec![txn(0, 0)])],
-        // Number of transactions per block
-        vec![1],
-        // Expected stream (Peer, Txn, Txn index)
-        vec![(peer(0), vec![txn(0, 0)]), (peer(1), vec![])]
+    #[case::happy_1_peer_1_block(
+        // Responses from peers
+        vec![(peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin))],
+        // Expected number of transactions per block
+        vec![2],
+        // Expected stream of (peer_id, transactions_for_block)
+        vec![(peer(0), vec![txn(0, 0), txn(1, 1)])]
     )]
-    #[tokio::test]
+    #[case::happy_1_peer_2_blocks(
+        // Peer 0 gives responses for all blocks in one go
+        vec![(peer(0), vec![txn(2, 0), txn(3, 0)], Some(Fin))], 
+        vec![1, 1],
+        vec![
+            (peer(0), vec![txn(2, 0)]), // block 0
+            (peer(0), vec![txn(3, 0)])  // block 1
+        ]
+    )]
+    #[case::happy_1_peer_2_blocks_in_2_attempts(
+        // Peer 0 gives response for the second block after a retry
+        vec![
+            (peer(0), vec![txn(4, 0)], Some(Fin)),
+            (peer(0), vec![txn(5, 0)], Some(Fin))],
+        vec![1, 1],
+        vec![
+            (peer(0), vec![txn(4, 0)]),
+            (peer(0), vec![txn(5, 0)])
+        ]
+    )]
+    #[case::happy_2_peers_1_block_per_peer(
+        vec![
+            (peer(0), vec![txn(6, 0)], Some(Fin)),
+            (peer(1), vec![txn(7, 0)], Some(Fin))
+        ],
+        vec![1, 1],
+        vec![
+            (peer(0), vec![txn(6, 0)]),
+            (peer(1), vec![txn(7, 1)])
+        ]
+    )]
+    #[test_log::test(tokio::test)]
     async fn make_transaction_stream(
-        #[case] responses: Vec<(TestPeer, Vec<TestTxn>)>,
+        #[case] responses: Vec<(TestPeer, Vec<TestTxn>, Option<TransactionsResponse>)>,
         #[case] num_txns_per_block: Vec<usize>,
-        #[case] mut expected_stream: Vec<(TestPeer, Vec<TestTxn>)>,
+        #[case] expected_stream: Vec<(TestPeer, Vec<TestTxn>)>,
     ) {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         let peers = responses
             .iter()
-            .map(|(p, _)| p.0.clone())
+            .map(|(p, _, _)| p.0.clone())
             .collect::<Vec<_>>();
-        let blocks = Arc::new(Mutex::new(
-            responses.into_iter().map(|(_, t)| t).collect::<Vec<_>>(),
+        let responses = Arc::new(Mutex::new(
+            responses
+                .into_iter()
+                .map(|(_, t, fin)| (t, fin))
+                .collect::<VecDeque<_>>(),
         ));
 
         let get_peers = || async { peers.clone() };
 
-        let send_request = |_: PeerId, _: TransactionsRequest| async {
-            let mut guard = blocks.lock().unwrap();
-            let mut txns = guard.pop().unwrap();
-            txns.iter_mut()
-                .enumerate()
-                .for_each(|(i, TestTxn((_, r)))| {
-                    r.transaction_index = TransactionIndex::new_or_panic(i as u64);
-                });
+        let send_request = |peer: PeerId, req: TransactionsRequest| {
+            // eprintln!("send: {:#?} {:#?}", TestPeer(peer), req);
+            let p = TestPeer(peer);
 
-            let (mut tx, rx) = mpsc::channel(txns.len() + 1);
-            for TestTxn((t, r)) in txns {
-                tx.send(TransactionsResponse::TransactionWithReceipt(
-                    TransactionWithReceipt {
-                        receipt: (&t, r).to_dto(),
-                        transaction: t.to_dto(),
-                    },
-                ))
-                .await
-                .unwrap();
+            tracing::trace!(peer=?p, ?req, "Got request");
+
+            async {
+                let mut guard = responses.lock().unwrap();
+                match guard.pop_front() {
+                    Some((mut txns, fin)) => {
+                        txns.iter_mut()
+                            .enumerate()
+                            .for_each(|(i, TestTxn((_, r)))| {
+                                r.transaction_index = TransactionIndex::new_or_panic(i as u64);
+                            });
+
+                        let (mut tx, rx) = mpsc::channel(txns.len() + 1);
+                        for TestTxn((t, r)) in txns {
+                            tx.send(TransactionsResponse::TransactionWithReceipt(
+                                TransactionWithReceipt {
+                                    receipt: (&t, r).to_dto(),
+                                    transaction: t.to_dto(),
+                                },
+                            ))
+                            .await
+                            .unwrap();
+                        }
+                        if fin.is_some() {
+                            tx.send(TransactionsResponse::Fin).await.unwrap();
+                        }
+                        Ok(rx)
+                    }
+                    None => {
+                        todo!("FIXME")
+                    }
+                }
             }
-            tx.send(TransactionsResponse::Fin).await.unwrap();
-            Ok(rx)
         };
 
         let start = BlockNumber::GENESIS;
@@ -1600,17 +1670,15 @@ mod tests {
             let x = x.unwrap();
             (
                 TestPeer(x.peer),
-                x.data.transactions.into_iter().map(TestTxn).collect(),
+                x.data
+                    .transactions
+                    .into_iter()
+                    .map(TestTxn)
+                    .collect::<Vec<_>>(),
             )
         })
         .collect::<Vec<_>>()
         .await;
-
-        expected_stream.iter_mut().for_each(|(_, t)| {
-            t.iter_mut().enumerate().for_each(|(i, t)| {
-                t.0 .1.transaction_index = TransactionIndex::new_or_panic(i as u64);
-            })
-        });
 
         pretty_assertions_sorted::assert_eq!(actual, expected_stream);
     }
