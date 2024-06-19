@@ -339,7 +339,7 @@ impl SerializeForVersion for MsgToL1<'_> {
 
         serializer.serialize_field("from_address", &dto::Felt(&self.0.from_address.0))?;
         serializer.serialize_field("to_address", &dto::Felt(&self.0.to_address.0))?;
-        serializer.serialize_field("from_address", &dto::Felt(&self.0.from_address.0))?;
+        serializer.serialize_iter("payload", self.0.payload.len(), &mut self.0.payload.iter())?;
 
         serializer.end()
     }
