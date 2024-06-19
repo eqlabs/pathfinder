@@ -896,7 +896,7 @@ mod tests {
                                 .map(|(t, _, _)| t.clone())
                                 .collect::<Vec<_>>()
                                 .as_slice(),
-                            StarknetVersion::new(0, 11, 1, 0),
+                            block.header.header.starknet_version,
                         )
                         .unwrap();
                         block.header.header.transaction_commitment = transaction_commitment;

@@ -1,5 +1,5 @@
 use bitvec::view::BitView;
-use pathfinder_common::hash::PedersenHash;
+use pathfinder_common::hash::FeltHash;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::StoredNode;
 
@@ -14,11 +14,11 @@ use crate::tree::MerkleTree;
 /// tree is formed from an empty one.
 ///
 /// More information about these commitments can be found in the Starknet [documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/header/).
-pub struct TransactionOrEventTree {
-    tree: MerkleTree<PedersenHash, 64>,
+pub struct TransactionOrEventTree<H: FeltHash> {
+    tree: MerkleTree<H, 64>,
 }
 
-impl Default for TransactionOrEventTree {
+impl<H: FeltHash> Default for TransactionOrEventTree<H> {
     fn default() -> Self {
         Self {
             tree: MerkleTree::empty(),
@@ -46,7 +46,7 @@ impl crate::storage::Storage for NullStorage {
     }
 }
 
-impl TransactionOrEventTree {
+impl<H: FeltHash> TransactionOrEventTree<H> {
     pub fn set(&mut self, index: u64, value: Felt) -> anyhow::Result<()> {
         let key = index.to_be_bytes().view_bits().to_owned();
         self.tree.set(&NullStorage {}, key, value)
@@ -62,12 +62,13 @@ impl TransactionOrEventTree {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::felt;
+    use pathfinder_common::hash::PedersenHash;
 
     use super::*;
 
     #[test]
     fn test_commitment_merkle_tree() {
-        let mut tree = TransactionOrEventTree::default();
+        let mut tree: TransactionOrEventTree<PedersenHash> = Default::default();
 
         for (idx, hash) in [1u64, 2, 3, 4].into_iter().enumerate() {
             let hash = Felt::from(hash);
