@@ -139,7 +139,7 @@ impl SerializeForVersion for TxnReceipt<'_> {
             TransactionKind::Deploy => serializer.serialize(&DeployTxnReceipt(self)),
             TransactionKind::DeployAccount => serializer.serialize(&DeployAccountTxnReceipt(self)),
             TransactionKind::Invoke => serializer.serialize(&InvokeTxnReceipt(self)),
-            TransactionKind::L1Handler => serializer.serialize(&DeclareTxnReceipt(self)),
+            TransactionKind::L1Handler => serializer.serialize(&L1HandlerTxnReceipt(self)),
         }
     }
 }
@@ -260,6 +260,7 @@ impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
         serializer.end()
     }
 }
+
 impl SerializeForVersion for CommonReceiptProperties<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
