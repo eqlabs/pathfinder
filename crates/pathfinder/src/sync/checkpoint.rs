@@ -37,10 +37,7 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
-use crate::state::block_hash::{
-    calculate_transaction_commitment,
-    TransactionCommitmentFinalHashType,
-};
+use crate::state::block_hash::calculate_transaction_commitment;
 use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
@@ -171,13 +168,8 @@ impl Sync {
             transactions::counts_and_commitments_stream(self.storage.clone(), start, stop),
         );
 
-        handle_transaction_stream(
-            transaction_stream,
-            self.storage.connection()?,
-            chain_id,
-            start,
-        )
-        .await?;
+        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id, start)
+            .await?;
 
         Ok(())
     }
@@ -284,15 +276,19 @@ async fn handle_transaction_stream(
     stream: impl Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
         + Send
         + 'static,
-    db_connection: pathfinder_storage::Connection,
+    storage: Storage,
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
     Source::from_stream(stream.map_err(|e| e.map(Into::into)))
         .spawn()
+        .pipe(
+            transactions::FetchStarknetVersionFromDb(storage.connection()?),
+            10,
+        )
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10)
-        .pipe(transactions::Store::new(db_connection, start), 10)
+        .pipe(transactions::Store::new(storage.connection()?, start), 10)
         .into_stream()
         .inspect_ok(|x| tracing::info!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
@@ -872,7 +868,7 @@ mod tests {
         use p2p::libp2p::PeerId;
         use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
-        use pathfinder_common::TransactionHash;
+        use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
         use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
@@ -900,7 +896,7 @@ mod tests {
                                 .map(|(t, _, _)| t.clone())
                                 .collect::<Vec<_>>()
                                 .as_slice(),
-                            TransactionCommitmentFinalHashType::Normal,
+                            block.header.header.starknet_version,
                         )
                         .unwrap();
                         block.header.header.transaction_commitment = transaction_commitment;
@@ -912,6 +908,7 @@ mod tests {
                                 .iter()
                                 .map(|x| (x.0.variant.clone(), x.1.clone().into()))
                                 .collect::<Vec<_>>(),
+                            block_number: block.header.header.number,
                         }))
                     })
                     .collect::<Vec<_>>();
@@ -958,7 +955,7 @@ mod tests {
 
             handle_transaction_stream(
                 stream::iter(streamed_transactions),
-                storage.connection().unwrap(),
+                storage.clone(),
                 ChainId::SEPOLIA_TESTNET,
                 BlockNumber::GENESIS,
             )
@@ -994,7 +991,7 @@ mod tests {
             assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
-                    storage.connection().unwrap(),
+                    storage.clone(),
                     // Causes mismatches for all transaction hashes because setup assumes
                     // ChainId::SEPOLIA_TESTNET
                     ChainId::MAINNET,
@@ -1012,7 +1009,7 @@ mod tests {
                     stream::once(std::future::ready(Err(PeerData::for_tests(
                         anyhow::anyhow!("")
                     )))),
-                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
                 )
@@ -1030,7 +1027,7 @@ mod tests {
             assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
-                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
                 )

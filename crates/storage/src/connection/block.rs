@@ -2,7 +2,14 @@ use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, GasPrice, TransactionCommitment};
+use pathfinder_common::{
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    GasPrice,
+    StarknetVersion,
+    TransactionCommitment,
+};
 
 use crate::prelude::*;
 use crate::BlockId;
@@ -310,6 +317,15 @@ impl Transaction<'_> {
             }
         }
         .map_err(|e| e.into())
+    }
+
+    pub fn block_version(&self, block: BlockNumber) -> anyhow::Result<Option<StarknetVersion>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("SELECT version FROM block_headers WHERE number = ?")?;
+        stmt.query_row(params![&block], |row| row.get_starknet_version(0))
+            .optional()
+            .map_err(|e| e.into())
     }
 
     pub fn block_header(&self, block: BlockId) -> anyhow::Result<Option<BlockHeader>> {

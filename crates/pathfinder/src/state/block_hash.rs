@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
+use pathfinder_common::hash::{FeltHash, PedersenHash, PoseidonHash};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
@@ -15,7 +16,7 @@ use pathfinder_common::{
     TransactionCommitment,
     TransactionSignatureElem,
 };
-use pathfinder_crypto::hash::{pedersen_hash, HashChain};
+use pathfinder_crypto::hash::{pedersen_hash, HashChain, PoseidonHasher};
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use starknet_gateway_types::reply::Block;
@@ -49,10 +50,8 @@ pub fn verify_gateway_block_hash(
     chain: Chain,
     chain_id: ChainId,
 ) -> Result<VerifyResult> {
-    let transaction_final_hash_type =
-        TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let transaction_commitment =
-        calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
+        calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
 
     let mut block_header_data = BlockHeaderData::from(block);
 
@@ -366,22 +365,6 @@ fn compute_final_hash(
     BlockHash(chain.finalize())
 }
 
-pub enum TransactionCommitmentFinalHashType {
-    SignatureIncludedForInvokeOnly,
-    Normal,
-}
-
-impl TransactionCommitmentFinalHashType {
-    pub fn for_version(version: &StarknetVersion) -> Self {
-        const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
-        if version < &V_0_11_1 {
-            Self::SignatureIncludedForInvokeOnly
-        } else {
-            Self::Normal
-        }
-    }
-}
-
 /// Calculate transaction commitment hash value.
 ///
 /// The transaction commitment is the root of the Patricia Merkle tree with
@@ -390,30 +373,42 @@ impl TransactionCommitmentFinalHashType {
 /// the root hash.
 pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
-    final_hash_type: TransactionCommitmentFinalHashType,
+    version: StarknetVersion,
 ) -> Result<TransactionCommitment> {
     use rayon::prelude::*;
+
+    const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
+    const V_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
     let mut final_hashes = Vec::new();
     rayon::scope(|s| {
         s.spawn(|_| {
             final_hashes = transactions
                 .par_iter()
-                .map(|tx| match final_hash_type {
-                    TransactionCommitmentFinalHashType::Normal => {
-                        calculate_transaction_hash_with_signature(tx)
-                    }
-                    TransactionCommitmentFinalHashType::SignatureIncludedForInvokeOnly => {
+                .map(|tx| {
+                    if version < V_0_11_1 {
                         calculate_transaction_hash_with_signature_pre_0_11_1(tx)
+                    } else if version < V_0_13_2 {
+                        calculate_transaction_hash_with_signature_pre_0_13_2(tx)
+                    } else {
+                        calculate_transaction_hash_with_signature(tx)
                     }
                 })
                 .collect();
         })
     });
 
-    let mut tree = TransactionOrEventTree::default();
+    if version < V_0_13_2 {
+        calculate_commitment_root::<PedersenHash>(final_hashes)
+    } else {
+        calculate_commitment_root::<PoseidonHash>(final_hashes)
+    }
+}
 
-    final_hashes
+fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<TransactionCommitment> {
+    let mut tree: TransactionOrEventTree<H> = Default::default();
+
+    hashes
         .into_iter()
         .enumerate()
         .try_for_each(|(idx, final_hash)| {
@@ -459,16 +454,17 @@ fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Fel
     pedersen_hash(tx.hash.0, signature_hash)
 }
 
-/// Compute the combined hash of the transaction hash and the signature.
+/// Compute the combined hash of the transaction hash and the signature for
+/// block before v0.13.2.
 ///
 /// Since the transaction hash doesn't take the signature values as its input
-/// computing the transaction commitent uses a hash value that combines
+/// computing the transaction commitment uses a hash value that combines
 /// the transaction hash with the array of signature values.
 ///
 /// Note that for non-invoke transactions we don't actually have signatures. The
 /// cairo-lang uses an empty list (whose hash is not the ZERO value!) in that
 /// case.
-fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
+fn calculate_transaction_hash_with_signature_pre_0_13_2(tx: &Transaction) -> Felt {
     lazy_static::lazy_static!(
         static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
     );
@@ -489,6 +485,33 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
     };
 
     pedersen_hash(tx.hash.0, signature_hash)
+}
+
+/// Compute the combined hash of the transaction hash and the signature.
+///
+/// [Reference code from StarkWare](https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/block_hash_calculator.rs#L95-L98).
+fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
+    let signature = match &tx.variant {
+        TransactionVariant::InvokeV0(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV0(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV2(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployAccountV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployAccountV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::InvokeV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::InvokeV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
+        | TransactionVariant::L1Handler(_) => &[TransactionSignatureElem::ZERO],
+    };
+
+    let mut hasher = PoseidonHasher::new();
+    hasher.write(tx.hash.0.into());
+    for elem in signature {
+        hasher.write(elem.0.into());
+    }
+    hasher.finish().into()
 }
 
 fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
@@ -517,7 +540,7 @@ pub fn calculate_event_commitment(transaction_events: &[&Event]) -> Result<Event
         })
     });
 
-    let mut tree = TransactionOrEventTree::default();
+    let mut tree: TransactionOrEventTree<PedersenHash> = Default::default();
 
     event_hashes
         .into_iter()
@@ -561,9 +584,13 @@ fn calculate_event_hash(event: &Event) -> Felt {
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use pathfinder_common::felt;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::transaction::{EntryPointType, InvokeTransactionV0};
+    use pathfinder_common::transaction::{
+        EntryPointType,
+        InvokeTransactionV0,
+        InvokeTransactionV3,
+    };
+    use pathfinder_common::{felt, TransactionHash};
     use pathfinder_crypto::Felt;
 
     use super::*;
@@ -617,7 +644,8 @@ mod tests {
         let expected_final_hash =
             Felt::from_hex_str("0x259c3bd5a1951eafb2f41e0b783eab92cfe4e108b2b1f071e3736f06b909431")
                 .unwrap();
-        let calculated_final_hash = calculate_transaction_hash_with_signature(&transaction);
+        let calculated_final_hash =
+            calculate_transaction_hash_with_signature_pre_0_13_2(&transaction);
         assert_eq!(expected_final_hash, calculated_final_hash);
     }
 
@@ -682,6 +710,64 @@ mod tests {
         assert_matches!(
             verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
             VerifyResult::Match(_)
+        );
+    }
+
+    /// Source:
+    /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/transaction_commitment_test.rs#L12-L29.
+    #[test]
+    fn test_transaction_hash_with_signature_0_13_2() {
+        let transaction = Transaction {
+            hash: TransactionHash(Felt::ONE),
+            variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
+                signature: vec![
+                    TransactionSignatureElem(Felt::from_u64(2)),
+                    TransactionSignatureElem(Felt::from_u64(3)),
+                ],
+                ..Default::default()
+            }),
+        };
+        let expected = felt!("0x2f0d8840bcf3bc629598d8a6cc80cb7c0d9e52d93dab244bbf9cd0dca0ad082");
+        assert_eq!(
+            calculate_transaction_hash_with_signature(&transaction),
+            expected
+        );
+
+        let transaction = Transaction {
+            hash: TransactionHash(Felt::ONE),
+            variant: TransactionVariant::L1Handler(Default::default()),
+        };
+        let expected = felt!("0x00a93bf5e58b9378d093aa86ddc2f61a3295a1d1e665bd0ef3384dd07b30e033");
+        assert_eq!(
+            calculate_transaction_hash_with_signature(&transaction),
+            expected
+        );
+    }
+
+    /// Source:
+    /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/transaction_commitment_test.rs#L32.
+    #[test]
+    fn test_transaction_commitment_0_13_2() {
+        let transaction = Transaction {
+            hash: TransactionHash(Felt::ONE),
+            variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
+                signature: vec![
+                    TransactionSignatureElem(Felt::from_u64(2)),
+                    TransactionSignatureElem(Felt::from_u64(3)),
+                ],
+                ..Default::default()
+            }),
+        };
+        let expected = TransactionCommitment(felt!(
+            "0x0282b635972328bd1cfa86496fe920d20bd9440cd78ee8dc90ae2b383d664dcf"
+        ));
+        assert_eq!(
+            calculate_transaction_commitment(
+                &[transaction.clone(), transaction],
+                StarknetVersion::new(0, 13, 2, 0)
+            )
+            .unwrap(),
+            expected
         );
     }
 }
