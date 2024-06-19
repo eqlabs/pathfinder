@@ -713,6 +713,8 @@ mod tests {
         );
     }
 
+    /// Source:
+    /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/transaction_commitment_test.rs#L12-L29.
     #[test]
     fn test_transaction_hash_with_signature_0_13_2() {
         let transaction = Transaction {
@@ -742,6 +744,8 @@ mod tests {
         );
     }
 
+    /// Source:
+    /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/transaction_commitment_test.rs#L32.
     #[test]
     fn test_transaction_commitment_0_13_2() {
         let transaction = Transaction {
