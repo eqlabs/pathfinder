@@ -408,6 +408,7 @@ type EventsWithCommitment = (
     EventCommitment,
     Vec<TransactionHash>,
     HashMap<TransactionHash, Vec<Event>>,
+    StarknetVersion,
 );
 
 impl EventSource {
@@ -457,7 +458,12 @@ impl EventSource {
                 if tx
                     .send(Ok(PeerData::new(
                         peer,
-                        (header.event_commitment, block_transactions, block_events),
+                        (
+                            header.event_commitment,
+                            block_transactions,
+                            block_events,
+                            header.starknet_version,
+                        ),
                     )))
                     .await
                     .is_err()

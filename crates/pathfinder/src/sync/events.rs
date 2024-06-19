@@ -7,7 +7,13 @@ use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockHeader, BlockNumber, EventCommitment, TransactionHash};
+use pathfinder_common::{
+    BlockHeader,
+    BlockNumber,
+    EventCommitment,
+    StarknetVersion,
+    TransactionHash,
+};
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
@@ -103,20 +109,25 @@ pub(super) async fn verify_commitment(
         data: (block_number, events),
     } = events;
     let events = tokio::task::spawn_blocking(move || {
-        let computed = calculate_event_commitment(&events.iter().flatten().collect::<Vec<_>>())
-            .context("Calculating commitment")?;
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;
         let transaction = connection
             .transaction()
             .context("Creating database transaction")?;
-        let expected = transaction
+        let header = transaction
             .block_header(block_number.into())
             .context("Querying block header")?
-            .context("Block header not found")?
-            .event_commitment;
-        if computed != expected {
+            .context("Block header not found")?;
+        let computed = calculate_event_commitment(
+            &events
+                .iter()
+                .map(|(tx_hash, events)| (*tx_hash, events.as_slice()))
+                .collect::<Vec<_>>(),
+            header.starknet_version,
+        )
+        .context("Calculating commitment")?;
+        if computed != header.event_commitment {
             return Err(SyncError::EventCommitmentMismatch(peer));
         }
         Ok(events)
@@ -145,7 +156,13 @@ pub(super) async fn persist(
 
         for (block_number, events_for_block) in events.into_iter().map(|x| x.data) {
             transaction
-                .update_events(block_number, events_for_block)
+                .update_events(
+                    block_number,
+                    events_for_block
+                        .into_iter()
+                        .map(|(_, events)| events)
+                        .collect(),
+                )
                 .context("Updating events")?;
         }
         transaction.commit().context("Committing db transaction")?;
@@ -165,25 +182,28 @@ impl ProcessStage for VerifyCommitment {
         EventCommitment,
         Vec<TransactionHash>,
         HashMap<TransactionHash, Vec<Event>>,
+        StarknetVersion,
     );
     type Output = HashMap<TransactionHash, Vec<Event>>;
 
     fn map(
         &mut self,
-        (event_commitment, transactions, mut events): Self::Input,
+        (event_commitment, transactions, mut events, version): Self::Input,
     ) -> Result<Self::Output, super::error::SyncError2> {
         let mut ordered_events = Vec::new();
         for tx_hash in &transactions {
-            ordered_events.extend(
+            ordered_events.push((
+                *tx_hash,
                 events
                     .get(tx_hash)
-                    .ok_or(SyncError2::EventsTransactionsMismatch)?,
-            );
+                    .ok_or(SyncError2::EventsTransactionsMismatch)?
+                    .as_slice(),
+            ));
         }
         if ordered_events.len() != events.len() {
             return Err(SyncError2::EventsTransactionsMismatch);
         }
-        let actual = calculate_event_commitment(&ordered_events)?;
+        let actual = calculate_event_commitment(&ordered_events, version)?;
         if actual != event_commitment {
             return Err(SyncError2::EventCommitmentMismatch);
         }
