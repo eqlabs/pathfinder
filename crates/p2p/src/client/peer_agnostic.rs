@@ -1299,7 +1299,14 @@ where
                         }
                     }
 
-                    tracing::trace!(peer=?TestPeer(peer), "Current peer done");
+                    // TODO punish the peer
+                    // If we reach here, the peer did not send a Fin, so the counter for the current block should be reset
+                    // and we should start from the current block again but from the next peer
+                    //
+                    // The problem here is that the count stream was already consumed, so we assume that the full blocks that were already
+                    // processed are correct and we start from the next block from the next peer
+
+                    tracing::error!(peer=?TestPeer(peer), ?current_count, ?current_count_outer, "NO FIN FOR THIS PEER");
                 }
             }
         }
@@ -1555,7 +1562,7 @@ mod tests {
 
     #[rstest]
     #[case::happy_1_peer_1_block(
-        // Responses from peers
+        // Simulated responses from peers
         vec![(peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin))],
         // Expected number of transactions per block
         vec![2],
@@ -1563,7 +1570,7 @@ mod tests {
         vec![(peer(0), vec![txn(0, 0), txn(1, 1)])]
     )]
     #[case::happy_1_peer_2_blocks(
-        // Peer 0 gives responses for all blocks in one go
+        // Peer gives responses for all blocks in one go
         vec![(peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin))],
         vec![1, 1],
         vec![
@@ -1572,7 +1579,7 @@ mod tests {
         ]
     )]
     #[case::happy_1_peer_2_blocks_in_2_attempts(
-        // Peer 0 gives a response for the second block after a retry
+        // Peer gives a response for the second block after a retry
         vec![
             (peer(0), vec![txn(6, 0)], Some(Fin)),
             (peer(0), vec![txn(7, 0)], Some(Fin))],
@@ -1591,6 +1598,48 @@ mod tests {
         vec![
             (peer(0), vec![txn(8, 0)]),
             (peer(1), vec![txn(9, 1)])
+        ]
+    )]
+    #[case::happy_first_peer_premature_eos_with_fin(
+        vec![
+            // First peer gives full block 0 and half of block 1
+            (peer(0), vec![txn(10, 0), txn(11, 0)], Some(Fin)),
+            (peer(1), vec![txn(11, 0), txn(12, 1)], Some(Fin))
+        ],
+        vec![1, 2],
+        vec![
+            (peer(0), vec![txn(10, 0)]),
+            (peer(1), vec![txn(11, 0), txn(12, 1)])
+        ]
+    )]
+    // FIXME? the implementation does not drop full blocks consumed from a peer even though that
+    // peer does not send a Fin. IIRC the spec assumes such a peer should be punished and the blocks
+    // should be discarded.
+    #[case::happy_first_peer_all_txns_in_block_but_no_fin(
+        vec![
+            // First peer gives full block 0 but no fin
+            (peer(0), vec![txn(13, 0)], None),
+            (peer(1), vec![txn(14, 0)], Some(Fin))
+        ],
+        vec![1, 1],
+        vec![
+            // We assume this block 0 could be correct
+            (peer(0), vec![txn(13, 0)]), // block 0
+            (peer(1), vec![txn(14, 0)])  // block 1
+        ]
+    )]
+    // FIXME the same as above but the first peer gives half of the block before hanging up
+    #[case::happy_first_peer_half_txns_in_block_but_no_fin(
+        vec![
+            // First peer gives full block 0 and partial block 1 but no fin
+            (peer(0), vec![txn(15, 0), txn(16, 0)], None),
+            (peer(1), vec![txn(16, 0), txn(17, 1)], Some(Fin))
+        ],
+        vec![1, 2],
+        vec![
+            // We assume this block could be correct so we move to the next one
+            (peer(0), vec![txn(15, 0)]),            // block 0
+            (peer(1), vec![txn(16, 0), txn(17, 1)]) // block 1
         ]
     )]
     #[test_log::test(tokio::test)]
@@ -1646,7 +1695,7 @@ mod tests {
                         Ok(rx)
                     }
                     None => {
-                        todo!("FIXME")
+                        panic!("fix your assumed responses")
                     }
                 }
             }
