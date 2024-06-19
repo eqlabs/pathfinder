@@ -1166,14 +1166,14 @@ where
                         },
                     };
 
-                    tracing::trace!(%peer, ?request, "Sending request");
+                    tracing::trace!(peer=?TestPeer(peer), ?request, "Sending request");
 
                     let mut responses = match send_request(peer, request).await
                     {
                         Ok(x) => x,
                         Err(error) => {
                             // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
+                            tracing::debug!(peer=?TestPeer(peer), reason=%error, "Transactions request failed");
                             continue 'next_peer;
                         }
                     };
@@ -1217,7 +1217,7 @@ where
                                     receipt,
                                 },
                             ) => {
-                                tracing::trace!(%peer, "Got response TransactionWithReceipt");
+                                tracing::trace!(peer=?TestPeer(peer), "Got response TransactionWithReceipt");
 
                                 let t = TransactionVariant::try_from_dto(transaction)
                                     .map_err(peer_err)?;
@@ -1231,7 +1231,7 @@ where
                                 match current_count.checked_sub(1) {
                                     Some(x) => current_count = x,
                                     None => {
-                                        tracing::debug!(%peer, %start, "Too many transactions");
+                                        tracing::debug!(peer=?TestPeer(peer), %start, "Too many transactions");
                                         // TODO punish the peer
                                         continue 'next_peer;
                                     }
@@ -1242,15 +1242,15 @@ where
                             TransactionsResponse::Fin => {
                                 tracing::trace!(%peer, "Got response Fin");
 
-                                if transactions.is_empty() {
+                                if current_count == 0 {
                                     if start == stop {
-                                        tracing::debug!(%peer, "Done! Terminating stream");
+                                        tracing::debug!(peer=?TestPeer(peer), "Done! Terminating stream");
 
                                         // We're done, terminate the stream
                                         break 'outer;
                                     }
                                 } else {
-                                    tracing::debug!(%peer, "Premature transaction stream Fin");
+                                    tracing::debug!(peer=?TestPeer(peer), "Premature transaction stream Fin");
                                     // TODO punish the peer
                                     continue 'next_peer;
                                 }
@@ -1299,7 +1299,7 @@ where
                         }
                     }
 
-                    tracing::trace!(%peer, "Current peer done");
+                    tracing::trace!(peer=?TestPeer(peer), "Current peer done");
                 }
             }
         }
@@ -1516,6 +1516,11 @@ impl std::fmt::Display for ClassDefinitionsError {
     }
 }
 
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
+#[derive(Clone, PartialEq, TaggedDebug)]
+struct TestPeer(PeerId);
+
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
@@ -1526,16 +1531,12 @@ mod tests {
     use futures::{stream, SinkExt};
     use rstest::rstest;
     use tagged::Tagged;
-    use tagged_debug_derive::TaggedDebug;
 
     use super::*;
     use crate::client::conv::ToDto;
 
     #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
     struct TestTxn((TransactionVariant, Receipt));
-
-    #[derive(Clone, PartialEq, TaggedDebug)]
-    struct TestPeer(PeerId);
 
     fn peer(tag: i32) -> TestPeer {
         Tagged::<TestPeer>::get(format!("peer {tag}"), || TestPeer(PeerId::random())).data
@@ -1563,33 +1564,33 @@ mod tests {
     )]
     #[case::happy_1_peer_2_blocks(
         // Peer 0 gives responses for all blocks in one go
-        vec![(peer(0), vec![txn(2, 0), txn(3, 0)], Some(Fin))], 
+        vec![(peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin))],
         vec![1, 1],
         vec![
-            (peer(0), vec![txn(2, 0)]), // block 0
-            (peer(0), vec![txn(3, 0)])  // block 1
+            (peer(0), vec![txn(4, 0)]), // block 0
+            (peer(0), vec![txn(5, 0)])  // block 1
         ]
     )]
     #[case::happy_1_peer_2_blocks_in_2_attempts(
-        // Peer 0 gives response for the second block after a retry
+        // Peer 0 gives a response for the second block after a retry
         vec![
-            (peer(0), vec![txn(4, 0)], Some(Fin)),
-            (peer(0), vec![txn(5, 0)], Some(Fin))],
+            (peer(0), vec![txn(6, 0)], Some(Fin)),
+            (peer(0), vec![txn(7, 0)], Some(Fin))],
         vec![1, 1],
         vec![
-            (peer(0), vec![txn(4, 0)]),
-            (peer(0), vec![txn(5, 0)])
+            (peer(0), vec![txn(6, 0)]),
+            (peer(0), vec![txn(7, 0)])
         ]
     )]
     #[case::happy_2_peers_1_block_per_peer(
         vec![
-            (peer(0), vec![txn(6, 0)], Some(Fin)),
-            (peer(1), vec![txn(7, 0)], Some(Fin))
+            (peer(0), vec![txn(8, 0)], Some(Fin)),
+            (peer(1), vec![txn(9, 0)], Some(Fin))
         ],
         vec![1, 1],
         vec![
-            (peer(0), vec![txn(6, 0)]),
-            (peer(1), vec![txn(7, 1)])
+            (peer(0), vec![txn(8, 0)]),
+            (peer(1), vec![txn(9, 1)])
         ]
     )]
     #[test_log::test(tokio::test)]
@@ -1614,7 +1615,6 @@ mod tests {
         let get_peers = || async { peers.clone() };
 
         let send_request = |peer: PeerId, req: TransactionsRequest| {
-            // eprintln!("send: {:#?} {:#?}", TestPeer(peer), req);
             let p = TestPeer(peer);
 
             tracing::trace!(peer=?p, ?req, "Got request");
