@@ -49,10 +49,8 @@ pub fn verify_gateway_block_hash(
     chain: Chain,
     chain_id: ChainId,
 ) -> Result<VerifyResult> {
-    let transaction_final_hash_type =
-        TransactionCommitmentFinalHashType::for_version(&block.starknet_version);
     let transaction_commitment =
-        calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
+        calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
 
     let mut block_header_data = BlockHeaderData::from(block);
 
@@ -366,22 +364,6 @@ fn compute_final_hash(
     BlockHash(chain.finalize())
 }
 
-pub enum TransactionCommitmentFinalHashType {
-    SignatureIncludedForInvokeOnly,
-    Normal,
-}
-
-impl TransactionCommitmentFinalHashType {
-    pub fn for_version(version: &StarknetVersion) -> Self {
-        const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
-        if version < &V_0_11_1 {
-            Self::SignatureIncludedForInvokeOnly
-        } else {
-            Self::Normal
-        }
-    }
-}
-
 /// Calculate transaction commitment hash value.
 ///
 /// The transaction commitment is the root of the Patricia Merkle tree with
@@ -390,21 +372,22 @@ impl TransactionCommitmentFinalHashType {
 /// the root hash.
 pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
-    final_hash_type: TransactionCommitmentFinalHashType,
+    version: StarknetVersion,
 ) -> Result<TransactionCommitment> {
     use rayon::prelude::*;
+
+    const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
 
     let mut final_hashes = Vec::new();
     rayon::scope(|s| {
         s.spawn(|_| {
             final_hashes = transactions
                 .par_iter()
-                .map(|tx| match final_hash_type {
-                    TransactionCommitmentFinalHashType::Normal => {
-                        calculate_transaction_hash_with_signature(tx)
-                    }
-                    TransactionCommitmentFinalHashType::SignatureIncludedForInvokeOnly => {
+                .map(|tx| {
+                    if version < V_0_11_1 {
                         calculate_transaction_hash_with_signature_pre_0_11_1(tx)
+                    } else {
+                        calculate_transaction_hash_with_signature(tx)
                     }
                 })
                 .collect();

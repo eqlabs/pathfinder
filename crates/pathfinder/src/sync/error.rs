@@ -116,6 +116,8 @@ pub(super) enum SyncError2 {
     SierraDefinitionError,
     #[error("Class definitions and declarations mismatch")]
     ClassDefinitionsDeclarationsMismatch,
+    #[error("Starknet version not found in db")]
+    StarknetVersionNotFound,
 }
 
 impl PartialEq for SyncError2 {

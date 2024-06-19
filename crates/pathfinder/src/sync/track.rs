@@ -27,6 +27,7 @@ use pathfinder_common::{
     ClassHash,
     EventCommitment,
     PublicKey,
+    StarknetVersion,
     StateDiffCommitment,
     StateUpdate,
     TransactionCommitment,
@@ -336,7 +337,7 @@ struct TransactionSource {
 }
 
 impl TransactionSource {
-    fn spawn(self) -> SyncReceiver<UnverifiedTransactionData> {
+    fn spawn(self) -> SyncReceiver<(UnverifiedTransactionData, StarknetVersion)> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
@@ -380,10 +381,14 @@ impl TransactionSource {
                 let _ = tx
                     .send(Ok(PeerData::new(
                         peer,
-                        UnverifiedTransactionData {
-                            expected_commitment: header.transaction_commitment,
-                            transactions: transactions_vec,
-                        },
+                        (
+                            UnverifiedTransactionData {
+                                expected_commitment: header.transaction_commitment,
+                                transactions: transactions_vec,
+                                block_number: header.number,
+                            },
+                            header.starknet_version,
+                        ),
                     )))
                     .await;
             }

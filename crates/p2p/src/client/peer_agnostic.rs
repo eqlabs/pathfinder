@@ -425,6 +425,7 @@ impl Client {
                                             &mut current_commitment
                                         ),
                                         transactions: std::mem::take(&mut transactions),
+                                        block_number: start,
                                     },
                                 );
 
@@ -1320,6 +1321,7 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
 pub struct UnverifiedTransactionData {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(TransactionVariant, Receipt)>,
+    pub block_number: BlockNumber,
 }
 
 /// For a single block

@@ -10,6 +10,7 @@ use pathfinder_common::{
     BlockHeader,
     BlockNumber,
     ChainId,
+    StarknetVersion,
     TransactionCommitment,
     TransactionHash,
 };
@@ -17,16 +18,14 @@ use pathfinder_storage::Storage;
 
 use super::error::{SyncError, SyncError2};
 use super::stream::ProcessStage;
-use crate::state::block_hash::{
-    calculate_transaction_commitment,
-    TransactionCommitmentFinalHashType,
-};
+use crate::state::block_hash::calculate_transaction_commitment;
 
 /// For a single block
 #[derive(Clone, Debug)]
 pub struct UnverifiedTransactions {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(Transaction, Receipt)>,
+    pub version: StarknetVersion,
 }
 
 pub(super) async fn next_missing(
@@ -104,19 +103,46 @@ pub(super) fn counts_and_commitments_stream(
     }
 }
 
+/// The starknet version is necessary to calculate the transaction hashes.
+/// During checkpoint sync, the version can be fetched from the database.
+pub struct FetchStarknetVersionFromDb(pub pathfinder_storage::Connection);
+
+impl ProcessStage for FetchStarknetVersionFromDb {
+    const NAME: &'static str = "Transactions::FetchStarknetVersionFromDb";
+    type Input = UnverifiedTransactionData;
+    type Output = (UnverifiedTransactionData, StarknetVersion);
+
+    fn map(&mut self, data: Self::Input) -> Result<Self::Output, SyncError2> {
+        let mut db = self
+            .0
+            .transaction()
+            .context("Creating database transaction")?;
+
+        let version = db
+            .block_version(data.block_number)
+            .context("Fetching starknet version")?
+            .ok_or(SyncError2::StarknetVersionNotFound)?;
+        Ok((data, version))
+    }
+}
+
 pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
     const NAME: &'static str = "Transactions::Hashes";
-    type Input = UnverifiedTransactionData;
+    type Input = (UnverifiedTransactionData, StarknetVersion);
     type Output = UnverifiedTransactions;
 
-    fn map(&mut self, td: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         use rayon::prelude::*;
-        let UnverifiedTransactionData {
-            expected_commitment,
-            transactions,
-        } = td;
+        let (
+            UnverifiedTransactionData {
+                expected_commitment,
+                transactions,
+                ..
+            },
+            version,
+        ) = input;
         let transactions = transactions
             .into_par_iter()
             .map(|(tv, r)| {
@@ -139,6 +165,7 @@ impl ProcessStage for CalculateHashes {
         Ok(UnverifiedTransactions {
             expected_commitment,
             transactions,
+            version,
         })
     }
 }
@@ -154,10 +181,10 @@ impl ProcessStage for VerifyCommitment {
         let UnverifiedTransactions {
             expected_commitment,
             transactions,
+            version,
         } = transactions;
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
-        let actual =
-            calculate_transaction_commitment(&txs, TransactionCommitmentFinalHashType::Normal)?;
+        let actual = calculate_transaction_commitment(&txs, version)?;
         if actual != expected_commitment {
             return Err(SyncError2::TransactionCommitmentMismatch);
         }

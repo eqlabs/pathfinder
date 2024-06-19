@@ -5,7 +5,7 @@ use pathfinder_storage::StoredNode;
 
 use crate::tree::MerkleTree;
 
-/// A (Patricia Merkle tree)[MerkleTree] which can be used to calculate
+/// A [Patricia Merkle tree](MerkleTree) which can be used to calculate
 /// transaction or event commitments.
 ///
 /// The tree has a height of 64 bits and is ephemeral -- it has no persistent
