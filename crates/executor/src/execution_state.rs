@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
+use blockifier::blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
 use blockifier::context::{BlockContext, ChainInfo};
-use blockifier::state::cached_state::{CachedState, GlobalContractCache};
+use blockifier::state::cached_state::CachedState;
 use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::{
     contract_address,
@@ -88,7 +88,7 @@ impl<'tx> ExecutionState<'tx> {
             self.pending_state.is_some(),
         );
         let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
-        let mut cached_state = CachedState::new(pending_state_reader, GlobalContractCache::new(16));
+        let mut cached_state = CachedState::new(pending_state_reader);
 
         let chain_info = self.chain_info()?;
         let block_info = self.block_info()?;
@@ -123,6 +123,7 @@ impl<'tx> ExecutionState<'tx> {
             block_info,
             chain_info,
             versioned_constants.to_owned(),
+            false,
         )?;
 
         Ok((cached_state, block_context))
@@ -147,8 +148,14 @@ impl<'tx> ExecutionState<'tx> {
             .collect();
         let chain_id = String::from_utf8(chain_id)?;
 
+        let chain_id = match self.chain_id {
+            ChainId::MAINNET => starknet_api::core::ChainId::Mainnet,
+            ChainId::SEPOLIA_TESTNET => starknet_api::core::ChainId::Sepolia,
+            _ => starknet_api::core::ChainId::Other(chain_id),
+        };
+
         Ok(ChainInfo {
-            chain_id: starknet_api::core::ChainId(chain_id),
+            chain_id,
             fee_token_addresses: blockifier::context::FeeTokenAddresses {
                 strk_fee_token_address,
                 eth_fee_token_address,
@@ -164,7 +171,7 @@ impl<'tx> ExecutionState<'tx> {
                 PatriciaKey::try_from(self.header.sequencer_address.0.into_starkfelt())
                     .expect("Sequencer address overflow"),
             ),
-            gas_prices: blockifier::block::GasPrices {
+            gas_prices: blockifier::blockifier::block::GasPrices {
                 eth_l1_gas_price: if self.header.eth_l1_gas_price.0 == 0 {
                     // Bad API design - the genesis block has 0 gas price, but
                     // blockifier doesn't allow for it. This isn't critical for

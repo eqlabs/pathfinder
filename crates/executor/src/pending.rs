@@ -25,10 +25,10 @@ impl<S: StateReader> PendingStateReader<S> {
 
 impl<S: StateReader> StateReader for PendingStateReader<S> {
     fn get_storage_at(
-        &mut self,
+        &self,
         contract_address: ContractAddress,
         key: StorageKey,
-    ) -> blockifier::state::state_api::StateResult<starknet_api::hash::StarkFelt> {
+    ) -> blockifier::state::state_api::StateResult<starknet_types_core::felt::Felt> {
         let storage_key = StorageAddress::new(key.0.key().into_felt()).ok_or_else(|| {
             StateError::StarknetApiError(StarknetApiError::OutOfRange {
                 string: "Storage key out of range".to_owned(),
@@ -49,7 +49,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
     }
 
     fn get_nonce_at(
-        &mut self,
+        &self,
         contract_address: ContractAddress,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::Nonce> {
         let pathfinder_contract_address =
@@ -66,7 +66,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
     }
 
     fn get_class_hash_at(
-        &mut self,
+        &self,
         contract_address: ContractAddress,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::ClassHash> {
         let pathfinder_contract_address =
@@ -85,7 +85,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
     }
 
     fn get_compiled_contract_class(
-        &mut self,
+        &self,
         class_hash: starknet_api::core::ClassHash,
     ) -> blockifier::state::state_api::StateResult<
         blockifier::execution::contract_class::ContractClass,
@@ -94,7 +94,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
     }
 
     fn get_compiled_class_hash(
-        &mut self,
+        &self,
         class_hash: starknet_api::core::ClassHash,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash> {
         self.state.get_compiled_class_hash(class_hash)
@@ -112,6 +112,7 @@ mod tests {
         storage_value,
         StateUpdate,
     };
+    use starknet_types_core::felt::Felt as CoreFelt;
 
     use super::PendingStateReader;
 
@@ -119,33 +120,29 @@ mod tests {
 
     impl StateReader for DummyStateReader {
         fn get_storage_at(
-            &mut self,
+            &self,
             _contract_address: starknet_api::core::ContractAddress,
             _key: starknet_api::state::StorageKey,
-        ) -> blockifier::state::state_api::StateResult<starknet_api::hash::StarkFelt> {
-            Ok(starknet_api::hash::StarkFelt::from(u32::MAX))
+        ) -> blockifier::state::state_api::StateResult<CoreFelt> {
+            Ok(CoreFelt::from(u32::MAX))
         }
 
         fn get_nonce_at(
-            &mut self,
+            &self,
             _contract_address: starknet_api::core::ContractAddress,
         ) -> blockifier::state::state_api::StateResult<starknet_api::core::Nonce> {
-            Ok(starknet_api::core::Nonce(
-                starknet_api::hash::StarkFelt::from(u32::MAX),
-            ))
+            Ok(starknet_api::core::Nonce(CoreFelt::from(u32::MAX)))
         }
 
         fn get_class_hash_at(
-            &mut self,
+            &self,
             _contract_address: starknet_api::core::ContractAddress,
         ) -> blockifier::state::state_api::StateResult<starknet_api::core::ClassHash> {
-            Ok(starknet_api::core::ClassHash(
-                starknet_api::hash::StarkFelt::from(u32::MAX),
-            ))
+            Ok(starknet_api::core::ClassHash(CoreFelt::from(u32::MAX)))
         }
 
         fn get_compiled_contract_class(
-            &mut self,
+            &self,
             _class_hash: starknet_api::core::ClassHash,
         ) -> blockifier::state::state_api::StateResult<
             blockifier::execution::contract_class::ContractClass,
@@ -154,13 +151,13 @@ mod tests {
         }
 
         fn get_compiled_class_hash(
-            &mut self,
+            &self,
             _class_hash: starknet_api::core::ClassHash,
         ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash>
         {
-            Ok(starknet_api::core::CompiledClassHash(
-                starknet_api::hash::StarkFelt::from(u32::MAX),
-            ))
+            Ok(starknet_api::core::CompiledClassHash(CoreFelt::from(
+                u32::MAX,
+            )))
         }
     }
 
@@ -169,31 +166,23 @@ mod tests {
         let state_update = StateUpdate::default()
             .with_contract_nonce(contract_address!("0x2"), contract_nonce!("0x3"));
 
-        let mut uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
+        let uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
 
         // Nonce set in pending.
         let nonce = uut
             .get_nonce_at(starknet_api::core::ContractAddress(
-                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(2u8))
-                    .unwrap(),
+                starknet_api::core::PatriciaKey::try_from(CoreFelt::from(2u8)).unwrap(),
             ))
             .unwrap();
-        assert_eq!(
-            nonce,
-            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::from(3u8),)
-        );
+        assert_eq!(nonce, starknet_api::core::Nonce(CoreFelt::from(3u8),));
 
         // Nonce not set in pending.
         let nonce = uut
             .get_nonce_at(starknet_api::core::ContractAddress(
-                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(1u8))
-                    .unwrap(),
+                starknet_api::core::PatriciaKey::try_from(CoreFelt::from(1u8)).unwrap(),
             ))
             .unwrap();
-        assert_eq!(
-            nonce,
-            starknet_api::core::Nonce(starknet_api::hash::StarkFelt::from(u32::MAX),)
-        );
+        assert_eq!(nonce, starknet_api::core::Nonce(CoreFelt::from(u32::MAX),));
     }
 
     #[test]
@@ -204,45 +193,33 @@ mod tests {
             storage_value!("0x4"),
         );
 
-        let mut uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
+        let uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
 
         // Storage set in pending.
         let storage = uut
             .get_storage_at(
                 starknet_api::core::ContractAddress(
-                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
-                        2u8,
-                    ))
-                    .unwrap(),
+                    starknet_api::core::PatriciaKey::try_from(CoreFelt::from(2u8)).unwrap(),
                 ),
                 starknet_api::state::StorageKey(
-                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
-                        3u8,
-                    ))
-                    .unwrap(),
+                    starknet_api::core::PatriciaKey::try_from(CoreFelt::from(3u8)).unwrap(),
                 ),
             )
             .unwrap();
-        assert_eq!(storage, starknet_api::hash::StarkFelt::from(4u8));
+        assert_eq!(storage, CoreFelt::from(4u8));
 
         // Storage not set in pending.
         let storage = uut
             .get_storage_at(
                 starknet_api::core::ContractAddress(
-                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
-                        1u8,
-                    ))
-                    .unwrap(),
+                    starknet_api::core::PatriciaKey::try_from(CoreFelt::from(1u8)).unwrap(),
                 ),
                 starknet_api::state::StorageKey(
-                    starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(
-                        3u8,
-                    ))
-                    .unwrap(),
+                    starknet_api::core::PatriciaKey::try_from(CoreFelt::from(3u8)).unwrap(),
                 ),
             )
             .unwrap();
-        assert_eq!(storage, starknet_api::hash::StarkFelt::from(u32::MAX));
+        assert_eq!(storage, CoreFelt::from(u32::MAX));
     }
 
     #[test]
@@ -250,30 +227,28 @@ mod tests {
         let state_update = StateUpdate::default()
             .with_deployed_contract(contract_address!("0x2"), class_hash!("0x3"));
 
-        let mut uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
+        let uut = PendingStateReader::new(DummyStateReader {}, Some(state_update.into()));
 
         // Contract deployed in pending
         let class_hash = uut
             .get_class_hash_at(starknet_api::core::ContractAddress(
-                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(2u8))
-                    .unwrap(),
+                starknet_api::core::PatriciaKey::try_from(CoreFelt::from(2u8)).unwrap(),
             ))
             .unwrap();
         assert_eq!(
             class_hash,
-            starknet_api::core::ClassHash(starknet_api::hash::StarkFelt::from(3u8))
+            starknet_api::core::ClassHash(CoreFelt::from(3u8))
         );
 
         // Contract not deployed in pending
         let class_hash = uut
             .get_class_hash_at(starknet_api::core::ContractAddress(
-                starknet_api::core::PatriciaKey::try_from(starknet_api::hash::StarkFelt::from(1u8))
-                    .unwrap(),
+                starknet_api::core::PatriciaKey::try_from(CoreFelt::from(1u8)).unwrap(),
             ))
             .unwrap();
         assert_eq!(
             class_hash,
-            starknet_api::core::ClassHash(starknet_api::hash::StarkFelt::from(u32::MAX))
+            starknet_api::core::ClassHash(CoreFelt::from(u32::MAX))
         );
     }
 }

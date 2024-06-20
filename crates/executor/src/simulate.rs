@@ -298,14 +298,14 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     state: &mut blockifier::state::cached_state::CachedState<S>,
     old_declared_contract: Option<ClassHash>,
 ) -> Result<StateDiff, StateError> {
-    let state_diff = state.to_state_diff();
+    let state_diff = state.to_state_diff()?;
 
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
 
     // We need to check the previous class hash for a contract to decide if it's a
     // deployed contract or a replaced class.
-    for (address, class_hash) in state_diff.address_to_class_hash {
+    for (address, class_hash) in state_diff.class_hashes {
         let previous_class_hash = state.state.get_class_hash_at(address)?;
 
         if previous_class_hash.0.into_felt().is_zero() {

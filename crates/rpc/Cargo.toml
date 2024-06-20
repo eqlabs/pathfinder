@@ -37,11 +37,18 @@ serde_with = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet-gateway-types = { path = "../gateway-types" }
+starknet-types-core = { workspace = true }
 starknet_api = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "process"] }
 tower = { workspace = true, features = ["filter", "util", "limit", "timeout"] }
-tower-http = { workspace = true, features = ["cors", "limit", "request-id", "trace", "util"] }
+tower-http = { workspace = true, features = [
+    "cors",
+    "limit",
+    "request-id",
+    "trace",
+    "util",
+] }
 tracing = { workspace = true }
 zstd = { workspace = true }
 
