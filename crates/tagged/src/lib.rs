@@ -22,10 +22,14 @@ impl<T: Debug> Debug for Tagged<T> {
     }
 }
 
-static INIT: Once = Once::new();
-static mut LUTS: Option<Arc<Mutex<HashMap<TypeId, HashMap<String, Box<dyn Any>>>>>> = None;
+type Lut = Option<Arc<Mutex<HashMap<TypeId, HashMap<String, Box<dyn Any>>>>>>;
 
-fn lut() -> MutexGuard<'static, HashMap<TypeId, HashMap<String, Box<dyn Any>>>> {
+static INIT: Once = Once::new();
+static mut LUTS: Lut = None;
+
+type LutGuard = MutexGuard<'static, HashMap<TypeId, HashMap<String, Box<dyn Any>>>>;
+
+fn lut() -> LutGuard {
     INIT.call_once(|| {
         unsafe {
             LUTS = Some(Default::default());
@@ -60,7 +64,7 @@ impl<T: Clone + Dummy<Faker> + 'static> Tagged<T> {
 pub struct TypeNotFound;
 
 impl<T: Clone + PartialEq + 'static> Tagged<T> {
-    pub fn tagged(data: &T) -> Result<Self, TypeNotFound> {
+    pub fn from_data(data: &T) -> Result<Self, TypeNotFound> {
         let luts = lut();
         let lut = luts.get(&TypeId::of::<T>());
 
@@ -84,7 +88,7 @@ impl<T: Clone + PartialEq + 'static> Tagged<T> {
     }
 
     pub fn tag(data: &T) -> Result<String, TypeNotFound> {
-        Self::tagged(data).map(|tagged| tagged.tag)
+        Self::from_data(data).map(|tagged| tagged.tag)
     }
 }
 
@@ -144,7 +148,7 @@ mod tests {
         assert_eq!(foo, foo2);
 
         // Retagging a cached value
-        let retagged = Tagged::tagged(&foo.data).unwrap();
+        let retagged = Tagged::from_data(&foo.data).unwrap();
         assert_eq!(foo, retagged);
 
         // Retagging an uncached value
@@ -154,7 +158,7 @@ mod tests {
         );
 
         // Retagging an uncached type fails
-        assert!(Tagged::tagged(&Faker.fake::<Unregistered>()).is_err());
+        assert!(Tagged::from_data(&Faker.fake::<Unregistered>()).is_err());
     }
 
     #[test]

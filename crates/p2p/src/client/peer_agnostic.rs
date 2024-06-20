@@ -1531,13 +1531,13 @@ struct TestPeer(PeerId);
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
-    use std::sync::Mutex;
 
     use fake::{Fake, Faker};
     use futures::channel::mpsc;
     use futures::{stream, SinkExt};
     use rstest::rstest;
     use tagged::Tagged;
+    use tokio::sync::Mutex;
 
     use super::*;
     use crate::client::conv::ToDto;
@@ -1650,10 +1650,7 @@ mod tests {
     ) {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let peers = responses
-            .iter()
-            .map(|(p, _, _)| p.0.clone())
-            .collect::<Vec<_>>();
+        let peers = responses.iter().map(|(p, _, _)| p.0).collect::<Vec<_>>();
         let responses = Arc::new(Mutex::new(
             responses
                 .into_iter()
@@ -1669,7 +1666,7 @@ mod tests {
             tracing::trace!(peer=?p, ?req, "Got request");
 
             async {
-                let mut guard = responses.lock().unwrap();
+                let mut guard = responses.lock().await;
                 match guard.pop_front() {
                     Some((mut txns, fin)) => {
                         txns.iter_mut()
