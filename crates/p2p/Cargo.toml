@@ -63,7 +63,6 @@ zeroize = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 env_logger = { workspace = true }
 hex = { workspace = true }
-lazy_static = { workspace = true }
 rand = { workspace = true }
 rstest = { workspace = true }
 tagged = { path = "../tagged" }

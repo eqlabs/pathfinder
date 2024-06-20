@@ -6040,7 +6040,6 @@ dependencies = [
  "futures",
  "hex",
  "ipnet",
- "lazy_static",
  "libp2p",
  "p2p_proto",
  "p2p_stream",
