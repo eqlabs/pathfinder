@@ -391,51 +391,42 @@ fn ordered_l2_to_l1_messages(
 
 impl From<cairo_vm::vm::runners::cairo_runner::ExecutionResources> for ComputationResources {
     fn from(value: cairo_vm::vm::runners::cairo_runner::ExecutionResources) -> Self {
-        use cairo_vm::vm::runners::builtin_runner::{
-            BITWISE_BUILTIN_NAME,
-            EC_OP_BUILTIN_NAME,
-            HASH_BUILTIN_NAME,
-            KECCAK_BUILTIN_NAME,
-            POSEIDON_BUILTIN_NAME,
-            RANGE_CHECK_BUILTIN_NAME,
-            SEGMENT_ARENA_BUILTIN_NAME,
-            SIGNATURE_BUILTIN_NAME,
-        };
+        use cairo_vm::types::builtin_name::BuiltinName;
 
         Self {
             steps: value.n_steps,
             memory_holes: value.n_memory_holes,
             range_check_builtin_applications: *value
                 .builtin_instance_counter
-                .get(RANGE_CHECK_BUILTIN_NAME)
+                .get(&BuiltinName::range_check)
                 .unwrap_or(&0),
             pedersen_builtin_applications: *value
                 .builtin_instance_counter
-                .get(HASH_BUILTIN_NAME)
+                .get(&BuiltinName::pedersen)
                 .unwrap_or(&0),
             poseidon_builtin_applications: *value
                 .builtin_instance_counter
-                .get(POSEIDON_BUILTIN_NAME)
+                .get(&BuiltinName::poseidon)
                 .unwrap_or(&0),
             ec_op_builtin_applications: *value
                 .builtin_instance_counter
-                .get(EC_OP_BUILTIN_NAME)
+                .get(&BuiltinName::ec_op)
                 .unwrap_or(&0),
             ecdsa_builtin_applications: *value
                 .builtin_instance_counter
-                .get(SIGNATURE_BUILTIN_NAME)
+                .get(&BuiltinName::ecdsa)
                 .unwrap_or(&0),
             bitwise_builtin_applications: *value
                 .builtin_instance_counter
-                .get(BITWISE_BUILTIN_NAME)
+                .get(&BuiltinName::bitwise)
                 .unwrap_or(&0),
             keccak_builtin_applications: *value
                 .builtin_instance_counter
-                .get(KECCAK_BUILTIN_NAME)
+                .get(&BuiltinName::keccak)
                 .unwrap_or(&0),
             segment_arena_builtin: *value
                 .builtin_instance_counter
-                .get(SEGMENT_ARENA_BUILTIN_NAME)
+                .get(&BuiltinName::segment_arena)
                 .unwrap_or(&0),
         }
     }

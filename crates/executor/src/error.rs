@@ -1,4 +1,5 @@
 use blockifier::execution::errors::{
+    ConstructorEntryPointExecutionError,
     EntryPointExecutionError as BlockifierEntryPointExecutionError,
     PreExecutionError,
 };
@@ -18,16 +19,18 @@ impl From<BlockifierTransactionExecutionError> for CallError {
     fn from(value: BlockifierTransactionExecutionError) -> Self {
         use BlockifierTransactionExecutionError::*;
         match value {
-            ContractConstructorExecutionFailed(e)
-            | ExecutionError(e)
-            | ValidateTransactionError(e) => match e {
+            ContractConstructorExecutionFailed(
+                ConstructorEntryPointExecutionError::ExecutionError { error, .. },
+            )
+            | ExecutionError { error, .. }
+            | ValidateTransactionError { error, .. } => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::EntryPointNotFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
                 ) => Self::ContractNotFound,
-                _ => Self::Custom(e.into()),
+                _ => Self::Custom(error.into()),
             },
             e => Self::Custom(e.into()),
         }
@@ -125,10 +128,19 @@ mod tests {
         #[test]
         fn contract_constructor_execution_failed() {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
-            let expected = format!("Contract constructor execution has failed: {child}");
+            let expected = format!(
+                "Contract constructor execution has failed:\n0: Error in the contract class \
+                 constructor (contract address: 0, class hash: 0, selector: UNKNOWN):\n{child}\n"
+            );
 
-            let err =
-                BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(child);
+            let err = BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(
+                ConstructorEntryPointExecutionError::ExecutionError {
+                    error: child,
+                    class_hash: Default::default(),
+                    contract_address: Default::default(),
+                    constructor_selector: Default::default(),
+                },
+            );
             let err = TransactionExecutionError::new(0, err);
             let err = match err {
                 TransactionExecutionError::ExecutionError { error, .. } => error,
@@ -141,9 +153,19 @@ mod tests {
         #[test]
         fn execution_error() {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
-            let expected = format!("Transaction execution has failed: {child}");
+            let expected = format!(
+                "Contract constructor execution has failed:\n0: Error in the contract class \
+                 constructor (contract address: 0, class hash: 0, selector: UNKNOWN):\n{child}\n"
+            );
 
-            let err = BlockifierTransactionExecutionError::ExecutionError(child);
+            let err = BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(
+                ConstructorEntryPointExecutionError::ExecutionError {
+                    error: child,
+                    class_hash: Default::default(),
+                    contract_address: Default::default(),
+                    constructor_selector: Default::default(),
+                },
+            );
             let err = TransactionExecutionError::new(0, err);
             let err = match err {
                 TransactionExecutionError::ExecutionError { error, .. } => error,
@@ -156,9 +178,17 @@ mod tests {
         #[test]
         fn validate_transaction_error() {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
-            let expected = format!("Transaction validation has failed: {child}");
+            let expected = format!(
+                "Transaction validation has failed:\n0: Error in the called contract (contract \
+                 address: 0, class hash: 0, selector: 0):\n{child}\n"
+            );
 
-            let err = BlockifierTransactionExecutionError::ValidateTransactionError(child);
+            let err = BlockifierTransactionExecutionError::ValidateTransactionError {
+                error: child,
+                class_hash: Default::default(),
+                storage_address: Default::default(),
+                selector: Default::default(),
+            };
             let err = TransactionExecutionError::new(0, err);
             let err = match err {
                 TransactionExecutionError::ExecutionError { error, .. } => error,
