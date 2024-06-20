@@ -1194,7 +1194,7 @@ impl Client {
                         while start <= stop_inclusive {
                             tracing::trace!(block_number=%start, expected_responses=%current_count, "Expecting event responses");
 
-                            let mut events: Vec<Vec<Event>> = Vec::new();
+                            let mut events: Vec<(TransactionHash, Vec<Event>)> = Vec::new();
 
                             while current_count > 0 {
                                 if let Some(response) = responses.next().await {
@@ -1206,11 +1206,11 @@ impl Client {
                                             match current_txn_hash {
                                                 Some(x) if x == txn_hash => {
                                                     // Same transaction
-                                                    events.last_mut().expect("not empty").push(event);
+                                                    events.last_mut().expect("not empty").1.push(event);
                                                 }
                                                 None | Some(_) => {
                                                     // New transaction
-                                                    events.push(vec![event]);
+                                                    events.push((txn_hash, vec![event]));
                                                     current_txn_hash = Some(txn_hash);
                                                 }
                                             }
@@ -1331,7 +1331,7 @@ pub struct UnverifiedStateUpdateData {
     pub state_diff: StateUpdateData,
 }
 
-pub type EventsForBlockByTransaction = (BlockNumber, Vec<Vec<Event>>);
+pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {

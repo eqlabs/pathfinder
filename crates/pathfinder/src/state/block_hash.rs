@@ -14,12 +14,16 @@ use pathfinder_common::{
     StarknetVersion,
     StateCommitment,
     TransactionCommitment,
+    TransactionHash,
     TransactionSignatureElem,
 };
 use pathfinder_crypto::hash::{pedersen_hash, HashChain, PoseidonHasher};
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use starknet_gateway_types::reply::Block;
+
+const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
+const V_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
@@ -67,8 +71,9 @@ pub fn verify_gateway_block_hash(
         &block
             .transaction_receipts
             .iter()
-            .flat_map(|(_, events)| events)
+            .map(|(receipt, events)| (receipt.transaction_hash, events.as_slice()))
             .collect::<Vec<_>>(),
+        block.starknet_version,
     )?;
 
     // Older blocks on mainnet don't carry a precalculated event
@@ -377,9 +382,6 @@ pub fn calculate_transaction_commitment(
 ) -> Result<TransactionCommitment> {
     use rayon::prelude::*;
 
-    const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
-    const V_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
-
     let mut final_hashes = Vec::new();
     rayon::scope(|s| {
         s.spawn(|_| {
@@ -399,13 +401,13 @@ pub fn calculate_transaction_commitment(
     });
 
     if version < V_0_13_2 {
-        calculate_commitment_root::<PedersenHash>(final_hashes)
+        calculate_commitment_root::<PedersenHash>(final_hashes).map(TransactionCommitment)
     } else {
-        calculate_commitment_root::<PoseidonHash>(final_hashes)
+        calculate_commitment_root::<PoseidonHash>(final_hashes).map(TransactionCommitment)
     }
 }
 
-fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<TransactionCommitment> {
+fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<Felt> {
     let mut tree: TransactionOrEventTree<H> = Default::default();
 
     hashes
@@ -419,7 +421,7 @@ fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<Transacti
         })
         .context("Building transaction commitment tree")?;
 
-    Ok(TransactionCommitment(tree.commit()?))
+    tree.commit()
 }
 
 /// Compute the combined hash of the transaction hash and the signature.
@@ -527,7 +529,10 @@ fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
 /// The event commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
-pub fn calculate_event_commitment(transaction_events: &[&Event]) -> Result<EventCommitment> {
+pub fn calculate_event_commitment(
+    transaction_events: &[(TransactionHash, &[Event])],
+    version: StarknetVersion,
+) -> Result<EventCommitment> {
     use rayon::prelude::*;
 
     let mut event_hashes = Vec::new();
@@ -535,32 +540,30 @@ pub fn calculate_event_commitment(transaction_events: &[&Event]) -> Result<Event
         s.spawn(|_| {
             event_hashes = transaction_events
                 .par_iter()
-                .map(|&e| calculate_event_hash(e))
+                .flat_map(|(tx_hash, events)| events.par_iter().map(|e| (*tx_hash, e)))
+                .map(|(tx_hash, e)| {
+                    if version < V_0_13_2 {
+                        calculate_event_hash_pre_0_13_2(e)
+                    } else {
+                        calculate_event_hash(e, tx_hash)
+                    }
+                })
                 .collect();
         })
     });
 
-    let mut tree: TransactionOrEventTree<PedersenHash> = Default::default();
-
-    event_hashes
-        .into_iter()
-        .enumerate()
-        .try_for_each(|(idx, hash)| {
-            let idx: u64 = idx
-                .try_into()
-                .expect("too many events in transaction receipt");
-            tree.set(idx, hash)
-        })
-        .context("Building event commitment tree")?;
-
-    Ok(EventCommitment(tree.commit()?))
+    if version < V_0_13_2 {
+        calculate_commitment_root::<PedersenHash>(event_hashes).map(EventCommitment)
+    } else {
+        calculate_commitment_root::<PoseidonHash>(event_hashes).map(EventCommitment)
+    }
 }
 
-/// Calculate the hash of an event.
+/// Calculate the hash of a pre-v0.13.2 Starknet event.
 ///
 /// See the [documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Smart_Contracts/starknet-events/#event_hash)
 /// for details.
-fn calculate_event_hash(event: &Event) -> Felt {
+fn calculate_event_hash_pre_0_13_2(event: &Event) -> Felt {
     let mut keys_hash = HashChain::default();
     for key in event.keys.iter() {
         keys_hash.update(key.0);
@@ -581,6 +584,23 @@ fn calculate_event_hash(event: &Event) -> Felt {
     event_hash.finalize()
 }
 
+/// Calculate the hash of an event.
+/// [Reference code from StarkWare](https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/event_commitment.rs#L33).
+fn calculate_event_hash(event: &Event, transaction_hash: TransactionHash) -> Felt {
+    let mut hasher = PoseidonHasher::new();
+    hasher.write(event.from_address.0.into());
+    hasher.write(transaction_hash.0.into());
+    hasher.write((event.keys.len() as u64).into());
+    for key in &event.keys {
+        hasher.write(key.0.into());
+    }
+    hasher.write((event.data.len() as u64).into());
+    for data in &event.data {
+        hasher.write(data.0.into());
+    }
+    hasher.finish().into()
+}
+
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
@@ -590,7 +610,7 @@ mod tests {
         InvokeTransactionV0,
         InvokeTransactionV3,
     };
-    use pathfinder_common::{felt, TransactionHash};
+    use pathfinder_common::{felt, ContractAddress, EventData, EventKey, TransactionHash};
     use pathfinder_crypto::Felt;
 
     use super::*;
@@ -618,7 +638,7 @@ mod tests {
         // `hex(calculate_event_hash(0xdeadbeef, [1, 2, 3, 4], [5, 6, 7, 8, 9]))`
         let expected_event_hash =
             felt!("0xdb96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
-        let calculated_event_hash = calculate_event_hash(&event);
+        let calculated_event_hash = calculate_event_hash_pre_0_13_2(&event);
         assert_eq!(expected_event_hash, calculated_event_hash);
     }
 
@@ -762,12 +782,38 @@ mod tests {
             "0x0282b635972328bd1cfa86496fe920d20bd9440cd78ee8dc90ae2b383d664dcf"
         ));
         assert_eq!(
-            calculate_transaction_commitment(
-                &[transaction.clone(), transaction],
-                StarknetVersion::new(0, 13, 2, 0)
-            )
-            .unwrap(),
+            calculate_transaction_commitment(&[transaction.clone(), transaction], V_0_13_2)
+                .unwrap(),
             expected
         );
+    }
+
+    /// Source:
+    /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/event_commitment_test.rs#L10.
+    #[test]
+    fn test_event_commitment_0_13_2() {
+        let events = &[get_event(0), get_event(1), get_event(2)];
+        let expected = felt!("0x069bb140ddbbeb01d81c7201ecfb933031306e45dab9c77ff9f9ba3cd4c2b9c3");
+        assert_eq!(
+            calculate_event_commitment(&[(transaction_hash!("0x1234"), events)], V_0_13_2)
+                .unwrap()
+                .0,
+            expected
+        );
+
+        fn get_event(seed: u64) -> Event {
+            Event {
+                from_address: ContractAddress(Felt::from_u64(seed + 8)),
+                keys: [seed, seed + 1]
+                    .iter()
+                    .map(|key| EventKey(Felt::from(*key)))
+                    .collect(),
+                data: [seed + 2, seed + 3, seed + 4]
+                    .into_iter()
+                    .map(Felt::from)
+                    .map(EventData)
+                    .collect(),
+            }
+        }
     }
 }

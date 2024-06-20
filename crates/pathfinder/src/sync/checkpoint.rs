@@ -1493,7 +1493,7 @@ mod tests {
                             block
                                 .transaction_data
                                 .iter()
-                                .map(|x| x.2.clone())
+                                .map(|(tx, _, events)| (tx.hash, events.clone()))
                                 .collect::<Vec<_>>(),
                         )))
                     })
@@ -1516,8 +1516,9 @@ mod tests {
                             &block
                                 .transaction_data
                                 .iter()
-                                .flat_map(|(_, _, events)| events)
+                                .map(|(tx, _, events)| (tx.hash, events.as_slice()))
                                 .collect::<Vec<_>>(),
+                            block.header.header.starknet_version,
                         )
                         .unwrap();
                     }
