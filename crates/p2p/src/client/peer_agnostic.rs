@@ -1534,7 +1534,7 @@ mod tests {
 
     use fake::{Fake, Faker};
     use futures::channel::mpsc;
-    use futures::{stream, SinkExt};
+    use futures::{stream, SinkExt, TryStreamExt};
     use rstest::rstest;
     use tagged::Tagged;
     use tokio::sync::Mutex;
@@ -1558,103 +1558,144 @@ mod tests {
         x.data
     }
 
+    type TestResponse = Result<(TestPeer, Vec<TestTxn>, Option<TransactionsResponse>), TestPeer>;
+
     use TransactionsResponse::Fin;
 
     #[rstest]
-    #[case::happy_1_peer_1_block(
+    #[case::one_peer_1_block(
+        // Number of blocks
+        1,
         // Simulated responses from peers
-        vec![(peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin))],
+        vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin)))],
         // Expected number of transactions per block
         vec![2],
         // Expected stream of (peer_id, transactions_for_block)
-        vec![(peer(0), vec![txn(0, 0), txn(1, 1)])]
+        vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
     )]
-    #[case::happy_1_peer_2_blocks(
+    #[case::one_peer_2_blocks(
         // Peer gives responses for all blocks in one go
-        vec![(peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin))],
+        2,
+        vec![Ok((peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin)))],
         vec![1, 1],
         vec![
-            (peer(0), vec![txn(4, 0)]), // block 0
-            (peer(0), vec![txn(5, 0)])  // block 1
+            Ok((peer(0), vec![txn(4, 0)])), // block 0
+            Ok((peer(0), vec![txn(5, 0)]))  // block 1
         ]
     )]
-    #[case::happy_1_peer_2_blocks_in_2_attempts(
+    #[case::one_peer_2_blocks_in_2_attempts(
         // Peer gives a response for the second block after a retry
+        2,
         vec![
-            (peer(0), vec![txn(6, 0)], Some(Fin)),
-            (peer(0), vec![txn(7, 0)], Some(Fin))],
-        vec![1, 1],
-        vec![
-            (peer(0), vec![txn(6, 0)]),
-            (peer(0), vec![txn(7, 0)])
-        ]
-    )]
-    #[case::happy_2_peers_1_block_per_peer(
-        vec![
-            (peer(0), vec![txn(8, 0)], Some(Fin)),
-            (peer(1), vec![txn(9, 0)], Some(Fin))
+            Ok((peer(0), vec![txn(6, 0)], Some(Fin))),
+            Ok((peer(0), vec![txn(7, 0)], Some(Fin)))
         ],
         vec![1, 1],
         vec![
-            (peer(0), vec![txn(8, 0)]),
-            (peer(1), vec![txn(9, 1)])
+            Ok((peer(0), vec![txn(6, 0)])),
+            Ok((peer(0), vec![txn(7, 0)]))
         ]
     )]
-    #[case::happy_first_peer_premature_eos_with_fin(
+    #[case::two_peers_1_block_per_peer(
+        2,
+        vec![
+            Ok((peer(0), vec![txn(8, 0)], Some(Fin))),
+            Ok((peer(1), vec![txn(9, 0)], Some(Fin)))
+        ],
+        vec![1, 1],
+        vec![
+            Ok((peer(0), vec![txn(8, 0)])),
+            Ok((peer(1), vec![txn(9, 1)]))
+        ]
+    )]
+    #[case::first_peer_premature_eos_with_fin(
+        2,
         vec![
             // First peer gives full block 0 and half of block 1
-            (peer(0), vec![txn(10, 0), txn(11, 0)], Some(Fin)),
-            (peer(1), vec![txn(11, 0), txn(12, 1)], Some(Fin))
+            Ok((peer(0), vec![txn(10, 0), txn(11, 0)], Some(Fin))),
+            Ok((peer(1), vec![txn(11, 0), txn(12, 1)], Some(Fin)))
         ],
         vec![1, 2],
         vec![
-            (peer(0), vec![txn(10, 0)]),
-            (peer(1), vec![txn(11, 0), txn(12, 1)])
+            Ok((peer(0), vec![txn(10, 0)])),
+            Ok((peer(1), vec![txn(11, 0), txn(12, 1)]))
         ]
     )]
-    // FIXME? the implementation does not drop full blocks consumed from a peer even though that
-    // peer does not send a Fin. IIRC the spec assumes such a peer should be punished and the blocks
-    // should be discarded.
-    #[case::happy_first_peer_all_txns_in_block_but_no_fin(
+    #[case::first_peer_all_txns_in_block_but_no_fin(
+        2,
         vec![
             // First peer gives full block 0 but no fin
-            (peer(0), vec![txn(13, 0)], None),
-            (peer(1), vec![txn(14, 0)], Some(Fin))
+            Ok((peer(0), vec![txn(13, 0)], None)),
+            Ok((peer(1), vec![txn(14, 0)], Some(Fin)))
         ],
         vec![1, 1],
         vec![
             // We assume this block 0 could be correct
-            (peer(0), vec![txn(13, 0)]), // block 0
-            (peer(1), vec![txn(14, 0)])  // block 1
+            Ok((peer(0), vec![txn(13, 0)])), // block 0
+            Ok((peer(1), vec![txn(14, 0)]))  // block 1
         ]
     )]
-    // FIXME the same as above but the first peer gives half of the block before hanging up
-    #[case::happy_first_peer_half_txns_in_block_but_no_fin(
+    // The same as above but the first peer gives half of the second block before closing the stream
+    #[case::first_peer_half_txns_in_block_but_no_fin(
+        2,
         vec![
             // First peer gives full block 0 and partial block 1 but no fin
-            (peer(0), vec![txn(15, 0), txn(16, 0)], None),
-            (peer(1), vec![txn(16, 0), txn(17, 1)], Some(Fin))
+            Ok((peer(0), vec![txn(15, 0), txn(16, 0)], None)),
+            Ok((peer(1), vec![txn(16, 0), txn(17, 1)], Some(Fin)))
         ],
         vec![1, 2],
         vec![
             // We assume this block could be correct so we move to the next one
-            (peer(0), vec![txn(15, 0)]),            // block 0
-            (peer(1), vec![txn(16, 0), txn(17, 1)]) // block 1
+            Ok((peer(0), vec![txn(15, 0)])),            // block 0
+            Ok((peer(1), vec![txn(16, 0), txn(17, 1)])) // block 1
+        ]
+    )]
+    #[case::count_steam_is_too_short(
+        2,
+        vec![
+            // 2 blocks in responses
+            Ok((peer(0), vec![txn(18, 0)], Some(Fin))),
+            Ok((peer(0), vec![txn(19, 0)], Some(Fin)))
+        ],
+        vec![1], // but only 1 block provided in the count stream
+        vec![
+            Ok((peer(0), vec![txn(18, 0)])),
+            Err(peer(0)) // the second block is not processed
+        ]
+    )]
+    #[case::response_fails(
+        2,
+        vec![
+            Ok((peer(0), vec![txn(20, 0)], Some(Fin))),
+            Err(peer(0)),
+            Ok((peer(1), vec![txn(21, 0)], Some(Fin))),
+        ],
+        vec![1, 1],
+        vec![
+            Ok((peer(0), vec![txn(20, 0)])),
+            Ok((peer(1), vec![txn(21, 0)])),
         ]
     )]
     #[test_log::test(tokio::test)]
     async fn make_transaction_stream(
-        #[case] responses: Vec<(TestPeer, Vec<TestTxn>, Option<TransactionsResponse>)>,
+        #[case] num_blocks: usize,
+        #[case] responses: Vec<TestResponse>,
         #[case] num_txns_per_block: Vec<usize>,
-        #[case] expected_stream: Vec<(TestPeer, Vec<TestTxn>)>,
+        #[case] expected_stream: Vec<Result<(TestPeer, Vec<TestTxn>), TestPeer>>,
     ) {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let peers = responses.iter().map(|(p, _, _)| p.0).collect::<Vec<_>>();
+        let peers = responses
+            .iter()
+            .map(|r| match r {
+                Ok((p, _, _)) => p.0,
+                Err(p) => p.0,
+            })
+            .collect::<Vec<_>>();
         let responses = Arc::new(Mutex::new(
             responses
                 .into_iter()
-                .map(|(_, t, fin)| (t, fin))
+                .map(|r| r.map(|(_, txns, fin)| (txns, fin)))
                 .collect::<VecDeque<_>>(),
         ));
 
@@ -1668,7 +1709,7 @@ mod tests {
             async {
                 let mut guard = responses.lock().await;
                 match guard.pop_front() {
-                    Some((mut txns, fin)) => {
+                    Some(Ok((mut txns, fin))) => {
                         txns.iter_mut()
                             .enumerate()
                             .for_each(|(i, TestTxn((_, r)))| {
@@ -1691,6 +1732,7 @@ mod tests {
                         }
                         Ok(rx)
                     }
+                    Some(Err(_)) => Err(anyhow::anyhow!("peer failed")),
                     None => {
                         panic!("fix your assumed responses")
                     }
@@ -1699,7 +1741,7 @@ mod tests {
         };
 
         let start = BlockNumber::GENESIS;
-        let stop = start + (num_txns_per_block.len() - 1) as u64;
+        let stop = start + (num_blocks - 1) as u64;
 
         let actual = super::make_transaction_stream(
             start,
@@ -1712,8 +1754,7 @@ mod tests {
             get_peers,
             send_request,
         )
-        .map(|x| {
-            let x = x.unwrap();
+        .map_ok(|x| {
             (
                 TestPeer(x.peer),
                 x.data
@@ -1723,6 +1764,7 @@ mod tests {
                     .collect::<Vec<_>>(),
             )
         })
+        .map_err(|x| TestPeer(x.peer))
         .collect::<Vec<_>>()
         .await;
 
