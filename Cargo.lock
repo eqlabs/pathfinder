@@ -6497,6 +6497,7 @@ dependencies = [
  "primitive-types",
  "serde_json",
  "starknet-gateway-types",
+ "starknet-types-core",
  "starknet_api",
  "tokio",
  "tracing",
