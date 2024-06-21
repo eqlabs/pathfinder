@@ -364,135 +364,30 @@ impl Client {
 
     pub fn class_definition_stream(
         self,
-        mut start: BlockNumber,
+        start: BlockNumber,
         stop: BlockNumber,
         declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
     ) -> impl futures::Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
     {
-        tracing::trace!(?start, ?stop, "Streaming classes");
-
-        async_stream::try_stream! {
-            pin_mut!(declared_class_counts_stream);
-
-            let mut current_count_outer = None;
-
-            if start <= stop {
-                // Loop which refreshes peer set once we exhaust it.
-                'outer: loop {
-                    let peers = self
+        let inner = self.inner.clone();
+        let outer = self;
+        make_class_definition_stream(
+            start,
+            stop,
+            declared_class_counts_stream,
+            move || {
+                let outer = outer.clone();
+                async move {
+                    outer
                         .get_update_peers_with_sync_capability(protocol::Classes::NAME)
-                        .await;
-
-                    // Attempt each peer.
-                    'next_peer: for peer in peers {
-                        let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                        let limit = stop.get() - start.get() + 1;
-
-                        let request = ClassesRequest {
-                            iteration: Iteration {
-                                start: start.get().into(),
-                                direction: Direction::Forward,
-                                limit,
-                                step: 1.into(),
-                            },
-                        };
-
-                        let mut responses =
-                            match self.inner.send_classes_sync_request(peer, request).await {
-                                Ok(x) => x,
-                                Err(error) => {
-                                    // Failed to establish connection, try next peer.
-                                    tracing::debug!(%peer, reason=%error, "Classes request failed");
-                                    continue 'next_peer;
-                                }
-                            };
-
-                        let mut current_count = match current_count_outer {
-                            // Still the same block
-                            Some(backup) => backup,
-                            // Move to the next block
-                            None => {
-                                let x = declared_class_counts_stream.next().await
-                                    .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
-                                    .map_err(peer_err)?
-                                    .map_err(peer_err)?;
-                                current_count_outer = Some(x);
-                                x
-                            }
-                        };
-
-                        while start <= stop {
-                            tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
-
-                            let mut class_definitions = Vec::new();
-
-                            while current_count > 0 {
-                                if let Some(class_definition) = responses.next().await {
-                                    match class_definition {
-                                        ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
-                                            class,
-                                            domain: _,
-                                        }) => {
-                                            let CairoDefinition(definition) =
-                                                CairoDefinition::try_from_dto(class).map_err(peer_err)?;
-                                            class_definitions.push(ClassDefinition::Cairo {
-                                                block_number: start,
-                                                definition,
-                                            });
-                                        }
-                                        ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
-                                            class,
-                                            domain: _,
-                                        }) => {
-                                            let definition = SierraDefinition::try_from_dto(class).map_err(peer_err)?;
-                                            class_definitions.push(ClassDefinition::Sierra {
-                                                block_number: start,
-                                                sierra_definition: definition.0,
-                                            });
-                                        }
-                                        ClassesResponse::Fin => {
-                                            tracing::debug!(%peer, "Received FIN, continuing with next peer");
-                                            continue 'next_peer;
-                                        }
-                                    }
-
-                                    current_count -= 1;
-                                } else {
-                                    // Stream closed before receiving all expected classes
-                                    tracing::debug!(%peer, "Premature class definition stream termination");
-                                    // TODO punish the peer
-                                    continue 'next_peer;
-                                }
-                            }
-
-                            tracing::trace!(block_number=%start, "All classes received for block");
-
-                            for class_definition in class_definitions {
-                                yield PeerData::new(
-                                    peer,
-                                    class_definition,
-                                );
-                            }
-
-                            if start == stop {
-                                break 'outer;
-                            }
-
-                            start += 1;
-                            current_count = declared_class_counts_stream.next().await
-                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
-                                .map_err(peer_err)?
-                                .map_err(peer_err)?;
-                            current_count_outer = Some(current_count);
-
-                            tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
-                        }
-
-                        break 'outer;
-                    }
+                        .await
                 }
-            }
-        }
+            },
+            move |peer, request| {
+                let inner = inner.clone();
+                async move { inner.send_classes_sync_request(peer, request).await }
+            },
+        )
     }
 
     pub async fn events_for_block(
@@ -1333,6 +1228,143 @@ where
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+pub fn make_class_definition_stream<PF, RF>(
+    mut start: BlockNumber,
+    stop: BlockNumber,
+    declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    get_peers: impl Fn() -> PF,
+    send_request: impl Fn(PeerId, ClassesRequest) -> RF,
+) -> impl futures::Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
+where
+    PF: std::future::Future<Output = Vec<PeerId>>,
+    RF: std::future::Future<
+        Output = anyhow::Result<futures::channel::mpsc::Receiver<ClassesResponse>>,
+    >,
+{
+    tracing::trace!(?start, ?stop, "Streaming classes");
+
+    async_stream::try_stream! {
+        pin_mut!(declared_class_counts_stream);
+
+        let mut current_count_outer = None;
+
+        if start <= stop {
+            // Loop which refreshes peer set once we exhaust it.
+            'outer: loop {
+                let peers = get_peers().await;
+
+                // Attempt each peer.
+                'next_peer: for peer in peers {
+                    let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
+                    let limit = stop.get() - start.get() + 1;
+
+                    let request = ClassesRequest {
+                        iteration: Iteration {
+                            start: start.get().into(),
+                            direction: Direction::Forward,
+                            limit,
+                            step: 1.into(),
+                        },
+                    };
+
+                    let mut responses =
+                        match send_request(peer, request).await {
+                            Ok(x) => x,
+                            Err(error) => {
+                                // Failed to establish connection, try next peer.
+                                tracing::debug!(%peer, reason=%error, "Classes request failed");
+                                continue 'next_peer;
+                            }
+                        };
+
+                    let mut current_count = match current_count_outer {
+                        // Still the same block
+                        Some(backup) => backup,
+                        // Move to the next block
+                        None => {
+                            let x = declared_class_counts_stream.next().await
+                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
+                                .map_err(peer_err)?
+                                .map_err(peer_err)?;
+                            current_count_outer = Some(x);
+                            x
+                        }
+                    };
+
+                    while start <= stop {
+                        tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
+
+                        let mut class_definitions = Vec::new();
+
+                        while current_count > 0 {
+                            if let Some(class_definition) = responses.next().await {
+                                match class_definition {
+                                    ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                                        class,
+                                        domain: _,
+                                    }) => {
+                                        let CairoDefinition(definition) =
+                                            CairoDefinition::try_from_dto(class).map_err(peer_err)?;
+                                        class_definitions.push(ClassDefinition::Cairo {
+                                            block_number: start,
+                                            definition,
+                                        });
+                                    }
+                                    ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                                        class,
+                                        domain: _,
+                                    }) => {
+                                        let definition = SierraDefinition::try_from_dto(class).map_err(peer_err)?;
+                                        class_definitions.push(ClassDefinition::Sierra {
+                                            block_number: start,
+                                            sierra_definition: definition.0,
+                                        });
+                                    }
+                                    ClassesResponse::Fin => {
+                                        tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                                        continue 'next_peer;
+                                    }
+                                }
+
+                                current_count -= 1;
+                            } else {
+                                // Stream closed before receiving all expected classes
+                                tracing::debug!(%peer, "Premature class definition stream termination");
+                                // TODO punish the peer
+                                continue 'next_peer;
+                            }
+                        }
+
+                        tracing::trace!(block_number=%start, "All classes received for block");
+
+                        for class_definition in class_definitions {
+                            yield PeerData::new(
+                                peer,
+                                class_definition,
+                            );
+                        }
+
+                        if start == stop {
+                            break 'outer;
+                        }
+
+                        start += 1;
+                        current_count = declared_class_counts_stream.next().await
+                            .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
+                            .map_err(peer_err)?
+                            .map_err(peer_err)?;
+                        current_count_outer = Some(current_count);
+
+                        tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
+                    }
+
+                    break 'outer;
                 }
             }
         }
