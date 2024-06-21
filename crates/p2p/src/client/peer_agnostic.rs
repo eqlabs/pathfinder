@@ -390,6 +390,42 @@ impl Client {
         )
     }
 
+    /// ### Important
+    ///
+    /// Events are grouped by block and by transaction. The order of flattened
+    /// events in a block is guaranteed to be correct because the event
+    /// commitment is part of block hash. However the number of events per
+    /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
+    /// because neither signature nor block hash contain this information.
+    pub fn event_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    ) -> impl futures::Stream<
+        Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>,
+    > {
+        let inner = self.inner.clone();
+        let outer = self;
+        make_event_stream(
+            start,
+            stop,
+            event_counts_stream,
+            move || {
+                let outer = outer.clone();
+                async move {
+                    outer
+                        .get_update_peers_with_sync_capability(protocol::Events::NAME)
+                        .await
+                }
+            },
+            move |peer, request| {
+                let inner = inner.clone();
+                async move { inner.send_events_sync_request(peer, request).await }
+            },
+        )
+    }
+
     pub async fn events_for_block(
         self,
         block: BlockNumber,
@@ -696,136 +732,6 @@ impl Client {
         }
 
         Ok(None)
-    }
-
-    /// ### Important
-    ///
-    /// Events are grouped by block and by transaction. The order of flattened
-    /// events in a block is guaranteed to be correct because the event
-    /// commitment is part of block hash. However the number of events per
-    /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
-    /// because neither signature nor block hash contain this information.
-    pub fn event_stream(
-        self,
-        mut start: BlockNumber,
-        stop: BlockNumber,
-        event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>> {
-        tracing::trace!(?start, ?stop, "Streaming events");
-
-        async_stream::try_stream! {
-            pin_mut!(event_counts_stream);
-
-            let mut current_count_outer = None;
-
-            if start <= stop {
-                // Loop which refreshes peer set once we exhaust it.
-                'outer: loop {
-                    let peers = self
-                        .get_update_peers_with_sync_capability(protocol::Events::NAME)
-                        .await;
-
-                    // Attempt each peer.
-                    'next_peer: for peer in peers {
-                        let limit = stop.get() - start.get() + 1;
-
-                        let request = EventsRequest {
-                            iteration: Iteration {
-                                start: start.get().into(),
-                                direction: Direction::Forward,
-                                limit,
-                                step: 1.into(),
-                            },
-                        };
-
-                        let mut responses =
-                            match self.inner.send_events_sync_request(peer, request).await {
-                                Ok(x) => x,
-                                Err(error) => {
-                                    // Failed to establish connection, try next peer.
-                                    tracing::debug!(%peer, reason=%error, "Events request failed");
-                                    continue 'next_peer;
-                                }
-                            };
-
-                        // Maintain the current transaction hash to group events by transaction
-                        // This grouping is TRUSTED for pre 0.13.2 Starknet blocks.
-                        let mut current_txn_hash = None;
-                        let mut current_count = match current_count_outer {
-                            // Still the same block
-                            Some(backup) => backup,
-                            // Move to the next block
-                            None => {
-                                let x = event_counts_stream.next().await
-                                    .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
-                                current_count_outer = Some(x);
-                                x
-                            }
-                        };
-
-                        while start <= stop {
-                            tracing::trace!(block_number=%start, expected_responses=%current_count, "Expecting event responses");
-
-                            let mut events: Vec<(TransactionHash, Vec<Event>)> = Vec::new();
-
-                            while current_count > 0 {
-                                if let Some(response) = responses.next().await {
-                                    match response {
-                                        EventsResponse::Event(event) => {
-                                            let txn_hash = TransactionHash(event.transaction_hash.0);
-                                            let event = Event::try_from_dto(event)?;
-
-                                            match current_txn_hash {
-                                                Some(x) if x == txn_hash => {
-                                                    // Same transaction
-                                                    events.last_mut().expect("not empty").1.push(event);
-                                                }
-                                                None | Some(_) => {
-                                                    // New transaction
-                                                    events.push((txn_hash, vec![event]));
-                                                    current_txn_hash = Some(txn_hash);
-                                                }
-                                            }
-                                        }
-                                        EventsResponse::Fin => {
-                                            tracing::debug!(%peer, "Received FIN, continuing with next peer");
-                                            continue 'next_peer;
-                                        }
-                                    };
-
-                                    current_count -= 1;
-                                } else {
-                                    // Stream closed before receiving all expected events for this block
-                                    tracing::debug!(%peer, block_number=%start, "Premature event stream termination");
-                                    // TODO punish the peer
-                                    continue 'next_peer;
-                                }
-                            }
-
-                            tracing::trace!(block_number=%start, "All events received for block");
-
-                            yield PeerData::new(
-                                peer,
-                                (start, std::mem::take(&mut events)),
-                            );
-
-                            if start == stop {
-                                break 'outer;
-                            }
-
-                            start += 1;
-                            current_count = event_counts_stream.next().await
-                                .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))??;
-                            current_count_outer = Some(current_count);
-
-                            tracing::trace!(next_block=%start, expected_responses=%current_count, "Moving to next block");
-                        }
-
-                        break 'outer;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1362,6 +1268,139 @@ where
                         current_count_outer = Some(current_count);
 
                         tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
+                    }
+
+                    break 'outer;
+                }
+            }
+        }
+    }
+}
+
+pub fn make_event_stream<PF, RF>(
+    mut start: BlockNumber,
+    stop: BlockNumber,
+    event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    get_peers: impl Fn() -> PF,
+    send_request: impl Fn(PeerId, EventsRequest) -> RF,
+) -> impl futures::Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
+where
+    PF: std::future::Future<Output = Vec<PeerId>>,
+    RF: std::future::Future<
+        Output = anyhow::Result<futures::channel::mpsc::Receiver<EventsResponse>>,
+    >,
+{
+    tracing::trace!(?start, ?stop, "Streaming events");
+
+    async_stream::try_stream! {
+        pin_mut!(event_counts_stream);
+
+        let mut current_count_outer = None;
+
+        if start <= stop {
+            // Loop which refreshes peer set once we exhaust it.
+            'outer: loop {
+                let peers = get_peers().await;
+
+                // Attempt each peer.
+                'next_peer: for peer in peers {
+                    let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
+                    let limit = stop.get() - start.get() + 1;
+
+                    let request = EventsRequest {
+                        iteration: Iteration {
+                            start: start.get().into(),
+                            direction: Direction::Forward,
+                            limit,
+                            step: 1.into(),
+                        },
+                    };
+
+                    let mut responses =
+                        match send_request(peer, request).await {
+                            Ok(x) => x,
+                            Err(error) => {
+                                // Failed to establish connection, try next peer.
+                                tracing::debug!(%peer, reason=%error, "Events request failed");
+                                continue 'next_peer;
+                            }
+                        };
+
+                    // Maintain the current transaction hash to group events by transaction
+                    // This grouping is TRUSTED for pre 0.13.2 Starknet blocks.
+                    let mut current_txn_hash = None;
+                    let mut current_count = match current_count_outer {
+                        // Still the same block
+                        Some(backup) => backup,
+                        // Move to the next block
+                        None => {
+                            let x = event_counts_stream.next().await
+                                .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
+                                .map_err(peer_err)?
+                                .map_err(peer_err)?;
+                            current_count_outer = Some(x);
+                            x
+                        }
+                    };
+
+                    while start <= stop {
+                        tracing::trace!(block_number=%start, expected_responses=%current_count, "Expecting event responses");
+
+                        let mut events: Vec<(TransactionHash, Vec<Event>)> = Vec::new();
+
+                        while current_count > 0 {
+                            if let Some(response) = responses.next().await {
+                                match response {
+                                    EventsResponse::Event(event) => {
+                                        let txn_hash = TransactionHash(event.transaction_hash.0);
+                                        let event = Event::try_from_dto(event).map_err(peer_err)?;
+
+                                        match current_txn_hash {
+                                            Some(x) if x == txn_hash => {
+                                                // Same transaction
+                                                events.last_mut().expect("not empty").1.push(event);
+                                            }
+                                            None | Some(_) => {
+                                                // New transaction
+                                                events.push((txn_hash, vec![event]));
+                                                current_txn_hash = Some(txn_hash);
+                                            }
+                                        }
+                                    }
+                                    EventsResponse::Fin => {
+                                        tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                                        continue 'next_peer;
+                                    }
+                                };
+
+                                current_count -= 1;
+                            } else {
+                                // Stream closed before receiving all expected events for this block
+                                tracing::debug!(%peer, block_number=%start, "Premature event stream termination");
+                                // TODO punish the peer
+                                continue 'next_peer;
+                            }
+                        }
+
+                        tracing::trace!(block_number=%start, "All events received for block");
+
+                        yield PeerData::new(
+                            peer,
+                            (start, std::mem::take(&mut events)),
+                        );
+
+                        if start == stop {
+                            break 'outer;
+                        }
+
+                        start += 1;
+                        current_count = event_counts_stream.next().await
+                            .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
+                            .map_err(peer_err)?
+                            .map_err(peer_err)?;
+                        current_count_outer = Some(current_count);
+
+                        tracing::trace!(next_block=%start, expected_responses=%current_count, "Moving to next block");
                     }
 
                     break 'outer;
