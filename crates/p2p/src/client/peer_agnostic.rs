@@ -1166,14 +1166,12 @@ where
                         },
                     };
 
-                    tracing::trace!(peer=?TestPeer(peer), ?request, "Sending request");
-
                     let mut responses = match send_request(peer, request).await
                     {
                         Ok(x) => x,
                         Err(error) => {
                             // Failed to establish connection, try next peer.
-                            tracing::debug!(peer=?TestPeer(peer), reason=%error, "Transactions request failed");
+                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
                             continue 'next_peer;
                         }
                     };
@@ -1198,9 +1196,6 @@ where
 
                             current_count_outer = Some(count);
                             current_commitment = commitment;
-
-                            tracing::trace!(%start, %count, ?current_count_outer, "1 Getting counts from stream");
-
                             count
                         }
                     };
@@ -1217,8 +1212,6 @@ where
                                     receipt,
                                 },
                             ) => {
-                                tracing::trace!(peer=?TestPeer(peer), "Got response TransactionWithReceipt");
-
                                 let t = TransactionVariant::try_from_dto(transaction)
                                     .map_err(peer_err)?;
                                 let r = Receipt::try_from((
@@ -1231,7 +1224,7 @@ where
                                 match current_count.checked_sub(1) {
                                     Some(x) => current_count = x,
                                     None => {
-                                        tracing::debug!(peer=?TestPeer(peer), %start, "Too many transactions");
+                                        tracing::debug!(%peer, %start, "Too many transactions");
                                         // TODO punish the peer
                                         continue 'next_peer;
                                     }
@@ -1240,17 +1233,13 @@ where
                                 transactions.push((t, r));
                             }
                             TransactionsResponse::Fin => {
-                                tracing::trace!(%peer, "Got response Fin");
-
                                 if current_count == 0 {
                                     if start == stop {
-                                        tracing::debug!(peer=?TestPeer(peer), "Done! Terminating stream");
-
                                         // We're done, terminate the stream
                                         break 'outer;
                                     }
                                 } else {
-                                    tracing::debug!(peer=?TestPeer(peer), "Premature transaction stream Fin");
+                                    tracing::debug!(%peer, "Premature transaction stream Fin");
                                     // TODO punish the peer
                                     continue 'next_peer;
                                 }
@@ -1293,20 +1282,18 @@ where
                                 current_count = count;
                                 current_count_outer = Some(current_count);
                                 current_commitment = commitment;
-
-                                tracing::trace!(%start, %current_count, ?current_count_outer, "1 Getting counts from stream");
                             }
                         }
                     }
 
                     // TODO punish the peer
                     // If we reach here, the peer did not send a Fin, so the counter for the current block should be reset
-                    // and we should start from the current block again but from the next peer
+                    // and we should start from the current block again but from the next peer.
                     //
                     // The problem here is that the count stream was already consumed, so we assume that the full blocks that were already
-                    // processed are correct and we start from the next block from the next peer
+                    // processed are correct.
 
-                    tracing::error!(peer=?TestPeer(peer), ?current_count, ?current_count_outer, "NO FIN FOR THIS PEER");
+                    tracing::debug!(%peer, "Fin missing");
                 }
             }
         }
@@ -1523,11 +1510,6 @@ impl std::fmt::Display for ClassDefinitionsError {
     }
 }
 
-use tagged::Tagged;
-use tagged_debug_derive::TaggedDebug;
-#[derive(Clone, PartialEq, TaggedDebug)]
-struct TestPeer(PeerId);
-
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
@@ -1537,10 +1519,14 @@ mod tests {
     use futures::{stream, SinkExt, TryStreamExt};
     use rstest::rstest;
     use tagged::Tagged;
+    use tagged_debug_derive::TaggedDebug;
     use tokio::sync::Mutex;
 
     use super::*;
     use crate::client::conv::ToDto;
+
+    #[derive(Clone, PartialEq, TaggedDebug)]
+    struct TestPeer(PeerId);
 
     #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
     struct TestTxn((TransactionVariant, Receipt));
