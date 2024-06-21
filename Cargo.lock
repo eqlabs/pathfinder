@@ -6037,6 +6037,8 @@ dependencies = [
  "p2p_stream",
  "pathfinder-common",
  "pathfinder-crypto",
+ "pretty_assertions_sorted",
+ "primitive-types",
  "prost 0.12.3",
  "rand",
  "rayon",
@@ -6045,6 +6047,8 @@ dependencies = [
  "serde_json",
  "sha2",
  "sha3",
+ "tagged",
+ "tagged-debug-derive",
  "test-log",
  "tokio",
  "tracing",
@@ -8296,6 +8300,24 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "tagged"
+version = "0.13.1"
+dependencies = [
+ "fake",
+ "pretty_assertions_sorted",
+ "tagged-debug-derive",
+]
+
+[[package]]
+name = "tagged-debug-derive"
+version = "0.13.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]

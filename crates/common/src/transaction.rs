@@ -1,3 +1,4 @@
+use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::hash::{HashChain as PedersenHasher, PoseidonHasher};
 use pathfinder_crypto::Felt;
 use primitive_types::H256;
@@ -12,7 +13,7 @@ use crate::{
     Tip,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Dummy)]
 pub struct Transaction {
     pub hash: TransactionHash,
     pub variant: TransactionVariant,
@@ -43,7 +44,7 @@ impl Transaction {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Dummy)]
 pub enum TransactionVariant {
     DeclareV0(DeclareTransactionV0V1),
     DeclareV1(DeclareTransactionV0V1),
@@ -206,7 +207,7 @@ pub struct DeclareTransactionV0V1 {
     pub sender_address: ContractAddress,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub struct DeclareTransactionV2 {
     pub class_hash: ClassHash,
     pub max_fee: Fee,
@@ -216,7 +217,7 @@ pub struct DeclareTransactionV2 {
     pub compiled_class_hash: CasmHash,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub struct DeclareTransactionV3 {
     pub class_hash: ClassHash,
     pub nonce: TransactionNonce,
@@ -283,7 +284,7 @@ pub struct InvokeTransactionV0 {
     pub signature: Vec<TransactionSignatureElem>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub struct InvokeTransactionV1 {
     pub calldata: Vec<CallParam>,
     pub sender_address: ContractAddress,
@@ -292,7 +293,7 @@ pub struct InvokeTransactionV1 {
     pub nonce: TransactionNonce,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub struct InvokeTransactionV3 {
     pub signature: Vec<TransactionSignatureElem>,
     pub nonce: TransactionNonce,
@@ -306,7 +307,7 @@ pub struct InvokeTransactionV3 {
     pub sender_address: ContractAddress,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
 pub struct L1HandlerTransaction {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,
@@ -314,25 +315,25 @@ pub struct L1HandlerTransaction {
     pub calldata: Vec<CallParam>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Dummy)]
 pub enum EntryPointType {
     External,
     L1Handler,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Dummy)]
 pub struct ResourceBounds {
     pub l1_gas: ResourceBound,
     pub l2_gas: ResourceBound,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Dummy)]
 pub struct ResourceBound {
     pub max_amount: ResourceAmount,
     pub max_price_per_unit: ResourcePricePerUnit,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Dummy)]
 pub enum DataAvailabilityMode {
     #[default]
     L1,
@@ -857,6 +858,122 @@ impl V3Hasher<'_> {
         max_price.copy_from_slice(&bound.max_price_per_unit.0.to_be_bytes());
 
         Felt::from_be_bytes(buffer).expect("Packed resource should fit into felt")
+    }
+}
+
+impl<T> Dummy<T> for DeclareTransactionV0V1 {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            class_hash: Faker.fake_with_rng(rng),
+            max_fee: Faker.fake_with_rng(rng),
+            // This is to keep DeclareV0 p2p compliant
+            nonce: TransactionNonce::ZERO,
+            signature: Faker.fake_with_rng(rng),
+            sender_address: Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl<T> Dummy<T> for DeployTransactionV0 {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let class_hash = Faker.fake_with_rng(rng);
+        let contract_address_salt = Faker.fake_with_rng(rng);
+        let constructor_calldata: Vec<ConstructorParam> = Faker.fake_with_rng(rng);
+        let contract_address = ContractAddress::deployed_contract_address(
+            constructor_calldata.iter().map(|d| CallParam(d.0)),
+            &contract_address_salt,
+            &class_hash,
+        );
+
+        Self {
+            class_hash,
+            contract_address,
+            contract_address_salt,
+            constructor_calldata,
+        }
+    }
+}
+
+impl<T> Dummy<T> for DeployTransactionV1 {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let class_hash = Faker.fake_with_rng(rng);
+        let contract_address_salt = Faker.fake_with_rng(rng);
+        let constructor_calldata: Vec<ConstructorParam> = Faker.fake_with_rng(rng);
+        let contract_address = ContractAddress::deployed_contract_address(
+            constructor_calldata.iter().map(|d| CallParam(d.0)),
+            &contract_address_salt,
+            &class_hash,
+        );
+
+        Self {
+            class_hash,
+            contract_address,
+            contract_address_salt,
+            constructor_calldata,
+        }
+    }
+}
+
+impl<T> Dummy<T> for DeployAccountTransactionV1 {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let class_hash = Faker.fake_with_rng(rng);
+        let contract_address_salt = Faker.fake_with_rng(rng);
+        let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
+        let contract_address = ContractAddress::deployed_contract_address(
+            constructor_calldata.iter().map(|d| CallParam(d.0)),
+            &contract_address_salt,
+            &class_hash,
+        );
+
+        Self {
+            contract_address,
+            max_fee: Faker.fake_with_rng(rng),
+            signature: Faker.fake_with_rng(rng),
+            nonce: Faker.fake_with_rng(rng),
+            contract_address_salt,
+            constructor_calldata,
+            class_hash,
+        }
+    }
+}
+
+impl<T> Dummy<T> for DeployAccountTransactionV3 {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let class_hash = Faker.fake_with_rng(rng);
+        let contract_address_salt = Faker.fake_with_rng(rng);
+        let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
+        let contract_address = ContractAddress::deployed_contract_address(
+            constructor_calldata.iter().map(|d| CallParam(d.0)),
+            &contract_address_salt,
+            &class_hash,
+        );
+        Self {
+            contract_address,
+            signature: Faker.fake_with_rng(rng),
+            nonce: Faker.fake_with_rng(rng),
+            nonce_data_availability_mode: Faker.fake_with_rng(rng),
+            fee_data_availability_mode: Faker.fake_with_rng(rng),
+            resource_bounds: Faker.fake_with_rng(rng),
+            tip: Faker.fake_with_rng(rng),
+            paymaster_data: Faker.fake_with_rng(rng),
+            contract_address_salt,
+            constructor_calldata,
+            class_hash,
+        }
+    }
+}
+
+impl<T> Dummy<T> for InvokeTransactionV0 {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            calldata: Faker.fake_with_rng(rng),
+            sender_address: Faker.fake_with_rng(rng),
+            entry_point_selector: Faker.fake_with_rng(rng),
+            // This is a legacy field, not used in p2p
+            entry_point_type: None,
+            max_fee: Faker.fake_with_rng(rng),
+            signature: Faker.fake_with_rng(rng),
+        }
     }
 }
 

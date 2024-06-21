@@ -1,5 +1,6 @@
 use anyhow::Context;
 use futures::SinkExt;
+use p2p::client::conv::ToDto;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
     Address,
@@ -32,8 +33,6 @@ use tokio::sync::mpsc;
 pub mod conv;
 #[cfg(test)]
 mod tests;
-
-use conv::ToDto;
 
 use self::conv::{cairo_def_into_dto, sierra_def_into_dto};
 
@@ -340,10 +339,10 @@ fn get_transactions_for_block(
     for (txn, receipt, _) in txn_data {
         tracing::trace!(transaction_hash=%txn.hash, "Sending transaction");
 
-        let receipt = (&txn, receipt).to_dto();
+        let receipt = (&txn.variant, receipt).to_dto();
         tx.blocking_send(TransactionsResponse::TransactionWithReceipt(
             TransactionWithReceipt {
-                transaction: txn.to_dto(),
+                transaction: txn.variant.to_dto(),
                 receipt,
             },
         ))

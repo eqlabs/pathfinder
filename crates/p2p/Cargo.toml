@@ -39,6 +39,8 @@ p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
+pretty_assertions_sorted = { workspace = true }
+primitive-types = { workspace = true }
 prost = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
@@ -46,6 +48,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 sha3 = { workspace = true }
+
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -59,6 +62,8 @@ env_logger = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 rstest = { workspace = true }
+tagged = { path = "../tagged" }
+tagged-debug-derive = { path = "../tagged-debug-derive" }
 test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
