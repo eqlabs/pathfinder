@@ -17,7 +17,6 @@ pub struct Fp([u64; 4]);
 // Arkworks
 use ark_ff::fields::{Fp256, MontBackend};
 use ark_ff::{BigInt, Field, MontConfig};
-use rand::Rng;
 #[derive(MontConfig)]
 #[modulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
 #[generator = "3"]
@@ -46,9 +45,8 @@ pub fn bench_field(c: &mut Criterion) {
 
     let mut grp_alg = c.benchmark_group("field");
 
-    let rand: [u64; 4] = [rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-    let ark_elm = Fq::new_unchecked(BigInt(rand));
-    let pf_elm = MontFelt::from_native_limbs(rand);
+    let pf_elm = MontFelt::random(rng);
+    let ark_elm = Fq::new_unchecked(BigInt(pf_elm.0));
     let ff_elm = <Fp as ff::PrimeField>::from_repr(FpRepr(pf_elm.to_be_bytes())).unwrap();
 
     // MUL
