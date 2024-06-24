@@ -373,19 +373,17 @@ fn ordered_l2_to_l1_messages(
 ) -> Vec<MsgToL1> {
     let mut messages = BTreeMap::new();
 
-    for call in call_info.into_iter() {
-        for OrderedL2ToL1Message { order, message } in &call.execution.l2_to_l1_messages {
-            messages.insert(
-                order,
-                MsgToL1 {
-                    order: *order,
-                    payload: message.payload.0.iter().map(IntoFelt::into_felt).collect(),
-                    to_address: Felt::from_be_slice(message.to_address.0.as_bytes())
-                        .expect("Ethereum address should fit into felt"),
-                    from_address: call.call.storage_address.0.key().into_felt(),
-                },
-            );
-        }
+    for OrderedL2ToL1Message { order, message } in &call_info.execution.l2_to_l1_messages {
+        messages.insert(
+            order,
+            MsgToL1 {
+                order: *order,
+                payload: message.payload.0.iter().map(IntoFelt::into_felt).collect(),
+                to_address: Felt::from_be_slice(message.to_address.0.as_bytes())
+                    .expect("Ethereum address should fit into felt"),
+                from_address: call_info.call.storage_address.0.key().into_felt(),
+            },
+        );
     }
 
     messages.into_values().collect()
