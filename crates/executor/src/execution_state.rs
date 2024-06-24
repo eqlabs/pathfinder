@@ -36,9 +36,14 @@ mod versioned_constants {
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1: &[u8] =
         include_bytes!("../resources/versioned_constants_13_1.json");
 
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1: &[u8] =
+        include_bytes!("../resources/versioned_constants_13_1_1.json");
+
     const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
 
     const STARKNET_VERSION_0_13_1_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
+
+    const STARKNET_VERSION_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
     lazy_static::lazy_static! {
         pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: VersionedConstants =
@@ -46,6 +51,9 @@ mod versioned_constants {
 
         pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1: VersionedConstants =
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1).unwrap();
+
+        pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1: VersionedConstants =
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1).unwrap();
     }
 
     pub(super) fn for_version(version: &StarknetVersion) -> &'static VersionedConstants {
@@ -54,6 +62,8 @@ mod versioned_constants {
             &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0
         } else if version < &STARKNET_VERSION_0_13_1_1 {
             &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1
+        } else if version < &STARKNET_VERSION_0_13_2 {
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1
         } else {
             VersionedConstants::latest_constants()
         }
