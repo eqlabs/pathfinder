@@ -27,7 +27,7 @@ pub struct StateUpdate {
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct StateUpdateData {
     pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,

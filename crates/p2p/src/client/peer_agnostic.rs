@@ -1479,7 +1479,7 @@ pub struct UnverifiedTransactionData {
 pub type UnverifiedTransactionDataWithBlockNumber = (UnverifiedTransactionData, BlockNumber);
 
 /// For a single block
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Dummy)]
 pub struct UnverifiedStateUpdateData {
     pub expected_commitment: StateDiffCommitment,
     pub state_diff: StateUpdateData,
@@ -1641,28 +1641,36 @@ mod tests {
     #[derive(Clone, PartialEq, TaggedDebug)]
     struct TestPeer(PeerId);
 
-    #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
-    struct TestTxn((TransactionVariant, Receipt));
-
     fn peer(tag: i32) -> TestPeer {
-        Tagged::<TestPeer>::get(format!("peer {tag}"), || TestPeer(PeerId::random())).data
+        tagged::init();
+        Tagged::<TestPeer>::get(format!("peer {tag}"), || TestPeer(PeerId::random()))
+            .unwrap()
+            .data
     }
 
-    fn txn(tag: i32, transaction_index: u64) -> TestTxn {
-        let x = Tagged::get(format!("txn {tag}"), || {
-            let mut x = Faker.fake::<TestTxn>();
-            x.0 .1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
-            x
-        });
-        x.data
-    }
+    mod make_transaction_stream {
+        use TransactionsResponse::Fin;
 
-    type TestResponse = Result<(TestPeer, Vec<TestTxn>, Option<TransactionsResponse>), TestPeer>;
+        use super::*;
 
-    use TransactionsResponse::Fin;
+        type TestResponse =
+            Result<(TestPeer, Vec<TestTxn>, Option<TransactionsResponse>), TestPeer>;
 
-    #[rstest]
-    #[case::one_peer_1_block(
+        #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
+        struct TestTxn((TransactionVariant, Receipt));
+
+        fn txn(tag: i32, transaction_index: u64) -> TestTxn {
+            Tagged::get(format!("txn {tag}"), || {
+                let mut x = Faker.fake::<TestTxn>();
+                x.0 .1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
+                x
+            })
+            .unwrap()
+            .data
+        }
+
+        #[rstest]
+        #[case::one_peer_1_block(
         // Number of blocks
         1,
         // Simulated responses from peers
@@ -1672,7 +1680,7 @@ mod tests {
         // Expected stream of (peer_id, transactions_for_block)
         vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
     )]
-    #[case::one_peer_2_blocks(
+        #[case::one_peer_2_blocks(
         // Peer gives responses for all blocks in one go
         2,
         vec![Ok((peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin)))],
@@ -1682,7 +1690,7 @@ mod tests {
             Ok((peer(0), vec![txn(5, 0)]))  // block 1
         ]
     )]
-    #[case::one_peer_2_blocks_in_2_attempts(
+        #[case::one_peer_2_blocks_in_2_attempts(
         // Peer gives a response for the second block after a retry
         2,
         vec![
@@ -1695,7 +1703,7 @@ mod tests {
             Ok((peer(0), vec![txn(7, 0)]))
         ]
     )]
-    #[case::two_peers_1_block_per_peer(
+        #[case::two_peers_1_block_per_peer(
         2,
         vec![
             Ok((peer(0), vec![txn(8, 0)], Some(Fin))),
@@ -1707,7 +1715,7 @@ mod tests {
             Ok((peer(1), vec![txn(9, 1)]))
         ]
     )]
-    #[case::first_peer_premature_eos_with_fin(
+        #[case::first_peer_premature_eos_with_fin(
         2,
         vec![
             // First peer gives full block 0 and half of block 1
@@ -1720,7 +1728,7 @@ mod tests {
             Ok((peer(1), vec![txn(11, 0), txn(12, 1)]))
         ]
     )]
-    #[case::first_peer_all_txns_in_block_but_no_fin(
+        #[case::first_peer_all_txns_in_block_but_no_fin(
         2,
         vec![
             // First peer gives full block 0 but no fin
@@ -1734,8 +1742,9 @@ mod tests {
             Ok((peer(1), vec![txn(14, 0)]))  // block 1
         ]
     )]
-    // The same as above but the first peer gives half of the second block before closing the stream
-    #[case::first_peer_half_txns_in_block_but_no_fin(
+        // The same as above but the first peer gives half of the second block before closing the
+        // stream
+        #[case::first_peer_half_txns_in_block_but_no_fin(
         2,
         vec![
             // First peer gives full block 0 and partial block 1 but no fin
@@ -1749,7 +1758,7 @@ mod tests {
             Ok((peer(1), vec![txn(16, 0), txn(17, 1)])) // block 1
         ]
     )]
-    #[case::count_steam_is_too_short(
+        #[case::count_steam_is_too_short(
         2,
         vec![
             // 2 blocks in responses
@@ -1762,7 +1771,7 @@ mod tests {
             Err(peer(0)) // the second block is not processed
         ]
     )]
-    #[case::response_fails(
+        #[case::response_fails(
         2,
         vec![
             Ok((peer(0), vec![txn(20, 0)], Some(Fin))),
@@ -1775,99 +1784,340 @@ mod tests {
             Ok((peer(1), vec![txn(21, 0)])),
         ]
     )]
-    #[test_log::test(tokio::test)]
-    async fn make_transaction_stream(
-        #[case] num_blocks: usize,
-        #[case] responses: Vec<TestResponse>,
-        #[case] num_txns_per_block: Vec<usize>,
-        #[case] expected_stream: Vec<Result<(TestPeer, Vec<TestTxn>), TestPeer>>,
-    ) {
-        let _ = env_logger::builder().is_test(true).try_init();
+        #[test_log::test(tokio::test)]
+        async fn make_transaction_stream(
+            #[case] num_blocks: usize,
+            #[case] responses: Vec<TestResponse>,
+            #[case] num_txns_per_block: Vec<usize>,
+            #[case] expected_stream: Vec<Result<(TestPeer, Vec<TestTxn>), TestPeer>>,
+        ) {
+            let _ = env_logger::builder().is_test(true).try_init();
 
-        let peers = responses
-            .iter()
-            .map(|r| match r {
-                Ok((p, _, _)) => p.0,
-                Err(p) => p.0,
-            })
-            .collect::<Vec<_>>();
-        let responses = Arc::new(Mutex::new(
-            responses
-                .into_iter()
-                .map(|r| r.map(|(_, txns, fin)| (txns, fin)))
-                .collect::<VecDeque<_>>(),
-        ));
+            let peers = responses
+                .iter()
+                .map(|r| match r {
+                    Ok((p, _, _)) => p.0,
+                    Err(p) => p.0,
+                })
+                .collect::<Vec<_>>();
+            let responses = Arc::new(Mutex::new(
+                responses
+                    .into_iter()
+                    .map(|r| r.map(|(_, txns, fin)| (txns, fin)))
+                    .collect::<VecDeque<_>>(),
+            ));
 
-        let get_peers = || async { peers.clone() };
+            let get_peers = || async { peers.clone() };
 
-        let send_request = |peer: PeerId, req: TransactionsRequest| {
-            let p = TestPeer(peer);
+            let send_request = |peer: PeerId, req: TransactionsRequest| {
+                let p = TestPeer(peer);
 
-            tracing::trace!(peer=?p, ?req, "Got request");
+                tracing::trace!(peer=?p, ?req, "Got request");
 
-            async {
-                let mut guard = responses.lock().await;
-                match guard.pop_front() {
-                    Some(Ok((mut txns, fin))) => {
-                        txns.iter_mut()
-                            .enumerate()
-                            .for_each(|(i, TestTxn((_, r)))| {
-                                r.transaction_index = TransactionIndex::new_or_panic(i as u64);
-                            });
+                async {
+                    let mut guard = responses.lock().await;
+                    match guard.pop_front() {
+                        Some(Ok((mut txns, fin))) => {
+                            txns.iter_mut()
+                                .enumerate()
+                                .for_each(|(i, TestTxn((_, r)))| {
+                                    r.transaction_index = TransactionIndex::new_or_panic(i as u64);
+                                });
 
-                        let (mut tx, rx) = mpsc::channel(txns.len() + 1);
-                        for TestTxn((t, r)) in txns {
-                            tx.send(TransactionsResponse::TransactionWithReceipt(
-                                TransactionWithReceipt {
-                                    receipt: (&t, r).to_dto(),
-                                    transaction: t.to_dto(),
-                                },
-                            ))
-                            .await
-                            .unwrap();
+                            let (mut tx, rx) = mpsc::channel(txns.len() + 1);
+                            for TestTxn((t, r)) in txns {
+                                tx.send(TransactionsResponse::TransactionWithReceipt(
+                                    TransactionWithReceipt {
+                                        receipt: (&t, r).to_dto(),
+                                        transaction: t.to_dto(),
+                                    },
+                                ))
+                                .await
+                                .unwrap();
+                            }
+                            if fin.is_some() {
+                                tx.send(TransactionsResponse::Fin).await.unwrap();
+                            }
+                            Ok(rx)
                         }
-                        if fin.is_some() {
-                            tx.send(TransactionsResponse::Fin).await.unwrap();
+                        Some(Err(_)) => Err(anyhow::anyhow!("peer failed")),
+                        None => {
+                            panic!("fix your assumed responses")
                         }
-                        Ok(rx)
-                    }
-                    Some(Err(_)) => Err(anyhow::anyhow!("peer failed")),
-                    None => {
-                        panic!("fix your assumed responses")
                     }
                 }
-            }
-        };
+            };
 
-        let start = BlockNumber::GENESIS;
-        let stop = start + (num_blocks - 1) as u64;
+            let start = BlockNumber::GENESIS;
+            let stop = start + (num_blocks - 1) as u64;
 
-        let actual = super::make_transaction_stream(
-            start,
-            stop,
-            stream::iter(
-                num_txns_per_block
-                    .into_iter()
-                    .map(|x| Ok((x, Default::default()))),
-            ),
-            get_peers,
-            send_request,
-        )
-        .map_ok(|x| {
-            (
-                TestPeer(x.peer),
-                x.data
-                    .0
-                    .transactions
-                    .into_iter()
-                    .map(TestTxn)
-                    .collect::<Vec<_>>(),
+            let actual = super::make_transaction_stream(
+                start,
+                stop,
+                stream::iter(
+                    num_txns_per_block
+                        .into_iter()
+                        .map(|x| Ok((x, Default::default()))),
+                ),
+                get_peers,
+                send_request,
             )
-        })
-        .map_err(|x| TestPeer(x.peer))
-        .collect::<Vec<_>>()
-        .await;
+            .map_ok(|x| {
+                (
+                    TestPeer(x.peer),
+                    x.data
+                        .0
+                        .transactions
+                        .into_iter()
+                        .map(TestTxn)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .map_err(|x| TestPeer(x.peer))
+            .collect::<Vec<_>>()
+            .await;
 
-        pretty_assertions_sorted::assert_eq!(actual, expected_stream);
+            pretty_assertions_sorted::assert_eq!(actual, expected_stream);
+        }
+    }
+
+    mod state_diff_stream {
+        use StateDiffsResponse::{ContractDiff, DeclaredClass, Fin};
+
+        use super::*;
+
+        #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
+        struct TestStateDiff(UnverifiedStateUpdateData);
+
+        type TestResponse = Result<(TestPeer, Vec<StateDiffsResponse>), TestPeer>;
+
+        // fn contract_diff(tag: i32) -> StateDiffsResponse {
+        //     ContractDiff(Tagged::get_fake(format!("contract diff response
+        // {tag}")).data) }
+
+        // fn declared_class(tag: i32) -> StateDiffsResponse {
+        //     DeclaredClass(Tagged::get_fake(format!("declared class {tag}")).data)
+        // }
+
+        #[rstest]
+        //     #[case::one_peer_1_block(
+        //     // Number of blocks
+        //     1,
+        //     // Simulated responses from peers
+        //     vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin)))],
+        //     // Expected number of transactions per block
+        //     vec![2],
+        //     // Expected stream of (peer_id, transactions_for_block)
+        //     vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
+        // )]
+        //     #[case::one_peer_2_blocks(
+        //     // Peer gives responses for all blocks in one go
+        //     2,
+        //     vec![Ok((peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin)))],
+        //     vec![1, 1],
+        //     vec![
+        //         Ok((peer(0), vec![txn(4, 0)])), // block 0
+        //         Ok((peer(0), vec![txn(5, 0)]))  // block 1
+        //     ]
+        // )]
+        //     #[case::one_peer_2_blocks_in_2_attempts(
+        //     // Peer gives a response for the second block after a retry
+        //     2,
+        //     vec![
+        //         Ok((peer(0), vec![txn(6, 0)], Some(Fin))),
+        //         Ok((peer(0), vec![txn(7, 0)], Some(Fin)))
+        //     ],
+        //     vec![1, 1],
+        //     vec![
+        //         Ok((peer(0), vec![txn(6, 0)])),
+        //         Ok((peer(0), vec![txn(7, 0)]))
+        //     ]
+        // )]
+        //     #[case::two_peers_1_block_per_peer(
+        //     2,
+        //     vec![
+        //         Ok((peer(0), vec![txn(8, 0)], Some(Fin))),
+        //         Ok((peer(1), vec![txn(9, 0)], Some(Fin)))
+        //     ],
+        //     vec![1, 1],
+        //     vec![
+        //         Ok((peer(0), vec![txn(8, 0)])),
+        //         Ok((peer(1), vec![txn(9, 1)]))
+        //     ]
+        // )]
+        //     #[case::first_peer_premature_eos_with_fin(
+        //     2,
+        //     vec![
+        //         // First peer gives full block 0 and half of block 1
+        //         Ok((peer(0), vec![txn(10, 0), txn(11, 0)], Some(Fin))),
+        //         Ok((peer(1), vec![txn(11, 0), txn(12, 1)], Some(Fin)))
+        //     ],
+        //     vec![1, 2],
+        //     vec![
+        //         Ok((peer(0), vec![txn(10, 0)])),
+        //         Ok((peer(1), vec![txn(11, 0), txn(12, 1)]))
+        //     ]
+        // )]
+        //     #[case::first_peer_all_txns_in_block_but_no_fin(
+        //     2,
+        //     vec![
+        //         // First peer gives full block 0 but no fin
+        //         Ok((peer(0), vec![txn(13, 0)], None)),
+        //         Ok((peer(1), vec![txn(14, 0)], Some(Fin)))
+        //     ],
+        //     vec![1, 1],
+        //     vec![
+        //         // We assume this block 0 could be correct
+        //         Ok((peer(0), vec![txn(13, 0)])), // block 0
+        //         Ok((peer(1), vec![txn(14, 0)]))  // block 1
+        //     ]
+        // )]
+        //     // The same as above but the first peer gives half of the second block before closing
+        // the     // stream
+        //     #[case::first_peer_half_txns_in_block_but_no_fin(
+        //     2,
+        //     vec![
+        //         // First peer gives full block 0 and partial block 1 but no fin
+        //         Ok((peer(0), vec![txn(15, 0), txn(16, 0)], None)),
+        //         Ok((peer(1), vec![txn(16, 0), txn(17, 1)], Some(Fin)))
+        //     ],
+        //     vec![1, 2],
+        //     vec![
+        //         // We assume this block could be correct so we move to the next one
+        //         Ok((peer(0), vec![txn(15, 0)])),            // block 0
+        //         Ok((peer(1), vec![txn(16, 0), txn(17, 1)])) // block 1
+        //     ]
+        // )]
+        //     #[case::count_steam_is_too_short(
+        //     2,
+        //     vec![
+        //         // 2 blocks in responses
+        //         Ok((peer(0), vec![txn(18, 0)], Some(Fin))),
+        //         Ok((peer(0), vec![txn(19, 0)], Some(Fin)))
+        //     ],
+        //     vec![1], // but only 1 block provided in the count stream
+        //     vec![
+        //         Ok((peer(0), vec![txn(18, 0)])),
+        //         Err(peer(0)) // the second block is not processed
+        //     ]
+        // )]
+        //     #[case::response_fails(
+        //     2,
+        //     vec![
+        //         Ok((peer(0), vec![txn(20, 0)], Some(Fin))),
+        //         Err(peer(0)),
+        //         Ok((peer(1), vec![txn(21, 0)], Some(Fin))),
+        //     ],
+        //     vec![1, 1],
+        //     vec![
+        //         Ok((peer(0), vec![txn(20, 0)])),
+        //         Ok((peer(1), vec![txn(21, 0)])),
+        //     ]
+        // )]
+        #[case::build(
+            1,
+            vec![],
+            vec![],
+            vec![]
+        )]
+        #[test_log::test(tokio::test)]
+        async fn make_state_diff_stream(
+            #[case] num_blocks: usize,
+            #[case] responses: Vec<TestResponse>,
+            #[case] state_diff_len_per_block: Vec<usize>,
+            #[case] expected_stream: Vec<
+                Result<(TestPeer, Vec<UnverifiedTransactionData>), TestPeer>,
+            >,
+        ) {
+            // let _ = env_logger::builder().is_test(true).try_init();
+
+            // let peers = responses
+            //     .iter()
+            //     .map(|r| match r {
+            //         Ok((p, _, _)) => p.0,
+            //         Err(p) => p.0,
+            //     })
+            //     .collect::<Vec<_>>();
+            // let responses = Arc::new(Mutex::new(
+            //     responses
+            //         .into_iter()
+            //         .map(|r| r.map(|(_, txns, fin)| (txns, fin)))
+            //         .collect::<VecDeque<_>>(),
+            // ));
+
+            // let get_peers = || async { peers.clone() };
+
+            // let send_request = |peer: PeerId, req: TransactionsRequest| {
+            //     let p = TestPeer(peer);
+
+            //     tracing::trace!(peer=?p, ?req, "Got request");
+
+            //     async {
+            //         let mut guard = responses.lock().await;
+            //         match guard.pop_front() {
+            //             Some(Ok((mut txns, fin))) => {
+            //                 txns.iter_mut()
+            //                     .enumerate()
+            //                     .for_each(|(i, TestTxn((_, r)))| {
+            //                         r.transaction_index =
+            // TransactionIndex::new_or_panic(i as u64);
+            // });
+
+            //                 let (mut tx, rx) = mpsc::channel(txns.len() + 1);
+            //                 for TestTxn((t, r)) in txns {
+            //
+            // tx.send(TransactionsResponse::TransactionWithReceipt(
+            //                         TransactionWithReceipt {
+            //                             receipt: (&t, r).to_dto(),
+            //                             transaction: t.to_dto(),
+            //                         },
+            //                     ))
+            //                     .await
+            //                     .unwrap();
+            //                 }
+            //                 if fin.is_some() {
+            //
+            // tx.send(TransactionsResponse::Fin).await.unwrap();
+            //                 }
+            //                 Ok(rx)
+            //             }
+            //             Some(Err(_)) => Err(anyhow::anyhow!("peer failed")),
+            //             None => {
+            //                 panic!("fix your assumed responses")
+            //             }
+            //         }
+            //     }
+            // };
+
+            // let start = BlockNumber::GENESIS;
+            // let stop = start + (num_blocks - 1) as u64;
+
+            // let actual = super::make_state_diff_stream(
+            //     start,
+            //     stop,
+            //     stream::iter(
+            //         num_txns_per_block
+            //             .into_iter()
+            //             .map(|x| Ok((x, Default::default()))),
+            //     ),
+            //     get_peers,
+            //     send_request,
+            // )
+            // .map_ok(|x| {
+            //     (
+            //         TestPeer(x.peer),
+            //         x.data
+            //             .transactions
+            //             .into_iter()
+            //             .map(TestTxn)
+            //             .collect::<Vec<_>>(),
+            //     )
+            // })
+            // .map_err(|x| TestPeer(x.peer))
+            // .collect::<Vec<_>>()
+            // .await;
+
+            // pretty_assertions_sorted::assert_eq!(actual, expected_stream);
+        }
     }
 }
