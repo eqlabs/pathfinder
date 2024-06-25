@@ -2,6 +2,8 @@ use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::hash::{HashChain as PedersenHasher, PoseidonHasher};
 use pathfinder_crypto::Felt;
 use primitive_types::H256;
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
 
 use crate::prelude::*;
 use crate::{
@@ -44,7 +46,7 @@ impl Transaction {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Dummy)]
+#[derive(Clone, PartialEq, Eq, Dummy, TaggedDebug)]
 pub enum TransactionVariant {
     DeclareV0(DeclareTransactionV0V1),
     DeclareV1(DeclareTransactionV0V1),

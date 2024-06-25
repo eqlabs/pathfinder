@@ -1455,7 +1455,7 @@ impl Default for PeersWithCapability {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
+#[derive(Clone, Default, PartialEq, Eq, Dummy, TaggedDebug)]
 pub struct Receipt {
     pub actual_fee: Fee,
     pub execution_resources: ExecutionResources,
@@ -1699,9 +1699,7 @@ mod tests {
         use super::*;
 
         type TestResponse = Result<(TestPeer, Vec<TransactionsResponse>), TestPeer>;
-
-        #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
-        struct TestTxn((TransactionVariant, Receipt));
+        type TestTxn = (TransactionVariant, Receipt);
 
         #[rstest]
         #[case::one_peer_1_block(
@@ -1845,17 +1843,7 @@ mod tests {
                 get_peers,
                 send_request,
             )
-            .map_ok(|x| {
-                (
-                    TestPeer(x.peer),
-                    x.data
-                        .0
-                        .transactions
-                        .into_iter()
-                        .map(TestTxn)
-                        .collect::<Vec<_>>(),
-                )
-            })
+            .map_ok(|x| (TestPeer(x.peer), x.data.0.transactions))
             .map_err(|x| TestPeer(x.peer))
             .collect::<Vec<_>>()
             .await;
@@ -1864,7 +1852,7 @@ mod tests {
         }
 
         fn txn_resp(tag: i32, transaction_index: u64) -> TransactionsResponse {
-            let TestTxn((t, r)) = txn(tag, transaction_index);
+            let (t, r) = txn(tag, transaction_index);
             let resp = TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
                 receipt: (&t, r).to_dto(),
                 transaction: t.to_dto(),
@@ -1877,7 +1865,7 @@ mod tests {
         fn txn(tag: i32, transaction_index: u64) -> TestTxn {
             Tagged::get(format!("txn {tag}"), || {
                 let mut x = Faker.fake::<TestTxn>();
-                x.0 .1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
+                x.1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
                 x
             })
             .unwrap()
@@ -2032,7 +2020,14 @@ mod tests {
             .collect::<Vec<_>>()
             .await;
 
-            pretty_assertions_sorted::assert_eq!(actual, expected_stream);
+            // Add block numbers
+            let expected = expected_stream
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| x.map(|(p, su)| (p, (su, BlockNumber::new_or_panic(i as u64)))))
+                .collect::<Vec<_>>();
+
+            pretty_assertions_sorted::assert_eq!(actual, expected);
         }
 
         fn contract_diff(tag: i32) -> StateDiffsResponse {
