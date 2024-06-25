@@ -827,6 +827,9 @@ where
                                     receipt,
                                 },
                             ) => {
+                                // FIXME
+                                // These conversions should all be infallible OR
+                                // we should move to the next peer when failure occurs
                                 let t = TransactionVariant::try_from_dto(transaction)
                                     .map_err(peer_err)?;
                                 let r = Receipt::try_from((
@@ -836,22 +839,29 @@ where
                                     ),
                                 ))
                                 .map_err(peer_err)?;
+
                                 match current_count.checked_sub(1) {
-                                    Some(x) => current_count = x,
+                                    Some(x) => {
+                                        current_count = x;
+                                        transactions.push((t, r));
+                                    }
                                     None => {
-                                        tracing::debug!(%peer, %start, "Too many transactions");
+                                        tracing::debug!(%peer, %start, %stop, "Too many transactions");
                                         // TODO punish the peer
-                                        continue 'next_peer;
+
+                                        // We can only get here in case of the last block, which means that the stream should be terminated
+                                        debug_assert!(start == stop);
+                                        break 'outer;
                                     }
                                 }
-
-                                transactions.push((t, r));
                             }
                             TransactionsResponse::Fin => {
                                 if current_count == 0 {
                                     if start == stop {
                                         // We're done, terminate the stream
                                         break 'outer;
+                                    } else {
+                                        // yield what was accumulated so far
                                     }
                                 } else {
                                     tracing::debug!(%peer, "Premature transaction stream Fin");
@@ -1455,7 +1465,7 @@ impl Default for PeersWithCapability {
     }
 }
 
-#[derive(Clone, Default, PartialEq, Eq, Dummy, TaggedDebug)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
 pub struct Receipt {
     pub actual_fee: Fee,
     pub execution_resources: ExecutionResources,
@@ -1699,17 +1709,20 @@ mod tests {
         use super::*;
 
         type TestResponse = Result<(TestPeer, Vec<TransactionsResponse>), TestPeer>;
-        type TestTxn = (TransactionVariant, Receipt);
+        #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
+        struct TestTxn {
+            t: TransactionVariant,
+            r: Receipt,
+        }
 
         #[rstest]
         #[case::one_peer_1_block(
-            // Number of blocks
             1,
-            // Simulated responses from peers
+            // Simulated responses
             vec![Ok((peer(0), vec![txn_resp(0, 0), txn_resp(1, 1), Fin]))],
             // Expected number of transactions per block
             vec![2],
-            // Expected stream of (peer_id, transactions_for_block)
+            // Expected stream
             vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
         )]
         #[case::one_peer_2_blocks(
@@ -1738,7 +1751,10 @@ mod tests {
         #[case::two_peers_1_block_per_peer(
             2,
             vec![
+                // Errors are ignored
+                Err(peer(1)),
                 Ok((peer(0), vec![txn_resp(6, 0), Fin])),
+                Err(peer(0)),
                 Ok((peer(1), vec![txn_resp(7, 0), Fin]))
             ],
             vec![1, 1],
@@ -1803,18 +1819,11 @@ mod tests {
                 Err(peer(0)) // the second block is not processed
             ]
         )]
-        #[case::response_fails(
-            2,
-            vec![
-                Ok((peer(0), vec![txn_resp(17, 0), Fin])),
-                Err(peer(0)),
-                Ok((peer(1), vec![txn_resp(18, 0), Fin])),
-            ],
-            vec![1, 1],
-            vec![
-                Ok((peer(0), vec![txn(17, 0)])),
-                Ok((peer(1), vec![txn(18, 0)])),
-            ]
+        #[case::too_many_responses(
+            1,
+            vec![Ok((peer(0), vec![txn_resp(18, 0), txn_resp(19, 0), Fin]))],
+            vec![1],
+            vec![Ok((peer(0), vec![txn(18, 0)]))]
         )]
         #[test_log::test(tokio::test)]
         async fn make_transaction_stream(
@@ -1843,7 +1852,17 @@ mod tests {
                 get_peers,
                 send_request,
             )
-            .map_ok(|x| (TestPeer(x.peer), x.data.0.transactions))
+            .map_ok(|x| {
+                (
+                    TestPeer(x.peer),
+                    x.data
+                        .0
+                        .transactions
+                        .into_iter()
+                        .map(|(t, r)| TestTxn { t, r })
+                        .collect(),
+                )
+            })
             .map_err(|x| TestPeer(x.peer))
             .collect::<Vec<_>>()
             .await;
@@ -1852,7 +1871,7 @@ mod tests {
         }
 
         fn txn_resp(tag: i32, transaction_index: u64) -> TransactionsResponse {
-            let (t, r) = txn(tag, transaction_index);
+            let TestTxn { t, r } = txn(tag, transaction_index);
             let resp = TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
                 receipt: (&t, r).to_dto(),
                 transaction: t.to_dto(),
@@ -1865,7 +1884,7 @@ mod tests {
         fn txn(tag: i32, transaction_index: u64) -> TestTxn {
             Tagged::get(format!("txn {tag}"), || {
                 let mut x = Faker.fake::<TestTxn>();
-                x.1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
+                x.r.transaction_index = TransactionIndex::new_or_panic(transaction_index);
                 x
             })
             .unwrap()
@@ -1912,7 +1931,10 @@ mod tests {
         #[case::two_peers_1_block_per_peer(
             2,
             vec![
+                // Errors are ignored
+                Err(peer(1)),
                 Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin])),
+                Err(peer(0)),
                 Ok((peer(1), vec![contract_diff(1), declared_class(1), Fin])),
             ],
             vec![len(0), len(1)],
@@ -1975,18 +1997,11 @@ mod tests {
                 Err(peer(0)) // the second block is not processed
             ]
         )]
-        #[case::response_fails(
-            2,
-            vec![
-                Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin])),
-                Err(peer(0)),
-                Ok((peer(0), vec![contract_diff(1), declared_class(1), Fin])),
-            ],
-            vec![len(0), len(1)],
-            vec![
-                Ok((peer(0), state_diff(0))),
-                Ok((peer(0), state_diff(1)))
-            ]
+        #[case::too_many_responses(
+            1,
+            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1), Fin]))],
+            vec![len(0)],
+            vec![Ok((peer(0), state_diff(0)))]
         )]
         #[test_log::test(tokio::test)]
         async fn make_state_diff_stream(
