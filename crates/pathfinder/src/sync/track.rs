@@ -385,7 +385,6 @@ impl TransactionSource {
                             UnverifiedTransactionData {
                                 expected_commitment: header.transaction_commitment,
                                 transactions: transactions_vec,
-                                block_number: header.number,
                             },
                             header.starknet_version,
                         ),
@@ -483,7 +482,7 @@ struct StateDiffSource {
 }
 
 impl StateDiffSource {
-    fn spawn(self) -> SyncReceiver<UnverifiedStateUpdateData> {
+    fn spawn(self) -> SyncReceiver<(UnverifiedStateUpdateData, StarknetVersion)> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
@@ -508,10 +507,13 @@ impl StateDiffSource {
                 if tx
                     .send(Ok(PeerData::new(
                         peer,
-                        UnverifiedStateUpdateData {
-                            expected_commitment: header.state_diff_commitment,
-                            state_diff,
-                        },
+                        (
+                            UnverifiedStateUpdateData {
+                                expected_commitment: header.state_diff_commitment,
+                                state_diff,
+                            },
+                            header.header.starknet_version,
+                        ),
                     )))
                     .await
                     .is_err()

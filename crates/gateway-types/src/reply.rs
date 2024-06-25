@@ -2372,6 +2372,7 @@ mod tests {
             block_hash,
             state_diff_commitment,
             BlockNumber,
+            StarknetVersion,
         };
 
         use super::super::{BlockSignature, BlockSignatureInput, StateUpdate};
@@ -2417,7 +2418,7 @@ mod tests {
             let state_update = pathfinder_common::StateUpdate::from(state_update);
 
             assert_eq!(
-                state_update.compute_state_diff_commitment(),
+                state_update.compute_state_diff_commitment(StarknetVersion::new(0, 12, 2, 0)),
                 signature.signature_input.state_diff_commitment
             )
         }

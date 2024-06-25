@@ -258,11 +258,12 @@ where
             signature.into();
 
         // Check block commitment signature
+        let version = block.starknet_version;
         let (signature, state_update) = match block_validation_mode {
             BlockValidationMode::Strict => {
                 let block_hash = block.block_hash;
                 let (verify_result, signature, state_update) = tokio::task::spawn_blocking(move || -> (Result<(), pathfinder_crypto::signature::SignatureError>, BlockCommitmentSignature, Box<StateUpdate>) {
-                    let state_diff_commitment = state_update.compute_state_diff_commitment();
+                    let state_diff_commitment = state_update.compute_state_diff_commitment(version);
                     let verify_result = signature
                         .verify(
                             sequencer_public_key,

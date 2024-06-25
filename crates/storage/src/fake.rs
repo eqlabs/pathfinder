@@ -364,6 +364,10 @@ pub mod init {
                     SignedBlockHeader {
                         state_diff_length,
                         state_diff_commitment,
+                        header:
+                            BlockHeader {
+                                starknet_version, ..
+                            },
                         ..
                     },
                 state_update,
@@ -429,7 +433,8 @@ pub mod init {
                 )
                 .expect("ptr size is 64 bits");
 
-                *state_diff_commitment = state_update.compute_state_diff_commitment();
+                *state_diff_commitment =
+                    state_update.compute_state_diff_commitment(*starknet_version);
             }
         }
 
