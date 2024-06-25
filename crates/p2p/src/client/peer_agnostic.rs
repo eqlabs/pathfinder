@@ -1091,7 +1091,7 @@ where
                                 }
                             }
                             StateDiffsResponse::Fin => {
-                                if state_diff.is_empty() {
+                                if current_count == 0 {
                                     if start == stop {
                                         // We're done, terminate the stream
                                         break 'outer;
@@ -1136,6 +1136,11 @@ where
                             }
                         }
                     }
+
+                    // TODO punish the peer
+                    // If we reach here, the peer did not send a Fin, so the counter for the current block should be reset
+                    // and we should start from the current block again but from the next peer.
+                    tracing::debug!(%peer, "Fin missing");
                 }
             }
         }
@@ -1897,51 +1902,6 @@ mod tests {
         type TestResponse = Result<(TestPeer, Vec<StateDiffsResponse>), TestPeer>;
 
         #[rstest]
-        //     #[case::one_peer_1_block(
-        //     // Number of blocks
-        //     1,
-        //     // Simulated responses from peers
-        //     vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin)))],
-        //     // Expected number of transactions per block
-        //     vec![2],
-        //     // Expected stream of (peer_id, transactions_for_block)
-        //     vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
-        // )]
-        //     #[case::one_peer_2_blocks(
-        //     // Peer gives responses for all blocks in one go
-        //     2,
-        //     vec![Ok((peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin)))],
-        //     vec![1, 1],
-        //     vec![
-        //         Ok((peer(0), vec![txn(4, 0)])), // block 0
-        //         Ok((peer(0), vec![txn(5, 0)]))  // block 1
-        //     ]
-        // )]
-        //     #[case::one_peer_2_blocks_in_2_attempts(
-        //     // Peer gives a response for the second block after a retry
-        //     2,
-        //     vec![
-        //         Ok((peer(0), vec![txn(6, 0)], Some(Fin))),
-        //         Ok((peer(0), vec![txn(7, 0)], Some(Fin)))
-        //     ],
-        //     vec![1, 1],
-        //     vec![
-        //         Ok((peer(0), vec![txn(6, 0)])),
-        //         Ok((peer(0), vec![txn(7, 0)]))
-        //     ]
-        // )]
-        //     #[case::two_peers_1_block_per_peer(
-        //     2,
-        //     vec![
-        //         Ok((peer(0), vec![txn(8, 0)], Some(Fin))),
-        //         Ok((peer(1), vec![txn(9, 0)], Some(Fin)))
-        //     ],
-        //     vec![1, 1],
-        //     vec![
-        //         Ok((peer(0), vec![txn(8, 0)])),
-        //         Ok((peer(1), vec![txn(9, 1)]))
-        //     ]
-        // )]
         //     #[case::first_peer_premature_eos_with_fin(
         //     2,
         //     vec![
@@ -2011,20 +1971,49 @@ mod tests {
         //         Ok((peer(1), vec![txn(21, 0)])),
         //     ]
         // )]
-        #[case::build(
+        #[case::one_peer_1_block(
             1,
-            vec![],
-            vec![],
-            vec![]
+            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin]))],
+            vec![len(0)],
+            vec![Ok((peer(0), state_diff(0)))]
+        )]
+        #[case::one_peer_2_blocks(
+            2,
+            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1), declared_class(1), Fin]))],
+            vec![len(0), len(1)],
+            vec![Ok((peer(0), state_diff(0))), Ok((peer(0), state_diff(1)))]
+        )]
+        #[case::one_peer_2_blocks_in_2_attempts(
+            // Peer gives a response for the second block after a retry
+            2,
+            vec![
+                Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin])),
+                Ok((peer(0), vec![contract_diff(1), declared_class(1), Fin])),
+            ],
+            vec![len(0), len(1)],
+            vec![
+                Ok((peer(0), state_diff(0))),
+                Ok((peer(0), state_diff(1)))
+            ]
+        )]
+        #[case::two_peers_1_block_per_peer(
+            2,
+            vec![
+                Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin])),
+                Ok((peer(1), vec![contract_diff(1), declared_class(1), Fin])),
+            ],
+            vec![len(0), len(1)],
+            vec![
+                Ok((peer(0), state_diff(0))),
+                Ok((peer(1), state_diff(1)))
+            ]
         )]
         #[test_log::test(tokio::test)]
         async fn make_state_diff_stream(
             #[case] num_blocks: usize,
             #[case] responses: Vec<TestResponse>,
             #[case] state_diff_len_per_block: Vec<usize>,
-            #[case] expected_stream: Vec<
-                Result<(TestPeer, Vec<UnverifiedTransactionData>), TestPeer>,
-            >,
+            #[case] expected_stream: Vec<Result<(TestPeer, UnverifiedStateUpdateData), TestPeer>>,
         ) {
             let _ = env_logger::builder().is_test(true).try_init();
 
@@ -2042,79 +2031,59 @@ mod tests {
                     .collect::<VecDeque<_>>(),
             ));
 
-            // let get_peers = || async { peers.clone() };
+            let get_peers = || async { peers.clone() };
 
-            // let send_request = |peer: PeerId, req: TransactionsRequest| {
-            //     let p = TestPeer(peer);
+            let send_request = |peer: PeerId, req: StateDiffsRequest| {
+                let p = TestPeer(peer);
 
-            //     tracing::trace!(peer=?p, ?req, "Got request");
+                tracing::trace!(peer=?p, ?req, "Got request");
 
-            //     async {
-            //         let mut guard = responses.lock().await;
-            //         match guard.pop_front() {
-            //             Some(Ok((mut txns, fin))) => {
-            //                 txns.iter_mut()
-            //                     .enumerate()
-            //                     .for_each(|(i, TestTxn((_, r)))| {
-            //                         r.transaction_index =
-            // TransactionIndex::new_or_panic(i as u64);
-            // });
+                async {
+                    let mut guard = responses.lock().await;
+                    match guard.pop_front() {
+                        Some(Ok(responses)) => {
+                            let (mut tx, rx) = mpsc::channel(responses.len() + 1);
+                            for r in responses {
+                                tx.send(r).await.unwrap();
+                            }
+                            Ok(rx)
+                        }
+                        Some(Err(_)) => Err(anyhow::anyhow!("peer failed")),
+                        None => {
+                            panic!("fix your assumed responses")
+                        }
+                    }
+                }
+            };
 
-            //                 let (mut tx, rx) = mpsc::channel(txns.len() + 1);
-            //                 for TestTxn((t, r)) in txns {
-            //
-            // tx.send(TransactionsResponse::TransactionWithReceipt(
-            //                         TransactionWithReceipt {
-            //                             receipt: (&t, r).to_dto(),
-            //                             transaction: t.to_dto(),
-            //                         },
-            //                     ))
-            //                     .await
-            //                     .unwrap();
-            //                 }
-            //                 if fin.is_some() {
-            //
-            // tx.send(TransactionsResponse::Fin).await.unwrap();
-            //                 }
-            //                 Ok(rx)
-            //             }
-            //             Some(Err(_)) => Err(anyhow::anyhow!("peer failed")),
-            //             None => {
-            //                 panic!("fix your assumed responses")
-            //             }
-            //         }
-            //     }
-            // };
+            let start = BlockNumber::GENESIS;
+            let stop = start + (num_blocks - 1) as u64;
 
-            // let start = BlockNumber::GENESIS;
-            // let stop = start + (num_blocks - 1) as u64;
+            let actual = super::make_state_diff_stream(
+                start,
+                stop,
+                stream::iter(
+                    state_diff_len_per_block
+                        .into_iter()
+                        .map(|x| Ok((x, Default::default()))),
+                ),
+                get_peers,
+                send_request,
+            )
+            .map_ok(|x| (TestPeer(x.peer), TestStateDiff(x.data)))
+            .map_err(|x| TestPeer(x.peer))
+            .collect::<Vec<_>>()
+            .await;
 
-            // let actual = super::make_state_diff_stream(
-            //     start,
-            //     stop,
-            //     stream::iter(
-            //         num_txns_per_block
-            //             .into_iter()
-            //             .map(|x| Ok((x, Default::default()))),
-            //     ),
-            //     get_peers,
-            //     send_request,
-            // )
-            // .map_ok(|x| {
-            //     (
-            //         TestPeer(x.peer),
-            //         x.data
-            //             .transactions
-            //             .into_iter()
-            //             .map(TestTxn)
-            //             .collect::<Vec<_>>(),
-            //     )
-            // })
-            // .map_err(|x| TestPeer(x.peer))
-            // .collect::<Vec<_>>()
-            // .await;
+            let expected = expected_stream
+                .into_iter()
+                .map(|x| match x {
+                    Ok((peer, diff)) => Ok((peer, TestStateDiff(diff))),
+                    Err(peer) => Err(peer),
+                })
+                .collect::<Vec<_>>();
 
-            // pretty_assertions_sorted::assert_eq!(actual, expected_stream);
+            pretty_assertions_sorted::assert_eq!(actual, expected);
         }
 
         fn contract_diff(tag: i32) -> StateDiffsResponse {
@@ -2184,9 +2153,20 @@ mod tests {
                     None => ([ClassHash(Faker.fake())].into(), [].into()),
                 };
             let (contract_updates, system_contract_updates) = if Faker.fake() {
-                ([Faker.fake()].into(), [].into())
+                (
+                    [(
+                        Faker.fake(),
+                        ContractUpdate {
+                            storage: Faker.fake(),
+                            class: Some(ContractClassUpdate::Deploy(Faker.fake())),
+                            nonce: Faker.fake(),
+                        },
+                    )]
+                    .into(),
+                    [].into(),
+                )
             } else {
-                ([].into(), [Faker.fake()].into())
+                ([].into(), [(ContractAddress::ONE, Faker.fake())].into())
             };
             Tagged::get(format!("state diff {tag}"), || UnverifiedStateUpdateData {
                 expected_commitment: Default::default(),
@@ -2199,6 +2179,10 @@ mod tests {
             })
             .unwrap()
             .data
+        }
+
+        fn len(tag: i32) -> usize {
+            state_diff(tag).state_diff.state_diff_length()
         }
     }
 }

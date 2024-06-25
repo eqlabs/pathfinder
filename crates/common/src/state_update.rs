@@ -312,6 +312,20 @@ impl StateUpdateData {
             cairo: self.declared_cairo_classes.clone(),
         }
     }
+
+    pub fn state_diff_length(&self) -> usize {
+        let mut len = 0;
+        self.contract_updates.iter().for_each(|(_, update)| {
+            len += update.storage.len();
+            len += usize::from(update.nonce.is_some());
+            len += usize::from(update.class.is_some());
+        });
+        self.system_contract_updates.iter().for_each(|(_, update)| {
+            len += update.storage.len();
+        });
+        len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
+        len
+    }
 }
 
 impl From<StateUpdate> for StateUpdateData {
