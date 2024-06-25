@@ -1661,16 +1661,6 @@ mod tests {
         #[derive(Clone, Dummy, PartialEq, TaggedDebug)]
         struct TestTxn((TransactionVariant, Receipt));
 
-        fn txn(tag: i32, transaction_index: u64) -> TestTxn {
-            Tagged::get(format!("txn {tag}"), || {
-                let mut x = Faker.fake::<TestTxn>();
-                x.0 .1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
-                x
-            })
-            .unwrap()
-            .data
-        }
-
         #[rstest]
         #[case::one_peer_1_block(
         // Number of blocks
@@ -1881,6 +1871,16 @@ mod tests {
 
             pretty_assertions_sorted::assert_eq!(actual, expected_stream);
         }
+
+        fn txn(tag: i32, transaction_index: u64) -> TestTxn {
+            Tagged::get(format!("txn {tag}"), || {
+                let mut x = Faker.fake::<TestTxn>();
+                x.0 .1.transaction_index = TransactionIndex::new_or_panic(transaction_index);
+                x
+            })
+            .unwrap()
+            .data
+        }
     }
 
     mod make_state_diff_stream {
@@ -1895,86 +1895,6 @@ mod tests {
         struct TestStateDiff(UnverifiedStateUpdateData);
 
         type TestResponse = Result<(TestPeer, Vec<StateDiffsResponse>), TestPeer>;
-
-        fn contract_diff(tag: i32) -> StateDiffsResponse {
-            StateDiffsResponse::ContractDiff(
-                Tagged::get(
-                    format!(
-                        "contract diff response
-            {tag}"
-                    ),
-                    || {
-                        let x = state_diff(tag).state_diff;
-                        let (a, u) = x
-                            .contract_updates
-                            .into_iter()
-                            .chain(x.system_contract_updates.into_iter().map(|(a, u)| {
-                                (
-                                    a,
-                                    ContractUpdate {
-                                        storage: u.storage,
-                                        ..Default::default()
-                                    },
-                                )
-                            }))
-                            .next()
-                            .unwrap();
-
-                        ContractDiff {
-                            address: Address(a.0),
-                            nonce: u.nonce.map(|x| x.0),
-                            class_hash: u.class.map(|x| Hash(x.class_hash().0)),
-                            values: u
-                                .storage
-                                .into_iter()
-                                .map(|(k, v)| ContractStoredValue {
-                                    key: k.0,
-                                    value: v.0,
-                                })
-                                .collect(),
-                            domain: VolitionDomain::L1,
-                        }
-                    },
-                )
-                .unwrap()
-                .data,
-            )
-        }
-
-        fn declared_class(tag: i32) -> StateDiffsResponse {
-            StateDiffsResponse::DeclaredClass(
-                Tagged::get(format!("declared class {tag}"), || DeclaredClass {
-                    class_hash: todo!(),
-                    compiled_class_hash: todo!(),
-                })
-                .unwrap()
-                .data,
-            )
-        }
-
-        fn state_diff(tag: i32) -> UnverifiedStateUpdateData {
-            let (declared_cairo_classes, declared_sierra_classes) =
-                match Faker.fake::<Option<CasmHash>>() {
-                    Some(x) => ([].into(), [(SierraHash(Faker.fake()), x)].into()),
-                    None => ([ClassHash(Faker.fake())].into(), [].into()),
-                };
-            let (contract_updates, system_contract_updates) = if Faker.fake() {
-                ([Faker.fake()].into(), [].into())
-            } else {
-                ([].into(), [Faker.fake()].into())
-            };
-            Tagged::get(format!("state diff {tag}"), || UnverifiedStateUpdateData {
-                expected_commitment: Default::default(),
-                state_diff: StateUpdateData {
-                    contract_updates,
-                    system_contract_updates,
-                    declared_cairo_classes,
-                    declared_sierra_classes,
-                },
-            })
-            .unwrap()
-            .data
-        }
 
         #[rstest]
         //     #[case::one_peer_1_block(
@@ -2106,21 +2026,21 @@ mod tests {
                 Result<(TestPeer, Vec<UnverifiedTransactionData>), TestPeer>,
             >,
         ) {
-            // let _ = env_logger::builder().is_test(true).try_init();
+            let _ = env_logger::builder().is_test(true).try_init();
 
-            // let peers = responses
-            //     .iter()
-            //     .map(|r| match r {
-            //         Ok((p, _, _)) => p.0,
-            //         Err(p) => p.0,
-            //     })
-            //     .collect::<Vec<_>>();
-            // let responses = Arc::new(Mutex::new(
-            //     responses
-            //         .into_iter()
-            //         .map(|r| r.map(|(_, txns, fin)| (txns, fin)))
-            //         .collect::<VecDeque<_>>(),
-            // ));
+            let peers = responses
+                .iter()
+                .map(|r| match r {
+                    Ok((p, _)) => p.0,
+                    Err(p) => p.0,
+                })
+                .collect::<Vec<_>>();
+            let responses = Arc::new(Mutex::new(
+                responses
+                    .into_iter()
+                    .map(|r| r.map(|(_, responses)| responses))
+                    .collect::<VecDeque<_>>(),
+            ));
 
             // let get_peers = || async { peers.clone() };
 
@@ -2195,6 +2115,90 @@ mod tests {
             // .await;
 
             // pretty_assertions_sorted::assert_eq!(actual, expected_stream);
+        }
+
+        fn contract_diff(tag: i32) -> StateDiffsResponse {
+            let sd = state_diff(tag).state_diff;
+            let (a, u) = sd
+                .contract_updates
+                .into_iter()
+                .chain(sd.system_contract_updates.into_iter().map(|(a, u)| {
+                    (
+                        a,
+                        ContractUpdate {
+                            storage: u.storage,
+                            ..Default::default()
+                        },
+                    )
+                }))
+                .next()
+                .unwrap();
+            StateDiffsResponse::ContractDiff(
+                Tagged::get(format!("contract diff response {tag}"), || ContractDiff {
+                    address: Address(a.0),
+                    nonce: u.nonce.map(|x| x.0),
+                    class_hash: u.class.map(|x| Hash(x.class_hash().0)),
+                    values: u
+                        .storage
+                        .into_iter()
+                        .map(|(k, v)| ContractStoredValue {
+                            key: k.0,
+                            value: v.0,
+                        })
+                        .collect(),
+                    domain: VolitionDomain::L1,
+                })
+                .unwrap()
+                .data,
+            )
+        }
+
+        fn declared_class(tag: i32) -> StateDiffsResponse {
+            let sd = state_diff(tag).state_diff;
+            let (class_hash, compiled_class_hash) = sd
+                .declared_sierra_classes
+                .into_iter()
+                .map(|(s, c)| (Hash(s.0), Some(Hash(c.0))))
+                .chain(
+                    sd.declared_cairo_classes
+                        .into_iter()
+                        .map(|c| (Hash(c.0), None)),
+                )
+                .next()
+                .unwrap();
+
+            StateDiffsResponse::DeclaredClass(
+                Tagged::get(format!("declared class {tag}"), || DeclaredClass {
+                    class_hash,
+                    compiled_class_hash,
+                })
+                .unwrap()
+                .data,
+            )
+        }
+
+        fn state_diff(tag: i32) -> UnverifiedStateUpdateData {
+            let (declared_cairo_classes, declared_sierra_classes) =
+                match Faker.fake::<Option<CasmHash>>() {
+                    Some(x) => ([].into(), [(SierraHash(Faker.fake()), x)].into()),
+                    None => ([ClassHash(Faker.fake())].into(), [].into()),
+                };
+            let (contract_updates, system_contract_updates) = if Faker.fake() {
+                ([Faker.fake()].into(), [].into())
+            } else {
+                ([].into(), [Faker.fake()].into())
+            };
+            Tagged::get(format!("state diff {tag}"), || UnverifiedStateUpdateData {
+                expected_commitment: Default::default(),
+                state_diff: StateUpdateData {
+                    contract_updates,
+                    system_contract_updates,
+                    declared_cairo_classes,
+                    declared_sierra_classes,
+                },
+            })
+            .unwrap()
+            .data
         }
     }
 }
