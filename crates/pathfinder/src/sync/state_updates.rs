@@ -9,6 +9,7 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
     StateUpdate,
@@ -106,15 +107,18 @@ pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
     const NAME: &'static str = "StateDiff::Verify";
-    type Input = UnverifiedStateUpdateData;
+    type Input = (UnverifiedStateUpdateData, StarknetVersion);
     type Output = StateUpdateData;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let UnverifiedStateUpdateData {
-            expected_commitment,
-            state_diff,
-        } = input;
-        let actual = state_diff.compute_state_diff_commitment();
+        let (
+            UnverifiedStateUpdateData {
+                expected_commitment,
+                state_diff,
+            },
+            version,
+        ) = input;
+        let actual = state_diff.compute_state_diff_commitment(version);
 
         if actual != expected_commitment {
             return Err(SyncError2::StateDiffCommitmentMismatch);

@@ -103,29 +103,6 @@ pub(super) fn counts_and_commitments_stream(
     }
 }
 
-/// The starknet version is necessary to calculate the transaction hashes.
-/// During checkpoint sync, the version can be fetched from the database.
-pub struct FetchStarknetVersionFromDb(pub pathfinder_storage::Connection);
-
-impl ProcessStage for FetchStarknetVersionFromDb {
-    const NAME: &'static str = "Transactions::FetchStarknetVersionFromDb";
-    type Input = UnverifiedTransactionData;
-    type Output = (UnverifiedTransactionData, StarknetVersion);
-
-    fn map(&mut self, data: Self::Input) -> Result<Self::Output, SyncError2> {
-        let mut db = self
-            .0
-            .transaction()
-            .context("Creating database transaction")?;
-
-        let version = db
-            .block_version(data.block_number)
-            .context("Fetching starknet version")?
-            .ok_or(SyncError2::StarknetVersionNotFound)?;
-        Ok((data, version))
-    }
-}
-
 pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {

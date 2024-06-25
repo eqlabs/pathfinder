@@ -302,8 +302,9 @@ impl Client {
         transaction_counts_and_commitments_stream: impl futures::Stream<
             Item = anyhow::Result<(usize, TransactionCommitment)>,
         >,
-    ) -> impl futures::Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
-    {
+    ) -> impl futures::Stream<
+        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
+    > {
         let inner = self.inner.clone();
         let outer = self;
         make_transaction_stream(
@@ -337,8 +338,9 @@ impl Client {
         state_diff_length_and_commitment_stream: impl futures::Stream<
             Item = anyhow::Result<(usize, StateDiffCommitment)>,
         >,
-    ) -> impl futures::Stream<Item = Result<PeerData<UnverifiedStateUpdateData>, PeerData<anyhow::Error>>>
-    {
+    ) -> impl futures::Stream<
+        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
+    > {
         tracing::trace!(?start, ?stop, "Streaming state diffs");
 
         async_stream::try_stream! {
@@ -524,10 +526,10 @@ impl Client {
 
                                 yield PeerData::new(
                                     peer,
-                                    UnverifiedStateUpdateData {
+                                    (UnverifiedStateUpdateData {
                                         expected_commitment: std::mem::take(&mut current_commitment),
                                         state_diff: std::mem::take(&mut state_diff),
-                                    },
+                                    }, start),
                                 );
 
                                 if start < stop {
@@ -1132,7 +1134,9 @@ pub fn make_transaction_stream<PF, RF>(
     >,
     get_peers: impl Fn() -> PF,
     send_request: impl Fn(PeerId, TransactionsRequest) -> RF,
-) -> impl futures::Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
+) -> impl futures::Stream<
+    Item = Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
+>
 where
     PF: std::future::Future<Output = Vec<PeerId>>,
     RF: std::future::Future<
@@ -1253,13 +1257,12 @@ where
 
                             yield PeerData::new(
                                 peer,
-                                UnverifiedTransactionData {
+                                (UnverifiedTransactionData {
                                     expected_commitment: std::mem::take(
                                         &mut current_commitment
                                     ),
                                     transactions: std::mem::take(&mut transactions),
-                                    block_number: start,
-                                },
+                                }, start)
                             );
 
                             if start < stop {
@@ -1364,8 +1367,9 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
 pub struct UnverifiedTransactionData {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(TransactionVariant, Receipt)>,
-    pub block_number: BlockNumber,
 }
+
+pub type UnverifiedTransactionDataWithBlockNumber = (UnverifiedTransactionData, BlockNumber);
 
 /// For a single block
 #[derive(Clone, Debug)]
@@ -1373,6 +1377,8 @@ pub struct UnverifiedStateUpdateData {
     pub expected_commitment: StateDiffCommitment,
     pub state_diff: StateUpdateData,
 }
+
+pub type UnverifiedStateUpdateWithBlockNumber = (UnverifiedStateUpdateData, BlockNumber);
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 
@@ -1744,6 +1750,7 @@ mod tests {
             (
                 TestPeer(x.peer),
                 x.data
+                    .0
                     .transactions
                     .into_iter()
                     .map(TestTxn)

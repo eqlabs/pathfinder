@@ -37,6 +37,7 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
+use super::FetchStarknetVersionFromDb;
 use crate::state::block_hash::calculate_transaction_commitment;
 use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
@@ -189,7 +190,7 @@ impl Sync {
             state_updates::length_and_commitment_stream(self.storage.clone(), start, stop),
         );
 
-        handle_state_diff_stream(stream, self.storage.connection()?, start).await?;
+        handle_state_diff_stream(stream, self.storage.clone(), start).await?;
 
         Ok(())
     }
@@ -273,8 +274,12 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    stream: impl Stream<Item = Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>
-        + Send
+    stream: impl Stream<
+            Item = Result<
+                PeerData<(UnverifiedTransactionData, BlockNumber)>,
+                PeerData<anyhow::Error>,
+            >,
+        > + Send
         + 'static,
     storage: Storage,
     chain_id: ChainId,
@@ -282,10 +287,7 @@ async fn handle_transaction_stream(
 ) -> Result<(), SyncError> {
     Source::from_stream(stream.map_err(|e| e.map(Into::into)))
         .spawn()
-        .pipe(
-            transactions::FetchStarknetVersionFromDb(storage.connection()?),
-            10,
-        )
+        .pipe(FetchStarknetVersionFromDb::new(storage.connection()?), 10)
         .pipe(transactions::CalculateHashes(chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10)
         .pipe(transactions::Store::new(storage.connection()?, start), 10)
@@ -298,16 +300,21 @@ async fn handle_transaction_stream(
 }
 
 async fn handle_state_diff_stream(
-    stream: impl Stream<Item = Result<PeerData<UnverifiedStateUpdateData>, PeerData<anyhow::Error>>>
-        + Send
+    stream: impl Stream<
+            Item = Result<
+                PeerData<(UnverifiedStateUpdateData, BlockNumber)>,
+                PeerData<anyhow::Error>,
+            >,
+        > + Send
         + 'static,
-    db_connection: pathfinder_storage::Connection,
+    storage: Storage,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
     Source::from_stream(stream.map_err(|e| e.map(Into::into)))
         .spawn()
+        .pipe(FetchStarknetVersionFromDb::new(storage.connection()?), 10)
         .pipe(state_updates::VerifyCommitment, 10)
-        .pipe(state_updates::Store::new(db_connection, start), 10)
+        .pipe(state_updates::Store::new(storage.connection()?, start), 10)
         .into_stream()
         .inspect_ok(|x| tracing::info!(tail=%x.data, "State diff synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
@@ -864,7 +871,10 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::UnverifiedTransactionData;
+        use p2p::client::peer_agnostic::{
+            UnverifiedTransactionData,
+            UnverifiedTransactionDataWithBlockNumber,
+        };
         use p2p::libp2p::PeerId;
         use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
@@ -877,8 +887,9 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_transactions:
-                Vec<Result<PeerData<UnverifiedTransactionData>, PeerData<anyhow::Error>>>,
+            pub streamed_transactions: Vec<
+                Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
+            >,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
@@ -901,15 +912,17 @@ mod tests {
                         .unwrap();
                         block.header.header.transaction_commitment = transaction_commitment;
 
-                        anyhow::Result::Ok(PeerData::for_tests(UnverifiedTransactionData {
-                            expected_commitment: transaction_commitment,
-                            transactions: block
-                                .transaction_data
-                                .iter()
-                                .map(|x| (x.0.variant.clone(), x.1.clone().into()))
-                                .collect::<Vec<_>>(),
-                            block_number: block.header.header.number,
-                        }))
+                        anyhow::Result::Ok(PeerData::for_tests((
+                            UnverifiedTransactionData {
+                                expected_commitment: transaction_commitment,
+                                transactions: block
+                                    .transaction_data
+                                    .iter()
+                                    .map(|x| (x.0.variant.clone(), x.1.clone().into()))
+                                    .collect::<Vec<_>>(),
+                            },
+                            block.header.header.number,
+                        )))
                     })
                     .collect::<Vec<_>>();
                 let expected_transactions = blocks
@@ -1041,6 +1054,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
+        use p2p::client::peer_agnostic::UnverifiedStateUpdateWithBlockNumber;
         use p2p::libp2p::PeerId;
         use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
         use pathfinder_common::transaction::DeployTransactionV0;
@@ -1053,8 +1067,9 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_state_diffs:
-                Vec<Result<PeerData<UnverifiedStateUpdateData>, PeerData<anyhow::Error>>>,
+            pub streamed_state_diffs: Vec<
+                Result<PeerData<UnverifiedStateUpdateWithBlockNumber>, PeerData<anyhow::Error>>,
+            >,
             pub expected_state_diffs: Vec<StateUpdateData>,
             pub storage: Storage,
         }
@@ -1065,12 +1080,13 @@ mod tests {
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
-                        Result::<PeerData<_>, PeerData<_>>::Ok(PeerData::for_tests(
+                        Result::<PeerData<_>, PeerData<_>>::Ok(PeerData::for_tests((
                             UnverifiedStateUpdateData {
                                 expected_commitment: block.header.state_diff_commitment,
                                 state_diff: block.state_update.clone().into(),
                             },
-                        ))
+                            block.header.header.number,
+                        )))
                     })
                     .collect::<Vec<_>>();
                 let expected_state_diffs = blocks
@@ -1122,7 +1138,7 @@ mod tests {
 
             handle_state_diff_stream(
                 stream::iter(streamed_state_diffs),
-                storage.connection().unwrap(),
+                storage.clone(),
                 BlockNumber::GENESIS,
             )
             .await
@@ -1158,6 +1174,7 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .data
+                .0
                 .state_diff
                 .declared_cairo_classes
                 .insert(Faker.fake());
@@ -1165,7 +1182,7 @@ mod tests {
             assert_matches!(
                 handle_state_diff_stream(
                     stream::iter(streamed_state_diffs),
-                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    storage,
                     BlockNumber::GENESIS,
                 )
                 .await,
@@ -1180,7 +1197,7 @@ mod tests {
                     stream::once(std::future::ready(Err(PeerData::for_tests(
                         anyhow::anyhow!("")
                     )))),
-                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    StorageBuilder::in_memory().unwrap(),
                     BlockNumber::GENESIS,
                 )
                 .await,
@@ -1197,7 +1214,7 @@ mod tests {
             assert_matches!(
                 handle_state_diff_stream(
                     stream::iter(streamed_state_diffs),
-                    StorageBuilder::in_memory().unwrap().connection().unwrap(),
+                    StorageBuilder::in_memory().unwrap(),
                     BlockNumber::GENESIS,
                 )
                 .await,
