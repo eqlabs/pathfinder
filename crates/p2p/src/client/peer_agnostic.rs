@@ -1668,119 +1668,119 @@ mod tests {
 
         #[rstest]
         #[case::one_peer_1_block(
-        // Number of blocks
-        1,
-        // Simulated responses from peers
-        vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin)))],
-        // Expected number of transactions per block
-        vec![2],
-        // Expected stream of (peer_id, transactions_for_block)
-        vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
-    )]
+            // Number of blocks
+            1,
+            // Simulated responses from peers
+            vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)], Some(Fin)))],
+            // Expected number of transactions per block
+            vec![2],
+            // Expected stream of (peer_id, transactions_for_block)
+            vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
+        )]
         #[case::one_peer_2_blocks(
-        // Peer gives responses for all blocks in one go
-        2,
-        vec![Ok((peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin)))],
-        vec![1, 1],
-        vec![
-            Ok((peer(0), vec![txn(4, 0)])), // block 0
-            Ok((peer(0), vec![txn(5, 0)]))  // block 1
-        ]
-    )]
+            // Peer gives responses for all blocks in one go
+            2,
+            vec![Ok((peer(0), vec![txn(4, 0), txn(5, 0)], Some(Fin)))],
+            vec![1, 1],
+            vec![
+                Ok((peer(0), vec![txn(4, 0)])), // block 0
+                Ok((peer(0), vec![txn(5, 0)]))  // block 1
+            ]
+        )]
         #[case::one_peer_2_blocks_in_2_attempts(
-        // Peer gives a response for the second block after a retry
-        2,
-        vec![
-            Ok((peer(0), vec![txn(6, 0)], Some(Fin))),
-            Ok((peer(0), vec![txn(7, 0)], Some(Fin)))
-        ],
-        vec![1, 1],
-        vec![
-            Ok((peer(0), vec![txn(6, 0)])),
-            Ok((peer(0), vec![txn(7, 0)]))
-        ]
-    )]
+            // Peer gives a response for the second block after a retry
+            2,
+            vec![
+                Ok((peer(0), vec![txn(6, 0)], Some(Fin))),
+                Ok((peer(0), vec![txn(7, 0)], Some(Fin)))
+            ],
+            vec![1, 1],
+            vec![
+                Ok((peer(0), vec![txn(6, 0)])),
+                Ok((peer(0), vec![txn(7, 0)]))
+            ]
+        )]
         #[case::two_peers_1_block_per_peer(
-        2,
-        vec![
-            Ok((peer(0), vec![txn(8, 0)], Some(Fin))),
-            Ok((peer(1), vec![txn(9, 0)], Some(Fin)))
-        ],
-        vec![1, 1],
-        vec![
-            Ok((peer(0), vec![txn(8, 0)])),
-            Ok((peer(1), vec![txn(9, 1)]))
-        ]
-    )]
+            2,
+            vec![
+                Ok((peer(0), vec![txn(8, 0)], Some(Fin))),
+                Ok((peer(1), vec![txn(9, 0)], Some(Fin)))
+            ],
+            vec![1, 1],
+            vec![
+                Ok((peer(0), vec![txn(8, 0)])),
+                Ok((peer(1), vec![txn(9, 1)]))
+            ]
+        )]
         #[case::first_peer_premature_eos_with_fin(
-        2,
-        vec![
-            // First peer gives full block 0 and half of block 1
-            Ok((peer(0), vec![txn(10, 0), txn(11, 0)], Some(Fin))),
-            Ok((peer(1), vec![txn(11, 0), txn(12, 1)], Some(Fin)))
-        ],
-        vec![1, 2],
-        vec![
-            Ok((peer(0), vec![txn(10, 0)])),
-            Ok((peer(1), vec![txn(11, 0), txn(12, 1)]))
-        ]
-    )]
-        #[case::first_peer_all_txns_in_block_but_no_fin(
-        2,
-        vec![
-            // First peer gives full block 0 but no fin
-            Ok((peer(0), vec![txn(13, 0)], None)),
-            Ok((peer(1), vec![txn(14, 0)], Some(Fin)))
-        ],
-        vec![1, 1],
-        vec![
-            // We assume this block 0 could be correct
-            Ok((peer(0), vec![txn(13, 0)])), // block 0
-            Ok((peer(1), vec![txn(14, 0)]))  // block 1
-        ]
-    )]
+            2,
+            vec![
+                // First peer gives full block 0 and half of block 1
+                Ok((peer(0), vec![txn(10, 0), txn(11, 0)], Some(Fin))),
+                Ok((peer(1), vec![txn(11, 0), txn(12, 1)], Some(Fin)))
+            ],
+            vec![1, 2],
+            vec![
+                Ok((peer(0), vec![txn(10, 0)])),
+                Ok((peer(1), vec![txn(11, 0), txn(12, 1)]))
+            ]
+        )]
+        #[case::first_peer_full_block_no_fin(
+            2,
+            vec![
+                // First peer gives full block 0 but no fin
+                Ok((peer(0), vec![txn(13, 0)], None)),
+                Ok((peer(1), vec![txn(14, 0)], Some(Fin)))
+            ],
+            vec![1, 1],
+            vec![
+                // We assume this block 0 could be correct
+                Ok((peer(0), vec![txn(13, 0)])), // block 0
+                Ok((peer(1), vec![txn(14, 0)]))  // block 1
+            ]
+        )]
         // The same as above but the first peer gives half of the second block before closing the
         // stream
-        #[case::first_peer_half_txns_in_block_but_no_fin(
-        2,
-        vec![
-            // First peer gives full block 0 and partial block 1 but no fin
-            Ok((peer(0), vec![txn(15, 0), txn(16, 0)], None)),
-            Ok((peer(1), vec![txn(16, 0), txn(17, 1)], Some(Fin)))
-        ],
-        vec![1, 2],
-        vec![
-            // We assume this block could be correct so we move to the next one
-            Ok((peer(0), vec![txn(15, 0)])),            // block 0
-            Ok((peer(1), vec![txn(16, 0), txn(17, 1)])) // block 1
-        ]
-    )]
+        #[case::first_peer_half_block_no_fin(
+            2,
+            vec![
+                // First peer gives full block 0 and partial block 1 but no fin
+                Ok((peer(0), vec![txn(15, 0), txn(16, 0)], None)),
+                Ok((peer(1), vec![txn(16, 0), txn(17, 1)], Some(Fin)))
+            ],
+            vec![1, 2],
+            vec![
+                // We assume this block could be correct so we move to the next one
+                Ok((peer(0), vec![txn(15, 0)])),            // block 0
+                Ok((peer(1), vec![txn(16, 0), txn(17, 1)])) // block 1
+            ]
+        )]
         #[case::count_steam_is_too_short(
-        2,
-        vec![
-            // 2 blocks in responses
-            Ok((peer(0), vec![txn(18, 0)], Some(Fin))),
-            Ok((peer(0), vec![txn(19, 0)], Some(Fin)))
-        ],
-        vec![1], // but only 1 block provided in the count stream
-        vec![
-            Ok((peer(0), vec![txn(18, 0)])),
-            Err(peer(0)) // the second block is not processed
-        ]
-    )]
+            2,
+            vec![
+                // 2 blocks in responses
+                Ok((peer(0), vec![txn(18, 0)], Some(Fin))),
+                Ok((peer(0), vec![txn(19, 0)], Some(Fin)))
+            ],
+            vec![1], // but only 1 block provided in the count stream
+            vec![
+                Ok((peer(0), vec![txn(18, 0)])),
+                Err(peer(0)) // the second block is not processed
+            ]
+        )]
         #[case::response_fails(
-        2,
-        vec![
-            Ok((peer(0), vec![txn(20, 0)], Some(Fin))),
-            Err(peer(0)),
-            Ok((peer(1), vec![txn(21, 0)], Some(Fin))),
-        ],
-        vec![1, 1],
-        vec![
-            Ok((peer(0), vec![txn(20, 0)])),
-            Ok((peer(1), vec![txn(21, 0)])),
-        ]
-    )]
+            2,
+            vec![
+                Ok((peer(0), vec![txn(20, 0)], Some(Fin))),
+                Err(peer(0)),
+                Ok((peer(1), vec![txn(21, 0)], Some(Fin))),
+            ],
+            vec![1, 1],
+            vec![
+                Ok((peer(0), vec![txn(20, 0)])),
+                Ok((peer(1), vec![txn(21, 0)])),
+            ]
+        )]
         #[test_log::test(tokio::test)]
         async fn make_transaction_stream(
             #[case] num_blocks: usize,
@@ -1902,75 +1902,6 @@ mod tests {
         type TestResponse = Result<(TestPeer, Vec<StateDiffsResponse>), TestPeer>;
 
         #[rstest]
-        //     #[case::first_peer_premature_eos_with_fin(
-        //     2,
-        //     vec![
-        //         // First peer gives full block 0 and half of block 1
-        //         Ok((peer(0), vec![txn(10, 0), txn(11, 0)], Some(Fin))),
-        //         Ok((peer(1), vec![txn(11, 0), txn(12, 1)], Some(Fin)))
-        //     ],
-        //     vec![1, 2],
-        //     vec![
-        //         Ok((peer(0), vec![txn(10, 0)])),
-        //         Ok((peer(1), vec![txn(11, 0), txn(12, 1)]))
-        //     ]
-        // )]
-        //     #[case::first_peer_all_txns_in_block_but_no_fin(
-        //     2,
-        //     vec![
-        //         // First peer gives full block 0 but no fin
-        //         Ok((peer(0), vec![txn(13, 0)], None)),
-        //         Ok((peer(1), vec![txn(14, 0)], Some(Fin)))
-        //     ],
-        //     vec![1, 1],
-        //     vec![
-        //         // We assume this block 0 could be correct
-        //         Ok((peer(0), vec![txn(13, 0)])), // block 0
-        //         Ok((peer(1), vec![txn(14, 0)]))  // block 1
-        //     ]
-        // )]
-        //     // The same as above but the first peer gives half of the second block before closing
-        // the     // stream
-        //     #[case::first_peer_half_txns_in_block_but_no_fin(
-        //     2,
-        //     vec![
-        //         // First peer gives full block 0 and partial block 1 but no fin
-        //         Ok((peer(0), vec![txn(15, 0), txn(16, 0)], None)),
-        //         Ok((peer(1), vec![txn(16, 0), txn(17, 1)], Some(Fin)))
-        //     ],
-        //     vec![1, 2],
-        //     vec![
-        //         // We assume this block could be correct so we move to the next one
-        //         Ok((peer(0), vec![txn(15, 0)])),            // block 0
-        //         Ok((peer(1), vec![txn(16, 0), txn(17, 1)])) // block 1
-        //     ]
-        // )]
-        //     #[case::count_steam_is_too_short(
-        //     2,
-        //     vec![
-        //         // 2 blocks in responses
-        //         Ok((peer(0), vec![txn(18, 0)], Some(Fin))),
-        //         Ok((peer(0), vec![txn(19, 0)], Some(Fin)))
-        //     ],
-        //     vec![1], // but only 1 block provided in the count stream
-        //     vec![
-        //         Ok((peer(0), vec![txn(18, 0)])),
-        //         Err(peer(0)) // the second block is not processed
-        //     ]
-        // )]
-        //     #[case::response_fails(
-        //     2,
-        //     vec![
-        //         Ok((peer(0), vec![txn(20, 0)], Some(Fin))),
-        //         Err(peer(0)),
-        //         Ok((peer(1), vec![txn(21, 0)], Some(Fin))),
-        //     ],
-        //     vec![1, 1],
-        //     vec![
-        //         Ok((peer(0), vec![txn(20, 0)])),
-        //         Ok((peer(1), vec![txn(21, 0)])),
-        //     ]
-        // )]
         #[case::one_peer_1_block(
             1,
             vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin]))],
@@ -2006,6 +1937,73 @@ mod tests {
             vec![
                 Ok((peer(0), state_diff(0))),
                 Ok((peer(1), state_diff(1)))
+            ]
+        )]
+        #[case::first_peer_premature_eos_with_fin(
+            2,
+            vec![
+                // First peer gives full block 0 and half of block 1
+                Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1), Fin])),
+                Ok((peer(1), vec![contract_diff(1), declared_class(1), Fin]))
+            ],
+            vec![len(0), len(1)],
+            vec![
+                Ok((peer(0), state_diff(0))),
+                Ok((peer(1), state_diff(1)))
+            ]
+        )]
+        #[case::first_peer_full_block_no_fin(
+            2,
+            vec![
+                // First peer gives full block 0 but no fin
+                Ok((peer(0), vec![contract_diff(0), declared_class(0)])),
+                Ok((peer(1), vec![contract_diff(1), declared_class(1), Fin]))
+            ],
+            vec![len(0), len(1)],
+            vec![
+                Ok((peer(0), state_diff(0))),
+                Ok((peer(1), state_diff(1)))
+            ]
+        )]
+        // The same as above but the first peer gives half of the second block before closing the
+        // stream
+        #[case::first_peer_half_block_no_fin(
+            2,
+            vec![
+                // First peer gives full block 0 and partial block 1 but no fin
+                Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1)])),
+                Ok((peer(1), vec![contract_diff(1), declared_class(1), Fin])),
+            ],
+            vec![len(0), len(1)],
+            vec![
+                Ok((peer(0), state_diff(0))),
+                Ok((peer(1), state_diff(1)))
+            ]
+        )]
+        #[case::count_steam_is_too_short(
+            2,
+            vec![
+                // 2 blocks in responses
+                Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin])),
+                Ok((peer(0), vec![contract_diff(1), declared_class(1), Fin]))
+            ],
+            vec![len(0)], // but only 1 block provided in the count stream
+            vec![
+                Ok((peer(0), state_diff(0))),
+                Err(peer(0)) // the second block is not processed
+            ]
+        )]
+        #[case::response_fails(
+            2,
+            vec![
+                Ok((peer(0), vec![contract_diff(0), declared_class(0), Fin])),
+                Err(peer(0)),
+                Ok((peer(0), vec![contract_diff(1), declared_class(1), Fin])),
+            ],
+            vec![len(0), len(1)],
+            vec![
+                Ok((peer(0), state_diff(0))),
+                Ok((peer(0), state_diff(1)))
             ]
         )]
         #[test_log::test(tokio::test)]
