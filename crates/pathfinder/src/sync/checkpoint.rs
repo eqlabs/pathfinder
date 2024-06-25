@@ -510,7 +510,8 @@ impl CheckpointAnalysis {
                     %local, anchor=%anchor.unwrap_or_default(), %checkpoint,
                     "Rolling back local chain to latest anchor point. Local data is potentially invalid as the Ethereum checkpoint is newer the local chain."
                 );
-                rollback_to_anchor(storage, anchor)
+
+                rollback_to_anchor(storage, local, anchor)
                     .await
                     .context("Rolling back chain state to L1 anchor")?;
             }
@@ -524,7 +525,8 @@ impl CheckpointAnalysis {
                     %block, %local, %checkpoint, ?anchor,
                     "Rolling back local chain to latest anchor point. Local data is invalid as it did not match the Ethereum checkpoint's hash."
                 );
-                rollback_to_anchor(storage, anchor)
+
+                rollback_to_anchor(storage, block, anchor)
                     .await
                     .context("Rolling back chain state to L1 anchor")?;
             }
@@ -575,9 +577,38 @@ impl LocalState {
 
 /// Rolls back local chain-state until the given anchor point, making it the tip
 /// of the local chain. If this is ['None'] then all data will be rolled back.
-async fn rollback_to_anchor(storage: Storage, anchor: Option<BlockNumber>) -> anyhow::Result<()> {
+async fn rollback_to_anchor(
+    storage: Storage,
+    local: BlockNumber,
+    anchor: Option<BlockNumber>,
+) -> anyhow::Result<()> {
     spawn_blocking(move || {
-        todo!("Rollback storage to anchor point");
+        tracing::info!(%local, ?anchor, "Rolling back storage to anchor point");
+
+        let last_block_to_remove = anchor.map(|n| n + 1).unwrap_or_default();
+        let mut head = local;
+
+        let mut db = storage
+            .connection()
+            .context("Creating database connection")?;
+        let transaction = db.transaction().context("Create database transaction")?;
+
+        // TODO: roll back Merkle tree state once we're updating that
+
+        while head >= last_block_to_remove {
+            transaction
+                .purge_block(head)
+                .with_context(|| format!("Purging block {head} from database"))?;
+
+            // No further blocks to purge if we just purged genesis.
+            if head == BlockNumber::GENESIS {
+                break;
+            }
+
+            head -= 1;
+        }
+
+        Ok(())
     })
     .await
     .context("Joining blocking task")?
