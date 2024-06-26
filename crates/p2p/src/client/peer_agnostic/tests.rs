@@ -380,3 +380,41 @@ async fn make_class_definition_stream(
 
     pretty_assertions_sorted::assert_eq!(actual, expected_stream);
 }
+
+#[rstest]
+#[case::fixme(
+    0,
+    vec![],
+    vec![],
+    vec![]
+)]
+#[test_log::test(tokio::test)]
+async fn make_event_stream(
+    #[case] num_blocks: usize,
+    #[case] responses: Vec<Result<(TestPeer, Vec<EventsResponse>), TestPeer>>,
+    #[case] events_per_block: Vec<usize>,
+    #[case] expected_stream: Vec<Result<(TestPeer, EventsForBlockByTransaction), TestPeer>>,
+) {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let (peers, responses) = unzip_fixtures(responses);
+    let get_peers = || async { peers.clone() };
+    let send_request =
+        |_: PeerId, _: EventsRequest| async { send_request(responses.clone()).await };
+
+    let start = BlockNumber::GENESIS;
+    let stop = start + (num_blocks - 1) as u64;
+
+    let actual = super::make_event_stream(
+        start,
+        stop,
+        stream::iter(events_per_block.into_iter().map(Ok)),
+        get_peers,
+        send_request,
+    )
+    .map_ok(|x| (TestPeer(x.peer), x.data))
+    .map_err(|x| TestPeer(x.peer))
+    .collect::<Vec<_>>()
+    .await;
+
+    pretty_assertions_sorted::assert_eq!(actual, expected_stream);
+}
