@@ -659,12 +659,25 @@ fn calculate_event_hash(event: &Event, transaction_hash: TransactionHash) -> Fel
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::receipt::{
+        ExecutionDataAvailability,
+        ExecutionResources,
+        L2ToL1Message,
+    };
     use pathfinder_common::transaction::{
         EntryPointType,
         InvokeTransactionV0,
         InvokeTransactionV3,
     };
-    use pathfinder_common::{felt, ContractAddress, EventData, EventKey, TransactionHash};
+    use pathfinder_common::{
+        felt,
+        ContractAddress,
+        EventData,
+        EventKey,
+        Fee,
+        L2ToL1MessagePayloadElem,
+        TransactionHash,
+    };
     use pathfinder_crypto::Felt;
 
     use super::*;
@@ -869,5 +882,50 @@ mod tests {
                     .collect(),
             }
         }
+    }
+
+    // Source:
+    // https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/receipt_commitment_test.rs#L16.
+    #[test]
+    fn test_receipt_commitment_0_13_2() {
+        let receipt = Receipt {
+            transaction_hash: TransactionHash(1234_u64.into()),
+            actual_fee: Fee(99804_u64.into()),
+            l2_to_l1_messages: vec![
+                L2ToL1Message {
+                    from_address: ContractAddress(34_u64.into()),
+                    to_address: ContractAddress(35_u64.into()),
+                    payload: vec![
+                        L2ToL1MessagePayloadElem(Felt::from_u64(36_u64.into())),
+                        L2ToL1MessagePayloadElem(Felt::from_u64(37_u64.into())),
+                    ],
+                },
+                L2ToL1Message {
+                    from_address: ContractAddress(56_u64.into()),
+                    to_address: ContractAddress(57_u64.into()),
+                    payload: vec![
+                        L2ToL1MessagePayloadElem(Felt::from_u64(58_u64.into())),
+                        L2ToL1MessagePayloadElem(Felt::from_u64(59_u64.into())),
+                    ],
+                },
+            ],
+            execution_resources: ExecutionResources {
+                data_availability: ExecutionDataAvailability {
+                    l1_gas: 16580,
+                    l1_data_gas: 32,
+                },
+                ..Default::default()
+            },
+            execution_status: ExecutionStatus::Reverted {
+                reason: "aborted".to_string(),
+            },
+            ..Default::default()
+        };
+        let expected_root =
+            felt!("0x31963cb891ebb825e83514deb748c89b6967b5368cbc48a9b56193a1464ca87");
+        assert_eq!(
+            calculate_receipt_commitment(&[receipt]).unwrap(),
+            expected_root
+        );
     }
 }
