@@ -116,6 +116,16 @@ use crate::client::peer_agnostic::fixtures::*;
     vec![1],
     vec![Ok((peer(0), vec![txn(18, 0)]))]
 )]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![])),
+        Ok((peer(1), vec![txn_resp(20, 0), TxnFin])),
+        Ok((peer(2), vec![]))
+    ],
+    vec![1],
+    vec![Ok((peer(1), vec![txn(20, 0)]))]
+)]
 #[test_log::test(tokio::test)]
 async fn make_transaction_stream(
     #[case] num_blocks: usize,
@@ -279,6 +289,16 @@ async fn make_transaction_stream(
     vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), declared_class(1), SDFin]))],
     vec![len(0)],
     vec![Ok((peer(0), state_diff(0)))]
+)]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![])),
+        Ok((peer(1), vec![contract_diff(0), declared_class(0), SDFin])),
+        Ok((peer(2), vec![]))
+    ],
+    vec![len(0)],
+    vec![Ok((peer(1), state_diff(0)))]
 )]
 #[test_log::test(tokio::test)]
 async fn make_state_diff_stream(
