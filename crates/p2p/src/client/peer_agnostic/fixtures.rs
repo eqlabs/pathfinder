@@ -5,6 +5,7 @@ use fake::{Dummy, Fake, Faker};
 use futures::channel::mpsc;
 use futures::SinkExt;
 use libp2p::PeerId;
+use p2p_proto::class::{Class, ClassesResponse};
 use p2p_proto::common::{Address, Hash, VolitionDomain};
 use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
@@ -15,9 +16,10 @@ use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;
 use tokio::sync::Mutex;
 
-use super::UnverifiedStateUpdateData;
-use crate::client::conv::ToDto;
+use super::{ClassDefinition, UnverifiedStateUpdateData};
+use crate::client::conv::{CairoDefinition, SierraDefinition, ToDto, TryFromDto};
 use crate::client::peer_agnostic::Receipt;
+use crate::sync::protocol::Classes;
 
 #[derive(Clone, PartialEq, TaggedDebug)]
 pub struct TestPeer(pub PeerId);
@@ -226,4 +228,27 @@ pub fn surplus_class() -> StateDiffsResponse {
         values: vec![],
         domain: Faker.fake(),
     })
+}
+
+pub fn class_resp(tag: i32) -> ClassesResponse {
+    let c = Tagged::<Class>::get_fake(format!("class response {tag}"))
+        .unwrap()
+        .data;
+    ClassesResponse::Class(c)
+}
+
+pub fn class(tag: i32) -> ClassDefinition {
+    // TODO Block numbers were used for logging only, and aren't anymore, so we just
+    // ignore them
+    match class_resp(tag) {
+        ClassesResponse::Class(Class::Cairo0 { class, .. }) => ClassDefinition::Cairo {
+            block_number: Default::default(),
+            definition: CairoDefinition::try_from_dto(class).unwrap().0,
+        },
+        ClassesResponse::Class(Class::Cairo1 { class, .. }) => ClassDefinition::Sierra {
+            block_number: Default::default(),
+            sierra_definition: SierraDefinition::try_from_dto(class).unwrap().0,
+        },
+        ClassesResponse::Fin => unreachable!(),
+    }
 }
