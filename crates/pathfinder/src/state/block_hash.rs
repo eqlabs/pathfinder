@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
 use pathfinder_common::hash::{FeltHash, PedersenHash, PoseidonHash};
+use pathfinder_common::receipt::{ExecutionStatus, Receipt};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
@@ -17,9 +18,11 @@ use pathfinder_common::{
     TransactionHash,
     TransactionSignatureElem,
 };
-use pathfinder_crypto::hash::{pedersen_hash, HashChain, PoseidonHasher};
-use pathfinder_crypto::Felt;
+use pathfinder_crypto::hash::{pedersen_hash, poseidon_hash_many, HashChain, PoseidonHasher};
+use pathfinder_crypto::{Felt, MontFelt};
 use pathfinder_merkle_tree::TransactionOrEventTree;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use sha3::Digest;
 use starknet_gateway_types::reply::Block;
 
 const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
@@ -405,6 +408,57 @@ pub fn calculate_transaction_commitment(
     } else {
         calculate_commitment_root::<PoseidonHash>(final_hashes).map(TransactionCommitment)
     }
+}
+
+pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<Felt> {
+    let mut hashes = Vec::new();
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            hashes = receipts
+                .par_iter()
+                .map(|receipt| {
+                    poseidon_hash_many(&[
+                        receipt.transaction_hash.0.into(),
+                        receipt.actual_fee.0.into(),
+                        // Calculate hash of messages sent.
+                        {
+                            let mut hasher = PoseidonHasher::new();
+                            hasher.write((receipt.l2_to_l1_messages.len() as u64).into());
+                            for msg in &receipt.l2_to_l1_messages {
+                                hasher.write(msg.from_address.0.into());
+                                hasher.write(msg.to_address.0.into());
+                                hasher.write((msg.payload.len() as u64).into());
+                                for payload in &msg.payload {
+                                    hasher.write(payload.0.into());
+                                }
+                            }
+                            hasher.finish()
+                        },
+                        // Calculate hash of execution status.
+                        match &receipt.execution_status {
+                            ExecutionStatus::Succeeded => MontFelt::ZERO,
+                            ExecutionStatus::Reverted { reason } => {
+                                let mut keccak = sha3::Keccak256::default();
+                                keccak.update(reason.as_bytes());
+                                let mut hashed_bytes: [u8; 32] = keccak.finalize().into();
+                                hashed_bytes[0] &= 0b00000011_u8; // Discard the six MSBs.
+                                MontFelt::from_be_bytes(hashed_bytes)
+                            }
+                        },
+                        MontFelt::ZERO,
+                        receipt.execution_resources.data_availability.l1_gas.into(),
+                        receipt
+                            .execution_resources
+                            .data_availability
+                            .l1_data_gas
+                            .into(),
+                    ])
+                    .into()
+                })
+                .collect();
+        })
+    });
+    calculate_commitment_root::<PoseidonHash>(hashes)
 }
 
 fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<Felt> {
