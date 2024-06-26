@@ -860,8 +860,6 @@ where
                                     if start == stop {
                                         // We're done, terminate the stream
                                         break 'outer;
-                                    } else {
-                                        // yield what was accumulated so far
                                     }
                                 } else {
                                     tracing::debug!(%peer, "Premature transaction stream Fin");
@@ -1019,7 +1017,10 @@ where
                                     None => {
                                         tracing::debug!(%peer, %start, "Too many storage diffs: {} > {}", values.len(), current_count);
                                         // TODO punish the peer
-                                        continue 'next_peer;
+
+                                        // We can only get here in case of the last block, which means that the stream should be terminated
+                                        debug_assert!(start == stop);
+                                        break 'outer;
                                     }
                                 }
 
@@ -1054,7 +1055,10 @@ where
                                             None => {
                                                 tracing::debug!(%peer, %start, "Too many nonce updates");
                                                 // TODO punish the peer
-                                                continue 'next_peer;
+
+                                                // We can only get here in case of the last block, which means that the stream should be terminated
+                                                debug_assert!(start == stop);
+                                                break 'outer;
                                             }
                                         }
 
@@ -1067,7 +1071,10 @@ where
                                             None => {
                                                 tracing::debug!(%peer, %start, "Too many deployed contracts");
                                                 // TODO punish the peer
-                                                continue 'next_peer;
+
+                                                // We can only get here in case of the last block, which means that the stream should be terminated
+                                                debug_assert!(start == stop);
+                                                break 'outer;
                                             }
                                         }
 
@@ -1096,7 +1103,10 @@ where
                                     None => {
                                         tracing::debug!(%peer, %start, "Too many declared classes");
                                         // TODO punish the peer
-                                        continue 'next_peer;
+
+                                        // We can only get here in case of the last block, which means that the stream should be terminated
+                                        debug_assert!(start == stop);
+                                        break 'outer;
                                     }
                                 }
                             }
@@ -1894,7 +1904,7 @@ mod tests {
 
     mod make_state_diff_stream {
         use p2p_proto::common::{Address, Hash, VolitionDomain};
-        use p2p_proto::state::ContractDiff;
+        use p2p_proto::state::{ContractDiff, DeclaredClass};
         use pathfinder_common::state_update::ContractUpdate;
         use StateDiffsResponse::Fin;
 
@@ -1997,9 +2007,27 @@ mod tests {
                 Err(peer(0)) // the second block is not processed
             ]
         )]
-        #[case::too_many_responses(
+        #[case::too_many_responses_storage(
             1,
-            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1), Fin]))],
+            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), surplus_storage(), Fin]))],
+            vec![len(0)],
+            vec![Ok((peer(0), state_diff(0)))]
+        )]
+        #[case::too_many_responses_nonce(
+            1,
+            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), surplus_nonce(), Fin]))],
+            vec![len(0)],
+            vec![Ok((peer(0), state_diff(0)))]
+        )]
+        #[case::too_many_responses_class(
+            1,
+            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), surplus_class(), Fin]))],
+            vec![len(0)],
+            vec![Ok((peer(0), state_diff(0)))]
+        )]
+        #[case::too_many_responses_declaration(
+            1,
+            vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), declared_class(1), Fin]))],
             vec![len(0)],
             vec![Ok((peer(0), state_diff(0)))]
         )]
@@ -2142,6 +2170,36 @@ mod tests {
 
         fn len(tag: i32) -> usize {
             state_diff(tag).state_diff.state_diff_length()
+        }
+
+        fn surplus_storage() -> StateDiffsResponse {
+            StateDiffsResponse::ContractDiff(ContractDiff {
+                address: Faker.fake(),
+                nonce: None,
+                class_hash: None,
+                values: vec![Faker.fake()], // Must not be empty
+                domain: Faker.fake(),
+            })
+        }
+
+        fn surplus_nonce() -> StateDiffsResponse {
+            StateDiffsResponse::ContractDiff(ContractDiff {
+                address: Faker.fake(),
+                nonce: Some(Faker.fake()),
+                class_hash: None,
+                values: vec![],
+                domain: Faker.fake(),
+            })
+        }
+
+        fn surplus_class() -> StateDiffsResponse {
+            StateDiffsResponse::ContractDiff(ContractDiff {
+                address: Faker.fake(),
+                nonce: None,
+                class_hash: Some(Faker.fake()),
+                values: vec![],
+                domain: Faker.fake(),
+            })
         }
     }
 }
