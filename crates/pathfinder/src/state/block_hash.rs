@@ -896,16 +896,16 @@ mod tests {
                     from_address: ContractAddress(34_u64.into()),
                     to_address: ContractAddress(35_u64.into()),
                     payload: vec![
-                        L2ToL1MessagePayloadElem(Felt::from_u64(36_u64.into())),
-                        L2ToL1MessagePayloadElem(Felt::from_u64(37_u64.into())),
+                        L2ToL1MessagePayloadElem(36_u64.into()),
+                        L2ToL1MessagePayloadElem(37_u64.into()),
                     ],
                 },
                 L2ToL1Message {
                     from_address: ContractAddress(56_u64.into()),
                     to_address: ContractAddress(57_u64.into()),
                     payload: vec![
-                        L2ToL1MessagePayloadElem(Felt::from_u64(58_u64.into())),
-                        L2ToL1MessagePayloadElem(Felt::from_u64(59_u64.into())),
+                        L2ToL1MessagePayloadElem(58_u64.into()),
+                        L2ToL1MessagePayloadElem(59_u64.into()),
                     ],
                 },
             ],
