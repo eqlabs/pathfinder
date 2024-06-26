@@ -1,5 +1,7 @@
 use futures::{stream, TryStreamExt};
 use rstest::rstest;
+use ClassesResponse::Fin as ClassFin;
+use EventsResponse::Fin as EventFin;
 use StateDiffsResponse::Fin as SDFin;
 use TransactionsResponse::Fin as TxnFin;
 
@@ -339,4 +341,42 @@ async fn make_state_diff_stream(
         .collect::<Vec<_>>();
 
     pretty_assertions_sorted::assert_eq!(actual, expected);
+}
+
+#[rstest]
+#[case::fixme(
+    0,
+    vec![],
+    vec![],
+    vec![]
+)]
+#[test_log::test(tokio::test)]
+async fn make_class_definition_stream(
+    #[case] num_blocks: usize,
+    #[case] responses: Vec<Result<(TestPeer, Vec<ClassesResponse>), TestPeer>>,
+    #[case] declared_classes_per_block: Vec<usize>,
+    #[case] expected_stream: Vec<Result<(TestPeer, ClassDefinition), TestPeer>>,
+) {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let (peers, responses) = unzip_fixtures(responses);
+    let get_peers = || async { peers.clone() };
+    let send_request =
+        |_: PeerId, _: ClassesRequest| async { send_request(responses.clone()).await };
+
+    let start = BlockNumber::GENESIS;
+    let stop = start + (num_blocks - 1) as u64;
+
+    let actual = super::make_class_definition_stream(
+        start,
+        stop,
+        stream::iter(declared_classes_per_block.into_iter().map(Ok)),
+        get_peers,
+        send_request,
+    )
+    .map_ok(|x| (TestPeer(x.peer), x.data))
+    .map_err(|x| TestPeer(x.peer))
+    .collect::<Vec<_>>()
+    .await;
+
+    pretty_assertions_sorted::assert_eq!(actual, expected_stream);
 }

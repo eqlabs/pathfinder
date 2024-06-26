@@ -111,7 +111,7 @@ impl<T, U: Dummy<T>> Dummy<T> for PeerData<U> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ClassDefinition {
     Cairo {
         block_number: BlockNumber,
