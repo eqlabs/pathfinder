@@ -289,7 +289,7 @@ pub fn class(tag: i32, block_number: u64) -> ClassDefinition {
 }
 
 pub fn event_resp(ev: i32, txn: i32) -> EventsResponse {
-    let (_, mut v) = events(vec![ev], txn, 0);
+    let (_, mut v) = events(vec![(vec![ev], txn)], 0);
     let t = v[0].0;
     let e = v.pop().unwrap().1.pop().unwrap();
 
@@ -307,15 +307,22 @@ pub fn event_resp(ev: i32, txn: i32) -> EventsResponse {
     )
 }
 
-pub fn events(evs: Vec<i32>, txn: i32, block: u64) -> TaggedEventsForBlockByTransaction {
-    let evs = evs
+pub fn events(
+    events_by_txn: Vec<(Vec<i32>, i32)>,
+    block: u64,
+) -> TaggedEventsForBlockByTransaction {
+    let events_by_txn = events_by_txn
         .into_iter()
-        .map(|ev| Tagged::get_fake(format!("event {ev}")).unwrap().data)
+        .map(|(evs, txn)| {
+            let evs = evs
+                .into_iter()
+                .map(|ev| Tagged::get_fake(format!("event {ev}")).unwrap().data)
+                .collect();
+            let t = Tagged::<TaggedTransactionHash>::get_fake(format!("txn hash {txn}"))
+                .unwrap()
+                .data;
+            (t, evs)
+        })
         .collect();
-
-    let t = Tagged::<TaggedTransactionHash>::get_fake(format!("txn hash {txn}"))
-        .unwrap()
-        .data;
-
-    (BlockNumber::new_or_panic(block), vec![(t, evs)])
+    (BlockNumber::new_or_panic(block), events_by_txn)
 }
