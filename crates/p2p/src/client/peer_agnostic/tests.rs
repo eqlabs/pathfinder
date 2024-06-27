@@ -12,10 +12,14 @@ use crate::client::peer_agnostic::fixtures::*;
 #[case::one_peer_1_block(
     1,
     // Simulated responses
+    //                    transaction  transaction index
+    //                              |  |
     vec![Ok((peer(0), vec![txn_resp(0, 0), txn_resp(1, 1), TxnFin]))],
     // Expected number of transactions per block
     vec![2],
     // Expected stream
+    //               transaction  transaction index
+    //                         |  |
     vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
 )]
 #[case::one_peer_2_blocks(
@@ -346,8 +350,12 @@ async fn make_state_diff_stream(
 #[rstest]
 #[case::one_peer_1_block(
     1,
+    //                              class
+    //                                |
     vec![Ok((peer(0), vec![class_resp(0), ClassFin]))],
     vec![1],
+    //                  class  block
+    //                      |  |
     vec![Ok((peer(0), class(0, 0)))]
 )]
 #[case::one_peer_2_blocks(
@@ -528,40 +536,39 @@ async fn make_class_definition_stream(
         Ok((peer(0), events(vec![5, 6], 5, 1))),
     ]
 )]
-// #[case::two_peers_1_block_per_peer(
-//     2,
-//     vec![
-//         // Errors are ignored
-//         Err(peer(1)),
-//         Ok((peer(0), vec![class_resp(7), ClassFin])),
-//         Err(peer(0)),
-//         Ok((peer(1), vec![class_resp(8), ClassFin])),
-//     ],
-//     vec![1, 1],
-//     vec![
-//         Ok((peer(0), class(7, 0))),
-//         Ok((peer(1), class(8, 1)))
-//     ]
-// )]
-// #[case::first_peer_premature_eos_with_fin(
-//     2,
-//     vec![
-//         // First peer gives full block 0 and half of block 1
-//         Ok((peer(0), vec![class_resp(9), class_resp(10), ClassFin])),
-//         Ok((peer(1), vec![class_resp(10), class_resp(11), ClassFin]))
-//     ],
-//     vec![1, 2],
-//     vec![
-//         Ok((peer(0), class(9, 0))),
-//         Ok((peer(1), class(10, 1))),
-//         Ok((peer(1), class(11, 1)))
-//     ]
-// )]
+#[case::two_peers_1_block_per_peer(
+    2,
+    vec![
+        // Errors are ignored
+        Err(peer(1)),
+        Ok((peer(0), vec![event_resp(7, 7), event_resp(8, 7), EventFin])),
+        Err(peer(0)),
+        Ok((peer(1), vec![event_resp(9, 9), EventFin])),
+    ],
+    vec![2, 1],
+    vec![
+        Ok((peer(0), events(vec![7, 8], 7, 0))),
+        Ok((peer(1), events(vec![9], 9, 1))),
+    ]
+)]
+#[case::first_peer_premature_eos_with_fin(
+    2,
+    vec![
+        // First peer gives full block 0 and half of block 1
+        Ok((peer(0), vec![event_resp(10, 10), event_resp(11, 10), event_resp(12, 12), EventFin])),
+        Ok((peer(1), vec![event_resp(12, 12), event_resp(13, 12), EventFin])),
+    ],
+    vec![2, 2],
+    vec![
+        Ok((peer(0), events(vec![10, 11], 10, 0))),
+        Ok((peer(1), events(vec![12, 13], 12, 1))),
+    ]
+)]
 // #[case::first_peer_full_block_no_fin(
 //     2,
 //     vec![
 //         // First peer gives full block 0 but no fin
-//         Ok((peer(0), vec![class_resp(12), class_resp(13)])),
+//         Ok((peer(0), vec![event_resp(14, 14), event_resp(15, 14), event_resp(16, 16)])),
 //         Ok((peer(1), vec![class_resp(14), ClassFin]))
 //     ],
 //     vec![2, 1],

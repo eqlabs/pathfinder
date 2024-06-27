@@ -319,14 +319,3 @@ pub fn events(evs: Vec<i32>, txn: i32, block: u64) -> TaggedEventsForBlockByTran
 
     (BlockNumber::new_or_panic(block), vec![(t, evs)])
 }
-
-// pub fn event(ev: i32, txn: i32, block: u64) ->
-// TaggedEventsForBlockByTransaction {     let e =
-// Tagged::get_fake(format!("event {ev}")).unwrap().data;
-
-//     let t = Tagged::<TaggedTransactionHash>::get_fake(format!("txn hash
-// {txn}"))         .unwrap()
-//         .data;
-
-//     (BlockNumber::new_or_panic(block), vec![(t, vec![e])])
-// }
