@@ -495,18 +495,134 @@ async fn make_class_definition_stream(
 }
 
 #[rstest]
-#[case::fixme(
-    0,
-    vec![],
-    vec![],
-    vec![]
+#[case::one_peer_1_block(
+    1,
+    //                            event  transaction
+    //                                |  |
+    vec![Ok((peer(0), vec![event_resp(0, 0), EventFin]))],
+    vec![1],
+    //                           transaction
+    //                        event   |  block
+    //                            |   |  |
+    vec![Ok((peer(0), events(vec![0], 0, 0)))]
 )]
+#[case::one_peer_2_blocks(
+    2,
+    vec![Ok((peer(0), vec![event_resp(1, 1), event_resp(2, 2), EventFin]))],
+    vec![1, 1],
+    vec![
+        Ok((peer(0), events(vec![1], 1, 0))),
+        Ok((peer(0), events(vec![2], 2, 1)))
+    ]
+)]
+#[case::one_peer_2_blocks_in_2_attempts(
+    // Peer gives a response for the second block after a retry
+    2,
+    vec![
+        Ok((peer(0), vec![event_resp(3, 3), event_resp(4, 3), EventFin])),
+        Ok((peer(0), vec![event_resp(5, 5), event_resp(6, 5), EventFin])),
+    ],
+    vec![2, 2],
+    vec![
+        Ok((peer(0), events(vec![3, 4], 3, 0))),
+        Ok((peer(0), events(vec![5, 6], 5, 1))),
+    ]
+)]
+// #[case::two_peers_1_block_per_peer(
+//     2,
+//     vec![
+//         // Errors are ignored
+//         Err(peer(1)),
+//         Ok((peer(0), vec![class_resp(7), ClassFin])),
+//         Err(peer(0)),
+//         Ok((peer(1), vec![class_resp(8), ClassFin])),
+//     ],
+//     vec![1, 1],
+//     vec![
+//         Ok((peer(0), class(7, 0))),
+//         Ok((peer(1), class(8, 1)))
+//     ]
+// )]
+// #[case::first_peer_premature_eos_with_fin(
+//     2,
+//     vec![
+//         // First peer gives full block 0 and half of block 1
+//         Ok((peer(0), vec![class_resp(9), class_resp(10), ClassFin])),
+//         Ok((peer(1), vec![class_resp(10), class_resp(11), ClassFin]))
+//     ],
+//     vec![1, 2],
+//     vec![
+//         Ok((peer(0), class(9, 0))),
+//         Ok((peer(1), class(10, 1))),
+//         Ok((peer(1), class(11, 1)))
+//     ]
+// )]
+// #[case::first_peer_full_block_no_fin(
+//     2,
+//     vec![
+//         // First peer gives full block 0 but no fin
+//         Ok((peer(0), vec![class_resp(12), class_resp(13)])),
+//         Ok((peer(1), vec![class_resp(14), ClassFin]))
+//     ],
+//     vec![2, 1],
+//     vec![
+//         Ok((peer(0), class(12, 0))),
+//         Ok((peer(0), class(13, 0))),
+//         Ok((peer(1), class(14, 1))),
+//     ]
+// )]
+// // The same as above but the first peer gives half of the second block before closing the
+// // stream
+// #[case::first_peer_half_block_no_fin(
+//     2,
+//     vec![
+//         // First peer gives full block 0 and partial block 1 but no fin
+//         Ok((peer(0), vec![class_resp(15), class_resp(16), class_resp(17)])),
+//         Ok((peer(1), vec![class_resp(16), class_resp(17), class_resp(18), ClassFin])),
+//     ],
+//     vec![1, 3],
+//     vec![
+//         Ok((peer(0), class(15, 0))),
+//         Ok((peer(1), class(16, 1))),
+//         Ok((peer(1), class(17, 1))),
+//         Ok((peer(1), class(18, 1))),
+//     ]
+// )]
+// #[case::count_steam_is_too_short(
+//     2,
+//     vec![
+//         // 2 blocks in responses
+//         Ok((peer(0), vec![class_resp(19), ClassFin])),
+//         Ok((peer(0), vec![class_resp(20), ClassFin]))
+//     ],
+//     vec![1], // but only 1 block provided in the count stream
+//     vec![
+//         Ok((peer(0), class(19, 0))),
+//         Err(peer(0)) // the second block is not processed
+//     ]
+// )]
+// #[case::too_many_responses_declaration(
+//     1,
+//     vec![Ok((peer(0), vec![class_resp(21), class_resp(22), ClassFin]))],
+//     vec![1],
+//     vec![Ok((peer(0), class(21, 0)))]
+// )]
+// #[case::empty_responses_are_ignored(
+//     1,
+//     vec![
+//         Ok((peer(0), vec![])),
+//         Ok((peer(1), vec![class_resp(22), ClassFin])),
+//         Ok((peer(2), vec![]))
+//     ],
+//     vec![1],
+//     vec![Ok((peer(1), class(22, 0)))]
+// )]
 #[test_log::test(tokio::test)]
 async fn make_event_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<EventsResponse>), TestPeer>>,
     #[case] events_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, EventsForBlockByTransaction), TestPeer>>,
+    #[case] expected_stream: Vec<Result<(TestPeer, TaggedEventsForBlockByTransaction), TestPeer>>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -524,7 +640,19 @@ async fn make_event_stream(
         get_peers,
         send_request,
     )
-    .map_ok(|x| (TestPeer(x.peer), x.data))
+    .map_ok(|x| {
+        (
+            TestPeer(x.peer),
+            (
+                x.data.0,
+                x.data
+                    .1
+                    .into_iter()
+                    .map(|(t, e)| (TaggedTransactionHash(t), e))
+                    .collect(),
+            ),
+        )
+    })
     .map_err(|x| TestPeer(x.peer))
     .collect::<Vec<_>>()
     .await;

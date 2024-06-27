@@ -4,11 +4,13 @@ use fake::Dummy;
 use num_bigint::BigUint;
 use pathfinder_crypto::Felt;
 use serde_with::serde_conv;
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
 
 use crate::{ContractAddress, EventData, EventKey};
 
 #[serde_with::serde_as]
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq, Dummy)]
+#[derive(Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq, Dummy, TaggedDebug)]
 #[serde(deny_unknown_fields)]
 pub struct Event {
     #[serde_as(as = "Vec<EventDataAsDecimalStr>")]

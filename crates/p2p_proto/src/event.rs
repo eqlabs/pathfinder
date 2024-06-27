@@ -1,5 +1,7 @@
 use fake::Dummy;
 use pathfinder_crypto::Felt;
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
 
 use crate::common::{Hash, Iteration};
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
@@ -19,7 +21,7 @@ pub struct EventsRequest {
     pub iteration: Iteration,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Dummy)]
+#[derive(Default, Clone, PartialEq, Eq, Dummy, TaggedDebug)]
 pub enum EventsResponse {
     Event(Event),
     #[default]

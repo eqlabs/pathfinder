@@ -7,8 +7,10 @@ use futures::SinkExt;
 use libp2p::PeerId;
 use p2p_proto::class::{Class, ClassesResponse};
 use p2p_proto::common::{Address, Hash, VolitionDomain};
+use p2p_proto::event::EventsResponse;
 use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
+use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
@@ -17,6 +19,7 @@ use pathfinder_common::{
     ClassHash,
     ContractAddress,
     SierraHash,
+    TransactionHash,
     TransactionIndex,
 };
 use tagged::Tagged;
@@ -26,7 +29,6 @@ use tokio::sync::Mutex;
 use super::{ClassDefinition, UnverifiedStateUpdateData};
 use crate::client::conv::{CairoDefinition, SierraDefinition, ToDto, TryFromDto};
 use crate::client::peer_agnostic::Receipt;
-use crate::sync::protocol::Classes;
 
 #[derive(Clone, PartialEq, TaggedDebug)]
 pub struct TestPeer(pub PeerId);
@@ -36,6 +38,12 @@ pub struct TestTxn {
     pub t: TransactionVariant,
     pub r: Receipt,
 }
+
+#[derive(Copy, Clone, Dummy, PartialEq, TaggedDebug)]
+pub struct TaggedTransactionHash(pub TransactionHash);
+
+pub type TaggedEventsForBlockByTransaction =
+    (BlockNumber, Vec<(TaggedTransactionHash, Vec<Event>)>);
 
 impl TestTxn {
     pub fn new((t, r): (TransactionVariant, Receipt)) -> Self {
@@ -279,3 +287,46 @@ pub fn class(tag: i32, block_number: u64) -> ClassDefinition {
         ClassesResponse::Fin => unreachable!(),
     }
 }
+
+pub fn event_resp(ev: i32, txn: i32) -> EventsResponse {
+    let (_, mut v) = events(vec![ev], txn, 0);
+    let t = v[0].0;
+    let e = v.pop().unwrap().1.pop().unwrap();
+
+    let e = p2p_proto::event::Event {
+        transaction_hash: Hash(t.0 .0),
+        from_address: e.from_address.0,
+        keys: e.keys.iter().map(|x| x.0).collect(),
+        data: e.data.iter().map(|x| x.0).collect(),
+    };
+
+    EventsResponse::Event(
+        Tagged::<p2p_proto::event::Event>::get(format!("event response {ev}, txn {txn}"), || e)
+            .unwrap()
+            .data,
+    )
+}
+
+pub fn events(evs: Vec<i32>, txn: i32, block: u64) -> TaggedEventsForBlockByTransaction {
+    let evs = evs
+        .into_iter()
+        .map(|ev| Tagged::get_fake(format!("event {ev}")).unwrap().data)
+        .collect();
+
+    let t = Tagged::<TaggedTransactionHash>::get_fake(format!("txn hash {txn}"))
+        .unwrap()
+        .data;
+
+    (BlockNumber::new_or_panic(block), vec![(t, evs)])
+}
+
+// pub fn event(ev: i32, txn: i32, block: u64) ->
+// TaggedEventsForBlockByTransaction {     let e =
+// Tagged::get_fake(format!("event {ev}")).unwrap().data;
+
+//     let t = Tagged::<TaggedTransactionHash>::get_fake(format!("txn hash
+// {txn}"))         .unwrap()
+//         .data;
+
+//     (BlockNumber::new_or_panic(block), vec![(t, vec![e])])
+// }
