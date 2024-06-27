@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
 use pathfinder_common::hash::{FeltHash, PedersenHash, PoseidonHash};
+use pathfinder_common::receipt::{ExecutionStatus, Receipt};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
@@ -17,9 +18,11 @@ use pathfinder_common::{
     TransactionHash,
     TransactionSignatureElem,
 };
-use pathfinder_crypto::hash::{pedersen_hash, HashChain, PoseidonHasher};
-use pathfinder_crypto::Felt;
+use pathfinder_crypto::hash::{pedersen_hash, poseidon_hash_many, HashChain, PoseidonHasher};
+use pathfinder_crypto::{Felt, MontFelt};
 use pathfinder_merkle_tree::TransactionOrEventTree;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use sha3::Digest;
 use starknet_gateway_types::reply::Block;
 
 const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
@@ -407,6 +410,57 @@ pub fn calculate_transaction_commitment(
     }
 }
 
+pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<Felt> {
+    let mut hashes = Vec::new();
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            hashes = receipts
+                .par_iter()
+                .map(|receipt| {
+                    poseidon_hash_many(&[
+                        receipt.transaction_hash.0.into(),
+                        receipt.actual_fee.0.into(),
+                        // Calculate hash of messages sent.
+                        {
+                            let mut hasher = PoseidonHasher::new();
+                            hasher.write((receipt.l2_to_l1_messages.len() as u64).into());
+                            for msg in &receipt.l2_to_l1_messages {
+                                hasher.write(msg.from_address.0.into());
+                                hasher.write(msg.to_address.0.into());
+                                hasher.write((msg.payload.len() as u64).into());
+                                for payload in &msg.payload {
+                                    hasher.write(payload.0.into());
+                                }
+                            }
+                            hasher.finish()
+                        },
+                        // Calculate hash of execution status.
+                        match &receipt.execution_status {
+                            ExecutionStatus::Succeeded => MontFelt::ZERO,
+                            ExecutionStatus::Reverted { reason } => {
+                                let mut keccak = sha3::Keccak256::default();
+                                keccak.update(reason.as_bytes());
+                                let mut hashed_bytes: [u8; 32] = keccak.finalize().into();
+                                hashed_bytes[0] &= 0b00000011_u8; // Discard the six MSBs.
+                                MontFelt::from_be_bytes(hashed_bytes)
+                            }
+                        },
+                        MontFelt::ZERO,
+                        receipt.execution_resources.data_availability.l1_gas.into(),
+                        receipt
+                            .execution_resources
+                            .data_availability
+                            .l1_data_gas
+                            .into(),
+                    ])
+                    .into()
+                })
+                .collect();
+        })
+    });
+    calculate_commitment_root::<PoseidonHash>(hashes)
+}
+
 fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<Felt> {
     let mut tree: TransactionOrEventTree<H> = Default::default();
 
@@ -605,12 +659,25 @@ fn calculate_event_hash(event: &Event, transaction_hash: TransactionHash) -> Fel
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::receipt::{
+        ExecutionDataAvailability,
+        ExecutionResources,
+        L2ToL1Message,
+    };
     use pathfinder_common::transaction::{
         EntryPointType,
         InvokeTransactionV0,
         InvokeTransactionV3,
     };
-    use pathfinder_common::{felt, ContractAddress, EventData, EventKey, TransactionHash};
+    use pathfinder_common::{
+        felt,
+        ContractAddress,
+        EventData,
+        EventKey,
+        Fee,
+        L2ToL1MessagePayloadElem,
+        TransactionHash,
+    };
     use pathfinder_crypto::Felt;
 
     use super::*;
@@ -815,5 +882,50 @@ mod tests {
                     .collect(),
             }
         }
+    }
+
+    // Source:
+    // https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/receipt_commitment_test.rs#L16.
+    #[test]
+    fn test_receipt_commitment_0_13_2() {
+        let receipt = Receipt {
+            transaction_hash: TransactionHash(1234_u64.into()),
+            actual_fee: Fee(99804_u64.into()),
+            l2_to_l1_messages: vec![
+                L2ToL1Message {
+                    from_address: ContractAddress(34_u64.into()),
+                    to_address: ContractAddress(35_u64.into()),
+                    payload: vec![
+                        L2ToL1MessagePayloadElem(36_u64.into()),
+                        L2ToL1MessagePayloadElem(37_u64.into()),
+                    ],
+                },
+                L2ToL1Message {
+                    from_address: ContractAddress(56_u64.into()),
+                    to_address: ContractAddress(57_u64.into()),
+                    payload: vec![
+                        L2ToL1MessagePayloadElem(58_u64.into()),
+                        L2ToL1MessagePayloadElem(59_u64.into()),
+                    ],
+                },
+            ],
+            execution_resources: ExecutionResources {
+                data_availability: ExecutionDataAvailability {
+                    l1_gas: 16580,
+                    l1_data_gas: 32,
+                },
+                ..Default::default()
+            },
+            execution_status: ExecutionStatus::Reverted {
+                reason: "aborted".to_string(),
+            },
+            ..Default::default()
+        };
+        let expected_root =
+            felt!("0x31963cb891ebb825e83514deb748c89b6967b5368cbc48a9b56193a1464ca87");
+        assert_eq!(
+            calculate_receipt_commitment(&[receipt]).unwrap(),
+            expected_root
+        );
     }
 }
