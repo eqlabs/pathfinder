@@ -8,16 +8,12 @@ use futures::stream::{BoxStream, StreamExt};
 use p2p::client::peer_agnostic::ClassDefinition as P2PClassDefinition;
 use p2p::PeerData;
 use p2p_proto::transaction;
+use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};
 use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::class_definition::{
-    Cairo,
-    ClassDefinition as GwClassDefinition,
-    Sierra,
-};
 use starknet_gateway_types::class_hash::from_parts::{
     compute_cairo_class_hash,
     compute_sierra_class_hash,

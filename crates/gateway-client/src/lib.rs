@@ -637,9 +637,9 @@ mod tests {
     mod add_transaction {
         use std::collections::HashMap;
 
+        use pathfinder_common::class_definition::{EntryPointType, SelectorAndOffset};
         use pathfinder_common::ContractAddress;
         use starknet_gateway_types::request::add_transaction::CairoContractDefinition;
-        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
 
         use super::*;
 
@@ -739,8 +739,8 @@ mod tests {
         }
 
         mod declare {
+            use pathfinder_common::class_definition::SelectorAndFunctionIndex;
             use starknet_gateway_types::request::add_transaction::SierraContractDefinition;
-            use starknet_gateway_types::request::contract::SelectorAndFunctionIndex;
 
             use super::*;
 

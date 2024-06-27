@@ -101,7 +101,7 @@ impl TryFrom<CairoContractClass>
     fn try_from(c: CairoContractClass) -> Result<Self, Self::Error> {
         use std::collections::HashMap;
 
-        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
+        use pathfinder_common::class_definition::{EntryPointType, SelectorAndOffset};
 
         let abi = match c.abi {
             Some(abi) => Some(serde_json::to_value(abi)?),
@@ -149,7 +149,7 @@ impl TryFrom<SierraContractClass>
     fn try_from(c: SierraContractClass) -> Result<Self, Self::Error> {
         use std::collections::HashMap;
 
-        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndFunctionIndex};
+        use pathfinder_common::class_definition::{EntryPointType, SelectorAndFunctionIndex};
 
         let mut entry_points: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>> =
             Default::default();
@@ -299,7 +299,7 @@ impl<'de> serde_with::DeserializeAs<'de, u64> for OffsetSerde {
     }
 }
 
-impl From<ContractEntryPoint> for starknet_gateway_types::request::contract::SelectorAndOffset {
+impl From<ContractEntryPoint> for pathfinder_common::class_definition::SelectorAndOffset {
     fn from(entry_point: ContractEntryPoint) -> Self {
         Self {
             selector: pathfinder_common::EntryPoint(entry_point.selector),
@@ -461,9 +461,7 @@ pub struct SierraEntryPoint {
     pub selector: Felt,
 }
 
-impl From<SierraEntryPoint>
-    for starknet_gateway_types::request::contract::SelectorAndFunctionIndex
-{
+impl From<SierraEntryPoint> for pathfinder_common::class_definition::SelectorAndFunctionIndex {
     fn from(entry_point: SierraEntryPoint) -> Self {
         Self {
             function_idx: entry_point.function_idx,

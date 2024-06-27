@@ -231,9 +231,22 @@ pub fn surplus_class() -> StateDiffsResponse {
 }
 
 pub fn class_resp(tag: i32) -> ClassesResponse {
-    let c = Tagged::<Class>::get_fake(format!("class response {tag}"))
-        .unwrap()
-        .data;
+    use pathfinder_common::class_definition::ClassDefinition;
+    let c = Tagged::<Class>::get(format!("class response {tag}"), || {
+        let c = Faker.fake::<ClassDefinition<'_>>();
+        match c {
+            ClassDefinition::Sierra(s) => Class::Cairo1 {
+                class: todo!(), // sierra_def_into_dto(s),
+                domain: 0,
+            },
+            ClassDefinition::Cairo(c) => Class::Cairo0 {
+                class: todo!(), // cairo_def_into_dto(c),
+                domain: 0,
+            },
+        }
+    })
+    .unwrap()
+    .data;
     ClassesResponse::Class(c)
 }
 

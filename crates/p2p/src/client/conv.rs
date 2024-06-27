@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::io::Read;
 
 use anyhow::Context;
+use p2p_proto::class::{Cairo0Class, Cairo1Class, Cairo1EntryPoints, SierraEntryPoint};
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::receipt::execution_resources::BuiltinCounter;
 use p2p_proto::receipt::{
@@ -19,6 +20,12 @@ use p2p_proto::receipt::{
     ReceiptCommon,
 };
 use p2p_proto::transaction::AccountSignature;
+use pathfinder_common::class_definition::{
+    Cairo,
+    SelectorAndFunctionIndex,
+    SelectorAndOffset,
+    Sierra,
+};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::{
     BuiltinCounters,
@@ -893,5 +900,84 @@ impl TryFromDto<p2p_proto::class::Cairo1Class> for SierraDefinition {
         let sierra = serde_json::to_vec(&sierra).context("serialize sierra class definition")?;
 
         Ok(Self(sierra))
+    }
+}
+
+impl ToDto<Cairo1Class> for Sierra<'_> {
+    fn to_dto(self) -> Cairo1Class {
+        let into_dto = |x: SelectorAndFunctionIndex| SierraEntryPoint {
+            selector: x.selector.0,
+            index: x.function_idx,
+        };
+
+        let entry_points = Cairo1EntryPoints {
+            externals: self
+                .entry_points_by_type
+                .external
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            l1_handlers: self
+                .entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            constructors: self
+                .entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+        };
+
+        Cairo1Class {
+            abi: self.abi.to_string(),
+            program: self.sierra_program,
+            entry_points,
+            contract_class_version: self.contract_class_version.into(),
+        }
+    }
+}
+
+impl ToDto<Cairo0Class> for Cairo<'_> {
+    fn to_dto(self) -> Cairo0Class {
+        let into_dto = |x: SelectorAndOffset| p2p_proto::class::EntryPoint {
+            selector: x.selector.0,
+            offset: u64::from_be_bytes(
+                x.offset.0.as_be_bytes()[24..]
+                    .try_into()
+                    .expect("slice len matches"),
+            ),
+        };
+
+        let mut gzip_encoder =
+            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        serde_json::to_writer(&mut gzip_encoder, &self.program).unwrap();
+        let program = gzip_encoder.finish().unwrap();
+        let program = base64::encode(program);
+
+        Cairo0Class {
+            abi: self.abi.to_string(),
+            externals: self
+                .entry_points_by_type
+                .external
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            l1_handlers: self
+                .entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            constructors: self
+                .entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(into_dto)
+                .collect(),
+            program,
+        }
     }
 }
