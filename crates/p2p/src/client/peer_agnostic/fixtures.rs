@@ -11,7 +11,14 @@ use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDi
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::transaction::TransactionVariant;
-use pathfinder_common::{CasmHash, ClassHash, ContractAddress, SierraHash, TransactionIndex};
+use pathfinder_common::{
+    BlockNumber,
+    CasmHash,
+    ClassHash,
+    ContractAddress,
+    SierraHash,
+    TransactionIndex,
+};
 use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;
 use tokio::sync::Mutex;
@@ -236,11 +243,11 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
         let c = Faker.fake::<ClassDefinition<'_>>();
         match c {
             ClassDefinition::Sierra(s) => Class::Cairo1 {
-                class: todo!(), // sierra_def_into_dto(s),
+                class: s.to_dto(),
                 domain: 0,
             },
             ClassDefinition::Cairo(c) => Class::Cairo0 {
-                class: todo!(), // cairo_def_into_dto(c),
+                class: c.to_dto(),
                 domain: 0,
             },
         }
@@ -250,18 +257,25 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
     ClassesResponse::Class(c)
 }
 
-pub fn class(tag: i32) -> ClassDefinition {
-    // TODO Block numbers were used for logging only, and aren't anymore, so we just
-    // ignore them
+pub fn class(tag: i32, block_number: u64) -> ClassDefinition {
+    let block_number = BlockNumber::new_or_panic(block_number);
     match class_resp(tag) {
-        ClassesResponse::Class(Class::Cairo0 { class, .. }) => ClassDefinition::Cairo {
-            block_number: Default::default(),
-            definition: CairoDefinition::try_from_dto(class).unwrap().0,
-        },
-        ClassesResponse::Class(Class::Cairo1 { class, .. }) => ClassDefinition::Sierra {
-            block_number: Default::default(),
-            sierra_definition: SierraDefinition::try_from_dto(class).unwrap().0,
-        },
+        ClassesResponse::Class(Class::Cairo0 { class, .. }) => {
+            Tagged::get(format!("class {tag}"), || ClassDefinition::Cairo {
+                block_number,
+                definition: CairoDefinition::try_from_dto(class).unwrap().0,
+            })
+            .unwrap()
+            .data
+        }
+        ClassesResponse::Class(Class::Cairo1 { class, .. }) => {
+            Tagged::get(format!("class {tag}"), || ClassDefinition::Sierra {
+                block_number,
+                sierra_definition: SierraDefinition::try_from_dto(class).unwrap().0,
+            })
+            .unwrap()
+            .data
+        }
         ClassesResponse::Fin => unreachable!(),
     }
 }

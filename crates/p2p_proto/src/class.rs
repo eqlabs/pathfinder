@@ -2,6 +2,8 @@ use std::fmt::Debug;
 
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
 
 use crate::common::Iteration;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
@@ -71,7 +73,7 @@ impl<T> Dummy<T> for Cairo1Class {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+#[derive(Clone, PartialEq, Eq, Dummy, TaggedDebug)]
 pub enum Class {
     Cairo0 { class: Cairo0Class, domain: u32 },
     Cairo1 { class: Cairo1Class, domain: u32 },

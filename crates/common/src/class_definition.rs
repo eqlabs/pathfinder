@@ -10,7 +10,7 @@ use serde_with::serde_as;
 
 use crate::{ByteCodeOffset, EntryPoint};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Dummy)]
 pub enum ClassDefinition<'a> {
     Sierra(Sierra<'a>),
     Cairo(Cairo<'a>),
