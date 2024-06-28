@@ -186,21 +186,24 @@ async fn make_transaction_stream(
 )]
 #[case::one_peer_2_blocks(
     2,
-    vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1), declared_class(1), SDFin]))],
-    vec![len(0), len(1)],
-    vec![Ok((peer(0), state_diff(0))), Ok((peer(0), state_diff(1)))]
+    vec![Ok((peer(0), vec![contract_diff(1), declared_class(1), contract_diff(2), declared_class(2), SDFin]))],
+    vec![len(1), len(2)],
+    vec![
+        Ok((peer(0), state_diff(1))),
+        Ok((peer(0), state_diff(2)))
+    ]
 )]
 #[case::one_peer_2_blocks_in_2_attempts(
     // Peer gives a response for the second block after a retry
     2,
     vec![
-        Ok((peer(0), vec![contract_diff(0), declared_class(0), SDFin])),
-        Ok((peer(0), vec![contract_diff(1), declared_class(1), SDFin])),
+        Ok((peer(0), vec![contract_diff(3), declared_class(3), SDFin])),
+        Ok((peer(0), vec![contract_diff(4), declared_class(4), SDFin])),
     ],
-    vec![len(0), len(1)],
+    vec![len(3), len(4)],
     vec![
-        Ok((peer(0), state_diff(0))),
-        Ok((peer(0), state_diff(1)))
+        Ok((peer(0), state_diff(3))),
+        Ok((peer(0), state_diff(4)))
     ]
 )]
 #[case::two_peers_1_block_per_peer(
@@ -208,40 +211,40 @@ async fn make_transaction_stream(
     vec![
         // Errors are ignored
         Err(peer(1)),
-        Ok((peer(0), vec![contract_diff(0), declared_class(0), SDFin])),
+        Ok((peer(0), vec![contract_diff(5), declared_class(5), SDFin])),
         Err(peer(0)),
-        Ok((peer(1), vec![contract_diff(1), declared_class(1), SDFin])),
+        Ok((peer(1), vec![contract_diff(6), declared_class(6), SDFin])),
     ],
-    vec![len(0), len(1)],
+    vec![len(5), len(6)],
     vec![
-        Ok((peer(0), state_diff(0))),
-        Ok((peer(1), state_diff(1)))
+        Ok((peer(0), state_diff(5))),
+        Ok((peer(1), state_diff(6)))
     ]
 )]
 #[case::first_peer_premature_eos_with_fin(
     2,
     vec![
         // First peer gives full block 0 and half of block 1
-        Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1), SDFin])),
-        Ok((peer(1), vec![contract_diff(1), declared_class(1), SDFin]))
+        Ok((peer(0), vec![contract_diff(7), declared_class(7), contract_diff(8), SDFin])),
+        Ok((peer(1), vec![contract_diff(8), declared_class(8), SDFin]))
     ],
-    vec![len(0), len(1)],
+    vec![len(7), len(8)],
     vec![
-        Ok((peer(0), state_diff(0))),
-        Ok((peer(1), state_diff(1)))
+        Ok((peer(0), state_diff(7))),
+        Ok((peer(1), state_diff(8)))
     ]
 )]
 #[case::first_peer_full_block_no_fin(
     2,
     vec![
         // First peer gives full block 0 but no fin
-        Ok((peer(0), vec![contract_diff(0), declared_class(0)])),
-        Ok((peer(1), vec![contract_diff(1), declared_class(1), SDFin]))
+        Ok((peer(0), vec![contract_diff(9), declared_class(9)])),
+        Ok((peer(1), vec![contract_diff(10), declared_class(10), SDFin]))
     ],
-    vec![len(0), len(1)],
+    vec![len(9), len(10)],
     vec![
-        Ok((peer(0), state_diff(0))),
-        Ok((peer(1), state_diff(1)))
+        Ok((peer(0), state_diff(9))),
+        Ok((peer(1), state_diff(10)))
     ]
 )]
 // The same as above but the first peer gives half of the second block before closing the
@@ -250,61 +253,61 @@ async fn make_transaction_stream(
     2,
     vec![
         // First peer gives full block 0 and partial block 1 but no fin
-        Ok((peer(0), vec![contract_diff(0), declared_class(0), contract_diff(1)])),
-        Ok((peer(1), vec![contract_diff(1), declared_class(1), SDFin])),
+        Ok((peer(0), vec![contract_diff(11), declared_class(11), contract_diff(12)])),
+        Ok((peer(1), vec![contract_diff(12), declared_class(12), SDFin])),
     ],
-    vec![len(0), len(1)],
+    vec![len(11), len(12)],
     vec![
-        Ok((peer(0), state_diff(0))),
-        Ok((peer(1), state_diff(1)))
+        Ok((peer(0), state_diff(11))),
+        Ok((peer(1), state_diff(12)))
     ]
 )]
 #[case::count_steam_is_too_short(
     2,
     vec![
         // 2 blocks in responses
-        Ok((peer(0), vec![contract_diff(0), declared_class(0), SDFin])),
-        Ok((peer(0), vec![contract_diff(1), declared_class(1), SDFin]))
+        Ok((peer(0), vec![contract_diff(13), declared_class(13), SDFin])),
+        Ok((peer(0), vec![contract_diff(14), declared_class(14), SDFin]))
     ],
-    vec![len(0)], // but only 1 block provided in the count stream
+    vec![len(13)], // but only 1 block provided in the count stream
     vec![
-        Ok((peer(0), state_diff(0))),
+        Ok((peer(0), state_diff(13))),
         Err(peer(0)) // the second block is not processed
     ]
 )]
 #[case::too_many_responses_storage(
     1,
-    vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), surplus_storage(), SDFin]))],
-    vec![len(0)],
-    vec![Ok((peer(0), state_diff(0)))]
+    vec![Ok((peer(0), vec![contract_diff(15), declared_class(15), surplus_storage(), SDFin]))],
+    vec![len(15)],
+    vec![Ok((peer(0), state_diff(15)))]
 )]
 #[case::too_many_responses_nonce(
     1,
-    vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), surplus_nonce(), SDFin]))],
-    vec![len(0)],
-    vec![Ok((peer(0), state_diff(0)))]
+    vec![Ok((peer(0), vec![contract_diff(16), declared_class(16), surplus_nonce(), SDFin]))],
+    vec![len(16)],
+    vec![Ok((peer(0), state_diff(16)))]
 )]
 #[case::too_many_responses_class(
     1,
-    vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), surplus_class(), SDFin]))],
-    vec![len(0)],
-    vec![Ok((peer(0), state_diff(0)))]
+    vec![Ok((peer(0), vec![contract_diff(17), declared_class(17), surplus_class(), SDFin]))],
+    vec![len(17)],
+    vec![Ok((peer(0), state_diff(17)))]
 )]
 #[case::too_many_responses_declaration(
     1,
-    vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), declared_class(1), SDFin]))],
-    vec![len(0)],
-    vec![Ok((peer(0), state_diff(0)))]
+    vec![Ok((peer(0), vec![contract_diff(18), declared_class(18), declared_class(19), SDFin]))],
+    vec![len(18)],
+    vec![Ok((peer(0), state_diff(18)))]
 )]
 #[case::empty_responses_are_ignored(
     1,
     vec![
         Ok((peer(0), vec![])),
-        Ok((peer(1), vec![contract_diff(0), declared_class(0), SDFin])),
+        Ok((peer(1), vec![contract_diff(20), declared_class(20), SDFin])),
         Ok((peer(2), vec![]))
     ],
-    vec![len(0)],
-    vec![Ok((peer(1), state_diff(0)))]
+    vec![len(20)],
+    vec![Ok((peer(1), state_diff(20)))]
 )]
 #[test_log::test(tokio::test)]
 async fn make_state_diff_stream(
