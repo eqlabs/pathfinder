@@ -58,6 +58,7 @@ pub fn peer(tag: i32) -> TestPeer {
         .data
 }
 
+#[allow(clippy::type_complexity)]
 pub fn unzip_fixtures<T>(
     responses: Vec<Result<(TestPeer, Vec<T>), TestPeer>>,
 ) -> (Vec<PeerId>, Arc<Mutex<VecDeque<Result<Vec<T>, TestPeer>>>>) {
@@ -77,6 +78,7 @@ pub fn unzip_fixtures<T>(
     (peers, responses)
 }
 
+#[allow(clippy::type_complexity)]
 pub async fn send_request<T>(
     responses: Arc<Mutex<VecDeque<Result<Vec<T>, TestPeer>>>>,
 ) -> anyhow::Result<mpsc::Receiver<T>> {

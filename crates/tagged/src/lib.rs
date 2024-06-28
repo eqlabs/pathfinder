@@ -1,6 +1,6 @@
-// //! Tagging is meant to be used in tests only, but because `[cfg(test)]`
-// cannot //! be _exported_ we're using the closest build configuration option.
-// #![cfg(debug_assertions)]
+//! Tagging is meant to be used in tests only, but because `[cfg(test)]` cannot
+//! be _exported_ we're using the closest build configuration option.
+#![cfg(debug_assertions)]
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -36,7 +36,7 @@ type LutGuard = MutexGuard<'static, HashMap<TypeId, HashMap<String, Box<dyn Any>
 /// - Does nothing outside Debug builds.
 /// - This function __must__ be called before using the [`Tagged`] type, and if
 ///   one then wants to see the tags in `std::fmt::Debug` output for each type
-///   that derives [`tagged_debug_derive::TaggedDebug`].
+///   that derives `tagged_debug_derive::TaggedDebug`.
 /// - You need to make sure to call this function __at least__ once. Subsequent
 ///   calls will have no effect.
 pub fn init() {
