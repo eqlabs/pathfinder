@@ -1,14 +1,16 @@
 use std::borrow::Cow;
+use std::fmt;
 
 use fake::{Dummy, Fake, Faker};
 use pathfinder_crypto::Felt;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
+use serde_with::serde_as;
 
-use crate::request::contract::{SelectorAndFunctionIndex, SelectorAndOffset};
+use crate::{ByteCodeOffset, EntryPoint};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Dummy)]
 pub enum ClassDefinition<'a> {
     Sierra(Sierra<'a>),
     Cairo(Cairo<'a>),
@@ -86,4 +88,86 @@ pub struct CairoEntryPoints {
     pub l1_handler: Vec<SelectorAndOffset>,
     #[serde(rename = "CONSTRUCTOR")]
     pub constructor: Vec<SelectorAndOffset>,
+}
+
+#[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Hash, Eq)]
+#[serde(deny_unknown_fields)]
+pub enum EntryPointType {
+    #[serde(rename = "EXTERNAL")]
+    External,
+    #[serde(rename = "L1_HANDLER")]
+    L1Handler,
+    #[serde(rename = "CONSTRUCTOR")]
+    Constructor,
+}
+
+impl fmt::Display for EntryPointType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use EntryPointType::*;
+        f.pad(match self {
+            External => "EXTERNAL",
+            L1Handler => "L1_HANDLER",
+            Constructor => "CONSTRUCTOR",
+        })
+    }
+}
+
+#[serde_as]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct SelectorAndOffset {
+    pub selector: EntryPoint,
+    #[serde_as(as = "OffsetSerde")]
+    pub offset: ByteCodeOffset,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum OffsetSerde {
+    HexStr(Felt),
+    Decimal(u64),
+}
+
+impl serde_with::SerializeAs<ByteCodeOffset> for OffsetSerde {
+    fn serialize_as<S>(source: &ByteCodeOffset, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::Serialize;
+
+        Felt::serialize(&source.0, serializer)
+    }
+}
+
+impl<'de> serde_with::DeserializeAs<'de, ByteCodeOffset> for OffsetSerde {
+    fn deserialize_as<D>(deserializer: D) -> Result<ByteCodeOffset, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::Deserialize;
+
+        let offset = OffsetSerde::deserialize(deserializer)?;
+        let offset = match offset {
+            OffsetSerde::HexStr(felt) => felt,
+            OffsetSerde::Decimal(decimal) => Felt::from_u64(decimal),
+        };
+        Ok(ByteCodeOffset(offset))
+    }
+}
+
+impl<T> Dummy<T> for SelectorAndOffset {
+    fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self {
+            selector: Faker.fake_with_rng(rng),
+            offset: ByteCodeOffset(Felt::from_u64(rng.gen())),
+        }
+    }
+}
+
+/// Descriptor of an entry point in a Sierra class.
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, Dummy)]
+#[serde(deny_unknown_fields)]
+pub struct SelectorAndFunctionIndex {
+    pub selector: EntryPoint,
+    pub function_idx: u64,
 }

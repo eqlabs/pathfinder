@@ -24,17 +24,13 @@ use p2p_proto::state::{
     StateDiffsResponse,
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
-use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_common::{class_definition, BlockHash, BlockNumber};
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Storage, Transaction};
-use starknet_gateway_types::class_definition;
 use tokio::sync::mpsc;
 
-pub mod conv;
 #[cfg(test)]
 mod tests;
-
-use self::conv::{cairo_def_into_dto, sierra_def_into_dto};
 
 #[cfg(not(test))]
 const MAX_BLOCKS_COUNT: u64 = 100;
@@ -239,7 +235,7 @@ fn get_classes_for_block(
                 let cairo_class =
                     serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
                 Class::Cairo0 {
-                    class: cairo_def_into_dto(cairo_class),
+                    class: cairo_class.to_dto(),
                     domain: 0, // TODO
                 }
             }
@@ -250,7 +246,7 @@ fn get_classes_for_block(
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
 
                 Class::Cairo1 {
-                    class: sierra_def_into_dto(sierra_class),
+                    class: sierra_class.to_dto(),
                     domain: 0, // TODO
                 }
             }

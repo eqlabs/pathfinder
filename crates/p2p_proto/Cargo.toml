@@ -19,6 +19,8 @@ prost = { workspace = true }
 prost-types = { workspace = true }
 rand = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
+tagged = { path = "../tagged" }
+tagged-debug-derive = { path = "../tagged-debug-derive" }
 
 [dev-dependencies]
 pretty_assertions_sorted = { workspace = true }

@@ -359,11 +359,11 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
 }
 
 async fn handle_event_stream(
-    stream: impl Stream<Item = anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
+    stream: impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     stream
-        .map_err(Into::into)
+        .map_err(|e| e.data.into())
         .and_then(|x| events::verify_commitment(x, storage.clone()))
         .try_chunks(100)
         .map_err(|e| e.1)
@@ -1525,7 +1525,8 @@ mod tests {
         use crate::state::block_hash::calculate_event_commitment;
 
         struct Setup {
-            pub streamed_events: Vec<anyhow::Result<PeerData<EventsForBlockByTransaction>>>,
+            pub streamed_events:
+                Vec<Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
             pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
             pub storage: Storage,
         }
@@ -1536,7 +1537,7 @@ mod tests {
                 let streamed_events = blocks
                     .iter()
                     .map(|block| {
-                        anyhow::Result::Ok(PeerData::for_tests((
+                        Result::Ok(PeerData::for_tests((
                             block.header.header.number,
                             block
                                 .transaction_data
@@ -1641,7 +1642,9 @@ mod tests {
         async fn stream_failure() {
             assert_matches::assert_matches!(
                 handle_event_stream(
-                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
+                    stream::once(std::future::ready(Err(PeerData::for_tests(
+                        anyhow::anyhow!("")
+                    )))),
                     StorageBuilder::in_memory().unwrap()
                 )
                 .await

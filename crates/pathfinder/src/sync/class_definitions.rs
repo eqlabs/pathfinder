@@ -8,16 +8,12 @@ use futures::stream::{BoxStream, StreamExt};
 use p2p::client::peer_agnostic::ClassDefinition as P2PClassDefinition;
 use p2p::PeerData;
 use p2p_proto::transaction;
+use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};
 use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::class_definition::{
-    Cairo,
-    ClassDefinition as GwClassDefinition,
-    Sierra,
-};
 use starknet_gateway_types::class_hash::from_parts::{
     compute_cairo_class_hash,
     compute_sierra_class_hash,
@@ -441,118 +437,6 @@ impl ProcessStage for Store {
 
         Ok(block_number)
     }
-}
-
-pub(super) async fn compile_sierra_to_casm_or_fetch<SequencerClient: GatewayApi + Clone + Send>(
-    peer_data: PeerData<Class>,
-    fgw: SequencerClient,
-) -> Result<PeerData<CompiledClass>, SyncError> {
-    let PeerData {
-        peer,
-        data: Class {
-            block_number,
-            hash,
-            definition,
-        },
-    } = peer_data;
-
-    let definition = match definition {
-        ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
-        ClassDefinition::Sierra(sierra_definition) => {
-            let (casm_definition, sierra_definition) =
-                tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
-                    let _span =
-                        tracing::trace_span!("compile_sierra_to_casm_or_fetch", class_hash=%hash)
-                            .entered();
-                    (
-                        pathfinder_compiler::compile_to_casm(&sierra_definition)
-                            .context("Compiling Sierra class"),
-                        sierra_definition,
-                    )
-                })
-                .await
-                .context("Joining blocking task")?;
-
-            let casm_definition = match casm_definition {
-                Ok(x) => x,
-                Err(_) => fgw
-                    .pending_casm_by_hash(hash)
-                    .await
-                    .context("Fetching casm definition from gateway")?
-                    .to_vec(),
-            };
-
-            CompiledClassDefinition::Sierra {
-                sierra_definition,
-                casm_definition,
-            }
-        }
-    };
-
-    Ok(PeerData::new(
-        peer,
-        CompiledClass {
-            block_number,
-            hash,
-            definition,
-        },
-    ))
-}
-
-pub(super) async fn persist(
-    storage: Storage,
-    classes: Vec<PeerData<CompiledClass>>,
-) -> Result<BlockNumber, SyncError> {
-    tokio::task::spawn_blocking(move || {
-        let mut connection = storage
-            .connection()
-            .context("Creating database connection")?;
-        let transaction = connection
-            .transaction()
-            .context("Creating database transaction")?;
-        let tail = classes
-            .last()
-            .map(|x| x.data.block_number)
-            .context("No class definitions to persist")?;
-
-        for CompiledClass {
-            block_number: _,
-            definition,
-            hash,
-        } in classes.into_iter().map(|x| x.data)
-        {
-            match definition {
-                CompiledClassDefinition::Cairo(definition) => {
-                    transaction
-                        .update_cairo_class(hash, &definition)
-                        .context("Updating cairo class definition")?;
-                }
-                CompiledClassDefinition::Sierra {
-                    sierra_definition,
-                    casm_definition,
-                } => {
-                    let casm_hash = transaction
-                        .casm_hash(hash)
-                        .context("Getting casm hash for sierra class")?
-                        .context("Casm hash not found")?;
-
-                    transaction
-                        .update_sierra_class(
-                            &SierraHash(hash.0),
-                            &sierra_definition,
-                            &casm_hash,
-                            &casm_definition,
-                        )
-                        .context("Updating sierra class definition")?;
-                }
-            }
-        }
-        transaction.commit().context("Committing db transaction")?;
-
-        Ok(tail)
-    })
-    .await
-    .context("Joining blocking task")?
 }
 
 pub struct VerifyClassHashes {

@@ -111,6 +111,7 @@ pub mod init {
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
+        class_definition,
         BlockHash,
         BlockHeader,
         BlockNumber,
@@ -122,7 +123,6 @@ pub mod init {
         TransactionIndex,
     };
     use rand::Rng;
-    use starknet_gateway_types::class_definition;
 
     use super::Block;
 

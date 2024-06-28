@@ -1,11 +1,10 @@
 use anyhow::{Context, Error, Result};
+use pathfinder_common::class_definition::EntryPointType::*;
 use pathfinder_common::{felt_bytes, ClassHash};
 use pathfinder_crypto::hash::{HashChain, PoseidonHasher};
 use pathfinder_crypto::Felt;
 use serde::Serialize;
 use sha3::Digest;
-
-use crate::request::contract::EntryPointType;
 
 #[derive(Debug, PartialEq)]
 pub enum ComputedClassHash {
@@ -99,12 +98,15 @@ pub mod from_parts {
     use std::collections::HashMap;
 
     use anyhow::Result;
+    use pathfinder_common::class_definition::{
+        EntryPointType,
+        SelectorAndOffset,
+        SierraEntryPoints,
+    };
     use pathfinder_common::ClassHash;
     use pathfinder_crypto::Felt;
 
     use super::json;
-    use crate::class_definition::SierraEntryPoints;
-    use crate::request::contract::{EntryPointType, SelectorAndOffset};
 
     pub fn compute_cairo_class_hash(
         abi: &[u8],
@@ -178,8 +180,6 @@ pub mod from_parts {
 fn compute_cairo_class_hash(
     mut contract_definition: json::CairoContractDefinition<'_>,
 ) -> Result<ClassHash> {
-    use EntryPointType::*;
-
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
 
@@ -390,8 +390,6 @@ fn compute_cairo_class_hash(
 fn compute_sierra_class_hash(
     contract_definition: json::SierraContractDefinition<'_>,
 ) -> Result<ClassHash> {
-    use EntryPointType::*;
-
     if contract_definition.contract_class_version != "0.1.0" {
         anyhow::bail!("Unsupported Sierra class version");
     }
@@ -541,7 +539,11 @@ mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
 
-    use crate::request::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
+    use pathfinder_common::class_definition::{
+        EntryPointType,
+        SelectorAndFunctionIndex,
+        SelectorAndOffset,
+    };
 
     pub enum ContractDefinition<'a> {
         Cairo(CairoContractDefinition<'a>),

@@ -15,6 +15,7 @@ use p2p::client::peer_agnostic::{
     UnverifiedTransactionData,
 };
 use p2p::PeerData;
+use pathfinder_common::class_definition::ClassDefinition;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
@@ -35,7 +36,6 @@ use pathfinder_common::{
 };
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::class_definition::ClassDefinition;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::class_definitions::CompiledClass;

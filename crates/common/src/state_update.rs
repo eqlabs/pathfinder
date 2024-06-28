@@ -27,7 +27,7 @@ pub struct StateUpdate {
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct StateUpdateData {
     pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
     pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
@@ -311,6 +311,20 @@ impl StateUpdateData {
             sierra: self.declared_sierra_classes.clone(),
             cairo: self.declared_cairo_classes.clone(),
         }
+    }
+
+    pub fn state_diff_length(&self) -> usize {
+        let mut len = 0;
+        self.contract_updates.iter().for_each(|(_, update)| {
+            len += update.storage.len();
+            len += usize::from(update.nonce.is_some());
+            len += usize::from(update.class.is_some());
+        });
+        self.system_contract_updates.iter().for_each(|(_, update)| {
+            len += update.storage.len();
+        });
+        len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
+        len
     }
 }
 
