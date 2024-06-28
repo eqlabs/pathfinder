@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
-use pathfinder_common::state_update::ContractClassUpdate;
+use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::{
     BlockCommitmentSignature,
     BlockHash,
@@ -490,13 +490,22 @@ async fn download_block(
     let result = match result {
         Ok((block, state_update)) => {
             let block = Box::new(block);
+            let state_diff_commitment = StateUpdateData::from(state_update.clone())
+                .compute_state_diff_commitment(block.starknet_version);
             let state_update = Box::new(state_update);
+            let state_diff_length = state_update.state_diff_length();
 
             // Check if block hash is correct.
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
-                let verify_result = verify_gateway_block_hash(&block, chain, chain_id)
-                    .with_context(move || format!("Verify block {block_number}"))?;
+                let verify_result = verify_gateway_block_hash(
+                    &block,
+                    state_diff_commitment,
+                    state_diff_length,
+                    chain,
+                    chain_id,
+                )
+                .with_context(move || format!("Verify block {block_number}"))?;
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;

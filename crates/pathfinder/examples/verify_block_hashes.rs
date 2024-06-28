@@ -44,7 +44,8 @@ fn main() -> anyhow::Result<()> {
 
     for block_number in 0..latest_block_number.get() {
         let tx = db.transaction().unwrap();
-        let block_id = pathfinder_storage::BlockId::Number(BlockNumber::new_or_panic(block_number));
+        let block_number = BlockNumber::new_or_panic(block_number);
+        let block_id = pathfinder_storage::BlockId::Number(block_number);
         let header = tx
             .block_header(block_id)
             .context("Fetching block header")?
@@ -52,6 +53,9 @@ fn main() -> anyhow::Result<()> {
         let transactions_and_receipts = tx
             .transaction_data_for_block(block_id)?
             .context("Transaction data missing")?;
+        let (state_diff_commitment, state_diff_length) = tx
+            .state_diff_commitment_and_length(block_number)?
+            .ok_or_else(|| anyhow::anyhow!("State diff commitment missing"))?;
         drop(tx);
 
         let block_hash = header.hash;
@@ -85,7 +89,13 @@ fn main() -> anyhow::Result<()> {
         };
         parent_block_hash = block_hash;
 
-        let result = verify_gateway_block_hash(&block, chain, chain_id)?;
+        let result = verify_gateway_block_hash(
+            &block,
+            state_diff_commitment,
+            state_diff_length.try_into().unwrap(),
+            chain,
+            chain_id,
+        )?;
         match result {
             VerifyResult::Match(_) => {}
             VerifyResult::Mismatch => {

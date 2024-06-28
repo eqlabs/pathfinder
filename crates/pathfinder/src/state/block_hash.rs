@@ -1,9 +1,12 @@
+use std::io::Write;
+
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
 use pathfinder_common::hash::{FeltHash, PedersenHash, PoseidonHash};
 use pathfinder_common::receipt::{ExecutionStatus, Receipt};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
+    felt_bytes,
     BlockHash,
     BlockHeader,
     BlockNumber,
@@ -11,9 +14,13 @@ use pathfinder_common::{
     Chain,
     ChainId,
     EventCommitment,
+    GasPrice,
+    L1DataAvailabilityMode,
+    ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
     StateCommitment,
+    StateDiffCommitment,
     TransactionCommitment,
     TransactionHash,
     TransactionSignatureElem,
@@ -54,13 +61,16 @@ impl VerifyResult {
 /// Python implementation to compute the block hash for details.
 pub fn verify_gateway_block_hash(
     block: &Block,
+    state_diff_commitment: StateDiffCommitment,
+    state_diff_length: u64,
     chain: Chain,
     chain_id: ChainId,
 ) -> Result<VerifyResult> {
     let transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
 
-    let mut block_header_data = BlockHeaderData::from(block);
+    let mut block_header_data =
+        BlockHeaderData::from_block(block, state_diff_commitment, state_diff_length)?;
 
     // Older blocks on mainnet don't carry a precalculated transaction
     // commitment.
@@ -90,7 +100,7 @@ pub fn verify_gateway_block_hash(
     verify_block_hash(block_header_data, chain, chain_id)
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BlockHeaderData {
     pub hash: BlockHash,
     pub parent_hash: BlockHash,
@@ -98,15 +108,68 @@ pub struct BlockHeaderData {
     pub timestamp: BlockTimestamp,
     pub sequencer_address: SequencerAddress,
     pub state_commitment: StateCommitment,
+    pub state_diff_commitment: StateDiffCommitment,
     pub transaction_commitment: TransactionCommitment,
     pub transaction_count: u64,
     pub event_commitment: EventCommitment,
     pub event_count: u64,
+    pub state_diff_length: u64,
+    pub starknet_version: StarknetVersion,
+    pub starknet_version_str: String,
+    pub eth_l1_gas_price: GasPrice,
+    pub strk_l1_gas_price: GasPrice,
+    pub eth_l1_data_gas_price: GasPrice,
+    pub strk_l1_data_gas_price: GasPrice,
+    pub receipt_commitment: ReceiptCommitment,
+    pub l1_da_mode: L1DataAvailabilityMode,
 }
 
-impl From<&Block> for BlockHeaderData {
-    fn from(block: &Block) -> Self {
+impl BlockHeaderData {
+    pub fn from_header(
+        header: &BlockHeader,
+        receipt_commitment: ReceiptCommitment,
+        state_diff_commitment: StateDiffCommitment,
+        state_diff_length: u64,
+    ) -> Self {
         Self {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            sequencer_address: header.sequencer_address,
+            state_commitment: header.state_commitment,
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header
+                .transaction_count
+                .try_into()
+                .expect("ptr size is 64bits"),
+            event_commitment: header.event_commitment,
+            event_count: header.event_count.try_into().expect("ptr size is 64bits"),
+            starknet_version: header.starknet_version,
+            starknet_version_str: header.starknet_version.to_string(),
+            state_diff_length,
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            receipt_commitment,
+            l1_da_mode: header.l1_da_mode,
+            state_diff_commitment,
+        }
+    }
+
+    pub fn from_block(
+        block: &Block,
+        state_diff_commitment: StateDiffCommitment,
+        state_diff_length: u64,
+    ) -> Result<Self> {
+        let receipts = block
+            .transaction_receipts
+            .iter()
+            .map(|(receipt, _)| receipt.clone())
+            .collect::<Vec<_>>();
+        let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+        Ok(Self {
             hash: block.block_hash,
             parent_hash: block.parent_block_hash,
             number: block.block_number,
@@ -129,87 +192,57 @@ impl From<&Block> for BlockHeaderData {
                 .count()
                 .try_into()
                 .expect("ptr size is 64bits"),
-        }
-    }
-}
-
-impl From<&BlockHeader> for BlockHeaderData {
-    fn from(header: &BlockHeader) -> Self {
-        Self {
-            hash: header.hash,
-            parent_hash: header.parent_hash,
-            number: header.number,
-            timestamp: header.timestamp,
-            sequencer_address: header.sequencer_address,
-            state_commitment: header.state_commitment,
-            transaction_commitment: header.transaction_commitment,
-            transaction_count: header
-                .transaction_count
-                .try_into()
-                .expect("ptr size is 64bits"),
-            event_commitment: header.event_commitment,
-            event_count: header.event_count.try_into().expect("ptr size is 64bits"),
-        }
+            starknet_version: block.starknet_version,
+            starknet_version_str: block.starknet_version.to_string(),
+            state_diff_commitment,
+            state_diff_length,
+            eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+            strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+            eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+            strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            receipt_commitment,
+            l1_da_mode: block.l1_da_mode.into(),
+        })
     }
 }
 
 pub fn verify_block_hash(
-    block_header_data: BlockHeaderData,
+    header: BlockHeaderData,
     chain: Chain,
     chain_id: ChainId,
 ) -> Result<VerifyResult> {
-    let BlockHeaderData {
-        hash: expected_hash,
-        parent_hash,
-        number,
-        timestamp,
-        sequencer_address,
-        state_commitment,
-        transaction_commitment,
-        transaction_count,
-        event_commitment,
-        event_count,
-    } = block_header_data;
-
     let meta_info = meta::for_chain(chain);
 
-    let verified = if meta_info.uses_pre_0_7_hash_algorithm(number) {
+    let verified = if meta_info.uses_pre_0_7_hash_algorithm(header.number) {
         anyhow::ensure!(
             chain != Chain::Custom,
             "Chain::Custom should not have any pre 0.7 block hashes"
         );
 
-        let computed_hash = compute_final_hash_pre_0_7(
-            number,
-            state_commitment,
-            transaction_count,
-            transaction_commitment.0,
-            parent_hash,
-            chain_id,
-        );
-        computed_hash == expected_hash
+        let computed_hash = compute_final_hash_pre_0_7(&header, chain_id);
+        computed_hash == header.hash
+    } else if header.starknet_version < V_0_13_2 {
+        let computed_hash = compute_final_hash_pre_0_13_2(&header);
+        if computed_hash == header.hash {
+            true
+        } else if let Some(fallback_sequencer_address) = meta_info.fallback_sequencer_address {
+            // Try with the fallback sequencer address.
+            let computed_hash = compute_final_hash_pre_0_13_2(&BlockHeaderData {
+                sequencer_address: fallback_sequencer_address,
+                ..header
+            });
+            computed_hash == header.hash
+        } else {
+            false
+        }
     } else {
-        std::iter::once(&sequencer_address)
-            .chain(meta_info.fallback_sequencer_address.iter())
-            .any(|address| {
-                let computed_hash = compute_final_hash(
-                    number,
-                    state_commitment,
-                    address,
-                    timestamp,
-                    transaction_count,
-                    transaction_commitment.0,
-                    event_count,
-                    event_commitment.0,
-                    parent_hash,
-                );
-                computed_hash == expected_hash
-            })
+        let computed_hash = compute_final_hash(&header)?;
+        computed_hash == header.hash
     };
 
     Ok(match verified {
         false => VerifyResult::Mismatch,
-        true => VerifyResult::Match((transaction_commitment, event_commitment)),
+        true => VerifyResult::Match((header.transaction_commitment, header.event_commitment)),
     })
 }
 
@@ -293,29 +326,22 @@ mod meta {
 ///   * timestamps
 ///   * sequencer addresses
 ///   * event number and event commitment
-fn compute_final_hash_pre_0_7(
-    block_number: BlockNumber,
-    state_root: StateCommitment,
-    num_transactions: u64,
-    transaction_commitment: Felt,
-    parent_block_hash: BlockHash,
-    chain_id: pathfinder_common::ChainId,
-) -> BlockHash {
+fn compute_final_hash_pre_0_7(header: &BlockHeaderData, chain_id: ChainId) -> BlockHash {
     let mut chain = HashChain::default();
 
     // block number
-    chain.update(Felt::from(block_number.get()));
+    chain.update(Felt::from(header.number.get()));
     // global state root
-    chain.update(state_root.0);
+    chain.update(header.state_commitment.0);
     // sequencer address: these versions used 0 as the sequencer address
     chain.update(Felt::ZERO);
     // block timestamp: these versions used 0 as a timestamp for block hash
     // computation
     chain.update(Felt::ZERO);
     // number of transactions
-    chain.update(Felt::from(num_transactions));
+    chain.update(Felt::from(header.transaction_count));
     // transaction commitment
-    chain.update(transaction_commitment);
+    chain.update(header.transaction_commitment.0);
     // number of events
     chain.update(Felt::ZERO);
     // event commitment
@@ -327,50 +353,82 @@ fn compute_final_hash_pre_0_7(
     // EXTRA FIELD: chain id
     chain.update(chain_id.0);
     // parent block hash
-    chain.update(parent_block_hash.0);
+    chain.update(header.parent_hash.0);
 
     BlockHash(chain.finalize())
 }
 
-/// This implements the final hashing step for post-0.7 blocks.
-#[allow(clippy::too_many_arguments)]
-fn compute_final_hash(
-    block_number: BlockNumber,
-    state_root: StateCommitment,
-    sequencer_address: &SequencerAddress,
-    timestamp: BlockTimestamp,
-    num_transactions: u64,
-    transaction_commitment: Felt,
-    num_events: u64,
-    event_commitment: Felt,
-    parent_block_hash: BlockHash,
-) -> BlockHash {
+/// This implements the final hashing step for post-0.7, pre-0.13.2 blocks.
+fn compute_final_hash_pre_0_13_2(header: &BlockHeaderData) -> BlockHash {
     let mut chain = HashChain::default();
 
     // block number
-    chain.update(Felt::from(block_number.get()));
+    chain.update(Felt::from(header.number.get()));
     // global state root
-    chain.update(state_root.0);
+    chain.update(header.state_commitment.0);
     // sequencer address
-    chain.update(sequencer_address.0);
+    chain.update(header.sequencer_address.0);
     // block timestamp
-    chain.update(Felt::from(timestamp.get()));
+    chain.update(Felt::from(header.timestamp.get()));
     // number of transactions
-    chain.update(Felt::from(num_transactions));
+    chain.update(Felt::from(header.transaction_count));
     // transaction commitment
-    chain.update(transaction_commitment);
+    chain.update(header.transaction_commitment.0);
     // number of events
-    chain.update(Felt::from(num_events));
+    chain.update(Felt::from(header.event_count));
     // event commitment
-    chain.update(event_commitment);
+    chain.update(header.event_commitment.0);
     // reserved: protocol version
     chain.update(Felt::ZERO);
     // reserved: extra data
     chain.update(Felt::ZERO);
     // parent block hash
-    chain.update(parent_block_hash.0);
+    chain.update(header.parent_hash.0);
 
     BlockHash(chain.finalize())
+}
+
+fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
+    // Concatinate the transaction count, event count, state diff length, and L1
+    // data availability mode into a single felt.
+    let mut concat_counts = [0u8; 32];
+    let mut writer = concat_counts.as_mut_slice();
+    writer
+        .write_all(&header.transaction_count.to_be_bytes())
+        .unwrap();
+    writer.write_all(&header.event_count.to_be_bytes()).unwrap();
+    writer
+        .write_all(&header.state_diff_length.to_be_bytes())
+        .unwrap();
+    writer
+        .write_all(&[match header.l1_da_mode {
+            L1DataAvailabilityMode::Calldata => 0,
+            L1DataAvailabilityMode::Blob => 0b10000000,
+        }])
+        .unwrap();
+    let concat_counts = MontFelt::from_be_bytes(concat_counts);
+    // Hash the block header.
+    let mut hasher = PoseidonHasher::new();
+    hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH0").into());
+    hasher.write(header.number.get().into());
+    hasher.write(header.state_commitment.0.into());
+    hasher.write(header.sequencer_address.0.into());
+    hasher.write(header.timestamp.get().into());
+    hasher.write(concat_counts);
+    hasher.write(header.state_diff_commitment.0.into());
+    hasher.write(header.transaction_commitment.0.into());
+    hasher.write(header.event_commitment.0.into());
+    hasher.write(header.receipt_commitment.0.into());
+    hasher.write(header.eth_l1_gas_price.0.into());
+    hasher.write(header.strk_l1_gas_price.0.into());
+    hasher.write(header.eth_l1_data_gas_price.0.into());
+    hasher.write(header.strk_l1_data_gas_price.0.into());
+    hasher.write(MontFelt::from_hex(&hex::encode(
+        &header.starknet_version_str,
+    )));
+    hasher.write(MontFelt::ZERO);
+    hasher.write(header.parent_hash.0.into());
+    Ok(BlockHash(hasher.finish().into()))
 }
 
 /// Calculate transaction commitment hash value.
@@ -410,7 +468,7 @@ pub fn calculate_transaction_commitment(
     }
 }
 
-pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<Felt> {
+pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommitment> {
     let mut hashes = Vec::new();
     rayon::scope(|s| {
         s.spawn(|_| {
@@ -458,7 +516,7 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<Felt> {
                 .collect();
         })
     });
-    calculate_commitment_root::<PoseidonHash>(hashes)
+    calculate_commitment_root::<PoseidonHash>(hashes).map(ReceiptCommitment)
 }
 
 fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<Felt> {
@@ -744,7 +802,14 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
+            verify_gateway_block_hash(
+                &block,
+                Default::default(),
+                0,
+                Chain::Mainnet,
+                ChainId::MAINNET
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -757,7 +822,14 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
+            verify_gateway_block_hash(
+                &block,
+                Default::default(),
+                0,
+                Chain::Mainnet,
+                ChainId::MAINNET
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -771,7 +843,14 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
+            verify_gateway_block_hash(
+                &block,
+                Default::default(),
+                0,
+                Chain::Mainnet,
+                ChainId::MAINNET
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -782,7 +861,14 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
+            verify_gateway_block_hash(
+                &block,
+                Default::default(),
+                0,
+                Chain::Mainnet,
+                ChainId::MAINNET
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -795,7 +881,14 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(&block, Chain::Mainnet, ChainId::MAINNET).unwrap(),
+            verify_gateway_block_hash(
+                &block,
+                Default::default(),
+                0,
+                Chain::Mainnet,
+                ChainId::MAINNET
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -921,11 +1014,50 @@ mod tests {
             },
             ..Default::default()
         };
-        let expected_root =
-            felt!("0x31963cb891ebb825e83514deb748c89b6967b5368cbc48a9b56193a1464ca87");
+        let expected_root = ReceiptCommitment(felt!(
+            "0x31963cb891ebb825e83514deb748c89b6967b5368cbc48a9b56193a1464ca87"
+        ));
         assert_eq!(
             calculate_receipt_commitment(&[receipt]).unwrap(),
             expected_root
         );
+    }
+
+    // Source:
+    // https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/block_hash_calculator_test.rs#L51
+    #[test]
+    fn test_block_hash_0_13_2() {
+        let header = BlockHeaderData {
+            hash: Default::default(),
+            number: BlockNumber::new_or_panic(1),
+            state_commitment: StateCommitment(2u64.into()),
+            sequencer_address: SequencerAddress(3u64.into()),
+            timestamp: BlockTimestamp::new_or_panic(4),
+            l1_da_mode: L1DataAvailabilityMode::Blob,
+            strk_l1_gas_price: GasPrice(6),
+            eth_l1_gas_price: GasPrice(7),
+            strk_l1_data_gas_price: GasPrice(10),
+            eth_l1_data_gas_price: GasPrice(9),
+            starknet_version: V_0_13_2,
+            starknet_version_str: "10".to_string(),
+            parent_hash: BlockHash(11u64.into()),
+            transaction_commitment: TransactionCommitment(felt!(
+                "0x72f432efa51e2a34f68404ac5e77514301e26eb53ec89badd8173f4e8561b95"
+            )),
+            transaction_count: 1,
+            event_commitment: EventCommitment(Felt::ZERO),
+            event_count: 0,
+            state_diff_commitment: StateDiffCommitment(felt!(
+                "0x281f5966e49ad7dad9323826d53d1d27c0c4e6ebe5525e2e2fbca549bfa0a67"
+            )),
+            state_diff_length: 10,
+            receipt_commitment: ReceiptCommitment(felt!(
+                "0x8e7dfb2772c2ac26e712fb97404355d66db0ba9555f0f64f30d61a56df9c76"
+            )),
+        };
+        let expected_hash = BlockHash(felt!(
+            "0x061e4998d51a248f1d0288d7e17f6287757b0e5e6c5e1e58ddf740616e312134"
+        ));
+        assert_eq!(compute_final_hash(&header).unwrap(), expected_hash);
     }
 }
