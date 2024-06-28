@@ -1,7 +1,8 @@
 //! Tagging is meant to be used in tests only, but because `[cfg(test)]` cannot
-//! be _exported_ we're using the closest build configuration option.
-#![cfg(debug_assertions)]
-
+//! be _exported_ we're using the closest build configuration option within the
+//! implementation, which is `[cfg(debug_assertions)]`. As an additional safety
+//! measure, the [`tagged::init()`](crate::init()) function must be called
+//! before using the `tagged::Tagged` type.
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
