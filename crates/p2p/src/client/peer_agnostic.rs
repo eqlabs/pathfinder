@@ -38,6 +38,7 @@ use pathfinder_common::{
     Fee,
     GasPrice,
     L1DataAvailabilityMode,
+    ReceiptCommitment,
     SequencerAddress,
     SierraHash,
     StarknetVersion,
@@ -1400,6 +1401,7 @@ pub struct BlockHeader {
     pub transaction_count: usize,
     pub event_count: usize,
     pub l1_da_mode: L1DataAvailabilityMode,
+    pub receipt_commitment: ReceiptCommitment,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -1440,6 +1442,7 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
             transaction_count: h.transaction_count,
             event_count: h.event_count,
             l1_da_mode: h.l1_da_mode,
+            receipt_commitment: Default::default(),
         }
     }
 }
@@ -1475,6 +1478,7 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 transaction_commitment: TransactionCommitment(dto.transactions.root.0),
                 transaction_count: dto.transactions.n_leaves.try_into()?,
                 event_count: dto.events.n_leaves.try_into()?,
+                receipt_commitment: ReceiptCommitment(dto.receipts.0),
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
             },
             signature,

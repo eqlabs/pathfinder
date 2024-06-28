@@ -529,6 +529,7 @@ macros::felt_newtypes!(
         StorageCommitment,
         StorageValue,
         TransactionCommitment,
+        ReceiptCommitment,
         TransactionHash,
         TransactionNonce,
         TransactionSignatureElem,
