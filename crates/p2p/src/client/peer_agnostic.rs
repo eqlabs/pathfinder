@@ -143,6 +143,8 @@ pub struct Client {
     peers_with_capability: Arc<RwLock<PeersWithCapability>>,
 }
 
+// pub trait TrackingClient;
+
 impl Client {
     pub fn new(inner: peer_aware::Client, block_propagation_topic: String) -> Self {
         Self {
@@ -291,16 +293,6 @@ impl Client {
                 }
             }
         }
-    }
-
-    pub async fn send_transactions_sync_request(
-        &self,
-        peer: PeerId,
-        request: TransactionsRequest,
-    ) -> anyhow::Result<futures::channel::mpsc::Receiver<TransactionsResponse>> {
-        self.inner
-            .send_transactions_sync_request(peer, request)
-            .await
     }
 
     pub fn transaction_stream(
