@@ -5,6 +5,7 @@ use futures::stream::BoxStream;
 use futures::{Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::{
     self,
+    BlockClient,
     BlockHeader as P2PBlockHeader,
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
