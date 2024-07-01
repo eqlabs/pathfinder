@@ -3,6 +3,7 @@
 //! implementation, which is `[cfg(debug_assertions)]`. As an additional safety
 //! measure, the [`tagged::init()`](crate::init()) function must be called
 //! before using the `tagged::Tagged` type.
+#![allow(dead_code)]
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
@@ -58,16 +59,16 @@ impl<T: Clone + 'static> Tagged<T> {
     ///
     /// Use only in Debug builds after calling [`tagged::init`](`crate::init`).
     /// Otherwise this function always returns `None`.
-    pub fn get<U: ToString, C: FnOnce() -> T>(tag: U, ctor: C) -> Option<Self> {
+    pub fn get<U: ToString, C: FnOnce() -> T>(_tag: U, _ctor: C) -> Option<Self> {
         #[cfg(debug_assertions)]
         {
             let luts = lut();
             luts.map(|mut luts| {
                 let lut = luts.entry(TypeId::of::<T>()).or_default();
-                let tag = tag.to_string();
+                let tag = _tag.to_string();
                 let data = lut
                     .entry(tag.clone())
-                    .or_insert_with(|| Box::new(ctor()))
+                    .or_insert_with(|| Box::new(_ctor()))
                     .downcast_ref::<T>()
                     .unwrap()
                     .clone();
@@ -86,8 +87,8 @@ impl<T: Clone + Dummy<Faker> + 'static> Tagged<T> {
     ///
     /// Use only in Debug builds after calling [`tagged::init`](`crate::init`).
     /// Otherwise this function always returns `None`.
-    pub fn get_fake<U: ToString>(tag: U) -> Option<Self> {
-        Self::get(tag, || Faker.fake())
+    pub fn get_fake<U: ToString>(_tag: U) -> Option<Self> {
+        Self::get(_tag, || Faker.fake())
     }
 }
 
@@ -99,7 +100,7 @@ impl<T: Clone + PartialEq + 'static> Tagged<T> {
     ///
     /// Use only in Debug builds after calling [`tagged::init`](`crate::init`).
     /// Otherwise this function will error.
-    pub fn from_data(data: &T) -> Result<Self, TypeNotFound> {
+    pub fn from_data(_data: &T) -> Result<Self, TypeNotFound> {
         #[cfg(debug_assertions)]
         {
             let luts = lut().ok_or(TypeNotFound)?;
@@ -111,13 +112,13 @@ impl<T: Clone + PartialEq + 'static> Tagged<T> {
                         .iter()
                         .find_map(|(k, v)| {
                             v.downcast_ref::<T>()
-                                .and_then(|u| (u == data).then_some(k.clone()))
+                                .and_then(|u| (u == _data).then_some(k.clone()))
                         })
                         .unwrap_or("value not found".into());
 
                     Ok(Self {
                         tag,
-                        data: data.clone(),
+                        data: _data.clone(),
                     })
                 }
                 None => Err(TypeNotFound),
