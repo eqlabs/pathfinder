@@ -9,6 +9,7 @@ use p2p::client::peer_agnostic::{
     ClassDefinition,
     Client as P2PClient,
     EventsForBlockByTransaction,
+    HeaderStream,
     SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,

@@ -10,6 +10,7 @@ use p2p::client::peer_agnostic::{
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
     Client as P2PClient,
+    HeaderStream,
     IncorrectStateDiffCount,
     SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
