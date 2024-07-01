@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use fake::Dummy;
-use futures::{pin_mut, StreamExt};
+use futures::{pin_mut, Future, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
@@ -142,8 +142,6 @@ pub struct Client {
     block_propagation_topic: Arc<String>,
     peers_with_capability: Arc<RwLock<PeersWithCapability>>,
 }
-
-// pub trait TrackingClient;
 
 impl Client {
     pub fn new(inner: peer_aware::Client, block_propagation_topic: String) -> Self {
@@ -472,7 +470,124 @@ impl Client {
         None
     }
 
-    pub async fn transactions_for_block(
+    pub async fn class_definitions_for_block(
+        self,
+        block: BlockNumber,
+        declared_classes_count: u64,
+    ) -> Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError> {
+        let request = ClassesRequest {
+            iteration: Iteration {
+                start: block.get().into(),
+                direction: Direction::Forward,
+                limit: 1,
+                step: 1.into(),
+            },
+        };
+
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Classes::NAME)
+            .await;
+
+        for peer in peers {
+            let Ok(mut stream) = self
+                .inner
+                .send_classes_sync_request(peer, request)
+                .await
+                .inspect_err(|error| tracing::debug!(%peer, %error, "State diffs request failed"))
+            else {
+                continue;
+            };
+
+            let mut current_count = declared_classes_count;
+            let mut class_definitions = Vec::new();
+
+            while let Some(resp) = stream.next().await {
+                match resp {
+                    ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                        class,
+                        domain: _,
+                    }) => {
+                        let definition = CairoDefinition::try_from_dto(class)
+                            .map_err(|_| ClassDefinitionsError::CairoDefinitionError(peer))?;
+                        class_definitions.push(ClassDefinition::Cairo {
+                            block_number: block,
+                            definition: definition.0,
+                        });
+                    }
+                    ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                        class,
+                        domain: _,
+                    }) => {
+                        let definition = SierraDefinition::try_from_dto(class)
+                            .map_err(|_| ClassDefinitionsError::SierraDefinitionError(peer))?;
+                        class_definitions.push(ClassDefinition::Sierra {
+                            block_number: block,
+                            sierra_definition: definition.0,
+                        });
+                    }
+                    ClassesResponse::Fin => {
+                        tracing::debug!(%peer, "Received FIN in class definitions source");
+                        break;
+                    }
+                }
+
+                current_count = match current_count.checked_sub(1) {
+                    Some(x) => x,
+                    None => {
+                        tracing::debug!(%peer, "Too many class definitions");
+                        return Err(ClassDefinitionsError::IncorrectClassDefinitionCount(peer));
+                    }
+                };
+            }
+
+            if current_count != 0 {
+                tracing::debug!(%peer, "Too few class definitions");
+                return Err(ClassDefinitionsError::IncorrectClassDefinitionCount(peer));
+            }
+
+            return Ok(Some((peer, class_definitions)));
+        }
+
+        Ok(None)
+    }
+}
+
+pub trait BlockClient {
+    fn transactions_for_block(
+        self,
+        block: BlockNumber,
+    ) -> impl Future<
+        Output = Option<(
+            PeerId,
+            impl futures::Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>>,
+        )>,
+    >;
+
+    fn state_diff_for_block(
+        self,
+        block: BlockNumber,
+        state_diff_length: u64,
+    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount>>;
+
+    fn class_definitions_for_block(
+        self,
+        block: BlockNumber,
+        declared_classes_count: u64,
+    ) -> impl Future<Output = Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError>>;
+
+    fn events_for_block(
+        self,
+        block: BlockNumber,
+    ) -> impl Future<
+        Output = Option<(
+            PeerId,
+            impl futures::Stream<Item = (TransactionHash, Event)>,
+        )>,
+    >;
+}
+
+impl BlockClient for Client {
+    async fn transactions_for_block(
         self,
         block: BlockNumber,
     ) -> Option<(
@@ -525,7 +640,7 @@ impl Client {
         None
     }
 
-    pub async fn state_diff_for_block(
+    async fn state_diff_for_block(
         self,
         block: BlockNumber,
         state_diff_length: u64,
@@ -653,7 +768,7 @@ impl Client {
         Ok(None)
     }
 
-    pub async fn class_definitions_for_block(
+    async fn class_definitions_for_block(
         self,
         block: BlockNumber,
         declared_classes_count: u64,
@@ -732,6 +847,52 @@ impl Client {
         }
 
         Ok(None)
+    }
+
+    async fn events_for_block(
+        self,
+        block: BlockNumber,
+    ) -> Option<(
+        PeerId,
+        impl futures::Stream<Item = (TransactionHash, Event)>,
+    )> {
+        let request = EventsRequest {
+            iteration: Iteration {
+                start: block.get().into(),
+                direction: Direction::Forward,
+                limit: 1,
+                step: 1.into(),
+            },
+        };
+
+        let peers = self
+            .get_update_peers_with_sync_capability(protocol::Events::NAME)
+            .await;
+
+        for peer in peers {
+            let Ok(stream) = self
+                .inner
+                .send_events_sync_request(peer, request)
+                .await
+                .inspect_err(|error| tracing::debug!(%peer, %error, "Events request failed"))
+            else {
+                continue;
+            };
+
+            let stream = stream
+                .take_while(|x| std::future::ready(!matches!(x, &EventsResponse::Fin)))
+                .map(|x| match x {
+                    EventsResponse::Fin => unreachable!("Already handled Fin above"),
+                    EventsResponse::Event(event) => (
+                        TransactionHash(event.transaction_hash.0),
+                        Event::from_dto(event),
+                    ),
+                });
+
+            return Some((peer, stream));
+        }
+
+        None
     }
 }
 
