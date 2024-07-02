@@ -401,38 +401,7 @@ pub mod init {
                     )
                 }));
 
-                *state_diff_length += u64::try_from(
-                    state_update.contract_updates.iter().fold(
-                        state_update
-                            .system_contract_updates
-                            .iter()
-                            .fold(0, |acc, (_, u)| acc + u.storage.len()),
-                        |acc, (_, u)| acc + u.storage.len(),
-                    ),
-                )
-                .expect("ptr size is 64 bits");
-                *state_diff_length += u64::try_from(
-                    state_update
-                        .contract_updates
-                        .iter()
-                        .filter(|(_, u)| u.nonce.is_some())
-                        .count(),
-                )
-                .expect("ptr size is 64 bits");
-                *state_diff_length = u64::try_from(
-                    state_update.declared_cairo_classes.len()
-                        + state_update.declared_sierra_classes.len(),
-                )
-                .expect("ptr size is 64 bits");
-                *state_diff_length = u64::try_from(
-                    state_update
-                        .contract_updates
-                        .iter()
-                        .filter(|(_, u)| u.class.is_some())
-                        .count(),
-                )
-                .expect("ptr size is 64 bits");
-
+                *state_diff_length = state_update.state_diff_length();
                 *state_diff_commitment =
                     state_update.compute_state_diff_commitment(*starknet_version);
             }
