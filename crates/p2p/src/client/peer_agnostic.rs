@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use fake::Dummy;
-use futures::{pin_mut, Future, Stream, StreamExt};
+use futures::{pin_mut, Stream, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
@@ -58,59 +58,21 @@ use tokio::sync::RwLock;
 mod fixtures;
 #[cfg(test)]
 mod tests;
+pub mod traits;
+
+use traits::{
+    BlockClient,
+    ClassStream,
+    EventStream,
+    HeaderStream,
+    StateDiffStream,
+    TransactionStream,
+};
 
 use crate::client::conv::{CairoDefinition, FromDto, SierraDefinition, TryFromDto};
 use crate::client::peer_aware;
+use crate::peer_data::PeerData;
 use crate::sync::protocol;
-
-/// Data received from a specific peer.
-#[derive(Clone, Debug, PartialEq)]
-pub struct PeerData<T> {
-    pub peer: PeerId,
-    pub data: T,
-}
-
-impl<T> PeerData<T> {
-    pub fn new(peer: PeerId, data: T) -> Self {
-        Self { peer, data }
-    }
-
-    pub fn from_result<E>(peer: PeerId, result: Result<T, E>) -> Result<PeerData<T>, PeerData<E>> {
-        result
-            .map(|x| Self::new(peer, x))
-            .map_err(|e| PeerData::<E>::new(peer, e))
-    }
-
-    pub fn for_tests(data: T) -> Self {
-        Self {
-            peer: PeerId::random(),
-            data,
-        }
-    }
-
-    pub fn map<U, F>(self, f: F) -> PeerData<U>
-    where
-        F: FnOnce(T) -> U,
-    {
-        PeerData {
-            peer: self.peer,
-            data: f(self.data),
-        }
-    }
-}
-
-impl<T, U: Dummy<T>> Dummy<T> for PeerData<U> {
-    fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
-        let digest = rng.gen::<[u8; 32]>();
-        let multihash = libp2p::multihash::Multihash::wrap(0x0, &digest)
-            .expect("The digest size is never too large");
-
-        PeerData {
-            peer: PeerId::from_multihash(multihash).expect("Valid multihash"),
-            data: U::dummy_with_rng(config, rng),
-        }
-    }
-}
 
 #[derive(Clone, PartialEq, Dummy, TaggedDebug)]
 pub enum ClassDefinition {
@@ -141,100 +103,6 @@ pub struct Client {
     inner: peer_aware::Client,
     block_propagation_topic: Arc<String>,
     peers_with_capability: Arc<RwLock<PeersWithCapability>>,
-}
-
-pub trait HeaderStream {
-    fn header_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        reverse: bool,
-    ) -> impl Stream<Item = PeerData<SignedBlockHeader>> + Send;
-}
-
-pub trait TransactionStream {
-    fn transaction_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl Stream<
-            Item = anyhow::Result<(usize, TransactionCommitment)>,
-        >,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
-    >;
-}
-
-pub trait StateDiffStream {
-    /// ### Important
-    ///
-    /// Contract class updates are by default set to
-    /// `ContractClassUpdate::Deploy` but __the caller is responsible for
-    /// determining if the class was really deployed or replaced__.
-    fn state_diff_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl Stream<
-            Item = anyhow::Result<(usize, StateDiffCommitment)>,
-        >,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
-    >;
-}
-
-pub trait ClassStream {
-    fn class_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>;
-}
-
-pub trait EventStream {
-    /// ### Important
-    ///
-    /// Events are grouped by block and by transaction. The order of flattened
-    /// events in a block is guaranteed to be correct because the event
-    /// commitment is part of block hash. However the number of events per
-    /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
-    /// because neither signature nor block hash contain this information.
-    fn event_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>;
-}
-
-pub trait BlockClient {
-    fn transactions_for_block(
-        self,
-        block: BlockNumber,
-    ) -> impl Future<
-        Output = Option<(
-            PeerId,
-            impl Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>> + Send,
-        )>,
-    > + Send;
-
-    fn state_diff_for_block(
-        self,
-        block: BlockNumber,
-        state_diff_length: u64,
-    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount>> + Send;
-
-    fn class_definitions_for_block(
-        self,
-        block: BlockNumber,
-        declared_classes_count: u64,
-    ) -> impl Future<Output = Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError>> + Send;
-
-    fn events_for_block(
-        self,
-        block: BlockNumber,
-    ) -> impl Future<Output = Option<(PeerId, impl Stream<Item = (TransactionHash, Event)> + Send)>> + Send;
 }
 
 impl Client {
