@@ -20,6 +20,7 @@ use tokio::sync::{mpsc, oneshot};
 mod behaviour;
 pub mod client;
 mod main_loop;
+mod peer_data;
 mod peers;
 mod secret;
 mod sync;
@@ -30,10 +31,10 @@ mod tests;
 mod transport;
 
 pub use behaviour::kademlia_protocol_name;
-pub use client::peer_agnostic::PeerData;
 use client::peer_aware::Client;
 pub use libp2p;
 use main_loop::MainLoop;
+pub use peer_data::PeerData;
 pub use sync::protocol::PROTOCOLS;
 
 pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {

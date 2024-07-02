@@ -5,16 +5,18 @@ use std::sync::{Arc, RwLock};
 use anyhow::Context;
 use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
-use p2p::client::peer_agnostic::{
-    ClassDefinition,
+use p2p::client::peer_agnostic::traits::{
     ClassStream,
-    Client as P2PClient,
     EventStream,
-    EventsForBlockByTransaction,
     HeaderStream,
-    SignedBlockHeader as P2PSignedBlockHeader,
     StateDiffStream,
     TransactionStream,
+};
+use p2p::client::peer_agnostic::{
+    ClassDefinition,
+    Client as P2PClient,
+    EventsForBlockByTransaction,
+    SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };
