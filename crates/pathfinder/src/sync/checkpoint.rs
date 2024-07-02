@@ -12,9 +12,9 @@ use p2p::client::peer_agnostic::traits::{
     StateDiffStream,
     TransactionStream,
 };
-use p2p::client::peer_agnostic::{
+use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::client::types::{
     ClassDefinition,
-    Client as P2PClient,
     EventsForBlockByTransaction,
     SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
@@ -647,7 +647,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::BlockHeader as P2PBlockHeader;
+        use p2p::client::types::BlockHeader as P2PBlockHeader;
         use p2p::libp2p::PeerId;
         use p2p_proto::header;
         use pathfinder_common::{
@@ -909,7 +909,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::{
+        use p2p::client::types::{
             UnverifiedTransactionData,
             UnverifiedTransactionDataWithBlockNumber,
         };
@@ -1092,7 +1092,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::UnverifiedStateUpdateWithBlockNumber;
+        use p2p::client::types::UnverifiedStateUpdateWithBlockNumber;
         use p2p::libp2p::PeerId;
         use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
         use pathfinder_common::transaction::DeployTransactionV0;

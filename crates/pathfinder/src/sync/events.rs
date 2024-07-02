@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::peer_agnostic::{BlockHeader as P2PBlockHeader, EventsForBlockByTransaction};
+use p2p::client::types::{BlockHeader as P2PBlockHeader, EventsForBlockByTransaction};
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;

@@ -5,12 +5,11 @@ use anyhow::{anyhow, Context};
 use futures::stream::BoxStream;
 use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::traits::{BlockClient, HeaderStream};
-use p2p::client::peer_agnostic::{
-    self,
+use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::client::types::{
     BlockHeader as P2PBlockHeader,
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
-    Client as P2PClient,
     IncorrectStateDiffCount,
     SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
