@@ -1,7 +1,7 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
-use p2p::client::peer_agnostic::SignedBlockHeader;
+use p2p::client::types::SignedBlockHeader;
 use p2p::PeerData;
 use pathfinder_common::{
     BlockHash,

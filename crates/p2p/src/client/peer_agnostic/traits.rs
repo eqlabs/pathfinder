@@ -5,7 +5,7 @@ use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{BlockNumber, StateDiffCommitment, TransactionCommitment, TransactionHash};
 
-use super::{
+use crate::client::types::{
     ClassDefinition,
     ClassDefinitionsError,
     EventsForBlockByTransaction,

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use futures::pin_mut;
 use futures::stream::{BoxStream, StreamExt};
-use p2p::client::peer_agnostic::ClassDefinition as P2PClassDefinition;
+use p2p::client::types::ClassDefinition as P2PClassDefinition;
 use p2p::PeerData;
 use p2p_proto::transaction;
 use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};

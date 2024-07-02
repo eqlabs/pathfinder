@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
-use p2p::client::peer_agnostic::{self, UnverifiedTransactionData};
+use p2p::client::types::UnverifiedTransactionData;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};

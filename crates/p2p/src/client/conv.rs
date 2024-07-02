@@ -320,9 +320,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
 }
 
 #[cfg(test)]
-impl ToDto<p2p_proto::receipt::Receipt>
-    for (&TransactionVariant, crate::client::peer_agnostic::Receipt)
-{
+impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, crate::client::types::Receipt) {
     fn to_dto(self) -> p2p_proto::receipt::Receipt {
         let (t, r) = self;
         (
@@ -626,9 +624,7 @@ impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
     }
 }
 
-impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)>
-    for crate::client::peer_agnostic::Receipt
-{
+impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client::types::Receipt {
     type Error = anyhow::Error;
 
     fn try_from(

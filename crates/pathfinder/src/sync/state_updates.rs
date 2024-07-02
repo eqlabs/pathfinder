@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::peer_agnostic::UnverifiedStateUpdateData;
+use p2p::client::types::UnverifiedStateUpdateData;
 use p2p::PeerData;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::{

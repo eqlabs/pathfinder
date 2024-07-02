@@ -104,7 +104,7 @@ mod prop {
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p::client::peer_agnostic::{Receipt, SignedBlockHeader as P2PSignedBlockHeader};
+    use p2p::client::types::{Receipt, SignedBlockHeader as P2PSignedBlockHeader};
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
