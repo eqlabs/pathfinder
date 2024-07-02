@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::pin;
 
 use anyhow::{anyhow, Context};
 use futures::stream::BoxStream;
-use futures::{Stream, StreamExt, TryStreamExt};
+use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::{
     self,
     BlockClient,
@@ -47,18 +48,19 @@ use crate::sync::error::SyncError2;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
 use crate::sync::{events, headers};
 
-pub struct Sync<L> {
+pub struct Sync<L, P> {
     latest: L,
-    p2p: P2PClient,
+    p2p: P,
     storage: Storage,
     chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
 }
 
-impl<L> Sync<L>
+impl<L, P> Sync<L, P>
 where
     L: Stream<Item = (BlockNumber, BlockHash)> + Clone + Send + 'static,
+    P: BlockClient + Clone + HeaderStream + Send + 'static,
 {
     pub async fn run<SequencerClient: GatewayApi + Clone + Send + 'static>(
         self,
@@ -164,15 +166,16 @@ where
     }
 }
 
-struct HeaderSource<L> {
-    p2p: P2PClient,
+struct HeaderSource<L, P> {
+    p2p: P,
     latest_onchain: L,
     start: BlockNumber,
 }
 
-impl<L> HeaderSource<L>
+impl<L, P> HeaderSource<L, P>
 where
     L: Stream<Item = (BlockNumber, BlockHash)> + Send + 'static,
+    P: Clone + HeaderStream + Send + 'static,
 {
     fn spawn(self) -> SyncReceiver<P2PSignedBlockHeader> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
@@ -333,12 +336,15 @@ impl HeaderFanout {
     }
 }
 
-struct TransactionSource {
-    p2p: P2PClient,
+struct TransactionSource<P> {
+    p2p: P,
     headers: BoxStream<'static, P2PBlockHeader>,
 }
 
-impl TransactionSource {
+impl<P> TransactionSource<P>
+where
+    P: Clone + BlockClient + Send + 'static,
+{
     fn spawn(self) -> SyncReceiver<(UnverifiedTransactionData, StarknetVersion)> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
@@ -353,6 +359,8 @@ impl TransactionSource {
 
                 let transaction_count = header.transaction_count;
                 let mut transactions_vec = Vec::new();
+
+                pin_mut!(transactions);
 
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..transaction_count {
@@ -399,8 +407,8 @@ impl TransactionSource {
     }
 }
 
-struct EventSource {
-    p2p: P2PClient,
+struct EventSource<P> {
+    p2p: P,
     headers: BoxStream<'static, P2PBlockHeader>,
     transactions: BoxStream<'static, Vec<TransactionHash>>,
 }
@@ -412,7 +420,10 @@ type EventsWithCommitment = (
     StarknetVersion,
 );
 
-impl EventSource {
+impl<P> EventSource<P>
+where
+    P: Clone + BlockClient + Send + 'static,
+{
     fn spawn(self) -> SyncReceiver<EventsWithCommitment> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
@@ -437,6 +448,8 @@ impl EventSource {
 
                 let mut block_events: HashMap<_, Vec<Event>> = HashMap::new();
                 let event_count = header.event_count;
+
+                pin_mut!(events);
 
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..event_count {
@@ -478,12 +491,15 @@ impl EventSource {
     }
 }
 
-struct StateDiffSource {
-    p2p: P2PClient,
+struct StateDiffSource<P> {
+    p2p: P,
     headers: BoxStream<'static, P2PSignedBlockHeader>,
 }
 
-impl StateDiffSource {
+impl<P> StateDiffSource<P>
+where
+    P: Clone + BlockClient + Send + 'static,
+{
     fn spawn(self) -> SyncReceiver<(UnverifiedStateUpdateData, StarknetVersion)> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
@@ -529,13 +545,16 @@ impl StateDiffSource {
     }
 }
 
-struct ClassSource {
-    p2p: P2PClient,
+struct ClassSource<P> {
+    p2p: P,
     declarations: BoxStream<'static, DeclaredClasses>,
     start: BlockNumber,
 }
 
-impl ClassSource {
+impl<P> ClassSource<P>
+where
+    P: Clone + BlockClient + Send + 'static,
+{
     fn spawn(self) -> SyncReceiver<Vec<P2PClassDefinition>> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {

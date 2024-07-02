@@ -7,10 +7,14 @@ use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::{
     ClassDefinition,
+    ClassStream,
     Client as P2PClient,
+    EventStream,
     EventsForBlockByTransaction,
     HeaderStream,
     SignedBlockHeader as P2PSignedBlockHeader,
+    StateDiffStream,
+    TransactionStream,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };
@@ -205,7 +209,7 @@ impl Sync {
             return Ok(());
         };
 
-        let class_stream = self.p2p.clone().class_definition_stream(
+        let class_stream = self.p2p.clone().class_stream(
             start,
             stop,
             class_definitions::declared_class_counts_stream(self.storage.clone(), start, stop),

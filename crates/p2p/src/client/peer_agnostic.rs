@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use fake::Dummy;
-use futures::{pin_mut, Future, StreamExt};
+use futures::{pin_mut, Future, Stream, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
@@ -149,7 +149,63 @@ pub trait HeaderStream {
         start: BlockNumber,
         stop: BlockNumber,
         reverse: bool,
-    ) -> impl futures::Stream<Item = PeerData<SignedBlockHeader>>;
+    ) -> impl Stream<Item = PeerData<SignedBlockHeader>> + Send;
+}
+
+pub trait TransactionStream {
+    fn transaction_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        transaction_counts_and_commitments_stream: impl Stream<
+            Item = anyhow::Result<(usize, TransactionCommitment)>,
+        >,
+    ) -> impl Stream<
+        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
+    >;
+}
+
+pub trait StateDiffStream {
+    /// ### Important
+    ///
+    /// Contract class updates are by default set to
+    /// `ContractClassUpdate::Deploy` but __the caller is responsible for
+    /// determining if the class was really deployed or replaced__.
+    fn state_diff_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        state_diff_length_and_commitment_stream: impl Stream<
+            Item = anyhow::Result<(usize, StateDiffCommitment)>,
+        >,
+    ) -> impl Stream<
+        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
+    >;
+}
+
+pub trait ClassStream {
+    fn class_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
+    ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>;
+}
+
+pub trait EventStream {
+    /// ### Important
+    ///
+    /// Events are grouped by block and by transaction. The order of flattened
+    /// events in a block is guaranteed to be correct because the event
+    /// commitment is part of block hash. However the number of events per
+    /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
+    /// because neither signature nor block hash contain this information.
+    fn event_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
+    ) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>;
 }
 
 pub trait BlockClient {
@@ -159,31 +215,26 @@ pub trait BlockClient {
     ) -> impl Future<
         Output = Option<(
             PeerId,
-            impl futures::Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>>,
+            impl Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>> + Send,
         )>,
-    >;
+    > + Send;
 
     fn state_diff_for_block(
         self,
         block: BlockNumber,
         state_diff_length: u64,
-    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount>>;
+    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount>> + Send;
 
     fn class_definitions_for_block(
         self,
         block: BlockNumber,
         declared_classes_count: u64,
-    ) -> impl Future<Output = Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError>>;
+    ) -> impl Future<Output = Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError>> + Send;
 
     fn events_for_block(
         self,
         block: BlockNumber,
-    ) -> impl Future<
-        Output = Option<(
-            PeerId,
-            impl futures::Stream<Item = (TransactionHash, Event)>,
-        )>,
-    >;
+    ) -> impl Future<Output = Option<(PeerId, impl Stream<Item = (TransactionHash, Event)> + Send)>> + Send;
 }
 
 impl Client {
@@ -240,269 +291,6 @@ impl Client {
         peers.shuffle(&mut rand::thread_rng());
         peers
     }
-
-    pub async fn get_update_peers_with_transaction_sync_capability(&self) -> Vec<PeerId> {
-        self.get_update_peers_with_sync_capability(protocol::Transactions::NAME)
-            .await
-    }
-
-    pub fn transaction_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl futures::Stream<
-            Item = anyhow::Result<(usize, TransactionCommitment)>,
-        >,
-    ) -> impl futures::Stream<
-        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
-    > {
-        let inner = self.inner.clone();
-        let outer = self;
-        make_transaction_stream(
-            start,
-            stop,
-            transaction_counts_and_commitments_stream,
-            move || {
-                let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_transaction_sync_capability()
-                        .await
-                }
-            },
-            move |peer, request| {
-                let inner = inner.clone();
-                async move { inner.send_transactions_sync_request(peer, request).await }
-            },
-        )
-    }
-
-    /// ### Important
-    ///
-    /// Contract class updates are by default set to
-    /// `ContractClassUpdate::Deploy` but __the caller is responsible for
-    /// determining if the class was really deployed or replaced__.
-    pub fn state_diff_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl futures::Stream<
-            Item = anyhow::Result<(usize, StateDiffCommitment)>,
-        >,
-    ) -> impl futures::Stream<
-        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
-    > {
-        let inner = self.inner.clone();
-        let outer = self;
-        make_state_diff_stream(
-            start,
-            stop,
-            state_diff_length_and_commitment_stream,
-            move || {
-                let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_sync_capability(protocol::StateDiffs::NAME)
-                        .await
-                }
-            },
-            move |peer, request| {
-                let inner = inner.clone();
-                async move { inner.send_state_diffs_sync_request(peer, request).await }
-            },
-        )
-    }
-
-    pub fn class_definition_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
-    {
-        let inner = self.inner.clone();
-        let outer = self;
-        make_class_definition_stream(
-            start,
-            stop,
-            declared_class_counts_stream,
-            move || {
-                let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_sync_capability(protocol::Classes::NAME)
-                        .await
-                }
-            },
-            move |peer, request| {
-                let inner = inner.clone();
-                async move { inner.send_classes_sync_request(peer, request).await }
-            },
-        )
-    }
-
-    /// ### Important
-    ///
-    /// Events are grouped by block and by transaction. The order of flattened
-    /// events in a block is guaranteed to be correct because the event
-    /// commitment is part of block hash. However the number of events per
-    /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
-    /// because neither signature nor block hash contain this information.
-    pub fn event_stream(
-        self,
-        start: BlockNumber,
-        stop: BlockNumber,
-        event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
-    ) -> impl futures::Stream<
-        Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>,
-    > {
-        let inner = self.inner.clone();
-        let outer = self;
-        make_event_stream(
-            start,
-            stop,
-            event_counts_stream,
-            move || {
-                let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_sync_capability(protocol::Events::NAME)
-                        .await
-                }
-            },
-            move |peer, request| {
-                let inner = inner.clone();
-                async move { inner.send_events_sync_request(peer, request).await }
-            },
-        )
-    }
-
-    pub async fn events_for_block(
-        self,
-        block: BlockNumber,
-    ) -> Option<(
-        PeerId,
-        impl futures::Stream<Item = (TransactionHash, Event)>,
-    )> {
-        let request = EventsRequest {
-            iteration: Iteration {
-                start: block.get().into(),
-                direction: Direction::Forward,
-                limit: 1,
-                step: 1.into(),
-            },
-        };
-
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Events::NAME)
-            .await;
-
-        for peer in peers {
-            let Ok(stream) = self
-                .inner
-                .send_events_sync_request(peer, request)
-                .await
-                .inspect_err(|error| tracing::debug!(%peer, %error, "Events request failed"))
-            else {
-                continue;
-            };
-
-            let stream = stream
-                .take_while(|x| std::future::ready(!matches!(x, &EventsResponse::Fin)))
-                .map(|x| match x {
-                    EventsResponse::Fin => unreachable!("Already handled Fin above"),
-                    EventsResponse::Event(event) => (
-                        TransactionHash(event.transaction_hash.0),
-                        Event::from_dto(event),
-                    ),
-                });
-
-            return Some((peer, stream));
-        }
-
-        None
-    }
-
-    pub async fn class_definitions_for_block(
-        self,
-        block: BlockNumber,
-        declared_classes_count: u64,
-    ) -> Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError> {
-        let request = ClassesRequest {
-            iteration: Iteration {
-                start: block.get().into(),
-                direction: Direction::Forward,
-                limit: 1,
-                step: 1.into(),
-            },
-        };
-
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Classes::NAME)
-            .await;
-
-        for peer in peers {
-            let Ok(mut stream) = self
-                .inner
-                .send_classes_sync_request(peer, request)
-                .await
-                .inspect_err(|error| tracing::debug!(%peer, %error, "State diffs request failed"))
-            else {
-                continue;
-            };
-
-            let mut current_count = declared_classes_count;
-            let mut class_definitions = Vec::new();
-
-            while let Some(resp) = stream.next().await {
-                match resp {
-                    ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
-                        class,
-                        domain: _,
-                    }) => {
-                        let definition = CairoDefinition::try_from_dto(class)
-                            .map_err(|_| ClassDefinitionsError::CairoDefinitionError(peer))?;
-                        class_definitions.push(ClassDefinition::Cairo {
-                            block_number: block,
-                            definition: definition.0,
-                        });
-                    }
-                    ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
-                        class,
-                        domain: _,
-                    }) => {
-                        let definition = SierraDefinition::try_from_dto(class)
-                            .map_err(|_| ClassDefinitionsError::SierraDefinitionError(peer))?;
-                        class_definitions.push(ClassDefinition::Sierra {
-                            block_number: block,
-                            sierra_definition: definition.0,
-                        });
-                    }
-                    ClassesResponse::Fin => {
-                        tracing::debug!(%peer, "Received FIN in class definitions source");
-                        break;
-                    }
-                }
-
-                current_count = match current_count.checked_sub(1) {
-                    Some(x) => x,
-                    None => {
-                        tracing::debug!(%peer, "Too many class definitions");
-                        return Err(ClassDefinitionsError::IncorrectClassDefinitionCount(peer));
-                    }
-                };
-            }
-
-            if current_count != 0 {
-                tracing::debug!(%peer, "Too few class definitions");
-                return Err(ClassDefinitionsError::IncorrectClassDefinitionCount(peer));
-            }
-
-            return Ok(Some((peer, class_definitions)));
-        }
-
-        Ok(None)
-    }
 }
 
 impl HeaderStream for Client {
@@ -511,7 +299,7 @@ impl HeaderStream for Client {
         start: BlockNumber,
         stop: BlockNumber,
         reverse: bool,
-    ) -> impl futures::Stream<Item = PeerData<SignedBlockHeader>> {
+    ) -> impl Stream<Item = PeerData<SignedBlockHeader>> {
         let (mut start, stop, direction) = match reverse {
             true => (stop, start, Direction::Backward),
             false => (start, stop, Direction::Forward),
@@ -597,13 +385,150 @@ impl HeaderStream for Client {
     }
 }
 
+impl TransactionStream for Client {
+    fn transaction_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        transaction_counts_and_commitments_stream: impl Stream<
+            Item = anyhow::Result<(usize, TransactionCommitment)>,
+        >,
+    ) -> impl Stream<
+        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
+    > {
+        let inner = self.inner.clone();
+        let outer = self;
+        make_transaction_stream(
+            start,
+            stop,
+            transaction_counts_and_commitments_stream,
+            move || {
+                let outer = outer.clone();
+                async move {
+                    outer
+                        .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
+                        .await
+                }
+            },
+            move |peer, request| {
+                let inner = inner.clone();
+                async move { inner.send_transactions_sync_request(peer, request).await }
+            },
+        )
+    }
+}
+
+impl StateDiffStream for Client {
+    /// ### Important
+    ///
+    /// Contract class updates are by default set to
+    /// `ContractClassUpdate::Deploy` but __the caller is responsible for
+    /// determining if the class was really deployed or replaced__.
+    fn state_diff_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        state_diff_length_and_commitment_stream: impl Stream<
+            Item = anyhow::Result<(usize, StateDiffCommitment)>,
+        >,
+    ) -> impl Stream<
+        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
+    > {
+        let inner = self.inner.clone();
+        let outer = self;
+        make_state_diff_stream(
+            start,
+            stop,
+            state_diff_length_and_commitment_stream,
+            move || {
+                let outer = outer.clone();
+                async move {
+                    outer
+                        .get_update_peers_with_sync_capability(protocol::StateDiffs::NAME)
+                        .await
+                }
+            },
+            move |peer, request| {
+                let inner = inner.clone();
+                async move { inner.send_state_diffs_sync_request(peer, request).await }
+            },
+        )
+    }
+}
+
+impl ClassStream for Client {
+    fn class_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
+    ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>> {
+        let inner = self.inner.clone();
+        let outer = self;
+        make_class_definition_stream(
+            start,
+            stop,
+            declared_class_counts_stream,
+            move || {
+                let outer = outer.clone();
+                async move {
+                    outer
+                        .get_update_peers_with_sync_capability(protocol::Classes::NAME)
+                        .await
+                }
+            },
+            move |peer, request| {
+                let inner = inner.clone();
+                async move { inner.send_classes_sync_request(peer, request).await }
+            },
+        )
+    }
+}
+
+impl EventStream for Client {
+    /// ### Important
+    ///
+    /// Events are grouped by block and by transaction. The order of flattened
+    /// events in a block is guaranteed to be correct because the event
+    /// commitment is part of block hash. However the number of events per
+    /// transaction for __pre 0.13.2__ Starknet blocks is __TRUSTED__
+    /// because neither signature nor block hash contain this information.
+    fn event_stream(
+        self,
+        start: BlockNumber,
+        stop: BlockNumber,
+        event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
+    ) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
+    {
+        let inner = self.inner.clone();
+        let outer = self;
+        make_event_stream(
+            start,
+            stop,
+            event_counts_stream,
+            move || {
+                let outer = outer.clone();
+                async move {
+                    outer
+                        .get_update_peers_with_sync_capability(protocol::Events::NAME)
+                        .await
+                }
+            },
+            move |peer, request| {
+                let inner = inner.clone();
+                async move { inner.send_events_sync_request(peer, request).await }
+            },
+        )
+    }
+}
+
 impl BlockClient for Client {
     async fn transactions_for_block(
         self,
         block: BlockNumber,
     ) -> Option<(
         PeerId,
-        impl futures::Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>>,
+        impl Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>>,
     )> {
         let request = TransactionsRequest {
             iteration: Iteration {
@@ -863,10 +788,7 @@ impl BlockClient for Client {
     async fn events_for_block(
         self,
         block: BlockNumber,
-    ) -> Option<(
-        PeerId,
-        impl futures::Stream<Item = (TransactionHash, Event)>,
-    )> {
+    ) -> Option<(PeerId, impl Stream<Item = (TransactionHash, Event)>)> {
         let request = EventsRequest {
             iteration: Iteration {
                 start: block.get().into(),
@@ -910,12 +832,12 @@ impl BlockClient for Client {
 pub fn make_transaction_stream<PF, RF>(
     mut start: BlockNumber,
     stop: BlockNumber,
-    transaction_counts_and_commitments_stream: impl futures::Stream<
+    transaction_counts_and_commitments_stream: impl Stream<
         Item = anyhow::Result<(usize, TransactionCommitment)>,
     >,
     get_peers: impl Fn() -> PF,
     send_request: impl Fn(PeerId, TransactionsRequest) -> RF,
-) -> impl futures::Stream<
+) -> impl Stream<
     Item = Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
 >
 where
@@ -1095,12 +1017,12 @@ where
 pub fn make_state_diff_stream<PF, RF>(
     mut start: BlockNumber,
     stop: BlockNumber,
-    state_diff_length_and_commitment_stream: impl futures::Stream<
+    state_diff_length_and_commitment_stream: impl Stream<
         Item = anyhow::Result<(usize, StateDiffCommitment)>,
     >,
     get_peers: impl Fn() -> PF,
     send_request: impl Fn(PeerId, StateDiffsRequest) -> RF,
-) -> impl futures::Stream<
+) -> impl Stream<
     Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
 >
 where
@@ -1340,10 +1262,10 @@ where
 pub fn make_class_definition_stream<PF, RF>(
     mut start: BlockNumber,
     stop: BlockNumber,
-    declared_class_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
     get_peers: impl Fn() -> PF,
     send_request: impl Fn(PeerId, ClassesRequest) -> RF,
-) -> impl futures::Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
+) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
 where
     PF: std::future::Future<Output = Vec<PeerId>>,
     RF: std::future::Future<
@@ -1477,10 +1399,10 @@ where
 pub fn make_event_stream<PF, RF>(
     mut start: BlockNumber,
     stop: BlockNumber,
-    event_counts_stream: impl futures::Stream<Item = anyhow::Result<usize>>,
+    event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
     get_peers: impl Fn() -> PF,
     send_request: impl Fn(PeerId, EventsRequest) -> RF,
-) -> impl futures::Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
+) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
 where
     PF: std::future::Future<Output = Vec<PeerId>>,
     RF: std::future::Future<
