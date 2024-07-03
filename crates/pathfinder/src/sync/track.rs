@@ -115,6 +115,7 @@ impl<L, P> Sync<L, P> {
         }
         .spawn()
         .pipe(events::VerifyCommitment, 10);
+
         let state_diff = StateDiffSource {
             p2p: self.p2p.clone(),
             headers: state_diff,
@@ -260,6 +261,18 @@ impl TransactionsFanout {
 
         tokio::spawn(async move {
             while let Some(transactions) = source.recv().await {
+                match transactions.as_ref() {
+                    Ok(txns) => {
+                        eprintln!(
+                            "TransactionsFanout transactions = Ok(len:{})",
+                            txns.data.len()
+                        );
+                    }
+                    Err(err) => {
+                        eprintln!("TransactionsFanout transactions = Err({err:?})",);
+                    }
+                }
+
                 let is_err = transactions.is_err();
 
                 if t_tx.send(transactions.clone()).await.is_err() || is_err {
@@ -431,11 +444,14 @@ impl<P> EventSource<P> {
             } = self;
 
             while let Some(header) = headers.next().await {
+                eprintln!("EventSource header.number = {}", header.number);
+
                 let (peer, mut events) = loop {
                     if let Some(stream) = p2p.clone().events_for_block(header.number).await {
                         break stream;
                     }
                 };
+
                 let Some(block_transactions) = transactions.next().await else {
                     let err =
                         PeerData::new(peer, SyncError2::Other(anyhow!("No transactions").into()));
@@ -726,28 +742,29 @@ impl ProcessStage for StoreBlock {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
-
     use futures::{stream, Stream, StreamExt};
-    use p2p::client::peer_agnostic::traits::{BlockClient, HeaderStream};
     use p2p::client::types::{
         ClassDefinition,
         ClassDefinitionsError,
         IncorrectStateDiffCount,
-        Receipt,
-        SignedBlockHeader,
+        Receipt as P2PReceipt,
     };
     use p2p::libp2p::PeerId;
     use p2p::PeerData;
-    use pathfinder_common::event::Event;
-    use pathfinder_common::state_update::StateUpdateData;
-    use pathfinder_common::transaction::TransactionVariant;
-    use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, PublicKey, TransactionHash};
+    use pathfinder_common::{ReceiptCommitment, SignedBlockHeader};
+    use pathfinder_storage::fake::init::Config;
     use pathfinder_storage::fake::{self, Block};
     use pathfinder_storage::StorageBuilder;
-    use starknet_gateway_client::GatewayApi;
+    use starknet_gateway_types::error::SequencerError;
 
-    use super::Sync;
+    use super::*;
+    use crate::state::block_hash::{
+        calculate_event_commitment,
+        calculate_receipt_commitment,
+        calculate_transaction_commitment,
+        compute_final_hash,
+        BlockHeaderData,
+    };
 
     #[derive(Clone)]
     struct FakeP2PClient {
@@ -760,15 +777,15 @@ mod tests {
             start: BlockNumber,
             stop: BlockNumber,
             reverse: bool,
-        ) -> impl Stream<Item = PeerData<SignedBlockHeader>> + Send {
+        ) -> impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send {
             assert!(!reverse);
             assert_eq!(start, self.blocks.first().unwrap().header.header.number);
             assert_eq!(start, self.blocks.last().unwrap().header.header.number);
 
             stream::iter(
-                self.blocks
-                    .into_iter()
-                    .map(|block| PeerData::for_tests(block.header.into())),
+                self.blocks.into_iter().map(|block| {
+                    PeerData::for_tests((block.header, block.receipt_commitment).into())
+                }),
             )
         }
     }
@@ -779,7 +796,7 @@ mod tests {
             block: BlockNumber,
         ) -> Option<(
             PeerId,
-            impl Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>> + Send,
+            impl Stream<Item = anyhow::Result<(TransactionVariant, P2PReceipt)>> + Send,
         )> {
             let tr = self
                 .blocks
@@ -788,8 +805,8 @@ mod tests {
                 .unwrap()
                 .transaction_data
                 .iter()
-                .map(|(t, r, e)| Ok((t.variant.clone(), Receipt::from(r.clone()))))
-                .collect::<Vec<anyhow::Result<(TransactionVariant, Receipt)>>>();
+                .map(|(t, r, e)| Ok((t.variant.clone(), P2PReceipt::from(r.clone()))))
+                .collect::<Vec<anyhow::Result<(TransactionVariant, P2PReceipt)>>>();
 
             Some((PeerId::random(), stream::iter(tr)))
         }
@@ -864,11 +881,26 @@ mod tests {
     #[derive(Clone)]
     struct FakeFgw;
 
-    impl GatewayApi for FakeFgw {}
+    #[async_trait::async_trait]
+    impl GatewayApi for FakeFgw {
+        async fn pending_casm_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+            Ok(bytes::Bytes::from_static(b"I'm from the fgw!"))
+        }
+    }
 
     #[tokio::test]
     async fn happy_path() {
-        let blocks = fake::init::with_n_blocks(1);
+        let blocks = fake::init::with_n_blocks_and_config(
+            1,
+            Config::new(
+                |sbh: &SignedBlockHeader, rc: ReceiptCommitment| {
+                    compute_final_hash(&BlockHeaderData::from_signed_header(sbh, rc))
+                },
+                calculate_transaction_commitment,
+                calculate_receipt_commitment,
+                calculate_event_commitment,
+            ),
+        );
         let p2p: FakeP2PClient = FakeP2PClient { blocks };
 
         let s = Sync {
