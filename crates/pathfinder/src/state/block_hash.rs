@@ -388,8 +388,8 @@ fn compute_final_hash_pre_0_13_2(header: &BlockHeaderData) -> BlockHash {
     BlockHash(chain.finalize())
 }
 
-fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
-    // Concatinate the transaction count, event count, state diff length, and L1
+pub(crate) fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
+    // Concatenate the transaction count, event count, state diff length, and L1
     // data availability mode into a single felt.
     let mut concat_counts = [0u8; 32];
     let mut writer = concat_counts.as_mut_slice();
