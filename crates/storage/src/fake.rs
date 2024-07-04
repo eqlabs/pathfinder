@@ -122,6 +122,7 @@ pub mod init {
         ContractAddress,
         EventCommitment,
         ReceiptCommitment,
+        SierraHash,
         SignedBlockHeader,
         StarknetVersion,
         StateCommitment,
@@ -131,6 +132,7 @@ pub mod init {
         TransactionIndex,
     };
     use rand::Rng;
+    use starknet_gateway_types::class_hash::compute_class_hash;
 
     use super::Block;
 
@@ -184,6 +186,7 @@ pub mod init {
 
     /// Create fake blocks and state updates with __limited consistency
     /// guarantees__:
+    /// - starknet version: 0.13.2
     /// - block headers:
     ///     - consecutive numbering starting from genesis (`0`) up to `n-1`
     ///     - parent hash wrt previous block, parent hash of the genesis block
@@ -206,12 +209,13 @@ pub mod init {
     ///     - deployed Cairo0 contracts are treated as implicit declarations and
     ///       are added to declared cairo classes`
     /// - declared cairo|sierra definitions
-    ///
     ///     - class definition is a serialized to JSON representation of
     ///       `class_definition::Cairo|Sierra` respectively with random fields
     ///     - all those definitions are **very short and fall far below the soft
     ///       limit in protobuf encoding
     ///     - casm definitions for sierra classes are purely random Strings
+    ///     - cairo class hashes and sierra class hashes are correctly
+    ///       calculated from the definitions, casm hashes are random
     /// - transactions
     ///     - transaction hashes are calculated from their respective variant,
     ///       with ChainId set to `SEPOLIA_TESTNET`
@@ -232,7 +236,8 @@ pub mod init {
         with_n_blocks_rng_and_config(n, rng, Default::default())
     }
 
-    /// Same as [`with_n_blocks`] except caller can specify the rng used
+    /// Same as [`with_n_blocks`] except caller can specify the rng used and
+    /// additional configuration
     pub fn with_n_blocks_rng_and_config<R: Rng>(
         n: usize,
         rng: &mut R,
@@ -306,32 +311,41 @@ pub mod init {
                 .sum();
 
             let state_commitment = header.state_commitment;
-            let declared_cairo_classes = Faker.fake_with_rng::<HashSet<_>, _>(rng);
-            let declared_sierra_classes = Faker.fake_with_rng::<HashMap<_, _>, _>(rng);
+            let num_cairo_classes = rng.gen_range(0..=0);
+            let num_sierra_classes = rng.gen_range(0..=10);
 
-            let cairo_defs = declared_cairo_classes
-                .iter()
-                .map(|&class_hash| {
-                    (
-                        class_hash,
+            let cairo_defs = (0..num_cairo_classes)
+                .into_iter()
+                .map(|_| {
+                    let def =
                         serde_json::to_vec(&Faker.fake_with_rng::<class_definition::Cairo, _>(rng))
-                            .unwrap(),
-                    )
+                            .unwrap();
+                    (compute_class_hash(&def).unwrap().hash(), def)
                 })
                 .collect::<Vec<_>>();
-            let sierra_defs = declared_sierra_classes
-                .iter()
-                .map(|(&sierra_hash, _)| {
+            let sierra_defs = (0..num_sierra_classes)
+                .into_iter()
+                .map(|_| {
+                    let def = serde_json::to_vec(
+                        &Faker.fake_with_rng::<class_definition::Sierra, _>(rng),
+                    )
+                    .unwrap();
                     (
-                        sierra_hash,
-                        serde_json::to_vec(
-                            &Faker.fake_with_rng::<class_definition::Sierra, _>(rng),
-                        )
-                        .unwrap(),
+                        SierraHash(compute_class_hash(&def).unwrap().hash().0),
+                        def,
                         Faker.fake_with_rng::<String, _>(rng).into_bytes(),
                     )
                 })
                 .collect::<Vec<_>>();
+
+            let declared_cairo_classes = cairo_defs
+                .iter()
+                .map(|(class_hash, _)| *class_hash)
+                .collect::<HashSet<_>>();
+            let declared_sierra_classes = sierra_defs
+                .iter()
+                .map(|(sierra_hash, _, _)| (*sierra_hash, Faker.fake()))
+                .collect::<HashMap<_, _>>();
 
             init.push(Block {
                 header: SignedBlockHeader {
@@ -475,25 +489,29 @@ pub mod init {
                 // added to `declared_cairo_classes` because Cairo0 Deploys
                 // were not initially preceded by an explicit declare
                 // transaction
-                let implicitly_declared =
-                    state_update
-                        .contract_updates
-                        .iter()
-                        .filter_map(|(_, update)| match update.class {
-                            Some(ContractClassUpdate::Deploy(class_hash)) => Some(class_hash),
-                            Some(ContractClassUpdate::Replace(_)) | None => None,
-                        });
+                let implicitly_declared = state_update
+                    .contract_updates
+                    .iter_mut()
+                    .filter_map(|(_, update)| match &mut update.class {
+                        Some(ContractClassUpdate::Deploy(class_hash)) => {
+                            let def = serde_json::to_vec(
+                                &Faker.fake_with_rng::<class_definition::Cairo, _>(rng),
+                            )
+                            .unwrap();
+                            let new_hash = compute_class_hash(&def).unwrap().hash();
+                            *class_hash = new_hash;
+                            Some((new_hash, def))
+                        }
+                        Some(ContractClassUpdate::Replace(_)) | None => None,
+                    })
+                    .collect::<Vec<_>>();
 
-                state_update
-                    .declared_cairo_classes
-                    .extend(implicitly_declared.clone());
-                cairo_defs.extend(implicitly_declared.map(|class_hash| {
-                    (
-                        class_hash,
-                        serde_json::to_vec(&Faker.fake_with_rng::<class_definition::Cairo, _>(rng))
-                            .unwrap(),
-                    )
-                }));
+                state_update.declared_cairo_classes.extend(
+                    implicitly_declared
+                        .iter()
+                        .map(|(class_hash, _)| *class_hash),
+                );
+                cairo_defs.extend(implicitly_declared);
 
                 *state_diff_length = state_update.state_diff_length();
                 *state_diff_commitment =

@@ -33,16 +33,12 @@ pub struct Sierra<'a> {
 }
 
 impl<T> Dummy<T> for Sierra<'_> {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, _: &mut R) -> Self {
+    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
             abi: "[]".into(),
             sierra_program: vec![],
             contract_class_version: "0.1.0".into(),
-            entry_points_by_type: SierraEntryPoints {
-                external: vec![],
-                l1_handler: vec![],
-                constructor: vec![],
-            },
+            entry_points_by_type: Faker.fake_with_rng(rng),
         }
     }
 }

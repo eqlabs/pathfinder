@@ -455,6 +455,7 @@ impl ProcessStage for VerifyClassHashes {
             .tokio_handle
             .block_on(self.declarations.next())
             .context("Getting declared classes")?;
+
         for class in input.iter() {
             match class.definition {
                 CompiledClassDefinition::Cairo(_) => {

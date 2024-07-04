@@ -261,18 +261,6 @@ impl TransactionsFanout {
 
         tokio::spawn(async move {
             while let Some(transactions) = source.recv().await {
-                match transactions.as_ref() {
-                    Ok(txns) => {
-                        eprintln!(
-                            "TransactionsFanout transactions = Ok(len:{})",
-                            txns.data.len()
-                        );
-                    }
-                    Err(err) => {
-                        eprintln!("TransactionsFanout transactions = Err({err:?})",);
-                    }
-                }
-
                 let is_err = transactions.is_err();
 
                 if t_tx.send(transactions.clone()).await.is_err() || is_err {
@@ -444,8 +432,6 @@ impl<P> EventSource<P> {
             } = self;
 
             while let Some(header) = headers.next().await {
-                eprintln!("EventSource header.number = {}", header.number);
-
                 let (peer, mut events) = loop {
                     if let Some(stream) = p2p.clone().events_for_block(header.number).await {
                         break stream;
@@ -901,6 +887,7 @@ mod tests {
                 calculate_event_commitment,
             ),
         );
+
         let p2p: FakeP2PClient = FakeP2PClient { blocks };
 
         let s = Sync {
