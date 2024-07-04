@@ -23,15 +23,21 @@ use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
+    BlockHeader,
     BlockNumber,
     Chain,
     ChainId,
+    ClassCommitment,
     ClassHash,
     EventCommitment,
     PublicKey,
+    ReceiptCommitment,
+    SierraHash,
+    SignedBlockHeader,
     StarknetVersion,
     StateDiffCommitment,
     StateUpdate,
+    StorageCommitment,
     TransactionCommitment,
     TransactionHash,
 };
@@ -706,7 +712,13 @@ impl ProcessStage for StoreBlock {
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let BlockData {
-            header,
+            header:
+                P2PSignedBlockHeader {
+                    header,
+                    signature,
+                    state_diff_commitment,
+                    state_diff_length,
+                },
             events,
             state_diff,
             transactions,
@@ -718,7 +730,82 @@ impl ProcessStage for StoreBlock {
             .transaction()
             .context("Creating database connection")?;
 
-        // TODO: write all the data to storage
+        let block_number = header.number;
+
+        let header = BlockHeader {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            sequencer_address: header.sequencer_address,
+            starknet_version: header.starknet_version,
+            class_commitment: ClassCommitment::ZERO, // TODO update class tries
+            event_commitment: header.event_commitment,
+            state_commitment: header.state_commitment,
+            storage_commitment: StorageCommitment::ZERO, // TODO update storage tries
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header.transaction_count,
+            event_count: header.event_count,
+            l1_da_mode: header.l1_da_mode,
+            // TODO receipt_commitment
+        };
+
+        db.insert_block_header(&header)
+            .context("Inserting block header")?;
+
+        db.insert_signature(block_number, &signature)
+            .context("Inserting signature")?;
+
+        db.update_state_diff_commitment_and_length(
+            block_number,
+            state_diff_commitment,
+            state_diff_length,
+        )
+        .context("Updating state diff commitment and length")?;
+
+        let events = events.into_iter().map(|(_, e)| e).collect::<Vec<_>>();
+
+        db.insert_transaction_data(block_number, &transactions, Some(&events))
+            .context("Inserting transaction data")?;
+
+        db.insert_state_update_data(block_number, &state_diff)
+            .context("Inserting state update data")?;
+
+        classes.into_iter().try_for_each(
+            |CompiledClass {
+                 block_number,
+                 hash,
+                 definition,
+             }| {
+                match definition {
+                    class_definitions::CompiledClassDefinition::Cairo(cairo) => db
+                        .insert_cairo_class(hash, &cairo)
+                        .context("Inserting cairo class definition"),
+                    class_definitions::CompiledClassDefinition::Sierra {
+                        sierra_definition,
+                        casm_definition,
+                    } => {
+                        let sierra_hash = SierraHash(hash.0);
+                        let casm_hash = db
+                            .casm_hash(hash)
+                            .context("Getting casm hash")?
+                            .context("Casm not found")?;
+
+                        db.insert_sierra_class(
+                            &sierra_hash,
+                            &sierra_definition,
+                            &casm_hash,
+                            &casm_definition,
+                        )
+                        .context("Inserting sierra class definition")
+                    }
+                }
+            },
+        )?;
 
         db.commit()
             .context("Committing transaction")
