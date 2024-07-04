@@ -737,7 +737,7 @@ mod tests {
     };
     use p2p::libp2p::PeerId;
     use p2p::PeerData;
-    use pathfinder_common::{ReceiptCommitment, SignedBlockHeader};
+    use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
     use pathfinder_storage::fake::init::Config;
     use pathfinder_storage::fake::{self, Block};
     use pathfinder_storage::StorageBuilder;
@@ -766,7 +766,7 @@ mod tests {
         ) -> impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send {
             assert!(!reverse);
             assert_eq!(start, self.blocks.first().unwrap().header.header.number);
-            assert_eq!(start, self.blocks.last().unwrap().header.header.number);
+            assert_eq!(stop, self.blocks.last().unwrap().header.header.number);
 
             stream::iter(
                 self.blocks.into_iter().map(|block| {
@@ -877,7 +877,7 @@ mod tests {
     #[tokio::test]
     async fn happy_path() {
         let blocks = fake::init::with_n_blocks_and_config(
-            1,
+            10,
             Config::new(
                 |sbh: &SignedBlockHeader, rc: ReceiptCommitment| {
                     compute_final_hash(&BlockHeaderData::from_signed_header(sbh, rc))
@@ -888,10 +888,13 @@ mod tests {
             ),
         );
 
+        let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
+        let latest = (number, hash);
+
         let p2p: FakeP2PClient = FakeP2PClient { blocks };
 
         let s = Sync {
-            latest: futures::stream::iter(vec![(BlockNumber::GENESIS, BlockHash::default())]),
+            latest: futures::stream::iter(vec![latest]),
             p2p,
             storage: StorageBuilder::in_memory().unwrap(),
             chain: Chain::SepoliaTestnet,
