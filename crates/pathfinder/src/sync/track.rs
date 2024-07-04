@@ -719,7 +719,7 @@ impl ProcessStage for StoreBlock {
                     state_diff_commitment,
                     state_diff_length,
                 },
-            events,
+            mut events,
             state_diff,
             transactions,
             classes,
@@ -767,9 +767,13 @@ impl ProcessStage for StoreBlock {
         )
         .context("Updating state diff commitment and length")?;
 
-        let events = events.into_iter().map(|(_, e)| e).collect::<Vec<_>>();
+        let mut ordered_events = Vec::new();
+        transactions.iter().for_each(|(t, _)| {
+            // Some transactions can emit no events, in that case we insert an empty vector.
+            ordered_events.push(events.remove(&t.hash).unwrap_or_default());
+        });
 
-        db.insert_transaction_data(block_number, &transactions, Some(&events))
+        db.insert_transaction_data(block_number, &transactions, Some(&ordered_events))
             .context("Inserting transaction data")?;
 
         db.insert_state_update_data(block_number, &state_diff)
@@ -824,6 +828,7 @@ mod tests {
     };
     use p2p::libp2p::PeerId;
     use p2p::PeerData;
+    use p2p_proto::common::Hash;
     use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
     use pathfinder_storage::fake::init::Config;
     use pathfinder_storage::fake::{self, Block};
@@ -963,8 +968,9 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path() {
+        const N: usize = 10;
         let blocks = fake::init::with_n_blocks_and_config(
-            10,
+            N,
             Config::new(
                 |sbh: &SignedBlockHeader, rc: ReceiptCommitment| {
                     compute_final_hash(&BlockHeaderData::from_signed_header(sbh, rc))
@@ -978,19 +984,85 @@ mod tests {
         let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
         let latest = (number, hash);
 
-        let p2p: FakeP2PClient = FakeP2PClient { blocks };
+        let p2p: FakeP2PClient = FakeP2PClient {
+            blocks: blocks.clone(),
+        };
 
-        let s = Sync {
+        let storage = StorageBuilder::in_memory().unwrap();
+
+        let sync = Sync {
             latest: futures::stream::iter(vec![latest]),
             p2p,
-            storage: StorageBuilder::in_memory().unwrap(),
+            storage: storage.clone(),
             chain: Chain::SepoliaTestnet,
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key: PublicKey::default(),
         };
 
-        s.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
+        sync.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
             .await
             .unwrap();
+
+        let mut db = storage.connection().unwrap();
+        let db = db.transaction().unwrap();
+        for mut block in blocks {
+            // TODO p2p sync does not update class and storage tries yet
+            block.header.header.class_commitment = ClassCommitment::ZERO;
+            block.header.header.storage_commitment = StorageCommitment::ZERO;
+
+            let block_number = block.header.header.number;
+            let block_id = block_number.into();
+            let header = db.block_header(block_id).unwrap().unwrap();
+            let signature = db.signature(block_id).unwrap().unwrap();
+            let (state_diff_commitment, state_diff_length) = db
+                .state_diff_commitment_and_length(block_number)
+                .unwrap()
+                .unwrap();
+            let transaction_data = db.transaction_data_for_block(block_id).unwrap().unwrap();
+            let state_update_data: StateUpdateData =
+                db.state_update(block_id).unwrap().unwrap().into();
+            let declared = db.declared_classes_at(block_id).unwrap().unwrap();
+
+            let mut cairo_defs = HashMap::new();
+            let mut sierra_defs = HashMap::new();
+
+            for class_hash in declared {
+                let class = db.class_definition(class_hash).unwrap().unwrap();
+                match db.casm_hash(class_hash).unwrap() {
+                    Some(casm_hash) => {
+                        let casm = db.casm_definition(class_hash).unwrap().unwrap();
+                        sierra_defs.insert(SierraHash(class_hash.0), (class, casm));
+                    }
+                    None => {
+                        cairo_defs.insert(class_hash, class);
+                    }
+                }
+            }
+
+            pretty_assertions_sorted::assert_eq!(header, block.header.header);
+            pretty_assertions_sorted::assert_eq!(signature, block.header.signature);
+            pretty_assertions_sorted::assert_eq!(
+                state_diff_commitment,
+                block.header.state_diff_commitment
+            );
+            pretty_assertions_sorted::assert_eq!(
+                state_diff_length as u64,
+                block.header.state_diff_length
+            );
+            pretty_assertions_sorted::assert_eq!(transaction_data, block.transaction_data);
+            pretty_assertions_sorted::assert_eq!(state_update_data, block.state_update.into());
+            pretty_assertions_sorted::assert_eq!(
+                cairo_defs,
+                block.cairo_defs.into_iter().collect::<HashMap<_, _>>()
+            );
+            pretty_assertions_sorted::assert_eq!(
+                sierra_defs,
+                block
+                    .sierra_defs
+                    .into_iter()
+                    .map(|(h, s, c)| (h, (s, c)))
+                    .collect::<HashMap<_, _>>()
+            );
+        }
     }
 }
