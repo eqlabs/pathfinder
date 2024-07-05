@@ -848,14 +848,14 @@ mod tests {
         const N: usize = 10;
         let blocks = fake::init::with_n_blocks_and_config(
             N,
-            Config::new(
-                |sbh: &SignedBlockHeader, rc: ReceiptCommitment| {
+            Config {
+                calculate_block_hash: Box::new(|sbh: &SignedBlockHeader, rc: ReceiptCommitment| {
                     compute_final_hash(&BlockHeaderData::from_signed_header(sbh, rc))
-                },
-                calculate_transaction_commitment,
-                calculate_receipt_commitment,
-                calculate_event_commitment,
-            ),
+                }),
+                calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
+                calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+                calculate_event_commitment: Box::new(calculate_event_commitment),
+            },
         );
 
         let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
@@ -882,12 +882,12 @@ mod tests {
 
         let mut db = storage.connection().unwrap();
         let db = db.transaction().unwrap();
-        for mut block in blocks {
+        for mut expected in blocks {
             // TODO p2p sync does not update class and storage tries yet
-            block.header.header.class_commitment = ClassCommitment::ZERO;
-            block.header.header.storage_commitment = StorageCommitment::ZERO;
+            expected.header.header.class_commitment = ClassCommitment::ZERO;
+            expected.header.header.storage_commitment = StorageCommitment::ZERO;
 
-            let block_number = block.header.header.number;
+            let block_number = expected.header.header.number;
             let block_id = block_number.into();
             let header = db.block_header(block_id).unwrap().unwrap();
             let signature = db.signature(block_id).unwrap().unwrap();
@@ -916,30 +916,31 @@ mod tests {
                 }
             }
 
-            pretty_assertions_sorted::assert_eq!(header, block.header.header);
-            pretty_assertions_sorted::assert_eq!(signature, block.header.signature);
+            pretty_assertions_sorted::assert_eq!(header, expected.header.header);
+            pretty_assertions_sorted::assert_eq!(signature, expected.header.signature);
             pretty_assertions_sorted::assert_eq!(
                 state_diff_commitment,
-                block.header.state_diff_commitment
+                expected.header.state_diff_commitment
             );
             pretty_assertions_sorted::assert_eq!(
                 state_diff_length as u64,
-                block.header.state_diff_length
+                expected.header.state_diff_length
             );
-            pretty_assertions_sorted::assert_eq!(transaction_data, block.transaction_data);
-            pretty_assertions_sorted::assert_eq!(state_update_data, block.state_update.into());
-            // pretty_assertions_sorted::assert_eq!(
-            //     cairo_defs,
-            //     block.cairo_defs.into_iter().collect::<HashMap<_, _>>()
-            // );
-            // pretty_assertions_sorted::assert_eq!(
-            //     sierra_defs,
-            //     block
-            //         .sierra_defs
-            //         .into_iter()
-            //         .map(|(h, s, c)| (h, (s, c)))
-            //         .collect::<HashMap<_, _>>()
-            // );
+            pretty_assertions_sorted::assert_eq!(transaction_data, expected.transaction_data);
+            pretty_assertions_sorted::assert_eq!(state_update_data, expected.state_update.into());
+            pretty_assertions_sorted::assert_eq!(
+                cairo_defs,
+                expected.cairo_defs.into_iter().collect::<HashMap<_, _>>()
+            );
+            pretty_assertions_sorted::assert_eq!(
+                sierra_defs,
+                expected
+                    .sierra_defs
+                    .into_iter()
+                    // All sierra fixtures are not compile-able
+                    .map(|(h, s, _)| (h, (s, b"I'm from the fgw!".to_vec())))
+                    .collect::<HashMap<_, _>>()
+            );
         }
     }
 

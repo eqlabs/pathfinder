@@ -99,6 +99,19 @@ pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -
     blocks
 }
 
+/// Same as [`with_n_blocks`] except caller can specify the rng and additional
+/// configuration
+pub fn with_n_blocks_rng_and_config<R: Rng>(
+    storage: &Storage,
+    n: usize,
+    rng: &mut R,
+    config: init::Config,
+) -> Vec<Block> {
+    let blocks = init::with_n_blocks_rng_and_config(n, rng, config);
+    fill(storage, &blocks);
+    blocks
+}
+
 /// Raw _fake state initializers_
 pub mod init {
     use std::collections::{HashMap, HashSet};
@@ -146,33 +159,10 @@ pub mod init {
     >;
 
     pub struct Config {
-        calculate_block_hash: BlockHashFn,
-        calculate_transaction_commitment: TransactionCommitmentFn,
-        calculate_receipt_commitment: ReceiptCommitmentFn,
-        calculate_event_commitment: EventCommitmentFn,
-    }
-
-    impl Config {
-        pub fn new(
-            calculate_block_hash: impl Fn(&SignedBlockHeader, ReceiptCommitment) -> anyhow::Result<BlockHash>
-                + 'static,
-            calculate_transaction_commitment: impl Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>
-                + 'static,
-            calculate_receipt_commitment: impl Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>
-                + 'static,
-            calculate_event_commitment: impl Fn(
-                    &[(TransactionHash, &[Event])],
-                    StarknetVersion,
-                ) -> anyhow::Result<EventCommitment>
-                + 'static,
-        ) -> Self {
-            Self {
-                calculate_block_hash: Box::new(calculate_block_hash),
-                calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
-                calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
-                calculate_event_commitment: Box::new(calculate_event_commitment),
-            }
-        }
+        pub calculate_block_hash: BlockHashFn,
+        pub calculate_transaction_commitment: TransactionCommitmentFn,
+        pub calculate_receipt_commitment: ReceiptCommitmentFn,
+        pub calculate_event_commitment: EventCommitmentFn,
     }
 
     impl Default for Config {
