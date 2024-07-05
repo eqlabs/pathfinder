@@ -294,6 +294,12 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
             }
         });
 
+    let get_public_key = warp::path("get_public_key").then(|| async {
+        warp::reply::json(&serde_json::json!(
+            "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
+        ))
+    });
+
     #[derive(Debug, Deserialize)]
     struct ClassHashParam {
         #[serde(rename = "classHash")]
@@ -336,7 +342,8 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                 .or(get_state_update)
                 .or(get_contract_addresses)
                 .or(get_class_by_hash)
-                .or(get_signature),
+                .or(get_signature)
+                .or(get_public_key),
         )
         .with(warp::filters::trace::request());
 
