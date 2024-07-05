@@ -136,18 +136,20 @@ pub mod init {
 
     use super::Block;
 
+    pub type BlockHashFn =
+        Box<dyn Fn(&SignedBlockHeader, ReceiptCommitment) -> anyhow::Result<BlockHash>>;
+    pub type TransactionCommitmentFn =
+        Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>;
+    pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
+    pub type EventCommitmentFn = Box<
+        dyn Fn(&[(TransactionHash, &[Event])], StarknetVersion) -> anyhow::Result<EventCommitment>,
+    >;
+
     pub struct Config {
-        calculate_block_hash:
-            Box<dyn Fn(&SignedBlockHeader, ReceiptCommitment) -> anyhow::Result<BlockHash>>,
-        calculate_transaction_commitment:
-            Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>,
-        calculate_receipt_commitment: Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>,
-        calculate_event_commitment: Box<
-            dyn Fn(
-                &[(TransactionHash, &[Event])],
-                StarknetVersion,
-            ) -> anyhow::Result<EventCommitment>,
-        >,
+        calculate_block_hash: BlockHashFn,
+        calculate_transaction_commitment: TransactionCommitmentFn,
+        calculate_receipt_commitment: ReceiptCommitmentFn,
+        calculate_event_commitment: EventCommitmentFn,
     }
 
     impl Config {
@@ -315,19 +317,18 @@ pub mod init {
             let num_sierra_classes = rng.gen_range(0..=10);
 
             let cairo_defs = (0..num_cairo_classes)
-                .into_iter()
                 .map(|_| {
-                    let def =
-                        serde_json::to_vec(&Faker.fake_with_rng::<class_definition::Cairo, _>(rng))
-                            .unwrap();
+                    let def = serde_json::to_vec(
+                        &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
+                    )
+                    .unwrap();
                     (compute_class_hash(&def).unwrap().hash(), def)
                 })
                 .collect::<Vec<_>>();
             let sierra_defs = (0..num_sierra_classes)
-                .into_iter()
                 .map(|_| {
                     let def = serde_json::to_vec(
-                        &Faker.fake_with_rng::<class_definition::Sierra, _>(rng),
+                        &Faker.fake_with_rng::<class_definition::Sierra<'_>, _>(rng),
                     )
                     .unwrap();
                     (
@@ -495,7 +496,7 @@ pub mod init {
                     .filter_map(|(_, update)| match &mut update.class {
                         Some(ContractClassUpdate::Deploy(class_hash)) => {
                             let def = serde_json::to_vec(
-                                &Faker.fake_with_rng::<class_definition::Cairo, _>(rng),
+                                &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
                             )
                             .unwrap();
                             let new_hash = compute_class_hash(&def).unwrap().hash();
@@ -528,7 +529,7 @@ pub mod init {
             header.header.parent_hash = BlockHash::ZERO;
 
             header.header.hash =
-                (config.calculate_block_hash)(&header, *receipt_commitment).unwrap();
+                (config.calculate_block_hash)(header, *receipt_commitment).unwrap();
 
             state_update.block_hash = header.header.hash;
 
@@ -547,7 +548,7 @@ pub mod init {
                 header.header.parent_hash = parent_hash;
 
                 header.header.hash =
-                    (config.calculate_block_hash)(&header, *receipt_commitment).unwrap();
+                    (config.calculate_block_hash)(header, *receipt_commitment).unwrap();
 
                 state_update.block_hash = header.header.hash;
             }
