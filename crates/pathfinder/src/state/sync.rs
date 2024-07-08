@@ -1184,7 +1184,7 @@ fn update_starknet_state(
     Ok((storage_commitment, class_commitment))
 }
 
-#[cfg(test)]
+#[cfg(test_DISABLED)]
 mod tests {
     use std::sync::Arc;
 

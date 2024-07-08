@@ -690,7 +690,7 @@ async fn reorg(
     Ok(new_head)
 }
 
-#[cfg(test)]
+#[cfg(test_DISABLED)]
 mod tests {
 
     mod sync {

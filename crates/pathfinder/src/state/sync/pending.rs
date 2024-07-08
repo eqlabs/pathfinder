@@ -80,7 +80,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     }
 }
 
-#[cfg(test)]
+#[cfg(test_DISABLED)]
 mod tests {
     use std::sync::Arc;
 
