@@ -101,16 +101,17 @@ impl Transaction<'_> {
             RootIndexUpdate::TrieEmpty => None,
         };
 
+        self.inner().execute(
+            "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
+            params![&block_number, &new_root_index],
+        )?;
+
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
                 self.delete_class_roots(block_number)?;
             }
         }
 
-        self.inner().execute(
-            "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &new_root_index],
-        )?;
         Ok(())
     }
 
@@ -143,17 +144,17 @@ impl Transaction<'_> {
         contract: ContractAddress,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<()> {
-        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
-            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
-                self.delete_contract_state_hashes(contract, block_number)?;
-            }
-        }
-
         self.inner().execute(
             "INSERT OR REPLACE INTO contract_state_hashes(block_number, contract_address, \
              state_hash) VALUES(?,?,?)",
             params![&block_number, &contract, &state_hash],
         )?;
+
+        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
+            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
+                self.delete_contract_state_hashes(contract, block_number)?;
+            }
+        }
 
         Ok(())
     }
@@ -211,16 +212,16 @@ impl Transaction<'_> {
             RootIndexUpdate::Updated(idx) => Some(idx),
             RootIndexUpdate::TrieEmpty => None,
         };
+        self.inner().execute(
+            "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
+            params![&block_number, &new_root_index],
+        )?;
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
                 self.delete_storage_roots(block_number)?;
             }
         }
-        self.inner().execute(
-            "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &new_root_index],
-        )?;
 
         Ok(())
     }
@@ -258,6 +259,11 @@ impl Transaction<'_> {
             RootIndexUpdate::Updated(idx) => Some(idx),
             RootIndexUpdate::TrieEmpty => None,
         };
+        self.inner().execute(
+            "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) \
+             VALUES(?, ?, ?)",
+            params![&block_number, &contract, &new_root_index],
+        )?;
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
@@ -265,11 +271,33 @@ impl Transaction<'_> {
             }
         }
 
-        self.inner().execute(
-            "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) \
-             VALUES(?, ?, ?)",
-            params![&block_number, &contract, &new_root_index],
+        Ok(())
+    }
+
+    fn delete_contract_roots(
+        &self,
+        contract: ContractAddress,
+        before_block: BlockNumber,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT block_number
+            FROM contract_roots
+            WHERE contract_address = ? AND block_number <= ?
+            ORDER BY block_number DESC
+            LIMIT 1",
         )?;
+        let last_block_with_root_index = stmt
+            .query_row(params![&contract, &before_block], |row| {
+                row.get_block_number(0)
+            })
+            .optional()?;
+
+        if let Some(last_block_with_root_index) = last_block_with_root_index {
+            let mut stmt = self.inner().prepare_cached(
+                "DELETE FROM contract_roots WHERE contract_address = ? AND block_number < ?",
+            )?;
+            stmt.execute(params![&contract, &last_block_with_root_index])?;
+        }
 
         Ok(())
     }
@@ -342,34 +370,6 @@ impl Transaction<'_> {
         self.coalesce_removed_trie_nodes(target_block, "trie_contracts")?;
         self.coalesce_removed_trie_nodes(target_block, "trie_storage")?;
         self.coalesce_removed_trie_nodes(target_block, "trie_class")
-    }
-
-    fn delete_contract_roots(
-        &self,
-        contract: ContractAddress,
-        before_block: BlockNumber,
-    ) -> anyhow::Result<()> {
-        let mut stmt = self.inner().prepare_cached(
-            "SELECT block_number
-            FROM contract_roots
-            WHERE contract_address = ? AND block_number <= ?
-            ORDER BY block_number DESC
-            LIMIT 1",
-        )?;
-        let last_block_with_root_index = stmt
-            .query_row(params![&contract, &before_block], |row| {
-                row.get_block_number(0)
-            })
-            .optional()?;
-
-        if let Some(last_block_with_root_index) = last_block_with_root_index {
-            let mut stmt = self.inner().prepare_cached(
-                "DELETE FROM contract_roots WHERE contract_address = ? AND block_number < ?",
-            )?;
-            stmt.execute(params![&contract, &last_block_with_root_index])?;
-        }
-
-        Ok(())
     }
 
     /// Mark the input nodes as ready for removal.
