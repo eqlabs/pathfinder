@@ -754,11 +754,7 @@ fn calculate_event_hash(event: &Event, transaction_hash: TransactionHash) -> Fel
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::receipt::{
-        ExecutionDataAvailability,
-        ExecutionResources,
-        L2ToL1Message,
-    };
+    use pathfinder_common::receipt::{ExecutionResources, L1Gas, L2ToL1Message};
     use pathfinder_common::transaction::{
         EntryPointType,
         InvokeTransactionV0,
@@ -1040,7 +1036,7 @@ mod tests {
                 },
             ],
             execution_resources: ExecutionResources {
-                data_availability: ExecutionDataAvailability {
+                data_availability: L1Gas {
                     l1_gas: 16580,
                     l1_data_gas: 32,
                 },

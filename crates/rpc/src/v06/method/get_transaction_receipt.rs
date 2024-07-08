@@ -873,7 +873,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: Default::default(),
+                            ..Default::default()
                         }
                         .into(),
                     }
@@ -924,7 +924,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: Default::default(),
+                            ..Default::default()
                         }
                         .into(),
                     }
@@ -950,7 +950,7 @@ mod tests {
             },
             n_steps: 9,
             n_memory_holes: 10,
-            data_availability: Default::default(),
+            ..Default::default()
         };
 
         let into = ExecutionResourcesProperties::from(original.clone());

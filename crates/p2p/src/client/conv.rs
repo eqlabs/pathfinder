@@ -29,9 +29,9 @@ use pathfinder_common::class_definition::{
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::{
     BuiltinCounters,
-    ExecutionDataAvailability,
     ExecutionResources,
     ExecutionStatus,
+    L1Gas,
     L2ToL1Message,
     Receipt,
 };
@@ -665,9 +665,14 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client:
                     },
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
-                    data_availability: ExecutionDataAvailability {
+                    data_availability: L1Gas {
                         l1_gas: GasPrice::try_from(common.execution_resources.l1_gas)?.0,
                         l1_data_gas: GasPrice::try_from(common.execution_resources.l1_data_gas)?.0,
+                    },
+                    // TODO
+                    total_gas_consumed: L1Gas {
+                        l1_gas: 0,
+                        l1_data_gas: 0,
                     },
                 },
                 l2_to_l1_messages: common

@@ -504,7 +504,7 @@ pub mod test_utils {
                 },
                 n_memory_holes: 5,
                 n_steps: 10,
-                data_availability: Default::default(),
+                ..Default::default()
             },
             transaction_hash: txn0.hash,
             ..Default::default()

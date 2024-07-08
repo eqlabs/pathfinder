@@ -42,11 +42,12 @@ pub struct ExecutionResources {
     pub builtins: BuiltinCounters,
     pub n_steps: u64,
     pub n_memory_holes: u64,
-    pub data_availability: ExecutionDataAvailability,
+    pub data_availability: L1Gas,
+    pub total_gas_consumed: L1Gas,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
-pub struct ExecutionDataAvailability {
+pub struct L1Gas {
     pub l1_gas: u128,
     pub l1_data_gas: u128,
 }
@@ -100,6 +101,8 @@ impl<T> Dummy<T> for ExecutionResources {
             n_steps: rng.next_u32() as u64,
             n_memory_holes: rng.next_u32() as u64,
             data_availability: Faker.fake_with_rng(rng),
+            // TODO fix this after total_gas_consumed is added to p2p messages
+            total_gas_consumed: Default::default(),
         }
     }
 }

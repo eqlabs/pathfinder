@@ -784,12 +784,13 @@ pub(crate) mod dto {
         pub builtins: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
-        pub data_availability: ExecutionDataAvailability,
+        pub data_availability: L1Gas,
+        pub total_gas_consumed: L1Gas,
     }
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct ExecutionDataAvailability {
+    pub struct L1Gas {
         // TODO make these mandatory once some new release makes resyncing necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
@@ -805,12 +806,20 @@ pub(crate) mod dto {
                     value.data_availability.l1_gas,
                     value.data_availability.l1_data_gas,
                 ) {
-                    (Some(l1_gas), Some(l1_data_gas)) => {
-                        pathfinder_common::receipt::ExecutionDataAvailability {
-                            l1_gas,
-                            l1_data_gas,
-                        }
-                    }
+                    (Some(l1_gas), Some(l1_data_gas)) => pathfinder_common::receipt::L1Gas {
+                        l1_gas,
+                        l1_data_gas,
+                    },
+                    _ => Default::default(),
+                },
+                total_gas_consumed: match (
+                    value.total_gas_consumed.l1_gas,
+                    value.total_gas_consumed.l1_data_gas,
+                ) {
+                    (Some(l1_gas), Some(l1_data_gas)) => pathfinder_common::receipt::L1Gas {
+                        l1_gas,
+                        l1_data_gas,
+                    },
                     _ => Default::default(),
                 },
             }
@@ -823,9 +832,13 @@ pub(crate) mod dto {
                 builtins: (&value.builtins).into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                data_availability: ExecutionDataAvailability {
+                data_availability: L1Gas {
                     l1_gas: Some(value.data_availability.l1_gas),
                     l1_data_gas: Some(value.data_availability.l1_data_gas),
+                },
+                total_gas_consumed: L1Gas {
+                    l1_gas: Some(value.total_gas_consumed.l1_gas),
+                    l1_data_gas: Some(value.total_gas_consumed.l1_data_gas),
                 },
             }
         }
@@ -843,10 +856,12 @@ pub(crate) mod dto {
                 builtins: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                data_availability: ExecutionDataAvailability {
+                data_availability: L1Gas {
                     l1_gas,
                     l1_data_gas,
                 },
+                // TODO fix this after total_gas_consumed is added to p2p messages
+                total_gas_consumed: Default::default(),
             }
         }
     }
