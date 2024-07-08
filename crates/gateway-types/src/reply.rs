@@ -9,6 +9,7 @@ use pathfinder_common::{
     EthereumAddress,
     EventCommitment,
     GasPrice,
+    ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
     StateCommitment,
@@ -56,6 +57,14 @@ pub struct Block {
     pub transaction_commitment: TransactionCommitment,
     pub event_commitment: EventCommitment,
     pub l1_da_mode: L1DataAvailabilityMode,
+
+    // Introduced in v0.13.2, older blocks don't have these fields.
+    #[serde(default)]
+    pub receipt_commitment: ReceiptCommitment,
+    #[serde(default)]
+    pub state_diff_commitment: StateDiffCommitment,
+    #[serde(default)]
+    pub state_diff_length: u64,
 }
 
 #[serde_as]
@@ -81,7 +90,19 @@ pub struct PendingBlock {
     #[serde(default)]
     #[serde_as(as = "DisplayFromStr")]
     pub starknet_version: StarknetVersion,
+
+    // Introduced in v0.13.1
+    pub transaction_commitment: TransactionCommitment,
+    pub event_commitment: EventCommitment,
     pub l1_da_mode: L1DataAvailabilityMode,
+
+    // Introduced in v0.13.2, older blocks don't have these fields.
+    #[serde(default)]
+    pub receipt_commitment: ReceiptCommitment,
+    #[serde(default)]
+    pub state_diff_commitment: StateDiffCommitment,
+    #[serde(default)]
+    pub state_diff_length: u64,
 }
 
 #[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, serde::Serialize)]
@@ -2194,7 +2215,24 @@ pub mod add_transaction {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-pub struct BlockSignature {
+#[serde(untagged)]
+pub enum BlockSignature {
+    /// Starknet <=0.13.1.1
+    // TODO V0 does not say much, is V_0_13_1_1 a better name?
+    V0(BlockSignatureV0),
+    /// Starknet >= 0.13.2
+    // TODO V1 does not say much, is V_0_13_2 a better name?
+    V1(BlockSignatureV1),
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
+pub struct BlockSignatureV1 {
+    pub block_hash: BlockHash,
+    pub signature: [BlockCommitmentSignatureElem; 2],
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
+pub struct BlockSignatureV0 {
     pub block_number: BlockNumber,
     pub signature: [BlockCommitmentSignatureElem; 2],
     pub signature_input: BlockSignatureInput,
@@ -2206,20 +2244,27 @@ pub struct BlockSignatureInput {
     pub state_diff_commitment: StateDiffCommitment,
 }
 
-impl From<BlockSignature>
-    for (
-        pathfinder_common::BlockCommitmentSignature,
-        StateDiffCommitment,
-    )
-{
-    fn from(value: BlockSignature) -> Self {
-        (
-            pathfinder_common::BlockCommitmentSignature {
-                r: value.signature[0],
-                s: value.signature[1],
-            },
-            value.signature_input.state_diff_commitment,
-        )
+impl BlockSignature {
+    pub fn block_hash(&self) -> BlockHash {
+        match self {
+            BlockSignature::V0(v0) => v0.signature_input.block_hash,
+            BlockSignature::V1(v1) => v1.block_hash,
+        }
+    }
+
+    pub fn signature(&self) -> pathfinder_common::BlockCommitmentSignature {
+        let s = match self {
+            BlockSignature::V0(v0) => v0.signature,
+            BlockSignature::V1(v1) => v1.signature,
+        };
+        pathfinder_common::BlockCommitmentSignature { r: s[0], s: s[1] }
+    }
+
+    pub fn state_diff_commitment(&self) -> Option<StateDiffCommitment> {
+        match self {
+            BlockSignature::V0(v0) => Some(v0.signature_input.state_diff_commitment),
+            BlockSignature::V1(_) => None,
+        }
     }
 }
 
@@ -2401,13 +2446,19 @@ mod tests {
             StarknetVersion,
         };
 
-        use super::super::{BlockSignature, BlockSignatureInput, StateUpdate};
+        use super::super::{
+            BlockSignature,
+            BlockSignatureInput,
+            BlockSignatureV0,
+            BlockSignatureV1,
+            StateUpdate,
+        };
 
         #[test]
-        fn parse() {
+        fn parse_pre_starknet_0_13_2() {
             let json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
 
-            let expected = BlockSignature {
+            let expected = BlockSignature::V0(BlockSignatureV0 {
                 block_number: BlockNumber::new_or_panic(350000),
                 signature: [
                     block_commitment_signature_elem!(
@@ -2425,7 +2476,31 @@ mod tests {
                         "0x432e8e2ad833548e1c1077fc298991b055ba1e6f7a17dd332db98f4f428c56c"
                     ),
                 },
-            };
+            });
+
+            let signature: BlockSignature = serde_json::from_str(json).unwrap();
+
+            assert_eq!(signature, expected);
+        }
+
+        #[test]
+        fn parse_starknet_0_13_2() {
+            let json =
+                starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35760;
+
+            let expected = BlockSignature::V1(BlockSignatureV1 {
+                block_hash: block_hash!(
+                    "0x4d123700f14f449cc3035b39893b39c56a90c430c46b0e65149d47307eb3130"
+                ),
+                signature: [
+                    block_commitment_signature_elem!(
+                        "0x4352e2f351f4d531fdba8e393ca8d7fe2509aa6040c5389ba369dd811d676a4"
+                    ),
+                    block_commitment_signature_elem!(
+                        "0x1f3def721bd5c062a6316928f98597b67250a1d61370ebe9fd65e4d33e33bf9"
+                    ),
+                ],
+            });
 
             let signature: BlockSignature = serde_json::from_str(json).unwrap();
 
@@ -2445,7 +2520,7 @@ mod tests {
 
             assert_eq!(
                 state_update.compute_state_diff_commitment(StarknetVersion::new(0, 12, 2, 0)),
-                signature.signature_input.state_diff_commitment
+                signature.state_diff_commitment().unwrap()
             )
         }
     }

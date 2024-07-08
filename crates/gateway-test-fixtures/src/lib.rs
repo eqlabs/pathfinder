@@ -59,6 +59,13 @@ pub mod v0_13_1 {
     }
 }
 
+pub mod v0_13_2 {
+    pub mod signature {
+        pub const SEPOLIA_INTEGRATION_35760: &str =
+            str_fixture!("0.13.2/signature/sepolia_integration_35760.json");
+    }
+}
+
 pub mod add_transaction {
     pub const INVOKE_CONTRACT_WITH_SIGNATURE: &str =
         str_fixture!("add-transaction/invoke-contract-with-signature.json");
