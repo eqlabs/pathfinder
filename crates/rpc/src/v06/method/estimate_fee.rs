@@ -300,7 +300,15 @@ pub(crate) mod tests {
     mod in_memory {
         use assert_matches::assert_matches;
         use pathfinder_common::macro_prelude::*;
-        use pathfinder_common::{felt, BlockHeader, BlockTimestamp, EntryPoint, StateUpdate, Tip};
+        use pathfinder_common::{
+            felt,
+            BlockHeader,
+            BlockTimestamp,
+            EntryPoint,
+            StarknetVersion,
+            StateUpdate,
+            Tip,
+        };
         use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode, PendingBlock};
 
         use super::*;
@@ -529,12 +537,19 @@ pub(crate) mod tests {
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
                     l1_da_mode: L1DataAvailabilityMode::Calldata,
+                    transaction_commitment: last_block_header.transaction_commitment,
+                    event_commitment: last_block_header.event_commitment,
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: state_update
+                        .compute_state_diff_commitment(StarknetVersion::new(0, 13, 2, 0)),
+                    state_diff_length: state_update.state_diff_length(),
                 }
                 .into(),
                 state_update: state_update.into(),
                 number: last_block_header.number + 1,
             }
         }
+
         #[test_log::test(tokio::test)]
         async fn nonce_updated_in_pending() {
             let (context, last_block_header, account_contract_address, _universal_deployer_address) =

@@ -708,25 +708,6 @@ pub mod test_utils {
         let transactions = transactions.into_iter().map(Into::into).collect();
         let transaction_receipts = transaction_receipts.into_iter().map(Into::into).collect();
 
-        let block = starknet_gateway_types::reply::PendingBlock {
-            l1_gas_price: GasPrices {
-                price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
-                price_in_fri: GasPrice::from_be_slice(b"strk gas price").unwrap(),
-            },
-            l1_data_gas_price: GasPrices {
-                price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
-                price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
-            },
-            parent_hash: latest.hash,
-            sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
-            status: starknet_gateway_types::reply::Status::Pending,
-            timestamp: BlockTimestamp::new_or_panic(1234567),
-            transaction_receipts,
-            transactions,
-            starknet_version: StarknetVersion::new(0, 11, 0, 0),
-            l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata,
-        };
-
         let contract1 = contract_address_bytes!(b"pending contract 1 address");
         let state_update = StateUpdate::default()
             .with_parent_state_commitment(latest.state_commitment)
@@ -756,6 +737,30 @@ pub mod test_utils {
                 contract_address_bytes!(b"contract 1"),
                 contract_nonce_bytes!(b"pending nonce"),
             );
+
+        let block = starknet_gateway_types::reply::PendingBlock {
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk gas price").unwrap(),
+            },
+            l1_data_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
+            },
+            parent_hash: latest.hash,
+            sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
+            status: starknet_gateway_types::reply::Status::Pending,
+            timestamp: BlockTimestamp::new_or_panic(1234567),
+            transaction_receipts,
+            transactions,
+            starknet_version: StarknetVersion::new(0, 11, 0, 0),
+            l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata,
+            transaction_commitment: transaction_commitment_bytes!(b"pending tx commitment"),
+            event_commitment: event_commitment_bytes!(b"pending event commitment"),
+            receipt_commitment: receipt_commitment_bytes!(b"pending receipt commitment"),
+            state_diff_commitment: state_diff_commitment_bytes!(b"pending state diff commitment"),
+            state_diff_length: state_update.state_diff_length(),
+        };
 
         // The class definitions must be inserted into the database.
         let state_update_copy = state_update.clone();

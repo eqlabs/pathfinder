@@ -13,7 +13,6 @@ use pathfinder_common::{
     EventCommitment,
     PublicKey,
     StateCommitment,
-    StateDiffCommitment,
     StateUpdate,
     TransactionCommitment,
 };
@@ -249,26 +248,65 @@ where
 
         // An extra sanity check for the signature API.
         anyhow::ensure!(
-            block.block_hash == signature.signature_input.block_hash,
+            block.block_hash == signature.block_hash(),
             "Signature block hash mismatch, actual {:x}, expected {:x}",
-            signature.signature_input.block_hash.0,
+            signature.block_hash().0,
             block.block_hash.0,
         );
-        let (signature, state_diff_commitment): (BlockCommitmentSignature, StateDiffCommitment) =
-            signature.into();
+
+        // Always compute the state diff commitment from the state update.
+        // If any of the feeder gateway replies (block or signature) contain a state
+        // diff commitment, check if the value matches. If it doesn't, just log the
+        // fact.
+        let version = block.starknet_version;
+        let (computed_state_diff_commitment, state_update) =
+            tokio::task::spawn_blocking(move || {
+                let commitment = state_update.compute_state_diff_commitment(version);
+                (commitment, state_update)
+            })
+            .await?;
+
+        let fgw_state_diff_commitment = match (
+            block.state_diff_commitment,
+            signature.state_diff_commitment(),
+        ) {
+            (Some(x), None) | (None, Some(x)) => Some(x),
+            // This should never happen, but if it does, we treat it as a sanity check for the API.
+            (Some(x), Some(y)) => {
+                anyhow::ensure!(
+                    x == y,
+                    "Conflicting feeder gateway responses: state diff commitment in block {:x} vs \
+                     in signature {:x}",
+                    y.0,
+                    x.0,
+                );
+                Some(x)
+            }
+            _ => None,
+        };
+
+        fgw_state_diff_commitment.map(|x| {
+            if x != computed_state_diff_commitment {
+                tracing::warn!(
+                    "State diff commitment mismatch: computed {:x}, feeder gateway {:x}",
+                    computed_state_diff_commitment.0,
+                    x.0
+                );
+            }
+        });
+
+        let signature = signature.signature();
 
         // Check block commitment signature
-        let version = block.starknet_version;
         let (signature, state_update) = match block_validation_mode {
             BlockValidationMode::Strict => {
                 let block_hash = block.block_hash;
                 let (verify_result, signature, state_update) = tokio::task::spawn_blocking(move || -> (Result<(), pathfinder_crypto::signature::SignatureError>, BlockCommitmentSignature, Box<StateUpdate>) {
-                    let state_diff_commitment = state_update.compute_state_diff_commitment(version);
                     let verify_result = signature
                         .verify(
                             sequencer_public_key,
                             block_hash,
-                            state_diff_commitment,
+                            computed_state_diff_commitment,
                         );
                     (verify_result, signature, state_update)
                 }).await?;
@@ -294,7 +332,7 @@ where
                 (block, commitments),
                 state_update,
                 Box::new(signature),
-                Box::new(state_diff_commitment),
+                Box::new(computed_state_diff_commitment),
                 timings,
             ))
             .await

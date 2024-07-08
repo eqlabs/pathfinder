@@ -87,6 +87,13 @@ impl PendingWatcher {
                     sequencer_address: latest.sequencer_address,
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    transaction_commitment: latest.transaction_commitment,
+                    event_commitment: latest.event_commitment,
+                    // TODO fix after receipt commitment is added to storage
+                    receipt_commitment: Default::default(),
+                    // TODO fix after state diff commitment is added to the header
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 }
                 .into(),
                 state_update: Default::default(),

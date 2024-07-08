@@ -60,11 +60,11 @@ pub struct Block {
 
     // Introduced in v0.13.2, older blocks don't have these fields.
     #[serde(default)]
-    pub receipt_commitment: ReceiptCommitment,
+    pub receipt_commitment: Option<ReceiptCommitment>,
     #[serde(default)]
-    pub state_diff_commitment: StateDiffCommitment,
+    pub state_diff_commitment: Option<StateDiffCommitment>,
     #[serde(default)]
-    pub state_diff_length: u64,
+    pub state_diff_length: Option<u64>,
 }
 
 #[serde_as]

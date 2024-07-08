@@ -567,6 +567,11 @@ pub(crate) mod tests {
                 transactions: transactions.iter().cloned().map(Into::into).collect(),
                 starknet_version: last_block_header.starknet_version,
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
+                transaction_commitment: last_block_header.transaction_commitment,
+                event_commitment: last_block_header.event_commitment,
+                receipt_commitment: Default::default(),
+                state_diff_commitment: Default::default(),
+                state_diff_length: Default::default(),
             };
 
             tx.commit()?;
