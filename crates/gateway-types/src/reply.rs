@@ -374,6 +374,9 @@ pub(crate) mod transaction {
         pub keccak_builtin: u64,
         pub poseidon_builtin: u64,
         pub segment_arena_builtin: u64, // TODO REMOVE (?)
+        pub add_mod_builtin: u64,
+        pub mul_mod_builtin: u64,
+        pub range_check96_builtin: u64,
     }
 
     impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {
@@ -389,6 +392,9 @@ pub(crate) mod transaction {
                 keccak_builtin,
                 poseidon_builtin,
                 segment_arena_builtin,
+                add_mod_builtin,
+                mul_mod_builtin,
+                range_check96_builtin,
             } = value;
             Self {
                 output: output_builtin,
@@ -400,6 +406,9 @@ pub(crate) mod transaction {
                 keccak: keccak_builtin,
                 poseidon: poseidon_builtin,
                 segment_arena: segment_arena_builtin,
+                add_mod: add_mod_builtin,
+                mul_mod: mul_mod_builtin,
+                range_check96: range_check96_builtin,
             }
         }
     }
@@ -417,6 +426,9 @@ pub(crate) mod transaction {
                 keccak: keccak_builtin,
                 poseidon: poseidon_builtin,
                 segment_arena: segment_arena_builtin,
+                add_mod: add_mod_builtin,
+                mul_mod: mul_mod_builtin,
+                range_check96: range_check96_builtin,
             } = value;
             Self {
                 output_builtin,
@@ -428,6 +440,9 @@ pub(crate) mod transaction {
                 keccak_builtin,
                 poseidon_builtin,
                 segment_arena_builtin,
+                add_mod_builtin,
+                mul_mod_builtin,
+                range_check96_builtin,
             }
         }
     }
@@ -444,6 +459,9 @@ pub(crate) mod transaction {
                 keccak_builtin: rng.next_u32() as u64,
                 poseidon_builtin: rng.next_u32() as u64,
                 segment_arena_builtin: 0, // Not used in p2p
+                add_mod_builtin: rng.next_u32() as u64,
+                mul_mod_builtin: rng.next_u32() as u64,
+                range_check96_builtin: rng.next_u32() as u64,
             }
         }
     }

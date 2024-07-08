@@ -21,14 +21,17 @@ message EthereumAddress {
 message Receipt {
   message ExecutionResources {
     message BuiltinCounter {
-      uint32 bitwise     = 1;
-      uint32 ecdsa       = 2;
-      uint32 ec_op       = 3;
-      uint32 pedersen    = 4;
-      uint32 range_check = 5;
-      uint32 poseidon    = 6;
-      uint32 keccak      = 7;
-      uint32 output      = 8;
+      uint32 bitwise       = 1;
+      uint32 ecdsa         = 2;
+      uint32 ec_op         = 3;
+      uint32 pedersen      = 4;
+      uint32 range_check   = 5;
+      uint32 poseidon      = 6;
+      uint32 keccak        = 7;
+      uint32 output        = 8;
+      uint32 add_mod       = 9;
+      uint32 mul_mod       = 10;
+      uint32 range_check96 = 11;
     }
 
     BuiltinCounter builtins = 1;

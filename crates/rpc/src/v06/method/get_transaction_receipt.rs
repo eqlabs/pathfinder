@@ -375,6 +375,7 @@ pub mod types {
                         keccak: keccak_builtin,
                         poseidon: poseidon_builtin,
                         segment_arena: segment_arena_builtin,
+                        ..
                     },
                 n_steps,
                 n_memory_holes,
@@ -945,6 +946,7 @@ mod tests {
                 keccak: 6,
                 poseidon: 7,
                 segment_arena: 8,
+                ..Default::default()
             },
             n_steps: 9,
             n_memory_holes: 10,

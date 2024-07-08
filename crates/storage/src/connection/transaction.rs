@@ -865,6 +865,9 @@ pub(crate) mod dto {
         pub keccak: u64,
         pub poseidon: u64,
         pub segment_arena: u64,
+        pub add_mod: u64,
+        pub mul_mod: u64,
+        pub range_check96: u64,
     }
 
     impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {
@@ -880,6 +883,9 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
             } = value;
             Self {
                 output,
@@ -891,6 +897,9 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
             }
         }
     }
@@ -908,6 +917,9 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
             } = value.clone();
             Self {
                 output,
@@ -919,6 +931,9 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
             }
         }
     }
@@ -935,6 +950,9 @@ pub(crate) mod dto {
                 keccak: rng.next_u32() as u64,
                 poseidon: rng.next_u32() as u64,
                 segment_arena: 0, // Not used in p2p
+                add_mod: rng.next_u32() as u64,
+                mul_mod: rng.next_u32() as u64,
+                range_check96: rng.next_u32() as u64,
             }
         }
     }

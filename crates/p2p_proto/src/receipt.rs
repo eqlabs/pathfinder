@@ -47,6 +47,9 @@ pub mod execution_resources {
         pub poseidon: u32,
         pub keccak: u32,
         pub output: u32,
+        pub add_mod: u32,
+        pub mul_mod: u32,
+        pub range_check96: u32,
     }
 }
 

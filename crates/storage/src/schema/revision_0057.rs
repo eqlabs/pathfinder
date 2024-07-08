@@ -506,6 +506,7 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..Default::default()
             }
         }
     }
@@ -523,6 +524,7 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..
             } = value.clone();
             Self {
                 output,

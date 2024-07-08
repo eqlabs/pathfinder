@@ -458,6 +458,7 @@ mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..Default::default()
             }
         }
     }
@@ -475,6 +476,7 @@ mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..
             } = value.clone();
             Self {
                 output,
@@ -1822,6 +1824,7 @@ pub(crate) mod old_dto {
                 keccak: keccak_builtin,
                 poseidon: poseidon_builtin,
                 segment_arena: segment_arena_builtin,
+                ..Default::default()
             }
         }
     }
@@ -1839,6 +1842,7 @@ pub(crate) mod old_dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..
             } = value.clone();
             Self {
                 output_builtin: output,
