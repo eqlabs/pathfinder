@@ -50,21 +50,7 @@ pub fn estimate(
         let tx_info: Result<
             blockifier::transaction::objects::TransactionExecutionInfo,
             blockifier::transaction::errors::TransactionExecutionError,
-        > = transaction
-            .execute(&mut state, &block_context, false, !skip_validate)
-            .and_then(|mut tx_info| {
-                if tx_info.actual_fee.0 == 0 {
-                    // fee is not calculated by default for L1 handler transactions and if max_fee
-                    // is zero, we have to do that explicitly
-                    tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
-                        &tx_info.actual_resources,
-                        &block_context,
-                        fee_type,
-                    )?;
-                }
-
-                Ok(tx_info)
-            });
+        > = transaction.execute(&mut state, &block_context, false, !skip_validate);
 
         match tx_info {
             Ok(tx_info) => {
@@ -76,7 +62,7 @@ pub fn estimate(
                     });
                 }
 
-                tracing::trace!(actual_fee=%tx_info.actual_fee.0, actual_resources=?tx_info.actual_resources, "Transaction estimation finished");
+                tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction estimation finished");
 
                 fees.push(FeeEstimate::from_tx_info_and_gas_price(
                     &tx_info,

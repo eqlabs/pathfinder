@@ -137,6 +137,11 @@
             "syscall_base_gas_cost": 1
         },
         "keccak_round_cost_gas_cost": 180000,
+        "sha256_process_block_gas_cost": {
+            "step_gas_cost": 0,
+            "range_check_gas_cost": 0,
+            "syscall_base_gas_cost": 0
+        },
         "error_block_number_out_of_range": "Block number out of range",
         "error_out_of_gas": "Out of gas",
         "error_invalid_input_len": "Invalid input length",
@@ -333,6 +338,11 @@
                 "n_memory_holes": 0,
                 "n_steps": 84
             },
+            "Sha256ProcessBlock": {
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0,
+                "n_steps": 0
+            },
             "StorageRead": {
                 "builtin_instance_counter": {},
                 "n_memory_holes": 0,
@@ -482,6 +492,10 @@
     },
     "validate_max_n_steps": 1000000,
     "vm_resource_fee_cost": {
+        "add_mod_builtin": [
+            0,
+            1
+        ],
         "bitwise_builtin": [
             32,
             100
@@ -497,6 +511,10 @@
         "keccak_builtin": [
             1024,
             100
+        ],
+        "mul_mod_builtin": [
+            0,
+            1
         ],
         "n_steps": [
             5,
@@ -517,6 +535,10 @@
         "range_check_builtin": [
             8,
             100
+        ],
+        "range_check96_builtin": [
+            0,
+            1
         ]
     }
 }

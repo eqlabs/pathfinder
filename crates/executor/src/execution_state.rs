@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use blockifier::blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
+use blockifier::bouncer::BouncerConfig;
 use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
 use blockifier::versioned_constants::VersionedConstants;
@@ -127,14 +128,18 @@ impl<'tx> ExecutionState<'tx> {
 
         let versioned_constants = versioned_constants::for_version(&self.header.starknet_version);
 
-        let block_context = pre_process_block(
+        pre_process_block(
             &mut cached_state,
             old_block_number_and_hash,
+            block_info.block_number,
+        )?;
+
+        let block_context = BlockContext::new(
             block_info,
             chain_info,
             versioned_constants.to_owned(),
-            false,
-        )?;
+            BouncerConfig::max(),
+        );
 
         Ok((cached_state, block_context))
     }

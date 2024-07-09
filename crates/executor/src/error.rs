@@ -130,7 +130,10 @@ mod tests {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
             let expected = format!(
                 "Contract constructor execution has failed:\n0: Error in the contract class \
-                 constructor (contract address: 0, class hash: 0, selector: UNKNOWN):\n{child}\n"
+                 constructor (contract address: \
+                 0x0000000000000000000000000000000000000000000000000000000000000000, class hash: \
+                 0x0000000000000000000000000000000000000000000000000000000000000000, selector: \
+                 UNKNOWN):\n{child}\n"
             );
 
             let err = BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(
@@ -155,7 +158,10 @@ mod tests {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
             let expected = format!(
                 "Contract constructor execution has failed:\n0: Error in the contract class \
-                 constructor (contract address: 0, class hash: 0, selector: UNKNOWN):\n{child}\n"
+                 constructor (contract address: \
+                 0x0000000000000000000000000000000000000000000000000000000000000000, class hash: \
+                 0x0000000000000000000000000000000000000000000000000000000000000000, selector: \
+                 UNKNOWN):\n{child}\n"
             );
 
             let err = BlockifierTransactionExecutionError::ContractConstructorExecutionFailed(
@@ -179,8 +185,10 @@ mod tests {
         fn validate_transaction_error() {
             let child = EntryPointExecutionError::RecursionDepthExceeded;
             let expected = format!(
-                "Transaction validation has failed:\n0: Error in the called contract (contract \
-                 address: 0, class hash: 0, selector: 0):\n{child}\n"
+                r"Transaction validation has failed:
+0: Error in the called contract (contract address: 0x0000000000000000000000000000000000000000000000000000000000000000, class hash: 0x0000000000000000000000000000000000000000000000000000000000000000, selector: 0x0000000000000000000000000000000000000000000000000000000000000000):
+{child}
+"
             );
 
             let err = BlockifierTransactionExecutionError::ValidateTransactionError {

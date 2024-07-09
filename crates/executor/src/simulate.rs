@@ -120,26 +120,12 @@ pub fn simulate(
         };
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = transaction
-            .execute(
-                &mut tx_state,
-                &block_context,
-                !skip_fee_charge,
-                !skip_validate,
-            )
-            .and_then(|mut tx_info| {
-                // skipping fee charge in .execute() means that the fee isn't calculated, do
-                // that explicitly some other cases, like having max_fee=0 also
-                // lead to not calculating fees
-                if tx_info.actual_fee.0 == 0 {
-                    tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
-                        &tx_info.actual_resources,
-                        &block_context,
-                        fee_type,
-                    )?
-                };
-                Ok(tx_info)
-            });
+        let tx_info = transaction.execute(
+            &mut tx_state,
+            &block_context,
+            !skip_fee_charge,
+            !skip_validate,
+        );
         let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class_hash)?;
         tx_state.commit();
 
@@ -149,7 +135,7 @@ pub fn simulate(
                     tracing::trace!(%revert_error, "Transaction reverted");
                 }
 
-                tracing::trace!(actual_fee=%tx_info.actual_fee.0, actual_resources=?tx_info.actual_resources, "Transaction simulation finished");
+                tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction simulation finished");
 
                 simulations.push(TransactionSimulation {
                     fee_estimation: FeeEstimate::from_tx_info_and_gas_price(
@@ -391,8 +377,8 @@ fn to_trace(
             .map(|i: &FunctionInvocation| i.computation_resources.clone())
             .unwrap_or_default();
     let data_availability = DataAvailabilityResources {
-        l1_gas: execution_info.da_gas.l1_gas,
-        l1_data_gas: execution_info.da_gas.l1_data_gas,
+        l1_gas: execution_info.transaction_receipt.da_gas.l1_gas,
+        l1_data_gas: execution_info.transaction_receipt.da_gas.l1_data_gas,
     };
     let execution_resources = ExecutionResources {
         computation_resources,
