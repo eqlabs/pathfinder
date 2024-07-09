@@ -90,19 +90,8 @@ pub struct PendingBlock {
     #[serde(default)]
     #[serde_as(as = "DisplayFromStr")]
     pub starknet_version: StarknetVersion,
-
     // Introduced in v0.13.1
-    pub transaction_commitment: TransactionCommitment,
-    pub event_commitment: EventCommitment,
     pub l1_da_mode: L1DataAvailabilityMode,
-
-    // Introduced in v0.13.2, older blocks don't have these fields.
-    #[serde(default)]
-    pub receipt_commitment: ReceiptCommitment,
-    #[serde(default)]
-    pub state_diff_commitment: StateDiffCommitment,
-    #[serde(default)]
-    pub state_diff_length: u64,
 }
 
 #[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, serde::Serialize)]
