@@ -1046,6 +1046,10 @@ mod tests {
             ],
             execution_resources: ExecutionResources {
                 data_availability: L1Gas {
+                    l1_gas: 0,
+                    l1_data_gas: 32,
+                },
+                total_gas_consumed: L1Gas {
                     l1_gas: 16580,
                     l1_data_gas: 32,
                 },
