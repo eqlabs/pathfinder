@@ -101,16 +101,17 @@ impl Transaction<'_> {
             RootIndexUpdate::TrieEmpty => None,
         };
 
+        self.inner().execute(
+            "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
+            params![&block_number, &new_root_index],
+        )?;
+
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
                 self.delete_class_roots(block_number)?;
             }
         }
 
-        self.inner().execute(
-            "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &new_root_index],
-        )?;
         Ok(())
     }
 
@@ -143,17 +144,17 @@ impl Transaction<'_> {
         contract: ContractAddress,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<()> {
-        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
-            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
-                self.delete_contract_state_hashes(contract, block_number)?;
-            }
-        }
-
         self.inner().execute(
             "INSERT OR REPLACE INTO contract_state_hashes(block_number, contract_address, \
              state_hash) VALUES(?,?,?)",
             params![&block_number, &contract, &state_hash],
         )?;
+
+        if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
+            if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
+                self.delete_contract_state_hashes(contract, block_number)?;
+            }
+        }
 
         Ok(())
     }
@@ -211,16 +212,16 @@ impl Transaction<'_> {
             RootIndexUpdate::Updated(idx) => Some(idx),
             RootIndexUpdate::TrieEmpty => None,
         };
+        self.inner().execute(
+            "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
+            params![&block_number, &new_root_index],
+        )?;
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
                 self.delete_storage_roots(block_number)?;
             }
         }
-        self.inner().execute(
-            "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &new_root_index],
-        )?;
 
         Ok(())
     }
@@ -258,6 +259,11 @@ impl Transaction<'_> {
             RootIndexUpdate::Updated(idx) => Some(idx),
             RootIndexUpdate::TrieEmpty => None,
         };
+        self.inner().execute(
+            "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) \
+             VALUES(?, ?, ?)",
+            params![&block_number, &contract, &new_root_index],
+        )?;
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
             if let Some(block_number) = block_number.checked_sub(num_blocks_kept) {
@@ -265,11 +271,33 @@ impl Transaction<'_> {
             }
         }
 
-        self.inner().execute(
-            "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) \
-             VALUES(?, ?, ?)",
-            params![&block_number, &contract, &new_root_index],
+        Ok(())
+    }
+
+    fn delete_contract_roots(
+        &self,
+        contract: ContractAddress,
+        before_block: BlockNumber,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached(
+            "SELECT block_number
+            FROM contract_roots
+            WHERE contract_address = ? AND block_number <= ?
+            ORDER BY block_number DESC
+            LIMIT 1",
         )?;
+        let last_block_with_root_index = stmt
+            .query_row(params![&contract, &before_block], |row| {
+                row.get_block_number(0)
+            })
+            .optional()?;
+
+        if let Some(last_block_with_root_index) = last_block_with_root_index {
+            let mut stmt = self.inner().prepare_cached(
+                "DELETE FROM contract_roots WHERE contract_address = ? AND block_number < ?",
+            )?;
+            stmt.execute(params![&contract, &last_block_with_root_index])?;
+        }
 
         Ok(())
     }
@@ -342,34 +370,6 @@ impl Transaction<'_> {
         self.coalesce_removed_trie_nodes(target_block, "trie_contracts")?;
         self.coalesce_removed_trie_nodes(target_block, "trie_storage")?;
         self.coalesce_removed_trie_nodes(target_block, "trie_class")
-    }
-
-    fn delete_contract_roots(
-        &self,
-        contract: ContractAddress,
-        before_block: BlockNumber,
-    ) -> anyhow::Result<()> {
-        let mut stmt = self.inner().prepare_cached(
-            "SELECT block_number
-            FROM contract_roots
-            WHERE contract_address = ? AND block_number <= ?
-            ORDER BY block_number DESC
-            LIMIT 1",
-        )?;
-        let last_block_with_root_index = stmt
-            .query_row(params![&contract, &before_block], |row| {
-                row.get_block_number(0)
-            })
-            .optional()?;
-
-        if let Some(last_block_with_root_index) = last_block_with_root_index {
-            let mut stmt = self.inner().prepare_cached(
-                "DELETE FROM contract_roots WHERE contract_address = ? AND block_number < ?",
-            )?;
-            stmt.execute(params![&contract, &last_block_with_root_index])?;
-        }
-
-        Ok(())
     }
 
     /// Mark the input nodes as ready for removal.
@@ -1435,7 +1435,7 @@ mod tests {
     }
 
     #[test]
-    fn trie_root_updates() {
+    fn class_trie_root_updates() {
         let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
             num_blocks_kept: 0,
         })
@@ -1465,5 +1465,249 @@ mod tests {
             )
             .unwrap();
         assert_eq!(root_update, RootIndexUpdate::Updated(1));
+    }
+
+    #[test]
+    fn class_root_insert_should_prune_old_roots() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 1,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+            .unwrap();
+        tx.insert_class_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
+            .unwrap();
+        // no root inserted for block 2
+        tx.insert_class_root(BlockNumber::new_or_panic(3), RootIndexUpdate::Updated(3))
+            .unwrap();
+
+        assert!(!tx.class_root_exists(BlockNumber::GENESIS).unwrap());
+        // root at block 1 cannot be deleted because it is still required for
+        // reconstructing state at block 2
+        assert!(tx.class_root_exists(BlockNumber::new_or_panic(1)).unwrap());
+        assert!(tx.class_root_exists(BlockNumber::new_or_panic(3)).unwrap());
+    }
+
+    #[test]
+    fn class_root_insert_should_prune_old_roots_in_no_history_mode() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 0,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+            .unwrap();
+        tx.insert_class_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
+            .unwrap();
+
+        assert!(!tx.class_root_exists(BlockNumber::GENESIS).unwrap());
+        assert!(tx.class_root_exists(BlockNumber::new_or_panic(1)).unwrap());
+    }
+
+    #[test]
+    fn contract_state_hash_insert_should_prune_old_state_hashes() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 1,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        let contract = contract_address!("0xdeadbeef");
+        tx.insert_contract_state_hash(BlockNumber::GENESIS, contract, contract_state_hash!("0x01"))
+            .unwrap();
+        tx.insert_contract_state_hash(
+            BlockNumber::new_or_panic(1),
+            contract,
+            contract_state_hash!("0x02"),
+        )
+        .unwrap();
+        // no new state hash for block 2
+        tx.insert_contract_state_hash(
+            BlockNumber::new_or_panic(3),
+            contract,
+            contract_state_hash!("0x03"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            tx.contract_state_hash(BlockNumber::GENESIS, contract)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            tx.contract_state_hash(BlockNumber::new_or_panic(2), contract)
+                .unwrap(),
+            Some(contract_state_hash!("0x02"))
+        );
+        assert_eq!(
+            tx.contract_state_hash(BlockNumber::new_or_panic(3), contract)
+                .unwrap(),
+            Some(contract_state_hash!("0x03"))
+        );
+    }
+
+    #[test]
+    fn contract_state_hash_insert_should_prune_all_old_state_in_no_history_mode() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 0,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        let contract = contract_address!("0xdeadbeef");
+        tx.insert_contract_state_hash(BlockNumber::GENESIS, contract, contract_state_hash!("0x01"))
+            .unwrap();
+        tx.insert_contract_state_hash(
+            BlockNumber::new_or_panic(1),
+            contract,
+            contract_state_hash!("0x02"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            tx.contract_state_hash(BlockNumber::GENESIS, contract)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            tx.contract_state_hash(BlockNumber::new_or_panic(1), contract)
+                .unwrap(),
+            Some(contract_state_hash!("0x02"))
+        );
+    }
+
+    #[test]
+    fn storage_root_insert_should_prune_old_roots() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 1,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+            .unwrap();
+        tx.insert_storage_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
+            .unwrap();
+        // no new root index for block 2
+        tx.insert_storage_root(BlockNumber::new_or_panic(3), RootIndexUpdate::Updated(3))
+            .unwrap();
+
+        assert!(!tx.storage_root_exists(BlockNumber::GENESIS).unwrap());
+        assert!(tx
+            .storage_root_exists(BlockNumber::new_or_panic(1))
+            .unwrap());
+        assert!(tx
+            .storage_root_exists(BlockNumber::new_or_panic(3))
+            .unwrap());
+    }
+
+    #[test]
+    fn storage_root_insert_should_prune_all_old_roots_in_no_history_mode() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 0,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+            .unwrap();
+        tx.insert_storage_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
+            .unwrap();
+
+        assert!(!tx.storage_root_exists(BlockNumber::GENESIS).unwrap());
+        assert!(tx
+            .storage_root_exists(BlockNumber::new_or_panic(1))
+            .unwrap());
+    }
+
+    #[test]
+    fn contract_root_insert_should_prune_old_state_hashes() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 1,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        let contract = contract_address!("0xdeadbeef");
+        tx.insert_contract_root(BlockNumber::GENESIS, contract, RootIndexUpdate::Updated(1))
+            .unwrap();
+        tx.insert_contract_root(
+            BlockNumber::new_or_panic(1),
+            contract,
+            RootIndexUpdate::Updated(2),
+        )
+        .unwrap();
+        // no new root for block 2
+        tx.insert_contract_root(
+            BlockNumber::new_or_panic(3),
+            contract,
+            RootIndexUpdate::Updated(3),
+        )
+        .unwrap();
+
+        assert_eq!(
+            tx.contract_root_index(BlockNumber::GENESIS, contract)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            tx.contract_root_index(BlockNumber::new_or_panic(2), contract)
+                .unwrap(),
+            Some(2)
+        );
+        assert_eq!(
+            tx.contract_root_index(BlockNumber::new_or_panic(3), contract)
+                .unwrap(),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn contract_root_insert_should_prune_all_old_roots_in_no_history_mode() {
+        let mut db = crate::StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
+            num_blocks_kept: 0,
+        })
+        .unwrap()
+        .connection()
+        .unwrap();
+        let tx = db.transaction().unwrap();
+
+        let contract = contract_address!("0xdeadbeef");
+        tx.insert_contract_root(BlockNumber::GENESIS, contract, RootIndexUpdate::Updated(1))
+            .unwrap();
+        tx.insert_contract_root(
+            BlockNumber::new_or_panic(1),
+            contract,
+            RootIndexUpdate::Updated(2),
+        )
+        .unwrap();
+
+        assert_eq!(
+            tx.contract_root_index(BlockNumber::GENESIS, contract)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            tx.contract_root_index(BlockNumber::new_or_panic(1), contract)
+                .unwrap(),
+            Some(2)
+        );
     }
 }
