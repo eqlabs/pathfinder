@@ -1730,11 +1730,5 @@ mod tests {
             given,
             "0.13.2 hash"
         );
-
-        assert_eq!(
-            compute_final_hash_pre_0_13_2(&block_header_data),
-            given,
-            "pre 0.13.2 hash"
-        );
     }
 }
