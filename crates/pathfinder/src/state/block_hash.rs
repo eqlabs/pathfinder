@@ -18,6 +18,7 @@ use pathfinder_common::{
     L1DataAvailabilityMode,
     ReceiptCommitment,
     SequencerAddress,
+    SignedBlockHeader,
     StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
@@ -204,6 +205,42 @@ impl BlockHeaderData {
             l1_da_mode: block.l1_da_mode.into(),
         })
     }
+
+    pub fn from_signed_header(
+        sbh: &SignedBlockHeader,
+        receipt_commitment: ReceiptCommitment,
+    ) -> Self {
+        Self {
+            hash: sbh.header.hash,
+            parent_hash: sbh.header.parent_hash,
+            number: sbh.header.number,
+            timestamp: sbh.header.timestamp,
+            sequencer_address: sbh.header.sequencer_address,
+            state_commitment: sbh.header.state_commitment,
+            transaction_commitment: sbh.header.transaction_commitment,
+            transaction_count: sbh
+                .header
+                .transaction_count
+                .try_into()
+                .expect("ptr size is 64 bits"),
+            event_commitment: sbh.header.event_commitment,
+            event_count: sbh
+                .header
+                .event_count
+                .try_into()
+                .expect("ptr size is 64 bits"),
+            state_diff_commitment: sbh.state_diff_commitment,
+            state_diff_length: sbh.state_diff_length,
+            starknet_version: sbh.header.starknet_version,
+            starknet_version_str: sbh.header.starknet_version.to_string(),
+            eth_l1_gas_price: sbh.header.eth_l1_gas_price,
+            strk_l1_gas_price: sbh.header.strk_l1_gas_price,
+            eth_l1_data_gas_price: sbh.header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: sbh.header.strk_l1_data_gas_price,
+            receipt_commitment,
+            l1_da_mode: sbh.header.l1_da_mode,
+        }
+    }
 }
 
 pub fn verify_block_hash(
@@ -388,8 +425,8 @@ fn compute_final_hash_pre_0_13_2(header: &BlockHeaderData) -> BlockHash {
     BlockHash(chain.finalize())
 }
 
-fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
-    // Concatinate the transaction count, event count, state diff length, and L1
+pub(crate) fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
+    // Concatenate the transaction count, event count, state diff length, and L1
     // data availability mode into a single felt.
     let mut concat_counts = [0u8; 32];
     let mut writer = concat_counts.as_mut_slice();

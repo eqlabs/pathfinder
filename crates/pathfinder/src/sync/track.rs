@@ -1,14 +1,15 @@
 use std::collections::{HashMap, HashSet};
+use std::pin;
 
 use anyhow::{anyhow, Context};
 use futures::stream::BoxStream;
-use futures::{Stream, StreamExt, TryStreamExt};
-use p2p::client::peer_agnostic::{
-    self,
+use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
+use p2p::client::peer_agnostic::traits::{BlockClient, HeaderStream};
+use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::client::types::{
     BlockHeader as P2PBlockHeader,
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
-    Client as P2PClient,
     IncorrectStateDiffCount,
     SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
@@ -22,15 +23,21 @@ use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     BlockHash,
+    BlockHeader,
     BlockNumber,
     Chain,
     ChainId,
+    ClassCommitment,
     ClassHash,
     EventCommitment,
     PublicKey,
+    ReceiptCommitment,
+    SierraHash,
+    SignedBlockHeader,
     StarknetVersion,
     StateDiffCommitment,
     StateUpdate,
+    StorageCommitment,
     TransactionCommitment,
     TransactionHash,
 };
@@ -45,26 +52,26 @@ use crate::sync::error::SyncError2;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
 use crate::sync::{events, headers};
 
-pub struct Sync<L> {
+pub struct Sync<L, P> {
     latest: L,
-    p2p: P2PClient,
+    p2p: P,
     storage: Storage,
     chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
 }
 
-impl<L> Sync<L>
-where
-    L: Stream<Item = (BlockNumber, BlockHash)> + Clone + Send + 'static,
-{
+impl<L, P> Sync<L, P> {
     pub async fn run<SequencerClient: GatewayApi + Clone + Send + 'static>(
         self,
         next: BlockNumber,
         parent_hash: BlockHash,
-        chain_id: ChainId,
         fgw: SequencerClient,
-    ) -> Result<(), PeerData<SyncError2>> {
+    ) -> Result<(), PeerData<SyncError2>>
+    where
+        L: Stream<Item = (BlockNumber, BlockHash)> + Clone + Send + 'static,
+        P: BlockClient + Clone + HeaderStream + Send + 'static,
+    {
         let storage_connection = self
             .storage
             .connection()
@@ -99,7 +106,7 @@ where
             headers: transactions,
         }
         .spawn()
-        .pipe(transactions::CalculateHashes(chain_id), 10)
+        .pipe(transactions::CalculateHashes(self.chain_id), 10)
         .pipe(transactions::VerifyCommitment, 10);
 
         let TransactionsFanout {
@@ -114,6 +121,7 @@ where
         }
         .spawn()
         .pipe(events::VerifyCommitment, 10);
+
         let state_diff = StateDiffSource {
             p2p: self.p2p.clone(),
             headers: state_diff,
@@ -162,17 +170,18 @@ where
     }
 }
 
-struct HeaderSource<L> {
-    p2p: P2PClient,
+struct HeaderSource<L, P> {
+    p2p: P,
     latest_onchain: L,
     start: BlockNumber,
 }
 
-impl<L> HeaderSource<L>
-where
-    L: Stream<Item = (BlockNumber, BlockHash)> + Send + 'static,
-{
-    fn spawn(self) -> SyncReceiver<P2PSignedBlockHeader> {
+impl<L, P> HeaderSource<L, P> {
+    fn spawn(self) -> SyncReceiver<P2PSignedBlockHeader>
+    where
+        L: Stream<Item = (BlockNumber, BlockHash)> + Send + 'static,
+        P: Clone + HeaderStream + Send + 'static,
+    {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         let Self {
             p2p,
@@ -331,13 +340,16 @@ impl HeaderFanout {
     }
 }
 
-struct TransactionSource {
-    p2p: P2PClient,
+struct TransactionSource<P> {
+    p2p: P,
     headers: BoxStream<'static, P2PBlockHeader>,
 }
 
-impl TransactionSource {
-    fn spawn(self) -> SyncReceiver<(UnverifiedTransactionData, StarknetVersion)> {
+impl<P> TransactionSource<P> {
+    fn spawn(self) -> SyncReceiver<(UnverifiedTransactionData, StarknetVersion)>
+    where
+        P: Clone + BlockClient + Send + 'static,
+    {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
@@ -351,6 +363,8 @@ impl TransactionSource {
 
                 let transaction_count = header.transaction_count;
                 let mut transactions_vec = Vec::new();
+
+                pin_mut!(transactions);
 
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..transaction_count {
@@ -397,8 +411,8 @@ impl TransactionSource {
     }
 }
 
-struct EventSource {
-    p2p: P2PClient,
+struct EventSource<P> {
+    p2p: P,
     headers: BoxStream<'static, P2PBlockHeader>,
     transactions: BoxStream<'static, Vec<TransactionHash>>,
 }
@@ -410,8 +424,11 @@ type EventsWithCommitment = (
     StarknetVersion,
 );
 
-impl EventSource {
-    fn spawn(self) -> SyncReceiver<EventsWithCommitment> {
+impl<P> EventSource<P> {
+    fn spawn(self) -> SyncReceiver<EventsWithCommitment>
+    where
+        P: Clone + BlockClient + Send + 'static,
+    {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self {
@@ -426,6 +443,7 @@ impl EventSource {
                         break stream;
                     }
                 };
+
                 let Some(block_transactions) = transactions.next().await else {
                     let err =
                         PeerData::new(peer, SyncError2::Other(anyhow!("No transactions").into()));
@@ -435,6 +453,8 @@ impl EventSource {
 
                 let mut block_events: HashMap<_, Vec<Event>> = HashMap::new();
                 let event_count = header.event_count;
+
+                pin_mut!(events);
 
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..event_count {
@@ -476,13 +496,16 @@ impl EventSource {
     }
 }
 
-struct StateDiffSource {
-    p2p: P2PClient,
+struct StateDiffSource<P> {
+    p2p: P,
     headers: BoxStream<'static, P2PSignedBlockHeader>,
 }
 
-impl StateDiffSource {
-    fn spawn(self) -> SyncReceiver<(UnverifiedStateUpdateData, StarknetVersion)> {
+impl<P> StateDiffSource<P> {
+    fn spawn(self) -> SyncReceiver<(UnverifiedStateUpdateData, StarknetVersion)>
+    where
+        P: Clone + BlockClient + Send + 'static,
+    {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
@@ -527,14 +550,17 @@ impl StateDiffSource {
     }
 }
 
-struct ClassSource {
-    p2p: P2PClient,
+struct ClassSource<P> {
+    p2p: P,
     declarations: BoxStream<'static, DeclaredClasses>,
     start: BlockNumber,
 }
 
-impl ClassSource {
-    fn spawn(self) -> SyncReceiver<Vec<P2PClassDefinition>> {
+impl<P> ClassSource<P> {
+    fn spawn(self) -> SyncReceiver<Vec<P2PClassDefinition>>
+    where
+        P: Clone + BlockClient + Send + 'static,
+    {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let Self {
@@ -686,8 +712,14 @@ impl ProcessStage for StoreBlock {
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let BlockData {
-            header,
-            events,
+            header:
+                P2PSignedBlockHeader {
+                    header,
+                    signature,
+                    state_diff_commitment,
+                    state_diff_length,
+                },
+            mut events,
             state_diff,
             transactions,
             classes,
@@ -698,10 +730,339 @@ impl ProcessStage for StoreBlock {
             .transaction()
             .context("Creating database connection")?;
 
-        // TODO: write all the data to storage
+        let block_number = header.number;
+
+        let header = BlockHeader {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            sequencer_address: header.sequencer_address,
+            starknet_version: header.starknet_version,
+            class_commitment: ClassCommitment::ZERO, // TODO update class tries
+            event_commitment: header.event_commitment,
+            state_commitment: header.state_commitment,
+            storage_commitment: StorageCommitment::ZERO, // TODO update storage tries
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header.transaction_count,
+            event_count: header.event_count,
+            l1_da_mode: header.l1_da_mode,
+            // TODO receipt_commitment
+        };
+
+        db.insert_block_header(&header)
+            .context("Inserting block header")?;
+
+        db.insert_signature(block_number, &signature)
+            .context("Inserting signature")?;
+
+        db.update_state_diff_commitment_and_length(
+            block_number,
+            state_diff_commitment,
+            state_diff_length,
+        )
+        .context("Updating state diff commitment and length")?;
+
+        let mut ordered_events = Vec::new();
+        transactions.iter().for_each(|(t, _)| {
+            // Some transactions can emit no events, in that case we insert an empty vector.
+            ordered_events.push(events.remove(&t.hash).unwrap_or_default());
+        });
+
+        db.insert_transaction_data(block_number, &transactions, Some(&ordered_events))
+            .context("Inserting transaction data")?;
+
+        db.insert_state_update_data(block_number, &state_diff)
+            .context("Inserting state update data")?;
+
+        classes.into_iter().try_for_each(
+            |CompiledClass {
+                 block_number,
+                 hash,
+                 definition,
+             }| {
+                match definition {
+                    class_definitions::CompiledClassDefinition::Cairo(cairo) => db
+                        .update_cairo_class(hash, &cairo)
+                        .context("Inserting cairo class definition"),
+                    class_definitions::CompiledClassDefinition::Sierra {
+                        sierra_definition,
+                        casm_definition,
+                    } => {
+                        let sierra_hash = SierraHash(hash.0);
+                        let casm_hash = db
+                            .casm_hash(hash)
+                            .context("Getting casm hash")?
+                            .context("Casm not found")?;
+                        db.update_sierra_class(
+                            &sierra_hash,
+                            &sierra_definition,
+                            &casm_hash,
+                            &casm_definition,
+                        )
+                        .context("Inserting sierra class definition")
+                    }
+                }
+            },
+        )?;
 
         db.commit()
             .context("Committing transaction")
             .map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::{stream, Stream, StreamExt};
+    use p2p::client::types::{
+        ClassDefinition,
+        ClassDefinitionsError,
+        IncorrectStateDiffCount,
+        Receipt as P2PReceipt,
+    };
+    use p2p::libp2p::PeerId;
+    use p2p::PeerData;
+    use p2p_proto::common::Hash;
+    use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
+    use pathfinder_storage::fake::init::Config;
+    use pathfinder_storage::fake::{self, Block};
+    use pathfinder_storage::StorageBuilder;
+    use starknet_gateway_types::error::SequencerError;
+
+    use super::*;
+    use crate::state::block_hash::{
+        calculate_event_commitment,
+        calculate_receipt_commitment,
+        calculate_transaction_commitment,
+        compute_final_hash,
+        BlockHeaderData,
+    };
+
+    #[tokio::test]
+    async fn happy_path() {
+        const N: usize = 10;
+        let blocks = fake::init::with_n_blocks_and_config(
+            N,
+            Config {
+                calculate_block_hash: Box::new(|sbh: &SignedBlockHeader, rc: ReceiptCommitment| {
+                    compute_final_hash(&BlockHeaderData::from_signed_header(sbh, rc))
+                }),
+                calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
+                calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+                calculate_event_commitment: Box::new(calculate_event_commitment),
+            },
+        );
+
+        let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
+        let latest = (number, hash);
+
+        let p2p: FakeP2PClient = FakeP2PClient {
+            blocks: blocks.clone(),
+        };
+
+        let storage = StorageBuilder::in_memory().unwrap();
+
+        let sync = Sync {
+            latest: futures::stream::iter(vec![latest]),
+            p2p,
+            storage: storage.clone(),
+            chain: Chain::SepoliaTestnet,
+            chain_id: ChainId::SEPOLIA_TESTNET,
+            public_key: PublicKey::default(),
+        };
+
+        sync.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
+            .await
+            .unwrap();
+
+        let mut db = storage.connection().unwrap();
+        let db = db.transaction().unwrap();
+        for mut expected in blocks {
+            // TODO p2p sync does not update class and storage tries yet
+            expected.header.header.class_commitment = ClassCommitment::ZERO;
+            expected.header.header.storage_commitment = StorageCommitment::ZERO;
+
+            let block_number = expected.header.header.number;
+            let block_id = block_number.into();
+            let header = db.block_header(block_id).unwrap().unwrap();
+            let signature = db.signature(block_id).unwrap().unwrap();
+            let (state_diff_commitment, state_diff_length) = db
+                .state_diff_commitment_and_length(block_number)
+                .unwrap()
+                .unwrap();
+            let transaction_data = db.transaction_data_for_block(block_id).unwrap().unwrap();
+            let state_update_data: StateUpdateData =
+                db.state_update(block_id).unwrap().unwrap().into();
+            let declared = db.declared_classes_at(block_id).unwrap().unwrap();
+
+            let mut cairo_defs = HashMap::new();
+            let mut sierra_defs = HashMap::new();
+
+            for class_hash in declared {
+                let class = db.class_definition(class_hash).unwrap().unwrap();
+                match db.casm_hash(class_hash).unwrap() {
+                    Some(casm_hash) => {
+                        let casm = db.casm_definition(class_hash).unwrap().unwrap();
+                        sierra_defs.insert(SierraHash(class_hash.0), (class, casm));
+                    }
+                    None => {
+                        cairo_defs.insert(class_hash, class);
+                    }
+                }
+            }
+
+            pretty_assertions_sorted::assert_eq!(header, expected.header.header);
+            pretty_assertions_sorted::assert_eq!(signature, expected.header.signature);
+            pretty_assertions_sorted::assert_eq!(
+                state_diff_commitment,
+                expected.header.state_diff_commitment
+            );
+            pretty_assertions_sorted::assert_eq!(
+                state_diff_length as u64,
+                expected.header.state_diff_length
+            );
+            pretty_assertions_sorted::assert_eq!(transaction_data, expected.transaction_data);
+            pretty_assertions_sorted::assert_eq!(state_update_data, expected.state_update.into());
+            pretty_assertions_sorted::assert_eq!(
+                cairo_defs,
+                expected.cairo_defs.into_iter().collect::<HashMap<_, _>>()
+            );
+            pretty_assertions_sorted::assert_eq!(
+                sierra_defs,
+                expected
+                    .sierra_defs
+                    .into_iter()
+                    // All sierra fixtures are not compile-able
+                    .map(|(h, s, _)| (h, (s, b"I'm from the fgw!".to_vec())))
+                    .collect::<HashMap<_, _>>()
+            );
+        }
+    }
+
+    #[derive(Clone)]
+    struct FakeP2PClient {
+        pub blocks: Vec<Block>,
+    }
+
+    impl HeaderStream for FakeP2PClient {
+        fn header_stream(
+            self,
+            start: BlockNumber,
+            stop: BlockNumber,
+            reverse: bool,
+        ) -> impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send {
+            assert!(!reverse);
+            assert_eq!(start, self.blocks.first().unwrap().header.header.number);
+            assert_eq!(stop, self.blocks.last().unwrap().header.header.number);
+
+            stream::iter(
+                self.blocks.into_iter().map(|block| {
+                    PeerData::for_tests((block.header, block.receipt_commitment).into())
+                }),
+            )
+        }
+    }
+
+    impl BlockClient for FakeP2PClient {
+        async fn transactions_for_block(
+            self,
+            block: BlockNumber,
+        ) -> Option<(
+            PeerId,
+            impl Stream<Item = anyhow::Result<(TransactionVariant, P2PReceipt)>> + Send,
+        )> {
+            let tr = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap()
+                .transaction_data
+                .iter()
+                .map(|(t, r, e)| Ok((t.variant.clone(), P2PReceipt::from(r.clone()))))
+                .collect::<Vec<anyhow::Result<(TransactionVariant, P2PReceipt)>>>();
+
+            Some((PeerId::random(), stream::iter(tr)))
+        }
+
+        async fn state_diff_for_block(
+            self,
+            block: BlockNumber,
+            state_diff_length: u64,
+        ) -> Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount> {
+            let sd: StateUpdateData = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap()
+                .state_update
+                .clone()
+                .into();
+
+            assert_eq!(sd.state_diff_length() as u64, state_diff_length);
+
+            Ok(Some((PeerId::random(), sd)))
+        }
+
+        async fn class_definitions_for_block(
+            self,
+            block: BlockNumber,
+            declared_classes_count: u64,
+        ) -> Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError> {
+            let b = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap();
+            let defs = b
+                .cairo_defs
+                .iter()
+                .map(|(_, x)| ClassDefinition::Cairo {
+                    block_number: block,
+                    definition: x.clone(),
+                })
+                .chain(
+                    b.sierra_defs
+                        .iter()
+                        .map(|(_, x, _)| ClassDefinition::Sierra {
+                            block_number: block,
+                            sierra_definition: x.clone(),
+                        }),
+                )
+                .collect::<Vec<ClassDefinition>>();
+
+            Ok(Some((PeerId::random(), defs)))
+        }
+
+        async fn events_for_block(
+            self,
+            block: BlockNumber,
+        ) -> Option<(PeerId, impl Stream<Item = (TransactionHash, Event)> + Send)> {
+            let e = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap()
+                .transaction_data
+                .iter()
+                .flat_map(|(t, _, e)| e.iter().map(move |e| (t.hash, e.clone())))
+                .collect::<Vec<_>>();
+
+            Some((PeerId::random(), stream::iter(e)))
+        }
+    }
+
+    #[derive(Clone)]
+    struct FakeFgw;
+
+    #[async_trait::async_trait]
+    impl GatewayApi for FakeFgw {
+        async fn pending_casm_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+            Ok(bytes::Bytes::from_static(b"I'm from the fgw!"))
+        }
     }
 }

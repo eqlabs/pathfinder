@@ -104,7 +104,7 @@ mod prop {
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p::client::peer_agnostic::{Receipt, SignedBlockHeader as P2PSignedBlockHeader};
+    use p2p::client::types::{Receipt, SignedBlockHeader as P2PSignedBlockHeader};
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -182,7 +182,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|Block { header, .. }| P2PSignedBlockHeader::from(header)).collect::<Vec<_>>();
+                .into_iter().map(|Block { header, receipt_commitment, .. }| P2PSignedBlockHeader::from((header, receipt_commitment))).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -498,10 +498,12 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use pathfinder_storage::fake::{with_n_blocks_and_rng, Block};
+        use pathfinder_storage::fake::init::Config;
+        use pathfinder_storage::fake::{with_n_blocks_rng_and_config, Block};
         use pathfinder_storage::{Storage, StorageBuilder};
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
+        use crate::state::block_hash::calculate_receipt_commitment;
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 
@@ -510,8 +512,15 @@ mod prop {
             let storage = StorageBuilder::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-            let initializer =
-                with_n_blocks_and_rng(&storage, num_blocks.try_into().unwrap(), &mut rng);
+            let initializer = with_n_blocks_rng_and_config(
+                &storage,
+                num_blocks.try_into().unwrap(),
+                &mut rng,
+                Config {
+                    calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+                    ..Default::default()
+                },
+            );
             (storage, initializer)
         }
     }

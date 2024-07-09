@@ -1,7 +1,7 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
-use p2p::client::peer_agnostic::SignedBlockHeader;
+use p2p::client::types::SignedBlockHeader;
 use p2p::PeerData;
 use pathfinder_common::{
     BlockHash,
@@ -323,10 +323,10 @@ impl ProcessStage for Persist {
                 strk_l1_data_gas_price: header.strk_l1_data_gas_price,
                 sequencer_address: header.sequencer_address,
                 starknet_version: header.starknet_version,
-                class_commitment: ClassCommitment::ZERO,
+                class_commitment: ClassCommitment::ZERO, // TODO update class tries
                 event_commitment: header.event_commitment,
                 state_commitment: header.state_commitment,
-                storage_commitment: StorageCommitment::ZERO,
+                storage_commitment: StorageCommitment::ZERO, // TODO update storage tries
                 transaction_commitment: header.transaction_commitment,
                 transaction_count: header.transaction_count,
                 event_count: header.event_count,

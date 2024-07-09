@@ -5,9 +5,16 @@ use std::sync::{Arc, RwLock};
 use anyhow::Context;
 use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
-use p2p::client::peer_agnostic::{
+use p2p::client::peer_agnostic::traits::{
+    ClassStream,
+    EventStream,
+    HeaderStream,
+    StateDiffStream,
+    TransactionStream,
+};
+use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::client::types::{
     ClassDefinition,
-    Client as P2PClient,
     EventsForBlockByTransaction,
     SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
@@ -204,7 +211,7 @@ impl Sync {
             return Ok(());
         };
 
-        let class_stream = self.p2p.clone().class_definition_stream(
+        let class_stream = self.p2p.clone().class_stream(
             start,
             stop,
             class_definitions::declared_class_counts_stream(self.storage.clone(), start, stop),
@@ -640,7 +647,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::BlockHeader as P2PBlockHeader;
+        use p2p::client::types::BlockHeader as P2PBlockHeader;
         use p2p::libp2p::PeerId;
         use p2p_proto::header;
         use pathfinder_common::{
@@ -651,6 +658,7 @@ mod tests {
             BlockHeader,
             BlockTimestamp,
             EventCommitment,
+            ReceiptCommitment,
             SequencerAddress,
             StarknetVersion,
             StateCommitment,
@@ -775,7 +783,11 @@ mod tests {
                             .unwrap()
                             .unwrap();
                         P2PSignedBlockHeader {
-                            header: db.block_header(block_id).unwrap().unwrap().into(),
+                            header: (
+                                db.block_header(block_id).unwrap().unwrap(),
+                                ReceiptCommitment::ZERO,
+                            )
+                                .into(),
                             signature: db.signature(block_id).unwrap().unwrap(),
                             state_diff_commitment,
                             state_diff_length: state_diff_length as u64,
@@ -902,7 +914,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::{
+        use p2p::client::types::{
             UnverifiedTransactionData,
             UnverifiedTransactionDataWithBlockNumber,
         };
@@ -1085,7 +1097,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::client::peer_agnostic::UnverifiedStateUpdateWithBlockNumber;
+        use p2p::client::types::UnverifiedStateUpdateWithBlockNumber;
         use p2p::libp2p::PeerId;
         use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
         use pathfinder_common::transaction::DeployTransactionV0;

@@ -35,8 +35,8 @@ pub struct Sierra<'a> {
 impl<T> Dummy<T> for Sierra<'_> {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
-            abi: Cow::Owned(Faker.fake_with_rng(rng)),
-            sierra_program: Faker.fake_with_rng(rng),
+            abi: "[]".into(),
+            sierra_program: vec![],
             contract_class_version: "0.1.0".into(),
             entry_points_by_type: Faker.fake_with_rng(rng),
         }
@@ -58,11 +58,28 @@ pub struct Cairo<'a> {
 
 impl<T> Dummy<T> for Cairo<'_> {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        let abi = serde_json::Value::Object(Faker.fake_with_rng(rng));
-        let program = serde_json::Value::Object(Faker.fake_with_rng(rng));
         Self {
-            abi: Cow::Owned(serde_json::value::to_raw_value(&abi).unwrap()),
-            program: Cow::Owned(serde_json::value::to_raw_value(&program).unwrap()),
+            abi: Cow::Owned(
+                RawValue::from_string("[]".into()).unwrap(),
+            ),
+            program: Cow::Owned(
+                RawValue::from_string(
+                    r#"
+                    {
+                        "attributes": [],
+                        "builtins": [],
+                        "data": [],
+                        "debug_info": null,
+                        "hints": {},
+                        "identifiers": {},
+                        "main_scope": "__main__",
+                        "prime": "0x800000000000011000000000000000000000000000000000000000000000001",
+                        "reference_manager": {}
+                    }
+                    "#.into()
+                )
+                .unwrap(),
+            ),
             entry_points_by_type: Faker.fake_with_rng(rng),
         }
     }
