@@ -690,14 +690,13 @@ async fn reorg(
     Ok(new_head)
 }
 
-#[cfg(test_DISABLED)]
+#[cfg(test)]
 mod tests {
 
     mod sync {
         use assert_matches::assert_matches;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{
-            BlockCommitmentSignature,
             BlockHash,
             BlockId,
             BlockNumber,
@@ -789,106 +788,113 @@ mod tests {
         const STORAGE_VAL0_V2: StorageValue = storage_value_bytes!(b"contract 0 storage val 0 v2");
         const STORAGE_VAL1: StorageValue = storage_value_bytes!(b"contract 1 storage val 0");
 
-        const BLOCK0_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
-            block_number: BLOCK0_NUMBER,
-            signature: [
-                block_commitment_signature_elem_bytes!(b"block 0 signature r"),
-                block_commitment_signature_elem_bytes!(b"block 0 signature s"),
-            ],
-            signature_input: reply::BlockSignatureInput {
-                block_hash: BLOCK0_HASH,
-                state_diff_commitment: state_diff_commitment_bytes!(
-                    b"block 0 state diff commitment"
-                ),
-            },
-        };
-        const BLOCK0_COMMITMENT_SIGNATURE: BlockCommitmentSignature = BlockCommitmentSignature {
-            r: BLOCK0_SIGNATURE.signature[0],
-            s: BLOCK0_SIGNATURE.signature[1],
-        };
-        const BLOCK0_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
-            block_number: BLOCK0_NUMBER,
-            signature: [
-                block_commitment_signature_elem_bytes!(b"block 0 signature r 2"),
-                block_commitment_signature_elem_bytes!(b"block 0 signature s 2"),
-            ],
-            signature_input: reply::BlockSignatureInput {
-                block_hash: BLOCK0_HASH_V2,
-                state_diff_commitment: state_diff_commitment_bytes!(
-                    b"block 0 state diff commitment 2"
-                ),
-            },
-        };
+        const BLOCK0_SIGNATURE: reply::BlockSignature =
+            reply::BlockSignature::V0(reply::BlockSignatureV0 {
+                block_number: BLOCK0_NUMBER,
+                signature: [
+                    block_commitment_signature_elem_bytes!(b"block 0 signature r"),
+                    block_commitment_signature_elem_bytes!(b"block 0 signature s"),
+                ],
+                signature_input: reply::BlockSignatureInput {
+                    block_hash: BLOCK0_HASH,
+                    state_diff_commitment: state_diff_commitment_bytes!(
+                        b"block 0 state diff commitment"
+                    ),
+                },
+            });
+        // const BLOCK0_COMMITMENT_SIGNATURE: BlockCommitmentSignature =
+        // BlockCommitmentSignature {     r: BLOCK0_SIGNATURE.signature[0],
+        //     s: BLOCK0_SIGNATURE.signature[1],
+        // };
+        const BLOCK0_SIGNATURE_V2: reply::BlockSignature =
+            reply::BlockSignature::V0(reply::BlockSignatureV0 {
+                block_number: BLOCK0_NUMBER,
+                signature: [
+                    block_commitment_signature_elem_bytes!(b"block 0 signature r 2"),
+                    block_commitment_signature_elem_bytes!(b"block 0 signature s 2"),
+                ],
+                signature_input: reply::BlockSignatureInput {
+                    block_hash: BLOCK0_HASH_V2,
+                    state_diff_commitment: state_diff_commitment_bytes!(
+                        b"block 0 state diff commitment 2"
+                    ),
+                },
+            });
 
-        const BLOCK1_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
-            block_number: BLOCK1_NUMBER,
-            signature: [
-                block_commitment_signature_elem_bytes!(b"block 1 signature r"),
-                block_commitment_signature_elem_bytes!(b"block 1 signature s"),
-            ],
-            signature_input: reply::BlockSignatureInput {
-                block_hash: BLOCK1_HASH,
-                state_diff_commitment: state_diff_commitment_bytes!(
-                    b"block 1 state diff commitment"
-                ),
-            },
-        };
-        const BLOCK1_COMMITMENT_SIGNATURE: BlockCommitmentSignature = BlockCommitmentSignature {
-            r: BLOCK1_SIGNATURE.signature[0],
-            s: BLOCK1_SIGNATURE.signature[1],
-        };
-        const BLOCK1_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
-            block_number: BLOCK1_NUMBER,
-            signature: [
-                block_commitment_signature_elem_bytes!(b"block 1 signature r 2"),
-                block_commitment_signature_elem_bytes!(b"block 1 signature s 2"),
-            ],
-            signature_input: reply::BlockSignatureInput {
-                block_hash: BLOCK1_HASH_V2,
-                state_diff_commitment: state_diff_commitment_bytes!(
-                    b"block 1 state diff commitment 2"
-                ),
-            },
-        };
-        const BLOCK2_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
-            block_number: BLOCK2_NUMBER,
-            signature: [
-                block_commitment_signature_elem_bytes!(b"block 2 signature r"),
-                block_commitment_signature_elem_bytes!(b"block 2 signature s"),
-            ],
-            signature_input: reply::BlockSignatureInput {
-                block_hash: BLOCK2_HASH,
-                state_diff_commitment: state_diff_commitment_bytes!(
-                    b"block 2 state diff commitment"
-                ),
-            },
-        };
-        const BLOCK2_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
-            block_number: BLOCK2_NUMBER,
-            signature: [
-                block_commitment_signature_elem_bytes!(b"block 2 signature r 2"),
-                block_commitment_signature_elem_bytes!(b"block 2 signature s 2"),
-            ],
-            signature_input: reply::BlockSignatureInput {
-                block_hash: BLOCK2_HASH_V2,
-                state_diff_commitment: state_diff_commitment_bytes!(
-                    b"block 2 state diff commitment 2"
-                ),
-            },
-        };
-        const BLOCK3_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
-            block_number: BLOCK3_NUMBER,
-            signature: [
-                block_commitment_signature_elem_bytes!(b"block 3 signature r"),
-                block_commitment_signature_elem_bytes!(b"block 3 signature s"),
-            ],
-            signature_input: reply::BlockSignatureInput {
-                block_hash: BLOCK3_HASH,
-                state_diff_commitment: state_diff_commitment_bytes!(
-                    b"block 3 state diff commitment"
-                ),
-            },
-        };
+        const BLOCK1_SIGNATURE: reply::BlockSignature =
+            reply::BlockSignature::V0(reply::BlockSignatureV0 {
+                block_number: BLOCK1_NUMBER,
+                signature: [
+                    block_commitment_signature_elem_bytes!(b"block 1 signature r"),
+                    block_commitment_signature_elem_bytes!(b"block 1 signature s"),
+                ],
+                signature_input: reply::BlockSignatureInput {
+                    block_hash: BLOCK1_HASH,
+                    state_diff_commitment: state_diff_commitment_bytes!(
+                        b"block 1 state diff commitment"
+                    ),
+                },
+            });
+        // const BLOCK1_COMMITMENT_SIGNATURE: BlockCommitmentSignature =
+        // BlockCommitmentSignature {     r: BLOCK1_SIGNATURE.signature[0],
+        //     s: BLOCK1_SIGNATURE.signature[1],
+        // };
+        const BLOCK1_SIGNATURE_V2: reply::BlockSignature =
+            reply::BlockSignature::V0(reply::BlockSignatureV0 {
+                block_number: BLOCK1_NUMBER,
+                signature: [
+                    block_commitment_signature_elem_bytes!(b"block 1 signature r 2"),
+                    block_commitment_signature_elem_bytes!(b"block 1 signature s 2"),
+                ],
+                signature_input: reply::BlockSignatureInput {
+                    block_hash: BLOCK1_HASH_V2,
+                    state_diff_commitment: state_diff_commitment_bytes!(
+                        b"block 1 state diff commitment 2"
+                    ),
+                },
+            });
+        const BLOCK2_SIGNATURE: reply::BlockSignature =
+            reply::BlockSignature::V0(reply::BlockSignatureV0 {
+                block_number: BLOCK2_NUMBER,
+                signature: [
+                    block_commitment_signature_elem_bytes!(b"block 2 signature r"),
+                    block_commitment_signature_elem_bytes!(b"block 2 signature s"),
+                ],
+                signature_input: reply::BlockSignatureInput {
+                    block_hash: BLOCK2_HASH,
+                    state_diff_commitment: state_diff_commitment_bytes!(
+                        b"block 2 state diff commitment"
+                    ),
+                },
+            });
+        const BLOCK2_SIGNATURE_V2: reply::BlockSignature =
+            reply::BlockSignature::V0(reply::BlockSignatureV0 {
+                block_number: BLOCK2_NUMBER,
+                signature: [
+                    block_commitment_signature_elem_bytes!(b"block 2 signature r 2"),
+                    block_commitment_signature_elem_bytes!(b"block 2 signature s 2"),
+                ],
+                signature_input: reply::BlockSignatureInput {
+                    block_hash: BLOCK2_HASH_V2,
+                    state_diff_commitment: state_diff_commitment_bytes!(
+                        b"block 2 state diff commitment 2"
+                    ),
+                },
+            });
+        const BLOCK3_SIGNATURE: reply::BlockSignature =
+            reply::BlockSignature::V0(reply::BlockSignatureV0 {
+                block_number: BLOCK3_NUMBER,
+                signature: [
+                    block_commitment_signature_elem_bytes!(b"block 3 signature r"),
+                    block_commitment_signature_elem_bytes!(b"block 3 signature s"),
+                ],
+                signature_input: reply::BlockSignatureInput {
+                    block_hash: BLOCK3_HASH,
+                    state_diff_commitment: state_diff_commitment_bytes!(
+                        b"block 3 state diff commitment"
+                    ),
+                },
+            });
 
         fn spawn_sync_default(
             tx_event: mpsc::Sender<SyncEvent>,
@@ -937,6 +943,9 @@ mod tests {
                 l1_da_mode: Default::default(),
                 transaction_commitment: Default::default(),
                 event_commitment: Default::default(),
+                receipt_commitment: Default::default(),
+                state_diff_commitment: Default::default(),
+                state_diff_length: Default::default(),
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: BLOCK0_HASH_V2,
@@ -960,6 +969,9 @@ mod tests {
                 l1_da_mode: Default::default(),
                 transaction_commitment: Default::default(),
                 event_commitment: Default::default(),
+                receipt_commitment: Default::default(),
+                state_diff_commitment: Default::default(),
+                state_diff_length: Default::default(),
             };
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: BLOCK1_HASH,
@@ -983,6 +995,9 @@ mod tests {
                 l1_da_mode: Default::default(),
                 transaction_commitment: Default::default(),
                 event_commitment: Default::default(),
+                receipt_commitment: Default::default(),
+                state_diff_commitment: Default::default(),
+                state_diff_length: Default::default(),
             };
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: BLOCK2_HASH,
@@ -1006,6 +1021,9 @@ mod tests {
                 l1_da_mode: Default::default(),
                 transaction_commitment: Default::default(),
                 event_commitment: Default::default(),
+                receipt_commitment: Default::default(),
+                state_diff_commitment: Default::default(),
+                state_diff_length: Default::default(),
             };
 
             static ref STATE_UPDATE0: StateUpdate = {
@@ -1208,7 +1226,8 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq_sorted!(*state_update, *STATE_UPDATE0);
-                    assert_eq!(*signature, BLOCK0_COMMITMENT_SIGNATURE);
+                    // assert_eq!(*signature, BLOCK0_COMMITMENT_SIGNATURE);
+                    assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     SyncEvent::CairoClass { hash, .. } => {
@@ -1217,7 +1236,8 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq_sorted!(*state_update, *STATE_UPDATE1);
-                    assert_eq!(*signature, BLOCK1_COMMITMENT_SIGNATURE);
+                    // assert_eq!(*signature, BLOCK1_COMMITMENT_SIGNATURE);
+                    assert_eq!(*signature, BLOCK1_SIGNATURE.signature());
                 });
             }
 
@@ -1512,6 +1532,9 @@ mod tests {
                     l1_da_mode: Default::default(),
                     transaction_commitment: Default::default(),
                     event_commitment: Default::default(),
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1743,6 +1766,9 @@ mod tests {
                     l1_da_mode: Default::default(),
                     transaction_commitment: Default::default(),
                     event_commitment: Default::default(),
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 };
                 let block2_v2 = reply::Block {
                     block_hash: BLOCK2_HASH_V2,
@@ -1768,6 +1794,9 @@ mod tests {
                     l1_da_mode: Default::default(),
                     transaction_commitment: Default::default(),
                     event_commitment: Default::default(),
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 };
                 let block3 = reply::Block {
                     block_hash: BLOCK3_HASH,
@@ -1793,6 +1822,9 @@ mod tests {
                     l1_da_mode: Default::default(),
                     transaction_commitment: Default::default(),
                     event_commitment: Default::default(),
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -2033,6 +2065,9 @@ mod tests {
                     l1_da_mode: Default::default(),
                     transaction_commitment: Default::default(),
                     event_commitment: Default::default(),
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -2226,6 +2261,9 @@ mod tests {
                     l1_da_mode: Default::default(),
                     transaction_commitment: Default::default(),
                     event_commitment: Default::default(),
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 };
                 let block2 = reply::Block {
                     block_hash: BLOCK2_HASH,
@@ -2251,6 +2289,9 @@ mod tests {
                     l1_da_mode: Default::default(),
                     transaction_commitment: Default::default(),
                     event_commitment: Default::default(),
+                    receipt_commitment: Default::default(),
+                    state_diff_commitment: Default::default(),
+                    state_diff_length: Default::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
