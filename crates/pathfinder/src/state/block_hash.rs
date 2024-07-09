@@ -550,7 +550,7 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommi
                         // L1 data gas consumed
                         receipt
                             .execution_resources
-                            .data_availability
+                            .total_gas_consumed
                             .l1_data_gas
                             .into(),
                     ])
