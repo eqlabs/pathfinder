@@ -759,7 +759,6 @@ fn calculate_event_hash(event: &Event, transaction_hash: TransactionHash) -> Fel
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use p2p_proto::state;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::receipt::{ExecutionResources, L1Gas, L2ToL1Message};
     use pathfinder_common::transaction::{
@@ -777,7 +776,6 @@ mod tests {
         TransactionHash,
     };
     use pathfinder_crypto::Felt;
-    use starknet_gateway_test_fixtures::v0_12_2::state_update;
     use starknet_gateway_types::reply::StateUpdate;
 
     use super::*;

@@ -659,7 +659,9 @@ mod tests {
         block_hash,
         event_commitment,
         event_key,
+        receipt_commitment,
         state_commitment,
+        state_diff_commitment,
         transaction_commitment,
         transaction_hash,
         BlockNumber,
@@ -1567,6 +1569,9 @@ mod tests {
             transaction_commitment: transaction_commitment!("0x4"),
             event_commitment: event_commitment!("0x5"),
             l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Blob,
+            receipt_commitment: Some(receipt_commitment!("0x6")),
+            state_diff_commitment: Some(state_diff_commitment!("0x7")),
+            state_diff_length: Some(8),
         }
     }
 

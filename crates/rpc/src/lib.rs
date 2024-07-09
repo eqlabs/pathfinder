@@ -755,11 +755,6 @@ pub mod test_utils {
             transactions,
             starknet_version: StarknetVersion::new(0, 11, 0, 0),
             l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata,
-            transaction_commitment: transaction_commitment_bytes!(b"pending tx commitment"),
-            event_commitment: event_commitment_bytes!(b"pending event commitment"),
-            receipt_commitment: receipt_commitment_bytes!(b"pending receipt commitment"),
-            state_diff_commitment: state_diff_commitment_bytes!(b"pending state diff commitment"),
-            state_diff_length: state_update.state_diff_length(),
         };
 
         // The class definitions must be inserted into the database.
