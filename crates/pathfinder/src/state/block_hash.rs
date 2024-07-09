@@ -529,7 +529,7 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommi
                             }
                             hasher.finish()
                         },
-                        // Calculate hash of execution status.
+                        // Revert reason.
                         match &receipt.execution_status {
                             ExecutionStatus::Succeeded => MontFelt::ZERO,
                             ExecutionStatus::Reverted { reason } => {
@@ -540,8 +540,12 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommi
                                 MontFelt::from_be_bytes(hashed_bytes)
                             }
                         },
+                        // Execution resources:
+                        // L2 gas
                         MontFelt::ZERO,
-                        receipt.execution_resources.data_availability.l1_gas.into(),
+                        // L1 gas consumed
+                        receipt.execution_resources.total_gas_consumed.l1_gas.into(),
+                        // L1 data gas consumed
                         receipt
                             .execution_resources
                             .data_availability
@@ -1701,6 +1705,16 @@ mod tests {
 
         assert_eq!(state_diff_length, block.state_diff_length.unwrap());
         assert_eq!(state_diff_commitment, block.state_diff_commitment.unwrap());
+
+        let receipts: Vec<_> = block
+            .transaction_receipts
+            .iter()
+            .map(|(receipt, _)| receipt.clone())
+            .collect();
+        assert_eq!(
+            calculate_receipt_commitment(&receipts).unwrap(),
+            block.receipt_commitment.unwrap()
+        );
 
         let block_header_data = BlockHeaderData::from_block(
             &block,
