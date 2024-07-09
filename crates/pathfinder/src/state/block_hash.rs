@@ -460,9 +460,11 @@ pub(crate) fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> 
     hasher.write(header.strk_l1_gas_price.0.into());
     hasher.write(header.eth_l1_data_gas_price.0.into());
     hasher.write(header.strk_l1_data_gas_price.0.into());
-    hasher.write(MontFelt::from_hex(&hex::encode(
-        &header.starknet_version_str,
-    )));
+    hasher.write(
+        Felt::from_be_slice(header.starknet_version_str.as_bytes())
+            .expect("Starknet version should fit into a felt")
+            .into(),
+    );
     hasher.write(MontFelt::ZERO);
     hasher.write(header.parent_hash.0.into());
     Ok(BlockHash(hasher.finish().into()))
