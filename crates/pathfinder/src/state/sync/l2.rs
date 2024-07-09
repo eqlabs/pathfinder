@@ -285,7 +285,7 @@ where
             _ => None,
         };
 
-        fgw_state_diff_commitment.map(|x| {
+        if let Some(x) = fgw_state_diff_commitment {
             if x != computed_state_diff_commitment {
                 tracing::warn!(
                     "State diff commitment mismatch: computed {:x}, feeder gateway {:x}",
@@ -293,7 +293,7 @@ where
                     x.0
                 );
             }
-        });
+        }
 
         let signature = signature.signature();
 
