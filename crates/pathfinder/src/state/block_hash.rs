@@ -1142,8 +1142,7 @@ mod tests {
 
         assert_eq!(
             compute_final_hash(&block_header_data).unwrap(),
-            expected_hash,
-            "0.13.2 hash"
+            expected_hash
         );
     }
 }

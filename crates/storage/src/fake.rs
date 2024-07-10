@@ -257,7 +257,7 @@ pub mod init {
                 let transaction_hash = t.variant.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
                 t.hash = transaction_hash;
 
-                let r: Receipt = crate::connection::transaction::dto::ReceiptV1 {
+                let r: Receipt = crate::connection::transaction::dto::ReceiptV2 {
                     transaction_hash: transaction_hash.as_inner().to_owned().into(),
                     transaction_index: TransactionIndex::new_or_panic(
                         i.try_into().expect("u64 is at least as wide as usize"),
