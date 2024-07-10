@@ -261,6 +261,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
             execution_resources: {
                 let e = self.1.execution_resources;
                 let da = e.data_availability;
+                let total = e.total_gas_consumed;
                 // Assumption: the values are small enough to fit into u32
                 p2p_proto::receipt::ExecutionResources {
                     builtins: BuiltinCounter {
@@ -280,6 +281,8 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
                     l1_gas: da.l1_gas.into(),
                     l1_data_gas: da.l1_data_gas.into(),
+                    total_l1_gas: total.l1_gas.into(),
+                    total_l1_data_gas: total.l1_data_gas.into(),
                 }
             },
             revert_reason,
@@ -669,10 +672,12 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client:
                         l1_gas: GasPrice::try_from(common.execution_resources.l1_gas)?.0,
                         l1_data_gas: GasPrice::try_from(common.execution_resources.l1_data_gas)?.0,
                     },
-                    // TODO
                     total_gas_consumed: L1Gas {
-                        l1_gas: 0,
-                        l1_data_gas: 0,
+                        l1_gas: GasPrice::try_from(common.execution_resources.total_l1_gas)?.0,
+                        l1_data_gas: GasPrice::try_from(
+                            common.execution_resources.total_l1_data_gas,
+                        )?
+                        .0,
                     },
                 },
                 l2_to_l1_messages: common

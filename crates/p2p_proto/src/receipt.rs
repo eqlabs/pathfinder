@@ -31,6 +31,8 @@ pub struct ExecutionResources {
     pub memory_holes: u32,
     pub l1_gas: Felt,
     pub l1_data_gas: Felt,
+    pub total_l1_gas: Felt,
+    pub total_l1_data_gas: Felt,
 }
 
 pub mod execution_resources {
