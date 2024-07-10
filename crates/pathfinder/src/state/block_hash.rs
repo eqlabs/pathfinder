@@ -60,25 +60,46 @@ impl VerifyResult {
 ///
 /// See the `compute_block_hash.py` helper script that uses the cairo-lang
 /// Python implementation to compute the block hash for details.
-pub fn verify_gateway_block_hash(
+pub fn verify_gateway_block_commitments_and_hash(
     block: &Block,
     state_diff_commitment: StateDiffCommitment,
     state_diff_length: u64,
     chain: Chain,
     chain_id: ChainId,
 ) -> Result<VerifyResult> {
-    let transaction_commitment =
+    let mut bhd =
+        BlockHeaderData::from_gateway_block(block, state_diff_commitment, state_diff_length)?;
+
+    let computed_transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
 
-    let mut block_header_data =
-        BlockHeaderData::from_block(block, state_diff_commitment, state_diff_length)?;
-
-    // Older blocks on mainnet don't carry a precalculated transaction
-    // commitment.
+    // Older blocks on mainnet don't carry a precalculated transaction commitment.
     if block.transaction_commitment == TransactionCommitment::ZERO {
-        block_header_data.transaction_commitment = transaction_commitment;
-    } else if transaction_commitment != block.transaction_commitment {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.transaction_commitment = computed_transaction_commitment;
+    } else if computed_transaction_commitment != bhd.transaction_commitment {
         return Ok(VerifyResult::Mismatch);
+    }
+
+    let computed_receipt_commitment = calculate_receipt_commitment(
+        block
+            .transaction_receipts
+            .iter()
+            .map(|(r, _)| r.clone())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )?;
+
+    // Older blocks on mainnet don't carry a precalculated receipt commitment.
+    if let Some(receipt_commitment) = block.receipt_commitment {
+        if computed_receipt_commitment != receipt_commitment {
+            return Ok(VerifyResult::Mismatch);
+        }
+    } else {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.receipt_commitment = computed_receipt_commitment;
     }
 
     let event_commitment = calculate_event_commitment(
@@ -93,12 +114,14 @@ pub fn verify_gateway_block_hash(
     // Older blocks on mainnet don't carry a precalculated event
     // commitment.
     if block.event_commitment == EventCommitment::ZERO {
-        block_header_data.event_commitment = event_commitment;
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.event_commitment = event_commitment;
     } else if event_commitment != block.event_commitment {
         return Ok(VerifyResult::Mismatch);
     }
 
-    verify_block_hash(block_header_data, chain, chain_id)
+    verify_block_hash(bhd, chain, chain_id)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -159,17 +182,11 @@ impl BlockHeaderData {
         }
     }
 
-    pub fn from_block(
+    pub fn from_gateway_block(
         block: &Block,
         state_diff_commitment: StateDiffCommitment,
         state_diff_length: u64,
     ) -> Result<Self> {
-        let receipts = block
-            .transaction_receipts
-            .iter()
-            .map(|(receipt, _)| receipt.clone())
-            .collect::<Vec<_>>();
-        let receipt_commitment = calculate_receipt_commitment(&receipts)?;
         Ok(Self {
             hash: block.block_hash,
             parent_hash: block.parent_block_hash,
@@ -201,7 +218,7 @@ impl BlockHeaderData {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            receipt_commitment,
+            receipt_commitment: block.receipt_commitment.unwrap_or_default(),
             l1_da_mode: block.l1_da_mode.into(),
         })
     }
@@ -843,7 +860,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -863,7 +880,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -884,7 +901,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -902,7 +919,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -922,7 +939,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -1133,7 +1150,7 @@ mod tests {
             block.receipt_commitment.unwrap()
         );
 
-        let block_header_data = BlockHeaderData::from_block(
+        let block_header_data = BlockHeaderData::from_gateway_block(
             &block,
             block.state_diff_commitment.unwrap(),
             block.state_diff_length.unwrap(),

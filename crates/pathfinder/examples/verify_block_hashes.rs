@@ -59,6 +59,7 @@ fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("State diff commitment missing"))?;
         drop(tx);
 
+        // TODO remove the computation after the commitment is stored in the database
         let receipt_commitment = calculate_receipt_commitment(
             txn_data_for_block
                 .into_iter()

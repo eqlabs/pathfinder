@@ -22,7 +22,7 @@ use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{Block, Status};
 use tokio::sync::mpsc;
 
-use crate::state::block_hash::{verify_gateway_block_hash, VerifyResult};
+use crate::state::block_hash::{verify_gateway_block_commitments_and_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
 
@@ -528,15 +528,16 @@ async fn download_block(
     let result = match result {
         Ok((block, state_update)) => {
             let block = Box::new(block);
-            let state_diff_commitment = StateUpdateData::from(state_update.clone())
-                .compute_state_diff_commitment(block.starknet_version);
-            let state_update = Box::new(state_update);
-            let state_diff_length = state_update.state_diff_length();
 
-            // Check if block hash is correct.
+            // Check if commitments and block hash are correct
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let state_diff_commitment = StateUpdateData::from(state_update.clone())
+                    .compute_state_diff_commitment(block.starknet_version);
+                let state_update = Box::new(state_update);
+                let state_diff_length = state_update.state_diff_length();
+
                 let block_number = block.block_number;
-                let verify_result = verify_gateway_block_hash(
+                let verify_result = verify_gateway_block_commitments_and_hash(
                     &block,
                     state_diff_commitment,
                     state_diff_length,
@@ -544,9 +545,10 @@ async fn download_block(
                     chain_id,
                 )
                 .with_context(move || format!("Verify block {block_number}"))?;
-                Ok((block, verify_result))
+                Ok((block, state_update, verify_result))
             });
-            let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
+            let (block, state_update, verify_result) =
+                verify_hash.await.context("Verify block hash")??;
             match (block.status, verify_result, mode) {
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
