@@ -2475,18 +2475,18 @@ mod tests {
         #[test]
         fn parse_starknet_0_13_2() {
             let json =
-                starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35760;
+                starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35748;
 
             let expected = BlockSignature::V1(BlockSignatureV1 {
                 block_hash: block_hash!(
-                    "0x4d123700f14f449cc3035b39893b39c56a90c430c46b0e65149d47307eb3130"
+                    "0x1ea2a9cfa3df5297d58c0a04d09d276bc68d40fe64701305bbe2ed8f417e869"
                 ),
                 signature: [
                     block_commitment_signature_elem!(
-                        "0x4352e2f351f4d531fdba8e393ca8d7fe2509aa6040c5389ba369dd811d676a4"
+                        "0x45161746eecbeae297f45a1f407ab702310f4e52c5e9350ed6f542fa8e98413"
                     ),
                     block_commitment_signature_elem!(
-                        "0x1f3def721bd5c062a6316928f98597b67250a1d61370ebe9fd65e4d33e33bf9"
+                        "0x3e67cfbc5b179ba55a3b687228d8fe40626233f6691b4aabe308fcd6d71dcdb"
                     ),
                 ],
             });

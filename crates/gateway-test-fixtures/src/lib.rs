@@ -60,9 +60,19 @@ pub mod v0_13_1 {
 }
 
 pub mod v0_13_2 {
+    pub mod block {
+        pub const SEPOLIA_INTEGRATION_35748: &str =
+            str_fixture!("0.13.2/block/sepolia_integration_35748.json");
+    }
+
     pub mod signature {
-        pub const SEPOLIA_INTEGRATION_35760: &str =
-            str_fixture!("0.13.2/signature/sepolia_integration_35760.json");
+        pub const SEPOLIA_INTEGRATION_35748: &str =
+            str_fixture!("0.13.2/signature/sepolia_integration_35748.json");
+    }
+
+    pub mod state_update {
+        pub const SEPOLIA_INTEGRATION_35748: &str =
+            str_fixture!("0.13.2/state_update/sepolia_integration_35748.json");
     }
 }
 
