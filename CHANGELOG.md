@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pathfinder exits with an error when detecting a one-block reorg if `--storage.state-tries` is set to `0`.
+- Pathfinder returns an internal error for `starknet_getTransactionReceipt` requests where `steps` would be zero in COMPUTATION_RESOURCES.
 
 ## [0.13.2] - 2024-06-24
 

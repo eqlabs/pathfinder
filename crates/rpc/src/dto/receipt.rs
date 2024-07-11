@@ -388,10 +388,10 @@ impl SerializeForVersion for ComputationResources<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         use std::num::NonZeroU64;
 
-        // All values are required to be non-zero. Steps MUST be non-zero as it is
-        // required, however the rest are simply skipped if zero.
-        let steps = NonZeroU64::new(self.0.n_steps)
-            .ok_or_else(|| serde_json::error::Error::custom("steps was zero which is invalid"))?;
+        // We're technically breaking the spec here if `steps` is zero but turns out
+        // there _are_ transactions on Starknet mainnet with steps being zero:
+        // https://starkscan.co/tx/0x04026b1598e5915737d439e8b8493cce9e47a5a334948e28f55c391bc2e0c2e2
+        let steps = self.0.n_steps;
         let memory_holes = NonZeroU64::new(self.0.n_memory_holes);
         let range_check = NonZeroU64::new(self.0.builtins.range_check);
         let pedersen = NonZeroU64::new(self.0.builtins.pedersen);
