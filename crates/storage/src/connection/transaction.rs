@@ -781,7 +781,7 @@ pub(crate) mod dto {
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResourcesV0 {
-        pub builtins: BuiltinCounters,
+        pub builtins: BuiltinCountersV0,
         pub n_steps: u64,
         pub n_memory_holes: u64,
         pub data_availability: L1Gas,
@@ -791,7 +791,7 @@ pub(crate) mod dto {
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResourcesV1 {
-        pub builtins: BuiltinCounters,
+        pub builtins: BuiltinCountersV1,
         pub n_steps: u64,
         pub n_memory_holes: u64,
         pub data_availability: L1Gas,
@@ -809,7 +809,7 @@ pub(crate) mod dto {
     impl From<ExecutionResourcesV0> for ExecutionResourcesV1 {
         fn from(value: ExecutionResourcesV0) -> Self {
             Self {
-                builtins: value.builtins,
+                builtins: value.builtins.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 data_availability: value.data_availability,
@@ -910,11 +910,23 @@ pub(crate) mod dto {
         }
     }
 
-    // This struct purposefully allows for unknown fields as it is not critical to
-    // store these counters perfectly. Failure would be far more costly than simply
-    // ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
-    pub struct BuiltinCounters {
+    #[serde(deny_unknown_fields)]
+    pub struct BuiltinCountersV0 {
+        pub output: u64,
+        pub pedersen: u64,
+        pub range_check: u64,
+        pub ecdsa: u64,
+        pub bitwise: u64,
+        pub ec_op: u64,
+        pub keccak: u64,
+        pub poseidon: u64,
+        pub segment_arena: u64,
+    }
+
+    #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct BuiltinCountersV1 {
         pub output: u64,
         pub pedersen: u64,
         pub range_check: u64,
@@ -929,10 +941,39 @@ pub(crate) mod dto {
         pub range_check96: u64,
     }
 
-    impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {
-        fn from(value: BuiltinCounters) -> Self {
+    impl From<BuiltinCountersV0> for BuiltinCountersV1 {
+        fn from(value: BuiltinCountersV0) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
-            let BuiltinCounters {
+            let BuiltinCountersV0 {
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
+            } = value;
+            Self {
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
+                ..Default::default()
+            }
+        }
+    }
+
+    impl From<BuiltinCountersV1> for pathfinder_common::receipt::BuiltinCounters {
+        fn from(value: BuiltinCountersV1) -> Self {
+            // Use deconstruction to ensure these structs remain in-sync.
+            let BuiltinCountersV1 {
                 output,
                 pedersen,
                 range_check,
@@ -963,7 +1004,7 @@ pub(crate) mod dto {
         }
     }
 
-    impl From<&pathfinder_common::receipt::BuiltinCounters> for BuiltinCounters {
+    impl From<&pathfinder_common::receipt::BuiltinCounters> for BuiltinCountersV1 {
         fn from(value: &pathfinder_common::receipt::BuiltinCounters) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
             let pathfinder_common::receipt::BuiltinCounters {
@@ -997,7 +1038,23 @@ pub(crate) mod dto {
         }
     }
 
-    impl<T> Dummy<T> for BuiltinCounters {
+    impl<T> Dummy<T> for BuiltinCountersV0 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                output: rng.next_u32() as u64,
+                pedersen: rng.next_u32() as u64,
+                range_check: rng.next_u32() as u64,
+                ecdsa: rng.next_u32() as u64,
+                bitwise: rng.next_u32() as u64,
+                ec_op: rng.next_u32() as u64,
+                keccak: rng.next_u32() as u64,
+                poseidon: rng.next_u32() as u64,
+                segment_arena: 0, // Not used in p2p
+            }
+        }
+    }
+
+    impl<T> Dummy<T> for BuiltinCountersV1 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
                 output: rng.next_u32() as u64,
