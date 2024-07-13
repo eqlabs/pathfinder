@@ -25,3 +25,6 @@ pathfinder-var.env
 
 # mdbook compilation
 **/book/
+
+# Intellij IDE generated files
+.idea

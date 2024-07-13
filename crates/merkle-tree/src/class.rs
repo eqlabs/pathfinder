@@ -1,16 +1,19 @@
+use crate::merkle_node::InternalNode;
 use anyhow::Context;
-use pathfinder_common::hash::PoseidonHash;
+use bitvec::order::Msb0;
+use bitvec::prelude::BitSlice;
+use bitvec::view::BitView;
+use pathfinder_common::hash::{PedersenHash, PoseidonHash};
+use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    BlockNumber,
-    ClassCommitment,
-    ClassCommitmentLeafHash,
-    ClassHash,
-    SierraHash,
+    BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash, ContractAddress,
+    ContractRoot, SierraHash, StorageAddress, StorageValue,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
+use std::ops::ControlFlow;
 
-use crate::tree::MerkleTree;
+use crate::tree::{MerkleTree, Visit};
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
 /// Starknet's Sierra classes.
@@ -70,6 +73,162 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
         let commitment = ClassCommitment(update.root_commitment);
         Ok((commitment, update))
+    }
+
+    /// Generates a proof for a given `key`
+    pub fn get_proof(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
+        let root = tx
+            .class_root_index(block)
+            .context("Querying class root index")?;
+
+        let Some(root) = root else {
+            return Ok(None);
+        };
+
+        let storage = ClassTrieStorage {
+            tx,
+            block: Some(block),
+        };
+
+        let casm = tx
+            .casm_hash_at(block.into(), class_hash)
+            .context("Querying CASM hash")?;
+
+        let Some(casm) = casm else {
+            return Ok(None);
+        };
+
+        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, casm.view_bits())
+    }
+}
+
+/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
+/// Starknet's Sierra classes.
+///
+/// It maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
+///
+/// Tree data is persisted by a sqlite table 'tree_class'.
+
+pub struct ClassStorageTree<'tx> {
+    tree: MerkleTree<PedersenHash, 251>,
+    storage: ClassStorage<'tx>,
+}
+
+impl<'tx> ClassStorageTree<'tx> {
+    pub fn empty(tx: &'tx Transaction<'tx>) -> Self {
+        let storage = ClassStorage { tx, block: None };
+        let tree = MerkleTree::empty();
+
+        Self { tree, storage }
+    }
+
+    pub fn load(tx: &'tx Transaction<'tx>, block: BlockNumber) -> anyhow::Result<Self> {
+        let root = tx
+            .class_root_index(block)
+            .context("Querying class root index")?;
+
+        let Some(root) = root else {
+            return Ok(Self::empty(tx));
+        };
+
+        let storage = ClassStorage {
+            tx,
+            block: Some(block),
+        };
+
+        let tree = MerkleTree::new(root);
+
+        Ok(Self { tree, storage })
+    }
+
+    pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
+        self.tree = self.tree.with_verify_hashes(verify_hashes);
+        self
+    }
+
+    /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
+    pub fn get_proof(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        key: &BitSlice<u8, Msb0>,
+    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
+        let root = tx
+            .class_root_index(block)
+            .context("Querying class root index")?;
+
+        let Some(root) = root else {
+            return Ok(None);
+        };
+
+        let storage = ClassStorage {
+            tx,
+            block: Some(block),
+        };
+
+        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, key)
+    }
+
+    pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
+        let key = address.view_bits().to_owned();
+        self.tree.set(&self.storage, key, value.0)
+    }
+
+    /// Commits the changes and calculates the new node hashes. Returns the new
+    /// commitment and any potentially newly created nodes.
+    pub fn commit(self) -> anyhow::Result<(CasmHash, TrieUpdate)> {
+        let update = self.tree.commit(&self.storage)?;
+        let commitment = CasmHash(update.root_commitment);
+        Ok((commitment, update))
+    }
+
+    /// See [`MerkleTree::dfs`]
+    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<u8, Msb0>) -> ControlFlow<B, Visit>>(
+        &mut self,
+        f: &mut F,
+    ) -> anyhow::Result<Option<B>> {
+        self.tree.dfs(&self.storage, f)
+    }
+}
+
+struct ClassTrieStorage<'tx> {
+    tx: &'tx Transaction<'tx>,
+    block: Option<BlockNumber>,
+}
+
+impl crate::storage::Storage for ClassTrieStorage<'_> {
+    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+        self.tx.storage_trie_node(index)
+    }
+
+    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+        self.tx.storage_trie_node_hash(index)
+    }
+
+    fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
+        assert!(path.len() == 251);
+
+        let Some(block) = self.block else {
+            return Ok(None);
+        };
+
+        let sierra =
+            ClassHash(Felt::from_bits(path).context("Mapping leaf path to contract address")?);
+
+        let casm = self
+            .tx
+            .casm_hash_at(block.into(), sierra)
+            .context("Querying CASM hash")?;
+        let Some(casm) = casm else {
+            return Ok(None);
+        };
+
+        let value = self.tx.class_commitment_leaf(block, &casm)?.map(|x| x.0);
+
+        Ok(value)
     }
 }
 
