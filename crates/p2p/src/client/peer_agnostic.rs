@@ -1,8 +1,8 @@
 //! _High level_ client for p2p interaction.
 //! Frees the caller from managing peers manually.
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use futures::{pin_mut, Stream, StreamExt};
@@ -67,13 +67,12 @@ use crate::client::types::{
     UnverifiedTransactionDataWithBlockNumber,
 };
 use crate::peer_data::PeerData;
-use crate::sync::protocol;
 
 #[derive(Clone, Debug)]
 pub struct Client {
     inner: peer_aware::Client,
     block_propagation_topic: Arc<String>,
-    peers_with_capability: Arc<RwLock<PeersWithCapability>>,
+    peers: Arc<RwLock<Decaying<HashSet<PeerId>>>>,
 }
 
 impl Client {
@@ -81,7 +80,7 @@ impl Client {
         Self {
             inner,
             block_propagation_topic: Arc::new(block_propagation_topic),
-            peers_with_capability: Default::default(),
+            peers: Default::default(),
         }
     }
 
@@ -102,29 +101,34 @@ impl Client {
             .await
     }
 
-    async fn get_update_peers_with_sync_capability(&self, capability: &str) -> Vec<PeerId> {
+    async fn get_random_peers(&self) -> Vec<PeerId> {
         use rand::seq::SliceRandom;
 
-        let r = self.peers_with_capability.read().await;
-        let mut peers = if let Some(peers) = r.get(capability) {
+        let r = self.peers.read().await;
+        let mut peers = if let Some(peers) = r.get() {
             peers.iter().copied().collect::<Vec<_>>()
         } else {
             // Avoid deadlock
             drop(r);
+            let mut w = self.peers.write().await;
+            // Check again because the previous lock in the queue might have been a write
+            // lock that has already updated the peers.
+            if let Some(peers) = w.get() {
+                return peers.iter().copied().collect::<Vec<_>>();
+            }
 
             let mut peers = self
                 .inner
-                .get_capability_providers(capability)
+                .get_closest_peers(PeerId::random())
                 .await
                 .unwrap_or_default();
 
-            let _i_should_have_the_capability_too = peers.remove(self.inner.peer_id());
-            debug_assert!(_i_should_have_the_capability_too);
+            // We could be on the list
+            peers.remove(self.inner.peer_id());
 
             let peers_vec = peers.iter().copied().collect::<Vec<_>>();
 
-            let mut w = self.peers_with_capability.write().await;
-            w.update(capability, peers);
+            w.update(peers);
             peers_vec
         };
         peers.shuffle(&mut rand::thread_rng());
@@ -150,7 +154,7 @@ impl HeaderStream for Client {
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
                 let peers = self
-                    .get_update_peers_with_sync_capability(protocol::Headers::NAME)
+                    .get_random_peers()
                     .await;
 
                 // Attempt each peer.
@@ -243,11 +247,7 @@ impl TransactionStream for Client {
             transaction_counts_and_commitments_stream,
             move || {
                 let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
-                        .await
-                }
+                async move { outer.get_random_peers().await }
             },
             move |peer, request| {
                 let inner = inner.clone();
@@ -281,11 +281,7 @@ impl StateDiffStream for Client {
             state_diff_length_and_commitment_stream,
             move || {
                 let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_sync_capability(protocol::StateDiffs::NAME)
-                        .await
-                }
+                async move { outer.get_random_peers().await }
             },
             move |peer, request| {
                 let inner = inner.clone();
@@ -310,11 +306,7 @@ impl ClassStream for Client {
             declared_class_counts_stream,
             move || {
                 let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_sync_capability(protocol::Classes::NAME)
-                        .await
-                }
+                async move { outer.get_random_peers().await }
             },
             move |peer, request| {
                 let inner = inner.clone();
@@ -347,11 +339,7 @@ impl EventStream for Client {
             event_counts_stream,
             move || {
                 let outer = outer.clone();
-                async move {
-                    outer
-                        .get_update_peers_with_sync_capability(protocol::Events::NAME)
-                        .await
-                }
+                async move { outer.get_random_peers().await }
             },
             move |peer, request| {
                 let inner = inner.clone();
@@ -378,9 +366,7 @@ impl BlockClient for Client {
             },
         };
 
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Transactions::NAME)
-            .await;
+        let peers = self.get_random_peers().await;
 
         for peer in peers {
             let Ok(stream) = self
@@ -429,9 +415,7 @@ impl BlockClient for Client {
             },
         };
 
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::StateDiffs::NAME)
-            .await;
+        let peers = self.get_random_peers().await;
 
         for peer in peers {
             let Ok(mut stream) = self
@@ -557,9 +541,7 @@ impl BlockClient for Client {
             },
         };
 
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Classes::NAME)
-            .await;
+        let peers = self.get_random_peers().await;
 
         for peer in peers {
             let Ok(mut stream) = self
@@ -637,9 +619,7 @@ impl BlockClient for Client {
             },
         };
 
-        let peers = self
-            .get_update_peers_with_sync_capability(protocol::Events::NAME)
-            .await;
+        let peers = self.get_random_peers().await;
 
         for peer in peers {
             let Ok(stream) = self
@@ -1369,38 +1349,38 @@ where
 }
 
 #[derive(Clone, Debug)]
-struct PeersWithCapability {
-    set: HashMap<String, HashSet<PeerId>>,
-    last_update: std::time::Instant,
+struct Decaying<T> {
+    data: T,
+    last_update: Instant,
     timeout: Duration,
 }
 
-impl PeersWithCapability {
+impl<T: Default> Decaying<T> {
     pub fn new(timeout: Duration) -> Self {
         Self {
-            set: Default::default(),
-            last_update: std::time::Instant::now(),
+            data: Default::default(),
+            last_update: Instant::now(),
             timeout,
         }
     }
 
     /// Does not clear if elapsed, instead the caller is expected to call
     /// [`Self::update`]
-    pub fn get(&self, capability: &str) -> Option<&HashSet<PeerId>> {
+    pub fn get(&self) -> Option<&T> {
         if self.last_update.elapsed() > self.timeout {
             None
         } else {
-            self.set.get(capability)
+            Some(&self.data)
         }
     }
 
-    pub fn update(&mut self, capability: &str, peers: HashSet<PeerId>) {
-        self.last_update = std::time::Instant::now();
-        self.set.insert(capability.to_owned(), peers);
+    pub fn update(&mut self, data: T) {
+        self.last_update = Instant::now();
+        self.data = data;
     }
 }
 
-impl Default for PeersWithCapability {
+impl<T: Default> Default for Decaying<T> {
     fn default() -> Self {
         Self::new(Duration::from_secs(60))
     }

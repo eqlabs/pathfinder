@@ -80,6 +80,7 @@ struct PendingRequests {
 #[derive(Debug, Default)]
 struct PendingQueries {
     pub get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>>>>,
+    pub get_closest_peers: HashMap<QueryId, mpsc::Sender<anyhow::Result<Vec<PeerId>>>>,
 }
 
 impl MainLoop {
@@ -421,6 +422,25 @@ impl MainLoop {
                                 let sender = self
                                     .pending_queries
                                     .get_providers
+                                    .remove(&id)
+                                    .expect("Query to be pending");
+
+                                sender
+                                    .send(result)
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
+                            QueryResult::GetClosestPeers(result) => {
+                                use libp2p::kad::GetClosestPeersOk;
+
+                                let result = match result {
+                                    Ok(GetClosestPeersOk { peers, .. }) => Ok(peers),
+                                    Err(e) => Err(e.into()),
+                                };
+
+                                let sender = self
+                                    .pending_queries
+                                    .get_closest_peers
                                     .remove(&id)
                                     .expect("Query to be pending");
 
@@ -807,6 +827,12 @@ impl MainLoop {
                     .behaviour_mut()
                     .get_capability_providers(&capability);
                 self.pending_queries.get_providers.insert(query_id, sender);
+            }
+            Command::GetClosestPeers { peer, sender } => {
+                let query_id = self.swarm.behaviour_mut().get_closest_peers(peer);
+                self.pending_queries
+                    .get_closest_peers
+                    .insert(query_id, sender);
             }
             Command::SubscribeTopic { topic, sender } => {
                 let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {

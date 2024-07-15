@@ -121,6 +121,27 @@ impl Client {
         Ok(providers)
     }
 
+    /// ### Important
+    ///
+    /// Triggers kademlia queries to other peers.
+    pub async fn get_closest_peers(&self, peer: PeerId) -> anyhow::Result<HashSet<PeerId>> {
+        let (sender, mut receiver) = mpsc::channel(1);
+        self.sender
+            .send(Command::GetClosestPeers { peer, sender })
+            .await
+            .expect("Command receiver not to be dropped");
+
+        let mut peers = HashSet::new();
+
+        while let Some(partial_result) = receiver.recv().await {
+            let more_peers =
+                partial_result.with_context(|| format!("Getting closest peers to {peer}"))?;
+            peers.extend(more_peers.into_iter());
+        }
+
+        Ok(peers)
+    }
+
     pub async fn subscribe_topic(&self, topic: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);

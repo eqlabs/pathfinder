@@ -135,6 +135,10 @@ enum Command {
         capability: String,
         sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>>>,
     },
+    GetClosestPeers {
+        peer: PeerId,
+        sender: mpsc::Sender<anyhow::Result<Vec<PeerId>>>,
+    },
     SubscribeTopic {
         topic: IdentTopic,
         sender: EmptyResultSender,
