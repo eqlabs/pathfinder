@@ -1,18 +1,24 @@
-use crate::merkle_node::InternalNode;
+use std::ops::ControlFlow;
+
 use anyhow::Context;
 use bitvec::order::Msb0;
 use bitvec::prelude::BitSlice;
-use bitvec::view::BitView;
 use pathfinder_common::hash::{PedersenHash, PoseidonHash};
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash, ContractAddress,
-    ContractRoot, SierraHash, StorageAddress, StorageValue,
+    BlockNumber,
+    CasmHash,
+    ClassCommitment,
+    ClassCommitmentLeafHash,
+    ClassHash,
+    SierraHash,
+    StorageAddress,
+    StorageValue,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
-use std::ops::ControlFlow;
 
+use crate::merkle_node::InternalNode;
 use crate::tree::{MerkleTree, Visit};
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
@@ -102,7 +108,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
             return Ok(None);
         };
 
-        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, casm.view_bits())
+        MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, casm.view_bits())
     }
 }
 
@@ -114,7 +120,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
 /// Tree data is persisted by a sqlite table 'tree_class'.
 
 pub struct ClassStorageTree<'tx> {
-    tree: MerkleTree<PedersenHash, 251>,
+    tree: MerkleTree<PoseidonHash, 251>,
     storage: ClassStorage<'tx>,
 }
 
