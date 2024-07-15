@@ -42,11 +42,12 @@ pub struct ExecutionResources {
     pub builtins: BuiltinCounters,
     pub n_steps: u64,
     pub n_memory_holes: u64,
-    pub data_availability: ExecutionDataAvailability,
+    pub data_availability: L1Gas,
+    pub total_gas_consumed: L1Gas,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
-pub struct ExecutionDataAvailability {
+pub struct L1Gas {
     pub l1_gas: u128,
     pub l1_data_gas: u128,
 }
@@ -62,6 +63,9 @@ pub struct BuiltinCounters {
     pub keccak: u64,
     pub poseidon: u64,
     pub segment_arena: u64,
+    pub add_mod: u64,
+    pub mul_mod: u64,
+    pub range_check96: u64,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Dummy)]
@@ -97,6 +101,8 @@ impl<T> Dummy<T> for ExecutionResources {
             n_steps: rng.next_u32() as u64,
             n_memory_holes: rng.next_u32() as u64,
             data_availability: Faker.fake_with_rng(rng),
+            // TODO fix this after total_gas_consumed is added to p2p messages
+            total_gas_consumed: Default::default(),
         }
     }
 }
@@ -115,6 +121,9 @@ impl<T> Dummy<T> for BuiltinCounters {
             poseidon: rng.next_u32() as u64,
             // This field is not used in p2p
             segment_arena: 0,
+            add_mod: rng.next_u32() as u64,
+            mul_mod: rng.next_u32() as u64,
+            range_check96: rng.next_u32() as u64,
         }
     }
 }

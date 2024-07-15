@@ -347,7 +347,7 @@ impl SerializeForVersion for MsgToL1<'_> {
 
 impl SerializeForVersion for ExecutionResources<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        struct DataAvailability<'a>(&'a pathfinder_common::receipt::ExecutionDataAvailability);
+        struct DataAvailability<'a>(&'a pathfinder_common::receipt::L1Gas);
 
         impl SerializeForVersion for DataAvailability<'_> {
             fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {

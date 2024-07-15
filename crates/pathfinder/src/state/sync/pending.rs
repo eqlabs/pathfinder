@@ -130,6 +130,9 @@ mod tests {
             l1_da_mode: Default::default(),
             transaction_commitment: Default::default(),
             event_commitment: Default::default(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: Default::default(),
         };
 
         pub static ref PENDING_UPDATE: StateUpdate = {

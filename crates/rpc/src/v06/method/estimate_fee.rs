@@ -535,6 +535,7 @@ pub(crate) mod tests {
                 number: last_block_header.number + 1,
             }
         }
+
         #[test_log::test(tokio::test)]
         async fn nonce_updated_in_pending() {
             let (context, last_block_header, account_contract_address, _universal_deployer_address) =

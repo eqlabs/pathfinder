@@ -1,6 +1,6 @@
 use pathfinder_common::event::Event;
 use pathfinder_common::macro_prelude::*;
-use pathfinder_common::receipt::{ExecutionDataAvailability, ExecutionResources, Receipt};
+use pathfinder_common::receipt::{ExecutionResources, L1Gas, Receipt};
 use pathfinder_common::transaction::{
     DeclareTransactionV0V1,
     DeployTransactionV0,
@@ -117,9 +117,13 @@ pub(crate) fn create_transactions_and_receipts(
                 builtins: Default::default(),
                 n_steps: i as u64 + 987,
                 n_memory_holes: i as u64 + 1177,
-                data_availability: ExecutionDataAvailability {
+                data_availability: L1Gas {
                     l1_gas: i as u128 + 124,
                     l1_data_gas: i as u128 + 457,
+                },
+                total_gas_consumed: L1Gas {
+                    l1_gas: i as u128 + 333,
+                    l1_data_gas: i as u128 + 666,
                 },
             },
             transaction_hash: tx.hash,

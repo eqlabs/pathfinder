@@ -60,25 +60,46 @@ impl VerifyResult {
 ///
 /// See the `compute_block_hash.py` helper script that uses the cairo-lang
 /// Python implementation to compute the block hash for details.
-pub fn verify_gateway_block_hash(
+pub fn verify_gateway_block_commitments_and_hash(
     block: &Block,
     state_diff_commitment: StateDiffCommitment,
     state_diff_length: u64,
     chain: Chain,
     chain_id: ChainId,
 ) -> Result<VerifyResult> {
-    let transaction_commitment =
+    let mut bhd =
+        BlockHeaderData::from_gateway_block(block, state_diff_commitment, state_diff_length)?;
+
+    let computed_transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
 
-    let mut block_header_data =
-        BlockHeaderData::from_block(block, state_diff_commitment, state_diff_length)?;
-
-    // Older blocks on mainnet don't carry a precalculated transaction
-    // commitment.
+    // Older blocks on mainnet don't carry a precalculated transaction commitment.
     if block.transaction_commitment == TransactionCommitment::ZERO {
-        block_header_data.transaction_commitment = transaction_commitment;
-    } else if transaction_commitment != block.transaction_commitment {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.transaction_commitment = computed_transaction_commitment;
+    } else if computed_transaction_commitment != bhd.transaction_commitment {
         return Ok(VerifyResult::Mismatch);
+    }
+
+    let computed_receipt_commitment = calculate_receipt_commitment(
+        block
+            .transaction_receipts
+            .iter()
+            .map(|(r, _)| r.clone())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )?;
+
+    // Older blocks on mainnet don't carry a precalculated receipt commitment.
+    if let Some(receipt_commitment) = block.receipt_commitment {
+        if computed_receipt_commitment != receipt_commitment {
+            return Ok(VerifyResult::Mismatch);
+        }
+    } else {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.receipt_commitment = computed_receipt_commitment;
     }
 
     let event_commitment = calculate_event_commitment(
@@ -93,12 +114,14 @@ pub fn verify_gateway_block_hash(
     // Older blocks on mainnet don't carry a precalculated event
     // commitment.
     if block.event_commitment == EventCommitment::ZERO {
-        block_header_data.event_commitment = event_commitment;
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.event_commitment = event_commitment;
     } else if event_commitment != block.event_commitment {
         return Ok(VerifyResult::Mismatch);
     }
 
-    verify_block_hash(block_header_data, chain, chain_id)
+    verify_block_hash(bhd, chain, chain_id)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -159,17 +182,11 @@ impl BlockHeaderData {
         }
     }
 
-    pub fn from_block(
+    pub fn from_gateway_block(
         block: &Block,
         state_diff_commitment: StateDiffCommitment,
         state_diff_length: u64,
     ) -> Result<Self> {
-        let receipts = block
-            .transaction_receipts
-            .iter()
-            .map(|(receipt, _)| receipt.clone())
-            .collect::<Vec<_>>();
-        let receipt_commitment = calculate_receipt_commitment(&receipts)?;
         Ok(Self {
             hash: block.block_hash,
             parent_hash: block.parent_block_hash,
@@ -201,7 +218,7 @@ impl BlockHeaderData {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            receipt_commitment,
+            receipt_commitment: block.receipt_commitment.unwrap_or_default(),
             l1_da_mode: block.l1_da_mode.into(),
         })
     }
@@ -460,9 +477,11 @@ pub(crate) fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> 
     hasher.write(header.strk_l1_gas_price.0.into());
     hasher.write(header.eth_l1_data_gas_price.0.into());
     hasher.write(header.strk_l1_data_gas_price.0.into());
-    hasher.write(MontFelt::from_hex(&hex::encode(
-        &header.starknet_version_str,
-    )));
+    hasher.write(
+        Felt::from_be_slice(header.starknet_version_str.as_bytes())
+            .expect("Starknet version should fit into a felt")
+            .into(),
+    );
     hasher.write(MontFelt::ZERO);
     hasher.write(header.parent_hash.0.into());
     Ok(BlockHash(hasher.finish().into()))
@@ -529,7 +548,7 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommi
                             }
                             hasher.finish()
                         },
-                        // Calculate hash of execution status.
+                        // Revert reason.
                         match &receipt.execution_status {
                             ExecutionStatus::Succeeded => MontFelt::ZERO,
                             ExecutionStatus::Reverted { reason } => {
@@ -540,11 +559,15 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommi
                                 MontFelt::from_be_bytes(hashed_bytes)
                             }
                         },
+                        // Execution resources:
+                        // L2 gas
                         MontFelt::ZERO,
-                        receipt.execution_resources.data_availability.l1_gas.into(),
+                        // L1 gas consumed
+                        receipt.execution_resources.total_gas_consumed.l1_gas.into(),
+                        // L1 data gas consumed
                         receipt
                             .execution_resources
-                            .data_availability
+                            .total_gas_consumed
                             .l1_data_gas
                             .into(),
                     ])
@@ -754,11 +777,7 @@ fn calculate_event_hash(event: &Event, transaction_hash: TransactionHash) -> Fel
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::receipt::{
-        ExecutionDataAvailability,
-        ExecutionResources,
-        L2ToL1Message,
-    };
+    use pathfinder_common::receipt::{ExecutionResources, L1Gas, L2ToL1Message};
     use pathfinder_common::transaction::{
         EntryPointType,
         InvokeTransactionV0,
@@ -774,6 +793,8 @@ mod tests {
         TransactionHash,
     };
     use pathfinder_crypto::Felt;
+    use starknet_gateway_test_fixtures::v0_13_2;
+    use starknet_gateway_types::reply::StateUpdate;
 
     use super::*;
 
@@ -839,7 +860,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -859,7 +880,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -880,7 +901,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -898,7 +919,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -918,7 +939,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_gateway_block_hash(
+            verify_gateway_block_commitments_and_hash(
                 &block,
                 Default::default(),
                 0,
@@ -1040,7 +1061,11 @@ mod tests {
                 },
             ],
             execution_resources: ExecutionResources {
-                data_availability: ExecutionDataAvailability {
+                data_availability: L1Gas {
+                    l1_gas: 0,
+                    l1_data_gas: 32,
+                },
+                total_gas_consumed: L1Gas {
                     l1_gas: 16580,
                     l1_data_gas: 32,
                 },
@@ -1096,5 +1121,45 @@ mod tests {
             "0x061e4998d51a248f1d0288d7e17f6287757b0e5e6c5e1e58ddf740616e312134"
         ));
         assert_eq!(compute_final_hash(&header).unwrap(), expected_hash);
+    }
+
+    // Source
+    // https://integration-sepolia.starknet.io/feeder_gateway/get_block?blockNumber=35748
+    #[test]
+    fn test_block_hash_0_13_2_first_integration_block() {
+        let block: Block = serde_json::from_str(v0_13_2::block::SEPOLIA_INTEGRATION_35748).unwrap();
+        let expected_hash = block.block_hash;
+
+        let state_update: StateUpdate =
+            serde_json::from_str(v0_13_2::state_update::SEPOLIA_INTEGRATION_35748).unwrap();
+        let state_update: pathfinder_common::StateUpdate = state_update.into();
+        let state_diff_length = state_update.state_diff_length();
+        let state_diff_commitment =
+            state_update.compute_state_diff_commitment(StarknetVersion::new(0, 13, 2, 0));
+
+        assert_eq!(state_diff_length, block.state_diff_length.unwrap());
+        assert_eq!(state_diff_commitment, block.state_diff_commitment.unwrap());
+
+        let receipts: Vec<_> = block
+            .transaction_receipts
+            .iter()
+            .map(|(receipt, _)| receipt.clone())
+            .collect();
+        assert_eq!(
+            calculate_receipt_commitment(&receipts).unwrap(),
+            block.receipt_commitment.unwrap()
+        );
+
+        let block_header_data = BlockHeaderData::from_gateway_block(
+            &block,
+            block.state_diff_commitment.unwrap(),
+            block.state_diff_length.unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            compute_final_hash(&block_header_data).unwrap(),
+            expected_hash
+        );
     }
 }

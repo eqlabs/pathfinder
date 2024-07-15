@@ -270,8 +270,8 @@ struct DataResources {
     l1_data_gas: u128,
 }
 
-impl From<pathfinder_common::receipt::ExecutionDataAvailability> for DataResources {
-    fn from(value: pathfinder_common::receipt::ExecutionDataAvailability) -> Self {
+impl From<pathfinder_common::receipt::L1Gas> for DataResources {
+    fn from(value: pathfinder_common::receipt::L1Gas) -> Self {
         Self {
             l1_gas: value.l1_gas,
             l1_data_gas: value.l1_data_gas,

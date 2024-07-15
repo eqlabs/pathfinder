@@ -375,6 +375,7 @@ pub mod types {
                         keccak: keccak_builtin,
                         poseidon: poseidon_builtin,
                         segment_arena: segment_arena_builtin,
+                        ..
                     },
                 n_steps,
                 n_memory_holes,
@@ -872,7 +873,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: Default::default(),
+                            ..Default::default()
                         }
                         .into(),
                     }
@@ -923,7 +924,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: Default::default(),
+                            ..Default::default()
                         }
                         .into(),
                     }
@@ -945,10 +946,11 @@ mod tests {
                 keccak: 6,
                 poseidon: 7,
                 segment_arena: 8,
+                ..Default::default()
             },
             n_steps: 9,
             n_memory_holes: 10,
-            data_availability: Default::default(),
+            ..Default::default()
         };
 
         let into = ExecutionResourcesProperties::from(original.clone());

@@ -1,10 +1,13 @@
 use std::num::NonZeroU32;
 
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId};
-use pathfinder_crypto::Felt;
-use pathfinder_lib::state::block_hash::{verify_gateway_block_hash, VerifyResult};
-use starknet_gateway_types::reply::{Block, GasPrices, Status};
+use pathfinder_common::{BlockNumber, Chain, ChainId};
+use pathfinder_lib::state::block_hash::{
+    calculate_receipt_commitment,
+    verify_block_hash,
+    BlockHeaderData,
+    VerifyResult,
+};
 
 /// Verify block hashes in a pathfinder database.
 ///
@@ -32,8 +35,6 @@ fn main() -> anyhow::Result<()> {
         .connection()
         .context("Opening database connection")?;
 
-    let mut parent_block_hash = BlockHash(Felt::ZERO);
-
     let latest_block_number = {
         let tx = db.transaction().unwrap();
         tx.block_id(pathfinder_storage::BlockId::Latest)
@@ -50,7 +51,7 @@ fn main() -> anyhow::Result<()> {
             .block_header(block_id)
             .context("Fetching block header")?
             .context("Block header missing")?;
-        let transactions_and_receipts = tx
+        let txn_data_for_block = tx
             .transaction_data_for_block(block_id)?
             .context("Transaction data missing")?;
         let (state_diff_commitment, state_diff_length) = tx
@@ -58,48 +59,31 @@ fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("State diff commitment missing"))?;
         drop(tx);
 
-        let block_hash = header.hash;
-        let (transactions, receipts): (Vec<_>, Vec<_>) = transactions_and_receipts
-            .into_iter()
-            .map(|(tx, rx, ev)| (tx, (rx, ev)))
-            .unzip();
-
-        let block = Block {
-            block_hash: header.hash,
-            block_number: header.number,
-            l1_gas_price: GasPrices {
-                price_in_wei: header.eth_l1_gas_price,
-                price_in_fri: header.strk_l1_gas_price,
-            },
-            l1_data_gas_price: GasPrices {
-                price_in_wei: header.eth_l1_data_gas_price,
-                price_in_fri: header.strk_l1_data_gas_price,
-            },
-            parent_block_hash,
-            sequencer_address: Some(header.sequencer_address),
-            state_commitment: header.state_commitment,
-            status: Status::AcceptedOnL1,
-            timestamp: header.timestamp,
-            transaction_receipts: receipts,
-            transactions,
-            starknet_version: header.starknet_version,
-            l1_da_mode: Default::default(),
-            transaction_commitment: header.transaction_commitment,
-            event_commitment: header.event_commitment,
-        };
-        parent_block_hash = block_hash;
-
-        let result = verify_gateway_block_hash(
-            &block,
-            state_diff_commitment,
-            state_diff_length.try_into().unwrap(),
-            chain,
-            chain_id,
+        // TODO remove the computation after the commitment is stored in the database
+        let receipt_commitment = calculate_receipt_commitment(
+            txn_data_for_block
+                .into_iter()
+                .flat_map(|(_, r, _)| Some(r))
+                .collect::<Vec<_>>()
+                .as_slice(),
         )?;
+
+        let bhd = BlockHeaderData::from_header(
+            &header,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length as u64,
+        );
+
+        let result = verify_block_hash(bhd, chain, chain_id)?;
+
         match result {
             VerifyResult::Match(_) => {}
             VerifyResult::Mismatch => {
-                println!("Block hash mismatch at block number {block_number} hash {block_hash:?}")
+                println!(
+                    "Block hash mismatch at block number {block_number} hash {}",
+                    header.hash
+                )
             }
         }
     }

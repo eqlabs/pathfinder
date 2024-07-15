@@ -1269,6 +1269,9 @@ mod tests {
                 l1_da_mode: Default::default(),
                 transaction_commitment: header.transaction_commitment,
                 event_commitment: header.event_commitment,
+                receipt_commitment: Default::default(),
+                state_diff_commitment: Default::default(),
+                state_diff_length: Default::default(),
             });
 
             let signature = Box::new(BlockCommitmentSignature {

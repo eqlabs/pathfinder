@@ -31,7 +31,6 @@ use anyhow::Context;
 use clap::{Args, Parser};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
-    state_diff_commitment_bytes,
     BlockCommitmentSignature,
     BlockCommitmentSignatureElem,
     BlockHash,
@@ -39,6 +38,7 @@ use pathfinder_common::{
     Chain,
     ClassHash,
 };
+use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
 use pathfinder_storage::BlockId;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
@@ -424,6 +424,18 @@ fn resolve_block(
         .context("Reading transactions from database")?
         .context("Transaction data missing")?;
 
+    let (state_diff_commitment, state_diff_commitment_length) = tx
+        .state_diff_commitment_and_length(header.number)
+        .context("Reading state diff commitment and length form database")?
+        .context("State diff commitment and length missing")?;
+
+    let receipts = transactions_receipts
+        .iter()
+        .map(|(_, r, _)| r.clone())
+        .collect::<Vec<_>>();
+
+    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+
     let (transactions, transaction_receipts): (Vec<_>, Vec<_>) = transactions_receipts
         .into_iter()
         .map(|(tx, rx, ev)| (tx, (rx, ev)))
@@ -460,6 +472,9 @@ fn resolve_block(
         l1_da_mode: header.l1_da_mode.into(),
         transaction_commitment: header.transaction_commitment,
         event_commitment: header.event_commitment,
+        receipt_commitment: Some(receipt_commitment),
+        state_diff_commitment: Some(state_diff_commitment),
+        state_diff_length: Some(state_diff_commitment_length as u64),
     })
 }
 
@@ -482,14 +497,12 @@ fn resolve_signature(
             s: BlockCommitmentSignatureElem::ZERO,
         });
 
-    Ok(starknet_gateway_types::reply::BlockSignature {
-        block_number: header.number,
-        signature: [signature.r, signature.s],
-        signature_input: starknet_gateway_types::reply::BlockSignatureInput {
+    Ok(starknet_gateway_types::reply::BlockSignature::V1(
+        starknet_gateway_types::reply::BlockSignatureV1 {
             block_hash: header.hash,
-            state_diff_commitment: state_diff_commitment_bytes!(b"fake commitment"),
+            signature: [signature.r, signature.s],
         },
-    })
+    ))
 }
 
 #[tracing::instrument(level = "trace", skip(tx))]

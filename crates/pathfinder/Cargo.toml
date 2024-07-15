@@ -29,7 +29,6 @@ console-subscriber = { workspace = true, optional = true }
 fake = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
-hex = { workspace = true }
 http = { workspace = true }
 ipnet = { workspace = true }
 jemallocator = { workspace = true }

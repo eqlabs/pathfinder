@@ -117,12 +117,12 @@ impl Transaction<'_> {
 
         let transactions_with_receipts: Vec<_> = transactions
             .iter()
-            .map(|(transaction, receipt)| dto::TransactionWithReceiptV1 {
+            .map(|(transaction, receipt)| dto::TransactionWithReceiptV2 {
                 transaction: dto::TransactionV1::from(transaction),
                 receipt: receipt.into(),
             })
             .collect();
-        let transactions_with_receipts = dto::TransactionsWithReceiptsForBlock::V1 {
+        let transactions_with_receipts = dto::TransactionsWithReceiptsForBlock::V2 {
             transactions_with_receipts,
         };
         let transactions_with_receipts =
@@ -394,7 +394,7 @@ impl Transaction<'_> {
             transactions
                 .into_iter()
                 .map(
-                    |dto::TransactionWithReceiptV1 {
+                    |dto::TransactionWithReceiptV2 {
                          transaction,
                          receipt,
                      }| { (transaction.into(), receipt.into()) },
@@ -465,7 +465,7 @@ impl Transaction<'_> {
             transactions
                 .into_iter()
                 .map(
-                    |dto::TransactionWithReceiptV1 {
+                    |dto::TransactionWithReceiptV2 {
                          transaction,
                          receipt,
                      }| { (transaction.into(), receipt.into()) },
@@ -545,7 +545,7 @@ impl Transaction<'_> {
                 .context("Deserializing transactions")?
                 .0;
         let transactions = transactions.transactions_with_receipts();
-        let dto::TransactionWithReceiptV1 {
+        let dto::TransactionWithReceiptV2 {
             transaction,
             receipt,
         } = transactions.get(idx).context("Transaction not found")?;
@@ -597,7 +597,7 @@ impl Transaction<'_> {
             }
             None => None,
         };
-        let dto::TransactionWithReceiptV1 {
+        let dto::TransactionWithReceiptV2 {
             transaction,
             receipt,
         } = transactions.get(idx).context("Transaction not found")?;
@@ -780,23 +780,46 @@ pub(crate) mod dto {
     /// Represents execution resources for L2 transaction.
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct ExecutionResources {
-        pub builtins: BuiltinCounters,
+    pub struct ExecutionResourcesV0 {
+        pub builtins: BuiltinCountersV0,
         pub n_steps: u64,
         pub n_memory_holes: u64,
-        pub data_availability: ExecutionDataAvailability,
+        pub data_availability: L1Gas,
+    }
+
+    /// Represents execution resources for L2 transaction.
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct ExecutionResourcesV1 {
+        pub builtins: BuiltinCountersV1,
+        pub n_steps: u64,
+        pub n_memory_holes: u64,
+        pub data_availability: L1Gas,
+        pub total_gas_consumed: L1Gas,
     }
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct ExecutionDataAvailability {
+    pub struct L1Gas {
         // TODO make these mandatory once some new release makes resyncing necessary
         pub l1_gas: Option<u128>,
         pub l1_data_gas: Option<u128>,
     }
 
-    impl From<&ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
-        fn from(value: &ExecutionResources) -> Self {
+    impl From<ExecutionResourcesV0> for ExecutionResourcesV1 {
+        fn from(value: ExecutionResourcesV0) -> Self {
+            Self {
+                builtins: value.builtins.into(),
+                n_steps: value.n_steps,
+                n_memory_holes: value.n_memory_holes,
+                data_availability: value.data_availability,
+                total_gas_consumed: Default::default(),
+            }
+        }
+    }
+
+    impl From<ExecutionResourcesV1> for pathfinder_common::receipt::ExecutionResources {
+        fn from(value: ExecutionResourcesV1) -> Self {
             Self {
                 builtins: value.builtins.into(),
                 n_steps: value.n_steps,
@@ -805,33 +828,45 @@ pub(crate) mod dto {
                     value.data_availability.l1_gas,
                     value.data_availability.l1_data_gas,
                 ) {
-                    (Some(l1_gas), Some(l1_data_gas)) => {
-                        pathfinder_common::receipt::ExecutionDataAvailability {
-                            l1_gas,
-                            l1_data_gas,
-                        }
-                    }
+                    (Some(l1_gas), Some(l1_data_gas)) => pathfinder_common::receipt::L1Gas {
+                        l1_gas,
+                        l1_data_gas,
+                    },
+                    _ => Default::default(),
+                },
+                total_gas_consumed: match (
+                    value.total_gas_consumed.l1_gas,
+                    value.total_gas_consumed.l1_data_gas,
+                ) {
+                    (Some(l1_gas), Some(l1_data_gas)) => pathfinder_common::receipt::L1Gas {
+                        l1_gas,
+                        l1_data_gas,
+                    },
                     _ => Default::default(),
                 },
             }
         }
     }
 
-    impl From<&pathfinder_common::receipt::ExecutionResources> for ExecutionResources {
+    impl From<&pathfinder_common::receipt::ExecutionResources> for ExecutionResourcesV1 {
         fn from(value: &pathfinder_common::receipt::ExecutionResources) -> Self {
             Self {
                 builtins: (&value.builtins).into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
-                data_availability: ExecutionDataAvailability {
+                data_availability: L1Gas {
                     l1_gas: Some(value.data_availability.l1_gas),
                     l1_data_gas: Some(value.data_availability.l1_data_gas),
+                },
+                total_gas_consumed: L1Gas {
+                    l1_gas: Some(value.total_gas_consumed.l1_gas),
+                    l1_data_gas: Some(value.total_gas_consumed.l1_data_gas),
                 },
             }
         }
     }
 
-    impl<T> Dummy<T> for ExecutionResources {
+    impl<T> Dummy<T> for ExecutionResourcesV0 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             let (l1_gas, l1_data_gas) = if rng.gen() {
                 (Some(rng.next_u32() as u128), Some(rng.next_u32() as u128))
@@ -843,7 +878,7 @@ pub(crate) mod dto {
                 builtins: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                data_availability: ExecutionDataAvailability {
+                data_availability: L1Gas {
                     l1_gas,
                     l1_data_gas,
                 },
@@ -851,11 +886,33 @@ pub(crate) mod dto {
         }
     }
 
-    // This struct purposefully allows for unknown fields as it is not critical to
-    // store these counters perfectly. Failure would be far more costly than simply
-    // ignoring them.
+    impl<T> Dummy<T> for ExecutionResourcesV1 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let (l1_gas, l1_data_gas) = if rng.gen() {
+                (Some(rng.next_u32() as u128), Some(rng.next_u32() as u128))
+            } else {
+                (None, None)
+            };
+
+            Self {
+                builtins: Faker.fake_with_rng(rng),
+                n_steps: rng.next_u32() as u64,
+                n_memory_holes: rng.next_u32() as u64,
+                data_availability: L1Gas {
+                    l1_gas,
+                    l1_data_gas,
+                },
+                total_gas_consumed: L1Gas {
+                    l1_gas: l1_gas.map(|x| x + rng.next_u32() as u128),
+                    l1_data_gas: l1_data_gas.map(|x| x + rng.next_u32() as u128),
+                },
+            }
+        }
+    }
+
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
-    pub struct BuiltinCounters {
+    #[serde(deny_unknown_fields)]
+    pub struct BuiltinCountersV0 {
         pub output: u64,
         pub pedersen: u64,
         pub range_check: u64,
@@ -867,10 +924,27 @@ pub(crate) mod dto {
         pub segment_arena: u64,
     }
 
-    impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {
-        fn from(value: BuiltinCounters) -> Self {
+    #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct BuiltinCountersV1 {
+        pub output: u64,
+        pub pedersen: u64,
+        pub range_check: u64,
+        pub ecdsa: u64,
+        pub bitwise: u64,
+        pub ec_op: u64,
+        pub keccak: u64,
+        pub poseidon: u64,
+        pub segment_arena: u64,
+        pub add_mod: u64,
+        pub mul_mod: u64,
+        pub range_check96: u64,
+    }
+
+    impl From<BuiltinCountersV0> for BuiltinCountersV1 {
+        fn from(value: BuiltinCountersV0) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
-            let BuiltinCounters {
+            let BuiltinCountersV0 {
                 output,
                 pedersen,
                 range_check,
@@ -891,11 +965,46 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..Default::default()
             }
         }
     }
 
-    impl From<&pathfinder_common::receipt::BuiltinCounters> for BuiltinCounters {
+    impl From<BuiltinCountersV1> for pathfinder_common::receipt::BuiltinCounters {
+        fn from(value: BuiltinCountersV1) -> Self {
+            // Use deconstruction to ensure these structs remain in-sync.
+            let BuiltinCountersV1 {
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
+            } = value;
+            Self {
+                output,
+                pedersen,
+                range_check,
+                ecdsa,
+                bitwise,
+                ec_op,
+                keccak,
+                poseidon,
+                segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
+            }
+        }
+    }
+
+    impl From<&pathfinder_common::receipt::BuiltinCounters> for BuiltinCountersV1 {
         fn from(value: &pathfinder_common::receipt::BuiltinCounters) -> Self {
             // Use deconstruction to ensure these structs remain in-sync.
             let pathfinder_common::receipt::BuiltinCounters {
@@ -908,6 +1017,9 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
             } = value.clone();
             Self {
                 output,
@@ -919,11 +1031,14 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                add_mod,
+                mul_mod,
+                range_check96,
             }
         }
     }
 
-    impl<T> Dummy<T> for BuiltinCounters {
+    impl<T> Dummy<T> for BuiltinCountersV0 {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
                 output: rng.next_u32() as u64,
@@ -935,6 +1050,25 @@ pub(crate) mod dto {
                 keccak: rng.next_u32() as u64,
                 poseidon: rng.next_u32() as u64,
                 segment_arena: 0, // Not used in p2p
+            }
+        }
+    }
+
+    impl<T> Dummy<T> for BuiltinCountersV1 {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                output: rng.next_u32() as u64,
+                pedersen: rng.next_u32() as u64,
+                range_check: rng.next_u32() as u64,
+                ecdsa: rng.next_u32() as u64,
+                bitwise: rng.next_u32() as u64,
+                ec_op: rng.next_u32() as u64,
+                keccak: rng.next_u32() as u64,
+                poseidon: rng.next_u32() as u64,
+                segment_arena: 0, // Not used in p2p
+                add_mod: rng.next_u32() as u64,
+                mul_mod: rng.next_u32() as u64,
+                range_check96: rng.next_u32() as u64,
             }
         }
     }
@@ -1028,7 +1162,7 @@ pub(crate) mod dto {
     #[serde(deny_unknown_fields)]
     pub struct ReceiptV0 {
         pub actual_fee: MinimalFelt,
-        pub execution_resources: Option<ExecutionResources>,
+        pub execution_resources: Option<ExecutionResourcesV0>,
         pub l2_to_l1_messages: Vec<L2ToL1MessageV0>,
         pub transaction_hash: MinimalFelt,
         pub transaction_index: TransactionIndex,
@@ -1040,18 +1174,30 @@ pub(crate) mod dto {
     #[serde(deny_unknown_fields)]
     pub struct ReceiptV1 {
         pub actual_fee: MinimalFelt,
-        pub execution_resources: Option<ExecutionResources>,
+        pub execution_resources: Option<ExecutionResourcesV0>,
         pub l2_to_l1_messages: Vec<L2ToL1MessageV1>,
         pub transaction_hash: MinimalFelt,
         pub transaction_index: TransactionIndex,
         pub execution_status: ExecutionStatus,
     }
 
-    impl From<ReceiptV0> for ReceiptV1 {
+    /// Represents deserialized L2 transaction receipt data.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[serde(deny_unknown_fields)]
+    pub struct ReceiptV2 {
+        pub actual_fee: MinimalFelt,
+        pub execution_resources: Option<ExecutionResourcesV1>,
+        pub l2_to_l1_messages: Vec<L2ToL1MessageV1>,
+        pub transaction_hash: MinimalFelt,
+        pub transaction_index: TransactionIndex,
+        pub execution_status: ExecutionStatus,
+    }
+
+    impl From<ReceiptV0> for ReceiptV2 {
         fn from(value: ReceiptV0) -> Self {
             Self {
                 actual_fee: value.actual_fee,
-                execution_resources: value.execution_resources,
+                execution_resources: value.execution_resources.map(Into::into),
                 l2_to_l1_messages: value
                     .l2_to_l1_messages
                     .into_iter()
@@ -1064,11 +1210,28 @@ pub(crate) mod dto {
         }
     }
 
-    impl From<ReceiptV1> for pathfinder_common::receipt::Receipt {
+    impl From<ReceiptV1> for ReceiptV2 {
         fn from(value: ReceiptV1) -> Self {
+            Self {
+                actual_fee: value.actual_fee,
+                execution_resources: value.execution_resources.map(Into::into),
+                l2_to_l1_messages: value
+                    .l2_to_l1_messages
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                transaction_hash: value.transaction_hash,
+                transaction_index: value.transaction_index,
+                execution_status: value.execution_status,
+            }
+        }
+    }
+
+    impl From<ReceiptV2> for pathfinder_common::receipt::Receipt {
+        fn from(value: ReceiptV2) -> Self {
             use pathfinder_common::receipt as common;
 
-            let ReceiptV1 {
+            let ReceiptV2 {
                 actual_fee,
                 execution_resources,
                 // This information is redundant as it is already in the transaction itself.
@@ -1080,7 +1243,7 @@ pub(crate) mod dto {
 
             common::Receipt {
                 actual_fee: Fee(actual_fee.into()),
-                execution_resources: (&execution_resources.unwrap_or_default()).into(),
+                execution_resources: execution_resources.unwrap_or_default().into(),
                 l2_to_l1_messages: l2_to_l1_messages.into_iter().map(Into::into).collect(),
                 transaction_hash: TransactionHash(transaction_hash.into()),
                 transaction_index,
@@ -1094,7 +1257,7 @@ pub(crate) mod dto {
         }
     }
 
-    impl From<&pathfinder_common::receipt::Receipt> for ReceiptV1 {
+    impl From<&pathfinder_common::receipt::Receipt> for ReceiptV2 {
         fn from(value: &pathfinder_common::receipt::Receipt) -> Self {
             Self {
                 actual_fee: value.actual_fee.as_inner().to_owned().into(),
@@ -1193,15 +1356,21 @@ pub(crate) mod dto {
         V1 {
             transactions_with_receipts: Vec<TransactionWithReceiptV1>,
         },
+        V2 {
+            transactions_with_receipts: Vec<TransactionWithReceiptV2>,
+        },
     }
 
     impl TransactionsWithReceiptsForBlock {
-        pub fn transactions_with_receipts(self) -> Vec<TransactionWithReceiptV1> {
+        pub fn transactions_with_receipts(self) -> Vec<TransactionWithReceiptV2> {
             match self {
                 TransactionsWithReceiptsForBlock::V0 {
                     transactions_with_receipts: v0,
                 } => v0.into_iter().map(Into::into).collect(),
                 TransactionsWithReceiptsForBlock::V1 {
+                    transactions_with_receipts: v1,
+                } => v1.into_iter().map(Into::into).collect(),
+                TransactionsWithReceiptsForBlock::V2 {
                     transactions_with_receipts,
                 } => transactions_with_receipts,
             }
@@ -1220,10 +1389,25 @@ pub(crate) mod dto {
         pub receipt: ReceiptV1,
     }
 
-    impl From<TransactionWithReceiptV0> for TransactionWithReceiptV1 {
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct TransactionWithReceiptV2 {
+        pub transaction: TransactionV1,
+        pub receipt: ReceiptV2,
+    }
+
+    impl From<TransactionWithReceiptV0> for TransactionWithReceiptV2 {
         fn from(v0: TransactionWithReceiptV0) -> Self {
             Self {
                 transaction: v0.transaction.into(),
+                receipt: v0.receipt.into(),
+            }
+        }
+    }
+
+    impl From<TransactionWithReceiptV1> for TransactionWithReceiptV2 {
+        fn from(v0: TransactionWithReceiptV1) -> Self {
+            Self {
+                transaction: v0.transaction,
                 receipt: v0.receipt.into(),
             }
         }

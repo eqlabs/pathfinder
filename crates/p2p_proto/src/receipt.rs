@@ -31,6 +31,8 @@ pub struct ExecutionResources {
     pub memory_holes: u32,
     pub l1_gas: Felt,
     pub l1_data_gas: Felt,
+    pub total_l1_gas: Felt,
+    pub total_l1_data_gas: Felt,
 }
 
 pub mod execution_resources {
@@ -47,6 +49,9 @@ pub mod execution_resources {
         pub poseidon: u32,
         pub keccak: u32,
         pub output: u32,
+        pub add_mod: u32,
+        pub mul_mod: u32,
+        pub range_check96: u32,
     }
 }
 

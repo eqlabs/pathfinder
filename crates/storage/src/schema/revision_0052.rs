@@ -372,14 +372,13 @@ mod dto {
                     value.data_availability.l1_gas,
                     value.data_availability.l1_data_gas,
                 ) {
-                    (Some(l1_gas), Some(l1_data_gas)) => {
-                        pathfinder_common::receipt::ExecutionDataAvailability {
-                            l1_gas,
-                            l1_data_gas,
-                        }
-                    }
+                    (Some(l1_gas), Some(l1_data_gas)) => pathfinder_common::receipt::L1Gas {
+                        l1_gas,
+                        l1_data_gas,
+                    },
                     _ => Default::default(),
                 },
+                ..Default::default()
             }
         }
     }
@@ -458,6 +457,7 @@ mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..Default::default()
             }
         }
     }
@@ -475,6 +475,7 @@ mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..
             } = value.clone();
             Self {
                 output,
@@ -1739,14 +1740,13 @@ pub(crate) mod old_dto {
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 data_availability: match (value.l1_gas, value.l1_data_gas) {
-                    (Some(l1_gas), Some(l1_data_gas)) => {
-                        pathfinder_common::receipt::ExecutionDataAvailability {
-                            l1_gas,
-                            l1_data_gas,
-                        }
-                    }
+                    (Some(l1_gas), Some(l1_data_gas)) => pathfinder_common::receipt::L1Gas {
+                        l1_gas,
+                        l1_data_gas,
+                    },
                     _ => Default::default(),
                 },
+                ..Default::default()
             }
         }
     }
@@ -1822,6 +1822,7 @@ pub(crate) mod old_dto {
                 keccak: keccak_builtin,
                 poseidon: poseidon_builtin,
                 segment_arena: segment_arena_builtin,
+                ..Default::default()
             }
         }
     }
@@ -1839,6 +1840,7 @@ pub(crate) mod old_dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..
             } = value.clone();
             Self {
                 output_builtin: output,
