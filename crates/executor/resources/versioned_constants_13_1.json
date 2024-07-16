@@ -24,6 +24,7 @@
         ]
     },
     "max_recursion_depth": 50,
+    "segment_arena_cells": true,
     "os_constants": {
         "nop_entry_point_offset": -1,
         "entry_point_type_external": 0,
