@@ -182,9 +182,13 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
 
                 let actual_data_gas_consumed =
                     receipt.execution_resources.data_availability.l1_data_gas;
-                let actual_gas_consumed = (actual_fee
-                    - actual_data_gas_consumed.saturating_mul(data_gas_price))
-                    / gas_price.max(1);
+                let actual_gas_consumed =
+                    if receipt.execution_resources.total_gas_consumed.l1_gas == 0 {
+                        (actual_fee - actual_data_gas_consumed.saturating_mul(data_gas_price))
+                            / gas_price.max(1)
+                    } else {
+                        receipt.execution_resources.total_gas_consumed.l1_gas
+                    };
 
                 let estimated_gas_consumed = estimate.gas_consumed.as_u128();
                 let estimated_data_gas_consumed = estimate.data_gas_consumed.as_u128();
