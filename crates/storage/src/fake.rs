@@ -2,7 +2,7 @@
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{ClassHash, ReceiptCommitment, SierraHash, SignedBlockHeader, StateUpdate};
+use pathfinder_common::{ClassHash, SierraHash, SignedBlockHeader, StateUpdate};
 use rand::Rng;
 
 use crate::Storage;
@@ -14,8 +14,6 @@ pub struct Block {
     pub state_update: StateUpdate,
     pub cairo_defs: Vec<(ClassHash, Vec<u8>)>, // Cairo 0 definitions
     pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
-    // TODO merge into the header
-    pub receipt_commitment: ReceiptCommitment,
 }
 
 /// Initialize [`Storage`] with fake blocks and state updates
@@ -149,8 +147,7 @@ pub mod init {
 
     use super::Block;
 
-    pub type BlockHashFn =
-        Box<dyn Fn(&SignedBlockHeader, ReceiptCommitment) -> anyhow::Result<BlockHash>>;
+    pub type BlockHashFn = Box<dyn Fn(&SignedBlockHeader) -> anyhow::Result<BlockHash>>;
     pub type TransactionCommitmentFn =
         Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>;
     pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
@@ -168,7 +165,7 @@ pub mod init {
     impl Default for Config {
         fn default() -> Self {
             Self {
-                calculate_block_hash: Box::new(|_, _| Ok(Faker.fake())),
+                calculate_block_hash: Box::new(|_| Ok(Faker.fake())),
                 calculate_transaction_commitment: Box::new(|_, _| Ok(Faker.fake())),
                 calculate_receipt_commitment: Box::new(|_| Ok(Faker.fake())),
                 calculate_event_commitment: Box::new(|_, _| Ok(Faker.fake())),
@@ -288,7 +285,7 @@ pub mod init {
             )
             .unwrap();
 
-            let receipt_commitment = (config.calculate_receipt_commitment)(
+            header.receipt_commitment = (config.calculate_receipt_commitment)(
                 &transaction_data
                     .iter()
                     .map(|(_, r, ..)| r.clone())
@@ -377,7 +374,6 @@ pub mod init {
                 },
                 cairo_defs,
                 sierra_defs,
-                receipt_commitment,
             });
         }
 
@@ -513,13 +509,11 @@ pub mod init {
             let Block {
                 header,
                 state_update,
-                receipt_commitment,
                 ..
             } = init.get_mut(0).unwrap();
             header.header.parent_hash = BlockHash::ZERO;
 
-            header.header.hash =
-                (config.calculate_block_hash)(header, *receipt_commitment).unwrap();
+            header.header.hash = (config.calculate_block_hash)(header).unwrap();
 
             state_update.block_hash = header.header.hash;
 
@@ -531,14 +525,12 @@ pub mod init {
                 let Block {
                     header,
                     state_update,
-                    receipt_commitment,
                     ..
                 } = init.get_mut(i).unwrap();
 
                 header.header.parent_hash = parent_hash;
 
-                header.header.hash =
-                    (config.calculate_block_hash)(header, *receipt_commitment).unwrap();
+                header.header.hash = (config.calculate_block_hash)(header).unwrap();
 
                 state_update.block_hash = header.header.hash;
             }

@@ -10,7 +10,13 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::{BlockCommitmentSignature, Chain, PublicKey, StateDiffCommitment};
+use pathfinder_common::{
+    BlockCommitmentSignature,
+    Chain,
+    PublicKey,
+    ReceiptCommitment,
+    StateDiffCommitment,
+};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -32,7 +38,10 @@ pub enum SyncEvent {
     L1Update(EthereumStateUpdate),
     /// New L2 [block update](StateUpdate) found.
     Block(
-        (Box<Block>, (TransactionCommitment, EventCommitment)),
+        (
+            Box<Block>,
+            (TransactionCommitment, EventCommitment, ReceiptCommitment),
+        ),
         Box<StateUpdate>,
         Box<BlockCommitmentSignature>,
         Box<StateDiffCommitment>,
@@ -470,7 +479,7 @@ async fn consumer(
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
             Block(
-                (block, (tx_comm, ev_comm)),
+                (block, (tx_comm, ev_comm, rc_comm)),
                 state_update,
                 signature,
                 state_diff_commitment,
@@ -494,6 +503,7 @@ async fn consumer(
                     &mut db_conn,
                     *block,
                     tx_comm,
+                    rc_comm,
                     ev_comm,
                     *state_update,
                     *signature,
@@ -812,6 +822,7 @@ async fn l2_update(
     connection: &mut Connection,
     block: Block,
     transaction_commitment: TransactionCommitment,
+    receipt_commitment: ReceiptCommitment,
     event_commitment: EventCommitment,
     state_update: StateUpdate,
     signature: BlockCommitmentSignature,
@@ -889,6 +900,7 @@ async fn l2_update(
             transaction_count,
             event_count,
             l1_da_mode: block.l1_da_mode.into(),
+            receipt_commitment,
         };
 
         transaction
@@ -1192,11 +1204,13 @@ mod tests {
     use pathfinder_common::{
         felt_bytes,
         BlockCommitmentSignature,
+        BlockCommitmentSignatureElem,
         BlockHash,
         BlockHeader,
         BlockNumber,
         ClassHash,
         EventCommitment,
+        ReceiptCommitment,
         SierraHash,
         StateCommitment,
         StateDiffCommitment,
@@ -1216,7 +1230,10 @@ mod tests {
     /// Note: not very realistic data but is enough to drive tests.
     #[allow(clippy::type_complexity)]
     fn generate_block_data() -> Vec<(
-        (Box<Block>, (TransactionCommitment, EventCommitment)),
+        (
+            Box<Block>,
+            (TransactionCommitment, EventCommitment, ReceiptCommitment),
+        ),
         Box<StateUpdate>,
         Box<BlockCommitmentSignature>,
         Box<StateDiffCommitment>,
@@ -1269,22 +1286,34 @@ mod tests {
                 l1_da_mode: Default::default(),
                 transaction_commitment: header.transaction_commitment,
                 event_commitment: header.event_commitment,
-                receipt_commitment: Default::default(),
-                state_diff_commitment: Default::default(),
-                state_diff_length: Default::default(),
+                receipt_commitment: Some(ReceiptCommitment(
+                    Felt::from_hex_str(&format!("0x100{}", header.number)).unwrap(),
+                )),
+                state_diff_commitment: Some(StateDiffCommitment(
+                    Felt::from_hex_str(&format!("0x200{}", header.number)).unwrap(),
+                )),
+                state_diff_length: Some(header.number.get()),
             });
 
             let signature = Box::new(BlockCommitmentSignature {
-                r: block_commitment_signature_elem!("0x1001"),
-                s: block_commitment_signature_elem!("0x1002"),
+                r: BlockCommitmentSignatureElem(
+                    Felt::from_hex_str(&format!("0x300{}", header.number)).unwrap(),
+                ),
+                s: BlockCommitmentSignatureElem(
+                    Felt::from_hex_str(&format!("0x400{}", header.number)).unwrap(),
+                ),
             });
 
-            let state_diff_commitment = Box::new(state_diff_commitment!("0x1003"));
+            let state_diff_commitment = Box::new(block.state_diff_commitment.unwrap());
 
             data.push((
                 (
                     block,
-                    (header.transaction_commitment, header.event_commitment),
+                    (
+                        header.transaction_commitment,
+                        header.event_commitment,
+                        header.receipt_commitment,
+                    ),
                 ),
                 state_update,
                 signature,

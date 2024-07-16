@@ -23,6 +23,7 @@ pub struct BlockHeader {
     pub transaction_count: usize,
     pub event_count: usize,
     pub l1_da_mode: L1DataAvailabilityMode,
+    pub receipt_commitment: ReceiptCommitment,
 }
 
 #[derive(
@@ -167,7 +168,7 @@ impl BlockHeaderBuilder {
     }
 
     pub fn with_receipt_commitment(mut self, receipt_commitment: ReceiptCommitment) -> Self {
-        // FIXME self.0.receipt_commitment = receipt_commitment;
+        self.0.receipt_commitment = receipt_commitment;
         self
     }
 

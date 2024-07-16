@@ -182,7 +182,7 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|Block { header, receipt_commitment, .. }| P2PSignedBlockHeader::from((header, receipt_commitment))).collect::<Vec<_>>();
+                .into_iter().map(|Block { header, .. }| P2PSignedBlockHeader::from(header)).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {

@@ -3,12 +3,10 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::{
-    receipt_commitment,
     BlockHash,
     BlockHeader,
     BlockNumber,
     GasPrice,
-    ReceiptCommitment,
     StarknetVersion,
     TransactionCommitment,
 };
@@ -42,7 +40,7 @@ impl Transaction<'_> {
             ":event_count": &header.event_count.try_into_sql_int()?,
             ":state_commitment": &header.state_commitment,
             ":l1_da_mode": &header.l1_da_mode,
-            ":receipt_commitment": &ReceiptCommitment::ZERO, // FIXME
+            ":receipt_commitment": &header.receipt_commitment,
         },
     ).context("Inserting block header")?;
 
@@ -541,7 +539,7 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
         transaction_count,
         event_count,
         l1_da_mode,
-        // FIXME receipt_commitment,
+        receipt_commitment,
     };
 
     Ok(header)
@@ -590,7 +588,7 @@ mod tests {
             transaction_count: 37,
             event_count: 40,
             l1_da_mode: L1DataAvailabilityMode::Blob,
-            // FIXME receipt_commitment: receipt_commitment_bytes!(b"receipt commitment genesis"),
+            receipt_commitment: receipt_commitment_bytes!(b"receipt commitment genesis"),
         };
         let header1 = genesis
             .child_builder()

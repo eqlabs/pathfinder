@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use anyhow::Context;
-use pathfinder_common::{BlockNumber, Chain, ChainId};
+use pathfinder_common::{BlockNumber, Chain, ChainId, ReceiptCommitment};
 use pathfinder_lib::state::block_hash::{
     calculate_receipt_commitment,
     verify_block_hash,
@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
         let tx = db.transaction().unwrap();
         let block_number = BlockNumber::new_or_panic(block_number);
         let block_id = pathfinder_storage::BlockId::Number(block_number);
-        let header = tx
+        let mut header = tx
             .block_header(block_id)
             .context("Fetching block header")?
             .context("Block header missing")?;
@@ -59,8 +59,7 @@ fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("State diff commitment missing"))?;
         drop(tx);
 
-        // TODO remove the computation after the commitment is stored in the database
-        let receipt_commitment = calculate_receipt_commitment(
+        let computed_receipt_commitment = calculate_receipt_commitment(
             txn_data_for_block
                 .into_iter()
                 .flat_map(|(_, r, _)| Some(r))
@@ -68,12 +67,16 @@ fn main() -> anyhow::Result<()> {
                 .as_slice(),
         )?;
 
-        let bhd = BlockHeaderData::from_header(
-            &header,
-            receipt_commitment,
-            state_diff_commitment,
-            state_diff_length as u64,
-        );
+        // The db can be storing default values for the receipt commitment if the db was
+        // created by syncing from the fgw
+        if header.receipt_commitment == ReceiptCommitment::ZERO {
+            header.receipt_commitment = computed_receipt_commitment;
+        } else if header.receipt_commitment != computed_receipt_commitment {
+            eprintln!("Receipt commitment mismatch at block number {block_number}");
+        }
+
+        let bhd =
+            BlockHeaderData::from_header(&header, state_diff_commitment, state_diff_length as u64);
 
         let result = verify_block_hash(bhd, chain, chain_id)?;
 

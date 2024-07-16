@@ -783,11 +783,7 @@ mod tests {
                             .unwrap()
                             .unwrap();
                         P2PSignedBlockHeader {
-                            header: (
-                                db.block_header(block_id).unwrap().unwrap(),
-                                ReceiptCommitment::ZERO,
-                            )
-                                .into(),
+                            header: db.block_header(block_id).unwrap().unwrap().into(),
                             signature: db.signature(block_id).unwrap().unwrap(),
                             state_diff_commitment,
                             state_diff_length: state_diff_length as u64,

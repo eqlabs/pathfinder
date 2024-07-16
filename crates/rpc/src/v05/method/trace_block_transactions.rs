@@ -576,6 +576,7 @@ pub(crate) mod tests {
             transaction_count,
             event_count,
             l1_da_mode: block.l1_da_mode.into(),
+            receipt_commitment: Default::default(),
         };
         transaction
             .insert_block_header(&BlockHeader {
