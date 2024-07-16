@@ -523,6 +523,10 @@ impl Behaviour {
         self.inner.kademlia.get_providers(key)
     }
 
+    pub fn get_closest_peers(&mut self, peer: PeerId) -> kad::QueryId {
+        self.inner.kademlia.get_closest_peers(peer)
+    }
+
     pub fn subscribe_topic(&mut self, topic: &IdentTopic) -> anyhow::Result<()> {
         self.inner.gossipsub.subscribe(topic)?;
         Ok(())
