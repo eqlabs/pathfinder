@@ -28,8 +28,6 @@ use pathfinder_common::{class_definition, BlockHash, BlockNumber};
 use pathfinder_storage::{Storage, Transaction};
 use tokio::sync::mpsc;
 
-use crate::state::block_hash::calculate_receipt_commitment;
-
 #[cfg(test)]
 mod tests;
 
@@ -141,18 +139,6 @@ fn get_header(
             if let Some((state_diff_commitment, state_diff_len)) = state_diff_cl {
                 tracing::trace!(?header, "Sending block header");
 
-                // TODO this is a temporary solution until receipt commitment is stored in the
-                // database
-                let receipts = db_tx
-                    .transaction_data_for_block(block_number.into())
-                    .context("Getting receipts")?
-                    .context("No receipts found for block")?
-                    .into_iter()
-                    .map(|(_, r, _)| r)
-                    .collect::<Vec<_>>();
-                let receipt_commitment = calculate_receipt_commitment(&receipts)
-                    .context("Calculating receipt commitment")?;
-
                 let txn_count = header
                     .transaction_count
                     .try_into()
@@ -180,7 +166,7 @@ fn get_header(
                             .context("invalid event count")?,
                         root: Hash(header.event_commitment.0),
                     },
-                    receipts: Hash(receipt_commitment.0),
+                    receipts: Hash(header.receipt_commitment.0),
                     protocol_version: header.starknet_version.to_string(),
                     gas_price_wei: header.eth_l1_gas_price.0,
                     gas_price_fri: header.strk_l1_gas_price.0,

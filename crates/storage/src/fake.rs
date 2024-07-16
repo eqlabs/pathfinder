@@ -311,7 +311,7 @@ pub mod init {
                     .unwrap();
                     (compute_class_hash(&def).unwrap().hash(), def)
                 })
-                .collect::<Vec<_>>();
+                .collect::<HashMap<_, _>>();
             let sierra_defs = (0..num_sierra_classes)
                 .map(|_| {
                     let def = serde_json::to_vec(
@@ -320,19 +320,15 @@ pub mod init {
                     .unwrap();
                     (
                         SierraHash(compute_class_hash(&def).unwrap().hash().0),
-                        def,
-                        Faker.fake_with_rng::<String, _>(rng).into_bytes(),
+                        (def, Faker.fake_with_rng::<String, _>(rng).into_bytes()),
                     )
                 })
-                .collect::<Vec<_>>();
+                .collect::<HashMap<_, _>>();
 
-            let declared_cairo_classes = cairo_defs
-                .iter()
-                .map(|(class_hash, _)| *class_hash)
-                .collect::<HashSet<_>>();
+            let declared_cairo_classes = cairo_defs.keys().copied().collect::<HashSet<_>>();
             let declared_sierra_classes = sierra_defs
-                .iter()
-                .map(|(sierra_hash, _, _)| (*sierra_hash, Faker.fake()))
+                .keys()
+                .map(|sierra_hash| (*sierra_hash, Faker.fake()))
                 .collect::<HashMap<_, _>>();
 
             init.push(Block {
@@ -372,8 +368,11 @@ pub mod init {
                         x
                     },
                 },
-                cairo_defs,
-                sierra_defs,
+                cairo_defs: cairo_defs.into_iter().collect(),
+                sierra_defs: sierra_defs
+                    .into_iter()
+                    .map(|(h, (s, c))| (h, s, c))
+                    .collect(),
             });
         }
 
