@@ -191,9 +191,11 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
 
                 let gas_diff = actual_gas_consumed.abs_diff(estimated_gas_consumed);
                 let data_gas_diff = actual_data_gas_consumed.abs_diff(estimated_data_gas_consumed);
+                let estimate_diff = estimate.overall_fee.abs_diff(actual_fee.into());
 
                 if gas_diff > (actual_gas_consumed * 2 / 10)
                     || data_gas_diff > (actual_data_gas_consumed * 2 / 10)
+                    || estimate_diff > (actual_fee * 2 / 10).into()
                 {
                     tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
                 } else {
