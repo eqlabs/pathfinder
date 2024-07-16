@@ -136,8 +136,8 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
 
     let transactions = work
         .transactions
-        .into_iter()
-        .map(|tx| pathfinder_rpc::compose_executor_transaction(&tx, &db_tx))
+        .iter()
+        .map(|tx| pathfinder_rpc::compose_executor_transaction(tx, &db_tx))
         .collect::<Result<Vec<_>, _>>();
 
     let transactions = match transactions {
@@ -150,7 +150,10 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
 
     match pathfinder_executor::simulate(execution_state, transactions, false, false) {
         Ok(simulations) => {
-            for (simulation, receipt) in simulations.iter().zip(work.receipts.iter()) {
+            for (simulation, (receipt, transaction)) in simulations
+                .iter()
+                .zip(work.receipts.iter().zip(work.transactions.iter()))
+            {
                 // Check revert status
                 if simulation.revert_reason().is_some() != receipt.revert_reason().is_some() {
                     let simulated_revert_reason = simulation.revert_reason();
@@ -197,11 +200,8 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
                 let data_gas_diff = actual_data_gas_consumed.abs_diff(estimated_data_gas_consumed);
                 let estimate_diff = estimate.overall_fee.abs_diff(actual_fee.into());
 
-                if gas_diff > (actual_gas_consumed * 2 / 10)
-                    || data_gas_diff > (actual_data_gas_consumed * 2 / 10)
-                    || estimate_diff > (actual_fee * 2 / 10).into()
-                {
-                    tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
+                if gas_diff > 0 || data_gas_diff > 0 || estimate_diff > 0.into() {
+                    tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, execution_status=?receipt.execution_status, transaction=?transaction.variant, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
                 } else {
                     tracing::debug!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation matches");
                 }
