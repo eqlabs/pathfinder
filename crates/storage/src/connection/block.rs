@@ -3,10 +3,12 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::{
+    receipt_commitment,
     BlockHash,
     BlockHeader,
     BlockNumber,
     GasPrice,
+    ReceiptCommitment,
     StarknetVersion,
     TransactionCommitment,
 };
@@ -19,8 +21,8 @@ impl Transaction<'_> {
         // Insert the header
         self.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode)
-            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode)",
+                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode,  receipt_commitment)
+            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode, :receipt_commitment)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
@@ -40,6 +42,7 @@ impl Transaction<'_> {
             ":event_count": &header.event_count.try_into_sql_int()?,
             ":state_commitment": &header.state_commitment,
             ":l1_da_mode": &header.l1_da_mode,
+            ":receipt_commitment": &ReceiptCommitment::ZERO, // FIXME
         },
     ).context("Inserting block header")?;
 
@@ -517,6 +520,7 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
     let transaction_count: usize = row.get("transaction_count")?;
     let state_commitment = row.get_state_commitment("state_commitment")?;
     let l1_da_mode = row.get_l1_da_mode("l1_da_mode")?;
+    let receipt_commitment = row.get_receipt_commitment("receipt_commitment")?;
 
     let header = BlockHeader {
         hash,
@@ -537,6 +541,7 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
         transaction_count,
         event_count,
         l1_da_mode,
+        // FIXME receipt_commitment,
     };
 
     Ok(header)
@@ -585,6 +590,7 @@ mod tests {
             transaction_count: 37,
             event_count: 40,
             l1_da_mode: L1DataAvailabilityMode::Blob,
+            // FIXME receipt_commitment: receipt_commitment_bytes!(b"receipt commitment genesis"),
         };
         let header1 = genesis
             .child_builder()
@@ -598,6 +604,7 @@ mod tests {
             .with_calculated_state_commitment()
             .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 1"))
             .with_l1_da_mode(L1DataAvailabilityMode::Calldata)
+            .with_receipt_commitment(receipt_commitment_bytes!(b"block 1 receipt commitment"))
             .finalize_with_hash(block_hash_bytes!(b"block 1 hash"));
 
         let header2 = header1
@@ -612,6 +619,7 @@ mod tests {
             .with_calculated_state_commitment()
             .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
             .with_l1_da_mode(L1DataAvailabilityMode::Blob)
+            .with_receipt_commitment(receipt_commitment_bytes!(b"block 2 receipt commitment"))
             .finalize_with_hash(block_hash_bytes!(b"block 2 hash"));
 
         let headers = vec![genesis, header1, header2];

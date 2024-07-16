@@ -27,6 +27,7 @@ use pathfinder_common::{
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem,
+    ReceiptCommitment,
     SequencerAddress,
     SierraHash,
     StarknetVersion,
@@ -108,6 +109,7 @@ to_sql_felt!(
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem,
+    ReceiptCommitment,
     SequencerAddress,
     SierraHash,
     TransactionHash,
@@ -364,6 +366,7 @@ pub trait RowExt {
         get_block_commitment_signature_elem,
         BlockCommitmentSignatureElem
     );
+    row_felt_wrapper!(get_receipt_commitment, ReceiptCommitment);
 }
 
 impl<'a> RowExt for &rusqlite::Row<'a> {
