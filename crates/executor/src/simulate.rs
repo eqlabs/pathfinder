@@ -34,7 +34,6 @@ use crate::types::{
     FunctionInvocation,
     InvokeTransactionTrace,
     L1HandlerTransactionTrace,
-    PriceUnit,
     ReplacedClass,
     StateDiff,
     StorageDiff,
@@ -91,23 +90,7 @@ pub fn simulate(
         let transaction_type = transaction_type(&transaction);
         let transaction_declared_deprecated_class_hash =
             transaction_declared_deprecated_class(&transaction);
-        let fee_type = &super::transaction::fee_type(&transaction);
-
-        let gas_price = block_context
-            .block_info()
-            .gas_prices
-            .get_gas_price_by_fee_type(fee_type)
-            .get();
-        let data_gas_price = block_context
-            .block_info()
-            .gas_prices
-            .get_data_gas_price_by_fee_type(fee_type)
-            .get();
-        let unit = match fee_type {
-            blockifier::transaction::objects::FeeType::Strk => PriceUnit::Fri,
-            blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
-        };
-
+        let fee_type = super::transaction::fee_type(&transaction);
         let minimal_l1_gas_amount_vector = match &transaction {
             Transaction::AccountTransaction(account_transaction) => Some(
                 blockifier::fee::gas_usage::estimate_minimal_gas_vector(
@@ -140,10 +123,9 @@ pub fn simulate(
                 simulations.push(TransactionSimulation {
                     fee_estimation: FeeEstimate::from_tx_info_and_gas_price(
                         &tx_info,
-                        gas_price,
-                        data_gas_price,
-                        unit,
-                        minimal_l1_gas_amount_vector,
+                        block_context.block_info(),
+                        fee_type,
+                        &minimal_l1_gas_amount_vector,
                     ),
                     trace: to_trace(transaction_type, tx_info, state_diff),
                 });
