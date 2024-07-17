@@ -331,6 +331,7 @@ impl ProcessStage for Persist {
                 transaction_count: header.transaction_count,
                 event_count: header.event_count,
                 l1_da_mode: header.l1_da_mode,
+                receipt_commitment: header.receipt_commitment,
             })
             .context("Persisting block header")?;
             tx.insert_signature(header.number, &signature)

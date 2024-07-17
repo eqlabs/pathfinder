@@ -21,6 +21,7 @@ mod revision_0058;
 mod revision_0059;
 mod revision_0060;
 mod revision_0061;
+mod revision_0062;
 
 pub(crate) use base::base_schema;
 
@@ -50,6 +51,7 @@ pub fn migrations() -> &'static [MigrationFn] {
         revision_0059::migrate,
         revision_0060::migrate,
         revision_0061::migrate,
+        revision_0062::migrate,
     ]
 }
 

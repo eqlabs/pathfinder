@@ -12,6 +12,7 @@ use pathfinder_common::{
     ClassHash,
     EventCommitment,
     PublicKey,
+    ReceiptCommitment,
     StateCommitment,
     StateUpdate,
     TransactionCommitment,
@@ -497,7 +498,7 @@ pub async fn download_new_classes(
 enum DownloadBlock {
     Block(
         Box<Block>,
-        (TransactionCommitment, EventCommitment),
+        (TransactionCommitment, EventCommitment, ReceiptCommitment),
         Box<StateUpdate>,
     ),
     AtHead,

@@ -751,7 +751,7 @@ impl ProcessStage for StoreBlock {
             transaction_count: header.transaction_count,
             event_count: header.event_count,
             l1_da_mode: header.l1_da_mode,
-            // TODO receipt_commitment
+            receipt_commitment: header.receipt_commitment,
         };
 
         db.insert_block_header(&header)
@@ -849,8 +849,8 @@ mod tests {
         let blocks = fake::init::with_n_blocks_and_config(
             N,
             Config {
-                calculate_block_hash: Box::new(|sbh: &SignedBlockHeader, rc: ReceiptCommitment| {
-                    compute_final_hash(&BlockHeaderData::from_signed_header(sbh, rc))
+                calculate_block_hash: Box::new(|sbh: &SignedBlockHeader| {
+                    compute_final_hash(&BlockHeaderData::from_signed_header(sbh))
                 }),
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
@@ -961,9 +961,9 @@ mod tests {
             assert_eq!(stop, self.blocks.last().unwrap().header.header.number);
 
             stream::iter(
-                self.blocks.into_iter().map(|block| {
-                    PeerData::for_tests((block.header, block.receipt_commitment).into())
-                }),
+                self.blocks
+                    .into_iter()
+                    .map(|block| PeerData::for_tests(block.header.into())),
             )
         }
     }

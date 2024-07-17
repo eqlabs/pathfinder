@@ -123,12 +123,10 @@ pub struct SignedBlockHeader {
     pub state_diff_length: u64,
 }
 
-impl From<(pathfinder_common::SignedBlockHeader, ReceiptCommitment)> for SignedBlockHeader {
-    fn from(
-        (h, receipt_commitment): (pathfinder_common::SignedBlockHeader, ReceiptCommitment),
-    ) -> Self {
+impl From<pathfinder_common::SignedBlockHeader> for SignedBlockHeader {
+    fn from(h: pathfinder_common::SignedBlockHeader) -> Self {
         Self {
-            header: (h.header, receipt_commitment).into(),
+            header: h.header.into(),
             signature: h.signature,
             state_diff_commitment: h.state_diff_commitment,
             state_diff_length: h.state_diff_length,
@@ -136,8 +134,8 @@ impl From<(pathfinder_common::SignedBlockHeader, ReceiptCommitment)> for SignedB
     }
 }
 
-impl From<(pathfinder_common::BlockHeader, ReceiptCommitment)> for BlockHeader {
-    fn from((h, receipt_commitment): (pathfinder_common::BlockHeader, ReceiptCommitment)) -> Self {
+impl From<pathfinder_common::BlockHeader> for BlockHeader {
+    fn from(h: pathfinder_common::BlockHeader) -> Self {
         Self {
             hash: h.hash,
             parent_hash: h.parent_hash,
@@ -155,7 +153,7 @@ impl From<(pathfinder_common::BlockHeader, ReceiptCommitment)> for BlockHeader {
             transaction_count: h.transaction_count,
             event_count: h.event_count,
             l1_da_mode: h.l1_da_mode,
-            receipt_commitment,
+            receipt_commitment: h.receipt_commitment,
         }
     }
 }

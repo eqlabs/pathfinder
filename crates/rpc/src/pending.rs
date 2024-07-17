@@ -42,6 +42,7 @@ impl PendingData {
             transaction_count: Default::default(),
             event_count: Default::default(),
             l1_da_mode: self.block.l1_da_mode.into(),
+            receipt_commitment: Default::default(),
         }
     }
 }

@@ -38,7 +38,7 @@ const V_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
-    Match((TransactionCommitment, EventCommitment)),
+    Match((TransactionCommitment, EventCommitment, ReceiptCommitment)),
     Mismatch,
 }
 
@@ -151,7 +151,6 @@ pub struct BlockHeaderData {
 impl BlockHeaderData {
     pub fn from_header(
         header: &BlockHeader,
-        receipt_commitment: ReceiptCommitment,
         state_diff_commitment: StateDiffCommitment,
         state_diff_length: u64,
     ) -> Self {
@@ -176,7 +175,7 @@ impl BlockHeaderData {
             strk_l1_gas_price: header.strk_l1_gas_price,
             eth_l1_data_gas_price: header.eth_l1_data_gas_price,
             strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-            receipt_commitment,
+            receipt_commitment: header.receipt_commitment,
             l1_da_mode: header.l1_da_mode,
             state_diff_commitment,
         }
@@ -223,10 +222,7 @@ impl BlockHeaderData {
         })
     }
 
-    pub fn from_signed_header(
-        sbh: &SignedBlockHeader,
-        receipt_commitment: ReceiptCommitment,
-    ) -> Self {
+    pub fn from_signed_header(sbh: &SignedBlockHeader) -> Self {
         Self {
             hash: sbh.header.hash,
             parent_hash: sbh.header.parent_hash,
@@ -254,7 +250,7 @@ impl BlockHeaderData {
             strk_l1_gas_price: sbh.header.strk_l1_gas_price,
             eth_l1_data_gas_price: sbh.header.eth_l1_data_gas_price,
             strk_l1_data_gas_price: sbh.header.strk_l1_data_gas_price,
-            receipt_commitment,
+            receipt_commitment: sbh.header.receipt_commitment,
             l1_da_mode: sbh.header.l1_da_mode,
         }
     }
@@ -296,7 +292,11 @@ pub fn verify_block_hash(
 
     Ok(match verified {
         false => VerifyResult::Mismatch,
-        true => VerifyResult::Match((header.transaction_commitment, header.event_commitment)),
+        true => VerifyResult::Match((
+            header.transaction_commitment,
+            header.event_commitment,
+            header.receipt_commitment,
+        )),
     })
 }
 

@@ -1,7 +1,7 @@
 use fake::Dummy;
 
 use crate::prelude::*;
-use crate::{BlockCommitmentSignature, StateDiffCommitment};
+use crate::{BlockCommitmentSignature, ReceiptCommitment, StateDiffCommitment};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {
@@ -23,6 +23,7 @@ pub struct BlockHeader {
     pub transaction_count: usize,
     pub event_count: usize,
     pub l1_da_mode: L1DataAvailabilityMode,
+    pub receipt_commitment: ReceiptCommitment,
 }
 
 #[derive(
@@ -163,6 +164,11 @@ impl BlockHeaderBuilder {
 
     pub fn with_l1_da_mode(mut self, l1_da_mode: L1DataAvailabilityMode) -> Self {
         self.0.l1_da_mode = l1_da_mode;
+        self
+    }
+
+    pub fn with_receipt_commitment(mut self, receipt_commitment: ReceiptCommitment) -> Self {
+        self.0.receipt_commitment = receipt_commitment;
         self
     }
 
