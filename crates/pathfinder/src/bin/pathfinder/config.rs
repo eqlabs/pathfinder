@@ -383,6 +383,7 @@ struct P2PCli {
 Example:
     '/ip4/127.0.0.1/9001/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN,/ip4/127.0.0.1/9002/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN'"#,
         value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         env = "PATHFINDER_P2P_BOOTSTRAP_ADDRESSES"
     )]
     bootstrap_addresses: Vec<String>,
@@ -394,6 +395,7 @@ Example:
 Example:
     '/ip4/127.0.0.1/9003/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaP,/ip4/127.0.0.1/9004/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaR'"#,
         value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         env = "PATHFINDER_P2P_PREDEFINED_PEERS"
     )]
     predefined_peers: Vec<String>,
@@ -714,14 +716,14 @@ impl P2PConfig {
         use clap::error::ErrorKind;
         use p2p::libp2p::multiaddr::Result;
 
-        let parse_multiaddr_vec = |multiaddrs: Vec<String>| -> Vec<Multiaddr> {
+        let parse_multiaddr_vec = |field: &str, multiaddrs: Vec<String>| -> Vec<Multiaddr> {
             multiaddrs
                 .into_iter()
                 .map(|addr| Multiaddr::from_str(&addr))
                 .collect::<Result<Vec<_>>>()
                 .unwrap_or_else(|error| {
                     Cli::command()
-                        .error(ErrorKind::ValueValidation, error)
+                        .error(ErrorKind::ValueValidation, format!("{field}: {error}"))
                         .exit()
                 })
         };
@@ -774,8 +776,11 @@ impl P2PConfig {
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
             listen_on: args.listen_on,
-            bootstrap_addresses: parse_multiaddr_vec(args.bootstrap_addresses),
-            predefined_peers: parse_multiaddr_vec(args.predefined_peers),
+            bootstrap_addresses: parse_multiaddr_vec(
+                "p2p.bootstrap-addresses",
+                args.bootstrap_addresses,
+            ),
+            predefined_peers: parse_multiaddr_vec("p2p.predefined-peers", args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
             low_watermark: 0,
             kad_names: args.kad_names,
