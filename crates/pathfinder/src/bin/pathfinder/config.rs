@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fs::File;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -10,7 +11,8 @@ use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
-use pathfinder_common::AllowedOrigins;
+use pathfinder_common::{AllowedOrigins, BlockHash, BlockNumber, StateCommitment};
+use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
 
@@ -445,6 +447,27 @@ Example:
         env = "IP_WHITELIST"
     )]
     ip_whitelist: Vec<IpNet>,
+
+    #[arg(
+        long = "p2p.experimental.kad-names",
+        long_help = "Comma separated list of custom Kademlia protocol names.",
+        value_name = "LIST",
+        default_value = "/starknet/kad/<STARKNET_CHAIN_ID>/1.0.0",
+        value_delimiter = ',',
+        env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAMES"
+    )]
+    kad_names: Vec<String>,
+
+    #[arg(
+        long = "p2p.experimental.l1-anchor",
+        long_help = "Json encoded file containing an L1 checkpoint from which pathfinder will \
+                     sync backwards till genesis before switching to syncing forward and \
+                     following the head of the chain. Example contents: { \"block_hash\": \
+                     \"0x1\", \"block_number\": 2, \"state_root\": \"0x3\" }",
+        value_name = "JSON_FILE",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_L1_ANCHOR"
+    )]
+    l1_anchor: Option<String>,
 }
 
 #[cfg(feature = "p2p")]
@@ -615,6 +638,8 @@ pub struct P2PConfig {
     pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
     pub low_watermark: usize,
+    pub kad_names: Vec<String>,
+    pub l1_anchor: Option<EthereumStateUpdate>,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -728,6 +753,17 @@ impl P2PConfig {
                 .exit()
         }
 
+        if args.kad_names.is_empty() || args.kad_names.iter().any(|x| x.is_empty()) {
+            Cli::command()
+                .error(
+                    ErrorKind::ValueValidation,
+                    "p2p.experimental.kad-names must contain at least one non-empty string",
+                )
+                .exit()
+        }
+
+        let l1_anchor = parse_l1_anchor_or_exit(args.l1_anchor);
+
         Self {
             max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
             max_inbound_relayed_connections: args
@@ -742,8 +778,41 @@ impl P2PConfig {
             predefined_peers: parse_multiaddr_vec(args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
             low_watermark: 0,
+            kad_names: args.kad_names,
+            l1_anchor,
         }
     }
+}
+
+fn parse_l1_anchor_or_exit(l1_anchor: Option<String>) -> Option<EthereumStateUpdate> {
+    use clap::error::ErrorKind;
+
+    #[derive(Debug, serde::Deserialize)]
+    struct Dto {
+        pub state_root: StateCommitment,
+        pub block_number: BlockNumber,
+        pub block_hash: BlockHash,
+    }
+
+    fn exit_now(e: impl std::fmt::Display) {
+        Cli::command()
+            .error(
+                ErrorKind::ValueValidation,
+                format!("p2p.experimental.l1-anchor: {e}"),
+            )
+            .exit()
+    }
+
+    l1_anchor.map(|f| {
+        // SAFETY: unwraps are safe because we exit the process on error
+        let f = File::open(f).map_err(exit_now).unwrap();
+        let dto: Dto = serde_json::from_reader(f).map_err(exit_now).unwrap();
+        EthereumStateUpdate {
+            state_root: dto.state_root,
+            block_number: dto.block_number,
+            block_hash: dto.block_hash,
+        }
+    })
 }
 
 #[cfg(not(feature = "p2p"))]
