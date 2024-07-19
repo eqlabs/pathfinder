@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
+use blockifier::blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
+use blockifier::bouncer::BouncerConfig;
 use blockifier::context::{BlockContext, ChainInfo};
-use blockifier::state::cached_state::{CachedState, GlobalContractCache};
+use blockifier::state::cached_state::CachedState;
 use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::{
     contract_address,
@@ -36,9 +37,14 @@ mod versioned_constants {
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1: &[u8] =
         include_bytes!("../resources/versioned_constants_13_1.json");
 
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1: &[u8] =
+        include_bytes!("../resources/versioned_constants_13_1_1.json");
+
     const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
 
     const STARKNET_VERSION_0_13_1_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
+
+    const STARKNET_VERSION_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
     lazy_static::lazy_static! {
         pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: VersionedConstants =
@@ -46,6 +52,9 @@ mod versioned_constants {
 
         pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1: VersionedConstants =
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1).unwrap();
+
+        pub static ref BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1: VersionedConstants =
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1).unwrap();
     }
 
     pub(super) fn for_version(version: &StarknetVersion) -> &'static VersionedConstants {
@@ -54,6 +63,8 @@ mod versioned_constants {
             &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0
         } else if version < &STARKNET_VERSION_0_13_1_1 {
             &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1
+        } else if version < &STARKNET_VERSION_0_13_2 {
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1
         } else {
             VersionedConstants::latest_constants()
         }
@@ -88,7 +99,7 @@ impl<'tx> ExecutionState<'tx> {
             self.pending_state.is_some(),
         );
         let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
-        let mut cached_state = CachedState::new(pending_state_reader, GlobalContractCache::new(16));
+        let mut cached_state = CachedState::new(pending_state_reader);
 
         let chain_info = self.chain_info()?;
         let block_info = self.block_info()?;
@@ -117,13 +128,18 @@ impl<'tx> ExecutionState<'tx> {
 
         let versioned_constants = versioned_constants::for_version(&self.header.starknet_version);
 
-        let block_context = pre_process_block(
+        pre_process_block(
             &mut cached_state,
             old_block_number_and_hash,
+            block_info.block_number,
+        )?;
+
+        let block_context = BlockContext::new(
             block_info,
             chain_info,
             versioned_constants.to_owned(),
-        )?;
+            BouncerConfig::max(),
+        );
 
         Ok((cached_state, block_context))
     }
@@ -147,8 +163,14 @@ impl<'tx> ExecutionState<'tx> {
             .collect();
         let chain_id = String::from_utf8(chain_id)?;
 
+        let chain_id = match self.chain_id {
+            ChainId::MAINNET => starknet_api::core::ChainId::Mainnet,
+            ChainId::SEPOLIA_TESTNET => starknet_api::core::ChainId::Sepolia,
+            _ => starknet_api::core::ChainId::Other(chain_id),
+        };
+
         Ok(ChainInfo {
-            chain_id: starknet_api::core::ChainId(chain_id),
+            chain_id,
             fee_token_addresses: blockifier::context::FeeTokenAddresses {
                 strk_fee_token_address,
                 eth_fee_token_address,
@@ -164,7 +186,7 @@ impl<'tx> ExecutionState<'tx> {
                 PatriciaKey::try_from(self.header.sequencer_address.0.into_starkfelt())
                     .expect("Sequencer address overflow"),
             ),
-            gas_prices: blockifier::block::GasPrices {
+            gas_prices: blockifier::blockifier::block::GasPrices {
                 eth_l1_gas_price: if self.header.eth_l1_gas_price.0 == 0 {
                     // Bad API design - the genesis block has 0 gas price, but
                     // blockifier doesn't allow for it. This isn't critical for

@@ -2,8 +2,8 @@ use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
-use starknet_api::hash::StarkFelt;
 use starknet_api::StarknetApiError;
+use starknet_types_core::felt::Felt as CoreFelt;
 
 use super::felt::{IntoFelt, IntoStarkFelt};
 use crate::lru_cache::GLOBAL_CACHE;
@@ -35,7 +35,7 @@ impl<'tx> PathfinderStateReader<'tx> {
     }
 
     fn non_cached_compiled_contract_class(
-        &mut self,
+        &self,
         pathfinder_class_hash: ClassHash,
         class_hash: &starknet_api::core::ClassHash,
     ) -> Result<
@@ -124,10 +124,10 @@ impl<'tx> PathfinderStateReader<'tx> {
 
 impl StateReader for PathfinderStateReader<'_> {
     fn get_storage_at(
-        &mut self,
+        &self,
         contract_address: starknet_api::core::ContractAddress,
         storage_key: starknet_api::state::StorageKey,
-    ) -> blockifier::state::state_api::StateResult<StarkFelt> {
+    ) -> blockifier::state::state_api::StateResult<CoreFelt> {
         let storage_key =
             StorageAddress::new(storage_key.0.key().into_felt()).ok_or_else(|| {
                 StateError::StarknetApiError(StarknetApiError::OutOfRange {
@@ -160,7 +160,7 @@ impl StateReader for PathfinderStateReader<'_> {
     }
 
     fn get_nonce_at(
-        &mut self,
+        &self,
         contract_address: starknet_api::core::ContractAddress,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::Nonce> {
         let pathfinder_contract_address =
@@ -188,7 +188,7 @@ impl StateReader for PathfinderStateReader<'_> {
     }
 
     fn get_class_hash_at(
-        &mut self,
+        &self,
         contract_address: starknet_api::core::ContractAddress,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::ClassHash> {
         let pathfinder_contract_address =
@@ -219,7 +219,7 @@ impl StateReader for PathfinderStateReader<'_> {
     }
 
     fn get_compiled_contract_class(
-        &mut self,
+        &self,
         class_hash: starknet_api::core::ClassHash,
     ) -> blockifier::state::state_api::StateResult<
         blockifier::execution::contract_class::ContractClass,
@@ -250,7 +250,7 @@ impl StateReader for PathfinderStateReader<'_> {
     }
 
     fn get_compiled_class_hash(
-        &mut self,
+        &self,
         class_hash: starknet_api::core::ClassHash,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash> {
         let class_hash = ClassHash(class_hash.0.into_felt());

@@ -189,7 +189,7 @@ fn create_executor_transaction(
 
     let tx = starknet_api::transaction::L1HandlerTransaction {
         version: starknet_api::transaction::TransactionVersion::ZERO,
-        nonce: starknet_api::core::Nonce(starknet_api::hash::StarkFelt::ZERO),
+        nonce: starknet_api::core::Nonce(starknet_types_core::felt::Felt::ZERO),
         contract_address: starknet_api::core::ContractAddress(
             PatriciaKey::try_from(transaction.contract_address.0.into_starkfelt())
                 .expect("A ContractAddress should be the right size"),
