@@ -424,7 +424,7 @@ async fn start_p2p(
 
     let context = P2PContext {
         cfg: p2p::Config {
-            direct_connection_timeout: Duration::from_secs(30),
+            direct_connection_timeout: config.direct_connection_timeout,
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers: config.max_inbound_direct_connections,
             max_inbound_relayed_peers: config.max_inbound_relayed_connections,
@@ -432,11 +432,14 @@ async fn start_p2p(
             low_watermark: config.low_watermark,
             ip_whitelist: config.ip_whitelist,
             bootstrap: Default::default(),
-            eviction_timeout: Duration::from_secs(15 * 60),
+            eviction_timeout: config.eviction_timeout,
             inbound_connections_rate_limit: p2p::RateLimit {
                 max: 10,
                 interval: Duration::from_secs(1),
             },
+            kad_names: config.kad_names,
+            stream_timeout: config.stream_timeout,
+            max_concurrent_streams: config.max_concurrent_streams,
         },
         chain_id,
         storage,
@@ -506,6 +509,7 @@ fn start_sync(
             ethereum_client,
             p2p_client,
             gateway_public_key,
+            config.p2p.l1_checkpoint_override,
         )
     }
 }
@@ -559,8 +563,6 @@ fn start_feeder_gateway_sync(
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
         pending_data: tx_pending,
-        // Currently p2p does not perform block hash and state commitment verification if
-        // p2p header lacks state commitment
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs,
         block_cache_size: 1_000,
@@ -580,6 +582,7 @@ fn start_p2p_sync(
     ethereum_client: EthereumClient,
     p2p_client: p2p::client::peer_agnostic::Client,
     gateway_public_key: pathfinder_common::PublicKey,
+    l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let sync = pathfinder_lib::sync::Sync {
         storage,
@@ -590,6 +593,7 @@ fn start_p2p_sync(
         chain_id: pathfinder_context.network_id,
         chain: pathfinder_context.network,
         public_key: gateway_public_key,
+        l1_checkpoint_override,
     };
     tokio::spawn(sync.run())
 }

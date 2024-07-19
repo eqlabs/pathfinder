@@ -4,6 +4,7 @@ use anyhow::Context;
 use error::SyncError2;
 use p2p::client::peer_agnostic::Client as P2PClient;
 use pathfinder_common::{BlockNumber, Chain, ChainId, PublicKey, StarknetVersion};
+use pathfinder_ethereum::EthereumStateUpdate;
 use primitive_types::H160;
 use starknet_gateway_client::Client as GatewayClient;
 use stream::ProcessStage;
@@ -29,6 +30,7 @@ pub struct Sync {
     pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
+    pub l1_checkpoint_override: Option<EthereumStateUpdate>,
 }
 
 impl Sync {
@@ -49,10 +51,14 @@ impl Sync {
 
     async fn get_checkpoint(&self) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
         use pathfinder_ethereum::EthereumApi;
-        self.eth_client
-            .get_starknet_state(&self.eth_address)
-            .await
-            .context("Fetching latest L1 checkpoint")
+        match &self.l1_checkpoint_override {
+            Some(checkpoint) => Ok(*checkpoint),
+            None => self
+                .eth_client
+                .get_starknet_state(&self.eth_address)
+                .await
+                .context("Fetching latest L1 checkpoint"),
+        }
     }
 
     /// Run checkpoint sync until it completes successfully, and we are within
@@ -70,7 +76,7 @@ impl Sync {
                 chain_id: self.chain_id,
                 public_key: self.public_key,
             }
-            .run(checkpoint.clone())
+            .run(checkpoint)
             .await;
 
             // Handle the error

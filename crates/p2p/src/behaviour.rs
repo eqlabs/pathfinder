@@ -446,10 +446,21 @@ impl Behaviour {
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         // This makes sure that the DHT we're implementing is incompatible with the
         // "default" IPFS DHT from libp2p.
-        kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
-            kademlia_protocol_name(chain_id),
-        )
-        .unwrap()]);
+        if cfg.kad_names.is_empty() {
+            kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
+                kademlia_protocol_name(chain_id),
+            )
+            .unwrap()]);
+        } else {
+            kademlia_config.set_protocol_names(
+                cfg.kad_names
+                    .iter()
+                    .cloned()
+                    .map(StreamProtocol::try_from_owned)
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("valid protocol names"),
+            );
+        }
 
         let peer_id = identity.public().to_peer_id();
 
@@ -473,11 +484,14 @@ impl Behaviour {
         )
         .expect("valid gossipsub params");
 
-        let headers_sync = request_response_behavior::<codec::Headers>();
-        let classes_sync = request_response_behavior::<codec::Classes>();
-        let state_diffs_sync = request_response_behavior::<codec::StateDiffs>();
-        let transactions_sync = request_response_behavior::<codec::Transactions>();
-        let events_sync = request_response_behavior::<codec::Events>();
+        let p2p_stream_cfg = p2p_stream::Config::default()
+            .with_request_timeout(cfg.stream_timeout)
+            .with_max_concurrent_streams(cfg.max_concurrent_streams);
+        let headers_sync = request_response_behavior::<codec::Headers>(p2p_stream_cfg);
+        let classes_sync = request_response_behavior::<codec::Classes>(p2p_stream_cfg);
+        let state_diffs_sync = request_response_behavior::<codec::StateDiffs>(p2p_stream_cfg);
+        let transactions_sync = request_response_behavior::<codec::Transactions>(p2p_stream_cfg);
+        let events_sync = request_response_behavior::<codec::Events>(p2p_stream_cfg);
 
         let (relay_transport, relay) = relay::client::new(peer_id);
 
@@ -842,12 +856,12 @@ impl Behaviour {
     }
 }
 
-fn request_response_behavior<C>() -> p2p_stream::Behaviour<C>
+fn request_response_behavior<C>(cfg: p2p_stream::Config) -> p2p_stream::Behaviour<C>
 where
     C: Default + p2p_stream::Codec + Clone + Send,
     C::Protocol: Default,
 {
-    p2p_stream::Behaviour::new(std::iter::once(C::Protocol::default()), Default::default())
+    p2p_stream::Behaviour::new(std::iter::once(C::Protocol::default()), cfg)
 }
 
 #[allow(dead_code)]

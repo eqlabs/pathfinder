@@ -381,6 +381,7 @@ struct P2PCli {
 Example:
     '/ip4/127.0.0.1/9001/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN,/ip4/127.0.0.1/9002/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN'"#,
         value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         env = "PATHFINDER_P2P_BOOTSTRAP_ADDRESSES"
     )]
     bootstrap_addresses: Vec<String>,
@@ -392,6 +393,7 @@ Example:
 Example:
     '/ip4/127.0.0.1/9003/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaP,/ip4/127.0.0.1/9004/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaR'"#,
         value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         env = "PATHFINDER_P2P_PREDEFINED_PEERS"
     )]
     predefined_peers: Vec<String>,
@@ -445,6 +447,65 @@ Example:
         env = "IP_WHITELIST"
     )]
     ip_whitelist: Vec<IpNet>,
+
+    #[arg(
+        long = "p2p.experimental.kad-names",
+        long_help = "Comma separated list of custom Kademlia protocol names.",
+        value_name = "LIST",
+        default_value = "/starknet/kad/<STARKNET_CHAIN_ID>/1.0.0",
+        value_delimiter = ',',
+        env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAMES"
+    )]
+    kad_names: Vec<String>,
+
+    #[arg(
+        long = "p2p.experimental.l1-checkpoint-override",
+        long_help = "Override L1 sync checkpoint retrieved from the Ethereum API. This option \
+                     points to a json encoded file containing an L1 checkpoint from which \
+                     pathfinder will sync backwards till genesis before switching to syncing \
+                     forward and following the head of the chain. Example contents: { \
+                     \"block_hash\": \"0x1\", \"block_number\": 2, \"state_root\": \"0x3\" }",
+        value_name = "JSON_FILE",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_L1_CHECKPOINT_OVERRIDE"
+    )]
+    l1_checkpoint_override: Option<String>,
+
+    #[arg(
+        long = "p2p.experimental.stream-timeout",
+        long_help = "Timeout of the request/response-stream protocol.",
+        value_name = "SECONDS",
+        default_value = "60",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_STREAM_TIMEOUT"
+    )]
+    stream_timeout: u32,
+
+    #[arg(
+        long = "p2p.experimental.max-concurrent-streams",
+        long_help = "Maximum allowed number of concurrent streams per each \
+                     request/response-stream protocol.",
+        value_name = "LIMIT",
+        default_value = "100",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_MAX_CONCURRENT_STREAMS"
+    )]
+    max_concurrent_streams: usize,
+
+    #[arg(
+        long = "p2p.experimental.direct-connection-timeout",
+        long_help = "A direct (not relayed) peer can only connect once in this period.",
+        value_name = "SECONDS",
+        default_value = "30",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_DIRECT_CONNECTION_TIMEOUT"
+    )]
+    direct_connection_timeout: u32,
+
+    #[arg(
+        long = "p2p.experimental.eviction-timeout",
+        long_help = "How long to prevent evicted peers from reconnecting.",
+        value_name = "SECONDS",
+        default_value = "900",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_EVICTION_TIMEOUT"
+    )]
+    eviction_timeout: u32,
 }
 
 #[cfg(feature = "p2p")]
@@ -615,6 +676,12 @@ pub struct P2PConfig {
     pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
     pub low_watermark: usize,
+    pub kad_names: Vec<String>,
+    pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
+    pub stream_timeout: Duration,
+    pub max_concurrent_streams: usize,
+    pub direct_connection_timeout: Duration,
+    pub eviction_timeout: Duration,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -689,14 +756,14 @@ impl P2PConfig {
         use clap::error::ErrorKind;
         use p2p::libp2p::multiaddr::Result;
 
-        let parse_multiaddr_vec = |multiaddrs: Vec<String>| -> Vec<Multiaddr> {
+        let parse_multiaddr_vec = |field: &str, multiaddrs: Vec<String>| -> Vec<Multiaddr> {
             multiaddrs
                 .into_iter()
                 .map(|addr| Multiaddr::from_str(&addr))
                 .collect::<Result<Vec<_>>>()
                 .unwrap_or_else(|error| {
                     Cli::command()
-                        .error(ErrorKind::ValueValidation, error)
+                        .error(ErrorKind::ValueValidation, format!("{field}: {error}"))
                         .exit()
                 })
         };
@@ -728,6 +795,17 @@ impl P2PConfig {
                 .exit()
         }
 
+        if args.kad_names.is_empty() || args.kad_names.iter().any(|x| x.is_empty()) {
+            Cli::command()
+                .error(
+                    ErrorKind::ValueValidation,
+                    "p2p.experimental.kad-names must contain at least one non-empty string",
+                )
+                .exit()
+        }
+
+        let l1_checkpoint_override = parse_l1_checkpoint_or_exit(args.l1_checkpoint_override);
+
         Self {
             max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
             max_inbound_relayed_connections: args
@@ -738,12 +816,56 @@ impl P2PConfig {
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
             listen_on: args.listen_on,
-            bootstrap_addresses: parse_multiaddr_vec(args.bootstrap_addresses),
-            predefined_peers: parse_multiaddr_vec(args.predefined_peers),
+            bootstrap_addresses: parse_multiaddr_vec(
+                "p2p.bootstrap-addresses",
+                args.bootstrap_addresses,
+            ),
+            predefined_peers: parse_multiaddr_vec("p2p.predefined-peers", args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
             low_watermark: 0,
+            kad_names: args.kad_names,
+            l1_checkpoint_override,
+            stream_timeout: Duration::from_secs(args.stream_timeout.into()),
+            max_concurrent_streams: args.max_concurrent_streams,
+            direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout.into()),
+            eviction_timeout: Duration::from_secs(args.eviction_timeout.into()),
         }
     }
+}
+
+#[cfg(feature = "p2p")]
+fn parse_l1_checkpoint_or_exit(
+    l1_checkpoint_override: Option<String>,
+) -> Option<pathfinder_ethereum::EthereumStateUpdate> {
+    use clap::error::ErrorKind;
+    use pathfinder_common::{BlockHash, BlockNumber, StateCommitment};
+
+    #[derive(serde::Deserialize)]
+    struct Dto {
+        state_root: StateCommitment,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
+    }
+
+    fn exit_now(e: impl std::fmt::Display) {
+        Cli::command()
+            .error(
+                ErrorKind::ValueValidation,
+                format!("p2p.experimental.l1-anchor: {e}"),
+            )
+            .exit()
+    }
+
+    l1_checkpoint_override.map(|f| {
+        // SAFETY: unwraps are safe because we exit the process on error
+        let f = std::fs::File::open(f).map_err(exit_now).unwrap();
+        let dto: Dto = serde_json::from_reader(f).map_err(exit_now).unwrap();
+        pathfinder_ethereum::EthereumStateUpdate {
+            state_root: dto.state_root,
+            block_number: dto.block_number,
+            block_hash: dto.block_hash,
+        }
+    })
 }
 
 #[cfg(not(feature = "p2p"))]

@@ -84,6 +84,12 @@ pub struct Config {
     pub ip_whitelist: Vec<IpNet>,
     pub bootstrap: BootstrapConfig,
     pub inbound_connections_rate_limit: RateLimit,
+    /// Alternative protocol names for Kademlia
+    pub kad_names: Vec<String>,
+    /// Request timeout for p2p-stream
+    pub stream_timeout: Duration,
+    /// Applies to each of the p2p-stream protocols separately
+    pub max_concurrent_streams: usize,
 }
 
 #[derive(Debug, Clone)]
