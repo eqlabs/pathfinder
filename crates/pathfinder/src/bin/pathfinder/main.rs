@@ -509,6 +509,7 @@ fn start_sync(
             ethereum_client,
             p2p_client,
             gateway_public_key,
+            config.p2p.l1_anchor,
         )
     }
 }
@@ -562,8 +563,6 @@ fn start_feeder_gateway_sync(
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
         pending_data: tx_pending,
-        // Currently p2p does not perform block hash and state commitment verification if
-        // p2p header lacks state commitment
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs,
         block_cache_size: 1_000,
@@ -583,6 +582,7 @@ fn start_p2p_sync(
     ethereum_client: EthereumClient,
     p2p_client: p2p::client::peer_agnostic::Client,
     gateway_public_key: pathfinder_common::PublicKey,
+    l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let sync = pathfinder_lib::sync::Sync {
         storage,
@@ -593,6 +593,7 @@ fn start_p2p_sync(
         chain_id: pathfinder_context.network_id,
         chain: pathfinder_context.network,
         public_key: gateway_public_key,
+        l1_checkpoint_override,
     };
     tokio::spawn(sync.run())
 }

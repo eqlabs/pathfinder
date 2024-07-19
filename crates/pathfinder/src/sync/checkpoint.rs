@@ -73,6 +73,7 @@ impl Sync {
         chain: Chain,
         chain_id: ChainId,
         public_key: PublicKey,
+        l1_anchor_override: Option<EthereumStateUpdate>,
     ) -> Self {
         Self {
             storage,
