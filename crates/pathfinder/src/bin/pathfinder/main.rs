@@ -209,6 +209,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         get_events_max_blocks_to_scan: config.get_events_max_blocks_to_scan,
         get_events_max_uncached_bloom_filters_to_load: config
             .get_events_max_uncached_bloom_filters_to_load,
+        custom_versioned_constants: None,
     };
 
     let context = pathfinder_rpc::context::RpcContext::new(

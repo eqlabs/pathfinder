@@ -15,6 +15,7 @@ pub mod types;
 pub use blockifier::execution::contract_class::ClassInfo;
 pub use blockifier::transaction::account_transaction::AccountTransaction;
 pub use blockifier::transaction::transaction_execution::Transaction;
+pub use blockifier::versioned_constants::VersionedConstants;
 pub use call::call;
 pub use class::{parse_casm_definition, parse_deprecated_class_definition};
 pub use error::{CallError, TransactionExecutionError};

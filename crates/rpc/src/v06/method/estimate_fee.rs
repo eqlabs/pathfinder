@@ -177,6 +177,7 @@ pub async fn estimate_fee_impl(
             header,
             pending,
             l1_blob_data_availability,
+            context.config.custom_versioned_constants,
         );
 
         let skip_validate = input

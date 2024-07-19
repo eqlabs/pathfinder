@@ -132,7 +132,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
 
     let db_tx = connection.transaction().expect("Create transaction");
 
-    let execution_state = ExecutionState::trace(&db_tx, chain_id, work.header.clone(), None);
+    let execution_state = ExecutionState::trace(&db_tx, chain_id, work.header.clone(), None, None);
 
     let transactions = work
         .transactions

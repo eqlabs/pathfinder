@@ -116,6 +116,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
             header,
             pending,
             L1BlobDataAvailability::Disabled,
+            context.config.custom_versioned_constants,
         );
 
         let result = pathfinder_executor::call(

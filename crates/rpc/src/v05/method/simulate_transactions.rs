@@ -130,6 +130,7 @@ pub async fn simulate_transactions(
             header,
             pending,
             L1BlobDataAvailability::Disabled,
+            context.config.custom_versioned_constants,
         );
 
         let transactions = input

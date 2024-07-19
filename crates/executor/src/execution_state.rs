@@ -27,6 +27,8 @@ pub const STRK_FEE_TOKEN_ADDRESS: ContractAddress =
     contract_address!("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 
 mod versioned_constants {
+    use std::borrow::Cow;
+
     use pathfinder_common::StarknetVersion;
 
     use super::VersionedConstants;
@@ -57,16 +59,21 @@ mod versioned_constants {
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1).unwrap();
     }
 
-    pub(super) fn for_version(version: &StarknetVersion) -> &'static VersionedConstants {
+    pub(super) fn for_version(
+        version: &StarknetVersion,
+        custom_versioned_constants: Option<VersionedConstants>,
+    ) -> Cow<'static, VersionedConstants> {
         // We use 0.13.0 for all blocks _before_ 0.13.1.
         if version < &STARKNET_VERSION_0_13_1 {
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0
+            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0)
         } else if version < &STARKNET_VERSION_0_13_1_1 {
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1
+            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1)
         } else if version < &STARKNET_VERSION_0_13_2 {
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1
+            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1)
         } else {
-            VersionedConstants::latest_constants()
+            custom_versioned_constants
+                .map(Cow::Owned)
+                .unwrap_or_else(|| Cow::Borrowed(VersionedConstants::latest_constants()))
         }
     }
 }
@@ -78,13 +85,14 @@ pub struct ExecutionState<'tx> {
     execute_on_parent_state: bool,
     pending_state: Option<Arc<StateUpdate>>,
     allow_use_kzg_data: bool,
+    custom_versioned_constants: Option<VersionedConstants>,
 }
 
 impl<'tx> ExecutionState<'tx> {
     pub(super) fn starknet_state(
-        &mut self,
+        self,
     ) -> anyhow::Result<(
-        CachedState<PendingStateReader<PathfinderStateReader<'_>>>,
+        CachedState<PendingStateReader<PathfinderStateReader<'tx>>>,
         BlockContext,
     )> {
         let block_number = if self.execute_on_parent_state {
@@ -126,7 +134,10 @@ impl<'tx> ExecutionState<'tx> {
             None
         };
 
-        let versioned_constants = versioned_constants::for_version(&self.header.starknet_version);
+        let versioned_constants = versioned_constants::for_version(
+            &self.header.starknet_version,
+            self.custom_versioned_constants,
+        );
 
         pre_process_block(
             &mut cached_state,
@@ -137,7 +148,7 @@ impl<'tx> ExecutionState<'tx> {
         let block_context = BlockContext::new(
             block_info,
             chain_info,
-            versioned_constants.to_owned(),
+            versioned_constants.into_owned(),
             BouncerConfig::max(),
         );
 
@@ -230,6 +241,7 @@ impl<'tx> ExecutionState<'tx> {
         chain_id: ChainId,
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
+        custom_versioned_constants: Option<VersionedConstants>,
     ) -> Self {
         Self {
             transaction,
@@ -238,6 +250,7 @@ impl<'tx> ExecutionState<'tx> {
             pending_state,
             execute_on_parent_state: true,
             allow_use_kzg_data: true,
+            custom_versioned_constants,
         }
     }
 
@@ -247,6 +260,7 @@ impl<'tx> ExecutionState<'tx> {
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
         l1_blob_data_availability: L1BlobDataAvailability,
+        custom_versioned_constants: Option<VersionedConstants>,
     ) -> Self {
         Self {
             transaction,
@@ -255,6 +269,7 @@ impl<'tx> ExecutionState<'tx> {
             pending_state,
             execute_on_parent_state: false,
             allow_use_kzg_data: l1_blob_data_availability == L1BlobDataAvailability::Enabled,
+            custom_versioned_constants,
         }
     }
 }
