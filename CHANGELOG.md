@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Pathfinder now creates a new directory if the database path specified does not exist.
+- Pathfinder now has a CLI option (`--rpc.custom-versioned-constants-json-path`) to allow loading a custom versioned constants JSON file. When specified the contents of the file is then used instead of the _latest_ constants built into the blockifier crate during execution of Cairo code.
 
 ### Fixed
 
