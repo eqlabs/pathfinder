@@ -446,10 +446,21 @@ impl Behaviour {
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         // This makes sure that the DHT we're implementing is incompatible with the
         // "default" IPFS DHT from libp2p.
-        kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
-            kademlia_protocol_name(chain_id),
-        )
-        .unwrap()]);
+        if cfg.kad_names.is_empty() {
+            kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
+                kademlia_protocol_name(chain_id),
+            )
+            .unwrap()]);
+        } else {
+            kademlia_config.set_protocol_names(
+                cfg.kad_names
+                    .iter()
+                    .cloned()
+                    .map(StreamProtocol::try_from_owned)
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("valid protocol names"),
+            );
+        }
 
         let peer_id = identity.public().to_peer_id();
 

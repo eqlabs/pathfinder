@@ -424,7 +424,7 @@ async fn start_p2p(
 
     let context = P2PContext {
         cfg: p2p::Config {
-            direct_connection_timeout: Duration::from_secs(30),
+            direct_connection_timeout: config.direct_connection_timeout,
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers: config.max_inbound_direct_connections,
             max_inbound_relayed_peers: config.max_inbound_relayed_connections,
@@ -432,11 +432,13 @@ async fn start_p2p(
             low_watermark: config.low_watermark,
             ip_whitelist: config.ip_whitelist,
             bootstrap: Default::default(),
-            eviction_timeout: Duration::from_secs(15 * 60),
+            eviction_timeout: config.eviction_timeout,
             inbound_connections_rate_limit: p2p::RateLimit {
                 max: 10,
                 interval: Duration::from_secs(1),
             },
+            kad_names: config.kad_names,
+            stream_timeout: config.stream_timeout,
         },
         chain_id,
         storage,

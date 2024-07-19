@@ -105,6 +105,8 @@ impl Default for TestPeer {
                     max: 1000,
                     interval: Duration::from_secs(1),
                 },
+                kad_names: Default::default(),
+                stream_timeout: Duration::MAX,
             },
             Keypair::generate_ed25519(),
         )
@@ -265,6 +267,8 @@ async fn periodic_bootstrap() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
     let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -414,6 +418,8 @@ async fn reconnect_too_quickly() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
 
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -516,6 +522,8 @@ async fn duplicate_connection() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
     let keypair = Keypair::generate_ed25519();
     let mut peer1 = TestPeer::new(cfg.clone(), keypair.clone());
@@ -602,6 +610,8 @@ async fn outbound_peer_eviction() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
 
     let mut peer = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -731,6 +741,8 @@ async fn inbound_peer_eviction() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
 
     let mut peer = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -816,6 +828,8 @@ async fn evicted_peer_reconnection() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
 
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -907,6 +921,8 @@ async fn ip_whitelist() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
     let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -940,6 +956,8 @@ async fn ip_whitelist() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
     let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
 
@@ -974,6 +992,8 @@ async fn rate_limit() {
             max: 2,
             interval: RATE_LIMIT_INTERVAL,
         },
+        kad_names: Default::default(),
+        stream_timeout: Duration::MAX,
     };
 
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());

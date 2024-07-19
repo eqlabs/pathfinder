@@ -478,7 +478,17 @@ Example:
         default_value = "60",
         env = "PATHFINDER_P2P_EXPERIMENTAL_STREAM_TIMEOUT"
     )]
-    stream_timeout: u64,
+    stream_timeout: u32,
+
+    #[arg(
+        long = "p2p.experimental.max-concurrent-streams",
+        long_help = "Maximum allowed number of concurrent streams per each \
+                     request/response-stream protocol.",
+        value_name = "LIMIT",
+        default_value = "100",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_MAX_CONCURRENT_STREAMS"
+    )]
+    max_concurrent_streams: usize,
 
     #[arg(
         long = "p2p.experimental.direct-connection-timeout",
@@ -487,7 +497,7 @@ Example:
         default_value = "30",
         env = "PATHFINDER_P2P_EXPERIMENTAL_DIRECT_CONNECTION_TIMEOUT"
     )]
-    direct_connection_timeout: u64,
+    direct_connection_timeout: u32,
 
     #[arg(
         long = "p2p.experimental.eviction-timeout",
@@ -496,7 +506,7 @@ Example:
         default_value = "900",
         env = "PATHFINDER_P2P_EXPERIMENTAL_EVICTION_TIMEOUT"
     )]
-    eviction_timeout: u64,
+    eviction_timeout: u32,
 }
 
 #[cfg(feature = "p2p")]
@@ -670,6 +680,7 @@ pub struct P2PConfig {
     pub kad_names: Vec<String>,
     pub l1_anchor: Option<EthereumStateUpdate>,
     pub stream_timeout: Duration,
+    pub max_concurrent_streams: usize,
     pub direct_connection_timeout: Duration,
     pub eviction_timeout: Duration,
 }
@@ -815,9 +826,10 @@ impl P2PConfig {
             low_watermark: 0,
             kad_names: args.kad_names,
             l1_anchor,
-            stream_timeout: Duration::from_secs(args.stream_timeout),
-            direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout),
-            eviction_timeout: Duration::from_secs(args.eviction_timeout),
+            stream_timeout: Duration::from_secs(args.stream_timeout.into()),
+            max_concurrent_streams: args.max_concurrent_streams,
+            direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout.into()),
+            eviction_timeout: Duration::from_secs(args.eviction_timeout.into()),
         }
     }
 }

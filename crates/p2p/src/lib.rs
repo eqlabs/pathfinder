@@ -84,6 +84,11 @@ pub struct Config {
     pub ip_whitelist: Vec<IpNet>,
     pub bootstrap: BootstrapConfig,
     pub inbound_connections_rate_limit: RateLimit,
+    /// Alternative protocol names for Kademlia
+    pub kad_names: Vec<String>,
+    /// Request timeout for p2p-stream
+    /// TODO change the semantics to timeout since last response
+    pub stream_timeout: Duration,
 }
 
 #[derive(Debug, Clone)]
