@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fs::File;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -11,8 +10,7 @@ use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
-use pathfinder_common::{AllowedOrigins, BlockHash, BlockNumber, StateCommitment};
-use pathfinder_ethereum::EthereumStateUpdate;
+use pathfinder_common::AllowedOrigins;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
 
@@ -679,7 +677,7 @@ pub struct P2PConfig {
     pub ip_whitelist: Vec<IpNet>,
     pub low_watermark: usize,
     pub kad_names: Vec<String>,
-    pub l1_checkpoint_override: Option<EthereumStateUpdate>,
+    pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     pub stream_timeout: Duration,
     pub max_concurrent_streams: usize,
     pub direct_connection_timeout: Duration,
@@ -835,16 +833,18 @@ impl P2PConfig {
     }
 }
 
+#[cfg(feature = "p2p")]
 fn parse_l1_checkpoint_or_exit(
     l1_checkpoint_override: Option<String>,
-) -> Option<EthereumStateUpdate> {
+) -> Option<pathfinder_ethereum::EthereumStateUpdate> {
     use clap::error::ErrorKind;
+    use pathfinder_common::{BlockHash, BlockNumber, StateCommitment};
 
-    #[derive(Debug, serde::Deserialize)]
+    #[derive(serde::Deserialize)]
     struct Dto {
-        pub state_root: StateCommitment,
-        pub block_number: BlockNumber,
-        pub block_hash: BlockHash,
+        state_root: StateCommitment,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
     }
 
     fn exit_now(e: impl std::fmt::Display) {
@@ -858,9 +858,9 @@ fn parse_l1_checkpoint_or_exit(
 
     l1_checkpoint_override.map(|f| {
         // SAFETY: unwraps are safe because we exit the process on error
-        let f = File::open(f).map_err(exit_now).unwrap();
+        let f = std::fs::File::open(f).map_err(exit_now).unwrap();
         let dto: Dto = serde_json::from_reader(f).map_err(exit_now).unwrap();
-        EthereumStateUpdate {
+        pathfinder_ethereum::EthereumStateUpdate {
             state_root: dto.state_root,
             block_number: dto.block_number,
             block_hash: dto.block_hash,

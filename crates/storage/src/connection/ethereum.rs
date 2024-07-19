@@ -117,7 +117,7 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         let updates = create_updates();
-        let expected = updates.last().unwrap().clone();
+        let expected = *updates.last().unwrap();
         for update in updates {
             tx.upsert_l1_state(&update).unwrap();
         }

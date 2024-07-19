@@ -76,7 +76,7 @@ impl Sync {
                 chain_id: self.chain_id,
                 public_key: self.public_key,
             }
-            .run(checkpoint.clone())
+            .run(checkpoint)
             .await;
 
             // Handle the error

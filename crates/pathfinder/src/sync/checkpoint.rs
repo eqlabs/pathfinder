@@ -65,6 +65,7 @@ pub struct Sync {
 }
 
 impl Sync {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         storage: Storage,
         p2p: P2PClient,
@@ -91,7 +92,7 @@ impl Sync {
     pub async fn run(&self, checkpoint: EthereumStateUpdate) -> Result<(), SyncError> {
         use pathfinder_ethereum::EthereumApi;
 
-        let local_state = LocalState::from_db(self.storage.clone(), checkpoint.clone())
+        let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
             .await
             .context("Querying local state")?;
 
@@ -108,7 +109,7 @@ impl Sync {
         // is frequently interrupted), so this ensures sync will progress even
         // under bad conditions.
         let anchor = checkpoint;
-        persist_anchor(self.storage.clone(), anchor.clone())
+        persist_anchor(self.storage.clone(), anchor)
             .await
             .context("Persisting new Ethereum anchor")?;
 

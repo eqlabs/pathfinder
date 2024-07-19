@@ -106,7 +106,7 @@ impl Default for TestPeer {
                     interval: Duration::from_secs(1),
                 },
                 kad_names: Default::default(),
-                stream_timeout: Duration::MAX,
+                stream_timeout: Duration::from_secs(10),
                 max_concurrent_streams: 100,
             },
             Keypair::generate_ed25519(),
@@ -269,7 +269,7 @@ async fn periodic_bootstrap() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
     let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -421,7 +421,7 @@ async fn reconnect_too_quickly() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
 
@@ -526,7 +526,7 @@ async fn duplicate_connection() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
     let keypair = Keypair::generate_ed25519();
@@ -615,7 +615,7 @@ async fn outbound_peer_eviction() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
 
@@ -747,7 +747,7 @@ async fn inbound_peer_eviction() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
 
@@ -835,7 +835,7 @@ async fn evicted_peer_reconnection() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
 
@@ -929,7 +929,7 @@ async fn ip_whitelist() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
     let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
@@ -965,7 +965,7 @@ async fn ip_whitelist() {
             interval: Duration::from_secs(1),
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
     let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
@@ -1002,7 +1002,7 @@ async fn rate_limit() {
             interval: RATE_LIMIT_INTERVAL,
         },
         kad_names: Default::default(),
-        stream_timeout: Duration::MAX,
+        stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
 
