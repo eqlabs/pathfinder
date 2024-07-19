@@ -475,9 +475,28 @@ Example:
         long = "p2p.experimental.stream-timeout",
         long_help = "Timeout of the request/response-stream protocol.",
         value_name = "SECONDS",
+        default_value = "60",
         env = "PATHFINDER_P2P_EXPERIMENTAL_STREAM_TIMEOUT"
     )]
     stream_timeout: u64,
+
+    #[arg(
+        long = "p2p.experimental.direct-connection-timeout",
+        long_help = "A direct (not relayed) peer can only connect once in this period.",
+        value_name = "SECONDS",
+        default_value = "30",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_DIRECT_CONNECTION_TIMEOUT"
+    )]
+    direct_connection_timeout: u64,
+
+    #[arg(
+        long = "p2p.experimental.eviction-timeout",
+        long_help = "How long to prevent evicted peers from reconnecting.",
+        value_name = "SECONDS",
+        default_value = "900",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_EVICTION_TIMEOUT"
+    )]
+    eviction_timeout: u64,
 }
 
 #[cfg(feature = "p2p")]
@@ -651,6 +670,8 @@ pub struct P2PConfig {
     pub kad_names: Vec<String>,
     pub l1_anchor: Option<EthereumStateUpdate>,
     pub stream_timeout: Duration,
+    pub direct_connection_timeout: Duration,
+    pub eviction_timeout: Duration,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -775,8 +796,6 @@ impl P2PConfig {
 
         let l1_anchor = parse_l1_anchor_or_exit(args.l1_anchor);
 
-        let stream_timeout = Duration::from_secs(args.stream_timeout);
-
         Self {
             max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
             max_inbound_relayed_connections: args
@@ -796,7 +815,9 @@ impl P2PConfig {
             low_watermark: 0,
             kad_names: args.kad_names,
             l1_anchor,
-            stream_timeout,
+            stream_timeout: Duration::from_secs(args.stream_timeout),
+            direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout),
+            eviction_timeout: Duration::from_secs(args.eviction_timeout),
         }
     }
 }
