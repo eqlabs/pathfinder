@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Pathfinder now creates a new directory if the database path specified does not exist.
+
 ### Fixed
 
 - Pathfinder exits with an error when detecting a one-block reorg if `--storage.state-tries` is set to `0`.
