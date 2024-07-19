@@ -235,7 +235,7 @@ impl fmt::Display for OutboundRequestId {
 }
 
 /// The configuration for a `Behaviour` protocol.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Config {
     request_timeout: Duration,
     max_concurrent_streams: usize,

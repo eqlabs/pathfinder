@@ -439,6 +439,7 @@ async fn start_p2p(
             },
             kad_names: config.kad_names,
             stream_timeout: config.stream_timeout,
+            max_concurrent_streams: config.max_concurrent_streams,
         },
         chain_id,
         storage,

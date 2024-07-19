@@ -89,6 +89,8 @@ pub struct Config {
     /// Request timeout for p2p-stream
     /// TODO change the semantics to timeout since last response
     pub stream_timeout: Duration,
+    /// Applies to each of the p2p-stream protocols separately
+    pub max_concurrent_streams: usize,
 }
 
 #[derive(Debug, Clone)]
