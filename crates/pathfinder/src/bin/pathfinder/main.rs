@@ -509,7 +509,7 @@ fn start_sync(
             ethereum_client,
             p2p_client,
             gateway_public_key,
-            config.p2p.l1_anchor,
+            config.p2p.l1_checkpoint_override,
         )
     }
 }

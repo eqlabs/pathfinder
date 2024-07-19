@@ -461,15 +461,16 @@ Example:
     kad_names: Vec<String>,
 
     #[arg(
-        long = "p2p.experimental.l1-anchor",
-        long_help = "Json encoded file containing an L1 checkpoint from which pathfinder will \
-                     sync backwards till genesis before switching to syncing forward and \
-                     following the head of the chain. Example contents: { \"block_hash\": \
-                     \"0x1\", \"block_number\": 2, \"state_root\": \"0x3\" }",
+        long = "p2p.experimental.l1-checkpoint-override",
+        long_help = "Override L1 sync checkpoint retrieved from the Ethereum API. This option \
+                     points to a json encoded file containing an L1 checkpoint from which \
+                     pathfinder will sync backwards till genesis before switching to syncing \
+                     forward and following the head of the chain. Example contents: { \
+                     \"block_hash\": \"0x1\", \"block_number\": 2, \"state_root\": \"0x3\" }",
         value_name = "JSON_FILE",
-        env = "PATHFINDER_P2P_EXPERIMENTAL_L1_ANCHOR"
+        env = "PATHFINDER_P2P_EXPERIMENTAL_L1_CHECKPOINT_OVERRIDE"
     )]
-    l1_anchor: Option<String>,
+    l1_checkpoint_override: Option<String>,
 
     #[arg(
         long = "p2p.experimental.stream-timeout",
@@ -678,7 +679,7 @@ pub struct P2PConfig {
     pub ip_whitelist: Vec<IpNet>,
     pub low_watermark: usize,
     pub kad_names: Vec<String>,
-    pub l1_anchor: Option<EthereumStateUpdate>,
+    pub l1_checkpoint_override: Option<EthereumStateUpdate>,
     pub stream_timeout: Duration,
     pub max_concurrent_streams: usize,
     pub direct_connection_timeout: Duration,
@@ -805,7 +806,7 @@ impl P2PConfig {
                 .exit()
         }
 
-        let l1_anchor = parse_l1_anchor_or_exit(args.l1_anchor);
+        let l1_checkpoint_override = parse_l1_checkpoint_or_exit(args.l1_checkpoint_override);
 
         Self {
             max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
@@ -825,7 +826,7 @@ impl P2PConfig {
             ip_whitelist: args.ip_whitelist,
             low_watermark: 0,
             kad_names: args.kad_names,
-            l1_anchor,
+            l1_checkpoint_override,
             stream_timeout: Duration::from_secs(args.stream_timeout.into()),
             max_concurrent_streams: args.max_concurrent_streams,
             direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout.into()),
@@ -834,7 +835,9 @@ impl P2PConfig {
     }
 }
 
-fn parse_l1_anchor_or_exit(l1_anchor: Option<String>) -> Option<EthereumStateUpdate> {
+fn parse_l1_checkpoint_or_exit(
+    l1_checkpoint_override: Option<String>,
+) -> Option<EthereumStateUpdate> {
     use clap::error::ErrorKind;
 
     #[derive(Debug, serde::Deserialize)]
@@ -853,7 +856,7 @@ fn parse_l1_anchor_or_exit(l1_anchor: Option<String>) -> Option<EthereumStateUpd
             .exit()
     }
 
-    l1_anchor.map(|f| {
+    l1_checkpoint_override.map(|f| {
         // SAFETY: unwraps are safe because we exit the process on error
         let f = File::open(f).map_err(exit_now).unwrap();
         let dto: Dto = serde_json::from_reader(f).map_err(exit_now).unwrap();
