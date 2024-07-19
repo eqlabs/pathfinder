@@ -470,6 +470,14 @@ Example:
         env = "PATHFINDER_P2P_EXPERIMENTAL_L1_ANCHOR"
     )]
     l1_anchor: Option<String>,
+
+    #[arg(
+        long = "p2p.experimental.stream-timeout",
+        long_help = "Timeout of the request/response-stream protocol.",
+        value_name = "SECONDS",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_STREAM_TIMEOUT"
+    )]
+    stream_timeout: u64,
 }
 
 #[cfg(feature = "p2p")]
@@ -642,6 +650,7 @@ pub struct P2PConfig {
     pub low_watermark: usize,
     pub kad_names: Vec<String>,
     pub l1_anchor: Option<EthereumStateUpdate>,
+    pub stream_timeout: Duration,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -766,6 +775,8 @@ impl P2PConfig {
 
         let l1_anchor = parse_l1_anchor_or_exit(args.l1_anchor);
 
+        let stream_timeout = Duration::from_secs(args.stream_timeout);
+
         Self {
             max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
             max_inbound_relayed_connections: args
@@ -785,6 +796,7 @@ impl P2PConfig {
             low_watermark: 0,
             kad_names: args.kad_names,
             l1_anchor,
+            stream_timeout,
         }
     }
 }
