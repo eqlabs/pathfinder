@@ -74,7 +74,7 @@ impl Default for TraceCache {
 }
 
 pub fn simulate(
-    mut execution_state: ExecutionState<'_>,
+    execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     skip_validate: bool,
     skip_fee_charge: bool,
@@ -140,7 +140,7 @@ pub fn simulate(
 }
 
 pub fn trace(
-    mut execution_state: ExecutionState<'_>,
+    execution_state: ExecutionState<'_>,
     cache: TraceCache,
     block_hash: BlockHash,
     transactions: Vec<Transaction>,

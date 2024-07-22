@@ -13,7 +13,7 @@ use super::execution_state::ExecutionState;
 use super::felt::{IntoFelt, IntoStarkFelt};
 
 pub fn call(
-    mut execution_state: ExecutionState<'_>,
+    execution_state: ExecutionState<'_>,
     contract_address: ContractAddress,
     entry_point_selector: EntryPoint,
     calldata: Vec<CallParam>,

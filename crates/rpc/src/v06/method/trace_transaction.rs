@@ -189,7 +189,13 @@ pub async fn trace_transaction_impl(
             };
 
             let hash = header.hash;
-            let state = ExecutionState::trace(&db, context.chain_id, header, None);
+            let state = ExecutionState::trace(
+                &db,
+                context.chain_id,
+                header,
+                None,
+                context.config.custom_versioned_constants,
+            );
 
             let executor_transactions = transactions
                 .iter()

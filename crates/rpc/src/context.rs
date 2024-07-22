@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use pathfinder_common::ChainId;
-use pathfinder_executor::TraceCache;
+use pathfinder_executor::{TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
@@ -17,6 +17,7 @@ pub struct RpcConfig {
     pub batch_concurrency_limit: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
+    pub custom_versioned_constants: Option<VersionedConstants>,
 }
 
 #[derive(Clone)]
@@ -100,6 +101,7 @@ impl RpcContext {
             batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
             get_events_max_blocks_to_scan: NonZeroUsize::new(1000).unwrap(),
             get_events_max_uncached_bloom_filters_to_load: NonZeroUsize::new(1000).unwrap(),
+            custom_versioned_constants: None,
         };
 
         Self::new(

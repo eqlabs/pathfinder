@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fs::File;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -11,6 +12,7 @@ use ipnet::IpNet;
 use p2p::libp2p::Multiaddr;
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 use pathfinder_common::AllowedOrigins;
+use pathfinder_executor::VersionedConstants;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
 
@@ -256,6 +258,13 @@ This should only be enabled for debugging purposes as it adds substantial proces
         value_parser = parse_state_tries
     )]
     state_tries: Option<StateTries>,
+
+    #[arg(
+        long = "rpc.custom-versioned-constants-json-path",
+        long_help = "Path to a JSON file containing the versioned constants to use for execution",
+        env = "PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH"
+    )]
+    custom_versioned_constants_path: Option<PathBuf>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -618,6 +627,35 @@ enum RpcCorsDomainsParseError {
     WildcardAmongOtherValues,
 }
 
+fn parse_versioned_constants(
+    path: PathBuf,
+) -> Result<VersionedConstants, ParseVersionedConstantsError> {
+    let file = File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+    let versioned_constants = serde_json::from_reader(reader)?;
+
+    Ok(versioned_constants)
+}
+
+pub fn parse_versioned_constants_or_exit(path: PathBuf) -> VersionedConstants {
+    use clap::error::ErrorKind;
+
+    match parse_versioned_constants(path) {
+        Ok(versioned_constants) => versioned_constants,
+        Err(error) => Cli::command()
+            .error(ErrorKind::ValueValidation, error)
+            .exit(),
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ParseVersionedConstantsError {
+    #[error("IO error while reading versioned constants: {0}.")]
+    Io(#[from] std::io::Error),
+    #[error("Parse error while loading versioned constants: {0}.")]
+    Parse(#[from] serde_json::Error),
+}
+
 pub struct Config {
     pub data_directory: PathBuf,
     pub ethereum: Ethereum,
@@ -644,6 +682,7 @@ pub struct Config {
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
+    pub custom_versioned_constants: Option<VersionedConstants>,
 }
 
 pub struct Ethereum {
@@ -928,6 +967,9 @@ impl Config {
                 .get_events_max_uncached_bloom_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             state_tries: cli.state_tries,
+            custom_versioned_constants: cli
+                .custom_versioned_constants_path
+                .map(parse_versioned_constants_or_exit),
         }
     }
 }
@@ -966,8 +1008,10 @@ pub struct WebsocketConfig {
 
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
+
     use super::{AllowedOrigins, RpcCorsDomainsParseError};
-    use crate::config::parse_cors;
+    use crate::config::{parse_cors, ParseVersionedConstantsError};
 
     #[test]
     fn parse_cors_domains() {
@@ -1042,5 +1086,30 @@ mod tests {
                 "input: {input:?}"
             )
         });
+    }
+
+    #[test]
+    fn parse_versioned_constants_fails_if_file_not_found() {
+        assert_matches!(
+            super::parse_versioned_constants("./nonexistent_versioned_constants.json".into()).unwrap_err(),
+            ParseVersionedConstantsError::Io(err) => assert_eq!(err.kind(), std::io::ErrorKind::NotFound)
+        );
+    }
+
+    #[test]
+    fn parse_versioned_constants_fails_on_parse_error() {
+        assert_matches!(
+            super::parse_versioned_constants("resources/invalid_versioned_constants.json".into())
+                .unwrap_err(),
+            ParseVersionedConstantsError::Parse(_)
+        )
+    }
+
+    #[test]
+    fn parse_versioned_constants_success() {
+        super::parse_versioned_constants(
+            "../executor/resources/versioned_constants_13_1_1.json".into(),
+        )
+        .unwrap();
     }
 }

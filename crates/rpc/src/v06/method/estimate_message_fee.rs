@@ -147,6 +147,7 @@ pub(crate) async fn estimate_message_fee_impl(
             header,
             pending,
             l1_blob_data_availability,
+            context.config.custom_versioned_constants,
         );
 
         let transaction = create_executor_transaction(input, context.chain_id)?;

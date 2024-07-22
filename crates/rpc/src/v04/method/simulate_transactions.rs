@@ -107,6 +107,7 @@ pub async fn simulate_transactions(
             header,
             pending,
             pathfinder_executor::L1BlobDataAvailability::Disabled,
+            context.config.custom_versioned_constants,
         );
 
         let transactions = input

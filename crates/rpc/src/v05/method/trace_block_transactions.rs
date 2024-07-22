@@ -221,7 +221,13 @@ pub async fn trace_block_transactions(
             .collect::<Result<Vec<_>, _>>()?;
 
         let hash = header.hash;
-        let state = ExecutionState::trace(&db, context.chain_id, header, None);
+        let state = ExecutionState::trace(
+            &db,
+            context.chain_id,
+            header,
+            None,
+            context.config.custom_versioned_constants,
+        );
         let traces =
             match pathfinder_executor::trace(state, cache, hash, executor_transactions, true, true)
             {

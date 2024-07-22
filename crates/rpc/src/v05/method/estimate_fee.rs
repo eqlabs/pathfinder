@@ -133,6 +133,7 @@ pub async fn estimate_fee(
             header,
             pending,
             L1BlobDataAvailability::Disabled,
+            context.config.custom_versioned_constants,
         );
 
         let transactions = input

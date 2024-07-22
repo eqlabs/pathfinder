@@ -6,7 +6,7 @@ use super::execution_state::ExecutionState;
 use super::types::FeeEstimate;
 
 pub fn estimate(
-    mut execution_state: ExecutionState<'_>,
+    execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     skip_validate: bool,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
