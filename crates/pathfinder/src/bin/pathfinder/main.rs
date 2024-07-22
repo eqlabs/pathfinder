@@ -58,6 +58,12 @@ async fn async_main() -> anyhow::Result<()> {
         "🏁 Starting node."
     );
 
+    if !config.data_directory.exists() {
+        std::fs::DirBuilder::new()
+            .create(&config.data_directory)
+            .context("Creating database directory")?;
+    }
+
     permission_check(&config.data_directory)?;
 
     let available_parallelism = std::thread::available_parallelism()?;
