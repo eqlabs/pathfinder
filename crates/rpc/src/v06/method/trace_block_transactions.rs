@@ -268,15 +268,13 @@ pub async fn trace_block_transactions_impl(
             None,
             context.config.custom_versioned_constants,
         );
-        let traces =
-            match pathfinder_executor::trace(state, cache, hash, executor_transactions, true, true)
-            {
-                Ok(traces) => traces,
-                Err(TransactionExecutionError::ExecutionError { .. }) => {
-                    return Ok(LocalExecution::Unsupported(transactions))
-                }
-                Err(e) => return Err(e.into()),
-            };
+        let traces = match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
+            Ok(traces) => traces,
+            Err(TransactionExecutionError::ExecutionError { .. }) => {
+                return Ok(LocalExecution::Unsupported(transactions))
+            }
+            Err(e) => return Err(e.into()),
+        };
 
         let result = traces
             .into_iter()
