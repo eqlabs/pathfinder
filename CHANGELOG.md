@@ -7,10 +7,11 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.14.0] - 2024-07-22
 
 ### Added
 
+- Support for Starknet v0.13.2.
 - Pathfinder now creates a new directory if the database path specified does not exist.
 - Pathfinder now has a CLI option (`--rpc.custom-versioned-constants-json-path`) to allow loading a custom versioned constants JSON file. When specified the contents of the file is then used instead of the _latest_ constants built into the blockifier crate during execution of Cairo code.
 
