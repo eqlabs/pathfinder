@@ -161,7 +161,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .expect("usize should cast to u32");
     let rpc_storage = std::cmp::max(10, max_rpc_connections / 8);
     let rpc_storage = NonZeroU32::new(rpc_storage).expect("A non-zero minimum is set");
-    let rpc_storage = storage_manager.create_pool(rpc_storage).context(
+    let rpc_storage = storage_manager.create_read_only_pool(rpc_storage).context(
         r"Creating database connection pool for RPC
 
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
@@ -173,7 +173,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             .expect("The number of CPU cores should be non-zero")
     });
     let execution_storage = storage_manager
-        .create_pool(execution_storage_pool_size)
+        .create_read_only_pool(execution_storage_pool_size)
         .context(r"")?;
 
     let p2p_storage = storage_manager

@@ -110,9 +110,14 @@ impl std::fmt::Debug for StorageManager {
 }
 
 impl StorageManager {
-    pub fn create_pool(&self, capacity: NonZeroU32) -> anyhow::Result<Storage> {
+    fn create_pool_with_flags(
+        &self,
+        capacity: NonZeroU32,
+        open_flags: OpenFlags,
+    ) -> anyhow::Result<Storage> {
         let journal_mode = self.journal_mode;
         let pool_manager = SqliteConnectionManager::file(&self.database_path)
+            .with_flags(open_flags)
             .with_init(move |connection| setup_connection(connection, journal_mode));
         let pool = Pool::builder()
             .max_size(capacity.get())
@@ -124,6 +129,17 @@ impl StorageManager {
             bloom_filter_cache: self.bloom_filter_cache.clone(),
             trie_prune_mode: self.trie_prune_mode,
         }))
+    }
+
+    pub fn create_pool(&self, capacity: NonZeroU32) -> anyhow::Result<Storage> {
+        self.create_pool_with_flags(capacity, OpenFlags::default())
+    }
+
+    pub fn create_read_only_pool(&self, capacity: NonZeroU32) -> anyhow::Result<Storage> {
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_URI;
+        self.create_pool_with_flags(capacity, flags)
     }
 }
 
