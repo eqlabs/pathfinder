@@ -468,7 +468,7 @@ Example:
     kad_names: Vec<String>,
 
     #[arg(
-        long = "p2p.experimental.l1-checkpoint-override",
+        long = "p2p.experimental.l1-checkpoint-override-json-path",
         long_help = "Override L1 sync checkpoint retrieved from the Ethereum API. This option \
                      points to a json encoded file containing an L1 checkpoint from which \
                      pathfinder will sync backwards till genesis before switching to syncing \
