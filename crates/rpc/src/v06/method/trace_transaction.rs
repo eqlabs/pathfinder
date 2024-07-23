@@ -125,7 +125,7 @@ pub async fn trace_transaction_impl(
             let _g = span.enter();
 
             let mut db = context
-                .storage
+                .execution_storage
                 .connection()
                 .context("Creating database connection")?;
             let db = db.transaction().context("Creating database transaction")?;

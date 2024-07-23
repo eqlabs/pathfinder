@@ -197,7 +197,7 @@ pub async fn trace_block_transactions_impl(
 
     let span = tracing::Span::current();
 
-    let storage = context.storage.clone();
+    let storage = context.execution_storage.clone();
     let traces = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
