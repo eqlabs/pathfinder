@@ -8,6 +8,7 @@ pub(crate) mod lru_cache;
 pub(crate) mod pending;
 pub(crate) mod simulate;
 pub(crate) mod state_reader;
+pub(crate) mod thread_safe_state_reader;
 pub(crate) mod transaction;
 pub mod types;
 

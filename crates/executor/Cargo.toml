@@ -9,7 +9,7 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-blockifier = { workspace = true }
+blockifier = { workspace = true, features = ["concurrency"] }
 cached = { workspace = true }
 cairo-vm = { workspace = true }
 pathfinder-common = { path = "../common" }
@@ -22,3 +22,6 @@ starknet-types-core = { workspace = true }
 starknet_api = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+test-log = { workspace = true }

@@ -18,6 +18,7 @@ use starknet_api::core::PatriciaKey;
 
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
+use super::thread_safe_state_reader::{RequestProcessor, ThreadSafeReader};
 use crate::IntoStarkFelt;
 
 // NOTE: these are the same for _all_ networks
@@ -158,6 +159,75 @@ impl<'tx> ExecutionState<'tx> {
         );
 
         Ok((cached_state, block_context))
+    }
+
+    pub(super) fn concurrent_starknet_state(
+        self,
+    ) -> anyhow::Result<(
+        CachedState<ThreadSafeReader>,
+        RequestProcessor<PendingStateReader<PathfinderStateReader<'tx>>>,
+        BlockContext,
+    )> {
+        let block_number = if self.execute_on_parent_state {
+            self.header.number.parent()
+        } else {
+            Some(self.header.number)
+        };
+
+        let raw_reader = PathfinderStateReader::new(
+            self.transaction,
+            block_number,
+            self.pending_state.is_some(),
+        );
+        let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
+        let (thread_safe_reader, request_processor) =
+            super::thread_safe_state_reader::new(pending_state_reader);
+        let mut cached_state = CachedState::new(thread_safe_reader);
+
+        let chain_info = self.chain_info()?;
+        let block_info = self.block_info()?;
+
+        // Perform system contract updates if we are executing ontop of a parent block.
+        // Currently this is only the block hash from 10 blocks ago.
+        let old_block_number_and_hash = if self.header.number.get() >= 10 {
+            let block_number_whose_hash_becomes_available =
+                pathfinder_common::BlockNumber::new_or_panic(self.header.number.get() - 10);
+            let block_hash = self
+                .transaction
+                .block_hash(block_number_whose_hash_becomes_available.into())?
+                .context("Getting historical block hash")?;
+
+            tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");
+
+            Some(BlockNumberHashPair {
+                number: starknet_api::block::BlockNumber(
+                    block_number_whose_hash_becomes_available.get(),
+                ),
+                hash: starknet_api::block::BlockHash(block_hash.0.into_starkfelt()),
+            })
+        } else {
+            None
+        };
+
+        let versioned_constants = versioned_constants::for_version(
+            &self.header.starknet_version,
+            self.custom_versioned_constants,
+        );
+
+        pre_process_block(
+            &mut cached_state,
+            old_block_number_and_hash,
+            block_info.block_number,
+        )?;
+
+        let block_context = BlockContext::new(
+            block_info,
+            chain_info,
+            versioned_constants.into_owned(),
+            BouncerConfig::max(),
+        );
+
+        Ok((cached_state, request_processor, block_context))
     }
 
     fn chain_info(&self) -> anyhow::Result<ChainInfo> {

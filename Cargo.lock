@@ -6660,6 +6660,7 @@ dependencies = [
  "starknet-gateway-types",
  "starknet-types-core",
  "starknet_api",
+ "test-log",
  "tokio",
  "tracing",
 ]

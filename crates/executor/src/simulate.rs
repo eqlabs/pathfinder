@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
+use blockifier::blockifier::config::{ConcurrencyConfig, TransactionExecutorConfig};
+use blockifier::blockifier::transaction_executor::TransactionExecutor;
 use blockifier::state::cached_state::{CachedState, CommitmentStateDiff};
 use blockifier::state::errors::StateError;
 use blockifier::transaction::transaction_execution::Transaction;
@@ -81,14 +83,42 @@ pub fn simulate(
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
 
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let (state, request_processor, block_context) = execution_state.concurrent_starknet_state()?;
 
-    let mut simulations = Vec::with_capacity(transactions.len());
-    for (transaction_idx, transaction) in transactions.into_iter().enumerate() {
-        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
+    let transaction_executor_config = TransactionExecutorConfig {
+        concurrency_config: ConcurrencyConfig {
+            enabled: true,
+            // FIXME: this should be ~N_CPUS / 2
+            n_workers: 12,
+            // FIXME: this should be ~3 * n_workers
+            chunk_size: 36,
+        },
+    };
 
+    let (result, transactions) = std::thread::scope(|s| {
+        let block_context = block_context.clone();
+        let handle = s.spawn(move || {
+            let mut transaction_executor =
+                TransactionExecutor::new(state, block_context, transaction_executor_config);
+            (
+                transaction_executor.execute_txs(&transactions),
+                transactions,
+            )
+        });
+
+        request_processor.run().unwrap();
+
+        let (result, transactions) = handle.join().unwrap();
+
+        (result, transactions)
+    });
+
+    let mut simulations = Vec::with_capacity(result.len());
+    for (transaction_idx, (tx_info, transaction)) in
+        result.into_iter().zip(transactions).enumerate()
+    {
         let transaction_type = transaction_type(&transaction);
-        let transaction_declared_deprecated_class_hash =
+        let _transaction_declared_deprecated_class_hash =
             transaction_declared_deprecated_class(&transaction);
         let fee_type = super::transaction::fee_type(&transaction);
         let minimal_l1_gas_amount_vector = match &transaction {
@@ -102,16 +132,6 @@ pub fn simulate(
             Transaction::L1HandlerTransaction(_) => None,
         };
 
-        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = transaction.execute(
-            &mut tx_state,
-            &block_context,
-            !skip_fee_charge,
-            !skip_validate,
-        );
-        let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class_hash)?;
-        tx_state.commit();
-
         match tx_info {
             Ok(tx_info) => {
                 if let Some(revert_error) = &tx_info.revert_error {
@@ -120,6 +140,8 @@ pub fn simulate(
 
                 tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction simulation finished");
 
+                // FIXME: need a way to compute state diff
+                let state_diff = StateDiff::default();
                 simulations.push(TransactionSimulation {
                     fee_estimation: FeeEstimate::from_tx_info_and_gas_price(
                         &tx_info,
@@ -130,12 +152,17 @@ pub fn simulate(
                     trace: to_trace(transaction_type, tx_info, state_diff),
                 });
             }
-            Err(error) => {
+            Err(blockifier::blockifier::transaction_executor::TransactionExecutorError::TransactionExecutionError(error)) => {
                 tracing::debug!(%error, %transaction_idx, "Transaction simulation failed");
                 return Err(TransactionExecutionError::new(transaction_idx, error));
             }
+            Err(error) => {
+                tracing::debug!(%error, %transaction_idx, "Transaction simulation failed");
+                return Err(TransactionExecutionError::Internal(error.into()));
+            }
         }
     }
+
     Ok(simulations)
 }
 

@@ -11,6 +11,7 @@ pub fn estimate(
     skip_validate: bool,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
+    let starknet_version = execution_state.header.starknet_version;
 
     let (mut state, block_context) = execution_state.starknet_state()?;
 
@@ -32,7 +33,7 @@ pub fn estimate(
         let tx_info: Result<
             blockifier::transaction::objects::TransactionExecutionInfo,
             blockifier::transaction::errors::TransactionExecutionError,
-        > = transaction.execute(&mut state, &block_context, false, !skip_validate);
+        > = transaction.execute(&mut state, &block_context, true, !skip_validate);
 
         match tx_info {
             Ok(tx_info) => {
@@ -44,7 +45,7 @@ pub fn estimate(
                     });
                 }
 
-                tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction estimation finished");
+                tracing::trace!(?starknet_version, ?block_context, actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, actual_gas=%tx_info.transaction_receipt.gas.l1_gas, "Transaction estimation finished");
 
                 fees.push(FeeEstimate::from_tx_info_and_gas_price(
                     &tx_info,
