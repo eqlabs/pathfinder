@@ -144,8 +144,6 @@ pub fn trace(
     cache: TraceCache,
     block_hash: BlockHash,
     transactions: Vec<Transaction>,
-    charge_fee: bool,
-    validate: bool,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
@@ -187,7 +185,7 @@ pub fn trace(
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx
-            .execute(&mut tx_state, &block_context, charge_fee, validate)
+            .execute(&mut tx_state, &block_context, true, true)
             .map_err(|e| {
                 // Update the cache with the error. Lock the cache before sending to avoid
                 // race conditions between senders and receivers.
