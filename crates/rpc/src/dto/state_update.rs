@@ -150,10 +150,7 @@ impl SerializeForVersion for StateDiff<'_> {
                 .filter_map(|(address, update)| {
                     update
                         .replaced_class()
-                        .map(|class_hash| DeployedContractItem {
-                            address,
-                            class_hash,
-                        })
+                        .map(|hash| ReplacedClass { address, hash })
                 });
 
         let mut nonces = self
