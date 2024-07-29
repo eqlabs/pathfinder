@@ -244,7 +244,7 @@ impl SerializeForVersion for StructAbiEntry<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("type", &EventAbiType)?;
+        serializer.serialize_field("type", &StructAbiType)?;
         serializer.serialize_field("name", &self.0.name)?;
         // FIXME: this should be a NonZero according to the RPC spec.
         serializer.serialize_field("size", &self.0.size)?;
