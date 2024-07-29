@@ -110,7 +110,7 @@ pub mod types {
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(untagged)]
     pub enum MaybePendingTransactionReceipt {
         Normal(TransactionReceipt),
@@ -199,7 +199,7 @@ pub mod types {
 
     /// Non-pending L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(tag = "type")]
     pub enum TransactionReceipt {
         #[serde(rename = "INVOKE")]
@@ -218,7 +218,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct InvokeTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -226,7 +226,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct CommonTransactionReceiptProperties {
         #[serde_as(as = "RpcFelt")]
         pub transaction_hash: TransactionHash,
@@ -245,7 +245,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct CommonPendingTransactionReceiptProperties {
         pub transaction_hash: TransactionHash,
         pub actual_fee: FeePayment,
@@ -259,7 +259,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(untagged)]
     pub enum FeePayment {
         // TODO: remove once RPC v0.5 is removed.
@@ -276,7 +276,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(untagged)]
     pub enum ExecutionResourcesProperties {
         V05(ExecutionResourcesPropertiesV05),
@@ -293,7 +293,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct ExecutionResourcesPropertiesV05 {
         // All these properties are actually strings in the spec, hence the serde attributes.
         #[serde(with = "u64_as_hex_str")]
@@ -317,7 +317,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct ExecutionResourcesPropertiesV06 {
         pub steps: u64,
         #[serde(skip_serializing_if = "is_zero")]
@@ -399,7 +399,7 @@ pub mod types {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub enum ExecutionStatus {
         Succeeded,
         Reverted,
@@ -416,7 +416,7 @@ pub mod types {
 
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub enum FinalityStatus {
         AcceptedOnL2,
         AcceptedOnL1,
@@ -424,7 +424,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct L1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -434,7 +434,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeployTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -444,7 +444,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeployAccountTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -453,7 +453,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeclareTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -557,7 +557,7 @@ pub mod types {
     /// block_number fields
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(tag = "type")]
     pub enum PendingTransactionReceipt {
         #[serde(rename = "INVOKE")]
@@ -573,21 +573,21 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingInvokeTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingDeclareTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingDeployTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
@@ -596,7 +596,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingDeployAccountTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
@@ -606,7 +606,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
@@ -701,7 +701,7 @@ pub mod types {
     /// Message sent from L2 to L1.
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct MessageToL1 {
         pub from_address: ContractAddress,
@@ -723,7 +723,7 @@ pub mod types {
     /// Event emitted as a part of a transaction.
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Event {
         #[serde_as(as = "RpcFelt251")]
@@ -746,7 +746,7 @@ pub mod types {
 
     /// Represents transaction status.
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub enum TransactionStatus {
         #[serde(rename = "ACCEPTED_ON_L2")]

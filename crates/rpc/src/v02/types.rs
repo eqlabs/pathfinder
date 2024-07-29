@@ -91,7 +91,7 @@ pub mod request {
     /// transaction. Notably, it's missing values computed during execution
     /// of the transaction, like transaction_hash or contract_address.
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields, tag = "type")]
     pub enum BroadcastedTransaction {
         #[serde(rename = "DECLARE")]
@@ -146,11 +146,7 @@ pub mod request {
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(
-        any(test, feature = "rpc-full-serde"),
-        derive(serde::Serialize),
-        serde(untagged)
-    )]
+    #[cfg_attr(test, derive(serde::Serialize), serde(untagged))]
     pub enum BroadcastedDeclareTransaction {
         V0(BroadcastedDeclareTransactionV0),
         V1(BroadcastedDeclareTransactionV1),
@@ -193,7 +189,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeclareTransactionV0 {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
@@ -209,7 +205,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeclareTransactionV1 {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
@@ -226,7 +222,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeclareTransactionV2 {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
@@ -244,7 +240,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeclareTransactionV3 {
         pub version: TransactionVersion,
@@ -264,11 +260,7 @@ pub mod request {
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(
-        any(test, feature = "rpc-full-serde"),
-        derive(serde::Serialize),
-        serde(untagged)
-    )]
+    #[cfg_attr(test, derive(serde::Serialize), serde(untagged))]
     pub enum BroadcastedDeployAccountTransaction {
         V1(BroadcastedDeployAccountTransactionV1),
         V3(BroadcastedDeployAccountTransactionV3),
@@ -314,7 +306,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeployAccountTransactionV1 {
         // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
@@ -341,7 +333,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedDeployAccountTransactionV3 {
         pub version: TransactionVersion,
@@ -370,11 +362,7 @@ pub mod request {
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    #[cfg_attr(
-        any(test, feature = "rpc-full-serde"),
-        derive(serde::Serialize),
-        serde(untagged)
-    )]
+    #[cfg_attr(test, derive(serde::Serialize), serde(untagged))]
     pub enum BroadcastedInvokeTransaction {
         V0(BroadcastedInvokeTransactionV0),
         V1(BroadcastedInvokeTransactionV1),
@@ -429,7 +417,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV0 {
         pub version: TransactionVersion,
@@ -447,7 +435,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV1 {
         pub version: TransactionVersion,
@@ -465,7 +453,7 @@ pub mod request {
 
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[cfg_attr(test, derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV3 {
         pub version: TransactionVersion,
@@ -839,7 +827,7 @@ pub mod reply {
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub enum BlockStatus {
         #[serde(rename = "PENDING")]

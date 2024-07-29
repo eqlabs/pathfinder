@@ -82,7 +82,7 @@ pub(crate) mod types {
     #[serde_with::serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
         /// None for `pending`
@@ -218,7 +218,7 @@ pub(crate) mod types {
     /// L2 state diff.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq, Default)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
@@ -267,7 +267,7 @@ pub(crate) mod types {
     /// L2 storage diff of a contract.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageDiff {
         #[serde_as(as = "RpcFelt251")]
@@ -278,7 +278,7 @@ pub(crate) mod types {
     /// A key-value entry of a storage diff.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageEntry {
         #[serde_as(as = "RpcFelt251")]
@@ -308,7 +308,7 @@ pub(crate) mod types {
     /// L2 state diff declared Sierra class item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct DeclaredSierraClass {
         #[serde_as(as = "RpcFelt")]
@@ -329,7 +329,7 @@ pub(crate) mod types {
     /// L2 state diff deployed contract item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct DeployedContract {
         #[serde_as(as = "RpcFelt251")]
@@ -350,7 +350,7 @@ pub(crate) mod types {
     /// L2 state diff replaced class item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct ReplacedClass {
         #[serde_as(as = "RpcFelt251")]
@@ -371,7 +371,7 @@ pub(crate) mod types {
     /// L2 state diff nonce item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Nonce {
         #[serde_as(as = "RpcFelt251")]

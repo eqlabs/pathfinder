@@ -150,7 +150,6 @@ pub mod dto {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimate {
         /// The Ethereum gas cost of the transaction

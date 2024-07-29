@@ -14,7 +14,6 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = []
-rpc-full-serde = []
 
 [dependencies]
 anyhow = { workspace = true }
