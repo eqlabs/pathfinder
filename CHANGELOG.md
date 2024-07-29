@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pathfinder does not properly limit the number of concurrent executors when using the `--rpc.execution-concurrency` CLI option.
+- Pathfinder returns non-conforming `STRUCT_ABI_ENTRY` objects in response to `starknet_getClass` requests.
 
 ## [0.14.0] - 2024-07-22
 
