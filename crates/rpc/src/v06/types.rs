@@ -83,7 +83,7 @@ impl BlockHeader {
 }
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub enum PriceUnit {
     #[serde(rename = "WEI")]
     Wei,

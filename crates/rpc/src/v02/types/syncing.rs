@@ -5,7 +5,7 @@ use serde_with::serde_as;
 
 /// Describes Starknet's syncing status RPC reply.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[serde(untagged)]
 pub enum Syncing {
     False(bool),
@@ -25,7 +25,7 @@ impl std::fmt::Display for Syncing {
 
 /// Represents Starknet node syncing status.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub struct Status {
     #[serde(flatten, with = "prefix_starting")]
     pub starting: NumberedBlock,
@@ -52,7 +52,7 @@ impl std::fmt::Display for Status {
 /// Block hash and a number, for `starknet_syncing` response only.
 #[serde_as]
 #[derive(Clone, Copy, Serialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub struct NumberedBlock {
     #[serde(rename = "block_hash")]
     pub hash: BlockHash,

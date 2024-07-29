@@ -121,7 +121,7 @@ impl RequestMetadata {
 /// # Additional counter labels
 ///
 /// 1. All the above counters are also duplicated for the special cases of:
-/// `("get_block" | "get_state_update") AND ("latest" | "pending")`.
+///    `("get_block" | "get_state_update") AND ("latest" | "pending")`.
 ///
 /// 2. `gateway_requests_failed_total` is also duplicated for the specific
 ///    failure reasons:
@@ -129,8 +129,8 @@ impl RequestMetadata {
 ///   Starknet specific error variant
 /// - `decode`, if the future returns an `Err()` variant, which carries a decode
 ///   error variant
-/// - `rate_limiting` if the future returns an `Err()` variant,
-/// which carries the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
+/// - `rate_limiting` if the future returns an `Err()` variant, which carries
+///   the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
 pub async fn with_metrics<T>(
     meta: RequestMetadata,
     f: impl Future<Output = Result<T, SequencerError>>,

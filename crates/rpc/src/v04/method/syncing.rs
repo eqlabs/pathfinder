@@ -48,7 +48,7 @@ impl serde::Serialize for SyncingOutput {
 
 #[serde_with::serde_as]
 #[derive(Clone, Copy, Debug, serde::Serialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub struct SyncingStatus {
     starting_block_num: BlockNumber,
     current_block_num: BlockNumber,

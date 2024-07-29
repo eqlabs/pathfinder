@@ -145,7 +145,7 @@ macro_rules! rpc_felt_serde {
             }
         }
 
-        #[cfg(any(test, feature = "rpc-full-serde"))]
+        #[cfg(test)]
         impl From<RpcFelt> for $target {
             fn from(value: RpcFelt) -> Self {
                 $target(value.0)
