@@ -140,4 +140,4 @@ vergen = { version = "8", default-features = false }
 void = "1.0.2"
 warp = "0.3.7"
 zeroize = "1.6.0"
-zstd = "0.12.4"
+zstd = "0.13.2"
