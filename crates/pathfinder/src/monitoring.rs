@@ -19,7 +19,7 @@ pub async fn spawn_server(
     readiness: Arc<AtomicBool>,
     sync_state: Arc<SyncState>,
     prometheus_handle: PrometheusHandle,
-) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+) -> anyhow::Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
     let app = axum::Router::new()
         .route("/health", axum::routing::get(health_route))
         .route("/ready", axum::routing::get(ready_route))
@@ -30,10 +30,14 @@ pub async fn spawn_server(
             sync: sync_state,
             prometheus: prometheus_handle,
         });
-    let server = axum::Server::bind(&addr.into()).serve(app.into_make_service());
-    let addr = server.local_addr();
-    let spawn = tokio::spawn(async move { server.await.expect("server error") });
-    (addr, spawn)
+    let listener = tokio::net::TcpListener::bind(addr.into()).await?;
+    let addr = listener.local_addr()?;
+    let spawn = tokio::spawn(async move {
+        axum::serve(listener, app.into_make_service())
+            .await
+            .expect("server error")
+    });
+    Ok((addr, spawn))
 }
 
 /// Always returns `Ok(200)` at `/health`.
@@ -111,7 +115,8 @@ mod tests {
             Default::default(),
             handle,
         )
-        .await;
+        .await
+        .unwrap();
         let url = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
@@ -130,7 +135,8 @@ mod tests {
             Default::default(),
             handle,
         )
-        .await;
+        .await
+        .unwrap();
         let url = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
@@ -140,11 +146,11 @@ mod tests {
 
         let url = url.join("ready").unwrap();
         let resp = client.get(url.clone()).send().await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(resp.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
 
         readiness.store(true, std::sync::atomic::Ordering::Relaxed);
         let resp = client.get(url).send().await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
     }
 
     #[tokio::test]
@@ -160,7 +166,8 @@ mod tests {
             sync_state.clone(),
             handle,
         )
-        .await;
+        .await
+        .unwrap();
         let url = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
@@ -170,11 +177,11 @@ mod tests {
 
         let url = url.join("ready/synced").unwrap();
         let resp = client.get(url.clone()).send().await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(resp.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
 
         readiness.store(true, std::sync::atomic::Ordering::Relaxed);
         let resp = client.get(url.clone()).send().await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(resp.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
 
         *sync_state.status.write().await = Syncing::Status(Status {
             starting: NumberedBlock {
@@ -191,7 +198,7 @@ mod tests {
             },
         });
         let resp = client.get(url.clone()).send().await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(resp.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
 
         *sync_state.status.write().await = Syncing::Status(Status {
             starting: NumberedBlock {
@@ -208,7 +215,7 @@ mod tests {
             },
         });
         let resp = client.get(url.clone()).send().await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
     }
 
     #[tokio::test]
@@ -233,7 +240,8 @@ mod tests {
             Default::default(),
             handle,
         )
-        .await;
+        .await
+        .unwrap();
         let url = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
@@ -244,7 +252,7 @@ mod tests {
         let url = url.join("metrics").unwrap();
         let resp = client.get(url).send().await.unwrap();
 
-        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
         assert_eq!(
             String::from_utf8(resp.bytes().await.unwrap().to_vec()).unwrap(),
             "# TYPE x counter\nx 123\n\n"

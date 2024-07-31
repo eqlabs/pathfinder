@@ -649,7 +649,7 @@ mod tests {
     use super::*;
 
     async fn spawn_server(router: RpcRouter) -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let url = format!("http://127.0.0.1:{}", addr.port());
 
@@ -657,10 +657,7 @@ mod tests {
             let router = axum::Router::new()
                 .route("/", axum::routing::post(rpc_handler))
                 .with_state(router);
-            axum::Server::from_tcp(listener)
-                .unwrap()
-                .serve(router.into_make_service())
-                .await
+            axum::serve(listener, router.into_make_service()).await
         });
 
         url
