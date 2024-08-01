@@ -17,6 +17,95 @@ use crate::client::peer_agnostic::fixtures::*;
     // Expected stream
     vec![(peer(0), hdr(0))]
 )]
+#[case::one_peer_2_blocks(
+    // Peer gives responses for all blocks in one go
+    2,
+    vec![Ok((peer(0), vec![hdr_resp(1), hdr_resp(2), HdrFin]))],
+    vec![
+        (peer(0), hdr(1)), // block 0
+        (peer(0), hdr(2))  // block 1
+    ]
+)]
+#[case::one_peer_2_blocks_in_2_attempts(
+    // Peer gives a response for the second block after a retry
+    2,
+    vec![
+        Ok((peer(0), vec![hdr_resp(3), HdrFin])),
+        Ok((peer(0), vec![hdr_resp(4), HdrFin])),
+    ],
+    vec![
+        (peer(0), hdr(3)),
+        (peer(0), hdr(4))
+    ]
+)]
+#[case::two_peers_1_block_per_peer(
+    2,
+    vec![
+        // Errors are ignored
+        Err(peer(1)),
+        Ok((peer(0), vec![hdr_resp(5), HdrFin])),
+        Err(peer(0)),
+        Ok((peer(1), vec![hdr_resp(6), HdrFin]))
+    ],
+    vec![
+        (peer(0), hdr(5)),
+        (peer(1), hdr(6))
+    ]
+)]
+#[case::first_peer_full_block_no_fin(
+    2,
+    vec![
+        // First peer gives full block 0 but no fin
+        Ok((peer(0), vec![hdr_resp(7)])),
+        Ok((peer(1), vec![hdr_resp(8), HdrFin]))
+    ],
+    vec![
+        // We assume this block 0 could be correct
+        (peer(0), hdr(7)), // block 0
+        (peer(1), hdr(8))  // block 1
+    ]
+)]
+#[case::last_peer_full_block_no_fin(
+    2,
+    vec![
+        Ok((peer(0), vec![hdr_resp(7), HdrFin])),
+        // Last peer gives full block 1 but no fin
+        Ok((peer(1), vec![hdr_resp(8)]))
+    ],
+    vec![
+        // We assume this block 0 could be correct
+        (peer(0), hdr(7)), // block 0
+        (peer(1), hdr(8))  // block 1
+    ]
+)]
+#[case::too_many_responses_with_fin(
+    1,
+    vec![Ok((peer(0), vec![hdr_resp(9), hdr_resp(10), HdrFin]))],
+    vec![(peer(0), hdr(9))]
+)]
+#[case::too_many_responses_without_fin(
+    1,
+    vec![Ok((peer(0), vec![hdr_resp(9), hdr_resp(10), hdr_resp(11)]))],
+    vec![(peer(0), hdr(9))]
+)]
+#[case::empty_response_streams_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![])),
+        Ok((peer(1), vec![hdr_resp(11), HdrFin])),
+        Ok((peer(2), vec![]))
+    ],
+    vec![(peer(1), hdr(11))]
+)]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![HdrFin])),
+        Ok((peer(1), vec![hdr_resp(11), HdrFin])),
+        Ok((peer(2), vec![HdrFin]))
+    ],
+    vec![(peer(1), hdr(11))]
+)]
 #[test_log::test(tokio::test)]
 async fn make_header_stream(
     #[case] num_blocks: usize,
@@ -24,20 +113,16 @@ async fn make_header_stream(
     #[case] expected_stream: Vec<(TestPeer, SignedBlockHeader)>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
-    let (peers, responses) = unzip_fixtures(responses);
-    let mut locked = responses.lock().await;
-    let responses_clone = locked.clone();
-    locked.extend(responses_clone);
-    drop(locked);
-
-    let get_peers = || async { peers.clone() };
-    let send_request =
-        |_: PeerId, _: BlockHeadersRequest| async { send_request(responses.clone()).await };
-
-    let start = BlockNumber::GENESIS;
-    let stop = start + (num_blocks - 1) as u64;
 
     for (reverse, direction) in [(false, "forward"), (true, "backward")] {
+        let (peers, responses) = unzip_fixtures(responses.clone());
+        let get_peers = || async { peers.clone() };
+        let start = BlockNumber::GENESIS;
+        let stop = start + (num_blocks - 1) as u64;
+
+        let send_request =
+            |_: PeerId, _: BlockHeadersRequest| async { send_request(responses.clone()).await };
+
         let actual = super::make_header_stream(start, stop, reverse, get_peers, send_request)
             .map(|x| (TestPeer(x.peer), x.data))
             .collect::<Vec<_>>()

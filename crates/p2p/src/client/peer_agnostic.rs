@@ -604,6 +604,13 @@ where
 
     tracing::trace!(?start, ?stop, ?direction, "Streaming headers");
 
+    fn done(direction: Direction, start: i64, stop: i64) -> bool {
+        match direction {
+            Direction::Forward => start > stop,
+            Direction::Backward => start < stop,
+        }
+    }
+
     async_stream::stream! {
         // Loop which refreshes peer set once we exhaust it.
         'outer: loop {
@@ -611,23 +618,9 @@ where
 
             // Attempt each peer.
             'next_peer: for peer in peers {
-
-                match direction {
-                    Direction::Forward => {
-                        if start > stop {
-                            break 'outer;
-                        }
-                    }
-                    Direction::Backward => {
-                        if start < stop {
-                            break 'outer;
-                        }
-                    }
-                }
-
                 let limit = start.max(stop) - start.min(stop) + 1;
 
-                tracing::error!(%start, %stop, %limit, "Requesting headers");
+                tracing::error!(%peer, %start, %stop, %limit, "Requesting headers");
 
                 let request = BlockHeadersRequest {
                     iteration: Iteration {
@@ -651,10 +644,27 @@ where
                 tracing::error!("Request sent");
 
                 while let Some(signed_header) = responses.next().await {
-                    let signed_header = match signed_header {
+                    // It can be a finishing FIN or an extra header we just happily ignore
+                    if done(direction, start, stop) {
+                        tracing::error!("Break OUTER FIN OR TOO MUCH");
+                        break 'outer;
+                    }
+
+                    match signed_header {
                         BlockHeadersResponse::Header(hdr) => {
                             match SignedBlockHeader::try_from(*hdr) {
-                                Ok(hdr) => hdr,
+                                Ok(hdr) => {
+                                    tracing::error!(%start, %stop, %limit, block_number=%hdr.header.number, "Yield");
+
+                                    yield PeerData::new(peer, hdr);
+
+                                    start = match direction {
+                                        Direction::Forward => start + 1,
+                                        Direction::Backward => start - 1,
+                                    };
+
+                                    tracing::error!(%start, %stop, %limit, "Next");
+                                },
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Header stream failed");
                                     continue 'next_peer;
@@ -666,15 +676,14 @@ where
                             continue 'next_peer;
                         }
                     };
+                }
 
-                    start = match direction {
-                        Direction::Forward => start + 1,
-                        Direction::Backward => start - 1,
-                    };
+                tracing::error!("Responses done");
 
-                    tracing::error!(%start, %stop, %limit, block_number=%signed_header.header.number, "Yield");
-
-                    yield PeerData::new(peer, signed_header);
+                // Stream ended without FIN but we could already have all the responses we need
+                if done(direction, start, stop) {
+                    tracing::error!("Break OUTER EOS");
+                    break 'outer;
                 }
 
                 // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
