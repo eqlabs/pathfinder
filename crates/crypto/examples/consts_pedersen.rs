@@ -33,13 +33,13 @@ fn generate_consts(bits: u32) -> Result<String, std::fmt::Error> {
     write!(buf, "use crate::algebra::curve::AffinePoint;\n\n")?;
     write!(buf, "pub const CURVE_CONSTS_BITS: usize = {bits};\n\n")?;
 
-    push_points(&mut buf, "P1", &PEDERSEN_P1, 248, bits)?;
+    push_points(&mut buf, "P1", PEDERSEN_P1, 248, bits)?;
     buf.push_str("\n\n\n");
-    push_points(&mut buf, "P2", &PEDERSEN_P2, 4, bits)?;
+    push_points(&mut buf, "P2", PEDERSEN_P2, 4, bits)?;
     buf.push_str("\n\n\n");
-    push_points(&mut buf, "P3", &PEDERSEN_P3, 248, bits)?;
+    push_points(&mut buf, "P3", PEDERSEN_P3, 248, bits)?;
     buf.push_str("\n\n\n");
-    push_points(&mut buf, "P4", &PEDERSEN_P4, 4, bits)?;
+    push_points(&mut buf, "P4", PEDERSEN_P4, 4, bits)?;
 
     Ok(buf)
 }
@@ -48,12 +48,10 @@ fn generate_consts(bits: u32) -> Result<String, std::fmt::Error> {
 fn push_points(
     buf: &mut String,
     name: &str,
-    base: &ProjectivePoint,
+    base: AffinePoint,
     max_bits: u32,
     bits: u32,
 ) -> std::fmt::Result {
-    let base = AffinePoint::from(base);
-
     let full_chunks = max_bits / bits;
     let leftover_bits = max_bits % bits;
     let table_size_full = (1 << bits) - 1;
