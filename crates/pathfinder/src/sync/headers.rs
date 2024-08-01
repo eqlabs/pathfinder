@@ -65,6 +65,9 @@ pub(super) async fn next_gap(
         let head_exists = db
             .block_exists(head.into())
             .context("Checking if search head exists locally")?;
+
+        tracing::error!(">>>> head_exists: {:?}", head_exists);
+
         let (head, head_hash) = if head_exists {
             // Find the next header that exists, but whose parent does not.
             let Some(gap_head) = db
@@ -76,6 +79,8 @@ pub(super) async fn next_gap(
                 return Ok(None);
             };
 
+            tracing::error!(">>>> gap_head: {:?}", gap_head);
+
             let gap_head_header = db
                 .block_header(gap_head.0.into())
                 .context("Fetching gap head block header")?
@@ -85,6 +90,10 @@ pub(super) async fn next_gap(
                 .parent()
                 .expect("next_ancestor_without_parent() cannot return genesis");
             let gap_head_parent_hash = gap_head_header.parent_hash;
+
+            tracing::error!(">>>> gap_head_parent_number: {:?}", gap_head_parent_number);
+            tracing::error!(">>>> gap_head_parent_hash: {:?}", gap_head_parent_hash);
+
             (gap_head_parent_number, gap_head_parent_hash)
         } else {
             // Start of search is already missing so it becomes the head of the gap.
@@ -94,13 +103,25 @@ pub(super) async fn next_gap(
 
         let (tail, tail_parent_hash) =
             match db.next_ancestor(head).context("Querying tail of gap")? {
-                Some((tail, tail_hash)) => (tail + 1, tail_hash),
+                Some((tail, tail_hash)) => {
+                    tracing::error!(
+                        ">>>> next_ancestor: (tail, tail_hash) {:?}",
+                        (tail, tail_hash)
+                    );
+                    (tail + 1, tail_hash)
+                }
                 None => {
+                    tracing::error!(">>>> next_ancestor: NONE");
+
                     // By this point we are certain there is a gap, so the tail automatically
                     // becomes genesis if no actual tail block is found.
                     (BlockNumber::GENESIS, BlockHash::ZERO)
                 }
             };
+        tracing::error!(
+            ">>>> (tail, tail_parent_hash): {:?}",
+            (tail, tail_parent_hash)
+        );
 
         tracing::trace!(%head, %tail, "Found gap");
 

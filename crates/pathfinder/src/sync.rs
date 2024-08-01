@@ -1,5 +1,6 @@
 #![allow(dead_code, unused)]
 
+use core::panic;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -76,6 +77,9 @@ impl Sync {
     /// sync and its parent hash.
     async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
         let mut checkpoint = self.get_checkpoint().await?;
+
+        tracing::error!(?checkpoint, ">>>> CHECKPOINT");
+
         loop {
             let result = checkpoint::Sync {
                 storage: self.storage.clone(),
