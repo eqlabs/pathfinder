@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::sync::LazyLock;
 
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
@@ -606,9 +607,7 @@ fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<Felt> {
 /// cairo-lang uses an empty list (whose hash is not the ZERO value!) in that
 /// case.
 fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Felt {
-    lazy_static::lazy_static!(
-        static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
-    );
+    static HASH_OF_EMPTY_LIST: LazyLock<Felt> = LazyLock::new(|| HashChain::default().finalize());
 
     let signature_hash = match &tx.variant {
         TransactionVariant::InvokeV0(tx) => calculate_signature_hash(&tx.signature),
@@ -639,9 +638,7 @@ fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Fel
 /// cairo-lang uses an empty list (whose hash is not the ZERO value!) in that
 /// case.
 fn calculate_transaction_hash_with_signature_pre_0_13_2(tx: &Transaction) -> Felt {
-    lazy_static::lazy_static!(
-        static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
-    );
+    static HASH_OF_EMPTY_LIST: LazyLock<Felt> = LazyLock::new(|| HashChain::default().finalize());
 
     let signature_hash = match &tx.variant {
         TransactionVariant::InvokeV0(tx) => calculate_signature_hash(&tx.signature),

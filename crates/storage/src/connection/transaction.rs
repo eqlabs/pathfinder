@@ -11,6 +11,8 @@ use crate::prelude::*;
 use crate::BlockId;
 
 pub(crate) mod compression {
+    use std::sync::LazyLock;
+
     /// Compression level to use.
     ///
     /// Note that our dictionaries are optimized to be used with level 10.
@@ -22,17 +24,27 @@ pub(crate) mod compression {
     /// The maximum allowed uncompressed size of a serialized blob of events.
     const MAX_EVENTS_UNCOMPRESSED_SIZE: usize = 128usize * 1024 * 1024;
 
-    lazy_static::lazy_static! {
-        static ref ZSTD_TXS_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
-            zstd::dict::EncoderDictionary::new(include_bytes!("../assets/txs.zdict"), ZSTD_COMPRESSION_LEVEL);
-        static ref ZSTD_EVENTS_ENCODER_DICTIONARY: zstd::dict::EncoderDictionary<'static> =
-            zstd::dict::EncoderDictionary::new(include_bytes!("../assets/events.zdict"), ZSTD_COMPRESSION_LEVEL);
+    static ZSTD_TXS_ENCODER_DICTIONARY: LazyLock<zstd::dict::EncoderDictionary<'static>> =
+        LazyLock::new(|| {
+            zstd::dict::EncoderDictionary::new(
+                include_bytes!("../assets/txs.zdict"),
+                ZSTD_COMPRESSION_LEVEL,
+            )
+        });
+    static ZSTD_EVENTS_ENCODER_DICTIONARY: LazyLock<zstd::dict::EncoderDictionary<'static>> =
+        LazyLock::new(|| {
+            zstd::dict::EncoderDictionary::new(
+                include_bytes!("../assets/events.zdict"),
+                ZSTD_COMPRESSION_LEVEL,
+            )
+        });
 
-        static ref ZSTD_TXS_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
-            zstd::dict::DecoderDictionary::new(include_bytes!("../assets/txs.zdict"));
-        static ref ZSTD_EVENTS_DECODER_DICTIONARY: zstd::dict::DecoderDictionary<'static> =
-            zstd::dict::DecoderDictionary::new(include_bytes!("../assets/events.zdict"));
-    }
+    static ZSTD_TXS_DECODER_DICTIONARY: LazyLock<zstd::dict::DecoderDictionary<'static>> =
+        LazyLock::new(|| zstd::dict::DecoderDictionary::new(include_bytes!("../assets/txs.zdict")));
+    static ZSTD_EVENTS_DECODER_DICTIONARY: LazyLock<zstd::dict::DecoderDictionary<'static>> =
+        LazyLock::new(|| {
+            zstd::dict::DecoderDictionary::new(include_bytes!("../assets/events.zdict"))
+        });
 
     pub(super) fn compress_transactions(input: &[u8]) -> std::io::Result<Vec<u8>> {
         let mut compressor = new_txs_compressor()?;

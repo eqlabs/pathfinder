@@ -697,6 +697,8 @@ async fn reorg(
 mod tests {
 
     mod sync {
+        use std::sync::LazyLock;
+
         use assert_matches::assert_matches;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{
@@ -925,159 +927,166 @@ mod tests {
             ))
         }
 
-        lazy_static::lazy_static! {
-            static ref CONTRACT0_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0{DEF1}"));
-            static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0 v2{DEF1}"));
-            static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}1{DEF1}"));
+        static CONTRACT0_DEF: LazyLock<bytes::Bytes> =
+            LazyLock::new(|| format!("{DEF0}0{DEF1}").into());
+        static CONTRACT0_DEF_V2: LazyLock<bytes::Bytes> =
+            LazyLock::new(|| format!("{DEF0}0 v2{DEF1}").into());
+        static CONTRACT1_DEF: LazyLock<bytes::Bytes> =
+            LazyLock::new(|| format!("{DEF0}1{DEF1}").into());
 
-            static ref BLOCK0: reply::Block = reply::Block {
-                block_hash: BLOCK0_HASH,
-                block_number: BLOCK0_NUMBER,
-                l1_gas_price: Default::default(),
-                l1_data_gas_price: Default::default(),
-                parent_block_hash: BlockHash(Felt::ZERO),
-                sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-                state_commitment: GLOBAL_ROOT0,
-                status: reply::Status::AcceptedOnL1,
-                timestamp: BlockTimestamp::new_or_panic(0),
-                transaction_receipts: vec![],
-                transactions: vec![],
-                starknet_version: StarknetVersion::default(),
-                l1_da_mode: Default::default(),
-                transaction_commitment: Default::default(),
-                event_commitment: Default::default(),
-                receipt_commitment: Default::default(),
-                state_diff_commitment: Default::default(),
-                state_diff_length: Default::default(),
-            };
-            static ref BLOCK0_V2: reply::Block = reply::Block {
-                block_hash: BLOCK0_HASH_V2,
-                block_number: BLOCK0_NUMBER,
-                l1_gas_price: GasPrices {
-                    price_in_wei: GasPrice::from_be_slice(b"gas price 0 v2").unwrap(),
-                    price_in_fri: GasPrice::from_be_slice(b"strk price 0 v2").unwrap(),
-                },
-                l1_data_gas_price: GasPrices {
-                    price_in_wei: GasPrice::from_be_slice(b"datgasprice 0 v2").unwrap(),
-                    price_in_fri: GasPrice::from_be_slice(b"datstrkpric 0 v2").unwrap(),
-                },
-                parent_block_hash: BlockHash(Felt::ZERO),
-                sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
-                state_commitment: GLOBAL_ROOT0_V2,
-                status: reply::Status::AcceptedOnL2,
-                timestamp: BlockTimestamp::new_or_panic(10),
-                transaction_receipts: vec![],
-                transactions: vec![],
-                starknet_version: StarknetVersion::new(0, 9, 1, 0),
-                l1_da_mode: Default::default(),
-                transaction_commitment: Default::default(),
-                event_commitment: Default::default(),
-                receipt_commitment: Default::default(),
-                state_diff_commitment: Default::default(),
-                state_diff_length: Default::default(),
-            };
-            static ref BLOCK1: reply::Block = reply::Block {
-                block_hash: BLOCK1_HASH,
-                block_number: BLOCK1_NUMBER,
-                l1_gas_price: GasPrices {
-                    price_in_wei: GasPrice::from(1),
-                    price_in_fri: GasPrice::from(1),
-                },
-                l1_data_gas_price: GasPrices {
-                    price_in_wei: GasPrice::from(1),
-                    price_in_fri: GasPrice::from(1),
-                },
-                parent_block_hash: BLOCK0_HASH,
-                sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
-                state_commitment: GLOBAL_ROOT1,
-                status: reply::Status::AcceptedOnL1,
-                timestamp: BlockTimestamp::new_or_panic(1),
-                transaction_receipts: vec![],
-                transactions: vec![],
-                starknet_version: StarknetVersion::new(0, 9, 1, 0),
-                l1_da_mode: Default::default(),
-                transaction_commitment: Default::default(),
-                event_commitment: Default::default(),
-                receipt_commitment: Default::default(),
-                state_diff_commitment: Default::default(),
-                state_diff_length: Default::default(),
-            };
-            static ref BLOCK2: reply::Block = reply::Block {
-                block_hash: BLOCK2_HASH,
-                block_number: BLOCK2_NUMBER,
-                l1_gas_price: GasPrices {
-                    price_in_wei: GasPrice::from(2),
-                    price_in_fri: GasPrice::from(2),
-                },
-                l1_data_gas_price: GasPrices {
-                    price_in_wei: GasPrice::from(2),
-                    price_in_fri: GasPrice::from(2),
-                },
-                parent_block_hash: BLOCK1_HASH,
-                sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
-                state_commitment: GLOBAL_ROOT2,
-                status: reply::Status::AcceptedOnL1,
-                timestamp: BlockTimestamp::new_or_panic(2),
-                transaction_receipts: vec![],
-                transactions: vec![],
-                starknet_version: StarknetVersion::new(0, 9, 2, 0),
-                l1_da_mode: Default::default(),
-                transaction_commitment: Default::default(),
-                event_commitment: Default::default(),
-                receipt_commitment: Default::default(),
-                state_diff_commitment: Default::default(),
-                state_diff_length: Default::default(),
-            };
+        static BLOCK0: LazyLock<reply::Block> = LazyLock::new(|| reply::Block {
+            block_hash: BLOCK0_HASH,
+            block_number: BLOCK0_NUMBER,
+            l1_gas_price: Default::default(),
+            l1_data_gas_price: Default::default(),
+            parent_block_hash: BlockHash(Felt::ZERO),
+            sequencer_address: Some(SequencerAddress(Felt::ZERO)),
+            state_commitment: GLOBAL_ROOT0,
+            status: reply::Status::AcceptedOnL1,
+            timestamp: BlockTimestamp::new_or_panic(0),
+            transaction_receipts: vec![],
+            transactions: vec![],
+            starknet_version: StarknetVersion::default(),
+            l1_da_mode: Default::default(),
+            transaction_commitment: Default::default(),
+            event_commitment: Default::default(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: Default::default(),
+        });
+        static BLOCK0_V2: LazyLock<reply::Block> = LazyLock::new(|| reply::Block {
+            block_hash: BLOCK0_HASH_V2,
+            block_number: BLOCK0_NUMBER,
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"gas price 0 v2").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk price 0 v2").unwrap(),
+            },
+            l1_data_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"datgasprice 0 v2").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"datstrkpric 0 v2").unwrap(),
+            },
+            parent_block_hash: BlockHash(Felt::ZERO),
+            sequencer_address: Some(SequencerAddress(
+                Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap(),
+            )),
+            state_commitment: GLOBAL_ROOT0_V2,
+            status: reply::Status::AcceptedOnL2,
+            timestamp: BlockTimestamp::new_or_panic(10),
+            transaction_receipts: vec![],
+            transactions: vec![],
+            starknet_version: StarknetVersion::new(0, 9, 1, 0),
+            l1_da_mode: Default::default(),
+            transaction_commitment: Default::default(),
+            event_commitment: Default::default(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: Default::default(),
+        });
+        static BLOCK1: LazyLock<reply::Block> = LazyLock::new(|| reply::Block {
+            block_hash: BLOCK1_HASH,
+            block_number: BLOCK1_NUMBER,
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice::from(1),
+                price_in_fri: GasPrice::from(1),
+            },
+            l1_data_gas_price: GasPrices {
+                price_in_wei: GasPrice::from(1),
+                price_in_fri: GasPrice::from(1),
+            },
+            parent_block_hash: BLOCK0_HASH,
+            sequencer_address: Some(SequencerAddress(
+                Felt::from_be_slice(b"sequencer address 1").unwrap(),
+            )),
+            state_commitment: GLOBAL_ROOT1,
+            status: reply::Status::AcceptedOnL1,
+            timestamp: BlockTimestamp::new_or_panic(1),
+            transaction_receipts: vec![],
+            transactions: vec![],
+            starknet_version: StarknetVersion::new(0, 9, 1, 0),
+            l1_da_mode: Default::default(),
+            transaction_commitment: Default::default(),
+            event_commitment: Default::default(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: Default::default(),
+        });
+        static BLOCK2: LazyLock<reply::Block> = LazyLock::new(|| reply::Block {
+            block_hash: BLOCK2_HASH,
+            block_number: BLOCK2_NUMBER,
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice::from(2),
+                price_in_fri: GasPrice::from(2),
+            },
+            l1_data_gas_price: GasPrices {
+                price_in_wei: GasPrice::from(2),
+                price_in_fri: GasPrice::from(2),
+            },
+            parent_block_hash: BLOCK1_HASH,
+            sequencer_address: Some(SequencerAddress(
+                Felt::from_be_slice(b"sequencer address 2").unwrap(),
+            )),
+            state_commitment: GLOBAL_ROOT2,
+            status: reply::Status::AcceptedOnL1,
+            timestamp: BlockTimestamp::new_or_panic(2),
+            transaction_receipts: vec![],
+            transactions: vec![],
+            starknet_version: StarknetVersion::new(0, 9, 2, 0),
+            l1_da_mode: Default::default(),
+            transaction_commitment: Default::default(),
+            event_commitment: Default::default(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: Default::default(),
+        });
 
-            static ref STATE_UPDATE0: StateUpdate = {
-                StateUpdate::default()
-                    .with_block_hash(BLOCK0_HASH)
-                    .with_state_commitment(GLOBAL_ROOT0)
-                    .with_deployed_contract(CONTRACT0_ADDR, CONTRACT0_HASH)
-                    .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0)
-            };
-            static ref STATE_UPDATE0_V2: StateUpdate = {
-                StateUpdate::default()
-                    .with_block_hash(BLOCK0_HASH_V2)
-                    .with_state_commitment(GLOBAL_ROOT0_V2)
-                    .with_deployed_contract(CONTRACT0_ADDR_V2, CONTRACT0_HASH_V2)
-            };
+        static STATE_UPDATE0: LazyLock<StateUpdate> = LazyLock::new(|| {
+            StateUpdate::default()
+                .with_block_hash(BLOCK0_HASH)
+                .with_state_commitment(GLOBAL_ROOT0)
+                .with_deployed_contract(CONTRACT0_ADDR, CONTRACT0_HASH)
+                .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0)
+        });
+        static STATE_UPDATE0_V2: LazyLock<StateUpdate> = LazyLock::new(|| {
+            StateUpdate::default()
+                .with_block_hash(BLOCK0_HASH_V2)
+                .with_state_commitment(GLOBAL_ROOT0_V2)
+                .with_deployed_contract(CONTRACT0_ADDR_V2, CONTRACT0_HASH_V2)
+        });
 
-            static ref STATE_UPDATE1: StateUpdate = {
-                StateUpdate::default()
-                    .with_block_hash(BLOCK1_HASH)
-                    .with_state_commitment(GLOBAL_ROOT1)
-                    .with_parent_state_commitment(GLOBAL_ROOT0)
-                    .with_deployed_contract(CONTRACT1_ADDR, CONTRACT1_HASH)
-                    .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0_V2)
-                    .with_storage_update(CONTRACT1_ADDR, STORAGE_KEY1, STORAGE_VAL1)
-            };
+        static STATE_UPDATE1: LazyLock<StateUpdate> = LazyLock::new(|| {
+            StateUpdate::default()
+                .with_block_hash(BLOCK1_HASH)
+                .with_state_commitment(GLOBAL_ROOT1)
+                .with_parent_state_commitment(GLOBAL_ROOT0)
+                .with_deployed_contract(CONTRACT1_ADDR, CONTRACT1_HASH)
+                .with_storage_update(CONTRACT0_ADDR, STORAGE_KEY0, STORAGE_VAL0_V2)
+                .with_storage_update(CONTRACT1_ADDR, STORAGE_KEY1, STORAGE_VAL1)
+        });
 
-            static ref STATE_UPDATE1_V2: StateUpdate = {
-                StateUpdate::default()
-                    .with_block_hash(BLOCK1_HASH_V2)
-                    .with_state_commitment(GLOBAL_ROOT1_V2)
-                    .with_parent_state_commitment(GLOBAL_ROOT0_V2)
-            };
-            static ref STATE_UPDATE2: StateUpdate = {
-                StateUpdate::default()
-                    .with_block_hash(BLOCK2_HASH)
-                    .with_state_commitment(GLOBAL_ROOT2)
-                    .with_parent_state_commitment(GLOBAL_ROOT1)
-            };
-            static ref STATE_UPDATE2_V2: StateUpdate = {
-                StateUpdate::default()
-                    .with_block_hash(BLOCK2_HASH_V2)
-                    .with_state_commitment(GLOBAL_ROOT2_V2)
-                    .with_parent_state_commitment(GLOBAL_ROOT1_V2)
-            };
-            static ref STATE_UPDATE3: StateUpdate = {
-                StateUpdate::default()
-                    .with_block_hash(BLOCK3_HASH)
-                    .with_state_commitment(GLOBAL_ROOT3)
-                    .with_parent_state_commitment(GLOBAL_ROOT2)
-            };
-        }
+        static STATE_UPDATE1_V2: LazyLock<StateUpdate> = LazyLock::new(|| {
+            StateUpdate::default()
+                .with_block_hash(BLOCK1_HASH_V2)
+                .with_state_commitment(GLOBAL_ROOT1_V2)
+                .with_parent_state_commitment(GLOBAL_ROOT0_V2)
+        });
+        static STATE_UPDATE2: LazyLock<StateUpdate> = LazyLock::new(|| {
+            StateUpdate::default()
+                .with_block_hash(BLOCK2_HASH)
+                .with_state_commitment(GLOBAL_ROOT2)
+                .with_parent_state_commitment(GLOBAL_ROOT1)
+        });
+        static STATE_UPDATE2_V2: LazyLock<StateUpdate> = LazyLock::new(|| {
+            StateUpdate::default()
+                .with_block_hash(BLOCK2_HASH_V2)
+                .with_state_commitment(GLOBAL_ROOT2_V2)
+                .with_parent_state_commitment(GLOBAL_ROOT1_V2)
+        });
+        static STATE_UPDATE3: LazyLock<StateUpdate> = LazyLock::new(|| {
+            StateUpdate::default()
+                .with_block_hash(BLOCK3_HASH)
+                .with_state_commitment(GLOBAL_ROOT3)
+                .with_parent_state_commitment(GLOBAL_ROOT2)
+        });
 
         /// Convenience wrapper
         fn expect_state_update_with_block(

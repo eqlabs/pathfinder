@@ -261,6 +261,8 @@ pub async fn add_declare_transaction(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         CasmHash,
@@ -294,37 +296,47 @@ mod tests {
         SierraContractClass,
     };
 
-    lazy_static::lazy_static! {
-        pub static ref CONTRACT_CLASS: CairoContractClass = {
-            ContractClass::from_definition_bytes(CONTRACT_DEFINITION).unwrap().as_cairo().unwrap()
-        };
+    pub static CONTRACT_CLASS: LazyLock<CairoContractClass> = LazyLock::new(|| {
+        ContractClass::from_definition_bytes(CONTRACT_DEFINITION)
+            .unwrap()
+            .as_cairo()
+            .unwrap()
+    });
 
-        pub static ref CONTRACT_CLASS_WITH_INVALID_PRIME: CairoContractClass = {
-            let mut definition: serde_json::Value = serde_json::from_slice(CONTRACT_DEFINITION).unwrap();
+    pub static CONTRACT_CLASS_WITH_INVALID_PRIME: LazyLock<CairoContractClass> =
+        LazyLock::new(|| {
+            let mut definition: serde_json::Value =
+                serde_json::from_slice(CONTRACT_DEFINITION).unwrap();
             // change program.prime to an invalid one
-            *definition.get_mut("program").unwrap().get_mut("prime").unwrap() = serde_json::json!("0x1");
+            *definition
+                .get_mut("program")
+                .unwrap()
+                .get_mut("prime")
+                .unwrap() = serde_json::json!("0x1");
             let definition = serde_json::to_vec(&definition).unwrap();
-            ContractClass::from_definition_bytes(&definition).unwrap().as_cairo().unwrap()
-        };
+            ContractClass::from_definition_bytes(&definition)
+                .unwrap()
+                .as_cairo()
+                .unwrap()
+        });
 
-        pub static ref CONTRACT_CLASS_JSON: String = {
-            serde_json::to_string(&*CONTRACT_CLASS).unwrap()
-        };
+    pub static SIERRA_CLASS: LazyLock<SierraContractClass> = LazyLock::new(|| {
+        ContractClass::from_definition_bytes(CAIRO_2_0_0_STACK_OVERFLOW)
+            .unwrap()
+            .as_sierra()
+            .unwrap()
+    });
 
-        pub static ref SIERRA_CLASS_JSON: String = {
-            serde_json::to_string(&*SIERRA_CLASS).unwrap()
-        };
-
-        pub static ref SIERRA_CLASS: SierraContractClass = {
-            ContractClass::from_definition_bytes(CAIRO_2_0_0_STACK_OVERFLOW).unwrap().as_sierra().unwrap()
-        };
-
-        pub static ref INTEGRATION_SIERRA_CLASS: SierraContractClass = {
-            ContractClass::from_definition_bytes(
-                include_bytes!("../../../fixtures/contracts/integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.json")
-            ).unwrap().as_sierra().unwrap()
-        };
-    }
+    pub static INTEGRATION_SIERRA_CLASS: LazyLock<SierraContractClass> = LazyLock::new(|| {
+        ContractClass::from_definition_bytes(include_bytes!(
+            "../../../fixtures/contracts/\
+             integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.\
+             json"
+        ))
+        .unwrap()
+        .as_sierra()
+        .unwrap()
+    });
 
     mod parsing {
         mod v1 {
