@@ -181,12 +181,22 @@ impl ToProtobuf<i32> for L1DataAvailabilityMode {
 }
 
 impl TryFromProtobuf<i32> for L1DataAvailabilityMode {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
         use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
-        Ok(match TryFrom::try_from(input)? {
-            Calldata => L1DataAvailabilityMode::Calldata,
-            Blob => L1DataAvailabilityMode::Blob,
-        })
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Invalid L1 data availability mode field element {field_name} enum value: \
+                         {e}"
+                    ),
+                )
+            })? {
+                Calldata => L1DataAvailabilityMode::Calldata,
+                Blob => L1DataAvailabilityMode::Blob,
+            },
+        )
     }
 }
 
@@ -201,12 +211,19 @@ impl ToProtobuf<i32> for VolitionDomain {
 }
 
 impl TryFromProtobuf<i32> for VolitionDomain {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
         use proto::common::VolitionDomain::{L1, L2};
-        Ok(match TryFrom::try_from(input)? {
-            L1 => VolitionDomain::L1,
-            L2 => VolitionDomain::L2,
-        })
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid volition domain field element {field_name} enum value: {e}"),
+                )
+            })? {
+                L1 => VolitionDomain::L1,
+                L2 => VolitionDomain::L2,
+            },
+        )
     }
 }
 
@@ -339,11 +356,18 @@ impl ToProtobuf<i32> for Direction {
 }
 
 impl TryFromProtobuf<i32> for Direction {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
         use proto::common::iteration::Direction::{Backward, Forward};
-        Ok(match TryFrom::try_from(input)? {
-            Backward => Direction::Backward,
-            Forward => Direction::Forward,
-        })
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid direction field element {field_name} enum value: {e}"),
+                )
+            })? {
+                Backward => Direction::Backward,
+                Forward => Direction::Forward,
+            },
+        )
     }
 }

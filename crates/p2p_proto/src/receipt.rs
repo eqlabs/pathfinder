@@ -119,11 +119,18 @@ impl ToProtobuf<proto::receipt::PriceUnit> for PriceUnit {
 }
 
 impl TryFromProtobuf<i32> for PriceUnit {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
-        Ok(match TryFrom::try_from(input)? {
-            proto::receipt::PriceUnit::Wei => Self::Wei,
-            proto::receipt::PriceUnit::Fri => Self::Fri,
-        })
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid price unit field element {field_name} enum value: {e}"),
+                )
+            })? {
+                proto::receipt::PriceUnit::Wei => Self::Wei,
+                proto::receipt::PriceUnit::Fri => Self::Fri,
+            },
+        )
     }
 }
 
