@@ -143,88 +143,21 @@ impl HeaderStream for Client {
         stop: BlockNumber,
         reverse: bool,
     ) -> impl Stream<Item = PeerData<SignedBlockHeader>> {
-        let (mut start, stop, direction) = match reverse {
-            true => (stop, start, Direction::Backward),
-            false => (start, stop, Direction::Forward),
-        };
-
-        tracing::trace!(?start, ?stop, ?direction, "Streaming headers");
-
-        async_stream::stream! {
-            // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
-                let peers = self
-                    .get_random_peers()
-                    .await;
-
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-
-                    match direction {
-                        Direction::Forward => {
-                            if start >= stop {
-                                break 'outer;
-                            }
-                        }
-                        Direction::Backward => {
-                            if start <= stop {
-                                break 'outer;
-                            }
-                        }
-                    }
-
-                    let limit = start.get().max(stop.get()) - start.get().min(stop.get()) + 1;
-
-                    let request = BlockHeadersRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction,
-                            limit,
-                            step: 1.into(),
-                        },
-                    };
-
-                    let mut responses =
-                        match self.inner.send_headers_sync_request(peer, request).await {
-                            Ok(x) => x,
-                            Err(error) => {
-                                // Failed to establish connection, try next peer.
-                                tracing::debug!(%peer, reason=%error, "Headers request failed");
-                                continue 'next_peer;
-                            }
-                        };
-
-                    while let Some(signed_header) = responses.next().await {
-                        let signed_header = match signed_header {
-                            BlockHeadersResponse::Header(hdr) => {
-                                match SignedBlockHeader::try_from(*hdr) {
-                                    Ok(hdr) => hdr,
-                                    Err(error) => {
-                                        tracing::debug!(%peer, %error, "Header stream failed");
-                                        continue 'next_peer;
-                                    }
-                                }
-                            }
-                            BlockHeadersResponse::Fin => {
-                                tracing::debug!(%peer, "Header stream Fin");
-                                continue 'next_peer;
-                            }
-                        };
-
-                        start = match direction {
-                            Direction::Forward => start + 1,
-                            // unwrap_or_default is safe as this is the genesis edge case,
-                            // at which point the loop will complete at the end of this iteration.
-                            Direction::Backward => start.parent().unwrap_or_default(),
-                        };
-
-                        yield PeerData::new(peer, signed_header);
-                    }
-
-                    // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
-                }
-            }
-        }
+        let inner = self.inner.clone();
+        let outer = self;
+        make_header_stream(
+            start,
+            stop,
+            reverse,
+            move || {
+                let outer = outer.clone();
+                async move { outer.get_random_peers().await }
+            },
+            move |peer, request| {
+                let inner = inner.clone();
+                async move { inner.send_headers_sync_request(peer, request).await }
+            },
+        )
     }
 }
 
@@ -645,6 +578,101 @@ impl BlockClient for Client {
         }
 
         None
+    }
+}
+
+pub fn make_header_stream<PF, RF>(
+    start: BlockNumber,
+    stop: BlockNumber,
+    reverse: bool,
+    get_peers: impl Fn() -> PF,
+    send_request: impl Fn(PeerId, BlockHeadersRequest) -> RF,
+) -> impl Stream<Item = PeerData<SignedBlockHeader>>
+where
+    PF: std::future::Future<Output = Vec<PeerId>>,
+    RF: std::future::Future<
+        Output = anyhow::Result<futures::channel::mpsc::Receiver<BlockHeadersResponse>>,
+    >,
+{
+    let (mut start, stop, direction) = match reverse {
+        true => (stop, start, Direction::Backward),
+        false => (start, stop, Direction::Forward),
+    };
+
+    tracing::trace!(?start, ?stop, ?direction, "Streaming headers");
+
+    async_stream::stream! {
+        // Loop which refreshes peer set once we exhaust it.
+        'outer: loop {
+            let peers = get_peers().await;
+
+            // Attempt each peer.
+            'next_peer: for peer in peers {
+
+                match direction {
+                    Direction::Forward => {
+                        if start >= stop {
+                            break 'outer;
+                        }
+                    }
+                    Direction::Backward => {
+                        if start <= stop {
+                            break 'outer;
+                        }
+                    }
+                }
+
+                let limit = start.get().max(stop.get()) - start.get().min(stop.get()) + 1;
+
+                let request = BlockHeadersRequest {
+                    iteration: Iteration {
+                        start: start.get().into(),
+                        direction,
+                        limit,
+                        step: 1.into(),
+                    },
+                };
+
+                let mut responses =
+                    match send_request(peer, request).await {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // Failed to establish connection, try next peer.
+                            tracing::debug!(%peer, reason=%error, "Headers request failed");
+                            continue 'next_peer;
+                        }
+                    };
+
+                while let Some(signed_header) = responses.next().await {
+                    let signed_header = match signed_header {
+                        BlockHeadersResponse::Header(hdr) => {
+                            match SignedBlockHeader::try_from(*hdr) {
+                                Ok(hdr) => hdr,
+                                Err(error) => {
+                                    tracing::debug!(%peer, %error, "Header stream failed");
+                                    continue 'next_peer;
+                                }
+                            }
+                        }
+                        BlockHeadersResponse::Fin => {
+                            tracing::debug!(%peer, "Header stream Fin");
+                            continue 'next_peer;
+                        }
+                    };
+
+                    start = match direction {
+                        Direction::Forward => start + 1,
+                        // unwrap_or_default is safe as this is the genesis edge case,
+                        // at which point the loop will complete at the end of this iteration.
+                        Direction::Backward => start.parent().unwrap_or_default(),
+                    };
+
+                    yield PeerData::new(peer, signed_header);
+                }
+
+                // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
+            }
+        }
     }
 }
 

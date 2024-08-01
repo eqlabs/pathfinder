@@ -11,6 +11,7 @@ use pathfinder_common::{
     BlockHash,
     BlockNumber,
     BlockTimestamp,
+    ClassCommitment,
     EventCommitment,
     Fee,
     GasPrice,
@@ -20,6 +21,7 @@ use pathfinder_common::{
     StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
+    StorageCommitment,
     TransactionCommitment,
     TransactionHash,
     TransactionIndex,
@@ -94,6 +96,7 @@ pub type UnverifiedStateUpdateWithBlockNumber = (UnverifiedStateUpdateData, Bloc
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 
+// TODO make it a variant of the core type
 #[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {
     pub hash: BlockHash,
@@ -115,12 +118,28 @@ pub struct BlockHeader {
     pub receipt_commitment: ReceiptCommitment,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+// TODO make it a variant of the core type
+#[derive(Clone, PartialEq, Default, TaggedDebug, Dummy)]
 pub struct SignedBlockHeader {
     pub header: BlockHeader,
     pub signature: BlockCommitmentSignature,
     pub state_diff_commitment: StateDiffCommitment,
     pub state_diff_length: u64,
+}
+
+impl SignedBlockHeader {
+    pub fn finalize(
+        self,
+        storage_commitment: StorageCommitment,
+        class_commitment: ClassCommitment,
+    ) -> pathfinder_common::SignedBlockHeader {
+        pathfinder_common::SignedBlockHeader {
+            header: self.header.finalize(storage_commitment, class_commitment),
+            signature: self.signature,
+            state_diff_commitment: self.state_diff_commitment,
+            state_diff_length: self.state_diff_length,
+        }
+    }
 }
 
 impl From<pathfinder_common::SignedBlockHeader> for SignedBlockHeader {
@@ -130,6 +149,36 @@ impl From<pathfinder_common::SignedBlockHeader> for SignedBlockHeader {
             signature: h.signature,
             state_diff_commitment: h.state_diff_commitment,
             state_diff_length: h.state_diff_length,
+        }
+    }
+}
+
+impl BlockHeader {
+    pub fn finalize(
+        self,
+        storage_commitment: StorageCommitment,
+        class_commitment: ClassCommitment,
+    ) -> pathfinder_common::BlockHeader {
+        pathfinder_common::BlockHeader {
+            hash: self.hash,
+            parent_hash: self.parent_hash,
+            number: self.number,
+            timestamp: self.timestamp,
+            eth_l1_gas_price: self.eth_l1_gas_price,
+            strk_l1_gas_price: self.strk_l1_gas_price,
+            eth_l1_data_gas_price: self.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: self.strk_l1_data_gas_price,
+            sequencer_address: self.sequencer_address,
+            starknet_version: self.starknet_version,
+            event_commitment: self.event_commitment,
+            state_commitment: self.state_commitment,
+            transaction_commitment: self.transaction_commitment,
+            transaction_count: self.transaction_count,
+            event_count: self.event_count,
+            l1_da_mode: self.l1_da_mode,
+            receipt_commitment: self.receipt_commitment,
+            storage_commitment,
+            class_commitment,
         }
     }
 }

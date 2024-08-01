@@ -1,6 +1,8 @@
 use std::time::SystemTime;
 
 use fake::{Dummy, Fake, Faker};
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
 
 use crate::common::{
     Address,
@@ -14,7 +16,7 @@ use crate::common::{
 };
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, TaggedDebug)]
 #[protobuf(name = "crate::proto::header::SignedBlockHeader")]
 pub struct SignedBlockHeader {
     pub block_hash: Hash,

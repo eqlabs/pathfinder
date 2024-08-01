@@ -68,6 +68,7 @@ use pathfinder_common::{
     GasPrice,
     L1DataAvailabilityMode,
     L2ToL1MessagePayloadElem,
+    SignedBlockHeader,
     TransactionHash,
     TransactionIndex,
     TransactionNonce,
@@ -92,6 +93,52 @@ pub trait TryFromDto<T> {
     fn try_from_dto(dto: T) -> anyhow::Result<Self>
     where
         Self: Sized;
+}
+
+impl ToDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
+    fn to_dto(self) -> p2p_proto::header::SignedBlockHeader {
+        use p2p_proto::header as proto;
+
+        proto::SignedBlockHeader {
+            block_hash: Hash(self.header.hash.0),
+            parent_hash: Hash(self.header.parent_hash.0),
+            number: self.header.number.get(),
+            time: self.header.timestamp.get(),
+            sequencer_address: Address(self.header.sequencer_address.0),
+            state_root: Hash(self.header.state_commitment.0),
+            state_diff_commitment: p2p_proto::common::StateDiffCommitment {
+                state_diff_length: self.state_diff_length,
+                root: Hash(self.state_diff_commitment.0),
+            },
+            transactions: p2p_proto::common::Patricia {
+                n_leaves: self
+                    .header
+                    .transaction_count
+                    .try_into()
+                    .expect("ptr size is 64 bits"),
+                root: Hash(self.header.transaction_commitment.0),
+            },
+            events: p2p_proto::common::Patricia {
+                n_leaves: self
+                    .header
+                    .event_count
+                    .try_into()
+                    .expect("ptr size is 64 bits"),
+                root: Hash(self.header.event_commitment.0),
+            },
+            receipts: Hash(self.header.receipt_commitment.0),
+            protocol_version: self.header.starknet_version.to_string(),
+            gas_price_fri: self.header.strk_l1_gas_price.0,
+            gas_price_wei: self.header.eth_l1_gas_price.0,
+            data_gas_price_fri: self.header.strk_l1_data_gas_price.0,
+            data_gas_price_wei: self.header.eth_l1_data_gas_price.0,
+            l1_data_availability_mode: self.header.l1_da_mode.to_dto(),
+            signatures: vec![p2p_proto::common::ConsensusSignature {
+                r: self.signature.r.0,
+                s: self.signature.s.0,
+            }],
+        }
+    }
 }
 
 impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {

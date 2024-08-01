@@ -3,6 +3,7 @@ use anyhow::Context;
 use futures::StreamExt;
 use p2p::client::types::SignedBlockHeader;
 use p2p::PeerData;
+use p2p_proto::header;
 use pathfinder_common::{
     BlockHash,
     BlockHeader,
@@ -333,28 +334,10 @@ impl ProcessStage for Persist {
             state_diff_length,
         } in input
         {
-            tx.insert_block_header(&pathfinder_common::BlockHeader {
-                hash: header.hash,
-                parent_hash: header.parent_hash,
-                number: header.number,
-                timestamp: header.timestamp,
-                eth_l1_gas_price: header.eth_l1_gas_price,
-                strk_l1_gas_price: header.strk_l1_gas_price,
-                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-                sequencer_address: header.sequencer_address,
-                starknet_version: header.starknet_version,
-                class_commitment: ClassCommitment::ZERO, // TODO update class tries
-                event_commitment: header.event_commitment,
-                state_commitment: header.state_commitment,
-                storage_commitment: StorageCommitment::ZERO, // TODO update storage tries
-                transaction_commitment: header.transaction_commitment,
-                transaction_count: header.transaction_count,
-                event_count: header.event_count,
-                l1_da_mode: header.l1_da_mode,
-                receipt_commitment: header.receipt_commitment,
-            })
-            .context("Persisting block header")?;
+            // TODO update storage and class tries
+            let header = header.finalize(StorageCommitment::ZERO, ClassCommitment::ZERO);
+            tx.insert_block_header(&header)
+                .context("Persisting block header")?;
             tx.insert_signature(header.number, &signature)
                 .context("Persisting block signature")?;
             tx.update_state_diff_commitment_and_length(
