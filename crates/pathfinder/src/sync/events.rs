@@ -192,13 +192,10 @@ impl ProcessStage for VerifyCommitment {
     ) -> Result<Self::Output, super::error::SyncError2> {
         let mut ordered_events = Vec::new();
         for tx_hash in &transactions {
-            ordered_events.push((
-                *tx_hash,
-                events
-                    .get(tx_hash)
-                    .ok_or(SyncError2::EventsTransactionsMismatch)?
-                    .as_slice(),
-            ));
+            // Some transactions may not have events
+            if let Some(events_for_tx) = events.get(tx_hash) {
+                ordered_events.push((*tx_hash, events_for_tx.as_slice()));
+            }
         }
         if ordered_events.len() != events.len() {
             return Err(SyncError2::EventsTransactionsMismatch);
