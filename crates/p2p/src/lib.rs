@@ -50,7 +50,8 @@ pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventRe
         transport::create(&keypair, relay_transport),
         behaviour,
         local_peer_id,
-        swarm::Config::with_tokio_executor().with_idle_connection_timeout(Duration::MAX),
+        swarm::Config::with_tokio_executor()
+            .with_idle_connection_timeout(Duration::from_secs(3600 * 365)), // A YEAR
     );
 
     let (event_sender, event_receiver) = mpsc::channel(1);

@@ -890,7 +890,7 @@ fn parse_l1_checkpoint_or_exit(
         Cli::command()
             .error(
                 ErrorKind::ValueValidation,
-                format!("p2p.experimental.l1-anchor: {e}"),
+                format!("p2p.experimental.l1-checkpoint-override: {e}"),
             )
             .exit()
     }

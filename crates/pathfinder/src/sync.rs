@@ -1,13 +1,26 @@
 #![allow(dead_code, unused)]
 
+use std::time::Duration;
+
 use anyhow::Context;
 use error::SyncError2;
+use futures::{pin_mut, Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
-use pathfinder_common::{BlockNumber, Chain, ChainId, PublicKey, StarknetVersion};
+use pathfinder_common::{
+    block_hash,
+    BlockHash,
+    BlockNumber,
+    Chain,
+    ChainId,
+    PublicKey,
+    StarknetVersion,
+};
 use pathfinder_ethereum::EthereumStateUpdate;
 use primitive_types::H160;
-use starknet_gateway_client::Client as GatewayClient;
+use starknet_gateway_client::{Client as GatewayClient, GatewayApi};
 use stream::ProcessStage;
+use tokio::sync::watch::{self, Receiver};
+use tokio_stream::wrappers::WatchStream;
 
 mod checkpoint;
 mod class_definitions;
@@ -35,18 +48,15 @@ pub struct Sync {
 
 impl Sync {
     pub async fn run(self) -> anyhow::Result<()> {
-        self.checkpoint_sync().await?;
+        let (next, parent_hash) = self.checkpoint_sync().await?;
 
         // TODO: depending on how this is implemented, we might want to loop around it.
-        self.track_sync().await
+        self.track_sync(next, parent_hash).await
     }
 
     async fn handle_error(&self, err: error::SyncError) {
         // TODO
-        tracing::debug!(
-            error = format!("{:#}", err),
-            "Log and punish as appropriate"
-        );
+        tracing::debug!(?err, "Log and punish as appropriate");
     }
 
     async fn get_checkpoint(&self) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
@@ -62,8 +72,9 @@ impl Sync {
     }
 
     /// Run checkpoint sync until it completes successfully, and we are within
-    /// some margin of the latest L1 block.
-    async fn checkpoint_sync(&self) -> anyhow::Result<()> {
+    /// some margin of the latest L1 block. Returns the next block number to
+    /// sync and its parent hash.
+    async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
         let mut checkpoint = self.get_checkpoint().await?;
         loop {
             let result = checkpoint::Sync {
@@ -96,11 +107,26 @@ impl Sync {
             break;
         }
 
-        Ok(())
+        Ok((checkpoint.block_number + 1, checkpoint.block_hash))
     }
 
-    async fn track_sync(&self) -> anyhow::Result<()> {
-        todo!();
+    /// Run the track sync until it completes successfully, requires the
+    /// number and parent hash of the first block to sync
+    async fn track_sync(&self, next: BlockNumber, parent_hash: BlockHash) -> anyhow::Result<()> {
+        let result = track::Sync {
+            latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
+            p2p: self.p2p.clone(),
+            storage: self.storage.clone(),
+            chain: self.chain,
+            chain_id: self.chain_id,
+            public_key: self.public_key,
+        }
+        .run(next, parent_hash, self.fgw_client.clone())
+        .await;
+
+        tracing::info!("Track sync completed: {result:#?}");
+
+        Ok(())
     }
 }
 
@@ -135,5 +161,73 @@ impl<T> ProcessStage for FetchStarknetVersionFromDb<T> {
             .context("Fetching starknet version")?
             .ok_or(SyncError2::StarknetVersionNotFound)?;
         Ok((data, version))
+    }
+}
+
+struct LatestStream {
+    rx: Receiver<(BlockNumber, BlockHash)>,
+    stream: WatchStream<(BlockNumber, BlockHash)>,
+}
+
+impl Clone for LatestStream {
+    fn clone(&self) -> Self {
+        tracing::info!("LatestStream: clone()");
+
+        Self {
+            // Keep the rx for the next clone
+            rx: self.rx.clone(),
+            // Create a new stream from the cloned rx, don't yield the initial value
+            stream: WatchStream::from_changes(self.rx.clone()),
+        }
+    }
+}
+
+impl Stream for LatestStream {
+    type Item = (BlockNumber, BlockHash);
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let stream = &mut self.stream;
+        pin_mut!(stream);
+        stream.poll_next(cx)
+    }
+}
+
+impl LatestStream {
+    fn spawn(fgw: GatewayClient, head_poll_interval: Duration) -> Self {
+        tracing::info!("LatestStream: spawn()");
+        // No buffer, for backpressure
+        let (tx, rx) = watch::channel((BlockNumber::GENESIS, BlockHash::ZERO));
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(head_poll_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+            loop {
+                interval.tick().await;
+
+                let Ok(latest) = fgw
+                    .block_header(pathfinder_common::BlockId::Latest)
+                    .await
+                    .inspect_err(|e| tracing::debug!(error=%e, "Error requesting latest block ID"))
+                else {
+                    continue;
+                };
+
+                tracing::info!(?latest, "LatestStream: block_header()");
+
+                if tx.send(latest).is_err() {
+                    tracing::debug!("Channel closed, exiting");
+                    break;
+                }
+            }
+        });
+
+        Self {
+            rx: rx.clone(),
+            stream: WatchStream::from_changes(rx),
+        }
     }
 }
