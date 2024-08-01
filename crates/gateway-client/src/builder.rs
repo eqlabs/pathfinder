@@ -494,11 +494,11 @@ mod tests {
         use std::time::Duration;
 
         use assert_matches::assert_matches;
-        use http::response::Builder;
-        use http::StatusCode;
         use pretty_assertions_sorted::assert_eq;
         use tokio::sync::Mutex;
         use tokio::task::JoinHandle;
+        use warp::http::response::Builder;
+        use warp::http::StatusCode;
         use warp::Filter;
 
         use crate::builder::{retry0, retry_condition};
@@ -652,7 +652,7 @@ mod tests {
 
     mod invalid_starknet_error_variant {
         use gateway_test_utils::GATEWAY_TIMEOUT;
-        use http::response::Builder;
+        use warp::http::response::Builder;
         use warp::Filter;
 
         use crate::{Client, GatewayApi};

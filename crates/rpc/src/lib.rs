@@ -27,8 +27,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::response::IntoResponse;
 use context::RpcContext;
 pub use executor::compose_executor_transaction;
-use http::Request;
-use hyper::Body;
+use http_body::Body;
 use pathfinder_common::AllowedOrigins;
 pub use pending::PendingData;
 use tokio::sync::RwLock;
@@ -102,10 +101,12 @@ impl RpcServer {
     }
 
     /// Starts the HTTP-RPC server.
-    pub fn spawn(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
+    pub async fn spawn(
+        self,
+    ) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use axum::routing::{get, post};
 
-        let listener = match std::net::TcpListener::bind(self.addr) {
+        let listener = match tokio::net::TcpListener::bind(self.addr).await {
             Ok(listener) => listener,
             Err(e) => {
                 return Err(e).context(format!(
@@ -122,7 +123,6 @@ impl RpcServer {
         let addr = listener
             .local_addr()
             .context("Getting local address from listener")?;
-        let server = axum::Server::from_tcp(listener).context("Binding server to tcp listener")?;
 
         async fn handle_middleware_errors(err: axum::BoxError) -> (http::StatusCode, String) {
             use http::StatusCode;
@@ -158,12 +158,11 @@ impl RpcServer {
 
         /// Returns success for requests with an empty body without reading
         /// the entire body.
-        async fn empty_body(request: Request<Body>) -> impl IntoResponse {
-            use hyper::body::HttpBody;
+        async fn empty_body(request: axum::extract::Request) -> impl IntoResponse {
             if request.body().is_end_stream() {
-                http::StatusCode::OK.into_response()
+                axum::http::StatusCode::OK
             } else {
-                http::StatusCode::METHOD_NOT_ALLOWED.into_response()
+                axum::http::StatusCode::METHOD_NOT_ALLOWED
             }
         }
 
@@ -218,8 +217,7 @@ impl RpcServer {
         let router = router.layer(middleware);
 
         let server_handle = tokio::spawn(async move {
-            server
-                .serve(router.into_make_service())
+            axum::serve(listener, router.into_make_service())
                 .await
                 .map_err(Into::into)
         });
@@ -829,6 +827,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
             .spawn()
+            .await
             .unwrap();
 
         let url = format!("http://{addr}/");
@@ -931,6 +930,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
             .spawn()
+            .await
             .unwrap();
 
         let url = format!("http://{addr}{route}");

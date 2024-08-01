@@ -924,8 +924,7 @@ mod tests {
         mod deploy_token {
             use std::collections::HashMap;
 
-            use http::StatusCode;
-            use warp::http::Response;
+            use warp::http::{Response, StatusCode};
             use warp::Filter;
 
             use super::*;

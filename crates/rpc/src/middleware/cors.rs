@@ -1,4 +1,3 @@
-use http::HeaderValue;
 use pathfinder_common::AllowedOrigins;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -6,7 +5,7 @@ pub fn with_allowed_origins(allowed_origins: AllowedOrigins) -> CorsLayer {
     let allowed_origins = match allowed_origins {
         AllowedOrigins::Any => AllowOrigin::any(),
         AllowedOrigins::List(x) => AllowOrigin::list(x.into_iter().map(|s| {
-            HeaderValue::from_maybe_shared(s.into_bytes())
+            http::HeaderValue::from_maybe_shared(s.into_bytes())
                 .expect("passed type is 'shared' (i.e. owned byte buffer)")
         })),
     };
@@ -19,7 +18,7 @@ pub fn with_allowed_origins(allowed_origins: AllowedOrigins) -> CorsLayer {
 
 #[cfg(test)]
 mod tests {
-    use http::HeaderValue;
+    use reqwest::header::HeaderValue;
 
     use crate::context::RpcContext;
     use crate::{RpcServer, RpcVersion};
@@ -42,7 +41,7 @@ mod tests {
                 None => server,
             };
 
-            let (_server_handle, address) = server.spawn().unwrap();
+            let (_server_handle, address) = server.spawn().await.unwrap();
 
             let resp = reqwest::Client::new()
                 .request(reqwest::Method::OPTIONS, format!("http://{address}"))

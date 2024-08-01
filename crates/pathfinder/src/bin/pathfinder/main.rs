@@ -273,6 +273,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         let (rpc_handle, local_addr) = rpc_server
             .with_max_connections(config.max_rpc_connections.get())
             .spawn()
+            .await
             .context("Starting the RPC server")?;
         info!("📡 HTTP-RPC server started on: {}", local_addr);
         rpc_handle
@@ -620,7 +621,7 @@ async fn spawn_monitoring(
     metrics::gauge!("pathfinder_build_info", 1.0, "version" => VERGEN_GIT_DESCRIBE);
 
     let (_, handle) =
-        monitoring::spawn_server(address, readiness, sync_state, prometheus_handle).await;
+        monitoring::spawn_server(address, readiness, sync_state, prometheus_handle).await?;
     Ok(handle)
 }
 

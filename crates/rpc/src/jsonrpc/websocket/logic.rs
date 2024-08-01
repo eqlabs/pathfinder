@@ -1608,14 +1608,15 @@ mod tests {
                 .with_state(router)
                 .layer(tower::ServiceBuilder::new());
 
-            let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
                 .expect("Websocket address already in use");
             let addr = listener.local_addr().unwrap();
-            let server = axum::Server::from_tcp(listener).unwrap();
-            let server_handle =
-                tokio::spawn(
-                    async move { server.serve(router.into_make_service()).await.unwrap() },
-                );
+            let server_handle = tokio::spawn(async move {
+                axum::serve(listener, router.into_make_service())
+                    .await
+                    .unwrap()
+            });
 
             let ws_addr = "ws://".to_string() + &addr.to_string() + "/ws";
             let ws_stream = match connect_async(ws_addr).await {
