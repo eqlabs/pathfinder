@@ -594,6 +594,9 @@ where
         Output = anyhow::Result<futures::channel::mpsc::Receiver<BlockHeadersResponse>>,
     >,
 {
+    let start: i64 = start.get().try_into().expect("block number <= i64::MAX");
+    let stop: i64 = stop.get().try_into().expect("block number <= i64::MAX");
+
     let (mut start, stop, direction) = match reverse {
         true => (stop, start, Direction::Backward),
         false => (start, stop, Direction::Forward),
@@ -611,24 +614,26 @@ where
 
                 match direction {
                     Direction::Forward => {
-                        if start >= stop {
+                        if start > stop {
                             break 'outer;
                         }
                     }
                     Direction::Backward => {
-                        if start <= stop {
+                        if start < stop {
                             break 'outer;
                         }
                     }
                 }
 
-                let limit = start.get().max(stop.get()) - start.get().min(stop.get()) + 1;
+                let limit = start.max(stop) - start.min(stop) + 1;
+
+                tracing::error!(%start, %stop, %limit, "Requesting headers");
 
                 let request = BlockHeadersRequest {
                     iteration: Iteration {
-                        start: start.get().into(),
+                        start: u64::try_from(start).expect("start >= 0").into(),
                         direction,
-                        limit,
+                        limit: limit.try_into().expect("limit >= 0"),
                         step: 1.into(),
                     },
                 };
@@ -642,6 +647,8 @@ where
                             continue 'next_peer;
                         }
                     };
+
+                tracing::error!("Request sent");
 
                 while let Some(signed_header) = responses.next().await {
                     let signed_header = match signed_header {
@@ -662,10 +669,10 @@ where
 
                     start = match direction {
                         Direction::Forward => start + 1,
-                        // unwrap_or_default is safe as this is the genesis edge case,
-                        // at which point the loop will complete at the end of this iteration.
-                        Direction::Backward => start.parent().unwrap_or_default(),
+                        Direction::Backward => start - 1,
                     };
+
+                    tracing::error!(%start, %stop, %limit, block_number=%signed_header.header.number, "Yield");
 
                     yield PeerData::new(peer, signed_header);
                 }

@@ -25,6 +25,11 @@ async fn make_header_stream(
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
+    let mut locked = responses.lock().await;
+    let responses_clone = locked.clone();
+    locked.extend(responses_clone);
+    drop(locked);
+
     let get_peers = || async { peers.clone() };
     let send_request =
         |_: PeerId, _: BlockHeadersRequest| async { send_request(responses.clone()).await };
