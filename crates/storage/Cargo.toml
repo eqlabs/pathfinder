@@ -20,7 +20,6 @@ flume = { version = "0.11.0", default-features = false, features = [
     "eventual-fairness",
 ] }
 hex = { workspace = true }
-lazy_static = { workspace = true }
 metrics = { workspace = true }
 paste = { workspace = true }
 pathfinder-common = { path = "../common" }

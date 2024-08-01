@@ -185,9 +185,7 @@ impl StorageBuilder {
     pub fn in_memory_with_trie_pruning(trie_prune_mode: TriePruneMode) -> anyhow::Result<Storage> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
-        lazy_static::lazy_static!(
-            static ref COUNT: std::sync::Mutex<u64> = Default::default();
-        );
+        static COUNT: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
         let unique_mem_db = {
             let mut count = COUNT.lock().unwrap();
             // &cache=shared allows other threads to see and access the inmemory database

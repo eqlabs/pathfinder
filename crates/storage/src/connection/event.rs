@@ -379,6 +379,8 @@ enum Filter {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::receipt::Receipt;
@@ -389,10 +391,10 @@ mod tests {
     use super::*;
     use crate::test_utils;
 
-    lazy_static::lazy_static!(
-        static ref MAX_BLOCKS_TO_SCAN: NonZeroUsize = NonZeroUsize::new(100).unwrap();
-        static ref MAX_BLOOM_FILTERS_TO_LOAD: NonZeroUsize = NonZeroUsize::new(100).unwrap();
-    );
+    static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
+        LazyLock::new(|| NonZeroUsize::new(100).unwrap());
+    static MAX_BLOOM_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
+        LazyLock::new(|| NonZeroUsize::new(100).unwrap());
 
     #[test_log::test(test)]
     fn get_events_with_fully_specified_filter() {

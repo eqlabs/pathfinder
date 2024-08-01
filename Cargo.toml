@@ -41,7 +41,7 @@ opt-level = 3
 version = "0.14.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.76"
+rust-version = "1.80"
 authors = ["Equilibrium Labs <info@equilibrium.co>"]
 
 [workspace.dependencies]
@@ -84,7 +84,6 @@ hyper = "1.0.0"
 ipnet = "2.9.0"
 jemallocator = "0.5.4"
 keccak-hash = "0.10.0"
-lazy_static = "1.4.0"
 libp2p = { version = "0.53.0", default-features = false }
 libp2p-identity = "0.2.2"
 libp2p-plaintext = "0.41.0"

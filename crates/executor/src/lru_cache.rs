@@ -1,4 +1,4 @@
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use blockifier::execution::contract_class::ContractClass;
 use blockifier::state::errors::StateError;
@@ -8,9 +8,7 @@ use pathfinder_common::BlockNumber;
 use starknet_api::core::ClassHash as StarknetClassHash;
 use tracing::warn;
 
-lazy_static::lazy_static! {
-    pub static ref GLOBAL_CACHE: LruContractCache = LruContractCache::new();
-}
+pub static GLOBAL_CACHE: LazyLock<LruContractCache> = LazyLock::new(LruContractCache::new);
 
 #[derive(Clone)]
 pub struct Entry {
