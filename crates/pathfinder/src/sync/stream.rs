@@ -45,7 +45,12 @@ struct Fullness(usize, usize);
 
 impl std::fmt::Display for Fullness {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}% ({}/{})", self.0 / self.1, self.0, self.1))
+        f.write_fmt(format_args!(
+            "{:.0}% ({}/{})",
+            self.0 as f32 / self.1 as f32 * 100.0,
+            self.0,
+            self.1
+        ))
     }
 }
 
@@ -96,7 +101,11 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let elements_per_sec = 1.0 / t.elapsed().as_secs_f32();
                         let queue_fullness = queue_capacity - self.inner.capacity();
                         let input_queue = Fullness(queue_fullness, queue_capacity);
-                        tracing::debug!(stage=S::NAME, %input_queue, %elements_per_sec, "Item processed");
+                        tracing::debug!(
+                            "Stage: {}, queue: {}, {elements_per_sec:.0} items/s",
+                            S::NAME,
+                            input_queue
+                        );
 
                         output
                     }
@@ -152,7 +161,11 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
                         let queue_fullness = queue_capacity - self.inner.capacity();
                         let input_queue = Fullness(queue_fullness, queue_capacity);
-                        tracing::trace!(stage=S::NAME, %input_queue, %elements_per_sec, "Item processed");
+                        tracing::debug!(
+                            "Stage: {}, queue: {}, {elements_per_sec:.0} items/s",
+                            S::NAME,
+                            input_queue
+                        );
 
                         output
                     }
