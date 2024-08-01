@@ -1235,7 +1235,6 @@ where
 
                         tracing::trace!(block_number=%start, "All classes received for block");
 
-                        // TODO yield immediately instead of aggregating and then yielding
                         for class_definition in class_definitions {
                             yield PeerData::new(
                                 peer,

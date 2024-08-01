@@ -675,19 +675,9 @@ impl MainLoop {
                 },
             )) => {
                 tracing::warn!(?request_id, ?error, "Outbound header sync request failed");
-                // FIXME if the remote hangs up we get an outbound stream error even if
-                // earlier the request was sent successfully and we got
-                // OutboundRequestSentAwaitingResponses
-                //
-                // In that case there's no pending sync request in the map
-                //
-                // TODO shouldn't this stream be closed earlier anyway?
                 if let Some(sender) = self.pending_sync_requests.headers.remove(&request_id) {
                     let _ = sender.send(Err(error.into()));
                 }
-
-                // .expect("Header sync request still to be pending")
-                // .send(Err(error.into()));
             }
             SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
                 p2p_stream::Event::OutboundFailure {
