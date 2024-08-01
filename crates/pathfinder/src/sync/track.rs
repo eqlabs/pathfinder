@@ -192,7 +192,6 @@ impl<L, P> HeaderSource<L, P> {
         tokio::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
-                tracing::info!(?latest_onchain, "LatestStream: next()");
                 // Ignore reorgs for now. Unsure how to handle this properly.
 
                 // TODO: Probably need a loop here if we don't get enough headers?

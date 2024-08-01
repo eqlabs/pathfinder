@@ -620,8 +620,6 @@ where
             'next_peer: for peer in peers {
                 let limit = start.max(stop) - start.min(stop) + 1;
 
-                tracing::error!(%peer, %start, %stop, %limit, "Requesting headers");
-
                 let request = BlockHeadersRequest {
                     iteration: Iteration {
                         start: u64::try_from(start).expect("start >= 0").into(),
@@ -641,12 +639,9 @@ where
                         }
                     };
 
-                tracing::error!("Request sent");
-
                 while let Some(signed_header) = responses.next().await {
                     // It can be a finishing FIN or an extra header we just happily ignore
                     if done(direction, start, stop) {
-                        tracing::error!("Break OUTER FIN OR TOO MUCH");
                         break 'outer;
                     }
 
@@ -654,16 +649,12 @@ where
                         BlockHeadersResponse::Header(hdr) => {
                             match SignedBlockHeader::try_from(*hdr) {
                                 Ok(hdr) => {
-                                    tracing::error!(%start, %stop, %limit, block_number=%hdr.header.number, "Yield");
-
                                     yield PeerData::new(peer, hdr);
 
                                     start = match direction {
                                         Direction::Forward => start + 1,
                                         Direction::Backward => start - 1,
                                     };
-
-                                    tracing::error!(%start, %stop, %limit, "Next");
                                 },
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Header stream failed");
@@ -681,11 +672,8 @@ where
                     };
                 }
 
-                tracing::error!("Responses done");
-
                 // Stream ended without FIN but we could already have all the responses we need
                 if done(direction, start, stop) {
-                    tracing::error!("Break OUTER EOS");
                     break 'outer;
                 }
 
