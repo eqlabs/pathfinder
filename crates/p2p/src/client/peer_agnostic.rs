@@ -673,6 +673,9 @@ where
                         }
                         BlockHeadersResponse::Fin => {
                             tracing::debug!(%peer, "Header stream Fin");
+                            if done(direction, start, stop) {
+                                break 'outer;
+                            }
                             continue 'next_peer;
                         }
                     };
@@ -874,8 +877,8 @@ where
                     // The above situation can also happen when we've received all the data we need
                     // but the last peer has not sent a Fin.
                     if current_count == 0 && start == stop {
-                            // We're done, terminate the stream
-                            break 'outer;
+                        // We're done, terminate the stream
+                        break 'outer;
                     }
                 }
             }
