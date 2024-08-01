@@ -869,8 +869,16 @@ where
                     //
                     // The problem here is that the count stream was already consumed, so we assume that the full blocks that were already
                     // processed are correct.
-
                     tracing::debug!(%peer, "Fin missing");
+
+                    // The above situation can also happen when we've received all the data we need
+                    // but the last peer has not sent a Fin.
+                    if current_count == 0 {
+                        if start == stop {
+                            // We're done, terminate the stream
+                            break 'outer;
+                        }
+                    }
                 }
             }
         }
@@ -1116,6 +1124,13 @@ where
                     // If we reach here, the peer did not send a Fin, so the counter for the current block should be reset
                     // and we should start from the current block again but from the next peer.
                     tracing::debug!(%peer, "Fin missing");
+
+                    // The above situation can also happen when we've received all the data we need
+                    // but the last peer has not sent a Fin.
+                    if current_count == 0 && start == stop {
+                        // We're done, terminate the stream
+                        break 'outer;
+                    }
                 }
             }
         }
@@ -1231,6 +1246,7 @@ where
 
                         tracing::trace!(block_number=%start, "All classes received for block");
 
+                        // TODO yield immediately instead of aggregating and then yielding
                         for class_definition in class_definitions {
                             yield PeerData::new(
                                 peer,
