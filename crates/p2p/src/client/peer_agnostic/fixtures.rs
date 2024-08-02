@@ -8,6 +8,7 @@ use libp2p::PeerId;
 use p2p_proto::class::{Class, ClassesResponse};
 use p2p_proto::common::{Address, Hash, VolitionDomain};
 use p2p_proto::event::EventsResponse;
+use p2p_proto::header::BlockHeadersResponse;
 use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
 use pathfinder_common::event::Event;
@@ -16,9 +17,11 @@ use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
     BlockNumber,
     CasmHash,
+    ClassCommitment,
     ClassHash,
     ContractAddress,
     SierraHash,
+    StorageCommitment,
     TransactionHash,
     TransactionIndex,
 };
@@ -29,6 +32,7 @@ use tokio::sync::Mutex;
 use super::{ClassDefinition, UnverifiedStateUpdateData};
 use crate::client::conv::{CairoDefinition, SierraDefinition, ToDto, TryFromDto};
 use crate::client::peer_agnostic::Receipt;
+use crate::client::types::{BlockHeader, SignedBlockHeader};
 
 #[derive(Clone, PartialEq, TaggedDebug)]
 pub struct TestPeer(pub PeerId);
@@ -96,6 +100,25 @@ pub async fn send_request<T>(
             panic!("fix your assumed responses")
         }
     }
+}
+
+pub fn hdr_resp(tag: i32) -> BlockHeadersResponse {
+    let h = hdr(tag);
+    // TODO
+    let h = h.finalize(StorageCommitment::ZERO, ClassCommitment::ZERO);
+    BlockHeadersResponse::Header(Box::new(h.to_dto()))
+}
+
+pub fn hdr(tag: i32) -> SignedBlockHeader {
+    Tagged::get(format!("header {tag}"), || SignedBlockHeader {
+        header: BlockHeader {
+            number: BlockNumber::new_or_panic(tag as u64),
+            ..Faker.fake()
+        },
+        ..Faker.fake()
+    })
+    .unwrap()
+    .data
 }
 
 pub fn txn_resp(tag: i32, transaction_index: u64) -> TransactionsResponse {

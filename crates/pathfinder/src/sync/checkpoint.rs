@@ -135,8 +135,10 @@ impl Sync {
     /// guarantee that all sync'd headers are secured by L1.
     ///
     /// No guarantees are made about any headers newer than the anchor.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, anchor))]
     async fn sync_headers(&self, anchor: EthereumStateUpdate) -> Result<(), SyncError> {
+        tracing::info!(?anchor);
+
         while let Some(gap) =
             headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
                 .await
@@ -152,7 +154,6 @@ impl Sync {
                 self.public_key,
                 self.storage.clone(),
             )
-            .instrument(tracing::debug_span!("sync_headers", ?gap))
             .await?;
         }
 

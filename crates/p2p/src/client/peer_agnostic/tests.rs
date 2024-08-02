@@ -1,5 +1,6 @@
 use futures::{stream, TryStreamExt};
 use rstest::rstest;
+use BlockHeadersResponse::Fin as HdrFin;
 use ClassesResponse::Fin as ClassFin;
 use EventsResponse::Fin as EventFin;
 use StateDiffsResponse::Fin as SDFin;
@@ -7,6 +8,129 @@ use TransactionsResponse::Fin as TxnFin;
 
 use super::*;
 use crate::client::peer_agnostic::fixtures::*;
+
+#[rstest]
+#[case::one_peer_1_block(
+    1,
+    // Simulated responses
+    vec![Ok((peer(0), vec![hdr_resp(0), HdrFin]))],
+    // Expected stream
+    vec![(peer(0), hdr(0))]
+)]
+#[case::one_peer_2_blocks(
+    // Peer gives responses for all blocks in one go
+    2,
+    vec![Ok((peer(0), vec![hdr_resp(1), hdr_resp(2), HdrFin]))],
+    vec![
+        (peer(0), hdr(1)), // block 0
+        (peer(0), hdr(2))  // block 1
+    ]
+)]
+#[case::one_peer_2_blocks_in_2_attempts(
+    // Peer gives a response for the second block after a retry
+    2,
+    vec![
+        Ok((peer(0), vec![hdr_resp(3), HdrFin])),
+        Ok((peer(0), vec![hdr_resp(4), HdrFin])),
+    ],
+    vec![
+        (peer(0), hdr(3)),
+        (peer(0), hdr(4))
+    ]
+)]
+#[case::two_peers_1_block_per_peer(
+    2,
+    vec![
+        // Errors are ignored
+        Err(peer(1)),
+        Ok((peer(0), vec![hdr_resp(5), HdrFin])),
+        Err(peer(0)),
+        Ok((peer(1), vec![hdr_resp(6), HdrFin]))
+    ],
+    vec![
+        (peer(0), hdr(5)),
+        (peer(1), hdr(6))
+    ]
+)]
+#[case::first_peer_full_block_no_fin(
+    2,
+    vec![
+        // First peer gives full block 0 but no fin
+        Ok((peer(0), vec![hdr_resp(7)])),
+        Ok((peer(1), vec![hdr_resp(8), HdrFin]))
+    ],
+    vec![
+        // We assume this block 0 could be correct
+        (peer(0), hdr(7)), // block 0
+        (peer(1), hdr(8))  // block 1
+    ]
+)]
+#[case::last_peer_full_block_no_fin(
+    2,
+    vec![
+        Ok((peer(0), vec![hdr_resp(7), HdrFin])),
+        // Last peer gives full block 1 but no fin
+        Ok((peer(1), vec![hdr_resp(8)]))
+    ],
+    vec![
+        // We assume this block 0 could be correct
+        (peer(0), hdr(7)), // block 0
+        (peer(1), hdr(8))  // block 1
+    ]
+)]
+#[case::too_many_responses_with_fin(
+    1,
+    vec![Ok((peer(0), vec![hdr_resp(9), hdr_resp(10), HdrFin]))],
+    vec![(peer(0), hdr(9))]
+)]
+#[case::too_many_responses_no_fin(
+    1,
+    vec![Ok((peer(0), vec![hdr_resp(9), hdr_resp(10), hdr_resp(11)]))],
+    vec![(peer(0), hdr(9))]
+)]
+#[case::empty_response_streams_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![])),
+        Ok((peer(1), vec![hdr_resp(11), HdrFin])),
+        Ok((peer(2), vec![]))
+    ],
+    vec![(peer(1), hdr(11))]
+)]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![HdrFin])),
+        Ok((peer(1), vec![hdr_resp(11), HdrFin])),
+        Ok((peer(2), vec![HdrFin]))
+    ],
+    vec![(peer(1), hdr(11))]
+)]
+#[test_log::test(tokio::test)]
+async fn make_header_stream(
+    #[case] num_blocks: usize,
+    #[case] responses: Vec<Result<(TestPeer, Vec<BlockHeadersResponse>), TestPeer>>,
+    #[case] expected_stream: Vec<(TestPeer, SignedBlockHeader)>,
+) {
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    for (reverse, direction) in [(false, "forward"), (true, "backward")] {
+        let (peers, responses) = unzip_fixtures(responses.clone());
+        let get_peers = || async { peers.clone() };
+        let start = BlockNumber::GENESIS;
+        let stop = start + (num_blocks - 1) as u64;
+
+        let send_request =
+            |_: PeerId, _: BlockHeadersRequest| async { send_request(responses.clone()).await };
+
+        let actual = super::make_header_stream(start, stop, reverse, get_peers, send_request)
+            .map(|x| (TestPeer(x.peer), x.data))
+            .collect::<Vec<_>>()
+            .await;
+
+        pretty_assertions_sorted::assert_eq!(actual, expected_stream, "Direction: {}", direction);
+    }
+}
 
 #[rstest]
 #[case::one_peer_1_block(
@@ -87,6 +211,18 @@ use crate::client::peer_agnostic::fixtures::*;
         Ok((peer(1), vec![txn(12, 0)]))  // block 1
     ]
 )]
+#[case::last_peer_full_block_no_fin(
+    2,
+    vec![
+        Ok((peer(0), vec![txn_resp(11, 0), TxnFin])),
+        Ok((peer(1), vec![txn_resp(12, 0)]))
+    ],
+    vec![1, 1],
+    vec![
+        Ok((peer(0), vec![txn(11, 0)])), // block 0
+        Ok((peer(1), vec![txn(12, 0)]))  // block 1
+    ]
+)]
 // The same as above but the first peer gives half of the second block before closing the
 // stream
 #[case::first_peer_half_block_no_fin(
@@ -116,18 +252,34 @@ use crate::client::peer_agnostic::fixtures::*;
         Err(peer(0)) // the second block is not processed
     ]
 )]
-#[case::too_many_responses(
+#[case::too_many_responses_with_fin(
     1,
     vec![Ok((peer(0), vec![txn_resp(18, 0), txn_resp(19, 0), TxnFin]))],
     vec![1],
     vec![Ok((peer(0), vec![txn(18, 0)]))]
 )]
-#[case::empty_responses_are_ignored(
+#[case::too_many_responses_no_fin(
+    1,
+    vec![Ok((peer(0), vec![txn_resp(18, 0), txn_resp(19, 0)]))],
+    vec![1],
+    vec![Ok((peer(0), vec![txn(18, 0)]))]
+)]
+#[case::empty_response_streams_are_ignored(
     1,
     vec![
         Ok((peer(0), vec![])),
         Ok((peer(1), vec![txn_resp(20, 0), TxnFin])),
         Ok((peer(2), vec![]))
+    ],
+    vec![1],
+    vec![Ok((peer(1), vec![txn(20, 0)]))]
+)]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![TxnFin])),
+        Ok((peer(1), vec![txn_resp(20, 0), TxnFin])),
+        Ok((peer(2), vec![TxnFin]))
     ],
     vec![1],
     vec![Ok((peer(1), vec![txn(20, 0)]))]
@@ -247,6 +399,18 @@ async fn make_transaction_stream(
         Ok((peer(1), state_diff(10)))
     ]
 )]
+#[case::last_peer_full_block_no_fin(
+    2,
+    vec![
+        Ok((peer(0), vec![contract_diff(9), declared_class(9), SDFin])),
+        Ok((peer(1), vec![contract_diff(10), declared_class(10)]))
+    ],
+    vec![len(9), len(10)],
+    vec![
+        Ok((peer(0), state_diff(9))),
+        Ok((peer(1), state_diff(10)))
+    ]
+)]
 // The same as above but the first peer gives half of the second block before closing the
 // stream
 #[case::first_peer_half_block_no_fin(
@@ -275,36 +439,70 @@ async fn make_transaction_stream(
         Err(peer(0)) // the second block is not processed
     ]
 )]
-#[case::too_many_responses_storage(
+#[case::too_many_responses_storage_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(15), declared_class(15), surplus_storage(), SDFin]))],
     vec![len(15)],
     vec![Ok((peer(0), state_diff(15)))]
 )]
-#[case::too_many_responses_nonce(
+#[case::too_many_responses_storage_no_fin(
+    1,
+    vec![Ok((peer(0), vec![contract_diff(15), declared_class(15), surplus_storage()]))],
+    vec![len(15)],
+    vec![Ok((peer(0), state_diff(15)))]
+)]
+#[case::too_many_responses_nonce_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(16), declared_class(16), surplus_nonce(), SDFin]))],
     vec![len(16)],
     vec![Ok((peer(0), state_diff(16)))]
 )]
-#[case::too_many_responses_class(
+#[case::too_many_responses_nonce_no_fin(
+    1,
+    vec![Ok((peer(0), vec![contract_diff(16), declared_class(16), surplus_nonce()]))],
+    vec![len(16)],
+    vec![Ok((peer(0), state_diff(16)))]
+)]
+#[case::too_many_responses_class_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(17), declared_class(17), surplus_class(), SDFin]))],
     vec![len(17)],
     vec![Ok((peer(0), state_diff(17)))]
 )]
-#[case::too_many_responses_declaration(
+#[case::too_many_responses_class_no_fin(
+    1,
+    vec![Ok((peer(0), vec![contract_diff(17), declared_class(17), surplus_class()]))],
+    vec![len(17)],
+    vec![Ok((peer(0), state_diff(17)))]
+)]
+#[case::too_many_responses_declaration_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(18), declared_class(18), declared_class(19), SDFin]))],
     vec![len(18)],
     vec![Ok((peer(0), state_diff(18)))]
 )]
-#[case::empty_responses_are_ignored(
+#[case::too_many_responses_declaration_no_fin(
+    1,
+    vec![Ok((peer(0), vec![contract_diff(18), declared_class(18), declared_class(19)]))],
+    vec![len(18)],
+    vec![Ok((peer(0), state_diff(18)))]
+)]
+#[case::empty_response_streams_are_ignored(
     1,
     vec![
         Ok((peer(0), vec![])),
         Ok((peer(1), vec![contract_diff(20), declared_class(20), SDFin])),
         Ok((peer(2), vec![]))
+    ],
+    vec![len(20)],
+    vec![Ok((peer(1), state_diff(20)))]
+)]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![SDFin])),
+        Ok((peer(1), vec![contract_diff(20), declared_class(20), SDFin])),
+        Ok((peer(2), vec![SDFin]))
     ],
     vec![len(20)],
     vec![Ok((peer(1), state_diff(20)))]
@@ -428,6 +626,19 @@ async fn make_state_diff_stream(
         Ok((peer(1), class(14, 1))),
     ]
 )]
+#[case::last_peer_full_block_no_fin(
+    2,
+    vec![
+        Ok((peer(0), vec![class_resp(12), class_resp(13), ClassFin])),
+        Ok((peer(1), vec![class_resp(14)]))
+    ],
+    vec![2, 1],
+    vec![
+        Ok((peer(0), class(12, 0))),
+        Ok((peer(0), class(13, 0))),
+        Ok((peer(1), class(14, 1))),
+    ]
+)]
 // The same as above but the first peer gives half of the second block before closing the
 // stream
 #[case::first_peer_half_block_no_fin(
@@ -458,18 +669,34 @@ async fn make_state_diff_stream(
         Err(peer(0)) // the second block is not processed
     ]
 )]
-#[case::too_many_responses_declaration(
+#[case::too_many_responses_declaration_with_fin(
     1,
     vec![Ok((peer(0), vec![class_resp(21), class_resp(22), ClassFin]))],
     vec![1],
     vec![Ok((peer(0), class(21, 0)))]
 )]
-#[case::empty_responses_are_ignored(
+#[case::too_many_responses_declaration_no_fin(
+    1,
+    vec![Ok((peer(0), vec![class_resp(21), class_resp(22)]))],
+    vec![1],
+    vec![Ok((peer(0), class(21, 0)))]
+)]
+#[case::empty_response_streams_are_ignored(
     1,
     vec![
         Ok((peer(0), vec![])),
         Ok((peer(1), vec![class_resp(22), ClassFin])),
         Ok((peer(2), vec![]))
+    ],
+    vec![1],
+    vec![Ok((peer(1), class(22, 0)))]
+)]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![ClassFin])),
+        Ok((peer(1), vec![class_resp(22), ClassFin])),
+        Ok((peer(2), vec![ClassFin]))
     ],
     vec![1],
     vec![Ok((peer(1), class(22, 0)))]
@@ -580,6 +807,18 @@ async fn make_class_definition_stream(
         Ok((peer(1), events(vec![(vec![19], 19)], 1))),
     ]
 )]
+#[case::last_peer_full_block_no_fin(
+    2,
+    vec![
+        Ok((peer(0), vec![event_resp(18, 18), EventFin])),
+        Ok((peer(1), vec![event_resp(19, 19)]))
+    ],
+    vec![1, 1],
+    vec![
+        Ok((peer(0), events(vec![(vec![18], 18)], 0))),
+        Ok((peer(1), events(vec![(vec![19], 19)], 1))),
+    ]
+)]
 // The same as above but the first peer gives half of the second block before closing the
 // stream
 #[case::first_peer_half_block_no_fin(
@@ -608,7 +847,7 @@ async fn make_class_definition_stream(
         Err(peer(0)) // the second block is not processed
     ]
 )]
-#[case::too_many_responses(
+#[case::too_many_responses_with_fin(
     1,
     vec![Ok((peer(0), vec![event_resp(27, 27), event_resp(28, 27), event_resp(29, 27), EventFin]))],
     vec![1],
@@ -616,12 +855,32 @@ async fn make_class_definition_stream(
         Ok((peer(0), events(vec![(vec![27], 27)], 0))),
     ]
 )]
-#[case::empty_responses_are_ignored(
+#[case::too_many_responses_no_fin(
+    1,
+    vec![Ok((peer(0), vec![event_resp(27, 27), event_resp(28, 27), event_resp(29, 27)]))],
+    vec![1],
+    vec![
+        Ok((peer(0), events(vec![(vec![27], 27)], 0))),
+    ]
+)]
+#[case::empty_response_streams_are_ignored(
     1,
     vec![
         Ok((peer(0), vec![])),
         Ok((peer(0), vec![event_resp(30, 30), EventFin])),
         Ok((peer(2), vec![]))
+    ],
+    vec![1],
+    vec![
+        Ok((peer(0), events(vec![(vec![30], 30)], 0)))
+    ]
+)]
+#[case::empty_responses_are_ignored(
+    1,
+    vec![
+        Ok((peer(0), vec![EventFin])),
+        Ok((peer(0), vec![event_resp(30, 30), EventFin])),
+        Ok((peer(2), vec![EventFin]))
     ],
     vec![1],
     vec![

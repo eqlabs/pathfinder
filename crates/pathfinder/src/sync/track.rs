@@ -53,12 +53,12 @@ use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
 use crate::sync::{events, headers};
 
 pub struct Sync<L, P> {
-    latest: L,
-    p2p: P,
-    storage: Storage,
-    chain: Chain,
-    chain_id: ChainId,
-    public_key: PublicKey,
+    pub latest: L,
+    pub p2p: P,
+    pub storage: Storage,
+    pub chain: Chain,
+    pub chain_id: ChainId,
+    pub public_key: PublicKey,
 }
 
 impl<L, P> Sync<L, P> {
@@ -725,12 +725,11 @@ impl ProcessStage for StoreBlock {
             classes,
         } = input;
 
-        let db = self
-            .connection
-            .transaction()
-            .context("Creating database connection")?;
-
         let block_number = header.number;
+
+        let db = self.connection.transaction().with_context(|| {
+            format!("Creating database connection, block_number: {block_number}")
+        })?;
 
         let header = BlockHeader {
             hash: header.hash,
@@ -810,9 +809,14 @@ impl ProcessStage for StoreBlock {
             },
         )?;
 
-        db.commit()
+        let result = db
+            .commit()
             .context("Committing transaction")
-            .map_err(Into::into)
+            .map_err(Into::into);
+
+        tracing::info!(number=%block_number, "Block stored");
+
+        result
     }
 }
 

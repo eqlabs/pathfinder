@@ -675,12 +675,9 @@ impl MainLoop {
                 },
             )) => {
                 tracing::warn!(?request_id, ?error, "Outbound header sync request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .headers
-                    .remove(&request_id)
-                    .expect("Header sync request still to be pending")
-                    .send(Err(error.into()));
+                if let Some(sender) = self.pending_sync_requests.headers.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
                 p2p_stream::Event::OutboundFailure {

@@ -5,17 +5,14 @@ use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
     Address,
     BlockNumberOrHash,
-    ConsensusSignature,
     Direction,
     Hash,
     Iteration,
-    Patricia,
-    StateDiffCommitment,
     Step,
     VolitionDomain,
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHeader};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{
     ContractDiff,
     ContractStoredValue,
@@ -24,7 +21,7 @@ use p2p_proto::state::{
     StateDiffsResponse,
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
-use pathfinder_common::{class_definition, BlockHash, BlockNumber};
+use pathfinder_common::{class_definition, BlockHash, BlockNumber, SignedBlockHeader};
 use pathfinder_storage::{Storage, Transaction};
 use tokio::sync::mpsc;
 
@@ -139,46 +136,15 @@ fn get_header(
             if let Some((state_diff_commitment, state_diff_len)) = state_diff_cl {
                 tracing::trace!(?header, "Sending block header");
 
-                let txn_count = header
-                    .transaction_count
-                    .try_into()
-                    .context("invalid transaction count")?;
+                let sbh = SignedBlockHeader {
+                    header,
+                    signature,
+                    state_diff_commitment,
+                    state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"),
+                };
 
-                tx.blocking_send(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
-                    block_hash: Hash(header.hash.0),
-                    parent_hash: Hash(header.parent_hash.0),
-                    number: header.number.get(),
-                    time: header.timestamp.get(),
-                    sequencer_address: Address(header.sequencer_address.0),
-                    state_root: Hash(header.state_commitment.0),
-                    state_diff_commitment: StateDiffCommitment {
-                        state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"),
-                        root: Hash(state_diff_commitment.0),
-                    },
-                    transactions: Patricia {
-                        n_leaves: txn_count,
-                        root: Hash(header.transaction_commitment.0),
-                    },
-                    events: Patricia {
-                        n_leaves: header
-                            .event_count
-                            .try_into()
-                            .context("invalid event count")?,
-                        root: Hash(header.event_commitment.0),
-                    },
-                    receipts: Hash(header.receipt_commitment.0),
-                    protocol_version: header.starknet_version.to_string(),
-                    gas_price_wei: header.eth_l1_gas_price.0,
-                    gas_price_fri: header.strk_l1_gas_price.0,
-                    data_gas_price_wei: header.eth_l1_data_gas_price.0,
-                    data_gas_price_fri: header.strk_l1_data_gas_price.0,
-                    l1_data_availability_mode: header.l1_da_mode.to_dto(),
-                    signatures: vec![ConsensusSignature {
-                        r: signature.r.0,
-                        s: signature.s.0,
-                    }],
-                })))
-                .map_err(|_| anyhow::anyhow!("Sending header"))?;
+                tx.blocking_send(BlockHeadersResponse::Header(Box::new(sbh.to_dto())))
+                    .map_err(|_| anyhow::anyhow!("Sending header"))?;
 
                 return Ok(true);
             }
