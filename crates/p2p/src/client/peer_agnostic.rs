@@ -1,10 +1,12 @@
 //! _High level_ client for p2p interaction.
 //! Frees the caller from managing peers manually.
 use std::collections::HashSet;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
+use futures::channel::mpsc as fmpsc;
 use futures::{pin_mut, Stream, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
@@ -590,10 +592,8 @@ pub fn make_header_stream<PF, RF>(
     send_request: impl Fn(PeerId, BlockHeadersRequest) -> RF + Send + 'static,
 ) -> impl Stream<Item = PeerData<SignedBlockHeader>>
 where
-    PF: std::future::Future<Output = Vec<PeerId>> + Send,
-    RF: std::future::Future<
-            Output = anyhow::Result<futures::channel::mpsc::Receiver<BlockHeadersResponse>>,
-        > + Send,
+    PF: Future<Output = Vec<PeerId>> + Send,
+    RF: Future<Output = anyhow::Result<fmpsc::Receiver<BlockHeadersResponse>>> + Send,
 {
     let start: i64 = start.get().try_into().expect("block number <= i64::MAX");
     let stop: i64 = stop.get().try_into().expect("block number <= i64::MAX");
@@ -705,10 +705,8 @@ pub fn make_transaction_stream<PF, RF>(
     Item = Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
 >
 where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<TransactionsResponse>>,
-    >,
+    PF: Future<Output = Vec<PeerId>>,
+    RF: Future<Output = anyhow::Result<fmpsc::Receiver<TransactionsResponse>>>,
 {
     tracing::trace!(?start, ?stop, "Streaming Transactions");
 
@@ -896,10 +894,8 @@ pub fn make_state_diff_stream<PF, RF>(
     Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
 >
 where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<StateDiffsResponse>>,
-    >,
+    PF: Future<Output = Vec<PeerId>>,
+    RF: Future<Output = anyhow::Result<fmpsc::Receiver<StateDiffsResponse>>>,
 {
     tracing::trace!(?start, ?stop, "Streaming state diffs");
 
@@ -1144,10 +1140,8 @@ pub fn make_class_definition_stream<PF, RF>(
     send_request: impl Fn(PeerId, ClassesRequest) -> RF,
 ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
 where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<ClassesResponse>>,
-    >,
+    PF: Future<Output = Vec<PeerId>>,
+    RF: Future<Output = anyhow::Result<fmpsc::Receiver<ClassesResponse>>>,
 {
     tracing::trace!(?start, ?stop, "Streaming classes");
 
@@ -1281,10 +1275,8 @@ pub fn make_event_stream<PF, RF>(
     send_request: impl Fn(PeerId, EventsRequest) -> RF,
 ) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
 where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<EventsResponse>>,
-    >,
+    PF: Future<Output = Vec<PeerId>>,
+    RF: Future<Output = anyhow::Result<fmpsc::Receiver<EventsResponse>>>,
 {
     tracing::trace!(?start, ?stop, "Streaming events");
 
