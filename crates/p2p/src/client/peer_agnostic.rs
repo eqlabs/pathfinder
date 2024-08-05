@@ -691,6 +691,7 @@ where
     ReceiverStream::new(rx)
 }
 
+/// Caller must guarantee `start <= stop`
 pub fn make_transaction_stream<PF, RF>(
     mut start: BlockNumber,
     stop: BlockNumber,
@@ -710,168 +711,128 @@ where
     tokio::spawn(async move {
         pin_mut!(transaction_counts_and_commitments_stream);
 
-        let mut current_count_outer = None;
-        let mut current_commitment = Default::default();
+        let Some(Ok(mut current_outer)) = transaction_counts_and_commitments_stream.next().await
+        else {
+            tracing::debug!("Transaction counts and commitments stream terminated prematurely");
+            return;
+        };
 
-        if start <= stop {
-            // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
-                let peers = get_peers().await;
+        // Loop which refreshes peer set once we exhaust it.
+        'outer: loop {
+            'next_peer: for peer in get_peers().await {
+                let request = TransactionsRequest {
+                    iteration: Iteration {
+                        start: start.get().into(),
+                        direction: Direction::Forward,
+                        limit: stop.get() - start.get() + 1,
+                        step: 1.into(),
+                    },
+                };
 
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let limit = stop.get() - start.get() + 1;
+                let mut responses = match send_request(peer, request).await {
+                    Ok(x) => x,
+                    Err(error) => {
+                        tracing::debug!(%peer, reason=%error, "Transactions request failed");
+                        continue 'next_peer;
+                    }
+                };
 
-                    let request = TransactionsRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction: Direction::Forward,
-                            limit,
-                            step: 1.into(),
-                        },
-                    };
+                let mut transactions = Vec::new();
+                let mut current = current_outer;
+                tracing::trace!(number=%current.0, "Expecting transaction responses");
 
-                    let mut responses = match send_request(peer, request).await {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Transactions request failed");
-                            continue 'next_peer;
+                while let Some(response) = responses.next().await {
+                    match response {
+                        TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
+                            transaction,
+                            receipt,
+                        }) => {
+                            let (Ok(t), Ok(r)) = (
+                                TransactionVariant::try_from_dto(transaction),
+                                Receipt::try_from((
+                                    receipt,
+                                    TransactionIndex::new_or_panic(
+                                        transactions.len().try_into().expect("ptr size is 64bits"),
+                                    ),
+                                )),
+                            ) else {
+                                // TODO punish the peer
+                                tracing::debug!(%peer, "Transaction or receipt failed to parse");
+                                continue 'next_peer;
+                            };
+
+                            match current.0.checked_sub(1) {
+                                Some(x) => {
+                                    current.0 = x;
+                                    transactions.push((t, r));
+                                }
+                                None => {
+                                    // TODO punish the peer
+                                    tracing::debug!(%peer, %start, %stop, "Too many transactions");
+                                    // We can only get here in case of the last block, which means
+                                    // that the stream should be terminated
+                                    debug_assert!(start == stop);
+                                    break 'outer;
+                                }
+                            }
+                        }
+                        TransactionsResponse::Fin => {
+                            if current.0 > 0 {
+                                // TODO punish the peer
+                                tracing::debug!(%peer, "Premature transaction stream Fin");
+                                continue 'next_peer;
+                            }
+
+                            if start == stop {
+                                // We're done, terminate the stream
+                                break 'outer;
+                            }
                         }
                     };
 
-                    let mut current_count = match current_count_outer {
-                        // Still the same block
-                        Some(backup) => backup,
-                        // Move to the next block
-                        None => {
-                            let Some(Ok((count, commitment))) =
+                    if current.0 == 0 {
+                        // The counter for this block has been exhausted which means that this block
+                        // is complete.
+                        tracing::trace!(block_number=%start, "All transactions received for block");
+
+                        _ = tx
+                            .send(PeerData::new(
+                                peer,
+                                (
+                                    UnverifiedTransactionData {
+                                        expected_commitment: std::mem::take(&mut current.1),
+                                        transactions: std::mem::take(&mut transactions),
+                                    },
+                                    start,
+                                ),
+                            ))
+                            .await;
+
+                        if start < stop {
+                            // Move to the next block
+                            start += 1;
+                            tracing::trace!(next_block=%start, "Moving to next block");
+
+                            if let Some(Ok(x)) =
                                 transaction_counts_and_commitments_stream.next().await
-                            else {
+                            {
+                                current_outer = x;
+                                current = x;
+                            } else {
                                 tracing::debug!(%peer, "Transaction counts and commitments stream terminated prematurely");
                                 break 'outer;
                             };
-
-                            current_count_outer = Some(count);
-                            current_commitment = commitment;
-                            count
-                        }
-                    };
-
-                    tracing::trace!(number=%current_count, "Expecting transaction responses");
-
-                    let mut transactions = Vec::new();
-
-                    while let Some(response) = responses.next().await {
-                        match response {
-                            TransactionsResponse::TransactionWithReceipt(
-                                TransactionWithReceipt {
-                                    transaction,
-                                    receipt,
-                                },
-                            ) => {
-                                let (Ok(t), Ok(r)) = (
-                                    TransactionVariant::try_from_dto(transaction),
-                                    Receipt::try_from((
-                                        receipt,
-                                        TransactionIndex::new_or_panic(
-                                            transactions
-                                                .len()
-                                                .try_into()
-                                                .expect("ptr size is 64bits"),
-                                        ),
-                                    )),
-                                ) else {
-                                    tracing::debug!(%peer, "Transaction or receipt failed to parse");
-                                    // TODO punish the peer
-                                    continue 'next_peer;
-                                };
-
-                                match current_count.checked_sub(1) {
-                                    Some(x) => {
-                                        current_count = x;
-                                        transactions.push((t, r));
-                                    }
-                                    None => {
-                                        tracing::debug!(%peer, %start, %stop, "Too many transactions");
-                                        // TODO punish the peer
-
-                                        // We can only get here in case of the last block, which
-                                        // means that the stream should be terminated
-                                        debug_assert!(start == stop);
-                                        break 'outer;
-                                    }
-                                }
-                            }
-                            TransactionsResponse::Fin => {
-                                if current_count == 0 {
-                                    if start == stop {
-                                        // We're done, terminate the stream
-                                        break 'outer;
-                                    }
-                                } else {
-                                    tracing::debug!(%peer, "Premature transaction stream Fin");
-                                    // TODO punish the peer
-                                    continue 'next_peer;
-                                }
-                            }
-                        };
-
-                        if current_count == 0 {
-                            // The counter for this block has been exhausted which means
-                            // that this block is complete.
-                            tracing::trace!(block_number=%start, "All transactions received for block");
-
-                            _ = tx
-                                .send(PeerData::new(
-                                    peer,
-                                    (
-                                        UnverifiedTransactionData {
-                                            expected_commitment: std::mem::take(
-                                                &mut current_commitment,
-                                            ),
-                                            transactions: std::mem::take(&mut transactions),
-                                        },
-                                        start,
-                                    ),
-                                ))
-                                .await;
-
-                            if start < stop {
-                                // Move to the next block
-                                start += 1;
-                                tracing::trace!(next_block=%start, "Moving to next block");
-
-                                let Some(Ok((count, commitment))) =
-                                    transaction_counts_and_commitments_stream.next().await
-                                else {
-                                    tracing::debug!(%peer, "Transaction counts and commitments stream terminated prematurely");
-                                    break 'outer;
-                                };
-
-                                current_count = count;
-                                current_count_outer = Some(current_count);
-                                current_commitment = commitment;
-                            }
                         }
                     }
+                }
 
-                    // TODO punish the peer
-                    // If we reach here, the peer did not send a Fin, so the counter for the current
-                    // block should be reset and we should start from the
-                    // current block again but from the next peer.
-                    //
-                    // The problem here is that the count stream was already consumed, so we assume
-                    // that the full blocks that were already processed are
-                    // correct.
-                    tracing::debug!(%peer, "Fin missing");
-
-                    // The above situation can also happen when we've received all the data we need
-                    // but the last peer has not sent a Fin.
-                    if current_count == 0 && start == stop {
-                        // We're done, terminate the stream
-                        break 'outer;
-                    }
+                // TODO punish the peer
+                tracing::debug!(%peer, "Fin missing");
+                // The above situation can also happen when we've received all the data we need
+                // but the last peer has not sent a Fin.
+                if current.0 == 0 && start == stop {
+                    // We're done, terminate the stream
+                    break 'outer;
                 }
             }
         }
