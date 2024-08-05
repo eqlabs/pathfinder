@@ -842,8 +842,8 @@ mod tests {
         let blocks = fake::init::with_n_blocks_and_config(
             N,
             Config {
-                calculate_block_hash: Box::new(|sbh: &SignedBlockHeader| {
-                    compute_final_hash(&BlockHeaderData::from_signed_header(sbh))
+                calculate_block_hash: Box::new(|header: &BlockHeader| {
+                    compute_final_hash(&BlockHeaderData::from_header(&header))
                 }),
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),

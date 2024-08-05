@@ -141,7 +141,7 @@ pub mod init {
 
     use super::Block;
 
-    pub type BlockHashFn = Box<dyn Fn(&SignedBlockHeader) -> anyhow::Result<BlockHash>>;
+    pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> anyhow::Result<BlockHash>>;
     pub type TransactionCommitmentFn =
         Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>;
     pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
@@ -506,7 +506,7 @@ pub mod init {
             } = init.get_mut(0).unwrap();
             header.header.parent_hash = BlockHash::ZERO;
 
-            header.header.hash = (config.calculate_block_hash)(header).unwrap();
+            header.header.hash = (config.calculate_block_hash)(&header.header).unwrap();
 
             state_update.block_hash = header.header.hash;
 
@@ -523,7 +523,7 @@ pub mod init {
 
                 header.header.parent_hash = parent_hash;
 
-                header.header.hash = (config.calculate_block_hash)(header).unwrap();
+                header.header.hash = (config.calculate_block_hash)(&header.header).unwrap();
 
                 state_update.block_hash = header.header.hash;
             }

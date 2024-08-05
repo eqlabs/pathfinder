@@ -225,7 +225,7 @@ impl ProcessStage for VerifyHashAndSignature {
     type Output = SignedBlockHeader;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        if !self.verify_hash(&input) {
+        if !self.verify_hash(&input.header) {
             return Err(SyncError2::BadBlockHash);
         }
 
@@ -248,31 +248,33 @@ impl VerifyHashAndSignature {
         }
     }
 
-    fn verify_hash(&self, header: &SignedBlockHeader) -> bool {
-        let h = &header.header;
+    fn verify_hash(&self, header: &p2p::client::types::BlockHeader) -> bool {
         matches!(
             verify_block_hash(
                 BlockHeaderData {
-                    hash: h.hash,
-                    parent_hash: h.parent_hash,
-                    number: h.number,
-                    timestamp: h.timestamp,
-                    sequencer_address: h.sequencer_address,
-                    state_commitment: h.state_commitment,
-                    transaction_commitment: h.transaction_commitment,
-                    transaction_count: h.transaction_count.try_into().expect("ptr size is 64 bits"),
-                    event_commitment: h.event_commitment,
-                    event_count: h.event_count.try_into().expect("ptr size is 64 bits"),
-                    state_diff_commitment: header.header.state_diff_commitment,
-                    state_diff_length: header.header.state_diff_length,
-                    starknet_version: h.starknet_version,
-                    starknet_version_str: h.starknet_version.to_string(),
-                    eth_l1_gas_price: h.eth_l1_gas_price,
-                    strk_l1_gas_price: h.strk_l1_gas_price,
-                    eth_l1_data_gas_price: h.eth_l1_data_gas_price,
-                    strk_l1_data_gas_price: h.strk_l1_data_gas_price,
-                    receipt_commitment: h.receipt_commitment,
-                    l1_da_mode: h.l1_da_mode,
+                    hash: header.hash,
+                    parent_hash: header.parent_hash,
+                    number: header.number,
+                    timestamp: header.timestamp,
+                    sequencer_address: header.sequencer_address,
+                    state_commitment: header.state_commitment,
+                    transaction_commitment: header.transaction_commitment,
+                    transaction_count: header
+                        .transaction_count
+                        .try_into()
+                        .expect("ptr size is 64 bits"),
+                    event_commitment: header.event_commitment,
+                    event_count: header.event_count.try_into().expect("ptr size is 64 bits"),
+                    state_diff_commitment: header.state_diff_commitment,
+                    state_diff_length: header.state_diff_length,
+                    starknet_version: header.starknet_version,
+                    starknet_version_str: header.starknet_version.to_string(),
+                    eth_l1_gas_price: header.eth_l1_gas_price,
+                    strk_l1_gas_price: header.strk_l1_gas_price,
+                    eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+                    strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+                    receipt_commitment: header.receipt_commitment,
+                    l1_da_mode: header.l1_da_mode,
                 },
                 self.chain,
                 self.chain_id
