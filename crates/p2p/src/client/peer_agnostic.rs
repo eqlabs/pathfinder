@@ -614,10 +614,7 @@ where
     tokio::spawn(async move {
         // Loop which refreshes peer set once we exhaust it.
         'outer: loop {
-            let peers = get_peers().await;
-
-            // Attempt each peer.
-            'next_peer: for peer in peers {
+            'next_peer: for peer in get_peers().await {
                 let limit = start.max(stop) - start.min(stop) + 1;
 
                 let request = BlockHeadersRequest {
@@ -632,16 +629,12 @@ where
                 let mut responses = match send_request(peer, request).await {
                     Ok(x) => x,
                     Err(error) => {
-                        // Failed to establish connection, try next peer.
                         tracing::debug!(%peer, reason=%error, "Headers request failed");
                         continue 'next_peer;
                     }
                 };
 
                 while let Some(signed_header) = responses.next().await {
-                    // It can be a finishing FIN or an extra header or even a malformed message
-                    // but we ignore it regardless because we have all the data we need
-
                     match signed_header {
                         BlockHeadersResponse::Header(hdr) => {
                             match SignedBlockHeader::try_from_dto(*hdr) {
