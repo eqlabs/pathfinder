@@ -6331,6 +6331,7 @@ dependencies = [
  "tagged-debug-derive",
  "test-log",
  "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-subscriber",
  "unsigned-varint 0.8.0",

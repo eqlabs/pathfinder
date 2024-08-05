@@ -116,12 +116,16 @@ async fn make_header_stream(
 
     for (reverse, direction) in [(false, "forward"), (true, "backward")] {
         let (peers, responses) = unzip_fixtures(responses.clone());
-        let get_peers = || async { peers.clone() };
+        let get_peers = move || {
+            let peers = peers.clone();
+            async move { peers }
+        };
+        let send_request = move |_: PeerId, _: BlockHeadersRequest| {
+            let responses = responses.clone();
+            async move { send_request(responses).await }
+        };
         let start = BlockNumber::GENESIS;
         let stop = start + (num_blocks - 1) as u64;
-
-        let send_request =
-            |_: PeerId, _: BlockHeadersRequest| async { send_request(responses.clone()).await };
 
         let actual = super::make_header_stream(start, stop, reverse, get_peers, send_request)
             .map(|x| (TestPeer(x.peer), x.data))
@@ -293,10 +297,14 @@ async fn make_transaction_stream(
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
-    let get_peers = || async { peers.clone() };
-    let send_request =
-        |_: PeerId, _: TransactionsRequest| async { send_request(responses.clone()).await };
-
+    let get_peers = move || {
+        let peers = peers.clone();
+        async move { peers }
+    };
+    let send_request = move |_: PeerId, _: TransactionsRequest| {
+        let responses = responses.clone();
+        async move { send_request(responses).await }
+    };
     let start = BlockNumber::GENESIS;
     let stop = start + (num_blocks - 1) as u64;
 

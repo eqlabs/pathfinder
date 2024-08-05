@@ -37,7 +37,8 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
+use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
 mod fixtures;
@@ -166,9 +167,9 @@ impl TransactionStream for Client {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl Stream<
-            Item = anyhow::Result<(usize, TransactionCommitment)>,
-        >,
+        transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+            + Send
+            + 'static,
     ) -> impl Stream<
         Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
     > {
@@ -585,14 +586,14 @@ pub fn make_header_stream<PF, RF>(
     start: BlockNumber,
     stop: BlockNumber,
     reverse: bool,
-    get_peers: impl Fn() -> PF,
-    send_request: impl Fn(PeerId, BlockHeadersRequest) -> RF,
+    get_peers: impl Fn() -> PF + Send + 'static,
+    send_request: impl Fn(PeerId, BlockHeadersRequest) -> RF + Send + 'static,
 ) -> impl Stream<Item = PeerData<SignedBlockHeader>>
 where
-    PF: std::future::Future<Output = Vec<PeerId>>,
+    PF: std::future::Future<Output = Vec<PeerId>> + Send,
     RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<BlockHeadersResponse>>,
-    >,
+            Output = anyhow::Result<futures::channel::mpsc::Receiver<BlockHeadersResponse>>,
+        > + Send,
 {
     let start: i64 = start.get().try_into().expect("block number <= i64::MAX");
     let stop: i64 = stop.get().try_into().expect("block number <= i64::MAX");
@@ -611,7 +612,8 @@ where
         }
     }
 
-    async_stream::stream! {
+    let (tx, rx) = mpsc::channel(1);
+    tokio::spawn(async move {
         // Loop which refreshes peer set once we exhaust it.
         'outer: loop {
             let peers = get_peers().await;
@@ -629,15 +631,14 @@ where
                     },
                 };
 
-                let mut responses =
-                    match send_request(peer, request).await {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Headers request failed");
-                            continue 'next_peer;
-                        }
-                    };
+                let mut responses = match send_request(peer, request).await {
+                    Ok(x) => x,
+                    Err(error) => {
+                        // Failed to establish connection, try next peer.
+                        tracing::debug!(%peer, reason=%error, "Headers request failed");
+                        continue 'next_peer;
+                    }
+                };
 
                 while let Some(signed_header) = responses.next().await {
                     // It can be a finishing FIN or an extra header or even a malformed message
@@ -652,13 +653,13 @@ where
                                         break 'outer;
                                     }
 
-                                    yield PeerData::new(peer, hdr);
+                                    _ = tx.send(PeerData::new(peer, hdr)).await;
 
                                     start = match direction {
                                         Direction::Forward => start + 1,
                                         Direction::Backward => start - 1,
                                     };
-                                },
+                                }
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Header stream failed");
                                     if done(direction, start, stop) {
@@ -683,10 +684,13 @@ where
                     break 'outer;
                 }
 
-                // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
+                // TODO: track how much and how fast this peer responded with
+                // i.e. don't let them drip feed us etc.
             }
         }
-    }
+    });
+
+    ReceiverStream::new(rx)
 }
 
 pub fn make_transaction_stream<PF, RF>(
