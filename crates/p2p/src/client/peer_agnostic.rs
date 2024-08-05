@@ -640,15 +640,18 @@ where
                     };
 
                 while let Some(signed_header) = responses.next().await {
-                    // It can be a finishing FIN or an extra header we just happily ignore
-                    if done(direction, start, stop) {
-                        break 'outer;
-                    }
+                    // It can be a finishing FIN or an extra header or even a malformed message
+                    // but we ignore it regardless because we have all the data we need
 
                     match signed_header {
                         BlockHeadersResponse::Header(hdr) => {
                             match SignedBlockHeader::try_from_dto(*hdr) {
                                 Ok(hdr) => {
+                                    if done(direction, start, stop) {
+                                        tracing::debug!(%peer, "Header stream Fin missing, got extra header instead");
+                                        break 'outer;
+                                    }
+
                                     yield PeerData::new(peer, hdr);
 
                                     start = match direction {
@@ -658,6 +661,9 @@ where
                                 },
                                 Err(error) => {
                                     tracing::debug!(%peer, %error, "Header stream failed");
+                                    if done(direction, start, stop) {
+                                        break 'outer;
+                                    }
                                     continue 'next_peer;
                                 }
                             }
